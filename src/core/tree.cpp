@@ -26,6 +26,8 @@ namespace Operon {
             {
                 s.Length += it->Length;
                 nodes[it.Index()].Parent = i;
+
+                fmt::print("index: {}, length: {}\n", it.Index(), s.Length);
             }
         }
         return *this;

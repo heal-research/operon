@@ -41,9 +41,8 @@ namespace Operon
             {
                 std::vector<Tree> population(size);
                 auto allowed = AllowedSymbols();
-                fmt::print("Allowed: {}\n", allowed.size());
                 auto partials = allowed;
-                for (int i = 1; i < partials.size(); ++i)
+                for (size_t i = 1; i < partials.size(); ++i)
                 {
                     partials[i].second += partials[i-1].second;
                 }
@@ -67,12 +66,13 @@ namespace Operon
                 }
 
                 auto tree = Tree(nodes);
-                return tree.UpdateNodes();
+                //return tree.UpdateNodes();
+                return tree;
             }
 
             void Grow(Rand& random, std::vector<Node>& nodes, const std::vector<std::pair<NodeType, double>> partials, size_t maxLength, size_t maxDepth)
             {
-                if (maxDepth == 1)
+                if (maxDepth == 0)
                 {
                     // only allowed to grow leaf nodes
                     auto pConst = GetFrequency(NodeType::Constant);
@@ -85,6 +85,7 @@ namespace Operon
                 {
                     auto node = SampleProportional(random, partials);
                     nodes.push_back(node);
+                    //fmt::print("{} arity: {}\n", node.Name(), node.Arity);
                     for (size_t i = 0; i < node.Arity; ++i)
                     {
                         Grow(random, nodes, partials, maxLength, maxDepth - 1);
@@ -97,7 +98,8 @@ namespace Operon
                 std::uniform_real_distribution<double> uniformReal(0, partials.back().second - std::numeric_limits<double>::epsilon());
                 auto r = uniformReal(random);
                 auto it = std::find_if(partials.begin(), partials.end(), [=](auto& p) { return p.second > r; });
-                return Node(it->first);
+                auto node = Node(it->first);
+                return node;
             }
 
             uint16_t config = Grammar::Arithmetic;

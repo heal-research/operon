@@ -11,12 +11,19 @@ int main(int argc, char* argv[])
     Operon::Grammar grammar;
     Operon::Random::JsfRand<64> jsf;
 
+    const size_t nTrees = 5;
+
     fmt::print("{}\n", Operon::NodeType::Add < Operon::NodeType::Sub);
-    auto trees = grammar.Initialize(jsf, 10, 100, maxDepth);
+    auto trees = grammar.Initialize(jsf, nTrees, 100, maxDepth);
     
-    for(auto& node : trees[2].Nodes())
+    for (size_t i = 0; i < nTrees; ++i)
     {
-        fmt::print("{}\n", node);
+        trees[i].UpdateNodes();
+        for(auto it = trees[i].Nodes().rbegin(); it != trees[i].Nodes().rend(); ++it)
+        {
+            fmt::print("{}\n", *it);
+        }
+        fmt::print("\n");
     }
 
     return 0;

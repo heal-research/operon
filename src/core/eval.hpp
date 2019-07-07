@@ -27,6 +27,7 @@ namespace Operon {
     template<typename T> inline void log(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::log(b[i]);               }
     template<typename T> inline void sin(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::sin(b[i]);               }
     template<typename T> inline void cos(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::cos(b[i]);               }
+    template<typename T> inline void tan(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::tan(b[i]);               }
     template<typename T> inline void sqrt(T* __restrict a,   T const* __restrict b) noexcept { FOR(i) a[i] = ceres::sqrt(b[i]);              }
     template<typename T> inline void cbrt(T* __restrict a,   T const* __restrict b) noexcept { FOR(i) a[i] = ceres::cbrt(b[i]);              }
     template<typename T> inline void square(T* __restrict a, T const* __restrict b) noexcept { FOR(i) a[i] = ceres::pow(b[i], 2.);           }
@@ -68,7 +69,7 @@ namespace Operon {
     template<typename T>
         std::vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
         {
-            std::vector<T> result(range.Length());
+            std::vector<T> result(range.Size());
             Evaluate(tree, dataset, range, parameters, result.data());
             return result;
         }
@@ -76,7 +77,7 @@ namespace Operon {
     template<typename T>
         void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, T* result)
         {
-            auto& nodes = tree.nodes();
+            auto& nodes = tree.Nodes();
             std::vector<T> buffer(nodes.size() * BATCHSIZE); // intermediate results buffer
 
             // fill in buf for constants and non-terminal nodes
@@ -85,14 +86,14 @@ namespace Operon {
             {
                 auto buf = buffer.data() + i * BATCHSIZE;
                 auto& s = nodes[i];
-                if (s.IsConstant() || s.IsNonTerminal())
+                if (s.IsConstant())
                 {
                     auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
                     load(buf, v);
                 }
             }
 
-            size_t numRows = range.Length();
+            size_t numRows = range.Size();
             for (size_t row = 0; row < numRows; row += BATCHSIZE)
             {
                 auto remainingRows = std::min(BATCHSIZE, numRows - row);
@@ -148,12 +149,6 @@ namespace Operon {
                                 exp(buf, buf - BATCHSIZE);
                                 break;
                             }
-                        case NodeType::Inv:
-                            {
-                                inv(buf, buf - BATCHSIZE);
-                                break;
-
-                            }
                         case NodeType::Sin:
                             {
                                 sin(buf, buf - BATCHSIZE);
@@ -195,7 +190,7 @@ namespace Operon {
         template<typename T> bool operator()(T const* const* parameters, T* residuals) const
         {
             Evaluate(tree_ref, dataset_ref, range, parameters[0], residuals);
-            std::transform(residuals, residuals + range.Length(), target_ref.cbegin() + range.Start, residuals, [](const T& a, const double b) { return a - b; });
+            std::transform(residuals, residuals + range.Size(), target_ref.cbegin() + range.Start, residuals, [](const T& a, const double b) { return a - b; });
             return true;
         }
 
@@ -236,7 +231,7 @@ namespace Operon {
             if constexpr (autodiff) { costFunction = new DynamicAutoDiffCostFunction<ParameterizedEvaluation, JET_STRIDE>(eval); }
             else                    { costFunction = new DynamicNumericDiffCostFunction(eval);                                   }
             costFunction->AddParameterBlock(coef.size());
-            costFunction->SetNumResiduals(range.Size);
+            costFunction->SetNumResiduals(range.Size());
             //auto lossFunction = new CauchyLoss(0.5); // see http://ceres-solver.org/nnls_tutorial.html#robust-curve-fitting      
 
             Problem problem;

@@ -26,18 +26,18 @@ namespace Operon {
 
     namespace {
         const std::unordered_map<uint16_t, std::string> nodeNames = {
-            { NodeType::Add, "Add" },
-            { NodeType::Mul, "Mul" },
-            { NodeType::Sub, "Sub" },
-            { NodeType::Div, "Div" },
-            { NodeType::Log, "Log" },
-            { NodeType::Exp, "Exp" },
-            { NodeType::Log, "Log" },
-            { NodeType::Sin, "Sin" },
-            { NodeType::Cos, "Cos" },
-            { NodeType::Tan, "Tan" },
-            { NodeType::Sqrt, "Sqrt" },
-            { NodeType::Cbrt, "Cbrt" },
+            { NodeType::Add,      "Add"      },
+            { NodeType::Mul,      "Mul"      },
+            { NodeType::Sub,      "Sub"      },
+            { NodeType::Div,      "Div"      },
+            { NodeType::Log,      "Log"      },
+            { NodeType::Exp,      "Exp"      },
+            { NodeType::Log,      "Log"      },
+            { NodeType::Sin,      "Sin"      },
+            { NodeType::Cos,      "Cos"      },
+            { NodeType::Tan,      "Tan"      },
+            { NodeType::Sqrt,     "Sqrt"     },
+            { NodeType::Cbrt,     "Cbrt"     },
             { NodeType::Constant, "Constant" },
             { NodeType::Variable, "Variable" }
         };
@@ -66,11 +66,11 @@ namespace Operon {
             IsCommutative = type < NodeType::Sub; // Add, Mul are commutative
 
             Arity = 0;
-            if (type < NodeType::Log) // Add, Mul
+            if (Type < NodeType::Log) // Add, Mul
             {
                 Arity = 2;
             }
-            if (type < NodeType::Constant) // Log, Exp, Sin, Inv, Sqrt, Cbrt
+            else if (Type < NodeType::Constant) // Log, Exp, Sin, Inv, Sqrt, Cbrt
             {
                 Arity = 1;
             }
@@ -115,19 +115,22 @@ namespace Operon {
             return !((*this) < rhs);
         }
 
-        inline bool IsConstant()       const { return Type == NodeType::Constant; }
-        inline bool IsVariable()       const { return Type == NodeType::Variable; }
-        inline bool IsAddition()       const { return Type == NodeType::Add;      }
-        inline bool IsSubtraction()    const { return Type == NodeType::Sub;      }
-        inline bool IsMultiplication() const { return Type == NodeType::Mul;      }
-        inline bool IsDivision()       const { return Type == NodeType::Div;      }
-        inline bool IsExp()            const { return Type == NodeType::Exp;      }
-        inline bool IsLog()            const { return Type == NodeType::Log;      }
-        inline bool IsSin()            const { return Type == NodeType::Sin;      }
-        inline bool IsCos()            const { return Type == NodeType::Cos;      }
-        inline bool IsTan()            const { return Type == NodeType::Tan;      }
-        inline bool IsSquareRoot()     const { return Type == NodeType::Sqrt;     }
-        inline bool IsCubeRoot()       const { return Type == NodeType::Cbrt;     }
+        template<NodeType T>
+        inline bool Is() const { return T == Type; }
+
+        inline bool IsConstant()       const { return Is<NodeType::Constant>(); }
+        inline bool IsVariable()       const { return Is<NodeType::Variable>(); }
+        inline bool IsAddition()       const { return Is<NodeType::Add>();      }
+        inline bool IsSubtraction()    const { return Is<NodeType::Sub>();      }
+        inline bool IsMultiplication() const { return Is<NodeType::Mul>();      }
+        inline bool IsDivision()       const { return Is<NodeType::Div>();      }
+        inline bool IsExp()            const { return Is<NodeType::Exp>();      }
+        inline bool IsLog()            const { return Is<NodeType::Log>();      }
+        inline bool IsSin()            const { return Is<NodeType::Sin>();      }
+        inline bool IsCos()            const { return Is<NodeType::Cos>();      }
+        inline bool IsTan()            const { return Is<NodeType::Tan>();      }
+        inline bool IsSquareRoot()     const { return Is<NodeType::Sqrt>();     }
+        inline bool IsCubeRoot()       const { return Is<NodeType::Cbrt>();     }
     };
 }
 
@@ -142,7 +145,7 @@ namespace fmt
             template <typename FormatContext>
                 auto format(const Operon::Node &s, FormatContext &ctx)
                 {
-                    return format_to(ctx.begin(), "{} [{}] [{}] {} {}", Operon::nodeNames.find(s.Type)->second, s.CalculatedHashValue, s.Value, s.Arity, s.Length);
+                    return format_to(ctx.begin(), "Name: {}, Hash: {}, Value: {}, Arity: {}, Length: {}", Operon::nodeNames.find(s.Type)->second, s.CalculatedHashValue, s.Value, s.Arity, s.Length);
                 }
         };
 }
