@@ -64,10 +64,9 @@ namespace Operon
                 {
                     Grow(random, nodes, partials, maxLength, maxDepth - 1);
                 }
-
+                std::reverse(nodes.begin(), nodes.end());
                 auto tree = Tree(nodes);
-                //return tree.UpdateNodes();
-                return tree;
+                return tree.UpdateNodes();
             }
 
             void Grow(Rand& random, std::vector<Node>& nodes, const std::vector<std::pair<NodeType, double>> partials, size_t maxLength, size_t maxDepth)
