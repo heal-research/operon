@@ -92,12 +92,6 @@ namespace Operon {
                 return *this;
             }
 
-//            Tree& operator=(Tree&& rhs) noexcept
-//            {
-//                swap(rhs);
-//                return *this;
-//            }
-
             void swap(Tree& rhs) noexcept
             {
                 std::swap(nodes, rhs.nodes);

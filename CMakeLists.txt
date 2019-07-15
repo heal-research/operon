@@ -33,8 +33,11 @@ add_library(
     operon
     STATIC 
     src/core/tree.cpp
+    src/core/problem.cpp
     src/algorithms/crossover.cpp
     src/algorithms/mutation.cpp
+    src/algorithms/initialization.cpp
+    src/algorithms/selection.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE csv fmt::fmt ${CERES_LIBRARIES} TBB::tbb)
@@ -42,7 +45,7 @@ target_include_directories(
     operon
     PRIVATE ${PROJECT_SOURCE_DIR}/src/core
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
-    PRIVATE ${CERES_INCLUDE_DIRS}
+    #    PRIVATE ${CERES_INCLUDE_DIRS}
 )
 # necessary to prevent -isystem introduced by intel-tbb
 set_target_properties(operon PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)

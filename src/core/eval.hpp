@@ -67,125 +67,126 @@ namespace Operon {
     }
 
     template<typename T>
-        std::vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
-        {
-            std::vector<T> result(range.Size());
-            Evaluate(tree, dataset, range, parameters, result.data());
-            return result;
-        }
+    std::vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
+    {
+        std::vector<T> result(range.Size());
+        Evaluate(tree, dataset, range, parameters, result.data());
+        return result;
+    }
 
     template<typename T>
-        void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, T* result)
-        {
-            auto& nodes = tree.Nodes();
-            std::vector<T> buffer(nodes.size() * BATCHSIZE); // intermediate results buffer
+    void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, T* result)
+    {
+        auto& nodes = tree.Nodes();
+        std::vector<T> buffer(nodes.size() * BATCHSIZE); // intermediate results buffer
 
-            // fill in buf for constants and non-terminal nodes
-            size_t idx    = 0;
+        // fill in buf for constants and non-terminal nodes
+        size_t idx    = 0;
+        for (size_t i = 0; i < nodes.size(); ++i)
+        {
+            auto buf = buffer.data() + i * BATCHSIZE;
+            auto& s = nodes[i];
+            if (s.IsConstant() || s.IsVariable())
+            {
+                auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
+                load(buf, v);
+            }
+        }
+
+        size_t numRows = range.Size();
+        for (size_t row = 0; row < numRows; row += BATCHSIZE)
+        {
+            auto remainingRows = std::min(BATCHSIZE, numRows - row);
             for (size_t i = 0; i < nodes.size(); ++i)
             {
-                auto buf = buffer.data() + i * BATCHSIZE;
                 auto& s = nodes[i];
-                if (s.IsConstant())
+                auto buf = buffer.data() + i * BATCHSIZE;
+                switch (s.Type)
                 {
-                    auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                    load(buf, v);
+                    case NodeType::Variable:
+                        {
+                            auto& values = dataset.GetValues(s.CalculatedHashValue);
+                            auto start = values.begin() + range.Start + row;
+                            //if constexpr (std::is_same_v<T, Dual>)
+                            //{
+                            //    // for dual numbers we need to assign values manually
+                            //    std::transform(start, start + remainingRows, buf, [](double v) { return T(v); });
+                            //}
+                            //else
+                            //{
+                            //    // otherwise we just do a memcpy
+                            //    std::copy_n(start, remainingRows, buf);
+                            //}
+                            std::transform(start, start + remainingRows, [&](double v) { return T(s.Value * v); });
+                            break;
+                        }
+                    case NodeType::Add:
+                        {
+                            auto c = i - 1;             // first child index
+                            load(buf, buf - BATCHSIZE); // load child buffer
+                            for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
+                            {
+                                add(buf, buffer.data() + j * BATCHSIZE);
+                            }
+                            break;
+                        }
+                    case NodeType::Mul:
+                        {
+                            auto c = i - 1;             // first child index
+                            load(buf, buf - BATCHSIZE); // load child buffer
+                            for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
+                            {
+                                mul(buf, buffer.data() + j * BATCHSIZE);
+                            }
+                            break;
+                        }
+                    case NodeType::Log:
+                        {
+                            log(buf, buf - BATCHSIZE);
+                            break;
+                        }
+                    case NodeType::Exp:
+                        {
+                            exp(buf, buf - BATCHSIZE);
+                            break;
+                        }
+                    case NodeType::Sin:
+                        {
+                            sin(buf, buf - BATCHSIZE);
+                            break;
+                        }
+                    case NodeType::Sqrt:
+                        {
+                            sqrt(buf, buf - BATCHSIZE);
+                            break;
+                        }
+                    case NodeType::Cbrt:
+                        {
+                            cbrt(buf, buf - BATCHSIZE);
+                            break;
+                        }
+                    default:
+                        {
+                            break;
+                        }
                 }
             }
-
-            size_t numRows = range.Size();
-            for (size_t row = 0; row < numRows; row += BATCHSIZE)
-            {
-                auto remainingRows = std::min(BATCHSIZE, numRows - row);
-                for (size_t i = 0; i < nodes.size(); ++i)
-                {
-                    auto& s = nodes[i];
-                    auto buf = buffer.data() + i * BATCHSIZE;
-                    switch (s.Type)
-                    {
-                        case NodeType::Variable:
-                            {
-                                auto& values = dataset.GetValues(s.CalculatedHashValue);
-                                auto start = values.begin() + range.Start + row;
-                                if constexpr (std::is_same_v<T, Dual>)
-                                {
-                                    // for dual numbers we need to assign values manually
-                                    std::transform(start, start + remainingRows, buf, [](double v) { return T(v); });
-                                }
-                                else
-                                {
-                                    // otherwise we just do a memcpy
-                                    std::copy_n(start, remainingRows, buf);
-                                }
-                                break;
-                            }
-                        case NodeType::Add:
-                            {
-                                auto c = i - 1;             // first child index
-                                load(buf, buf - BATCHSIZE); // load child buffer
-                                for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
-                                {
-                                    add(buf, buffer.data() + j * BATCHSIZE);
-                                }
-                                break;
-                            }
-                        case NodeType::Mul:
-                            {
-                                auto c = i - 1;             // first child index
-                                load(buf, buf - BATCHSIZE); // load child buffer
-                                for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
-                                {
-                                    mul(buf, buffer.data() + j * BATCHSIZE);
-                                }
-                                break;
-                            }
-                        case NodeType::Log:
-                            {
-                                log(buf, buf - BATCHSIZE);
-                                break;
-                            }
-                        case NodeType::Exp:
-                            {
-                                exp(buf, buf - BATCHSIZE);
-                                break;
-                            }
-                        case NodeType::Sin:
-                            {
-                                sin(buf, buf - BATCHSIZE);
-                                break;
-                            }
-                        case NodeType::Sqrt:
-                            {
-                                sqrt(buf, buf - BATCHSIZE);
-                                break;
-                            }
-                        case NodeType::Cbrt:
-                            {
-                                cbrt(buf, buf - BATCHSIZE);
-                                break;
-                            }
-                        default:
-                            {
-                                break;
-                            }
-                    }
-                }
-                // the final result is found in the last section of the buffer corresponding to the root node
-                std::copy_n(buffer.end() - BATCHSIZE, remainingRows, result + row); 
-            }
-            // replace nan and inf values 
-            auto [min, max] = MinMax(result, numRows);
-            LimitToRange(result, min, max, numRows);
+            // the final result is found in the last section of the buffer corresponding to the root node
+            std::copy_n(buffer.end() - BATCHSIZE, remainingRows, result + row); 
         }
+        // replace nan and inf values 
+        auto [min, max] = MinMax(result, numRows);
+        LimitToRange(result, min, max, numRows);
+    }
 
     struct ParameterizedEvaluation
     {
         ParameterizedEvaluation(const Tree& tree, const Dataset& dataset, const std::vector<double>& targetValues, const Range range) 
 
             : tree_ref(tree)
-              , dataset_ref(dataset)
-              , target_ref(targetValues)
-              , range(range) { }
+            , dataset_ref(dataset)
+            , target_ref(targetValues)
+            , range(range) { }
 
         template<typename T> bool operator()(T const* const* parameters, T* residuals) const
         {
@@ -203,59 +204,59 @@ namespace Operon {
 
     // returns an array of optimized parameters
     template <bool autodiff = true>
-        std::vector<double> Optimize(Tree& tree, const Dataset& dataset, const std::vector<double>& targetValues, const Range range, size_t iterations = 50, bool report = false)
+    std::vector<double> Optimize(Tree& tree, const Dataset& dataset, const std::vector<double>& targetValues, const Range range, size_t iterations = 50, bool report = false)
+    {
+        using ceres::DynamicCostFunction;
+        using ceres::DynamicNumericDiffCostFunction;
+        using ceres::DynamicAutoDiffCostFunction;
+        using ceres::CauchyLoss;
+        using ceres::Problem;
+        using ceres::Solver;
+        using ceres::Solve;
+
+        auto coef = tree.GetCoefficients();
+        if (coef.empty())
         {
-            using ceres::DynamicCostFunction;
-            using ceres::DynamicNumericDiffCostFunction;
-            using ceres::DynamicAutoDiffCostFunction;
-            using ceres::CauchyLoss;
-            using ceres::Problem;
-            using ceres::Solver;
-            using ceres::Solve;
-
-            auto coef = tree.GetCoefficients();
-            if (coef.empty())
-            {
-                return coef;
-            }
-            if (report)
-            {
-                fmt::print("x_0: ");
-                for(auto c : coef) 
-                    fmt::print("{} ", c);
-                fmt::print("\n");
-            }
-
-            auto eval = new ParameterizedEvaluation(tree, dataset, targetValues, range);
-            DynamicCostFunction* costFunction;
-            if constexpr (autodiff) { costFunction = new DynamicAutoDiffCostFunction<ParameterizedEvaluation, JET_STRIDE>(eval); }
-            else                    { costFunction = new DynamicNumericDiffCostFunction(eval);                                   }
-            costFunction->AddParameterBlock(coef.size());
-            costFunction->SetNumResiduals(range.Size());
-            //auto lossFunction = new CauchyLoss(0.5); // see http://ceres-solver.org/nnls_tutorial.html#robust-curve-fitting      
-
-            Problem problem;
-            problem.AddResidualBlock(costFunction, nullptr, coef.data());
-
-            Solver::Options options;
-            options.max_num_iterations = iterations;
-            options.linear_solver_type = ceres::DENSE_QR;
-            options.minimizer_progress_to_stdout = report;
-            options.num_threads = 1;
-            Solver::Summary summary;
-            Solve(options, &problem, &summary);
-
-            if (report)
-            {
-                fmt::print("{}\n", summary.BriefReport());
-                fmt::print("x_final: ");
-                for(auto c : coef) 
-                    fmt::print("{} ", c);
-                fmt::print("\n");
-            }
-            tree.SetCoefficients(coef);
             return coef;
         }
+        if (report)
+        {
+            fmt::print("x_0: ");
+            for(auto c : coef) 
+                fmt::print("{} ", c);
+            fmt::print("\n");
+        }
+
+        auto eval = new ParameterizedEvaluation(tree, dataset, targetValues, range);
+        DynamicCostFunction* costFunction;
+        if constexpr (autodiff) { costFunction = new DynamicAutoDiffCostFunction<ParameterizedEvaluation, JET_STRIDE>(eval); }
+        else                    { costFunction = new DynamicNumericDiffCostFunction(eval);                                   }
+        costFunction->AddParameterBlock(coef.size());
+        costFunction->SetNumResiduals(range.Size());
+        //auto lossFunction = new CauchyLoss(0.5); // see http://ceres-solver.org/nnls_tutorial.html#robust-curve-fitting      
+
+        Problem problem;
+        problem.AddResidualBlock(costFunction, nullptr, coef.data());
+
+        Solver::Options options;
+        options.max_num_iterations = iterations;
+        options.linear_solver_type = ceres::DENSE_QR;
+        options.minimizer_progress_to_stdout = report;
+        options.num_threads = 1;
+        Solver::Summary summary;
+        Solve(options, &problem, &summary);
+
+        if (report)
+        {
+            fmt::print("{}\n", summary.BriefReport());
+            fmt::print("x_final: ");
+            for(auto c : coef) 
+                fmt::print("{} ", c);
+            fmt::print("\n");
+        }
+        tree.SetCoefficients(coef);
+        return coef;
+    }
 
     // set up some convenience methods using perfect forwarding
     template<typename... Args> auto OptimizeAutodiff(Args&&... args)  

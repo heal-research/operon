@@ -1,13 +1,14 @@
-#ifndef SYMBOL_H
-#define SYMBOL_H
+#ifndef NODE_H
+#define NODE_H
 
 #include <cstdint>
 #include <functional>
+#include <type_traits>
 
 #include <fmt/format.h>
 
 namespace Operon {
-    enum NodeType : uint16_t {
+    enum class NodeType : uint16_t {
         // terminal nodes
         Add      = 1u << 0,
         Mul      = 1u << 1,
@@ -24,8 +25,17 @@ namespace Operon {
         Variable = 1u << 12
     };
 
+    using utype = std::underlying_type_t<NodeType>;
+    inline constexpr NodeType operator&(NodeType lhs, NodeType rhs) { return static_cast<NodeType>(static_cast<utype>(lhs) & static_cast<utype>(rhs)); }
+    inline constexpr NodeType operator|(NodeType lhs, NodeType rhs) { return static_cast<NodeType>(static_cast<utype>(lhs) | static_cast<utype>(rhs)); }
+    inline constexpr NodeType operator^(NodeType lhs, NodeType rhs) { return static_cast<NodeType>(static_cast<utype>(lhs) ^ static_cast<utype>(rhs)); }
+    inline constexpr NodeType operator~(NodeType lhs)               { return static_cast<NodeType>(~static_cast<utype>(lhs)); }
+    inline NodeType& operator&=(NodeType& lhs, NodeType rhs)        { lhs = lhs & rhs; return lhs; };
+    inline NodeType& operator|=(NodeType& lhs, NodeType rhs)        { lhs = lhs | rhs; return lhs; };
+    inline NodeType& operator^=(NodeType& lhs, NodeType rhs)        { lhs = lhs ^ rhs; return lhs; };
+
     namespace {
-        const std::unordered_map<uint16_t, std::string> nodeNames = {
+        const std::unordered_map<NodeType, std::string> nodeNames = {
             { NodeType::Add,      "Add"      },
             { NodeType::Mul,      "Mul"      },
             { NodeType::Sub,      "Sub"      },
@@ -149,5 +159,5 @@ namespace fmt
                 }
         };
 }
-#endif // SYMBOL_H
+#endif // NODE_H
 

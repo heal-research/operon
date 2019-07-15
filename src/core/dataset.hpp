@@ -25,20 +25,12 @@
 #include "jsf.hpp"
 
 namespace Operon {
-
-    namespace detail {
-        struct Variable
-        {
-            std::string         name;
-            uint64_t            hash;
-            size_t              index;
-        };
-
-        // compare strings size first, as an attempt to have eg X1, X2, X10 in this order and not X1, X10, X2
+    // compare strings size first, as an attempt to have eg X1, X2, X10 in this order and not X1, X10, X2
+    namespace 
+    {
         inline bool CompareWithSize(const std::string& lhs, const std::string& rhs) 
         {
-            auto lSize = lhs.size(), rSize = rhs.size();
-            return lSize == rSize ? lhs < rhs : lSize < rSize;
+            return std::make_tuple(lhs.size(), lhs) < std::make_tuple(rhs.size(), rhs);            
         }
     }
 
@@ -50,10 +42,17 @@ namespace Operon {
         inline int Size() const { return End - Start; }
     };
 
+    // a dataset variable described by: name, hash value (for hashing), data column index
+    struct Variable 
+    {
+        std::string Name;
+        uint64_t    Hash;
+        size_t      Index;
+    }; 
+
     class Dataset
     {
         private:
-            using Variable = detail::Variable;
             std::vector<Variable> variables;
             std::vector<std::vector<double>> values;
 
@@ -102,11 +101,11 @@ namespace Operon {
                 // fill in variable names 
                 for (size_t i = 0; i < ncol; ++i) 
                 {
-                    variables[i].name = names[i];
-                    variables[i].index = i;
+                    variables[i].Name = names[i];
+                    variables[i].Index = i;
                 }
 
-                std::sort(variables.begin(), variables.end(), [&](const Variable& a, const Variable& b) { return detail::CompareWithSize(a.name, b.name); });
+                std::sort(variables.begin(), variables.end(), [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); });
                 // fill in variable hash values
                 Random::JsfRand<64> jsf(1234);
                 // generate some hash values 
@@ -115,7 +114,7 @@ namespace Operon {
                 std::sort(hashes.begin(), hashes.end());
                 for (size_t i = 0; i < ncol; ++i)
                 {
-                    variables[i].hash = hashes[i];
+                    variables[i].Hash = hashes[i];
                 }
             }
 
@@ -147,22 +146,22 @@ namespace Operon {
             const std::vector<std::string> VariableNames() const 
             {
                 std::vector<std::string> names;
-                std::transform(variables.begin(), variables.end(), std::back_inserter(names), [](const Variable& v) { return v.name; }); 
+                std::transform(variables.begin(), variables.end(), std::back_inserter(names), [](const Variable& v) { return v.Name; }); 
                 return names;
             }
 
             const std::vector<double>& GetValues(const std::string& name) const 
             {
                 auto needle = Variable { name, 0, 0 }; 
-                auto record = std::equal_range(variables.begin(), variables.end(), needle, [&](const Variable& a, const Variable& b) { return detail::CompareWithSize(a.name, b.name); }); 
-                return values[record.first->index];            
+                auto record = std::equal_range(variables.begin(), variables.end(), needle, [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); }); 
+                return values[record.first->Index];            
             }
 
             const std::vector<double>& GetValues(uint64_t hashValue) const 
             {
                 auto needle = Variable { "", hashValue, 0 };
-                auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.hash < b.hash; }); 
-                return values[record.first->index];
+                auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; }); 
+                return values[record.first->Index];
             }
 
             const std::vector<double>& GetValues(int index) const 
@@ -173,20 +172,21 @@ namespace Operon {
             const std::string& GetName(uint64_t hashValue) const
             {
                 auto needle = Variable { "", hashValue, 0 };
-                auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.hash < b.hash; }); 
-                return record.first->name;
+                auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; }); 
+                return record.first->Name;
             }
 
             uint64_t GetHashValue(const std::string& name) const
             {
                 auto needle = Variable { name, 0 /* hash value */, 0 /* index */ };
-                auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return detail::CompareWithSize(a.name, b.name); }); 
-                return record.first->hash;
+                auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); }); 
+                return record.first->Hash;
             }
 
-            const std::string& GetName(int index) const { return variables[index].name; }
+            const std::string& GetName(int index) const { return variables[index].Name; }
             const std::vector<Variable>& Variables() const { return variables; }
     };
 }
 
 #endif
+

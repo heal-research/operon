@@ -7,7 +7,13 @@ namespace Operon
 {
     using Rand = Random::JsfRand<64>;
 
-    // it is useful to have a data structure holding additional attributes 
+    // declare some useful data structures
+    template<typename Ret, typename... Args>
+    struct OperatorBase 
+    {
+        virtual Ret operator()(Rand& random, Args... args) const = 0;
+    };
+    // it's useful to have a data structure holding additional attributes for a solution candidate 
     template<size_t D = 1UL>
     struct Individual 
     {
@@ -15,11 +21,7 @@ namespace Operon
         double Fitness[D];
     };
 
-    Tree Cross(Rand& random, const Tree& lhs, const Tree& rhs, double internalProb, int maxLength, int maxDepth); 
-    Tree MutateOnePoint(Rand& random, const Tree& tree);
-
-    // T is an individual and Index is the index of the objective to consider (for multi-objective)
-    template<typename T, size_t Index>
-    std::vector<T> SelectTournament(Rand& random, const std::vector<T>& population, size_t tournamentSize, bool maximization = true);
+    using CrossoverBase = OperatorBase<Tree, const Tree&, const Tree&>;
+    using MutatorBase   = OperatorBase<Tree, const Tree&>;
 }
 
