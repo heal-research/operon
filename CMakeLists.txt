@@ -34,16 +34,16 @@ add_library(
     STATIC 
     src/core/tree.cpp
     src/core/problem.cpp
-    src/algorithms/crossover.cpp
-    src/algorithms/mutation.cpp
-    src/algorithms/initialization.cpp
-    src/algorithms/selection.cpp
+    src/operators/crossover.cpp
+    src/operators/mutation.cpp
+    src/operators/initialization.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE csv fmt::fmt ${CERES_LIBRARIES} TBB::tbb)
 target_include_directories(
     operon
     PRIVATE ${PROJECT_SOURCE_DIR}/src/core
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
     #    PRIVATE ${CERES_INCLUDE_DIRS}
 )
@@ -55,13 +55,15 @@ add_executable(
     src/cli/operon_cli.cpp
 )
 target_compile_features(operon-cli PRIVATE cxx_std_17)
-target_link_libraries(operon-cli PRIVATE operon cxxopts::cxxopts)
+target_link_libraries(operon-cli PRIVATE operon cxxopts::cxxopts TBB::tbb)
 target_include_directories(
     operon-cli 
     PRIVATE ${PROJECT_SOURCE_DIR}/src/core
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
     PRIVATE ${PROJECT_SOURCE_DIR}/src/algorithms
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
 )
+set_target_properties(operon-cli PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 
 if(MSVC)
     target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")

@@ -1,23 +1,26 @@
-#include "operators.hpp"
+#include <algorithm>
+#include <execution>
+
+#include "operator.hpp"
 #include "grammar.hpp"
 #include "dataset.hpp"
 
 namespace Operon 
 {
+    using namespace std;
 
-    using T = std::pair<NodeType, double>;
-    class GrowTreeCreator : public OperatorBase<Tree>
+    class GrowTreeCreator : public CreatorBase 
     {
         public:
-            Tree operator()(Rand& random, const Grammar& grammar, const std::vector<Variable>& variables)
+            Tree operator()(RandomDevice& random, const Grammar& grammar, const vector<Variable>& variables)
             {
                 auto allowed = grammar.AllowedSymbols();
-                auto partials = std::vector<T>(allowed.size());
+                auto partials = vector<pair<NodeType, double>>(allowed.size());
                 for (size_t i = 1; i < partials.size(); ++i)
                 {
                     partials[i].second += partials[i-1].second;
                 }
-                std::vector<Node> nodes;
+                vector<Node> nodes;
                 auto node = SampleProportional(random, partials);
                 nodes.push_back(node);
 
@@ -25,26 +28,26 @@ namespace Operon
                 {
                     Grow(random, grammar, variables, nodes, partials, maxLength, maxDepth - 1);
                 }
-                std::reverse(nodes.begin(), nodes.end());
+                reverse(nodes.begin(), nodes.end());
                 auto tree = Tree(nodes);
                 return tree.UpdateNodes();
             }
 
         private:
-            void Grow(Rand& random, const Grammar& grammar, const std::vector<Variable>& variables, std::vector<Node>& nodes, const std::vector<T>& partials, size_t maxLength, size_t maxDepth)
+            void Grow(RandomDevice& random, const Grammar& grammar, const vector<Variable>& variables, vector<Node>& nodes, const vector<pair<NodeType, double>>& partials, size_t maxLength, size_t maxDepth)
             {
                 if (maxDepth == 0)
                 {
                     // only allowed to grow leaf nodes
                     auto pc   = grammar.GetFrequency(NodeType::Constant);
                     auto pv   = grammar.GetFrequency(NodeType::Variable);
-                    std::uniform_real_distribution<double> uniformReal(0, pc + pv);
+                    uniform_real_distribution<double> uniformReal(0, pc + pv);
                     auto node = Node(NodeType::Constant);
                     if (uniformReal(random) > pc)
                     {
                         node = Node(NodeType::Variable);
                         // currently each variable is considered equally probable
-                        std::uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1); 
+                        uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1); 
                         node.HashValue = variables[uniformInt(random)].Hash;
                     }
                     nodes.push_back(node);
@@ -60,11 +63,11 @@ namespace Operon
                 }
             }
 
-            Node SampleProportional(Rand& random, const std::vector<std::pair<NodeType, double>>& partials)
+            Node SampleProportional(RandomDevice& random, const vector<pair<NodeType, double>>& partials)
             {
-                std::uniform_real_distribution<double> uniformReal(0, partials.back().second - std::numeric_limits<double>::epsilon());
+                uniform_real_distribution<double> uniformReal(0, partials.back().second - numeric_limits<double>::epsilon());
                 auto r    = uniformReal(random);
-                auto it   = std::find_if(partials.begin(), partials.end(), [=](auto& p) { return p.second > r; });
+                auto it   = find_if(partials.begin(), partials.end(), [=](auto& p) { return p.second > r; });
                 auto node = Node(it->first);
                 return node;
             }

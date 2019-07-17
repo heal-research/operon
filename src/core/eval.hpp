@@ -107,16 +107,6 @@ namespace Operon {
                         {
                             auto& values = dataset.GetValues(s.CalculatedHashValue);
                             auto start = values.begin() + range.Start + row;
-                            //if constexpr (std::is_same_v<T, Dual>)
-                            //{
-                            //    // for dual numbers we need to assign values manually
-                            //    std::transform(start, start + remainingRows, buf, [](double v) { return T(v); });
-                            //}
-                            //else
-                            //{
-                            //    // otherwise we just do a memcpy
-                            //    std::copy_n(start, remainingRows, buf);
-                            //}
                             std::transform(start, start + remainingRows, [&](double v) { return T(s.Value * v); });
                             break;
                         }
@@ -182,7 +172,6 @@ namespace Operon {
     struct ParameterizedEvaluation
     {
         ParameterizedEvaluation(const Tree& tree, const Dataset& dataset, const std::vector<double>& targetValues, const Range range) 
-
             : tree_ref(tree)
             , dataset_ref(dataset)
             , target_ref(targetValues)
@@ -196,7 +185,7 @@ namespace Operon {
         }
 
         private:
-        const Tree            & tree_ref;
+        const Tree                & tree_ref;
         const Dataset             & dataset_ref;
         const std::vector<double> & target_ref;
         const Range               range;

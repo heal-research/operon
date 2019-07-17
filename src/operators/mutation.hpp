@@ -1,12 +1,9 @@
-#include "operators.hpp"
+#ifndef MUTATION_HPP
+#define MUTATION_HPP
 
-using namespace std;
+#include "operator.hpp"
 
-namespace Operon
-{
-    class OnePointMutation : public MutatorBase 
-    {
-        auto operator()(Rand& random, const Tree& tree) const -> Tree override
+        Tree OnePointMutation::operator()(RandomDevice& random, const Tree& tree) const override
         {
             vector<size_t> leafIndices;
             for (size_t i = 0; i < tree.Length(); ++i)
@@ -26,6 +23,6 @@ namespace Operon
 
             return child;
         }
-    };
-}
+
+#endif
 

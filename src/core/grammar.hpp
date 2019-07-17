@@ -10,8 +10,6 @@
 
 namespace Operon 
 {
-    using Rand = Random::JsfRand<64>;
-
     class Grammar
     {
         public:
@@ -30,20 +28,6 @@ namespace Operon
                 std::copy_if(symbolFrequencies.begin(), symbolFrequencies.end(), std::back_inserter(allowed), [&](auto& t){ return IsEnabled(t.first); } );
                 return allowed;
             };
-
-            std::vector<Tree> Initialize(Rand& random, size_t size, size_t maxLength, size_t maxDepth)
-            {
-                std::vector<Tree> population(size);
-                auto allowed = AllowedSymbols();
-                auto partials = allowed;
-                for (size_t i = 1; i < partials.size(); ++i)
-                {
-                    partials[i].second += partials[i-1].second;
-                }
-
-//                std::generate(population.begin(), population.end(), [&]() { return GrowTree(random, partials, maxLength, maxDepth); });
-                return population;
-            }
 
         private:
             NodeType config = Grammar::Arithmetic;

@@ -128,12 +128,6 @@ namespace Operon {
                 return *this;
             }
 
-            Dataset& operator=(Dataset&& rhs)
-            {
-                swap(rhs);
-                return *this;
-            }
-
             void swap(Dataset& rhs) noexcept
             {
                 std::swap(variables, rhs.variables); 
@@ -142,6 +136,7 @@ namespace Operon {
 
             size_t Rows() const { return values[0].size(); }
             size_t Cols() const { return variables.size(); }
+            std::pair<size_t, size_t> Dimensions() const { return std::make_pair(values[0].size(), variables.size()); }
 
             const std::vector<std::string> VariableNames() const 
             {
