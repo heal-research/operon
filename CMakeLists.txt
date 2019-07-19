@@ -13,6 +13,7 @@ find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
 find_package(Ceres REQUIRED)
 find_package(TBB REQUIRED)
+find_package(Threads REQUIRED)
 
 FetchContent_Declare(
     xxhash 
@@ -36,16 +37,16 @@ add_library(
     src/core/problem.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
-    src/operators/initialization.cpp
+    src/operators/selection.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
-target_link_libraries(operon PRIVATE csv fmt::fmt ${CERES_LIBRARIES} TBB::tbb)
+target_link_libraries(operon PRIVATE csv fmt::fmt ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
 target_include_directories(
     operon
     PRIVATE ${PROJECT_SOURCE_DIR}/src/core
     PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
-    #    PRIVATE ${CERES_INCLUDE_DIRS}
+    PRIVATE ${CERES_INCLUDE_DIRS}
 )
 # necessary to prevent -isystem introduced by intel-tbb
 set_target_properties(operon PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
@@ -62,6 +63,7 @@ target_include_directories(
     PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
     PRIVATE ${PROJECT_SOURCE_DIR}/src/algorithms
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
+    PRIVATE ${CERES_INCLUDE_DIRS}
 )
 set_target_properties(operon-cli PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 

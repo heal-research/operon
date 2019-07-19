@@ -26,8 +26,6 @@ namespace Operon {
             {
                 s.Length += it->Length;
                 nodes[it.Index()].Parent = i;
-
-                fmt::print("index: {}, length: {}\n", it.Index(), s.Length);
             }
         }
         return *this;
@@ -195,7 +193,7 @@ namespace Operon {
             }
         }
 
-        return depth + 1; // +1 for the level of leafs
+        return depth; // +1 for the level of leafs
     }
 
     // calculate the level in the tree (distance to tree root) for the subtree at index i
@@ -205,7 +203,7 @@ namespace Operon {
         auto root = Length() - 1;
 
         size_t level = 0;
-        while(nodes[i].Parent != root)
+        while(i < root && nodes[i].Parent != root)
         {
             i = nodes[i].Parent;
             ++level;

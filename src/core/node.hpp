@@ -1,5 +1,5 @@
-#ifndef NODE_H
-#define NODE_H
+#ifndef NODE_HPP
+#define NODE_HPP
 
 #include <cstdint>
 #include <functional>
@@ -36,13 +36,12 @@ namespace Operon {
 
     namespace {
         const std::unordered_map<NodeType, std::string> nodeNames = {
-            { NodeType::Add,      "Add"      },
-            { NodeType::Mul,      "Mul"      },
-            { NodeType::Sub,      "Sub"      },
-            { NodeType::Div,      "Div"      },
+            { NodeType::Add,      "+"        },
+            { NodeType::Mul,      "*"        },
+            { NodeType::Sub,      "-"        },
+            { NodeType::Div,      "/"        },
             { NodeType::Log,      "Log"      },
             { NodeType::Exp,      "Exp"      },
-            { NodeType::Log,      "Log"      },
             { NodeType::Sin,      "Sin"      },
             { NodeType::Cos,      "Cos"      },
             { NodeType::Tan,      "Tan"      },
@@ -155,7 +154,7 @@ namespace fmt
             template <typename FormatContext>
                 auto format(const Operon::Node &s, FormatContext &ctx)
                 {
-                    return format_to(ctx.begin(), "Name: {}, Hash: {}, Value: {}, Arity: {}, Length: {}", Operon::nodeNames.find(s.Type)->second, s.CalculatedHashValue, s.Value, s.Arity, s.Length);
+                    return format_to(ctx.begin(), "Name: {}, Hash: {}, Value: {}, Arity: {}, Length: {}, Parent: {}", Operon::nodeNames.find(s.Type)->second, s.CalculatedHashValue, s.Value, s.Arity, s.Length, s.Parent);
                 }
         };
 }

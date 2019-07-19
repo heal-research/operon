@@ -1,5 +1,5 @@
-#ifndef TREE_H
-#define TREE_H
+#ifndef TREE_HPP
+#define TREE_HPP
 
 #include <optional>
 #include <vector>

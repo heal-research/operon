@@ -107,7 +107,7 @@ namespace Operon {
                         {
                             auto& values = dataset.GetValues(s.CalculatedHashValue);
                             auto start = values.begin() + range.Start + row;
-                            std::transform(start, start + remainingRows, [&](double v) { return T(s.Value * v); });
+                            std::transform(start, start + remainingRows, buf, [&](double v) { return T(s.Value * v); });
                             break;
                         }
                     case NodeType::Add:

@@ -4,7 +4,7 @@ using namespace std;
 
 namespace Operon
 {
-    optional<size_t> SubtreeCrossover::SelectRandomBranch(RandomDevice& random, const Tree& tree, double internalProb, size_t maxLength, size_t maxDepth) const
+    optional<size_t> SubtreeCrossover::SelectRandomBranch(RandomDevice& random, const Tree& tree, double internalProb, size_t maxBranchLength, size_t maxBranchDepth) const
     {
         std::uniform_real_distribution<double> uniformReal(0, 1);
         // create a vector of indices and shuffle it to ensure fair sampling
@@ -15,7 +15,7 @@ namespace Operon
         auto chooseInternal = uniformReal(random) < internalProb;
         for(auto i : indices)
         {
-            if (tree[i].Length + 1U > maxLength || tree.Depth(i) > maxDepth)
+            if (tree[i].Length + 1U > maxBranchLength || tree.Depth(i) > maxBranchDepth)
             {
                 continue;
             }
@@ -64,7 +64,7 @@ namespace Operon
             copy_n(right.begin() + j - right[j].Length, right[j].Length + 1, back_inserter(nodes));
             copy_n(left.begin() + i + 1, left.size() - (i + 1), back_inserter(nodes)); 
 
-            return Tree(nodes);
+            return Tree(nodes).UpdateNodes();
         }
 
         return lhs;

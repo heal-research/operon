@@ -237,6 +237,6 @@ namespace Operon {
     {
         return RSquared(estimated.begin(), estimated.end(), original.begin());
     }
+}
 #endif
 
-}

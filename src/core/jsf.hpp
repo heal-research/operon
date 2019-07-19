@@ -1,5 +1,5 @@
-#ifndef JSF_H
-#define JSF_H
+#ifndef JSF_HPP
+#define JSF_HPP
 
 #include <cstdint>
 #include <cstddef>

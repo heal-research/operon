@@ -25,7 +25,7 @@ namespace Operon
             } 
             else if (s.IsVariable())
             {
-                fmt::format_to(std::back_inserter(current), "{}\n", dataset.GetName(s.CalculatedHashValue));
+                fmt::format_to(std::back_inserter(current), "{} [{}]\n", dataset.GetName(s.CalculatedHashValue), s.CalculatedHashValue);
             } 
             else
             {
