@@ -40,17 +40,19 @@ namespace Operon
 
         std::vector<Ind>    parents(config.PopulationSize);
         std::vector<Ind>    offspring(config.PopulationSize);
-        std::vector<size_t> indices(config.PopulationSize);
-        std::iota(indices.begin(), indices.end(), 0UL);
 
         std::generate(parents.begin(), parents.end(), [&]() { return Ind { creator(random, grammar, variables), 0.0 }; });
-        std::uniform_real_distribution<double> uniformReal(0, 1);
+        std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
+
         for (size_t gen = 0; gen < config.Generations; ++gen)
         {
             auto evaluate = [&](auto& p) 
             {
-                //auto estimated = OptimizeAutodiff(p.Genotype, dataset, targetValues, trainingRange, config.Iterations); 
-                auto estimated = Evaluate<double>(p.Genotype, dataset, trainingRange, nullptr); 
+                if (config.Iterations > 0)
+                {
+                    OptimizeAutodiff(p.Genotype, dataset, targetValues, trainingRange, config.Iterations);
+                }
+                auto estimated = Evaluate<double>(p.Genotype, dataset, trainingRange);
                 p.Fitness[idx] = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + trainingRange.Start);
             };
 
@@ -73,7 +75,7 @@ namespace Operon
             selector.Reset(parents); // apply selector on current parents
 
             // produce some offspring
-            auto iterate = [&](int i) 
+            auto iterate = [&](auto& ind) 
             {
                 auto first = selector(random);
                 Tree child;
@@ -89,9 +91,9 @@ namespace Operon
                 {
                     child = child.Length() > 0 ? mutator(random, child) : mutator(random, parents[first].Genotype);
                 }
-                offspring[i].Genotype = std::move(child);
+                ind.Genotype = std::move(child);
             };
-            std::for_each(std::execution::par_unseq, indices.begin() + 1, indices.end(), iterate);
+            std::for_each(std::execution::par_unseq, offspring.begin() + 1, offspring.end(), iterate);
             // the offspring become the parents
             parents.swap(offspring);
         }

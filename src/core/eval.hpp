@@ -107,7 +107,7 @@ namespace Operon {
                         {
                             auto& values = dataset.GetValues(s.CalculatedHashValue);
                             auto start = values.begin() + range.Start + row;
-                            std::transform(start, start + remainingRows, buf, [&](double v) { return T(s.Value * v); });
+                            std::transform(start, start + remainingRows, buf, [&](double v) { return T(v * s.Value); });
                             break;
                         }
                     case NodeType::Add:
@@ -120,6 +120,23 @@ namespace Operon {
                             }
                             break;
                         }
+                    case NodeType::Sub:
+                        {
+                            if (s.Arity == 1)
+                            {
+                                neg(buf, buf - BATCHSIZE);
+                            }
+                            else 
+                            {
+                                auto c = i - 1;             // first child index
+                                load(buf, buf - BATCHSIZE); // load child buffer
+                                for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
+                                {
+                                    sub(buf, buffer.data() + j * BATCHSIZE);
+                                }
+                            }
+                            break;
+                        }
                     case NodeType::Mul:
                         {
                             auto c = i - 1;             // first child index
@@ -127,6 +144,23 @@ namespace Operon {
                             for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                             {
                                 mul(buf, buffer.data() + j * BATCHSIZE);
+                            }
+                            break;
+                        }
+                    case NodeType::Div:
+                        {
+                            if (s.Arity == 1)
+                            {
+                                inv(buf, buf - BATCHSIZE);
+                            }
+                            else
+                            {
+                                auto c = i - 1;             // first child index
+                                load(buf, buf - BATCHSIZE); // load child buffer
+                                for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
+                                {
+                                    div(buf, buffer.data() + j * BATCHSIZE);
+                                }
                             }
                             break;
                         }
@@ -143,6 +177,16 @@ namespace Operon {
                     case NodeType::Sin:
                         {
                             sin(buf, buf - BATCHSIZE);
+                            break;
+                        }
+                    case NodeType::Cos:
+                        {
+                            cos(buf, buf - BATCHSIZE);
+                            break;
+                        }
+                    case NodeType::Tan:
+                        {
+                            tan(buf, buf - BATCHSIZE);
                             break;
                         }
                     case NodeType::Sqrt:
