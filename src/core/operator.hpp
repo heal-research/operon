@@ -24,9 +24,8 @@ namespace Operon
     template<size_t D = 1UL>
     struct Individual 
     {
-        Tree   Genotype;
-        double Fitness[D];
-        static constexpr size_t Dimension = D; 
+        Tree                  Genotype;
+        std::array<double, D> Fitness;
     };
 
     // crossover takes two parent trees and returns a child

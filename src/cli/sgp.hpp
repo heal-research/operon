@@ -23,6 +23,14 @@ namespace Operon
         bool   Maximization;
     };
 
+    // this should be designed such that it has:
+    // - ExecutionPolicy (parallel, sequential)
+    // - InitializationPolicy
+    // - ParentSelectionPolicy
+    // - OffspringSelectionPolicy
+    // - RecombinationPolicy (it can interact with the selection policy; how to handle both crossover and mutation?)
+    // - some policy/distinction between single- and multi-objective?
+    // - we should not pass operators as parameters (should be instantiated/handled by the respective policy)
     template<typename Creator, typename Selector, typename Crossover, typename Mutator>
     void GeneticAlgorithm(RandomDevice& random, const Problem& problem, const GeneticAlgorithmConfig config, Creator& creator, Selector& selector, Crossover& crossover, Mutator& mutator)
     {
@@ -41,21 +49,23 @@ namespace Operon
         std::vector<Ind>    parents(config.PopulationSize);
         std::vector<Ind>    offspring(config.PopulationSize);
 
-        std::generate(parents.begin(), parents.end(), [&]() { return Ind { creator(random, grammar, variables), 0.0 }; });
+        std::generate(std::execution::par_unseq, parents.begin(), parents.end(), [&]() { return Ind { creator(random, grammar, variables), 0.0 }; });
+
+
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
+
+        auto evaluate = [&](auto& p) 
+        {
+            if (config.Iterations > 0)
+            {
+                OptimizeAutodiff(p.Genotype, dataset, targetValues, trainingRange, config.Iterations);
+            }
+            auto estimated = Evaluate<double>(p.Genotype, dataset, trainingRange);
+            p.Fitness[idx] = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + trainingRange.Start);
+        };
 
         for (size_t gen = 0; gen < config.Generations; ++gen)
         {
-            auto evaluate = [&](auto& p) 
-            {
-                if (config.Iterations > 0)
-                {
-                    OptimizeAutodiff(p.Genotype, dataset, targetValues, trainingRange, config.Iterations);
-                }
-                auto estimated = Evaluate<double>(p.Genotype, dataset, trainingRange);
-                p.Fitness[idx] = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + trainingRange.Start);
-            };
-
             // perform evaluation
             std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
 
@@ -69,8 +79,9 @@ namespace Operon
                 ? std::max_element(parents.begin(), parents.end(), comp)
                 : std::min_element(parents.begin(), parents.end(), comp);
             offspring[0] = *best;
+            auto sum = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, [&](size_t lhs, size_t rhs) { return lhs + rhs; }, [&](Ind& p) { return p.Genotype.Length();} );
 
-            fmt::print("Generation {}: {} {}\n", gen+1, best->Fitness[idx], InfixFormatter::Format(best->Genotype, dataset));
+            fmt::print("Generation {}: {} {} {}\n", gen+1, (double)sum / config.PopulationSize, best->Fitness[idx], InfixFormatter::Format(best->Genotype, dataset));
 
             selector.Reset(parents); // apply selector on current parents
 

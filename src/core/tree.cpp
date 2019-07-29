@@ -7,6 +7,8 @@
 #include <stack>
 
 #include "tree.hpp"
+#include "jsf.hpp"
+#include "xxhash/xxhash.hpp"
 
 using namespace std;
 

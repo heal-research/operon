@@ -5,45 +5,31 @@
 #include <random>
 #include <algorithm>
 #include <execution>
+#include "gsl/span"
 
 #include "operator.hpp"
 
 namespace Operon
 {
-    namespace 
-    {
-        template<typename T>
-        struct Population
-        {
-            T const* Individuals;
-            size_t Size;
-
-            inline T& operator[](size_t i) { return Individuals[i]; }
-            inline const T& operator[](size_t i) const { return Individuals[i]; }
-        };
-    }
-
     template<typename T, size_t I = 0>
     class TournamentSelector : public SelectorBase<T, I>
     {
         public:
-            TournamentSelector(size_t s, bool m) : TournamentSelector({ nullptr, 0UL }, s, m) { }
-
-            TournamentSelector(const std::vector<T>& p, size_t s, bool m) : TournamentSelector(Population { p.data(), p.size() }, s, m) { }  
-
-            TournamentSelector(Population<T> p, size_t s, size_t m) : pop(p), tournamentSize(s), maximization(m) { }
+            TournamentSelector(size_t s, bool m) : TournamentSelector(gsl::span<const T>{ }, s, m) { }
+            TournamentSelector(const std::vector<T>& p, size_t s, bool m) : TournamentSelector(gsl::span<const T>(p), s, m) { }  
+            TournamentSelector(gsl::span<const T> p, size_t s, size_t m) : pop(p), tournamentSize(s), maximization(m) { }
 
             size_t operator()(RandomDevice& random) const
             {
-                std::uniform_int_distribution<size_t> uniformInt(0, pop.Size - 1);
+                std::uniform_int_distribution<size_t> uniformInt(0, pop.size() - 1);
                 auto fitness = [&](size_t i) { return pop[i].Fitness[I]; };
 
                 auto best = uniformInt(random);
-                assert(best < pop.Size);
+                assert(best < pop.size());
                 for(size_t j = 1; j < tournamentSize; ++j)
                 {
                     auto curr = uniformInt(random);
-                    assert(curr < pop.Size);
+                    assert(curr < pop.size());
                     if (maximization != (fitness(best) > fitness(curr)))
                     {
                         best = curr; 
@@ -54,11 +40,11 @@ namespace Operon
 
             void Reset(const std::vector<T>& population)
             {
-                pop = { population.data(), population.size() };
+                pop = gsl::span<const T>(population);
             }
 
         private:
-            Population<T> pop;
+            gsl::span<const T> pop;
             size_t tournamentSize = 2;
             bool   maximization   = true;
     };
@@ -67,7 +53,9 @@ namespace Operon
     class ProportionalSelector : public SelectorBase<T, I>
     {
         public:
-            ProportionalSelector(const std::vector<T>& population, bool m) : pop{ population.data(), population.size() }, maximization(m) { }
+            ProportionalSelector(const gsl::span<const T> p, bool m) : pop(p), maximization(m) { }
+            ProportionalSelector(bool m) : ProportionalSelector(gsl::span<const T>{ }, m) { }
+            ProportionalSelector(const std::vector<T>& p, bool m) : ProportionalSelector(gsl::span<const T>(p), m) { }
             size_t operator()(RandomDevice& random) const
             {
                 std::uniform_real_distribution<double> uniformReal(0, fitness.back() - std::numeric_limits<double>::epsilon());
@@ -78,16 +66,16 @@ namespace Operon
 
             void Reset(const std::vector<T>& population)
             {
-                *this = ProportionalSelector(population, maximization);
+                pop = gsl::span<const T>(population);    
             }
 
         private:
             void Prepare()
             {
                 fitness.clear();
-                fitness.reserve(pop.Size);
+                fitness.reserve(pop.size());
                 double vmin = pop[0].Fitness[I], vmax = vmin;
-                for (size_t i = 0; i < pop.Size; ++i)
+                for (size_t i = 0; i < pop.size(); ++i)
                 {
                     auto f = pop[i].Fitness[I];
                     fitness.push_back(f);
@@ -99,7 +87,7 @@ namespace Operon
                 std::inclusive_scan(std::execution::seq, fitness.begin(), fitness.end(), fitness.begin());
             }
 
-            const Population<T> pop;
+            gsl::span<const T> pop;
             std::vector<double> fitness;
             bool maximization;
     };

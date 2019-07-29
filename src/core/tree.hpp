@@ -7,9 +7,7 @@
 #include <algorithm>
 #include <random>
 
-#include "xxhash/xxhash.hpp"
 #include "node.hpp"
-#include "jsf.hpp"
 
 namespace Operon {
     class Tree;

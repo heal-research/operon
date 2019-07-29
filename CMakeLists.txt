@@ -35,6 +35,8 @@ add_library(
     STATIC 
     src/core/tree.cpp
     src/core/problem.cpp
+    src/core/dataset.cpp
+    src/operators/initialization.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
     src/operators/selection.cpp
@@ -46,6 +48,8 @@ target_include_directories(
     PRIVATE ${PROJECT_SOURCE_DIR}/src/core
     PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/csv-parser/include
     PRIVATE ${CERES_INCLUDE_DIRS}
 )
 # necessary to prevent -isystem introduced by intel-tbb
@@ -62,7 +66,7 @@ target_include_directories(
     PRIVATE ${PROJECT_SOURCE_DIR}/src/core
     PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
     PRIVATE ${PROJECT_SOURCE_DIR}/src/algorithms
-    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
     PRIVATE ${CERES_INCLUDE_DIRS}
 )
 set_target_properties(operon-cli PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)

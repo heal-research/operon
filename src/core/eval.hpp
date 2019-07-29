@@ -4,13 +4,14 @@
 #include <ceres/ceres.h>
 #include "tree.hpp"
 #include "dataset.hpp"
+#include "gsl/span"
 
 #define FOR(i) for(size_t i = 0; i < BATCHSIZE; ++i)
 
 namespace Operon {
     constexpr size_t BATCHSIZE  = 64;
     constexpr int    JET_STRIDE = 4;
-    using Dual = ceres::Jet<double, JET_STRIDE>;
+    using     Dual              = ceres::Jet<double, JET_STRIDE>;
 
     // When auto-vectorizing without __restrict,
     // gcc and clang check for overlap (with a bunch of integer code)
@@ -42,12 +43,11 @@ namespace Operon {
     template<typename T> inline void load(T* __restrict a, T const b) noexcept               { std::fill_n(a, BATCHSIZE, b);                 }
     template<typename T> inline void load(T* __restrict a, T const* __restrict b) noexcept   { std::copy_n(b, BATCHSIZE, a);                 }
 
-    template<typename T> inline std::pair<T, T> MinMax(T* values, size_t count) noexcept
+    template<typename T> inline std::pair<T, T> MinMax(gsl::span<T> values) noexcept
     {
         auto min = T(0), max = T(0);
-        for (size_t i = 0; i < count; ++i)
+        for (auto& v : values)
         {
-            auto& v = values[i];
             if (!isfinite(v)) continue;
             if (min > v) min = v;
             if (max < v) max = v;
@@ -55,11 +55,10 @@ namespace Operon {
         return { min, max };
     }
 
-    template<typename T> inline void LimitToRange(T* values, T min, T max, size_t count) noexcept
+    template<typename T> inline void LimitToRange(gsl::span<T> values, T min, T max) noexcept
     {
-        for (size_t i = 0; i < count; ++i)
+        for (auto& v : values)
         {
-            auto& v = values[i];
             if (!isfinite(v)) { v = (min + max) / 2.0; }
             if (v < min) { v = min; }
             if (v > max) { v = max; }
@@ -209,8 +208,9 @@ namespace Operon {
             std::copy_n(buffer.end() - BATCHSIZE, remainingRows, result + row); 
         }
         // replace nan and inf values 
-        auto [min, max] = MinMax(result, numRows);
-        LimitToRange(result, min, max, numRows);
+        auto s = gsl::span<T>(result, numRows);
+        auto [min, max] = MinMax(s);
+        LimitToRange(s, min, max);
     }
 
     struct ParameterizedEvaluation
@@ -229,10 +229,10 @@ namespace Operon {
         }
 
         private:
-        const Tree                & tree_ref;
-        const Dataset             & dataset_ref;
-        const std::vector<double> & target_ref;
-        const Range               range;
+        std::reference_wrapper<const Tree> tree_ref;
+        std::reference_wrapper<const Dataset> dataset_ref;
+        gsl::span<const double> target_ref;
+        Range           range;
     };
 
     // returns an array of optimized parameters
