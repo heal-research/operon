@@ -20,7 +20,6 @@ namespace Operon
         size_t PopulationSize;
         double CrossoverProbability;
         double MutationProbability;
-        bool   Maximization;
     };
 
     // this should be designed such that it has:
@@ -31,8 +30,8 @@ namespace Operon
     // - RecombinationPolicy (it can interact with the selection policy; how to handle both crossover and mutation?)
     // - some policy/distinction between single- and multi-objective?
     // - we should not pass operators as parameters (should be instantiated/handled by the respective policy)
-    template<typename Creator, typename Selector, typename Crossover, typename Mutator>
-    void GeneticAlgorithm(RandomDevice& random, const Problem& problem, const GeneticAlgorithmConfig config, Creator& creator, Selector& selector, Crossover& crossover, Mutator& mutator)
+    template<typename Ind, size_t Idx, bool Max>
+    void GeneticAlgorithm(RandomDevice& random, const Problem& problem, const GeneticAlgorithmConfig config, CreatorBase& creator, SelectorBase<Ind, Idx, Max>& selector, CrossoverBase& crossover, MutatorBase& mutator)
     {
         auto& grammar      = problem.GetGrammar();
         auto& dataset      = problem.GetDataset();
@@ -41,8 +40,6 @@ namespace Operon
         auto trainingRange = problem.TrainingRange();
         auto targetValues  = dataset.GetValues(target);
 
-        using Ind          = typename Selector::TSelectable;
-        auto idx           = Selector::Index;
         auto variables     = dataset.Variables();
         variables.erase(std::remove_if(variables.begin(), variables.end(), [&](const auto& v) { return v.Name == target; }), variables.end());
 
@@ -50,18 +47,16 @@ namespace Operon
         std::vector<Ind>    offspring(config.PopulationSize);
 
         std::generate(std::execution::par_unseq, parents.begin(), parents.end(), [&]() { return Ind { creator(random, grammar, variables), 0.0 }; });
-
-
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
 
-        auto evaluate = [&](auto& p) 
+        auto evaluate = [&](auto& ind) 
         {
             if (config.Iterations > 0)
             {
-                OptimizeAutodiff(p.Genotype, dataset, targetValues, trainingRange, config.Iterations);
+                OptimizeAutodiff(ind.Genotype, dataset, targetValues, trainingRange, config.Iterations);
             }
-            auto estimated = Evaluate<double>(p.Genotype, dataset, trainingRange);
-            p.Fitness[idx] = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + trainingRange.Start);
+            auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
+            ind.Fitness[Idx] = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + trainingRange.Start);
         };
 
         for (size_t gen = 0; gen < config.Generations; ++gen)
@@ -74,14 +69,17 @@ namespace Operon
             offspring.resize(config.PopulationSize);
 
             // preserve one elite
-            auto comp = [&](const auto& lhs, const auto& rhs) { return lhs.Fitness[idx] < rhs.Fitness[idx]; };
-            auto best = config.Maximization
-                ? std::max_element(parents.begin(), parents.end(), comp)
-                : std::min_element(parents.begin(), parents.end(), comp);
+            auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
+            auto best = Max ? maxElem : minElem;
             offspring[0] = *best;
             auto sum = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, [&](size_t lhs, size_t rhs) { return lhs + rhs; }, [&](Ind& p) { return p.Genotype.Length();} );
 
-            fmt::print("Generation {}: {} {} {}\n", gen+1, (double)sum / config.PopulationSize, best->Fitness[idx], InfixFormatter::Format(best->Genotype, dataset));
+            fmt::print("Generation {}: {} {} {}\n", gen+1, (double)sum / config.PopulationSize, best->Fitness[Idx], InfixFormatter::Format(best->Genotype, dataset));
+
+            if (1 - best->Fitness[Idx] < 1e-6)
+            {
+                break;
+            }
 
             selector.Reset(parents); // apply selector on current parents
 

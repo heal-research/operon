@@ -41,28 +41,33 @@ namespace Operon
     }
 
     Tree GrowTreeCreator::operator()(RandomDevice& random, const Grammar& grammar, const vector<Variable>& variables) const
-            {
-                auto allowed = grammar.AllowedSymbols();
-                vector<pair<NodeType, double>> partials(allowed.size());
-                std::inclusive_scan(std::execution::seq, allowed.begin(), allowed.end(), partials.begin(), [](const auto& lhs, const auto& rhs) { return std::make_pair(rhs.first, lhs.second + rhs.second); });
-                vector<Node> nodes;
-                auto root = SampleProportional(random, partials);
-                nodes.push_back(root);
+    {
+        auto allowed = grammar.AllowedSymbols();
+        vector<pair<NodeType, double>> partials(allowed.size());
+        std::inclusive_scan(std::execution::seq, allowed.begin(), allowed.end(), partials.begin(), [](const auto& lhs, const auto& rhs) { return std::make_pair(rhs.first, lhs.second + rhs.second); });
+        vector<Node> nodes;
+        auto root = SampleProportional(random, partials);
+        nodes.push_back(root);
 
-                for (int i = 0; i < root.Arity; ++i)
-                {
-                    Grow(random, grammar, variables, nodes, partials, maxLength, maxDepth - 1);
-                }
-                uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1); 
-                for(auto& node : nodes)
-                {
-                    if (node.IsVariable())
-                    {
-                        node.HashValue = node.CalculatedHashValue = variables[uniformInt(random)].Hash;
-                    }
-                }
-                reverse(nodes.begin(), nodes.end());
-                auto tree = Tree(nodes);
-                return tree.UpdateNodes();
+        for (int i = 0; i < root.Arity; ++i)
+        {
+            Grow(random, grammar, variables, nodes, partials, maxLength, maxDepth - 1);
+        }
+        uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1); 
+        normal_distribution<double> normalReal(0, 1);
+        for(auto& node : nodes)
+        {
+            if (node.IsVariable())
+            {
+                node.HashValue = node.CalculatedHashValue = variables[uniformInt(random)].Hash;
             }
+            if (node.IsLeaf)
+            {
+                node.Value = normalReal(random);
+            }
+        }
+        reverse(nodes.begin(), nodes.end());
+        auto tree = Tree(nodes);
+        return tree.UpdateNodes();
+    }
 }

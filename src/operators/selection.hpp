@@ -11,26 +11,21 @@
 
 namespace Operon
 {
-    template<typename T, size_t I = 0>
-    class TournamentSelector : public SelectorBase<T, I>
+    template<typename T, size_t Idx, bool Max>
+    class TournamentSelector : public SelectorBase<T, Idx, Max>
     {
         public:
-            TournamentSelector(size_t s, bool m) : TournamentSelector(gsl::span<const T>{ }, s, m) { }
-            TournamentSelector(const std::vector<T>& p, size_t s, bool m) : TournamentSelector(gsl::span<const T>(p), s, m) { }  
-            TournamentSelector(gsl::span<const T> p, size_t s, size_t m) : pop(p), tournamentSize(s), maximization(m) { }
+            TournamentSelector(size_t tSize) : tournamentSize(tSize) {} 
 
             size_t operator()(RandomDevice& random) const
             {
-                std::uniform_int_distribution<size_t> uniformInt(0, pop.size() - 1);
-                auto fitness = [&](size_t i) { return pop[i].Fitness[I]; };
+                std::uniform_int_distribution<size_t> uniformInt(0, this->population.size() - 1);
 
                 auto best = uniformInt(random);
-                assert(best < pop.size());
                 for(size_t j = 1; j < tournamentSize; ++j)
                 {
                     auto curr = uniformInt(random);
-                    assert(curr < pop.size());
-                    if (maximization != (fitness(best) > fitness(curr)))
+                    if (this->Compare(best, curr))
                     {
                         best = curr; 
                     }
@@ -38,24 +33,19 @@ namespace Operon
                 return best;
             }
 
-            void Reset(const std::vector<T>& population)
+            void Reset(const std::vector<T>& pop) override 
             {
-                pop = gsl::span<const T>(population);
+                this->population = gsl::span<const T>(pop);
             }
 
         private:
-            gsl::span<const T> pop;
-            size_t tournamentSize = 2;
-            bool   maximization   = true;
+            size_t tournamentSize;
     };
 
-    template<typename T, size_t I = 0>
-    class ProportionalSelector : public SelectorBase<T, I>
+    template<typename T, size_t Idx, bool Max>
+    class ProportionalSelector : public SelectorBase<T, Idx, Max>
     {
         public:
-            ProportionalSelector(const gsl::span<const T> p, bool m) : pop(p), maximization(m) { }
-            ProportionalSelector(bool m) : ProportionalSelector(gsl::span<const T>{ }, m) { }
-            ProportionalSelector(const std::vector<T>& p, bool m) : ProportionalSelector(gsl::span<const T>(p), m) { }
             size_t operator()(RandomDevice& random) const
             {
                 std::uniform_real_distribution<double> uniformReal(0, fitness.back() - std::numeric_limits<double>::epsilon());
@@ -64,32 +54,36 @@ namespace Operon
                 return std::distance(fitness.begin(), it);
             }
 
-            void Reset(const std::vector<T>& population)
+            void Reset(const std::vector<T>& pop)
             {
-                pop = gsl::span<const T>(population);    
+                this->population = gsl::span<const T>(pop);    
+                Prepare();
             }
 
         private:
             void Prepare()
             {
                 fitness.clear();
-                fitness.reserve(pop.size());
-                double vmin = pop[0].Fitness[I], vmax = vmin;
-                for (size_t i = 0; i < pop.size(); ++i)
+                fitness.reserve(this->population.size());
+
+                double vmin = this->population[0].Fitness[Idx], vmax = vmin;
+                for (size_t i = 0; i < this->population.size(); ++i)
                 {
-                    auto f = pop[i].Fitness[I];
+                    auto f = this->population[i].Fitness[Idx];
                     fitness.push_back(f);
                     if (vmin > f) vmin = f;
                     if (vmax < f) vmax = f;
                 }
-                auto prepare = maximization ? [=](auto f) { return f - vmin; } : [=](auto f) { return vmax - f; };
+                auto prepare = [=](auto f) 
+                {  
+                    if constexpr (Max) return f - vmin; 
+                    else return vmax - f;
+                };
                 std::transform(fitness.begin(), fitness.end(), fitness.begin(), prepare);
-                std::inclusive_scan(std::execution::seq, fitness.begin(), fitness.end(), fitness.begin());
+                std::inclusive_scan(std::execution::par_unseq, fitness.begin(), fitness.end(), fitness.begin());
             }
 
-            gsl::span<const T> pop;
             std::vector<double> fitness;
-            bool maximization;
     };
 }
 #endif

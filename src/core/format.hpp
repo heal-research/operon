@@ -66,7 +66,8 @@ namespace Operon
             } 
             else if (s.IsVariable())
             {
-                fmt::format_to(std::back_inserter(current), "{}", dataset.GetName(s.CalculatedHashValue));
+                auto formatString = fmt::format("{{:.{}f}} * {{}}", decimalPrecision);
+                fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetName(s.CalculatedHashValue));
             } 
             else
             {
