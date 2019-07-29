@@ -66,12 +66,12 @@ namespace Operon
             } 
             else if (s.IsVariable())
             {
-                auto formatString = fmt::format("{{:.{}f}} * {{}}", decimalPrecision);
+                auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}", decimalPrecision);
                 fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetName(s.CalculatedHashValue));
             } 
             else
             {
-                if (s.Type < NodeType::Log) // addition or multiplication
+                if (s.Type < NodeType::Log) // add, sub, mul, div 
                 {
                     fmt::format_to(std::back_inserter(current), "(");
                     for (auto it = tree.Children(i); it.HasNext(); ++it)
