@@ -14,8 +14,8 @@ namespace Operon
             Tree operator()(RandomDevice& random, const Grammar& grammar, const std::vector<Variable>& variables) const; 
 
         private:
-            size_t maxDepth;
-            size_t maxLength;
+            const size_t maxDepth;
+            const size_t maxLength;
     };
 
 }

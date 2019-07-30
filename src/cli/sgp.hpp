@@ -103,6 +103,7 @@ namespace Operon
                 ind.Genotype = std::move(child);
             };
             std::for_each(std::execution::par_unseq, offspring.begin() + 1, offspring.end(), iterate);
+
             // the offspring become the parents
             parents.swap(offspring);
         }

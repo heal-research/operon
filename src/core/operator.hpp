@@ -2,7 +2,7 @@
 #define OPERATOR_HPP
 
 #include <random>
-#include "gsl/span"
+#include "gsl/gsl"
 
 #include "jsf.hpp"
 #include "tree.hpp"
@@ -27,6 +27,8 @@ namespace Operon
     {
         Tree                  Genotype;
         std::array<double, D> Fitness;
+
+        static constexpr size_t Dimension = D;
     };
 
     // the creator builds a new tree using the existing grammar and allowed inputs
@@ -53,8 +55,9 @@ namespace Operon
         protected:
             inline bool Compare(size_t lhs, size_t rhs) const noexcept 
             {
-                if constexpr (Max) return population[lhs].Fitness[Idx] < population[rhs].Fitness[Idx];
-                else return population[lhs].Fitness[Idx] > population[rhs].Fitness[Idx];
+                auto fit = [&](size_t i) { return population[i].Fitness[Idx]; };
+                if constexpr (Max) return fit(lhs) < fit(rhs);
+                else return fit(lhs) > fit(rhs);
             }
             gsl::span<const T> population;
     };

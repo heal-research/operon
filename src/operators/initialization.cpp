@@ -18,9 +18,9 @@ namespace Operon
         return node;
     }
 
-    void Grow(RandomDevice& random, const Grammar& grammar, const vector<Variable>& variables, vector<Node>& nodes, const vector<pair<NodeType, double>>& partials, size_t maxLength, size_t maxDepth) 
+    void Grow(RandomDevice& random, const Grammar& grammar, const vector<Variable>& variables, vector<Node>& nodes, const vector<pair<NodeType, double>>& partials, size_t maxBranchLength, size_t maxBranchDepth) 
     {
-        if (maxDepth == 0 || maxLength <= 1)
+        if (maxBranchDepth == 0 || maxBranchLength <= 1)
         {
             // only allowed to grow leaf nodes
             auto pc   = grammar.GetFrequency(NodeType::Constant);
@@ -35,7 +35,8 @@ namespace Operon
             nodes.push_back(node);
             for (size_t i = 0; i < node.Arity; ++i)
             {
-                Grow(random, grammar, variables, nodes, partials, maxLength / node.Arity, maxDepth - 1);
+                auto maxChildLength = maxBranchLength / node.Arity;
+                Grow(random, grammar, variables, nodes, partials, maxChildLength, maxBranchDepth - 1);
             }
         }
     }
@@ -51,7 +52,8 @@ namespace Operon
 
         for (int i = 0; i < root.Arity; ++i)
         {
-            Grow(random, grammar, variables, nodes, partials, maxLength, maxDepth - 1);
+            auto maxBranchLength = (maxLength - 1) / root.Arity;
+            Grow(random, grammar, variables, nodes, partials, maxBranchLength, maxDepth - 1);
         }
         uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1); 
         normal_distribution<double> normalReal(0, 1);

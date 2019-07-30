@@ -63,9 +63,9 @@ namespace Operon
         {
             auto j = result.value();
             std::vector<Node> nodes;
-            copy_n(left.begin(), i - left[i].Length, back_inserter(nodes)); 
-            copy_n(right.begin() + j - right[j].Length, right[j].Length + 1, back_inserter(nodes));
-            copy_n(left.begin() + i + 1, left.size() - (i + 1), back_inserter(nodes)); 
+            copy_n(left.begin(),                        i - left[i].Length,    back_inserter(nodes));
+            copy_n(right.begin() + j - right[j].Length, right[j].Length + 1,   back_inserter(nodes));
+            copy_n(left.begin() + i + 1,                left.size() - (i + 1), back_inserter(nodes));
 
             return Tree(nodes).UpdateNodes();
         }
