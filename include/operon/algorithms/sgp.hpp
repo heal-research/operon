@@ -4,11 +4,11 @@
 #include <fmt/core.h>
 #include <execution>
 
-#include "operator.hpp"
-#include "problem.hpp"
-#include "eval.hpp"
-#include "stats.hpp"
-#include "format.hpp"
+#include "core/operator.hpp"
+#include "core/problem.hpp"
+#include "core/eval.hpp"
+#include "core/stats.hpp"
+#include "core/format.hpp"
 
 namespace Operon 
 {
@@ -101,7 +101,7 @@ namespace Operon
                 {
                     child = child.Length() > 0 ? mutator(random, child) : mutator(random, parents[first].Genotype);
                 }
-                ind.Genotype = std::move(child);
+                ind.Genotype = child.Nodes().empty() ? parents[first].Genotype : std::move(child);
             };
             std::for_each(std::execution::par_unseq, offspring.begin() + 1, offspring.end(), iterate);
 

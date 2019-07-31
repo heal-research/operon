@@ -6,9 +6,9 @@
 #include <exception>
 #include <stack>
 
-#include "tree.hpp"
-#include "jsf.hpp"
-#include "xxhash/xxhash.hpp"
+#include "core/tree.hpp"
+#include "core/jsf.hpp"
+#include "core/common.hpp"
 
 using namespace std;
 
@@ -73,7 +73,7 @@ namespace Operon {
         vector<int> children;
         children.reserve(nodes.size());
         
-        vector<uint64_t> hashes;
+        vector<operon::hash_t> hashes;
         hashes.reserve(nodes.size());
 
         auto start = nodes.begin();
@@ -122,13 +122,13 @@ namespace Operon {
         return *this;
     }
 
-    vector<int> Tree::ChildIndices(int i) const
+    vector<gsl::index> Tree::ChildIndices(gsl::index i) const
     {
         if (nodes[i].IsLeaf())
         {
-            return std::vector<int>{};
+            return std::vector<gsl::index>{};
         }
-        std::vector<int> indices(nodes[i].Arity);
+        std::vector<gsl::index> indices(nodes[i].Arity);
         for (auto it = Children(i); it.HasNext(); ++it)
         {
             indices[it.Count()] = it.Index();
@@ -167,7 +167,7 @@ namespace Operon {
     }
 
     // calculate the depth of subtree at index i
-    size_t Tree::Depth(size_t i) const noexcept 
+    size_t Tree::Depth(gsl::index i) const noexcept 
     {
         size_t depth = 1; 
 
@@ -199,10 +199,10 @@ namespace Operon {
     }
 
     // calculate the level in the tree (distance to tree root) for the subtree at index i
-    size_t Tree::Level(size_t i) const noexcept
+    size_t Tree::Level(gsl::index i) const noexcept
     {
         // the root node is always the last node with index Length() - 1
-        auto root = Length() - 1;
+        gsl::index root = Length() - 1;
 
         size_t level = 0;
         while(i < root && nodes[i].Parent != root)

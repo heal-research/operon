@@ -5,9 +5,9 @@
 #include <random>
 #include <algorithm>
 #include <execution>
-#include "gsl/span"
 
-#include "operator.hpp"
+#include "gsl/span"
+#include "core/operator.hpp"
 
 namespace Operon
 {

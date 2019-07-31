@@ -30,7 +30,7 @@ namespace Operon
                     )
                 : dataset(ds), training(trainingRange), test(testRange), validation(validationRange), target(targetVariable), inputVariables(inputVars)
                 {
-                    std::vector<uint64_t> inputs;
+                    std::vector<operon::hash_t> inputs;
                     std::transform(inputVariables.begin(), inputVariables.end(), std::back_inserter(inputs), [&](const std::string& name) { return dataset.GetHashValue(name); });
                     std::sort(inputs.begin(), inputs.end());
                 }

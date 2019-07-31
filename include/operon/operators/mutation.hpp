@@ -1,7 +1,7 @@
 #ifndef MUTATION_HPP
 #define MUTATION_HPP
 
-#include "operator.hpp"
+#include "core/operator.hpp"
 
 namespace Operon 
 {
@@ -9,6 +9,12 @@ namespace Operon
     {
         Tree operator()(RandomDevice& random, const Tree& tree) const override;
     };
+
+    struct MultiPointMutation : public MutatorBase 
+    {
+        Tree operator()(RandomDevice& random, const Tree& tree) const override;
+    };
 }
+
 #endif
 

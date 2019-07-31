@@ -12,19 +12,19 @@ namespace Operon
 {
     class Grammar
     {
-        using Config = NodeType;
+        using GrammarConfig = NodeType;
 
         public:
             bool   IsEnabled(NodeType type) const { return static_cast<bool>(config & type); }
             void   SetEnabled(NodeType type, bool enabled) { config = enabled ? (config | type) : (config & ~type); }
             void   SetFrequency(NodeType type, double frequency) { symbolFrequencies[type] = frequency; };
             double GetFrequency(NodeType type) const { return symbolFrequencies.find(type)->second; }
-            Config GetConfig() const { return config; }
-            void   SetConfig(Config cfg) { config = cfg; }
+            GrammarConfig GetConfig() const { return config; }
+            void   SetConfig(GrammarConfig cfg) { config = cfg; }
 
-            static const Config Arithmetic   = NodeType::Constant | NodeType::Variable | NodeType::Add  | NodeType::Sub | NodeType::Mul | NodeType::Div;
-            static const Config TypeCoherent = Arithmetic         | NodeType::Exp      | NodeType::Log  | NodeType::Sin | NodeType::Cos;
-            static const Config Full         = TypeCoherent       | NodeType::Tan      | NodeType::Sqrt | NodeType::Cbrt;
+            static const GrammarConfig Arithmetic   = NodeType::Constant | NodeType::Variable | NodeType::Add  | NodeType::Sub | NodeType::Mul | NodeType::Div;
+            static const GrammarConfig TypeCoherent = Arithmetic         | NodeType::Exp      | NodeType::Log  | NodeType::Sin | NodeType::Cos;
+            static const GrammarConfig Full         = TypeCoherent       | NodeType::Tan      | NodeType::Sqrt | NodeType::Cbrt;
 
             std::vector<std::pair<NodeType, double>> AllowedSymbols() const 
             { 

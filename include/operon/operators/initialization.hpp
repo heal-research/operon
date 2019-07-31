@@ -1,7 +1,7 @@
 #ifndef INITIALIZATION_HPP
 #define INITIALIZATION_HPP
 
-#include "operator.hpp"
+#include "core/operator.hpp"
 
 namespace Operon 
 {

@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "operator.hpp"
+#include "core/operator.hpp"
 
 namespace Operon 
 {
@@ -17,8 +17,8 @@ namespace Operon
 
         private:
             double internalProbability;
-            size_t maxDepth;
-            size_t maxLength;
+            long maxDepth;
+            long maxLength;
     };
 }
 #endif

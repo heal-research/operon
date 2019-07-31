@@ -1,4 +1,4 @@
-#include "crossover.hpp"
+#include "operators/crossover.hpp"
 
 using namespace std;
 
@@ -8,11 +8,10 @@ namespace Operon
     {
         std::uniform_real_distribution<double> uniformReal(0, 1);
         // create a vector of indices and shuffle it to ensure fair sampling
-        vector<size_t> indices(tree.Length());
+        vector<gsl::index> indices(tree.Length());
         iota(indices.begin(), indices.end(), 0);
         shuffle(indices.begin(), indices.end(), random);
 
-        auto chooseInternal = uniformReal(random) < internalProb;
         for(auto i : indices)
         {
             if (tree[i].Length + 1U > maxBranchLength || tree.Depth(i) > maxBranchDepth)
@@ -20,7 +19,7 @@ namespace Operon
                 continue;
             }
 
-            if (chooseInternal != tree[i].IsLeaf())
+            if ((uniformReal(random) < internalProb) != tree[i].IsLeaf())
             {
                 return make_optional(i);
             }
@@ -36,10 +35,9 @@ namespace Operon
         iota(indices.begin(), indices.end(), 0);
         shuffle(indices.begin(), indices.end(), random);
 
-        auto chooseInternal = uniformReal(random) < internalProb;
         for (auto i : indices)
         {
-            if (chooseInternal != tree[i].IsLeaf())
+            if ((uniformReal(random) < internalProb) != tree[i].IsLeaf())
             {
                 return i; 
             }
@@ -51,18 +49,18 @@ namespace Operon
     {
         auto i = CutRandom(random, lhs, internalProbability);
 
-        auto maxBranchDepth  = maxDepth - lhs.Level(i);
-        auto maxBranchLength = maxLength - (lhs.Length() - (lhs[i].Length + 1));
+        long maxBranchDepth  = maxDepth - lhs.Level(i);
+        long maxBranchLength = maxLength - (lhs.Length() - (lhs[i].Length + 1));
 
-        assert(maxBranchDepth < maxDepth);
-        assert(maxBranchLength < maxLength);
+        Expects(maxBranchDepth <= maxDepth);
+        Expects(maxBranchLength <= maxLength);
 
-        auto& left           = lhs.Nodes();
-        auto& right          = rhs.Nodes();
         if (auto result = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength); result.has_value())
         {
             auto j = result.value();
             std::vector<Node> nodes;
+            auto& left           = lhs.Nodes();
+            auto& right          = rhs.Nodes();
             copy_n(left.begin(),                        i - left[i].Length,    back_inserter(nodes));
             copy_n(right.begin() + j - right[j].Length, right[j].Length + 1,   back_inserter(nodes));
             copy_n(left.begin() + i + 1,                left.size() - (i + 1), back_inserter(nodes));

@@ -40,15 +40,12 @@ add_library(
     src/operators/initialization.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
-    src/operators/selection.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE csv fmt::fmt ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
 target_include_directories(
     operon
-    PRIVATE ${PROJECT_SOURCE_DIR}/src/core
-    PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
-    PRIVATE ${PROJECT_SOURCE_DIR}/src/algorithms
+    PRIVATE ${PROJECT_SOURCE_DIR}/include/operon
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/csv-parser/include
@@ -65,9 +62,7 @@ target_compile_features(operon-cli PRIVATE cxx_std_17)
 target_link_libraries(operon-cli PRIVATE operon cxxopts::cxxopts TBB::tbb)
 target_include_directories(
     operon-cli 
-    PRIVATE ${PROJECT_SOURCE_DIR}/src/core
-    PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
-    PRIVATE ${PROJECT_SOURCE_DIR}/src/algorithms
+    PRIVATE ${PROJECT_SOURCE_DIR}/include/operon
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
     PRIVATE ${CERES_INCLUDE_DIRS}

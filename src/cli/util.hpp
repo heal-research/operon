@@ -7,7 +7,7 @@
 #include <string>
 #include <fmt/core.h>
 
-#include "dataset.hpp"
+#include "core/dataset.hpp"
 
 namespace Operon
 {

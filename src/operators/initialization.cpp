@@ -1,9 +1,9 @@
 #include <algorithm>
 #include <execution>
 
-#include "grammar.hpp"
-#include "dataset.hpp"
-#include "initialization.hpp"
+#include "core/grammar.hpp"
+#include "core/dataset.hpp"
+#include "operators/initialization.hpp"
 
 namespace Operon
 {

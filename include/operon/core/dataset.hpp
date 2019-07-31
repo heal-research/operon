@@ -79,7 +79,7 @@ namespace Operon {
                 return gsl::span<const double>(values[record.first->Index]);
             }
 
-            const gsl::span<const double> GetValues(uint64_t hashValue) const 
+            const gsl::span<const double> GetValues(operon::hash_t hashValue) const 
             {
                 auto needle = Variable { "", hashValue, 0 };
                 auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; }); 
@@ -91,14 +91,14 @@ namespace Operon {
                 return gsl::span<const double>(values[index]); 
             }
 
-            const std::string& GetName(uint64_t hashValue) const
+            const std::string& GetName(operon::hash_t hashValue) const
             {
                 auto needle = Variable { "", hashValue, 0 };
                 auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; }); 
                 return record.first->Name;
             }
 
-            uint64_t GetHashValue(const std::string& name) const
+            operon::hash_t GetHashValue(const std::string& name) const
             {
                 auto needle = Variable { name, 0 /* hash value */, 0 /* index */ };
                 auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); }); 

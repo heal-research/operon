@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include <fmt/format.h>
+#include "common.hpp"
 
 namespace Operon {
     enum class NodeType : uint16_t {
@@ -53,24 +54,22 @@ namespace Operon {
     }
 
     struct Node {
-        NodeType Type; 
+        NodeType       Type;
 
-//        bool     IsLeaf;
-//        bool     IsCommutative;
-        bool     IsEnabled;
+        bool           IsEnabled;
 
-        uint16_t Arity; // 0-65535
-        uint16_t Length;  // 0-65535
+        uint16_t       Arity;   // 0-65535
+        uint16_t       Length;  // 0-65535
 
-        size_t   Parent; // index of parent node
-        uint64_t HashValue;
-        uint64_t CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
+        gsl::index     Parent; // index of parent node
+        operon::hash_t HashValue;
+        operon::hash_t CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
 
-        double   Value; // value for constants or weighting factor for variables
+        double         Value; // value for constants or weighting factor for variables
 
         Node() = delete;
-        explicit Node(NodeType type) noexcept : Node(type, static_cast<uint64_t>(type)) { }
-        explicit Node(NodeType type, uint64_t hashValue) noexcept : Type(type), HashValue(hashValue), CalculatedHashValue(hashValue) 
+        explicit Node(NodeType type) noexcept : Node(type, static_cast<operon::hash_t>(type)) { }
+        explicit Node(NodeType type, operon::hash_t hashValue) noexcept : Type(type), HashValue(hashValue), CalculatedHashValue(hashValue) 
         {
             Arity = 0;
             if (Type < NodeType::Log) // Add, Mul

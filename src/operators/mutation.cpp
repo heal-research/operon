@@ -1,4 +1,4 @@
-#include "mutation.hpp"
+#include "operators/mutation.hpp"
 
 using namespace std;
 
@@ -22,6 +22,17 @@ namespace Operon
         normal_distribution<double> normalReal(0, 1);
         node.Value += normalReal(random);
 
+        return child;
+    }
+
+    Tree MultiPointMutation::operator()(RandomDevice& random, const Tree& tree) const 
+    {
+        auto child = tree;
+        normal_distribution<double> normalReal(0, 1);
+        for(auto& node : child.Nodes())
+        {
+            node.Value += normalReal(random);
+        }
         return child;
     }
 }

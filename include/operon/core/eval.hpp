@@ -107,9 +107,8 @@ namespace Operon {
                 {
                     case NodeType::Variable:
                         {
-                            auto& values = dataset.GetValues(s.CalculatedHashValue);
-                            auto start = values.begin() + range.Start + row;
-                            std::transform(start, start + remainingRows, buf, [&](double v) { return T(v * s.Value); });
+                            auto values = dataset.GetValues(s.CalculatedHashValue).subspan(range.Start + row, remainingRows);
+                            std::transform(values.begin(), values.end(), buf, [&](double v) { return T(v * s.Value); });
                             break;
                         }
                     case NodeType::Add:

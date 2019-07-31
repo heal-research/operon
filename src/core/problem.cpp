@@ -1,4 +1,4 @@
-#include "problem.hpp"
+#include "core/problem.hpp"
 
 namespace Operon
 {
