@@ -88,6 +88,7 @@ namespace Operon
                 {
                     auto name = s.Name();
                     fmt::format_to(std::back_inserter(current), "{}", name);
+                    fmt::format_to(std::back_inserter(current), "(");
                     if (tree[i-1].IsLeaf())
                     {
                         // surround a single leaf argument with parantheses
@@ -99,6 +100,7 @@ namespace Operon
                     {
                         FormatNode(tree, dataset, i - 1, current, decimalPrecision);
                     }
+                    fmt::format_to(std::back_inserter(current), ")");
                 }
             }
         }
