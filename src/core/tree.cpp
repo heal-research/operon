@@ -18,7 +18,7 @@ namespace Operon {
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto& s = nodes[i];
 
-            if (s.IsLeaf) 
+            if (s.IsLeaf()) 
             {
                 s.Arity = s.Length = 0;
                 continue;
@@ -38,7 +38,7 @@ namespace Operon {
         for (size_t i = 0; i < nodes.size(); ++i)
         {
             auto& s = nodes[i];
-            if (s.IsLeaf || !s.IsCommutative)
+            if (s.IsLeaf() || !s.IsCommutative())
             {
                 continue;
             }
@@ -80,7 +80,7 @@ namespace Operon {
         for (size_t i = 0; i < nodes.size(); ++i) 
         {
             auto& s = nodes[i];
-            if (s.IsLeaf)
+            if (s.IsLeaf())
             {
                 continue;
             }
@@ -90,7 +90,7 @@ namespace Operon {
             auto sBegin = start + i - size;
             auto sEnd   = start + i;
 
-            if (s.IsCommutative)
+            if (s.IsCommutative())
             {
                 if (arity == size)
                 {
@@ -124,7 +124,7 @@ namespace Operon {
 
     vector<int> Tree::ChildIndices(int i) const
     {
-        if (nodes[i].IsLeaf)
+        if (nodes[i].IsLeaf())
         {
             return std::vector<int>{};
         }
@@ -182,7 +182,7 @@ namespace Operon {
 
             for (auto it = Children(t.first); it.HasNext(); ++it)
             {
-                if (it->IsLeaf)
+                if (it->IsLeaf())
                 {
                     continue;
                 }

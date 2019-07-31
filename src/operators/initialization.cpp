@@ -63,7 +63,7 @@ namespace Operon
             {
                 node.HashValue = node.CalculatedHashValue = variables[uniformInt(random)].Hash;
             }
-            if (node.IsLeaf)
+            if (node.IsLeaf())
             {
                 node.Value = normalReal(random);
             }

@@ -20,7 +20,7 @@ namespace Operon
                 continue;
             }
 
-            if (chooseInternal != tree[i].IsLeaf)
+            if (chooseInternal != tree[i].IsLeaf())
             {
                 return make_optional(i);
             }
@@ -39,7 +39,7 @@ namespace Operon
         auto chooseInternal = uniformReal(random) < internalProb;
         for (auto i : indices)
         {
-            if (chooseInternal != tree[i].IsLeaf)
+            if (chooseInternal != tree[i].IsLeaf())
             {
                 return i; 
             }

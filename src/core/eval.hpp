@@ -4,14 +4,14 @@
 #include <ceres/ceres.h>
 #include "tree.hpp"
 #include "dataset.hpp"
-#include "gsl/span"
+#include "gsl/gsl"
 
-#define FOR(i) for(size_t i = 0; i < BATCHSIZE; ++i)
+#define FOR(i) for(gsl::index i = 0; i < BATCHSIZE; ++i)
 
 namespace Operon {
-    constexpr size_t BATCHSIZE  = 64;
-    constexpr int    JET_STRIDE = 4;
-    using     Dual              = ceres::Jet<double, JET_STRIDE>;
+    constexpr gsl::index BATCHSIZE = 64;
+    constexpr int JET_STRIDE       = 4;
+    using     Dual                 = ceres::Jet<double, JET_STRIDE>;
 
     // When auto-vectorizing without __restrict,
     // gcc and clang check for overlap (with a bunch of integer code)
@@ -69,13 +69,16 @@ namespace Operon {
     std::vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
     {
         std::vector<T> result(range.Size());
-        Evaluate(tree, dataset, range, parameters, result.data());
+        Evaluate(tree, dataset, range, parameters, gsl::span<T>(result));
         return result;
     }
 
     template<typename T>
-    void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, T* result)
+    void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result)
     {
+        // this should probably be changed
+        Expects(range.Size() == result.size());
+
         auto& nodes = tree.Nodes();
         std::vector<T> buffer(nodes.size() * BATCHSIZE); // intermediate results buffer
 
@@ -92,8 +95,8 @@ namespace Operon {
             }
         }
 
-        size_t numRows = range.Size();
-        for (size_t row = 0; row < numRows; row += BATCHSIZE)
+        gsl::index numRows = range.Size();
+        for (gsl::index row = 0; row < numRows; row += BATCHSIZE)
         {
             auto remainingRows = std::min(BATCHSIZE, numRows - row);
             for (size_t i = 0; i < nodes.size(); ++i)
@@ -205,17 +208,16 @@ namespace Operon {
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
-            std::copy_n(buffer.end() - BATCHSIZE, remainingRows, result + row); 
+            std::copy_n(buffer.end() - BATCHSIZE, remainingRows, result.begin() + row); 
         }
         // replace nan and inf values 
-        auto s = gsl::span<T>(result, numRows);
-        auto [min, max] = MinMax(s);
-        LimitToRange(s, min, max);
+        auto [min, max] = MinMax(result);
+        LimitToRange(result, min, max);
     }
 
     struct ParameterizedEvaluation
     {
-        ParameterizedEvaluation(const Tree& tree, const Dataset& dataset, const std::vector<double>& targetValues, const Range range) 
+        ParameterizedEvaluation(const Tree& tree, const Dataset& dataset, const gsl::span<const double> targetValues, const Range range) 
             : tree_ref(tree)
             , dataset_ref(dataset)
             , target_ref(targetValues)
@@ -223,8 +225,9 @@ namespace Operon {
 
         template<typename T> bool operator()(T const* const* parameters, T* residuals) const
         {
-            Evaluate(tree_ref, dataset_ref, range, parameters[0], residuals);
-            std::transform(residuals, residuals + range.Size(), target_ref.cbegin() + range.Start, residuals, [](const T& a, const double b) { return a - b; });
+            auto res = gsl::span<T>(residuals, range.Size());
+            Evaluate(tree_ref, dataset_ref, range, parameters[0], res);
+            std::transform(res.cbegin(), res.cend(), target_ref.cbegin() + range.Start, res.begin(), [](const T& a, const double b) { return a - b; });
             return true;
         }
 
@@ -237,7 +240,7 @@ namespace Operon {
 
     // returns an array of optimized parameters
     template <bool autodiff = true>
-    std::vector<double> Optimize(Tree& tree, const Dataset& dataset, const std::vector<double>& targetValues, const Range range, size_t iterations = 50, bool report = false)
+    std::vector<double> Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const double> targetValues, const Range range, size_t iterations = 50, bool report = false)
     {
         using ceres::DynamicCostFunction;
         using ceres::DynamicNumericDiffCostFunction;

@@ -9,7 +9,7 @@ namespace Operon
         vector<size_t> leafIndices;
         for (size_t i = 0; i < tree.Length(); ++i)
         {
-            if (tree[i].IsLeaf)
+            if (tree[i].IsLeaf())
             {
                 leafIndices.push_back(i);
             }

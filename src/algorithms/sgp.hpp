@@ -40,13 +40,14 @@ namespace Operon
         auto trainingRange = problem.TrainingRange();
         auto targetValues  = dataset.GetValues(target);
 
-        auto variables     = dataset.Variables();
-        variables.erase(std::remove_if(variables.begin(), variables.end(), [&](const auto& v) { return v.Name == target; }), variables.end());
+        auto variables = dataset.Variables();
+        std::vector<Variable> inputs;
+        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
 
         std::vector<Ind>    parents(config.PopulationSize);
         std::vector<Ind>    offspring(config.PopulationSize);
 
-        std::generate(std::execution::par_unseq, parents.begin(), parents.end(), [&]() { return Ind { creator(random, grammar, variables), 0.0 }; });
+        std::generate(std::execution::par_unseq, parents.begin(), parents.end(), [&]() { return Ind { creator(random, grammar, inputs), 0.0 }; });
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
 
         auto evaluate = [&](auto& ind) 

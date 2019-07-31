@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <numeric>
 
+#include "common.hpp"
+
 namespace Operon {
     // compare strings size first, as an attempt to have eg X1, X2, X10 in this order and not X1, X10, X2
     namespace 
@@ -28,9 +30,9 @@ namespace Operon {
     // a dataset variable described by: name, hash value (for hashing), data column index
     struct Variable 
     {
-        std::string Name;
-        uint64_t    Hash;
-        size_t      Index;
+        std::string    Name;
+        operon::hash_t Hash;
+        gsl::index     Index;
     }; 
 
     class Dataset
@@ -55,13 +57,13 @@ namespace Operon {
 
             void swap(Dataset& rhs) noexcept
             {
-                std::swap(variables, rhs.variables); 
-                std::swap(values, rhs.values);
+                variables.swap(rhs.variables);
+                values.swap(rhs.values);
             }
 
             size_t Rows() const { return values[0].size(); }
             size_t Cols() const { return variables.size(); }
-            std::pair<size_t, size_t> Dimensions() const { return std::make_pair(values[0].size(), variables.size()); }
+            std::pair<size_t, size_t> Dimensions() const { return { Rows(), Cols() }; }
 
             const std::vector<std::string> VariableNames() const 
             {
@@ -70,23 +72,23 @@ namespace Operon {
                 return names;
             }
 
-            const std::vector<double>& GetValues(const std::string& name) const 
+            const gsl::span<const double> GetValues(const std::string& name) const 
             {
                 auto needle = Variable { name, 0, 0 }; 
                 auto record = std::equal_range(variables.begin(), variables.end(), needle, [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); }); 
-                return values[record.first->Index];            
+                return gsl::span<const double>(values[record.first->Index]);
             }
 
-            const std::vector<double>& GetValues(uint64_t hashValue) const 
+            const gsl::span<const double> GetValues(uint64_t hashValue) const 
             {
                 auto needle = Variable { "", hashValue, 0 };
                 auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; }); 
-                return values[record.first->Index];
+                return gsl::span<const double>(values[record.first->Index]);
             }
 
-            const std::vector<double>& GetValues(int index) const 
+            const gsl::span<const double> GetValues(gsl::index index) const 
             {
-                return values[index]; 
+                return gsl::span<const double>(values[index]); 
             }
 
             const std::string& GetName(uint64_t hashValue) const
@@ -104,7 +106,7 @@ namespace Operon {
             }
 
             const std::string& GetName(int index) const { return variables[index].Name; }
-            const std::vector<Variable>& Variables() const { return variables; }
+            const gsl::span<const Variable> Variables() const { return gsl::span<const Variable>(variables); }
     };
 }
 

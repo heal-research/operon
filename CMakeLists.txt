@@ -29,6 +29,7 @@ if(NOT xxhash_Populated)
 endif()
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/thirdparty/csv-parser EXCLUDE_FROM_ALL)
+add_subdirectory(${PROJECT_SOURCE_DIR}/thirdparty/GSL EXCLUDE_FROM_ALL)
 
 add_library(
     operon
@@ -47,6 +48,7 @@ target_include_directories(
     operon
     PRIVATE ${PROJECT_SOURCE_DIR}/src/core
     PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/algorithms
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/csv-parser/include
@@ -66,6 +68,7 @@ target_include_directories(
     PRIVATE ${PROJECT_SOURCE_DIR}/src/core
     PRIVATE ${PROJECT_SOURCE_DIR}/src/operators
     PRIVATE ${PROJECT_SOURCE_DIR}/src/algorithms
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
     PRIVATE ${CERES_INCLUDE_DIRS}
 )

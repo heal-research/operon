@@ -32,7 +32,7 @@ namespace Operon
                 fmt::format_to(std::back_inserter(current), "{}\n", s.Name());
             }
 
-            if (s.IsLeaf) { return; }
+            if (s.IsLeaf()) { return; }
 
             if (i != tree.Length() - 1)
             {
@@ -88,7 +88,7 @@ namespace Operon
                 {
                     auto name = s.Name();
                     fmt::format_to(std::back_inserter(current), "{}", name);
-                    if (tree[i-1].IsLeaf)
+                    if (tree[i-1].IsLeaf())
                     {
                         // surround a single leaf argument with parantheses
                         fmt::format_to(std::back_inserter(current), "(");

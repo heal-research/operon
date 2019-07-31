@@ -55,8 +55,8 @@ namespace Operon {
     struct Node {
         NodeType Type; 
 
-        bool     IsLeaf;
-        bool     IsCommutative;
+//        bool     IsLeaf;
+//        bool     IsCommutative;
         bool     IsEnabled;
 
         uint16_t Arity; // 0-65535
@@ -72,8 +72,6 @@ namespace Operon {
         explicit Node(NodeType type) noexcept : Node(type, static_cast<uint64_t>(type)) { }
         explicit Node(NodeType type, uint64_t hashValue) noexcept : Type(type), HashValue(hashValue), CalculatedHashValue(hashValue) 
         {
-            IsCommutative = type < NodeType::Sub; // Add, Mul are commutative
-
             Arity = 0;
             if (Type < NodeType::Log) // Add, Mul
             {
@@ -85,7 +83,6 @@ namespace Operon {
             }
             Length = Arity;
 
-            IsLeaf = Arity == 0;
             IsEnabled = true;
 
             Value = IsConstant() ? 1. : 0.;
@@ -123,6 +120,9 @@ namespace Operon {
         {
             return !((*this) < rhs);
         }
+
+        inline constexpr bool IsLeaf() const noexcept { return Arity == 0; }
+        inline constexpr bool IsCommutative() const noexcept { return Type < NodeType::Sub; }
 
         template<NodeType T>
         inline bool Is() const { return T == Type; }
