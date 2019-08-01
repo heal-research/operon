@@ -3,17 +3,16 @@
 
 #include <unordered_map>
 #include <algorithm>
-#include <stack>
 
 #include "tree.hpp"
 #include "jsf.hpp"
 
 namespace Operon 
 {
+    using GrammarConfig = NodeType;
+
     class Grammar
     {
-        using GrammarConfig = NodeType;
-
         public:
             bool   IsEnabled(NodeType type) const { return static_cast<bool>(config & type); }
             void   SetEnabled(NodeType type, bool enabled) { config = enabled ? (config | type) : (config & ~type); }

@@ -22,8 +22,9 @@ namespace Operon {
         Tan      = 1u << 8,
         Sqrt     = 1u << 9,
         Cbrt     = 1u << 10,
-        Constant = 1u << 11,
-        Variable = 1u << 12
+        Square   = 1u << 11,
+        Constant = 1u << 12,
+        Variable = 1u << 13
     };
 
     using utype = std::underlying_type_t<NodeType>;
@@ -48,6 +49,7 @@ namespace Operon {
             { NodeType::Tan,      "Tan"      },
             { NodeType::Sqrt,     "Sqrt"     },
             { NodeType::Cbrt,     "Cbrt"     },
+            { NodeType::Square,   "Square"   },
             { NodeType::Constant, "Constant" },
             { NodeType::Variable, "Variable" }
         };
@@ -139,6 +141,7 @@ namespace Operon {
         inline bool IsTan()            const { return Is<NodeType::Tan>();      }
         inline bool IsSquareRoot()     const { return Is<NodeType::Sqrt>();     }
         inline bool IsCubeRoot()       const { return Is<NodeType::Cbrt>();     }
+        inline bool IsSquare()         const { return Is<NodeType::Square>();   }
     };
 }
 

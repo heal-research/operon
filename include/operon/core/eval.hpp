@@ -200,6 +200,11 @@ namespace Operon {
                             cbrt(buf, buf - BATCHSIZE);
                             break;
                         }
+                    case NodeType::Square:
+                        {
+                            square(buf, buf - BATCHSIZE);
+                            break;
+                        }
                     default:
                         {
                             break;

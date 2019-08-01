@@ -16,53 +16,63 @@ int main(int argc, char* argv[])
     cxxopts::Options opts("operon_cli", "C++ large-scale genetic programming");
 
     opts.add_options()
-        ("d,dataset",             "Dataset file name (csv) (required)",                                                                            cxxopts::value<std::string>())
-        ("r,training",            "Training range specified as start:end (required)",                                                              cxxopts::value<std::string>())
-        ("s,test",                "Test range specified as start:end",                                                                             cxxopts::value<std::string>())
-        ("t,target",              "Name of the target variable (required)",                                                                        cxxopts::value<std::string>())
-        ("z,size",                "Population size",                                                                                               cxxopts::value<size_t>()->default_value("100000"))
-        ("g,generations",         "Number of generations",                                                                                         cxxopts::value<size_t>()->default_value("1000"))
-        ("e,evaluations",         "Evaluation budget",                                                                                             cxxopts::value<size_t>()->default_value("1000000"))
-        ("i,iterations",          "Local optimization iterations",                                                                                 cxxopts::value<size_t>()->default_value("50"))
-        ("l,length",              "Maximum length",                                                                                                cxxopts::value<size_t>()->default_value("50"))
-        ("p,depth",               "Maximum depth",                                                                                                 cxxopts::value<size_t>()->default_value("12"))
-        ("m,enable-symbols",      "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)",             cxxopts::value<std::string>())
-        ("n,disable-symbols",     "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)",            cxxopts::value<std::string>())
-        ("a,show-grammar",        "Show grammar (primitive set) used by the algorithm")
-        ("h,help",                "Print help")
+        ("dataset",               "Dataset file name (csv) (required)",                                                                 cxxopts::value<std::string>())
+        ("train",                 "Training range specified as start:end (required)",                                                   cxxopts::value<std::string>())
+        ("test",                  "Test range specified as start:end",                                                                  cxxopts::value<std::string>())
+        ("target",                "Name of the target variable (required)",                                                             cxxopts::value<std::string>())
+        ("population-size",       "Population size",                                                                                    cxxopts::value<size_t>()->default_value("100000"))
+        ("generations",           "Number of generations",                                                                              cxxopts::value<size_t>()->default_value("1000"))
+        ("evaluations",           "Evaluation budget",                                                                                  cxxopts::value<size_t>()->default_value("1000000"))
+        ("iterations",            "Local optimization iterations",                                                                      cxxopts::value<size_t>()->default_value("50"))
+        ("maxlength",             "Maximum length",                                                                                     cxxopts::value<size_t>()->default_value("50"))
+        ("maxdepth",              "Maximum depth",                                                                                      cxxopts::value<size_t>()->default_value("12"))
+        ("crossover-probability", "The probability to apply crossover",                                                                 cxxopts::value<double>()->default_value("1.0"))
+        ("mutation-probability",  "The probability to apply mutation",                                                                  cxxopts::value<double>()->default_value("0.25"))
+        ("enable-symbols",        "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)",  cxxopts::value<std::string>())
+        ("disable-symbols",       "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
+        ("show-grammar",          "Show grammar (primitive set) used by the algorithm")
+        ("debug",                 "Debug mode (more information displayed)")
+        ("help",                  "Print help")
     ;
-    auto results = opts.parse(argc, argv);
-    if (results.arguments().empty() || results.count("help") > 0) 
+    auto result = opts.parse(argc, argv);
+    if (result.arguments().empty() || result.count("help") > 0) 
     {
         fmt::print("{}\n", opts.help());
         return 0;
     }
+    if (result.count("dataset") == 0)
+    {
+        throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no dataset given.", opts.help()));
+    }
+    if (result.count("target") == 0)
+    {
+        throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no target variable given.", opts.help()));
+    }
+
+    // parse and set default values
+    GeneticAlgorithmConfig config;
+    config.Generations          = result["generations"].as<size_t>();
+    config.PopulationSize       = result["population-size"].as<size_t>();
+    config.Evaluations          = result["evaluations"].as<size_t>();
+    config.Iterations           = result["iterations"].as<size_t>();
+    config.CrossoverProbability = result["crossover-probability"].as<double>();
+    config.MutationProbability  = result["mutation-probability"].as<double>();
+    auto maxLength              = result["maxlength"].as<size_t>();
+    auto maxDepth               = result["maxdepth"].as<size_t>();
+
+    // parse remaining config options
+    Range trainingRange;
+    Range testRange;
+    std::unique_ptr<Dataset> dataset;
+    std::string fileName; // data file name
+    std::string target;
+    bool debug = false;
+    bool showGrammar = false;
+    GrammarConfig grammarConfig = Grammar::Arithmetic;
 
     try 
     {
-        if (results.count("dataset") == 0)
-        {
-            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no dataset given.", opts.help()));
-        }
-        if (results.count("target") == 0)
-        {
-            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no target variable given.", opts.help()));
-        }
-
-        Range trainingRange;
-        Range testRange;
-        std::unique_ptr<Dataset> dataset;
-        std::string fileName; // data file name
-        std::string target;
-        size_t maxLength = 50;
-        size_t maxDepth = 12;
-        bool debug = false;
-        bool showGrammar = false;
-
-        GeneticAlgorithmConfig config;
-        config.CrossoverProbability = 1.0;
-        config.MutationProbability = 0.25;
-        for (auto kv : results.arguments())
+        for (auto kv : result.arguments())
         {
             auto& key   = kv.key();
             auto& value = kv.value();
@@ -71,7 +81,7 @@ int main(int argc, char* argv[])
                 fileName = value;
                 dataset = std::make_unique<Dataset>(fileName, true);
             }
-            if (key == "training")
+            if (key == "train")
             {
                 trainingRange = ParseRange(value);
             }
@@ -83,7 +93,7 @@ int main(int argc, char* argv[])
             {
                 target = value;
             }
-            if (key == "size")
+            if (key == "population-size")
             {
                 config.PopulationSize = kv.as<size_t>();
             }
@@ -99,23 +109,23 @@ int main(int argc, char* argv[])
             {
                 config.Iterations = kv.as<size_t>();
             }
-            if (key == "length")
+            if (key == "maxlength")
             {
                 maxLength = kv.as<size_t>();
             }
-            if (key == "depth")
+            if (key == "maxdepth")
             {
                 maxDepth = kv.as<size_t>();
             }
             if (key == "enable-symbols")
             {
-//                uint8_t mask = ParseGrammarOptions(value);
-//                config |= mask;
+                auto mask = ParseGrammarConfig(value);
+                grammarConfig |= mask;
             }
             if (key == "disable-symbols")
             {
-//                uint8_t mask = ~ParseGrammarOptions(value);
-//                config &= mask;
+                auto mask = ~ParseGrammarConfig(value);
+                grammarConfig &= mask;
             }
             if (key == "debug")
             {
@@ -126,7 +136,7 @@ int main(int argc, char* argv[])
                 showGrammar = true;
             }
         }
-        if (results.count("training") == 0)
+        if (result.count("train") == 0)
         {
             trainingRange = { 0, 2 * dataset->Rows() / 3 }; // by default use 66% of the data as training 
         }
@@ -139,7 +149,7 @@ int main(int argc, char* argv[])
         {
             throw std::runtime_error(fmt::format("Invalid training range {}:{}\n", trainingRange.Start, trainingRange.End));
         }
-        if (results.count("test") == 0)
+        if (result.count("test") == 0)
         {
             // if no test range is specified, we try to infer a reasonable range based on the trainingRange
             if (trainingRange.Start > 0) 
@@ -164,7 +174,8 @@ int main(int argc, char* argv[])
         auto inputs              = dataset->VariableNames();
         inputs.erase(std::remove_if(inputs.begin(), inputs.end(), [&](const std::string& s) { return s == target; }), inputs.end());
 
-        const auto problem       = Problem(*dataset, inputs, target, trainingRange, testRange);
+        auto problem       = Problem(*dataset, inputs, target, trainingRange, testRange);
+        problem.GetGrammar().SetConfig(grammarConfig);
 
         const bool maximization  = true;
         const size_t idx         = 0;

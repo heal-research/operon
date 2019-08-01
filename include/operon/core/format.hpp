@@ -25,7 +25,8 @@ namespace Operon
             } 
             else if (s.IsVariable())
             {
-                fmt::format_to(std::back_inserter(current), "{} [{}]\n", dataset.GetName(s.CalculatedHashValue), s.CalculatedHashValue);
+                auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}\n" : "{{:.{}f}} * {{}}\n", decimalPrecision);
+                fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetName(s.CalculatedHashValue));
             } 
             else
             {
@@ -86,8 +87,7 @@ namespace Operon
                 }
                 else // unary operators log, exp, sin, etc. 
                 {
-                    auto name = s.Name();
-                    fmt::format_to(std::back_inserter(current), "{}", name);
+                    fmt::format_to(std::back_inserter(current), "{}", s.Name());
                     fmt::format_to(std::back_inserter(current), "(");
                     if (tree[i-1].IsLeaf())
                     {

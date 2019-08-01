@@ -8,6 +8,7 @@
 #include <fmt/core.h>
 
 #include "core/dataset.hpp"
+#include "core/grammar.hpp"
 
 namespace Operon
 {
@@ -58,6 +59,63 @@ namespace Operon
         auto s = std::chrono::duration_cast<std::chrono::seconds>(d - h - m);
         auto l = std::chrono::duration_cast<std::chrono::milliseconds>(d - h - m - s);
         return fmt::format("{:#02d}:{:#02d}:{:#02d}.{:#03d}", h.count(), m.count(), s.count(), l.count());
+    }
+
+    GrammarConfig ParseGrammarConfig(const std::string& options)
+    {
+        GrammarConfig config = static_cast<GrammarConfig>(0); 
+        for (auto& s : Split(options, ','))
+        {
+            if (s == "add")
+            {
+                config |= GrammarConfig::Add;
+            }
+            if (s == "sub")
+            {
+                config |= GrammarConfig::Sub;
+            }
+            if (s == "mul")
+            {
+                config |= GrammarConfig::Mul;
+            }
+            if (s == "div")
+            {
+                config |= GrammarConfig::Div;
+            }
+            if (s == "exp")
+            {
+                config |= GrammarConfig::Exp;
+            }
+            if (s == "log")
+            {
+                config |= GrammarConfig::Log;
+            }
+            if (s == "sin")
+            {
+                config |= GrammarConfig::Sin;
+            }
+            if (s == "cos")
+            {
+                config |= GrammarConfig::Cos;
+            }
+            if (s == "tan")
+            {
+                config |= GrammarConfig::Tan;
+            }
+            if (s == "sqrt")
+            {
+                config |= GrammarConfig::Sqrt;
+            }
+            if (s == "cbrt")
+            {
+                config |= GrammarConfig::Cbrt;
+            }
+            if (s == "square")
+            {
+                config |= GrammarConfig::Square;
+            }
+        }
+        return config;
     }
 }
 

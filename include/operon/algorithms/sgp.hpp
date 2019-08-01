@@ -3,6 +3,8 @@
 
 #include <fmt/core.h>
 #include <execution>
+#include <thread>
+#include <chrono>
 
 #include "core/operator.hpp"
 #include "core/problem.hpp"
@@ -44,11 +46,26 @@ namespace Operon
         std::vector<Variable> inputs;
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
 
-        std::vector<Ind>    parents(config.PopulationSize);
-        std::vector<Ind>    offspring(config.PopulationSize);
+        std::vector<Ind> parents(config.PopulationSize);
+        std::vector<Ind> offspring(config.PopulationSize);
 
-        std::generate(std::execution::par_unseq, parents.begin(), parents.end(), [&]() { return Ind { creator(random, grammar, inputs), 0.0 }; });
+        std::vector<gsl::index> indices(config.PopulationSize);
+        std::iota(indices.begin(), indices.end(), 0L);
+        std::vector<RandomDevice::result_type> seeds(config.PopulationSize);
+        std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
+
+        thread_local RandomDevice rndlocal = random;
+
+        auto create = [&](gsl::index i)
+        {
+            // create one random generator per thread
+            rndlocal.Seed(seeds[i]);
+            parents[i].Genotype = creator(rndlocal, grammar, inputs);
+        };
+
+        std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), create);
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
+        auto worst = Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max();
 
         auto evaluate = [&](auto& ind) 
         {
@@ -57,53 +74,58 @@ namespace Operon
                 OptimizeAutodiff(ind.Genotype, dataset, targetValues, trainingRange, config.Iterations);
             }
             auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
-            ind.Fitness[Idx] = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + trainingRange.Start);
+            auto fitness     = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + trainingRange.Start);
+            ind.Fitness[Idx] = isfinite(fitness) ? fitness : worst;
         };
 
         for (size_t gen = 0; gen < config.Generations; ++gen)
         {
+            // get some new seeds
+            std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
+
             // perform evaluation
             std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
-
-            // prepare offspring 
-            offspring.clear();
-            offspring.resize(config.PopulationSize);
 
             // preserve one elite
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
             auto best = Max ? maxElem : minElem;
-            offspring[0] = *best;
+
             auto sum = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, [&](size_t lhs, size_t rhs) { return lhs + rhs; }, [&](Ind& p) { return p.Genotype.Length();} );
 
-            fmt::print("Generation {}: {} {} {}\n", gen+1, (double)sum / config.PopulationSize, best->Fitness[Idx], InfixFormatter::Format(best->Genotype, dataset));
+            auto bestTree = best->Genotype;
+            bestTree.Reduce(); // makes it a little nicer to visualize
+
+            fmt::print("Generation {}: {} {} {}\n", gen+1, (double)sum / config.PopulationSize, best->Fitness[Idx], InfixFormatter::Format(bestTree, dataset, 6));
 
             if (1 - best->Fitness[Idx] < 1e-6)
             {
                 break;
             }
 
+            offspring[0] = *best;
             selector.Reset(parents); // apply selector on current parents
 
             // produce some offspring
-            auto iterate = [&](auto& ind) 
+            auto iterate = [&](gsl::index i) 
             {
-                auto first = selector(random);
+                rndlocal.Seed(seeds[i]);
+                auto first = selector(rndlocal);
                 Tree child;
 
                 // crossover 
-                if (uniformReal(random) < config.CrossoverProbability)
+                if (uniformReal(rndlocal) < config.CrossoverProbability)
                 {
-                    auto second = selector(random);
-                    child = crossover(random, parents[first].Genotype, parents[second].Genotype);
+                    auto second = selector(rndlocal);
+                    child = crossover(rndlocal, parents[first].Genotype, parents[second].Genotype);
                 }
                 // mutation
-                if (uniformReal(random) < config.MutationProbability)
+                if (uniformReal(rndlocal) < config.MutationProbability)
                 {
-                    child = child.Length() > 0 ? mutator(random, child) : mutator(random, parents[first].Genotype);
+                    child = child.Length() > 0 ? mutator(rndlocal, child) : mutator(rndlocal, parents[first].Genotype);
                 }
-                ind.Genotype = child.Nodes().empty() ? parents[first].Genotype : std::move(child);
+                offspring[i].Genotype = child.Nodes().empty() ? parents[first].Genotype : std::move(child);
             };
-            std::for_each(std::execution::par_unseq, offspring.begin() + 1, offspring.end(), iterate);
+            std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
 
             // the offspring become the parents
             parents.swap(offspring);

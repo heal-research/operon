@@ -64,6 +64,11 @@ namespace Operon::Random {
             explicit JsfRand(result_type seed = 0xdeadbeef) noexcept
             {
                 static_assert(N == 32 || N == 64, "Invalid template parameter. Valid values are 32 and 64 for 32-bit and 64-bit output.");
+                Seed(seed);
+            }
+
+            inline void Seed(result_type seed)
+            {
                 a = 0xf1ea5eed;
                 b = c = d = seed;
                 for(size_t i = 0; i < 20; ++i)

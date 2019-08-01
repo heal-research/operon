@@ -172,14 +172,16 @@ namespace Operon {
     };
 
     // error measures
-    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type> inline double MeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin) 
+    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
+    inline double MeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin) 
     {
         auto size = std::distance(xBegin, xEnd);
         auto mse  = std::inner_product(xBegin, xEnd, yBegin, T(0.), std::plus<T>(), [](T a, T b) { return (a - b) * (a - b); }) / size;
         return mse;
     }
 
-    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type> inline double NormalizedMeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
+    inline double NormalizedMeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
     {
         MeanVarianceCalculator varCalc;
         MeanVarianceCalculator mseCalc;
@@ -202,7 +204,8 @@ namespace Operon {
         return var > 0 ? mse / var : 0.0;
     }
 
-    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type> inline double RSquared(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type> 
+    inline double RSquared(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
     {
         PearsonsRCalculator calc;
         for (; xBegin != xEnd; ++xBegin, ++yBegin)
@@ -213,27 +216,32 @@ namespace Operon {
         return r * r;
     }
 
-    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type> inline double RootMeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
+    inline double RootMeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
     {
         return std::sqrt(MeanSquaredError(xBegin, xEnd, yBegin));
     }
 
-    template<typename T> inline double MeanSquaredError(const std::vector<T>& estimated, const std::vector<T>& original)
+    template<typename T>
+    inline double MeanSquaredError(const std::vector<T>& estimated, const std::vector<T>& original)
     {
         return MeanSquaredError(estimated.begin(), estimated.end(), original.begin());
     }
 
-    template<typename T> inline double NormalizedMeanSquaredError(const std::vector<T>& estimated, const std::vector<T>& original)
+    template<typename T>
+    inline double NormalizedMeanSquaredError(const std::vector<T>& estimated, const std::vector<T>& original)
     {
         return NormalizedMeanSquaredError(estimated.begin(), estimated.end(), original.begin());
     }
 
-    template<typename T> inline double RootMeanSquaredError(const std::vector<T>& estimated, const std::vector<T>& target)
+    template<typename T>
+    inline double RootMeanSquaredError(const std::vector<T>& estimated, const std::vector<T>& target)
     {
         return RootMeanSquaredError(estimated.begin(), estimated.end(), target.begin()); 
     }
 
-    template<typename T> inline double RSquared(const std::vector<T>& estimated, const std::vector<T>& original)
+    template<typename T>
+    inline double RSquared(const std::vector<T>& estimated, const std::vector<T>& original)
     {
         return RSquared(estimated.begin(), estimated.end(), original.begin());
     }
