@@ -45,7 +45,9 @@ namespace Operon {
 
     template<typename T> inline std::pair<T, T> MinMax(gsl::span<T> values) noexcept
     {
-        auto min = T(0), max = T(0);
+        // get first finite (not NaN, not infinity) value
+        auto min = T(std::numeric_limits<double>::max());
+        auto max = T(std::numeric_limits<double>::min());
         for (auto& v : values)
         {
             if (!isfinite(v)) continue;
@@ -76,17 +78,15 @@ namespace Operon {
     template<typename T>
     void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result)
     {
-        // this should probably be changed
-        Expects(range.Size() == result.size());
-
         auto& nodes = tree.Nodes();
-        std::vector<T> buffer(nodes.size() * BATCHSIZE); // intermediate results buffer
+        auto ptr = std::make_unique<T[]>(nodes.size() * BATCHSIZE);
+        auto buffer = gsl::span<T>(ptr.get(), nodes.size() * BATCHSIZE);
 
         // fill in buf for constants and non-terminal nodes
         size_t idx    = 0;
         for (size_t i = 0; i < nodes.size(); ++i)
         {
-            auto buf = buffer.data() + i * BATCHSIZE;
+            auto buf = buffer.subspan(i * BATCHSIZE, BATCHSIZE).data();
             auto& s = nodes[i];
             if (s.IsConstant() || s.IsVariable())
             {
@@ -102,7 +102,7 @@ namespace Operon {
             for (size_t i = 0; i < nodes.size(); ++i)
             {
                 auto& s = nodes[i];
-                auto buf = buffer.data() + i * BATCHSIZE;
+                auto buf = buffer.subspan(i * BATCHSIZE, remainingRows).data();
                 switch (s.Type)
                 {
                     case NodeType::Variable:

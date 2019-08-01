@@ -182,6 +182,7 @@ int main(int argc, char* argv[])
         const size_t tSize       = 50;
 
         fmt::print("generations: {}, population: {}, iterations: {}, evaluations: {}, maxDepth: {}, maxLength: {}\n", config.Generations, config.PopulationSize, config.Iterations, config.Evaluations, maxDepth, maxLength);
+        fmt::print("training range: [{}, {}], test range: [{}, {}]\n", trainingRange.Start, trainingRange.End, testRange.Start, testRange.End);
 
         TournamentSelector<Individual<1>, idx, maximization> selector(tSize);
         GeneticAlgorithm(random, problem, config, creator, selector, crossover, mutator);
