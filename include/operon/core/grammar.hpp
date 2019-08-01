@@ -3,7 +3,6 @@
 
 #include <unordered_map>
 #include <algorithm>
-#include <stack>
 
 #include "tree.hpp"
 #include "jsf.hpp"
