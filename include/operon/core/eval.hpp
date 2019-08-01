@@ -83,7 +83,7 @@ namespace Operon {
         auto buffer = gsl::span<T>(ptr.get(), nodes.size() * BATCHSIZE);
 
         // fill in buf for constants and non-terminal nodes
-        size_t idx    = 0;
+        gsl::index idx    = 0;
         for (size_t i = 0; i < nodes.size(); ++i)
         {
             auto buf = buffer.subspan(i * BATCHSIZE, BATCHSIZE).data();
@@ -115,7 +115,7 @@ namespace Operon {
                         {
                             auto c = i - 1;             // first child index
                             load(buf, buf - BATCHSIZE); // load child buffer
-                            for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
+                            for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                             {
                                 add(buf, buffer.data() + j * BATCHSIZE);
                             }
@@ -131,7 +131,7 @@ namespace Operon {
                             {
                                 auto c = i - 1;             // first child index
                                 load(buf, buf - BATCHSIZE); // load child buffer
-                                for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
+                                for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                                 {
                                     sub(buf, buffer.data() + j * BATCHSIZE);
                                 }
@@ -142,7 +142,7 @@ namespace Operon {
                         {
                             auto c = i - 1;             // first child index
                             load(buf, buf - BATCHSIZE); // load child buffer
-                            for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
+                            for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                             {
                                 mul(buf, buffer.data() + j * BATCHSIZE);
                             }
@@ -158,7 +158,7 @@ namespace Operon {
                             {
                                 auto c = i - 1;             // first child index
                                 load(buf, buf - BATCHSIZE); // load child buffer
-                                for (size_t k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
+                                for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                                 {
                                     div(buf, buffer.data() + j * BATCHSIZE);
                                 }
