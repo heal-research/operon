@@ -12,36 +12,90 @@ namespace Operon {
     constexpr gsl::index BATCHSIZE = 64;
     constexpr int JET_STRIDE       = 4;
     using     Dual                 = ceres::Jet<double, JET_STRIDE>;
+}
+
+namespace Operon::detail {
+    template<typename T> T exp(T) {}
+    template<typename T> T log(T) {}
+    template<typename T> T sin(T) {}
+    template<typename T> T cos(T) {}
+    template<typename T> T tan(T) {}
+    template<typename T> T sqrt(T) {}
+    template<typename T> T cbrt(T) {}
+    template<typename T, typename U> T pow(T, U) {}
+    template<typename T> T abs(T) {}
+
+    template<> Dual exp(Dual v)           { return ceres::exp(v);    }
+    template<> Dual log(Dual v)           { return ceres::log(v);    }
+    template<> Dual sin(Dual v)           { return ceres::sin(v);    }
+    template<> Dual cos(Dual v)           { return ceres::cos(v);    }
+    template<> Dual tan(Dual v)           { return ceres::tan(v);    }
+    template<> Dual sqrt(Dual v)          { return ceres::sqrt(v);   }
+    template<> Dual cbrt(Dual v)          { return ceres::cbrt(v);   }
+    template<> Dual pow(Dual v, Dual p)   { return ceres::pow(v, p); }
+    template<> Dual pow(Dual v, double p) { return ceres::pow(v, p); }
+    template<> Dual abs(Dual v)           { return ceres::abs(v);    }
+}
+
+#ifdef USE_VDT
+#include "vdt/stdwrap.h"
+#include "vdt/vdtMath.h"
+namespace Operon::detail {
+    template<> double exp(double v)           { return vdt::fast_exp(v);    }
+    template<> double log(double v)           { return vdt::fast_log(v);    }
+    template<> double sin(double v)           { return vdt::fast_sin(v);    }
+    template<> double cos(double v)           { return vdt::fast_cos(v);    }
+    template<> double tan(double v)           { return vdt::fast_tan(v);    }
+    template<> double sqrt(double v)          { return vdt::fast_sqrt(v);   }
+    template<> double cbrt(double v)          { return vdt::fast_cbrt(v);   }
+    template<> double pow(double v, double p) { return vdt::fast_pow(v, p); }
+    template<> double abs(double v)           { return vdt::fast_abs(v);    }
+}
+#else
+namespace Operon::detail {
+    template<> double exp(double v)           { return std::exp(v);    }
+    template<> double log(double v)           { return std::log(v);    }
+    template<> double sin(double v)           { return std::sin(v);    }
+    template<> double cos(double v)           { return std::cos(v);    }
+    template<> double tan(double v)           { return std::tan(v);    }
+    template<> double sqrt(double v)          { return std::sqrt(v);   }
+    template<> double cbrt(double v)          { return std::cbrt(v);   }
+    template<> double pow(double v, double p) { return std::pow(v, p); }
+    template<> double abs(double v)           { return std::abs(v);    }
+}
+#endif
+
+namespace Operon {
 
     // When auto-vectorizing without __restrict,
     // gcc and clang check for overlap (with a bunch of integer code)
     // before running the vectorized loop
 
     // vector operations
-    template<typename T> inline void add(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] += b[i];                          }
-    template<typename T> inline void sub(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] -= b[i];                          }
-    template<typename T> inline void mul(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] *= b[i];                          }
-    template<typename T> inline void div(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] /= b[i];                          }
-    template<typename T> inline void inv(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = 1. / b[i];                      }
-    template<typename T> inline void neg(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = -b[i];                          }
-    template<typename T> inline void exp(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::exp(b[i]);               }
-    template<typename T> inline void log(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::log(b[i]);               }
-    template<typename T> inline void sin(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::sin(b[i]);               }
-    template<typename T> inline void cos(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::cos(b[i]);               }
-    template<typename T> inline void tan(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::tan(b[i]);               }
-    template<typename T> inline void sqrt(T* __restrict a,   T const* __restrict b) noexcept { FOR(i) a[i] = ceres::sqrt(b[i]);              }
-    template<typename T> inline void cbrt(T* __restrict a,   T const* __restrict b) noexcept { FOR(i) a[i] = ceres::cbrt(b[i]);              }
-    template<typename T> inline void square(T* __restrict a, T const* __restrict b) noexcept { FOR(i) a[i] = ceres::pow(b[i], 2.);           }
-    template<typename T> inline void abs(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = ceres::abs(b[i]);               }
-    template<typename T> inline void aq(T* __restrict a,     T const* __restrict b) noexcept { FOR(i) a[i] /= ceres::sqrt(b[i] * b[i] + 1.); }
+    template<typename T> inline void add(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] += b[i];                           }
+    template<typename T> inline void sub(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] -= b[i];                           }
+    template<typename T> inline void mul(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] *= b[i];                           }
+    template<typename T> inline void div(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] /= b[i];                           }
+    template<typename T> inline void inv(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = 1. / b[i];                       }
+    template<typename T> inline void neg(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = -b[i];                           }
+    template<typename T> inline void exp(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::exp(b[i]);               }
+    template<typename T> inline void log(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::log(b[i]);               }
+    template<typename T> inline void sin(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::sin(b[i]);               }
+    template<typename T> inline void cos(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::cos(b[i]);               }
+    template<typename T> inline void tan(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::tan(b[i]);               }
+    template<typename T> inline void sqrt(T* __restrict a,   T const* __restrict b) noexcept { FOR(i) a[i] = detail::sqrt(b[i]);              }
+    template<typename T> inline void cbrt(T* __restrict a,   T const* __restrict b) noexcept { FOR(i) a[i] = detail::cbrt(b[i]);              }
+    template<typename T> inline void square(T* __restrict a, T const* __restrict b) noexcept { FOR(i) a[i] = detail::pow(b[i], 2.);           }
+    template<typename T> inline void abs(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::abs(b[i]);               }
+    template<typename T> inline void aq(T* __restrict a,     T const* __restrict b) noexcept { FOR(i) a[i] = detail::sqrt(b[i] * b[i] + 1.);  }
 
-    template<typename T> inline bool isnan(T a) noexcept                                     { return ceres::IsNaN(a);                       }
-    template<typename T> inline bool isinf(T a) noexcept                                     { return ceres::IsInfinite(a);                  }
-    template<typename T> inline bool isfinite(T a) noexcept                                  { return ceres::IsFinite(a);                    }
+    template<typename T> inline bool isnan(T a) noexcept                                     { return ceres::IsNaN(a);                        }
+    template<typename T> inline bool isinf(T a) noexcept                                     { return ceres::IsInfinite(a);                   }
+    template<typename T> inline bool isfinite(T a) noexcept                                  { return ceres::IsFinite(a);                     }
 
     // vector - scalar operations
-    template<typename T> inline void load(T* __restrict a, T const b) noexcept               { std::fill_n(a, BATCHSIZE, b);                 }
-    template<typename T> inline void load(T* __restrict a, T const* __restrict b) noexcept   { std::copy_n(b, BATCHSIZE, a);                 }
+    template<typename T> inline void load(T* __restrict a, T const b) noexcept               { std::fill_n(a, BATCHSIZE, b);                  }
+    template<typename T> inline void load(T* __restrict a, T const* __restrict b) noexcept   { std::copy_n(b, BATCHSIZE, a);                  }
 
     template<typename T> inline std::pair<T, T> MinMax(gsl::span<T> values) noexcept
     {

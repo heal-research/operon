@@ -9,6 +9,7 @@ project(
     LANGUAGES CXX
 )
 
+find_package(Git)
 find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
 find_package(Ceres REQUIRED)
@@ -16,20 +17,41 @@ find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
 
 FetchContent_Declare(
+    gsl
+    GIT_REPOSITORY https://github.com/microsoft/GSL.git
+    GIT_TAG master
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/GSL
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/GSL
+)
+
+FetchContent_Declare(
+    CSV
+    GIT_REPOSITORY https://github.com/vincentlaucsb/csv-parser.git 
+    GIT_TAG master
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/CSV
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/CSV
+)
+
+FetchContent_Declare(
+    vdt 
+    GIT_REPOSITORY https://github.com/foolnotion/vdt
+    GIT_TAG master
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vdt
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vdt
+)
+
+FetchContent_Declare(
     xxhash 
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/xxhash
     URL https://raw.githubusercontent.com/RedSpah/xxhash_cpp/master/xxhash/xxhash.hpp 
     DOWNLOAD_NO_EXTRACT 1
-    QUIET 0
 )
 
-FetchContent_GetProperties(xxhash)
-if(NOT xxhash_Populated)
-    FetchContent_Populate(xxhash)
-endif()
-
-add_subdirectory(${PROJECT_SOURCE_DIR}/thirdparty/csv-parser EXCLUDE_FROM_ALL)
-add_subdirectory(${PROJECT_SOURCE_DIR}/thirdparty/GSL EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(xxhash gsl csv vdt)
+# prevent compilation of unused targets
+set_target_properties(csv PROPERTIES EXCLUDE_FROM_ALL TRUE)
+set_target_properties(csv_stats PROPERTIES EXCLUDE_FROM_ALL TRUE)
+set_target_properties(csv_info PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 add_library(
     operon
@@ -48,7 +70,8 @@ target_include_directories(
     PRIVATE ${PROJECT_SOURCE_DIR}/include/operon
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
-    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/csv-parser/include
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/vdt/include
     PRIVATE ${CERES_INCLUDE_DIRS}
 )
 # necessary to prevent -isystem introduced by intel-tbb
@@ -65,8 +88,11 @@ target_include_directories(
     PRIVATE ${PROJECT_SOURCE_DIR}/include/operon
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/vdt/include
     PRIVATE ${CERES_INCLUDE_DIRS}
 )
+target_compile_definitions(operon-cli PRIVATE "USE_VDT")
 set_target_properties(operon-cli PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 
 if(MSVC)
