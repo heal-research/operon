@@ -25,7 +25,7 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
-    CSV
+    csv
     GIT_REPOSITORY https://github.com/vincentlaucsb/csv-parser.git 
     GIT_TAG master
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/CSV
