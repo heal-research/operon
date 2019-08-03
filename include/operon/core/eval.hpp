@@ -14,8 +14,6 @@
 
 namespace Operon {
     constexpr gsl::index BATCHSIZE = 64;
-    constexpr int JET_STRIDE       = 4;
-    using     Dual                 = ceres::Jet<double, JET_STRIDE>;
 
     template<typename T> inline std::pair<T, T> MinMax(gsl::span<T> values) noexcept
     {
@@ -243,7 +241,7 @@ namespace Operon {
 
         auto eval = new ParameterizedEvaluation(tree, dataset, targetValues, range);
         DynamicCostFunction* costFunction;
-        if constexpr (autodiff) { costFunction = new DynamicAutoDiffCostFunction<ParameterizedEvaluation, JET_STRIDE>(eval); }
+        if constexpr (autodiff) { costFunction = new DynamicAutoDiffCostFunction<ParameterizedEvaluation>(eval); }
         else                    { costFunction = new DynamicNumericDiffCostFunction(eval);                                   }
         costFunction->AddParameterBlock(coef.size());
         costFunction->SetNumResiduals(range.Size());
