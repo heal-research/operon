@@ -165,8 +165,7 @@ int main(int argc, char* argv[])
                 testRange = { 0, 0 };
             }
         }
-        //auto seed = std::random_device{}();
-        auto seed = 1234;
+        auto seed = std::random_device{}();
         Operon::Random::JsfRand<64> random(seed);
 
         auto creator             = GrowTreeCreator(maxDepth, maxLength);

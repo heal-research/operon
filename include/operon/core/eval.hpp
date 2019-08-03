@@ -96,13 +96,13 @@ namespace Operon {
                     case NodeType::Sub:
                         {
                             auto c = i - 1;             // first child index
-                            r = m.row(c).array();
                             if (s.Arity == 1)
                             {
-                                r = -r;
+                                r = -m.row(c).array();
                             }
                             else 
                             {
+                                r = m.row(c).array();
                                 for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                                 {
                                     r -= m.row(j).array();
@@ -125,10 +125,11 @@ namespace Operon {
                             auto c = i - 1;             // first child index
                             if (s.Arity == 1)
                             {
-                                r = r.inverse();
+                                r = m.row(c).array().inverse();
                             }
                             else
                             {
+                                r = m.row(c).array();
                                 for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                                 {
                                     r /= m.row(j).array(); 
