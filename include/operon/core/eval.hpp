@@ -6,96 +6,16 @@
 #include "dataset.hpp"
 #include "gsl/gsl"
 
+#include <Eigen/Eigen>
+#include <Eigen/Core>
+#include <Eigen/Dense>
+
 #define FOR(i) for(gsl::index i = 0; i < BATCHSIZE; ++i)
 
 namespace Operon {
     constexpr gsl::index BATCHSIZE = 64;
     constexpr int JET_STRIDE       = 4;
     using     Dual                 = ceres::Jet<double, JET_STRIDE>;
-}
-
-namespace Operon::detail {
-    template<typename T> T exp(T) {}
-    template<typename T> T log(T) {}
-    template<typename T> T sin(T) {}
-    template<typename T> T cos(T) {}
-    template<typename T> T tan(T) {}
-    template<typename T> T sqrt(T) {}
-    template<typename T> T cbrt(T) {}
-    template<typename T, typename U> T pow(T, U) {}
-    template<typename T> T abs(T) {}
-
-    template<> Dual exp(Dual v)           { return ceres::exp(v);    }
-    template<> Dual log(Dual v)           { return ceres::log(v);    }
-    template<> Dual sin(Dual v)           { return ceres::sin(v);    }
-    template<> Dual cos(Dual v)           { return ceres::cos(v);    }
-    template<> Dual tan(Dual v)           { return ceres::tan(v);    }
-    template<> Dual sqrt(Dual v)          { return ceres::sqrt(v);   }
-    template<> Dual cbrt(Dual v)          { return ceres::cbrt(v);   }
-    template<> Dual pow(Dual v, Dual p)   { return ceres::pow(v, p); }
-    template<> Dual pow(Dual v, double p) { return ceres::pow(v, p); }
-    template<> Dual abs(Dual v)           { return ceres::abs(v);    }
-}
-
-#ifdef USE_VDT
-#include "vdt/stdwrap.h"
-#include "vdt/vdtMath.h"
-namespace Operon::detail {
-    template<> double exp(double v)           { return vdt::fast_exp(v);    }
-    template<> double log(double v)           { return vdt::fast_log(v);    }
-    template<> double sin(double v)           { return vdt::fast_sin(v);    }
-    template<> double cos(double v)           { return vdt::fast_cos(v);    }
-    template<> double tan(double v)           { return vdt::fast_tan(v);    }
-    template<> double sqrt(double v)          { return vdt::fast_sqrt(v);   }
-    template<> double cbrt(double v)          { return vdt::fast_cbrt(v);   }
-    template<> double pow(double v, double p) { return vdt::fast_pow(v, p); }
-    template<> double abs(double v)           { return vdt::fast_abs(v);    }
-}
-#else
-namespace Operon::detail {
-    template<> double exp(double v)           { return std::exp(v);    }
-    template<> double log(double v)           { return std::log(v);    }
-    template<> double sin(double v)           { return std::sin(v);    }
-    template<> double cos(double v)           { return std::cos(v);    }
-    template<> double tan(double v)           { return std::tan(v);    }
-    template<> double sqrt(double v)          { return std::sqrt(v);   }
-    template<> double cbrt(double v)          { return std::cbrt(v);   }
-    template<> double pow(double v, double p) { return std::pow(v, p); }
-    template<> double abs(double v)           { return std::abs(v);    }
-}
-#endif
-
-namespace Operon {
-
-    // When auto-vectorizing without __restrict,
-    // gcc and clang check for overlap (with a bunch of integer code)
-    // before running the vectorized loop
-
-    // vector operations
-    template<typename T> inline void add(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] += b[i];                           }
-    template<typename T> inline void sub(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] -= b[i];                           }
-    template<typename T> inline void mul(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] *= b[i];                           }
-    template<typename T> inline void div(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] /= b[i];                           }
-    template<typename T> inline void inv(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = 1. / b[i];                       }
-    template<typename T> inline void neg(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = -b[i];                           }
-    template<typename T> inline void exp(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::exp(b[i]);               }
-    template<typename T> inline void log(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::log(b[i]);               }
-    template<typename T> inline void sin(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::sin(b[i]);               }
-    template<typename T> inline void cos(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::cos(b[i]);               }
-    template<typename T> inline void tan(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::tan(b[i]);               }
-    template<typename T> inline void sqrt(T* __restrict a,   T const* __restrict b) noexcept { FOR(i) a[i] = detail::sqrt(b[i]);              }
-    template<typename T> inline void cbrt(T* __restrict a,   T const* __restrict b) noexcept { FOR(i) a[i] = detail::cbrt(b[i]);              }
-    template<typename T> inline void square(T* __restrict a, T const* __restrict b) noexcept { FOR(i) a[i] = detail::pow(b[i], 2.);           }
-    template<typename T> inline void abs(T* __restrict a,    T const* __restrict b) noexcept { FOR(i) a[i] = detail::abs(b[i]);               }
-    template<typename T> inline void aq(T* __restrict a,     T const* __restrict b) noexcept { FOR(i) a[i] = detail::sqrt(b[i] * b[i] + 1.);  }
-
-    template<typename T> inline bool isnan(T a) noexcept                                     { return ceres::IsNaN(a);                        }
-    template<typename T> inline bool isinf(T a) noexcept                                     { return ceres::IsInfinite(a);                   }
-    template<typename T> inline bool isfinite(T a) noexcept                                  { return ceres::IsFinite(a);                     }
-
-    // vector - scalar operations
-    template<typename T> inline void load(T* __restrict a, T const b) noexcept               { std::fill_n(a, BATCHSIZE, b);                  }
-    template<typename T> inline void load(T* __restrict a, T const* __restrict b) noexcept   { std::copy_n(b, BATCHSIZE, a);                  }
 
     template<typename T> inline std::pair<T, T> MinMax(gsl::span<T> values) noexcept
     {
@@ -104,7 +24,7 @@ namespace Operon {
         auto max = T(std::numeric_limits<double>::min());
         for (auto& v : values)
         {
-            if (!isfinite(v)) continue;
+            if (!ceres::IsFinite(v)) continue;
             if (min > v) min = v;
             if (max < v) max = v;
         }
@@ -115,7 +35,7 @@ namespace Operon {
     {
         for (auto& v : values)
         {
-            if (!isfinite(v)) { v = (min + max) / 2.0; }
+            if (!ceres::IsFinite(v)) { v = (min + max) / 2.0; }
             if (v < min) { v = min; }
             if (v > max) { v = max; }
         }
@@ -133,19 +53,18 @@ namespace Operon {
     void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result)
     {
         auto& nodes = tree.Nodes();
-        auto ptr = std::make_unique<T[]>(nodes.size() * BATCHSIZE);
-        auto buffer = gsl::span<T>(ptr.get(), nodes.size() * BATCHSIZE);
+        Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> m(nodes.size(), BATCHSIZE);
 
         // fill in buf for constants and non-terminal nodes
-        gsl::index idx    = 0;
+        gsl::index idx = 0;
         for (size_t i = 0; i < nodes.size(); ++i)
         {
-            auto buf = buffer.subspan(i * BATCHSIZE, BATCHSIZE).data();
             auto& s = nodes[i];
-            if (s.IsConstant() || s.IsVariable())
+
+            if (s.IsConstant())
             {
                 auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                load(buf, v);
+                m.row(i).setConstant(v);
             }
         }
 
@@ -156,38 +75,39 @@ namespace Operon {
             for (size_t i = 0; i < nodes.size(); ++i)
             {
                 auto& s = nodes[i];
-                auto buf = buffer.subspan(i * BATCHSIZE, remainingRows).data();
+                auto r = m.row(i).array();
+
                 switch (s.Type)
                 {
                     case NodeType::Variable:
                         {
                             auto values = dataset.GetValues(s.CalculatedHashValue).subspan(range.Start + row, remainingRows);
-                            std::transform(values.begin(), values.end(), buf, [&](double v) { return T(v * s.Value); });
+                            std::transform(values.begin(), values.end(), r.data(), [&](double v) { return T(v * s.Value); });
                             break;
                         }
                     case NodeType::Add:
                         {
                             auto c = i - 1;             // first child index
-                            load(buf, buf - BATCHSIZE); // load child buffer
+                            r = m.row(c).array();
                             for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                             {
-                                add(buf, buffer.data() + j * BATCHSIZE);
+                                r += m.row(j).array();
                             }
                             break;
                         }
                     case NodeType::Sub:
                         {
+                            auto c = i - 1;             // first child index
+                            r = m.row(c).array();
                             if (s.Arity == 1)
                             {
-                                neg(buf, buf - BATCHSIZE);
+                                r = -r;
                             }
                             else 
                             {
-                                auto c = i - 1;             // first child index
-                                load(buf, buf - BATCHSIZE); // load child buffer
                                 for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                                 {
-                                    sub(buf, buffer.data() + j * BATCHSIZE);
+                                    r -= m.row(j).array();
                                 }
                             }
                             break;
@@ -195,68 +115,67 @@ namespace Operon {
                     case NodeType::Mul:
                         {
                             auto c = i - 1;             // first child index
-                            load(buf, buf - BATCHSIZE); // load child buffer
+                            r = m.row(c).array();
                             for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                             {
-                                mul(buf, buffer.data() + j * BATCHSIZE);
+                                r  *= m.row(j).array();
                             }
                             break;
                         }
                     case NodeType::Div:
                         {
+                            auto c = i - 1;             // first child index
                             if (s.Arity == 1)
                             {
-                                inv(buf, buf - BATCHSIZE);
+                                r = r.inverse();
                             }
                             else
                             {
-                                auto c = i - 1;             // first child index
-                                load(buf, buf - BATCHSIZE); // load child buffer
                                 for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                                 {
-                                    div(buf, buffer.data() + j * BATCHSIZE);
+                                    r /= m.row(j).array(); 
                                 }
                             }
                             break;
                         }
                     case NodeType::Log:
                         {
-                            log(buf, buf - BATCHSIZE);
+                            r = m.row(i-1).array().log();
                             break;
                         }
                     case NodeType::Exp:
                         {
-                            exp(buf, buf - BATCHSIZE);
+                            r = m.row(i-1).array().exp();
                             break;
                         }
                     case NodeType::Sin:
                         {
-                            sin(buf, buf - BATCHSIZE);
+                            r = m.row(i-1).array().sin();
                             break;
                         }
                     case NodeType::Cos:
                         {
-                            cos(buf, buf - BATCHSIZE);
+                            r = m.row(i-1).array().cos();
                             break;
                         }
                     case NodeType::Tan:
                         {
-                            tan(buf, buf - BATCHSIZE);
+                            r = m.row(i-1).array().tan();
                             break;
                         }
                     case NodeType::Sqrt:
                         {
-                            sqrt(buf, buf - BATCHSIZE);
+                            r = m.row(i-1).array().sqrt();
                             break;
                         }
                     case NodeType::Cbrt:
                         {
-                            cbrt(buf, buf - BATCHSIZE);
+                            r = m.row(i-1).array().unaryExpr([](T v) { return ceres::cbrt(v); });
                             break;
                         }
                     case NodeType::Square:
                         {
-                            square(buf, buf - BATCHSIZE);
+                            r = m.row(i-1).array().square();
                             break;
                         }
                     default:
@@ -266,7 +185,7 @@ namespace Operon {
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
-            std::copy_n(buffer.end() - BATCHSIZE, remainingRows, result.begin() + row); 
+            std::copy_n(m.row(m.rows()-1).data(), remainingRows, result.begin() + row); 
         }
         // replace nan and inf values 
         auto [min, max] = MinMax(result);
@@ -301,6 +220,7 @@ namespace Operon {
     std::vector<double> Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const double> targetValues, const Range range, size_t iterations = 50, bool report = false)
     {
         using ceres::DynamicCostFunction;
+
         using ceres::DynamicNumericDiffCostFunction;
         using ceres::DynamicAutoDiffCostFunction;
         using ceres::CauchyLoss;

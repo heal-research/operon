@@ -75,7 +75,7 @@ namespace Operon
             }
             auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
             auto fitness     = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + trainingRange.Start);
-            ind.Fitness[Idx] = isfinite(fitness) ? fitness : worst;
+            ind.Fitness[Idx] = ceres::IsFinite(fitness) ? fitness : worst;
         };
 
         for (size_t gen = 0; gen < config.Generations; ++gen)

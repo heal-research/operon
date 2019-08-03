@@ -66,8 +66,8 @@ int main(int argc, char* argv[])
     std::unique_ptr<Dataset> dataset;
     std::string fileName; // data file name
     std::string target;
-    bool debug = false;
-    bool showGrammar = false;
+    //bool debug = false;
+    //bool showGrammar = false;
     GrammarConfig grammarConfig = Grammar::Arithmetic;
 
     try 
@@ -127,14 +127,14 @@ int main(int argc, char* argv[])
                 auto mask = ~ParseGrammarConfig(value);
                 grammarConfig &= mask;
             }
-            if (key == "debug")
-            {
-                debug = true;
-            }
-            if (key == "show-grammar")
-            {
-                showGrammar = true;
-            }
+            //if (key == "debug")
+            //{
+            //    debug = true;
+            //}
+            //if (key == "show-grammar")
+            //{
+            //    showGrammar = true;
+            //}
         }
         if (result.count("train") == 0)
         {
@@ -165,7 +165,9 @@ int main(int argc, char* argv[])
                 testRange = { 0, 0 };
             }
         }
-        Operon::Random::JsfRand<64> random;
+        //auto seed = std::random_device{}();
+        auto seed = 1234;
+        Operon::Random::JsfRand<64> random(seed);
 
         auto creator             = GrowTreeCreator(maxDepth, maxLength);
         auto crossover           = SubtreeCrossover(0.9, maxDepth, maxLength);
