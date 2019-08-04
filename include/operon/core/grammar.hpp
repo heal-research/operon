@@ -32,6 +32,21 @@ namespace Operon
                 return allowed;
             };
 
+            size_t MinimumFunctionArity() const 
+            {
+                auto minArity = std::numeric_limits<size_t>::max();
+                for(auto& [key, val] : symbolFrequencies)
+                {
+                    if (!IsEnabled(key) || key > NodeType::Square || val < 1e-6)
+                    {
+                        continue;
+                    }
+                    auto arity = key < NodeType::Log ? 2U : 1U;
+                    if (minArity < arity) minArity = arity;
+                }
+                return minArity;
+            }
+
         private:
             NodeType config = Grammar::Arithmetic;
             std::unordered_map<NodeType, double> symbolFrequencies = {
@@ -39,8 +54,8 @@ namespace Operon
                 { NodeType::Mul,      1.0 },
                 { NodeType::Sub,      1.0 },
                 { NodeType::Div,      1.0 },
-                { NodeType::Exp,      1.0 },
                 { NodeType::Log,      1.0 },
+                { NodeType::Exp,      1.0 },
                 { NodeType::Sin,      1.0 },
                 { NodeType::Cos,      1.0 },
                 { NodeType::Tan,      1.0 },

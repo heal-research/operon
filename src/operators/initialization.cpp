@@ -18,9 +18,9 @@ namespace Operon
         return node;
     }
 
-    void Grow(RandomDevice& random, const Grammar& grammar, const vector<Variable>& variables, vector<Node>& nodes, const vector<pair<NodeType, double>>& partials, size_t maxBranchLength, size_t maxBranchDepth) 
+    void Grow(RandomDevice& random, const Grammar& grammar, const vector<Variable>& variables, vector<Node>& nodes, const vector<pair<NodeType, double>>& partials, size_t maxBranchLength, size_t maxBranchDepth, size_t minFunctionArity) 
     {
-        if (maxBranchDepth == 0 || maxBranchLength <= 1)
+        if (maxBranchDepth == 0 || maxBranchLength == 1 || maxBranchLength < minFunctionArity)
         {
             // only allowed to grow leaf nodes
             auto pc   = grammar.GetFrequency(NodeType::Constant);
@@ -31,12 +31,23 @@ namespace Operon
         }
         else 
         {
-            auto node = SampleProportional(random, partials);
+            std::vector<pair<NodeType, double>> candidates;
+            std::copy_if(partials.begin(), partials.end(), back_inserter(candidates), [&](auto& p) { 
+                if (p.first > NodeType::Square) { return false; }
+                auto minLength = p.first < NodeType::Log ? 2U : 1U;
+                return minLength < maxBranchLength;
+            });
+            if (candidates.empty())
+            {
+                throw std::runtime_error(fmt::format("Could not grow tree branch that would satisfy a max branch length of {} (min length = {})\n.", maxBranchLength, minFunctionArity + 1));
+            }
+
+            auto node = SampleProportional(random, candidates);
             nodes.push_back(node);
             for (size_t i = 0; i < node.Arity; ++i)
             {
-                auto maxChildLength = maxBranchLength / node.Arity;
-                Grow(random, grammar, variables, nodes, partials, maxChildLength, maxBranchDepth - 1);
+                auto maxChildLength = (maxBranchLength - 1) / node.Arity;
+                Grow(random, grammar, variables, nodes, partials, maxChildLength, maxBranchDepth - 1, minFunctionArity);
             }
         }
     }
@@ -50,10 +61,13 @@ namespace Operon
         auto root = SampleProportional(random, partials);
         nodes.push_back(root);
 
+        auto minFunctionArity = grammar.MinimumFunctionArity();
+
         for (int i = 0; i < root.Arity; ++i)
         {
             auto maxBranchLength = (maxLength - 1) / root.Arity;
-            Grow(random, grammar, variables, nodes, partials, maxBranchLength, maxDepth - 1);
+            auto maxBranchDepth  = maxDepth - 1;
+            Grow(random, grammar, variables, nodes, partials, maxBranchLength, maxBranchDepth, minFunctionArity);
         }
         uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1); 
         normal_distribution<double> normalReal(0, 1);
@@ -70,6 +84,11 @@ namespace Operon
         }
         reverse(nodes.begin(), nodes.end());
         auto tree = Tree(nodes);
-        return tree.UpdateNodes();
+        tree.UpdateNodes();
+        if (tree.Length() > maxLength)
+        {
+            throw std::runtime_error(fmt::format("Tree length {} exceeds maximum length of {}\n", tree.Length(), maxLength));
+        }
+        return tree;
     }
 }
