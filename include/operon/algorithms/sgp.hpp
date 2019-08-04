@@ -25,7 +25,7 @@ namespace Operon
     };
 
     // this should be designed such that it has:
-    // - ExecutionPolicy (parallel, sequential)
+    // - ExecutionPolicy (par, par_unseq)
     // - InitializationPolicy
     // - ParentSelectionPolicy
     // - OffspringSelectionPolicy
@@ -40,7 +40,7 @@ namespace Operon
         auto target        = problem.TargetVariable();
 
         auto trainingRange = problem.TrainingRange();
-        auto targetValues  = dataset.GetValues(target);
+        auto targetValues  = dataset.GetValues(target).subspan(trainingRange.Start, trainingRange.Size());
 
         auto variables = dataset.Variables();
         std::vector<Variable> inputs;
@@ -74,7 +74,7 @@ namespace Operon
                 OptimizeAutodiff(ind.Genotype, dataset, targetValues, trainingRange, config.Iterations);
             }
             auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
-            auto fitness     = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + trainingRange.Start);
+            auto fitness     = RSquared(estimated.begin(), estimated.end(), targetValues.begin());
             ind.Fitness[Idx] = ceres::IsFinite(fitness) ? fitness : worst;
         };
 
@@ -92,10 +92,12 @@ namespace Operon
 
             auto sum = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, [&](size_t lhs, size_t rhs) { return lhs + rhs; }, [&](Ind& p) { return p.Genotype.Length();} );
 
-            auto bestTree = best->Genotype;
+            auto& bestTree = best->Genotype;
             bestTree.Reduce(); // makes it a little nicer to visualize
 
-            fmt::print("Generation {}: {} {} {}\n", gen+1, (double)sum / config.PopulationSize, best->Fitness[Idx], InfixFormatter::Format(bestTree, dataset, 6));
+            auto estimated = Evaluate<double>(best->Genotype, dataset, trainingRange);
+            auto nmse = NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetValues.begin());
+            fmt::print("Generation {}: {} {:.12f} {:.12f} {}\n", gen+1, (double)sum / config.PopulationSize, best->Fitness[Idx], nmse, InfixFormatter::Format(bestTree, dataset, 12));
 
             if (1 - best->Fitness[Idx] < 1e-6)
             {
