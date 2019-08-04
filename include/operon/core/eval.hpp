@@ -53,20 +53,8 @@ namespace Operon {
         auto& nodes = tree.Nodes();
         Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> m(nodes.size(), BATCHSIZE);
 
-        // fill in buf for constants and non-terminal nodes
-        gsl::index idx = 0;
-        for (size_t i = 0; i < nodes.size(); ++i)
-        {
-            auto& s = nodes[i];
-
-            if (s.IsConstant())
-            {
-                auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                m.row(i).setConstant(v);
-            }
-        }
-
         gsl::index numRows = range.Size();
+        gsl::index idx = 0;
         for (gsl::index row = 0; row < numRows; row += BATCHSIZE)
         {
             auto remainingRows = std::min(BATCHSIZE, numRows - row);
@@ -77,10 +65,17 @@ namespace Operon {
 
                 switch (s.Type)
                 {
+                    case NodeType::Constant:
+                        {
+                            auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
+                            m.row(i).setConstant(v);
+                            break;
+                        }
                     case NodeType::Variable:
                         {
                             auto values = dataset.GetValues(s.CalculatedHashValue).subspan(range.Start + row, remainingRows);
-                            std::transform(values.begin(), values.end(), r.data(), [&](double v) { return T(v * s.Value); });
+                            auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
+                            std::transform(values.begin(), values.end(), r.data(), [&](double v) { return T(v * w); });
                             break;
                         }
                     case NodeType::Add:
@@ -203,7 +198,7 @@ namespace Operon {
         {
             auto res = gsl::span<T>(residuals, range.Size());
             Evaluate(tree_ref, dataset_ref, range, parameters[0], res);
-            std::transform(res.cbegin(), res.cend(), target_ref.cbegin() + range.Start, res.begin(), [](const T& a, const double b) { return a - b; });
+            std::transform(res.cbegin(), res.cend(), target_ref.begin(), res.begin(), [](const T& a, const double b) { return a - b; });
             return true;
         }
 
