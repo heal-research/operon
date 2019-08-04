@@ -54,9 +54,9 @@ namespace Operon {
         Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> m(nodes.size(), BATCHSIZE);
 
         gsl::index numRows = range.Size();
-        gsl::index idx = 0;
         for (gsl::index row = 0; row < numRows; row += BATCHSIZE)
         {
+            gsl::index idx = 0;
             auto remainingRows = std::min(BATCHSIZE, numRows - row);
             for (size_t i = 0; i < nodes.size(); ++i)
             {
@@ -68,7 +68,7 @@ namespace Operon {
                     case NodeType::Constant:
                         {
                             auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                            m.row(i).setConstant(v);
+                            r.setConstant(v);
                             break;
                         }
                     case NodeType::Variable:

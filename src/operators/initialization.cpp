@@ -20,7 +20,7 @@ namespace Operon
 
     void Grow(RandomDevice& random, const Grammar& grammar, const vector<Variable>& variables, vector<Node>& nodes, const vector<pair<NodeType, double>>& partials, size_t maxBranchLength, size_t maxBranchDepth, size_t minFunctionArity) 
     {
-        if (maxBranchDepth == 0 || maxBranchLength == 1 || maxBranchLength < minFunctionArity)
+        if (maxBranchDepth == 0 || maxBranchLength == 1 || maxBranchLength <= minFunctionArity)
         {
             // only allowed to grow leaf nodes
             auto pc   = grammar.GetFrequency(NodeType::Constant);

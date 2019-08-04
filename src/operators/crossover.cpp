@@ -59,18 +59,6 @@ namespace Operon
         long partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
         long maxBranchLength = maxLength - partialTreeLength;
 
-        if (maxBranchDepth < 0)
-        {
-            fmt::print("max branch length: {}\n", maxBranchDepth);
-        }
-        if (maxBranchLength < 0)
-        {
-            fmt::print("max length: {}, max branch length: {}, tree length: {}, cut point length: {}\n", maxLength, maxBranchLength, lhs.Length(), lhs[i].Length + 1);
-        }
-
-        Expects(maxBranchDepth >= 0 && maxBranchDepth <= maxDepth);
-        Expects(maxBranchLength >= 0 && maxBranchLength <= maxLength);
-
         if (auto result = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength); result.has_value())
         {
             auto j = result.value();
@@ -82,7 +70,6 @@ namespace Operon
             copy_n(left.begin() + i + 1,                left.size() - (i + 1), back_inserter(nodes));
 
             auto child = Tree(nodes).UpdateNodes();
-            //Expects(child.Length() <= maxLength && child.Depth() <= maxDepth);
             return child;
         }
 

@@ -42,7 +42,7 @@ namespace Operon
                         continue;
                     }
                     auto arity = key < NodeType::Log ? 2U : 1U;
-                    if (minArity < arity) minArity = arity;
+                    if (minArity > arity) minArity = arity;
                 }
                 return minArity;
             }
