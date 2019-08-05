@@ -51,7 +51,7 @@ namespace Operon {
     void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result)
     {
         auto& nodes = tree.Nodes();
-        Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> m(nodes.size(), BATCHSIZE);
+        Eigen::Matrix<T, Eigen::Dynamic, BATCHSIZE, Eigen::RowMajor> m(nodes.size(), BATCHSIZE);
 
         gsl::index numRows = range.Size();
         for (gsl::index row = 0; row < numRows; row += BATCHSIZE)
