@@ -1,6 +1,7 @@
 #ifndef EVALUATE_HPP
 #define EVALUATE_HPP
 
+#include <execution>
 #include <ceres/ceres.h>
 #include "tree.hpp"
 #include "dataset.hpp"
@@ -10,8 +11,6 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
-#define FOR(i) for(gsl::index i = 0; i < BATCHSIZE; ++i)
-
 namespace Operon {
     constexpr gsl::index BATCHSIZE = 64;
 
@@ -20,7 +19,7 @@ namespace Operon {
         // get first finite (not NaN, not infinity) value
         auto min = T(std::numeric_limits<double>::max());
         auto max = T(std::numeric_limits<double>::min());
-        for (auto& v : values)
+        for (auto const& v : values)
         {
             if (!ceres::IsFinite(v)) continue;
             if (min > v) min = v;
@@ -31,11 +30,11 @@ namespace Operon {
 
     template<typename T> inline void LimitToRange(gsl::span<T> values, T min, T max) noexcept
     {
+        auto mid = (min + max) / 2.0;
         for (auto& v : values)
         {
-            if (!ceres::IsFinite(v)) { v = (min + max) / 2.0; }
-            if (v < min) { v = min; }
-            if (v > max) { v = max; }
+            if (ceres::IsFinite(v)) { std::clamp(v, min, max); }
+            else                    { v = mid;                 }
         }
     }
 
@@ -60,10 +59,9 @@ namespace Operon {
             auto remainingRows = std::min(BATCHSIZE, numRows - row);
             for (size_t i = 0; i < nodes.size(); ++i)
             {
-                auto& s = nodes[i];
                 auto r = m.row(i).array();
 
-                switch (s.Type)
+                switch (auto const& s = nodes[i]; s.Type)
                 {
                     case NodeType::Constant:
                         {
@@ -174,12 +172,13 @@ namespace Operon {
                         }
                     default:
                         {
+                            std::terminate();
                             break;
                         }
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
-            std::copy_n(m.row(m.rows()-1).data(), remainingRows, result.begin() + row); 
+            std::copy_n(m.bottomRows(1).data(), remainingRows, result.begin() + row); 
         }
         // replace nan and inf values 
         auto [min, max] = MinMax(result);
@@ -277,7 +276,5 @@ namespace Operon {
         return Optimize<false>(std::forward<Args>(args)...);
     }
 }
-
-#undef FOR
 #endif
 
