@@ -120,3 +120,7 @@ else()
     target_link_libraries(operon-cli PRIVATE "$<$<CONFIG:Debug>:gcov>")
     target_compile_options(operon-test PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
 endif(MSVC)
+
+include(CTest)
+include(Catch)
+catch_discover_tests(operon-test)
