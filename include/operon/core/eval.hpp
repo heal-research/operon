@@ -50,7 +50,7 @@ namespace Operon {
     void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result)
     {
         auto& nodes = tree.Nodes();
-        Eigen::Matrix<T, Eigen::Dynamic, BATCHSIZE, Eigen::RowMajor> m(nodes.size(), BATCHSIZE);
+        Eigen::Matrix<T, BATCHSIZE, Eigen::Dynamic,  Eigen::ColMajor> m(BATCHSIZE, nodes.size());
 
         gsl::index numRows = range.Size();
         for (gsl::index row = 0; row < numRows; row += BATCHSIZE)
@@ -59,7 +59,7 @@ namespace Operon {
             auto remainingRows = std::min(BATCHSIZE, numRows - row);
             for (size_t i = 0; i < nodes.size(); ++i)
             {
-                auto r = m.row(i).array();
+                auto r = m.col(i).array();
 
                 switch (auto const& s = nodes[i]; s.Type)
                 {
@@ -79,10 +79,10 @@ namespace Operon {
                     case NodeType::Add:
                         {
                             auto c = i - 1;             // first child index
-                            r = m.row(c).array();
+                            r = m.col(c).array();
                             for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                             {
-                                r += m.row(j).array();
+                                r += m.col(j).array();
                             }
                             break;
                         }
@@ -91,14 +91,14 @@ namespace Operon {
                             auto c = i - 1;             // first child index
                             if (s.Arity == 1)
                             {
-                                r = -m.row(c).array();
+                                r = -m.col(c).array();
                             }
                             else 
                             {
-                                r = m.row(c).array();
+                                r = m.col(c).array();
                                 for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                                 {
-                                    r -= m.row(j).array();
+                                    r -= m.col(j).array();
                                 }
                             }
                             break;
@@ -106,10 +106,10 @@ namespace Operon {
                     case NodeType::Mul:
                         {
                             auto c = i - 1;             // first child index
-                            r = m.row(c).array();
+                            r = m.col(c).array();
                             for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                             {
-                                r  *= m.row(j).array();
+                                r  *= m.col(j).array();
                             }
                             break;
                         }
@@ -118,56 +118,56 @@ namespace Operon {
                             auto c = i - 1;             // first child index
                             if (s.Arity == 1)
                             {
-                                r = m.row(c).array().inverse();
+                                r = m.col(c).array().inverse();
                             }
                             else
                             {
-                                r = m.row(c).array();
+                                r = m.col(c).array();
                                 for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length)
                                 {
-                                    r /= m.row(j).array(); 
+                                    r /= m.col(j).array(); 
                                 }
                             }
                             break;
                         }
                     case NodeType::Log:
                         {
-                            r = m.row(i-1).array().log();
+                            r = m.col(i-1).array().log();
                             break;
                         }
                     case NodeType::Exp:
                         {
-                            r = m.row(i-1).array().exp();
+                            r = m.col(i-1).array().exp();
                             break;
                         }
                     case NodeType::Sin:
                         {
-                            r = m.row(i-1).array().sin();
+                            r = m.col(i-1).array().sin();
                             break;
                         }
                     case NodeType::Cos:
                         {
-                            r = m.row(i-1).array().cos();
+                            r = m.col(i-1).array().cos();
                             break;
                         }
                     case NodeType::Tan:
                         {
-                            r = m.row(i-1).array().tan();
+                            r = m.col(i-1).array().tan();
                             break;
                         }
                     case NodeType::Sqrt:
                         {
-                            r = m.row(i-1).array().sqrt();
+                            r = m.col(i-1).array().sqrt();
                             break;
                         }
                     case NodeType::Cbrt:
                         {
-                            r = m.row(i-1).array().unaryExpr([](T v) { return ceres::cbrt(v); });
+                            r = m.col(i-1).array().unaryExpr([](T v) { return ceres::cbrt(v); });
                             break;
                         }
                     case NodeType::Square:
                         {
-                            r = m.row(i-1).array().square();
+                            r = m.col(i-1).array().square();
                             break;
                         }
                     default:
@@ -178,7 +178,7 @@ namespace Operon {
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
-            std::copy_n(m.bottomRows(1).data(), remainingRows, result.begin() + row); 
+            std::copy_n(m.rightCols(1).data(), remainingRows, result.begin() + row); 
         }
         // replace nan and inf values 
         auto [min, max] = MinMax(result);
