@@ -48,10 +48,8 @@ namespace Operon
         public:
             size_t operator()(RandomDevice& random) const
             {
-                std::uniform_real_distribution<double> uniformReal(0, fitness.back() - std::numeric_limits<double>::epsilon());
-                auto r = uniformReal(random);
-                auto it = std::find_if(fitness.begin(), fitness.end(), [=](double v) { return r < v; });
-                return std::distance(fitness.begin(), it);
+                std::uniform_real_distribution<double> uniformReal(0, fitness.back().first - std::numeric_limits<double>::epsilon());
+                return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), 0L), [](auto lhs, auto rhs){ return lhs < rhs; })->second;
             }
 
             void Reset(const std::vector<T>& pop)
@@ -67,23 +65,26 @@ namespace Operon
                 fitness.reserve(this->population.size());
 
                 double vmin = this->population[0].Fitness[Idx], vmax = vmin;
-                for (size_t i = 0; i < this->population.size(); ++i)
+                for (gsl::index i = 0; i < this->population.size(); ++i)
                 {
                     auto f = this->population[i].Fitness[Idx];
-                    fitness.push_back(f);
+                    fitness.push_back(std::make_pair(f, i));
                     if (vmin > f) vmin = f;
                     if (vmax < f) vmax = f;
                 }
-                auto prepare = [=](auto f) 
+                auto prepare = [=](auto p) 
                 {  
-                    if constexpr (Max) return f - vmin; 
-                    else return vmax - f;
+                    auto f = p.first;
+                    if constexpr (Max) return std::make_pair(f - vmin, p.second); 
+                    else return std::make_pair(vmax - f, p.second);
                 };
                 std::transform(fitness.begin(), fitness.end(), fitness.begin(), prepare);
-                std::inclusive_scan(std::execution::par_unseq, fitness.begin(), fitness.end(), fitness.begin());
+                std::sort(fitness.begin(), fitness.end());
+                std::inclusive_scan(std::execution::par_unseq, fitness.begin(), fitness.end(), fitness.begin(), [](auto lhs, auto rhs) { return std::make_pair(lhs.first + rhs.first, rhs.second); });
             }
 
-            std::vector<double> fitness;
+            // discrete CDF of the population fitness values
+            std::vector<std::pair<double, gsl::index>> fitness;
     };
 }
 #endif
