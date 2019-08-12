@@ -49,7 +49,7 @@ namespace Operon
             size_t operator()(RandomDevice& random) const
             {
                 std::uniform_real_distribution<double> uniformReal(0, fitness.back().first - std::numeric_limits<double>::epsilon());
-                return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), 0L), [](auto lhs, auto rhs){ return lhs < rhs; })->second;
+                return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), 0L), std::less{})->second;
             }
 
             void Reset(const std::vector<T>& pop)
