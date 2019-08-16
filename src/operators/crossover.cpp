@@ -1,10 +1,8 @@
 #include "operators/crossover.hpp"
 
-using namespace std;
-
 namespace Operon
 {
-    optional<size_t> SubtreeCrossover::SelectRandomBranch(RandomDevice& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength) const
+    std::optional<size_t> SubtreeCrossover::SelectRandomBranch(RandomDevice& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength) const
     {
         if (maxBranchDepth == 0 || maxBranchLength == 0)
         {
@@ -12,7 +10,7 @@ namespace Operon
         }
         std::uniform_real_distribution<double> uniformReal(0, 1);
         // create a vector of indices and shuffle it to ensure fair sampling
-        vector<gsl::index> indices(tree.Length());
+        std::vector<gsl::index> indices(tree.Length());
         iota(indices.begin(), indices.end(), 0);
         shuffle(indices.begin(), indices.end(), random);
 
@@ -27,7 +25,7 @@ namespace Operon
 
             if ((uniformReal(random) < internalProb) != tree[i].IsLeaf())
             {
-                return make_optional(i);
+                return std::make_optional(i);
             }
         }
         return std::nullopt;
@@ -35,9 +33,9 @@ namespace Operon
 
     size_t SubtreeCrossover::CutRandom(RandomDevice& random, const Tree& tree, double internalProb) const
     {
-        uniform_real_distribution<double> uniformReal(0, 1);
+        std::uniform_real_distribution<double> uniformReal(0, 1);
         // create a vector of indices and shuffle it to ensure fair sampling
-        vector<size_t> indices(tree.Length());
+        std::vector<size_t> indices(tree.Length());
         iota(indices.begin(), indices.end(), 0);
         shuffle(indices.begin(), indices.end(), random);
 

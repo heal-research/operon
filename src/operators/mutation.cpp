@@ -1,12 +1,10 @@
 #include "operators/mutation.hpp"
 
-using namespace std;
-
 namespace Operon
 {
     Tree OnePointMutation::operator()(RandomDevice& random, const Tree& tree) const 
     {
-        vector<size_t> leafIndices;
+        std::vector<size_t> leafIndices;
         for (size_t i = 0; i < tree.Length(); ++i)
         {
             if (tree[i].IsLeaf())
@@ -16,10 +14,10 @@ namespace Operon
         }
 
         auto child = tree;
-        uniform_int_distribution<size_t> uniformInt(0, leafIndices.size() - 1);
+        std::uniform_int_distribution<size_t> uniformInt(0, leafIndices.size() - 1);
         auto& node = child[leafIndices[uniformInt(random)]];
 
-        normal_distribution<double> normalReal(0, 1);
+        std::normal_distribution<double> normalReal(0, 1);
         node.Value += normalReal(random);
 
         return child;
@@ -28,7 +26,7 @@ namespace Operon
     Tree MultiPointMutation::operator()(RandomDevice& random, const Tree& tree) const 
     {
         auto child = tree;
-        normal_distribution<double> normalReal(0, 1);
+        std::normal_distribution<double> normalReal(0, 1);
         for(auto& node : child.Nodes())
         {
             node.Value += normalReal(random);
