@@ -105,13 +105,11 @@ namespace Operon
 
             auto estimated = Evaluate<double>(best->Genotype, dataset, trainingRange);
             auto nmse = NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetValues.begin());
-
+            fmt::print("Generation {}: {} {} {} {:.6f} {:.6f} {}\n", gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluations, best->Fitness[Idx], nmse, InfixFormatter::Format(bestTree, dataset, 6));
             if (terminate)
             {
-                fmt::print("Maximum selection pressure reached. Algorithm terminated.\n");
                 return;
             }
-            fmt::print("Generation {}: {} {} {} {:.6f} {:.6f} {}\n", gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluations, best->Fitness[Idx], nmse, InfixFormatter::Format(bestTree, dataset, 6));
 
             offspring[0] = *best;
             selector.Reset(parents); // apply selector on current parents
