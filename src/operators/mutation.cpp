@@ -4,21 +4,21 @@ namespace Operon
 {
     Tree OnePointMutation::operator()(RandomDevice& random, const Tree& tree) const 
     {
-        std::vector<size_t> leafIndices;
-        for (size_t i = 0; i < tree.Length(); ++i)
+        auto& nodes = tree.Nodes();
+
+        auto leafCount = std::count_if(nodes.begin(), nodes.end(), [](const Node& node) { return node.IsLeaf(); });
+        std::uniform_int_distribution<gsl::index> uniformInt(1, leafCount);
+        auto index = uniformInt(random);
+
+        size_t i = 0;
+        for (; i < nodes.size(); ++i)
         {
-            if (tree[i].IsLeaf())
-            {
-                leafIndices.push_back(i);
-            }
+            if (nodes[i].IsLeaf() && --index == 0) break;
         }
 
-        auto child = tree;
-        std::uniform_int_distribution<size_t> uniformInt(0, leafIndices.size() - 1);
-        auto& node = child[leafIndices[uniformInt(random)]];
-
         std::normal_distribution<double> normalReal(0, 1);
-        node.Value += normalReal(random);
+        auto child = tree;
+        child[i].Value += normalReal(random);
 
         return child;
     }
