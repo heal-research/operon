@@ -44,15 +44,18 @@ namespace Operon
         auto trainingRange = problem.TrainingRange();
         auto targetValues  = dataset.GetValues(target).subspan(trainingRange.Start, trainingRange.Size());
 
-        auto variables = dataset.Variables();
         std::vector<Variable> inputs;
+        auto variables = dataset.Variables();
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
 
-        std::vector<Ind> parents(config.PopulationSize);
-        std::vector<Ind> offspring(config.PopulationSize);
+        // we run with two populations which get swapped with each other
+        std::vector<Ind> parents(config.PopulationSize);   // parent population
+        std::vector<Ind> offspring(config.PopulationSize); // offspring population
 
+        // easier to work with indices 
         std::vector<gsl::index> indices(config.PopulationSize);
         std::iota(indices.begin(), indices.end(), 0L);
+        // random seeds for each thread
         std::vector<RandomDevice::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
 
@@ -88,7 +91,7 @@ namespace Operon
         std::atomic_bool terminate = false;
         double selectionPressure = 0;
 
-        for (size_t gen = 0, evaluations = parents.size(); gen < config.Generations && evaluations < config.Evaluations && selectionPressure < config.MaxSelectionPressure; ++gen, evaluations += evaluated)
+        for (size_t gen = 0, evaluations = parents.size(); gen < config.Generations && evaluations < config.Evaluations; ++gen, evaluations += evaluated)
         {
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
@@ -161,6 +164,10 @@ namespace Operon
             };
             std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
             selectionPressure = static_cast<double>(evaluated) / config.PopulationSize;
+            if (selectionPressure > config.MaxSelectionPressure)
+            {
+                terminate = true;
+            }
 
             // the offspring become the parents
             parents.swap(offspring);
