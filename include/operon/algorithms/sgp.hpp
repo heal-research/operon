@@ -97,7 +97,7 @@ namespace Operon
 
             auto estimated = Evaluate<double>(best->Genotype, dataset, trainingRange);
             auto nmse = NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetValues.begin());
-            fmt::print("Generation {}: {} {:.12f} {:.12f} {}\n", gen+1, (double)sum / config.PopulationSize, best->Fitness[Idx], nmse, InfixFormatter::Format(bestTree, dataset, 6));
+            fmt::print("Generation {}: {} {:.12f} {:.12f} ({} nodes/s)\n{}\n", gen+1, (double)sum / config.PopulationSize, best->Fitness[Idx], nmse, InfixFormatter::Format(bestTree, dataset, 6));
 
             if (1 - best->Fitness[Idx] < 1e-6)
             {

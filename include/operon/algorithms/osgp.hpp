@@ -58,16 +58,17 @@ namespace Operon
 
         thread_local RandomDevice rndlocal = random;
 
+        const auto worst = Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max();
         auto create = [&](gsl::index i)
         {
             // create one random generator per thread
             rndlocal.Seed(seeds[i]);
-            parents[i].Genotype = creator(rndlocal, grammar, inputs);
+            parents[i].Genotype     = creator(rndlocal, grammar, inputs);
+            parents[i].Fitness[Idx] = worst;
         };
 
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), create);
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
-        const auto worst = Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max();
 
         auto evaluate = [&](auto& ind) 
         {
@@ -83,13 +84,11 @@ namespace Operon
         // perform evaluation
         std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
 
-        auto evaluations = parents.size();
-
         std::atomic_ulong evaluated;
         std::atomic_bool terminate = false;
         double selectionPressure = 0;
 
-        for (size_t gen = 0; gen < config.Generations; ++gen)
+        for (size_t gen = 0, evaluations = parents.size(); gen < config.Generations && evaluations < config.Evaluations && selectionPressure < config.MaxSelectionPressure; ++gen, evaluations += evaluated)
         {
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
@@ -147,7 +146,7 @@ namespace Operon
                     {
                         child = child.Length() > 0 ? mutator(rndlocal, child) : mutator(rndlocal, parents[first].Genotype);
                     }
-                    Ind ind = Ind { std::move(child), worst };
+                    auto ind = Ind { std::move(child), worst };
                     evaluate(ind);
                     ++evaluated;
                     if ((Max && ind.Fitness[Idx] > f) || (!Max && ind.Fitness[Idx] < f))
@@ -162,7 +161,6 @@ namespace Operon
             };
             std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
             selectionPressure = static_cast<double>(evaluated) / config.PopulationSize;
-            evaluations += evaluated;
 
             // the offspring become the parents
             parents.swap(offspring);
