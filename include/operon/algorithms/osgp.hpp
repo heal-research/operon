@@ -42,7 +42,10 @@ namespace Operon
         auto target        = problem.TargetVariable();
 
         auto trainingRange = problem.TrainingRange();
-        auto targetValues  = dataset.GetValues(target).subspan(trainingRange.Start, trainingRange.Size());
+        auto testRange     = problem.TestRange();
+        auto targetValues  = dataset.GetValues(target);
+        auto targetTrain   = targetValues.subspan(trainingRange.Start, trainingRange.Size());
+        auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
 
         std::vector<Variable> inputs;
         auto variables = dataset.Variables();
@@ -77,10 +80,10 @@ namespace Operon
         {
             if (config.Iterations > 0)
             {
-                OptimizeAutodiff(ind.Genotype, dataset, targetValues, trainingRange, config.Iterations);
+                OptimizeAutodiff(ind.Genotype, dataset, targetTrain, trainingRange, config.Iterations);
             }
             auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
-            auto fitness     = 1 - NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetValues.begin());
+            auto fitness     = 1 - NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetTrain.begin());
             ind.Fitness[Idx] = ceres::IsFinite(fitness) ? fitness : worst;
         };
 
@@ -105,9 +108,9 @@ namespace Operon
             auto& bestTree = best->Genotype;
             bestTree.Reduce(); // makes it a little nicer to visualize
 
-            auto estimated = Evaluate<double>(best->Genotype, dataset, trainingRange);
-            auto nmse = NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetValues.begin());
-            fmt::print("Generation {}: {} {} {} {:.6f} {:.6f} {}\n", gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluations, best->Fitness[Idx], nmse, InfixFormatter::Format(bestTree, dataset, 6));
+            auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
+            auto nmseTest  = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
+            fmt::print("Generation {}: {} {} {} {:.6f} {:.6f} {}\n", gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluations, best->Fitness[Idx], 1 - nmseTest, InfixFormatter::Format(bestTree, dataset, 6));
             if (terminate)
             {
                 return;
