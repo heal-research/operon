@@ -2,7 +2,6 @@
 #include <cxxopts.hpp>
 
 #include "algorithms/sgp.hpp"
-#include "algorithms/osgp.hpp"
 #include "operators/initialization.hpp"
 #include "operators/crossover.hpp"
 #include "operators/mutation.hpp"
@@ -51,7 +50,8 @@ int main(int argc, char* argv[])
     }
 
     // parse and set default values
-    OffspringSelectionGeneticAlgorithmConfig config;
+    //OffspringSelectionGeneticAlgorithmConfig config;
+    GeneticAlgorithmConfig config;
     config.Generations          = result["generations"].as<size_t>();
     config.PopulationSize       = result["population-size"].as<size_t>();
     config.Evaluations          = result["evaluations"].as<size_t>();
@@ -173,23 +173,24 @@ int main(int argc, char* argv[])
         auto crossover           = SubtreeCrossover(0.9, maxDepth, maxLength);
         auto mutator             = OnePointMutation();
 
-        auto inputs              = dataset->VariableNames();
-        inputs.erase(std::remove_if(inputs.begin(), inputs.end(), [&](const std::string& s) { return s == target; }), inputs.end());
+        auto variables = dataset->Variables();
+        std::vector<Variable> inputs;
+        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& var) { return var.Name != target; });
 
         auto problem       = Problem(*dataset, inputs, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
 
         const bool maximization  = true;
         const size_t idx         = 0;
-        const size_t tSize       = 2;
+        const size_t tSize       = 5;
 
         fmt::print("generations: {}, population: {}, iterations: {}, evaluations: {}, maxDepth: {}, maxLength: {}\n", config.Generations, config.PopulationSize, config.Iterations, config.Evaluations, maxDepth, maxLength);
         fmt::print("training range: [{}, {}], test range: [{}, {}]\n", trainingRange.Start, trainingRange.End, testRange.Start, testRange.End);
 
-        //TournamentSelector<Individual<1>, idx, maximization> selector(tSize);
-        config.MaxSelectionPressure = 100;
-        ProportionalSelector<Individual<1>, idx, maximization> selector;
-        OffspringSelectionGeneticAlgorithm(random, problem, config, creator, selector, crossover, mutator);
+        TournamentSelector<Individual<1>, idx, maximization> selector(tSize);
+        //ProportionalSelector<Individual<1>, idx, maximization> selector;
+        //OffspringSelectionGeneticAlgorithm(random, problem, config, creator, selector, crossover, mutator);
+        GeneticAlgorithm(random, problem, config, creator, selector, crossover, mutator);
     }
     catch(std::exception& e) 
     {

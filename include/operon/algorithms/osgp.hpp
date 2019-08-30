@@ -47,10 +47,6 @@ namespace Operon
         auto targetTrain   = targetValues.subspan(trainingRange.Start, trainingRange.Size());
         auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
 
-        std::vector<Variable> inputs;
-        auto variables = dataset.Variables();
-        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
-
         // we run with two populations which get swapped with each other
         std::vector<Ind> parents(config.PopulationSize);   // parent population
         std::vector<Ind> offspring(config.PopulationSize); // offspring population
@@ -61,6 +57,9 @@ namespace Operon
         // random seeds for each thread
         std::vector<RandomDevice::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
+
+        // 
+        const auto& inputs = problem.InputVariables();
 
         thread_local RandomDevice rndlocal = random;
 

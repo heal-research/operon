@@ -45,9 +45,7 @@ namespace Operon
         auto targetTrain   = targetValues.subspan(trainingRange.Start, trainingRange.Size());
         auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
 
-        auto variables = dataset.Variables();
-        std::vector<Variable> inputs;
-        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
+        const auto& inputs = problem.InputVariables();
 
         std::vector<Ind> parents(config.PopulationSize);
         std::vector<Ind> offspring(config.PopulationSize);

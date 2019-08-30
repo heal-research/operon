@@ -69,21 +69,39 @@ target_include_directories(
 # necessary to prevent -isystem introduced by intel-tbb
 set_target_properties(operon PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 
+#binary for GP algorithm cli version
 add_executable(
-    operon-cli 
-    src/cli/operon_cli.cpp
+    operon-gp
+    src/cli/operon_gp.cpp
 )
-target_compile_features(operon-cli PRIVATE cxx_std_17)
-target_link_libraries(operon-cli PRIVATE operon cxxopts::cxxopts TBB::tbb)
+target_compile_features(operon-gp PRIVATE cxx_std_17)
+target_link_libraries(operon-gp PRIVATE operon cxxopts::cxxopts TBB::tbb)
 target_include_directories(
-    operon-cli 
+    operon-gp 
     PRIVATE ${PROJECT_SOURCE_DIR}/include/operon
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     PRIVATE ${CERES_INCLUDE_DIRS}
 )
-set_target_properties(operon-cli PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+set_target_properties(operon-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+
+# binary for OSGP algorithm cli version
+add_executable(
+    operon-osgp
+    src/cli/operon_osgp.cpp
+)
+target_compile_features(operon-osgp PRIVATE cxx_std_17)
+target_link_libraries(operon-osgp PRIVATE operon cxxopts::cxxopts TBB::tbb)
+target_include_directories(
+    operon-osgp 
+    PRIVATE ${PROJECT_SOURCE_DIR}/include/operon
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
+    PRIVATE ${CERES_INCLUDE_DIRS}
+)
+set_target_properties(operon-osgp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 
 find_package(Catch2 REQUIRED)
 add_executable(
@@ -108,7 +126,8 @@ set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 
 if(MSVC)
     target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")
-    target_compile_options(operon-cli PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")
+    target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")
+    target_compile_options(operon-osgp PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")
     target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")
     # ugly hack to set the include dir correctly
     find_path(FMT_INCLUDE_DIR fmt/core.h)
@@ -116,8 +135,10 @@ if(MSVC)
 else()
     target_compile_options(operon PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
     target_link_libraries(operon PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-cli PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
-    target_link_libraries(operon-cli PRIVATE "$<$<CONFIG:Debug>:gcov>")
+    target_compile_options(operon-gp PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
+    target_link_libraries(operon-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
+    target_compile_options(operon-osgp PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
+    target_link_libraries(operon-osgp PRIVATE "$<$<CONFIG:Debug>:gcov>")
     target_compile_options(operon-test PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
 endif(MSVC)
 

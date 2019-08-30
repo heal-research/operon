@@ -2,7 +2,7 @@
 
 namespace Operon
 {
-    auto Problem::CreateSolution(const Tree& tree) const -> Solution 
+    Solution Problem::CreateSolution(const Tree& tree) const
     {
     }
 }
