@@ -100,7 +100,7 @@ int main(int argc, char* argv[])
             {
                 config.PopulationSize = kv.as<size_t>();
             }
-            if (key == "selection-selection-pressure")
+            if (key == "selection-pressure")
             {
                 config.MaxSelectionPressure = kv.as<size_t>();
             }

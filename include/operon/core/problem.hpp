@@ -36,7 +36,7 @@ namespace Operon
             Grammar& GetGrammar()                               { return grammar; }
             const Dataset& GetDataset()         const           { return dataset; }
             Dataset& GetDataset()                               { return dataset; }
-            const std::vector<Variable>& InputVariables() const { return inputVariables; }
+            const gsl::span<const Variable> InputVariables() const { return inputVariables; }
 
             Solution CreateSolution(const Tree&) const;
             

@@ -26,7 +26,7 @@ namespace Operon
     };
 
     // this should be designed such that it has:
-    // - ExecutionPolicy (par, par_unseq)
+    // - ExecutionPolicy (par, seq)
     // - InitializationPolicy
     // - ParentSelectionPolicy
     // - OffspringSelectionPolicy
@@ -34,7 +34,7 @@ namespace Operon
     // - some policy/distinction between single- and multi-objective?
     // - we should not pass operators as parameters (should be instantiated/handled by the respective policy)
     template<typename Ind, size_t Idx, bool Max>
-    void OffspringSelectionGeneticAlgorithm(RandomDevice& random, const Problem& problem, const OffspringSelectionGeneticAlgorithmConfig config, CreatorBase& creator, SelectorBase<Ind, Idx, Max>& selector, CrossoverBase& crossover, MutatorBase& mutator)
+    void OffspringSelectionGeneticAlgorithm(operon::rand_t& random, const Problem& problem, const OffspringSelectionGeneticAlgorithmConfig config, CreatorBase& creator, SelectorBase<Ind, Idx, Max>& selector, CrossoverBase& crossover, MutatorBase& mutator)
     {
         fmt::print("max sel pressure: {}\n", config.MaxSelectionPressure);
         auto& grammar      = problem.GetGrammar();
@@ -55,13 +55,14 @@ namespace Operon
         std::vector<gsl::index> indices(config.PopulationSize);
         std::iota(indices.begin(), indices.end(), 0L);
         // random seeds for each thread
-        std::vector<RandomDevice::result_type> seeds(config.PopulationSize);
+        std::vector<operon::rand_t::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
+        // keep track of local search effort
+        std::vector<gsl::index> localSearchEvaluations(config.PopulationSize);
 
-        // 
         const auto& inputs = problem.InputVariables();
 
-        thread_local RandomDevice rndlocal = random;
+        thread_local operon::rand_t rndlocal = random;
 
         const auto worst = Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max();
         auto create = [&](gsl::index i)
@@ -75,11 +76,12 @@ namespace Operon
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), create);
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
 
-        auto evaluate = [&](auto& ind) 
+        auto evaluate = [&](Ind& ind, gsl::index i) 
         {
             if (config.Iterations > 0)
             {
-                OptimizeAutodiff(ind.Genotype, dataset, targetTrain, trainingRange, config.Iterations);
+                auto summary = OptimizeAutodiff(ind.Genotype, dataset, targetTrain, trainingRange, config.Iterations);
+                localSearchEvaluations[i] += summary.num_successful_steps + summary.num_unsuccessful_steps;
             }
             auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
             auto fitness     = 1 - NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetTrain.begin());
@@ -87,13 +89,13 @@ namespace Operon
         };
 
         // perform evaluation
-        std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
-
+        std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](gsl::index i) { evaluate(parents[i], i); });
+    
         std::atomic_ulong evaluated;
         std::atomic_bool terminate = false;
         double selectionPressure = 0;
 
-        for (size_t gen = 0, evaluations = parents.size(); gen < config.Generations && evaluations < config.Evaluations; ++gen, evaluations += evaluated)
+        for (size_t gen = 0, evaluations = parents.size(); gen < config.Generations; ++gen)
         {
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
@@ -122,6 +124,8 @@ namespace Operon
 
             auto fitness = [&](gsl::index i) { return parents[i].Fitness[Idx]; };
 
+            std::fill(localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L);
+
             // produce some offspring
             auto iterate = [&](gsl::index i) 
             {
@@ -134,7 +138,7 @@ namespace Operon
 
                 do {
                     auto first = selector(rndlocal);
-                    Tree child;
+                    std::optional<Tree> child;
 
                     double f = fitness(first);
 
@@ -146,13 +150,22 @@ namespace Operon
                         f = Max ? std::max(fitness(first), fitness(second)) 
                                 : std::min(fitness(first), fitness(second));
                     }
+                    // make sure we have an offspring individual 
+                    if (!child.has_value())
+                    {
+                        auto tmp = parents[first].Genotype; // make a copy
+                        child = tmp; 
+                    }
+
                     // mutation
                     if (uniformReal(rndlocal) < config.MutationProbability)
                     {
-                        child = child.Length() > 0 ? mutator(rndlocal, child) : mutator(rndlocal, parents[first].Genotype);
+                        mutator(rndlocal, child.value()); // mutate in place
                     }
-                    auto ind = Ind { std::move(child), worst };
-                    evaluate(ind);
+
+                    auto ind = Ind { std::move(child.value()), worst };
+
+                    evaluate(ind, i);
                     ++evaluated;
                     if ((Max && ind.Fitness[Idx] > f) || (!Max && ind.Fitness[Idx] < f))
                     {
@@ -160,7 +173,7 @@ namespace Operon
                         return;
                     }
                 }
-                while (!terminate && evaluated < config.PopulationSize * config.MaxSelectionPressure);
+                while (!terminate && evaluated < config.PopulationSize * config.MaxSelectionPressure && evaluated + evaluations < config.Evaluations);
                 // if this point is reached we should terminate the algorithm
                 terminate = true;
             };
@@ -170,6 +183,8 @@ namespace Operon
             {
                 terminate = true;
             }
+            evaluations += evaluated;
+            evaluations += std::reduce(std::execution::par_unseq, localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L, std::plus<gsl::index>{});
 
             // the offspring become the parents
             parents.swap(offspring);

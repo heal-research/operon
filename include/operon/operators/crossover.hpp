@@ -11,9 +11,9 @@ namespace Operon
     {
         public:
             SubtreeCrossover(double p, size_t d, size_t l) : internalProbability(p), maxDepth(d), maxLength(l) { } 
-            std::optional<size_t> SelectRandomBranch(RandomDevice& random, const Tree& tree, double internalProbability, size_t maxBranchDepth, size_t maxBranchLength) const;
-            size_t CutRandom(RandomDevice& random, const Tree& tree, double internalProb) const;
-            auto operator()(RandomDevice& random, const Tree& lhs, const Tree& rhs) const -> Tree override;
+            std::optional<size_t> SelectRandomBranch(operon::rand_t& random, const Tree& tree, double internalProbability, size_t maxBranchDepth, size_t maxBranchLength) const;
+            size_t CutRandom(operon::rand_t& random, const Tree& tree, double internalProb) const;
+            auto operator()(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const -> Tree override;
 
         private:
             double internalProbability;

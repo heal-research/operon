@@ -3,6 +3,7 @@
 
 #include "gsl/gsl"
 #include "xxhash/xxhash.hpp"
+#include "jsf.hpp"
 
 namespace Operon
 {
@@ -10,6 +11,7 @@ namespace Operon
     namespace operon 
     {
         using hash_t = xxh::hash64_t;
+        using rand_t = Random::JsfRand<64>;
     }
 
     struct Range 

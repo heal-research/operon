@@ -125,8 +125,8 @@ namespace Operon {
         inline constexpr bool IsLeaf() const noexcept { return Arity == 0; }
         inline constexpr bool IsCommutative() const noexcept { return Type < NodeType::Sub; }
 
-        template<NodeType T>
-        inline bool Is() const { return T == Type; }
+        template<NodeType ... T>
+        inline bool Is() const { return ((Type == T) || ...); }
 
         inline bool IsConstant()       const { return Is<NodeType::Constant>(); }
         inline bool IsVariable()       const { return Is<NodeType::Variable>(); }

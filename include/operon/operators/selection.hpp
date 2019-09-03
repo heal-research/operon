@@ -11,15 +11,15 @@
 
 namespace Operon
 {
-    template<typename T, size_t Idx, bool Max>
+    template<typename T, gsl::index Idx, bool Max>
     class TournamentSelector : public SelectorBase<T, Idx, Max>
     {
         public:
             TournamentSelector(size_t tSize) : tournamentSize(tSize) {} 
 
-            size_t operator()(RandomDevice& random) const
+            gsl::index operator()(operon::rand_t& random) const
             {
-                std::uniform_int_distribution<size_t> uniformInt(0, this->population.size() - 1);
+                std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
 
                 auto best = uniformInt(random);
                 for(size_t j = 1; j < tournamentSize; ++j)
@@ -33,7 +33,7 @@ namespace Operon
                 return best;
             }
 
-            void Reset(const std::vector<T>& pop) override 
+            void Reset(const gsl::span<const T> pop) override 
             {
                 this->population = gsl::span<const T>(pop);
             }
@@ -42,17 +42,17 @@ namespace Operon
             size_t tournamentSize;
     };
 
-    template<typename T, size_t Idx, bool Max>
+    template<typename T, gsl::index Idx, bool Max>
     class ProportionalSelector : public SelectorBase<T, Idx, Max>
     {
         public:
-            size_t operator()(RandomDevice& random) const
+            gsl::index operator()(operon::rand_t& random) const
             {
                 std::uniform_real_distribution<double> uniformReal(0, fitness.back().first - std::numeric_limits<double>::epsilon());
                 return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), 0L), std::less{})->second;
             }
 
-            void Reset(const std::vector<T>& pop)
+            void Reset(const gsl::span<const T> pop)
             {
                 this->population = gsl::span<const T>(pop);    
                 Prepare();

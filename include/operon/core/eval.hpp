@@ -210,7 +210,7 @@ namespace Operon {
 
     // returns an array of optimized parameters
     template <bool autodiff = true>
-    std::vector<double> Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const double> targetValues, const Range range, size_t iterations = 50, bool report = false)
+    ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const double> targetValues, const Range range, size_t iterations = 50, bool writeCoefficients = true, bool report = false)
     {
         using ceres::DynamicCostFunction;
 
@@ -221,10 +221,11 @@ namespace Operon {
         using ceres::Solver;
         using ceres::Solve;
 
+        Solver::Summary summary;
         auto coef = tree.GetCoefficients();
-        if (coef.empty())
-        {
-            return coef;
+        if (coef.empty()) 
+        { 
+            return summary; 
         }
         if (report)
         {
@@ -250,7 +251,6 @@ namespace Operon {
         options.linear_solver_type = ceres::DENSE_QR;
         options.minimizer_progress_to_stdout = report;
         options.num_threads = 1;
-        Solver::Summary summary;
         Solve(options, &problem, &summary);
 
         if (report)
@@ -261,8 +261,11 @@ namespace Operon {
                 fmt::print("{} ", c);
             fmt::print("\n");
         }
-        tree.SetCoefficients(coef);
-        return coef;
+        if (writeCoefficients)
+        {
+            tree.SetCoefficients(coef);
+        }
+        return summary;
     }
 
     // set up some convenience methods using perfect forwarding

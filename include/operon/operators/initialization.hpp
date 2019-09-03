@@ -11,7 +11,7 @@ namespace Operon
     {
         public:
             GrowTreeCreator(size_t depth, size_t length) : maxDepth(depth), maxLength(length) { }
-            Tree operator()(RandomDevice& random, const Grammar& grammar, const std::vector<Variable>& variables) const; 
+            Tree operator()(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables) const; 
 
         private:
             const size_t maxDepth;

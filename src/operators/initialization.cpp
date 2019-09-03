@@ -7,7 +7,7 @@
 
 namespace Operon
 {
-    Node SampleProportional(RandomDevice& random, const std::vector<std::pair<NodeType, double>>& partials) 
+    Node SampleProportional(operon::rand_t& random, const std::vector<std::pair<NodeType, double>>& partials) 
     {
         std::uniform_real_distribution<double> uniformReal(0, partials.back().second - std::numeric_limits<double>::epsilon());
         auto r    = uniformReal(random);
@@ -16,7 +16,7 @@ namespace Operon
         return node;
     }
 
-    void Grow(RandomDevice& random, const Grammar& grammar, const std::vector<Variable>& variables, std::vector<Node>& nodes, const std::vector<std::pair<NodeType, double>>& partials, size_t maxBranchLength, size_t maxBranchDepth, size_t minFunctionArity) 
+    void Grow(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables, std::vector<Node>& nodes, const std::vector<std::pair<NodeType, double>>& partials, size_t maxBranchLength, size_t maxBranchDepth, size_t minFunctionArity) 
     {
         if (maxBranchDepth == 0 || maxBranchLength == 1 || maxBranchLength <= minFunctionArity)
         {
@@ -50,7 +50,7 @@ namespace Operon
         }
     }
 
-    Tree GrowTreeCreator::operator()(RandomDevice& random, const Grammar& grammar, const std::vector<Variable>& variables) const
+    Tree GrowTreeCreator::operator()(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables) const
     {
         auto allowed = grammar.AllowedSymbols();
         std::vector<std::pair<NodeType, double>> partials(allowed.size());

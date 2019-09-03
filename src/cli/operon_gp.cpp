@@ -182,7 +182,7 @@ int main(int argc, char* argv[])
 
         const bool maximization  = true;
         const size_t idx         = 0;
-        const size_t tSize       = 5;
+        const size_t tSize       = 2;
 
         fmt::print("generations: {}, population: {}, iterations: {}, evaluations: {}, maxDepth: {}, maxLength: {}\n", config.Generations, config.PopulationSize, config.Iterations, config.Evaluations, maxDepth, maxLength);
         fmt::print("training range: [{}, {}], test range: [{}, {}]\n", trainingRange.Start, trainingRange.End, testRange.Start, testRange.End);

@@ -33,7 +33,7 @@ namespace Operon
     // - some policy/distinction between single- and multi-objective?
     // - we should not pass operators as parameters (should be instantiated/handled by the respective policy)
     template<typename Ind, size_t Idx, bool Max>
-    void GeneticAlgorithm(RandomDevice& random, const Problem& problem, const GeneticAlgorithmConfig config, CreatorBase& creator, SelectorBase<Ind, Idx, Max>& selector, CrossoverBase& crossover, MutatorBase& mutator)
+    void GeneticAlgorithm(operon::rand_t& random, const Problem& problem, const GeneticAlgorithmConfig config, CreatorBase& creator, SelectorBase<Ind, Idx, Max>& selector, CrossoverBase& crossover, MutatorBase& mutator)
     {
         auto& grammar      = problem.GetGrammar();
         auto& dataset      = problem.GetDataset();
@@ -51,11 +51,12 @@ namespace Operon
         std::vector<Ind> offspring(config.PopulationSize);
 
         std::vector<gsl::index> indices(config.PopulationSize);
+        std::vector<gsl::index> localSearchEvaluations(config.PopulationSize);
         std::iota(indices.begin(), indices.end(), 0L);
-        std::vector<RandomDevice::result_type> seeds(config.PopulationSize);
+        std::vector<operon::rand_t::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
 
-        thread_local RandomDevice rndlocal = random;
+        thread_local operon::rand_t rndlocal = random;
         auto worst = Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max();
 
         auto create = [&](gsl::index i)
@@ -69,11 +70,13 @@ namespace Operon
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), create);
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
 
-        auto evaluate = [&](auto& ind) 
+        auto evaluate = [&](std::vector<Ind>& individuals, gsl::index idx) 
         {
+            auto& ind = individuals[idx];
             if (config.Iterations > 0)
             {
-                OptimizeAutodiff(ind.Genotype, dataset, targetTrain, trainingRange, config.Iterations);
+                auto summary = OptimizeAutodiff(ind.Genotype, dataset, targetTrain, trainingRange, config.Iterations);
+                localSearchEvaluations[idx] = summary.num_successful_steps + summary.num_unsuccessful_steps;
             }
             auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
             auto fitness     = 1 - NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetTrain.begin());
@@ -87,7 +90,10 @@ namespace Operon
             std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
 
             // perform evaluation
-            std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
+            std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](gsl::index i) { evaluate(parents, i); });
+
+            evaluations += std::reduce(std::execution::par_unseq, localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L, std::plus<gsl::index>{});
+            std::fill(localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L);
 
             // preserve one elite
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
@@ -110,7 +116,7 @@ namespace Operon
             {
                 rndlocal.Seed(seeds[i]);
                 auto first = selector(rndlocal);
-                Tree child;
+                std::optional<Tree> child;
 
                 // crossover 
                 if (uniformReal(rndlocal) < config.CrossoverProbability)
@@ -118,12 +124,17 @@ namespace Operon
                     auto second = selector(rndlocal);
                     child = crossover(rndlocal, parents[first].Genotype, parents[second].Genotype);
                 }
+                if (!child.has_value())
+                {
+                    auto tmp = parents[first].Genotype;
+                    child = tmp;
+                }
                 // mutation
                 if (uniformReal(rndlocal) < config.MutationProbability)
                 {
-                    child = child.Length() > 0 ? mutator(rndlocal, child) : mutator(rndlocal, parents[first].Genotype);
+                    mutator(rndlocal, child.value());
                 }
-                offspring[i].Genotype = child.Nodes().empty() ? parents[first].Genotype : std::move(child);
+                offspring[i].Genotype = std::move(child.value());
             };
             std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
 

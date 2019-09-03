@@ -2,7 +2,7 @@
 
 namespace Operon
 {
-    Tree OnePointMutation::operator()(RandomDevice& random, const Tree& tree) const 
+    void OnePointMutation::operator()(operon::rand_t& random, Tree& tree) const
     {
         auto& nodes = tree.Nodes();
 
@@ -17,21 +17,16 @@ namespace Operon
         }
 
         std::normal_distribution<double> normalReal(0, 1);
-        auto child = tree;
-        child[i].Value += normalReal(random);
-
-        return child;
+        tree[i].Value += normalReal(random);
     }
 
-    Tree MultiPointMutation::operator()(RandomDevice& random, const Tree& tree) const 
+    void MultiPointMutation::operator()(operon::rand_t& random, Tree& tree) const
     {
-        auto child = tree;
         std::normal_distribution<double> normalReal(0, 1);
-        for(auto& node : child.Nodes())
+        for(auto& node : tree.Nodes())
         {
             node.Value += normalReal(random);
         }
-        return child;
     }
 }
 

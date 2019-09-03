@@ -7,12 +7,12 @@ namespace Operon
 {
     struct OnePointMutation : public MutatorBase 
     {
-        Tree operator()(RandomDevice& random, const Tree& tree) const override;
+        void operator()(operon::rand_t& random, Tree& tree) const override;
     };
 
     struct MultiPointMutation : public MutatorBase 
     {
-        Tree operator()(RandomDevice& random, const Tree& tree) const override;
+        void operator()(operon::rand_t& random, Tree& tree) const override;
     };
 }
 
