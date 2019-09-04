@@ -55,8 +55,8 @@ namespace Operon
         std::vector<Ind> offspring(config.PopulationSize);
 
         std::vector<gsl::index> indices(config.PopulationSize);
-        std::vector<gsl::index> localSearchEvaluations(config.PopulationSize);
         std::iota(indices.begin(), indices.end(), 0L);
+
         std::vector<operon::rand_t::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
 
@@ -74,30 +74,40 @@ namespace Operon
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), create);
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
 
+        std::atomic_ulong evaluated      = 0UL;
+        std::atomic_ulong evaluatedLocal = 0UL;
+        std::atomic_bool terminate       = false;
+
         auto evaluate = [&](std::vector<Ind>& individuals, gsl::index idx) 
         {
+            if (terminate)
+            {
+                return;
+            }
             auto& ind = individuals[idx];
             if (config.Iterations > 0)
             {
                 auto summary = OptimizeAutodiff(ind.Genotype, dataset, targetTrain, trainingRange, config.Iterations);
-                localSearchEvaluations[idx] = summary.num_successful_steps + summary.num_unsuccessful_steps;
+                evaluatedLocal += summary.num_successful_steps + summary.num_unsuccessful_steps;
             }
             auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
+            ++evaluated;
             auto fitness     = 1 - NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetTrain.begin());
             ind.Fitness[Idx] = ceres::IsFinite(fitness) ? fitness : worst;
+
+            if (evaluated + evaluatedLocal > config.Evaluations)
+            {
+                terminate = true;   
+            }
         };
 
-
-        for (size_t gen = 0UL, evaluations = 0UL; gen < config.Generations && evaluations <= config.Evaluations; ++gen, evaluations += parents.size())
+        for (size_t gen = 0UL; gen < config.Generations && !terminate; ++gen)
         {
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
 
             // perform evaluation
             std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](gsl::index i) { evaluate(parents, i); });
-
-            evaluations += std::reduce(std::execution::par_unseq, localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L, std::plus<gsl::index>{});
-            std::fill(localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L);
 
             // preserve one elite
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
@@ -110,7 +120,7 @@ namespace Operon
 
             auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
             auto nmseTest  = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
-            fmt::print("Generation {}: {} {} {:.6f} {:.6f} {}\n", gen, (double)sum / config.PopulationSize, evaluations, best->Fitness[Idx], 1 - nmseTest, InfixFormatter::Format(bestTree, dataset, 6));
+            fmt::print("{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen, (double)sum / config.PopulationSize, evaluated, evaluatedLocal, best->Fitness[Idx], 1 - nmseTest);
 
             offspring[0] = *best;
             selector.Reset(parents); // apply selector on current parents

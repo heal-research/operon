@@ -60,8 +60,12 @@ namespace Operon
         // random seeds for each thread
         std::vector<operon::rand_t::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
-        // keep track of local search effort
-        std::vector<gsl::index> localSearchEvaluations(config.PopulationSize);
+        // keep track of evaluations, local evaluations and selection pressure 
+        std::atomic_ulong evaluated;
+        std::atomic_ulong evaluatedLocal;
+        std::atomic_bool terminate = false;
+        double selectionPressure = 0;
+        size_t localSearchEffort = 0UL;
 
         const auto& inputs = problem.InputVariables();
 
@@ -79,12 +83,12 @@ namespace Operon
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), create);
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
 
-        auto evaluate = [&](Ind& ind, gsl::index i) 
+        auto evaluate = [&](Ind& ind) 
         {
             if (config.Iterations > 0)
             {
                 auto summary = OptimizeAutodiff(ind.Genotype, dataset, targetTrain, trainingRange, config.Iterations);
-                localSearchEvaluations[i] += summary.num_successful_steps + summary.num_unsuccessful_steps;
+                evaluatedLocal += summary.num_successful_steps + summary.num_unsuccessful_steps;
             }
             auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
             auto fitness     = 1 - NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetTrain.begin());
@@ -92,12 +96,8 @@ namespace Operon
         };
 
         // perform evaluation
-        std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](gsl::index i) { evaluate(parents[i], i); });
+        std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
     
-        std::atomic_ulong evaluated;
-        std::atomic_bool terminate = false;
-        double selectionPressure = 0;
-        size_t localSearchEffort = 0UL;
 
         for (size_t gen = 0, evaluations = parents.size(); gen < config.Generations; ++gen)
         {
@@ -126,10 +126,8 @@ namespace Operon
             selector.Reset(parents); // apply selector on current parents
 
             evaluated = 0;
-            std::fill(localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L);
 
             auto fitness = [&](gsl::index i) { return parents[i].Fitness[Idx]; };
-
 
             // produce some offspring
             auto iterate = [&](gsl::index i) 
@@ -171,7 +169,7 @@ namespace Operon
 
                     auto ind = Ind { std::move(child.value()), worst };
 
-                    evaluate(ind, i);
+                    evaluate(ind);
                     ++evaluated;
                     if ((Max && ind.Fitness[Idx] > f) || (!Max && ind.Fitness[Idx] < f))
                     {
@@ -185,9 +183,8 @@ namespace Operon
             };
             std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
             selectionPressure = static_cast<double>(evaluated) / config.PopulationSize;
-            auto localEvaluations = std::reduce(std::execution::par_unseq, localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L, std::plus<gsl::index>{});
-            localSearchEffort += localEvaluations; 
-            evaluations += evaluated + localEvaluations;
+            localSearchEffort += evaluatedLocal; 
+            evaluations += evaluated + evaluatedLocal;
 
             // the offspring become the parents
             parents.swap(offspring);
