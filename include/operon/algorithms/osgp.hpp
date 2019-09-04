@@ -33,10 +33,9 @@ namespace Operon
     // - RecombinationPolicy (it can interact with the selection policy; how to handle both crossover and mutation?)
     // - some policy/distinction between single- and multi-objective?
     // - we should not pass operators as parameters (should be instantiated/handled by the respective policy)
-    template<typename Ind, size_t Idx, bool Max>
-    void OffspringSelectionGeneticAlgorithm(operon::rand_t& random, const Problem& problem, const OffspringSelectionGeneticAlgorithmConfig config, CreatorBase& creator, SelectorBase<Ind, Idx, Max>& selector, CrossoverBase& crossover, MutatorBase& mutator)
+    template<typename TCreator, typename TSelector, typename TCrossover, typename TMutator>
+    void OffspringSelectionGeneticAlgorithm(operon::rand_t& random, const Problem& problem, const OffspringSelectionGeneticAlgorithmConfig config, TCreator& creator, TSelector& selector, TCrossover& crossover, TMutator& mutator)
     {
-        fmt::print("max sel pressure: {}\n", config.MaxSelectionPressure);
         auto& grammar      = problem.GetGrammar();
         auto& dataset      = problem.GetDataset();
         auto target        = problem.TargetVariable();
@@ -46,6 +45,10 @@ namespace Operon
         auto targetValues  = dataset.GetValues(target);
         auto targetTrain   = targetValues.subspan(trainingRange.Start, trainingRange.Size());
         auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
+
+        using Ind = typename TSelector::SelectableType;
+        constexpr bool Idx = TSelector::SelectableIndex;
+        constexpr bool Max = TSelector::Maximization;
 
         // we run with two populations which get swapped with each other
         std::vector<Ind> parents(config.PopulationSize);   // parent population
@@ -94,6 +97,7 @@ namespace Operon
         std::atomic_ulong evaluated;
         std::atomic_bool terminate = false;
         double selectionPressure = 0;
+        size_t localSearchEffort = 0UL;
 
         for (size_t gen = 0, evaluations = parents.size(); gen < config.Generations; ++gen)
         {
@@ -111,7 +115,8 @@ namespace Operon
 
             auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
             auto nmseTest  = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
-            fmt::print("Generation {}: {} {} {} {:.6f} {:.6f} {}\n", gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluations, best->Fitness[Idx], 1 - nmseTest, InfixFormatter::Format(bestTree, dataset, 6));
+            fmt::print("{}\t{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluations, localSearchEffort, best->Fitness[Idx], 1 - nmseTest);
+
             if (terminate)
             {
                 return;
@@ -121,10 +126,10 @@ namespace Operon
             selector.Reset(parents); // apply selector on current parents
 
             evaluated = 0;
+            std::fill(localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L);
 
             auto fitness = [&](gsl::index i) { return parents[i].Fitness[Idx]; };
 
-            std::fill(localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L);
 
             // produce some offspring
             auto iterate = [&](gsl::index i) 
@@ -147,8 +152,9 @@ namespace Operon
                     {
                         auto second = selector(rndlocal);
                         child = crossover(rndlocal, parents[first].Genotype, parents[second].Genotype);
-                        f = Max ? std::max(fitness(first), fitness(second)) 
-                                : std::min(fitness(first), fitness(second));
+                        if constexpr (Max) { f = std::max(fitness(first), fitness(second)); }
+                        else               { f = std::min(fitness(first), fitness(second)); }
+
                     }
                     // make sure we have an offspring individual 
                     if (!child.has_value())
@@ -179,12 +185,9 @@ namespace Operon
             };
             std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
             selectionPressure = static_cast<double>(evaluated) / config.PopulationSize;
-            if (selectionPressure > config.MaxSelectionPressure)
-            {
-                terminate = true;
-            }
-            evaluations += evaluated;
-            evaluations += std::reduce(std::execution::par_unseq, localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L, std::plus<gsl::index>{});
+            auto localEvaluations = std::reduce(std::execution::par_unseq, localSearchEvaluations.begin(), localSearchEvaluations.end(), 0L, std::plus<gsl::index>{});
+            localSearchEffort += localEvaluations; 
+            evaluations += evaluated + localEvaluations;
 
             // the offspring become the parents
             parents.swap(offspring);

@@ -177,7 +177,9 @@ int main(int argc, char* argv[])
 
         auto creator             = GrowTreeCreator(maxDepth, maxLength);
         auto crossover           = SubtreeCrossover(0.9, maxDepth, maxLength);
-        auto mutator             = OnePointMutation();
+
+        constexpr bool inPlace   = true; // utilize in-place mutation
+        auto mutator             = OnePointMutation<inPlace>();
 
         auto variables = dataset->Variables();
         std::vector<Variable> inputs;
@@ -188,12 +190,9 @@ int main(int argc, char* argv[])
 
         const bool maximization  = true;
         const size_t idx         = 0;
-        const size_t tSize       = 2;
 
-        fmt::print("generations: {}, population: {}, iterations: {}, evaluations: {}, maxDepth: {}, maxLength: {}\n", config.Generations, config.PopulationSize, config.Iterations, config.Evaluations, maxDepth, maxLength);
-        fmt::print("training range: [{}, {}], test range: [{}, {}]\n", trainingRange.Start, trainingRange.End, testRange.Start, testRange.End);
-
-        TournamentSelector<Individual<1>, idx, maximization> selector(tSize);
+        //TournamentSelector<Individual<1>, idx, maximization> selector(2);
+        RandomSelector<Individual<1>, idx, maximization> selector;
         //ProportionalSelector<Individual<1>, idx, maximization> selector;
         //OffspringSelectionGeneticAlgorithm(random, problem, config, creator, selector, crossover, mutator);
         OffspringSelectionGeneticAlgorithm(random, problem, config, creator, selector, crossover, mutator);

@@ -169,9 +169,11 @@ int main(int argc, char* argv[])
         auto seed = std::random_device{}();
         Operon::Random::JsfRand<64> random(seed);
 
-        auto creator             = GrowTreeCreator(maxDepth, maxLength);
-        auto crossover           = SubtreeCrossover(0.9, maxDepth, maxLength);
-        auto mutator             = OnePointMutation();
+        auto creator           = GrowTreeCreator(maxDepth, maxLength);
+        auto crossover         = SubtreeCrossover(0.9, maxDepth, maxLength);
+
+        constexpr bool inPlace = true;
+        auto mutator           = OnePointMutation<inPlace>();
 
         auto variables = dataset->Variables();
         std::vector<Variable> inputs;

@@ -15,20 +15,21 @@ namespace Operon
     class TournamentSelector : public SelectorBase<T, Idx, Max>
     {
         public:
-            TournamentSelector(size_t tSize) : tournamentSize(tSize) {} 
+            TournamentSelector(size_t tSize) : tournamentSize(tSize) {}  
 
-            gsl::index operator()(operon::rand_t& random) const
+            gsl::index operator()(operon::rand_t& random) const 
             {
                 std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
-
                 auto best = uniformInt(random);
-                for(size_t j = 1; j < tournamentSize; ++j)
+                for (size_t i = 1; i < tournamentSize; ++i)
                 {
                     auto curr = uniformInt(random);
-                    if (this->Compare(best, curr))
-                    {
-                        best = curr; 
-                    }
+                    bool better = false;
+
+                    if constexpr (Max) { better = this->population[best][Idx] < this->population[curr][Idx]; }
+                    else               { better = this->population[best][Idx] > this->population[curr][Idx]; }
+
+                    if (better) { best = curr; }
                 }
                 return best;
             }
@@ -85,6 +86,22 @@ namespace Operon
 
             // discrete CDF of the population fitness values
             std::vector<std::pair<double, gsl::index>> fitness;
+    };
+
+    template<typename T, gsl::index Idx, bool Max>
+    class RandomSelector : public SelectorBase<T, Idx, Max>
+    {
+        public:
+            gsl::index operator()(operon::rand_t& random) const
+            {
+                std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
+                return uniformInt(random);
+            }
+
+            void Reset(const gsl::span<const T> pop) override 
+            {
+                this->population = gsl::span<const T>(pop);
+            }
     };
 }
 #endif

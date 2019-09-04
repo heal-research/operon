@@ -54,7 +54,6 @@ add_library(
     src/core/dataset.cpp
     src/operators/initialization.cpp
     src/operators/crossover.cpp
-    src/operators/mutation.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE csv fmt::fmt ${CERES_LIBRARIES} Threads::Threads TBB::tbb)

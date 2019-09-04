@@ -23,10 +23,11 @@ namespace Operon
     template<size_t D = 1UL>
     struct Individual 
     {
-        Tree                  Genotype;
-        std::array<double, D> Fitness;
-
+        Tree                    Genotype;
+        std::array<double, D>   Fitness;
         static constexpr size_t Dimension = D;
+
+        inline double operator[](gsl::index i) const { return Fitness[i]; }
     };
 
     // the creator builds a new tree using the existing grammar and allowed inputs
@@ -35,8 +36,26 @@ namespace Operon
     // crossover takes two parent trees and returns a child
     struct CrossoverBase : public OperatorBase<Tree, const Tree&, const Tree&> { };
 
-    // the mutator takes one parent tree and returns a child
-    struct MutatorBase :   public OperatorBase<void, Tree&> { };
+    // the mutator can work in place or return a copy (child) 
+    template<bool InPlace, typename RetType = std::conditional_t<InPlace, void, Tree>, typename ArgType = std::conditional_t<InPlace, Tree&, const Tree&>>
+    struct MutatorBase  : public OperatorBase<RetType, ArgType> 
+    {
+        RetType operator()(operon::rand_t& random, ArgType tree) const override
+        {
+            if constexpr (InPlace)
+            {
+                Mutate(random, tree);
+            }
+            else
+            {
+                auto child = tree;
+                Mutate(random, child);
+                return child;
+            }
+        }
+
+        virtual void Mutate(operon::rand_t& random, Tree& tree) const = 0;
+    };
 
     // the selector a vector of individuals and returns the index of a selected individual per each call of operator() 
     // this operator is meant to be a lightweight object that is initialized with a population and some other parameters on-the-fly
@@ -44,20 +63,13 @@ namespace Operon
     class SelectorBase : public OperatorBase<gsl::index> 
     {
         public:
-            using Ind                          = T;
-            static constexpr size_t Index      = Idx;
-            static constexpr bool Maximization = Max;
+            using  SelectableType                   = T;
+            static constexpr size_t SelectableIndex = Idx;
+            static constexpr bool   Maximization    = Max;
 
             virtual void Reset(const gsl::span<const T> pop) = 0;
-            const T& Get(gsl::index i) const { return population[i]; }
 
         protected:
-            inline bool Compare(gsl::index lhs, gsl::index rhs) const noexcept 
-            {
-                auto fit = [&](gsl::index i) { return population[i].Fitness[Idx]; };
-                if constexpr (Max) return fit(lhs) < fit(rhs);
-                else return fit(lhs) > fit(rhs);
-            }
             gsl::span<const T> population;
     };
 }

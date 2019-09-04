@@ -32,8 +32,8 @@ namespace Operon
     // - RecombinationPolicy (it can interact with the selection policy; how to handle both crossover and mutation?)
     // - some policy/distinction between single- and multi-objective?
     // - we should not pass operators as parameters (should be instantiated/handled by the respective policy)
-    template<typename Ind, size_t Idx, bool Max>
-    void GeneticAlgorithm(operon::rand_t& random, const Problem& problem, const GeneticAlgorithmConfig config, CreatorBase& creator, SelectorBase<Ind, Idx, Max>& selector, CrossoverBase& crossover, MutatorBase& mutator)
+    template<typename TCreator, typename TSelector, typename TCrossover, typename TMutator>
+    void GeneticAlgorithm(operon::rand_t& random, const Problem& problem, const GeneticAlgorithmConfig config, TCreator& creator, TSelector& selector, TCrossover& crossover, TMutator& mutator)
     {
         auto& grammar      = problem.GetGrammar();
         auto& dataset      = problem.GetDataset();
@@ -46,6 +46,10 @@ namespace Operon
         auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
 
         const auto& inputs = problem.InputVariables();
+
+        using Ind                = typename TSelector::SelectableType;
+        constexpr gsl::index Idx = TSelector::SelectableIndex;
+        constexpr bool Max       = TSelector::Maximization;
 
         std::vector<Ind> parents(config.PopulationSize);
         std::vector<Ind> offspring(config.PopulationSize);
