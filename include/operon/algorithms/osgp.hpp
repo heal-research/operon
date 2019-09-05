@@ -126,6 +126,7 @@ namespace Operon
             selector.Reset(parents); // apply selector on current parents
 
             evaluated = 0;
+            evaluatedLocal = 0;
 
             auto fitness = [&](gsl::index i) { return parents[i].Fitness[Idx]; };
 
