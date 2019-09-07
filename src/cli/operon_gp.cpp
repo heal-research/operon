@@ -1,11 +1,14 @@
 #include <fmt/core.h>
 #include <cxxopts.hpp>
 
+//#include "algorithms/sgp.hpp"
 #include "algorithms/sgp.hpp"
 #include "operators/initialization.hpp"
 #include "operators/crossover.hpp"
 #include "operators/mutation.hpp"
 #include "operators/selection.hpp"
+#include "operators/evaluator.hpp"
+#include "operators/recombinator.hpp"
 
 #include "util.hpp"
 
@@ -20,7 +23,7 @@ int main(int argc, char* argv[])
         ("train",                 "Training range specified as start:end (required)",                                                   cxxopts::value<std::string>())
         ("test",                  "Test range specified as start:end",                                                                  cxxopts::value<std::string>())
         ("target",                "Name of the target variable (required)",                                                             cxxopts::value<std::string>())
-        ("population-size",       "Population size",                                                                                    cxxopts::value<size_t>()->default_value("100000"))
+        ("population-size",       "Population size",                                                                                    cxxopts::value<size_t>()->default_value("1000"))
         ("generations",           "Number of generations",                                                                              cxxopts::value<size_t>()->default_value("1000"))
         ("evaluations",           "Evaluation budget",                                                                                  cxxopts::value<size_t>()->default_value("1000000"))
         ("iterations",            "Local optimization iterations",                                                                      cxxopts::value<size_t>()->default_value("50"))
@@ -169,11 +172,11 @@ int main(int argc, char* argv[])
         auto seed = std::random_device{}();
         Operon::Random::JsfRand<64> random(seed);
 
-        auto creator           = GrowTreeCreator(maxDepth, maxLength);
-        auto crossover         = SubtreeCrossover(0.9, maxDepth, maxLength);
+        auto creator             = GrowTreeCreator(maxDepth, maxLength);
+        auto crossover           = SubtreeCrossover(0.9, maxDepth, maxLength);
 
-        constexpr bool inPlace = true;
-        auto mutator           = OnePointMutation<inPlace>();
+        constexpr bool inPlace   = true; // utilize in-place mutation
+        auto mutator             = OnePointMutation<inPlace>();
 
         auto variables = dataset->Variables();
         std::vector<Variable> inputs;
@@ -182,12 +185,14 @@ int main(int argc, char* argv[])
         auto problem       = Problem(*dataset, inputs, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
 
-        const bool maximization  = true;
+        const bool maximization  = false;
         const size_t idx         = 0;
 
-        TournamentSelector<Individual<1>, idx, maximization> selector(5);
-        //ProportionalSelector<Individual<1>, idx, maximization> selector;
-        GeneticAlgorithm(random, problem, config, creator, selector, crossover, mutator);
+        //RandomSelector<Individual<1>, idx, maximization> selector;
+        TournamentSelector<Individual<1>, idx, maximization> selector(2);
+        NormalizedMeanSquaredErrorEvaluator<Individual<1>> evaluator(problem);
+        BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
+        GeneticAlgorithm(random, problem, config, creator, recombinator);
     }
     catch(std::exception& e) 
     {
@@ -196,4 +201,5 @@ int main(int argc, char* argv[])
 
     return 0;
 }
+
 

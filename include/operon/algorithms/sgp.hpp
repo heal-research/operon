@@ -32,37 +32,40 @@ namespace Operon
     // - RecombinationPolicy (it can interact with the selection policy; how to handle both crossover and mutation?)
     // - some policy/distinction between single- and multi-objective?
     // - we should not pass operators as parameters (should be instantiated/handled by the respective policy)
-    template<typename TCreator, typename TSelector, typename TCrossover, typename TMutator>
-    void GeneticAlgorithm(operon::rand_t& random, const Problem& problem, const GeneticAlgorithmConfig config, TCreator& creator, TSelector& selector, TCrossover& crossover, TMutator& mutator)
+    template<typename TCreator, typename TRecombinator>
+    void GeneticAlgorithm(operon::rand_t& random, const Problem& problem, const GeneticAlgorithmConfig config, TCreator& creator, TRecombinator& recombinator)
     {
         auto& grammar      = problem.GetGrammar();
         auto& dataset      = problem.GetDataset();
         auto target        = problem.TargetVariable();
 
-        auto trainingRange = problem.TrainingRange();
         auto testRange     = problem.TestRange();
         auto targetValues  = dataset.GetValues(target);
-        auto targetTrain   = targetValues.subspan(trainingRange.Start, trainingRange.Size());
         auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
 
-        const auto& inputs = problem.InputVariables();
+        using Ind = typename TRecombinator::SelectorType::SelectableType;
+        constexpr bool Idx = TRecombinator::SelectorType::SelectableIndex;
+        constexpr bool Max = TRecombinator::SelectorType::Maximization;
 
-        using Ind                = typename TSelector::SelectableType;
-        constexpr gsl::index Idx = TSelector::SelectableIndex;
-        constexpr bool Max       = TSelector::Maximization;
+        // we run with two populations which get swapped with each other
+        std::vector<Ind> parents(config.PopulationSize);   // parent population
+        std::vector<Ind> offspring(config.PopulationSize); // offspring population
 
-        std::vector<Ind> parents(config.PopulationSize);
-        std::vector<Ind> offspring(config.PopulationSize);
-
+        // easier to work with indices 
         std::vector<gsl::index> indices(config.PopulationSize);
         std::iota(indices.begin(), indices.end(), 0L);
-
+        // random seeds for each thread
         std::vector<operon::rand_t::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
 
-        thread_local operon::rand_t rndlocal = random;
-        auto worst = Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max();
+        // flag to signal algorithm termination
+        std::atomic_bool terminate = false;
 
+        const auto& inputs = problem.InputVariables();
+
+        thread_local operon::rand_t rndlocal = random;
+
+        const auto worst = Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max();
         auto create = [&](gsl::index i)
         {
             // create one random generator per thread
@@ -73,41 +76,21 @@ namespace Operon
 
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), create);
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
+        auto& evaluator = recombinator.Evaluator();
 
-        std::atomic_ulong evaluated      = 0UL;
-        std::atomic_ulong evaluatedLocal = 0UL;
-        std::atomic_bool terminate       = false;
-
-        auto evaluate = [&](std::vector<Ind>& individuals, gsl::index idx) 
+        auto evaluate = [&](Ind& ind) 
         {
-            if (terminate)
-            {
-                return;
-            }
-            auto& ind = individuals[idx];
-            if (config.Iterations > 0)
-            {
-                auto summary = OptimizeAutodiff(ind.Genotype, dataset, targetTrain, trainingRange, config.Iterations);
-                evaluatedLocal += summary.num_successful_steps + summary.num_unsuccessful_steps;
-            }
-            auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
-            ++evaluated;
-            auto fitness     = 1 - NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetTrain.begin());
+            auto fitness = evaluator(random, ind, config.Iterations);
             ind.Fitness[Idx] = ceres::IsFinite(fitness) ? fitness : worst;
-
-            if (evaluated + evaluatedLocal > config.Evaluations)
-            {
-                terminate = true;   
-            }
         };
 
-        for (size_t gen = 0UL; gen < config.Generations && !terminate; ++gen)
+        // perform evaluation
+        std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
+
+        for (size_t gen = 0; gen < config.Generations; ++gen)
         {
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
-
-            // perform evaluation
-            std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](gsl::index i) { evaluate(parents, i); });
 
             // preserve one elite
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
@@ -120,35 +103,42 @@ namespace Operon
 
             auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
             auto nmseTest  = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
-            fmt::print("{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen, (double)sum / config.PopulationSize, evaluated, evaluatedLocal, best->Fitness[Idx], 1 - nmseTest);
+            fmt::print("{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen+1, (double)sum / config.PopulationSize, evaluator.TotalEvaluations(), evaluator.LocalEvaluations(), 1 - best->Fitness[Idx], 1 - nmseTest);
+
+            if (terminate)
+            {
+                return;
+            }
 
             offspring[0] = *best;
-            selector.Prepare(parents); // apply selector on current parents
+            recombinator.Prepare(parents);
 
             // produce some offspring
             auto iterate = [&](gsl::index i) 
             {
-                rndlocal.Seed(seeds[i]);
-                auto first = selector(rndlocal);
-                std::optional<Tree> child;
+                if (terminate) 
+                {
+                    return;
+                }
 
-                // crossover 
-                if (uniformReal(rndlocal) < config.CrossoverProbability)
-                {
-                    auto second = selector(rndlocal);
-                    child = crossover(rndlocal, parents[first].Genotype, parents[second].Genotype);
+                rndlocal.Seed(seeds[i]);
+
+                do {
+                    auto recombinant  = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability);
+                    auto evaluations  = evaluator.TotalEvaluations();
+
+                    if (evaluations > config.Evaluations)
+                    {
+                        terminate = true;
+                    }
+
+                    if (recombinant.has_value())
+                    {
+                        offspring[i]  = std::move(recombinant.value());
+                        return;
+                    }
                 }
-                if (!child.has_value())
-                {
-                    auto tmp = parents[first].Genotype;
-                    child = tmp;
-                }
-                // mutation
-                if (uniformReal(rndlocal) < config.MutationProbability)
-                {
-                    mutator(rndlocal, child.value());
-                }
-                offspring[i].Genotype = std::move(child.value());
+                while (!terminate);
             };
             std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
 
