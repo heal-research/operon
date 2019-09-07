@@ -33,22 +33,20 @@ namespace Operon
     // - RecombinationPolicy (it can interact with the selection policy; how to handle both crossover and mutation?)
     // - some policy/distinction between single- and multi-objective?
     // - we should not pass operators as parameters (should be instantiated/handled by the respective policy)
-    template<typename TCreator, typename TSelector, typename TCrossover, typename TMutator>
-    void OffspringSelectionGeneticAlgorithm(operon::rand_t& random, const Problem& problem, const OffspringSelectionGeneticAlgorithmConfig config, TCreator& creator, TSelector& selector, TCrossover& crossover, TMutator& mutator)
+    template<typename TCreator, typename TRecombinator>
+    void OffspringSelectionGeneticAlgorithm(operon::rand_t& random, const Problem& problem, const OffspringSelectionGeneticAlgorithmConfig config, TCreator& creator, TRecombinator& recombinator)
     {
         auto& grammar      = problem.GetGrammar();
         auto& dataset      = problem.GetDataset();
         auto target        = problem.TargetVariable();
 
-        auto trainingRange = problem.TrainingRange();
         auto testRange     = problem.TestRange();
         auto targetValues  = dataset.GetValues(target);
-        auto targetTrain   = targetValues.subspan(trainingRange.Start, trainingRange.Size());
         auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
 
-        using Ind = typename TSelector::SelectableType;
-        constexpr bool Idx = TSelector::SelectableIndex;
-        constexpr bool Max = TSelector::Maximization;
+        using Ind = typename TRecombinator::SelectorType::SelectableType;
+        constexpr bool Idx = TRecombinator::SelectorType::SelectableIndex;
+        constexpr bool Max = TRecombinator::SelectorType::Maximization;
 
         // we run with two populations which get swapped with each other
         std::vector<Ind> parents(config.PopulationSize);   // parent population
@@ -60,12 +58,9 @@ namespace Operon
         // random seeds for each thread
         std::vector<operon::rand_t::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
-        // keep track of evaluations, local evaluations and selection pressure 
-        std::atomic_ulong evaluated;
-        std::atomic_ulong evaluatedLocal;
+
+        // flag to signal algorithm termination
         std::atomic_bool terminate = false;
-        double selectionPressure = 0;
-        size_t localSearchEffort = 0UL;
 
         const auto& inputs = problem.InputVariables();
 
@@ -82,24 +77,20 @@ namespace Operon
 
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), create);
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
+        auto& evaluator = recombinator.Evaluator();
 
         auto evaluate = [&](Ind& ind) 
         {
-            if (config.Iterations > 0)
-            {
-                auto summary = OptimizeAutodiff(ind.Genotype, dataset, targetTrain, trainingRange, config.Iterations);
-                evaluatedLocal += summary.num_successful_steps + summary.num_unsuccessful_steps;
-            }
-            auto estimated   = Evaluate<double>(ind.Genotype, dataset, trainingRange);
-            auto fitness     = 1 - NormalizedMeanSquaredError(estimated.begin(), estimated.end(), targetTrain.begin());
+            auto fitness = evaluator(random, ind, config.Iterations);
             ind.Fitness[Idx] = ceres::IsFinite(fitness) ? fitness : worst;
         };
 
         // perform evaluation
         std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
-    
 
-        for (size_t gen = 0, evaluations = parents.size(); gen < config.Generations; ++gen)
+        double selectionPressure = 0;
+    
+        for (size_t gen = 0; gen < config.Generations; ++gen)
         {
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
@@ -115,7 +106,7 @@ namespace Operon
 
             auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
             auto nmseTest  = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
-            fmt::print("{}\t{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluations, localSearchEffort, best->Fitness[Idx], 1 - nmseTest);
+            fmt::print("{}\t{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluator.TotalEvaluations(), evaluator.LocalEvaluations(), 1 - best->Fitness[Idx], 1 - nmseTest);
 
             if (terminate)
             {
@@ -123,13 +114,10 @@ namespace Operon
             }
 
             offspring[0] = *best;
-            selector.Reset(parents); // apply selector on current parents
+            recombinator.Prepare(parents);
 
-            evaluated = 0;
-            evaluatedLocal = 0;
-
-            auto fitness = [&](gsl::index i) { return parents[i].Fitness[Idx]; };
-
+            auto lastEvaluations = evaluator.TotalEvaluations();
+            
             // produce some offspring
             auto iterate = [&](gsl::index i) 
             {
@@ -141,51 +129,24 @@ namespace Operon
                 rndlocal.Seed(seeds[i]);
 
                 do {
-                    auto first = selector(rndlocal);
-                    std::optional<Tree> child;
+                    auto recombinant  = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability);
+                    auto evaluations  = evaluator.TotalEvaluations();
+                    selectionPressure = static_cast<double>(evaluations - lastEvaluations) / config.PopulationSize;
 
-                    double f = fitness(first);
-
-                    // crossover 
-                    if (uniformReal(rndlocal) < config.CrossoverProbability)
+                    if (evaluations > config.Evaluations || selectionPressure > config.MaxSelectionPressure)
                     {
-                        auto second = selector(rndlocal);
-                        child = crossover(rndlocal, parents[first].Genotype, parents[second].Genotype);
-                        if constexpr (Max) { f = std::max(fitness(first), fitness(second)); }
-                        else               { f = std::min(fitness(first), fitness(second)); }
-
-                    }
-                    // make sure we have an offspring individual 
-                    if (!child.has_value())
-                    {
-                        auto tmp = parents[first].Genotype; // make a copy
-                        child = tmp; 
+                        terminate = true;
                     }
 
-                    // mutation
-                    if (uniformReal(rndlocal) < config.MutationProbability)
+                    if (recombinant.has_value())
                     {
-                        mutator(rndlocal, child.value()); // mutate in place
-                    }
-
-                    auto ind = Ind { std::move(child.value()), worst };
-
-                    evaluate(ind);
-                    ++evaluated;
-                    if ((Max && ind.Fitness[Idx] > f) || (!Max && ind.Fitness[Idx] < f))
-                    {
-                        offspring[i] = std::move(ind);
+                        offspring[i]  = std::move(recombinant.value());
                         return;
                     }
                 }
-                while (!terminate && evaluated < config.PopulationSize * config.MaxSelectionPressure && evaluated + evaluations < config.Evaluations);
-                // if this point is reached we should terminate the algorithm
-                terminate = true;
+                while (!terminate);
             };
             std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
-            selectionPressure = static_cast<double>(evaluated) / config.PopulationSize;
-            localSearchEffort += evaluatedLocal; 
-            evaluations += evaluated + evaluatedLocal;
 
             // the offspring become the parents
             parents.swap(offspring);

@@ -123,7 +123,7 @@ namespace Operon
             fmt::print("{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen, (double)sum / config.PopulationSize, evaluated, evaluatedLocal, best->Fitness[Idx], 1 - nmseTest);
 
             offspring[0] = *best;
-            selector.Reset(parents); // apply selector on current parents
+            selector.Prepare(parents); // apply selector on current parents
 
             // produce some offspring
             auto iterate = [&](gsl::index i) 

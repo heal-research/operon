@@ -7,6 +7,8 @@
 #include "operators/crossover.hpp"
 #include "operators/mutation.hpp"
 #include "operators/selection.hpp"
+#include "operators/evaluator.hpp"
+#include "operators/recombinator.hpp"
 
 #include "util.hpp"
 
@@ -188,14 +190,14 @@ int main(int argc, char* argv[])
         auto problem       = Problem(*dataset, inputs, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
 
-        const bool maximization  = true;
+        const bool maximization  = false;
         const size_t idx         = 0;
 
-        //TournamentSelector<Individual<1>, idx, maximization> selector(2);
-        RandomSelector<Individual<1>, idx, maximization> selector;
-        //ProportionalSelector<Individual<1>, idx, maximization> selector;
-        //OffspringSelectionGeneticAlgorithm(random, problem, config, creator, selector, crossover, mutator);
-        OffspringSelectionGeneticAlgorithm(random, problem, config, creator, selector, crossover, mutator);
+        //RandomSelector<Individual<1>, idx, maximization> selector;
+        TournamentSelector<Individual<1>, idx, maximization> selector(2);
+        NormalizedMeanSquaredErrorEvaluator<Individual<1>> evaluator(problem);
+        OffspringSelectionRecombinator recombinator(evaluator, selector, crossover, mutator);
+        OffspringSelectionGeneticAlgorithm(random, problem, config, creator, recombinator);
     }
     catch(std::exception& e) 
     {

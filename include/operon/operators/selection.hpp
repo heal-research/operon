@@ -34,7 +34,7 @@ namespace Operon
                 return best;
             }
 
-            void Reset(const gsl::span<const T> pop) override 
+            void Prepare(const gsl::span<const T> pop) override 
             {
                 this->population = gsl::span<const T>(pop);
             }
@@ -53,7 +53,7 @@ namespace Operon
                 return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), 0L), std::less{})->second;
             }
 
-            void Reset(const gsl::span<const T> pop)
+            void Prepare(const gsl::span<const T> pop)
             {
                 this->population = gsl::span<const T>(pop);    
                 Prepare();
@@ -98,7 +98,7 @@ namespace Operon
                 return uniformInt(random);
             }
 
-            void Reset(const gsl::span<const T> pop) override 
+            void Prepare(const gsl::span<const T> pop) override 
             {
                 this->population = gsl::span<const T>(pop);
             }
