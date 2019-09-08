@@ -80,7 +80,7 @@ namespace Operon
 
         auto evaluate = [&](Ind& ind) 
         {
-            auto fitness = evaluator(random, ind);
+            auto fitness = evaluator(rndlocal, ind);
             ind.Fitness[Idx] = ceres::IsFinite(fitness) ? fitness : worst;
         };
 

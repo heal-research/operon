@@ -81,7 +81,7 @@ namespace Operon
 
         auto evaluate = [&](Ind& ind) 
         {
-            auto fitness = evaluator(random, ind);
+            auto fitness = evaluator(rndlocal, ind);
             ind.Fitness[Idx] = ceres::IsFinite(fitness) ? fitness : worst;
         };
 
@@ -132,8 +132,7 @@ namespace Operon
 
                 do {
                     auto recombinant  = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability);
-                    auto evaluations  = evaluator.FitnessEvaluations();
-                    selectionPressure = static_cast<double>(evaluations - lastEvaluations) / config.PopulationSize;
+                    selectionPressure = static_cast<double>(evaluator.FitnessEvaluations() - lastEvaluations) / config.PopulationSize;
 
                     if (evaluator.TotalEvaluations() > config.Evaluations || selectionPressure > config.MaxSelectionPressure)
                     {
