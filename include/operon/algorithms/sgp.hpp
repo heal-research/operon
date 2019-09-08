@@ -80,7 +80,7 @@ namespace Operon
 
         auto evaluate = [&](Ind& ind) 
         {
-            auto fitness = evaluator(random, ind, config.Iterations);
+            auto fitness = evaluator(random, ind);
             ind.Fitness[Idx] = ceres::IsFinite(fitness) ? fitness : worst;
         };
 
@@ -103,7 +103,7 @@ namespace Operon
 
             auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
             auto nmseTest  = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
-            fmt::print("{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen+1, (double)sum / config.PopulationSize, evaluator.TotalEvaluations(), evaluator.LocalEvaluations(), 1 - best->Fitness[Idx], 1 - nmseTest);
+            fmt::print("{}\t{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen+1, (double)sum / config.PopulationSize, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - best->Fitness[Idx], 1 - nmseTest);
 
             if (terminate)
             {
@@ -125,9 +125,8 @@ namespace Operon
 
                 do {
                     auto recombinant  = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability);
-                    auto evaluations  = evaluator.TotalEvaluations();
 
-                    if (evaluations > config.Evaluations)
+                    if (evaluator.TotalEvaluations() > config.Evaluations)
                     {
                         terminate = true;
                     }

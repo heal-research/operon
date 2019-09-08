@@ -91,7 +91,7 @@ namespace Operon
     };
 
     template<typename T>
-    class EvaluatorBase : public StatefulOperator<double, T&, size_t> 
+    class EvaluatorBase : public StatefulOperator<double, T&> 
     {
         // some fitness measures are relative to the whole population (eg. diversity) 
         // and the evaluator needs to do some preparation work using the entire pop
@@ -103,11 +103,15 @@ namespace Operon
             size_t FitnessEvaluations() const { return fitnessEvaluations;                    }
             size_t LocalEvaluations()   const { return localEvaluations;                      }
 
+            void LocalOptimizationIterations(size_t value) { iterations = value; }
+            size_t LocalOptimizationIterations() const     { return iterations;  }
+
         protected: 
             gsl::span<const T> population;
             std::reference_wrapper<const Problem> problem;
             std::atomic_ulong fitnessEvaluations = 0;
             std::atomic_ulong localEvaluations = 0;
+            size_t iterations = 50;
     };
 
     template<typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>

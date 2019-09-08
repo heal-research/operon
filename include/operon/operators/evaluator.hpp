@@ -11,7 +11,7 @@ namespace Operon
         public:
             NormalizedMeanSquaredErrorEvaluator(Problem &problem) : EvaluatorBase<T>(problem) { }
 
-            double operator()(operon::rand_t&, T& ind, size_t iter = 0)
+            double operator()(operon::rand_t&, T& ind)
             {
                 ++this->fitnessEvaluations;
                 auto& problem  = this->problem.get();
@@ -21,13 +21,13 @@ namespace Operon
                 auto trainingRange = problem.TrainingRange();
                 auto targetValues  = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start, trainingRange.Size());
 
-                if (iter > 0)
+                if (this->iterations > 0)
                 {
-                    auto summary = OptimizeAutodiff(genotype, dataset, targetValues, trainingRange, iter);
-                    this->localEvaluations += summary.num_unsuccessful_steps + summary.num_successful_steps;
+                    auto summary = OptimizeAutodiff(genotype, dataset, targetValues, trainingRange, this->iterations);
+                    this->localEvaluations += summary.iterations.size();
                 }
 
-                auto estimatedValues = Evaluate<double>(genotype, dataset, trainingRange);
+                auto estimatedValues = Evaluate<double>(genotype, dataset, trainingRange, nullptr);
                 return NormalizedMeanSquaredError(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
             }
 

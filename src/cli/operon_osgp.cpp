@@ -196,6 +196,7 @@ int main(int argc, char* argv[])
         //RandomSelector<Individual<1>, idx, maximization> selector;
         TournamentSelector<Individual<1>, idx, maximization> selector(2);
         NormalizedMeanSquaredErrorEvaluator<Individual<1>> evaluator(problem);
+        evaluator.LocalOptimizationIterations(config.Iterations);
         OffspringSelectionRecombinator recombinator(evaluator, selector, crossover, mutator);
         OffspringSelectionGeneticAlgorithm(random, problem, config, creator, recombinator);
     }

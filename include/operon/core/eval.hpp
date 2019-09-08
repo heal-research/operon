@@ -213,7 +213,6 @@ namespace Operon {
     ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const double> targetValues, const Range range, size_t iterations = 50, bool writeCoefficients = true, bool report = false)
     {
         using ceres::DynamicCostFunction;
-
         using ceres::DynamicNumericDiffCostFunction;
         using ceres::DynamicAutoDiffCostFunction;
         using ceres::CauchyLoss;
@@ -238,7 +237,7 @@ namespace Operon {
         auto eval = new ParameterizedEvaluation(tree, dataset, targetValues, range);
         DynamicCostFunction* costFunction;
         if constexpr (autodiff) { costFunction = new DynamicAutoDiffCostFunction<ParameterizedEvaluation>(eval); }
-        else                    { costFunction = new DynamicNumericDiffCostFunction(eval);                                   }
+        else                    { costFunction = new DynamicNumericDiffCostFunction(eval);                       }
         costFunction->AddParameterBlock(coef.size());
         costFunction->SetNumResiduals(range.Size());
         //auto lossFunction = new CauchyLoss(0.5); // see http://ceres-solver.org/nnls_tutorial.html#robust-curve-fitting      
@@ -247,7 +246,7 @@ namespace Operon {
         problem.AddResidualBlock(costFunction, nullptr, coef.data());
 
         Solver::Options options;
-        options.max_num_iterations = iterations;
+        options.max_num_iterations = iterations - 1; // workaround since for some reason ceres sometimes does 1 more iteration
         options.linear_solver_type = ceres::DENSE_QR;
         options.minimizer_progress_to_stdout = report;
         options.num_threads = 1;
