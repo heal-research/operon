@@ -19,7 +19,7 @@ namespace Operon
         size_t Start;
         size_t End;
 
-        inline int Size() const { return End - Start; }
+        inline int Size() const { return gsl::narrow<int>(End - Start); }
     };
 
     // a dataset variable described by: name, hash value (for hashing), data column index

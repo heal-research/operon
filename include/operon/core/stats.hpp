@@ -70,7 +70,7 @@ namespace Operon {
             CovarianceCalculator() { Reset(); }
 
             double Covariance() { return n > 0 ? cn / n : 0.0;  }
-            void   Reset()      { n = xMean = yMean = cn = 0.0; }
+            void   Reset()      { n = 0; xMean = yMean = cn = 0.0; }
             void   Add(double x, double y)
             {
                 ++n;

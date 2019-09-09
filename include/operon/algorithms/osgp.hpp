@@ -96,7 +96,7 @@ namespace Operon
             std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
 
             // preserve one elite
-            auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
+            auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [&](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
             auto best = Max ? maxElem : minElem;
 
             auto sum = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, [&](size_t lhs, size_t rhs) { return lhs + rhs; }, [&](Ind& p) { return p.Genotype.Length();} );

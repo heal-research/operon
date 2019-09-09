@@ -58,8 +58,9 @@ namespace Operon::Random {
 
         public:
             using result_type = rand_t<N>;
-            inline rand_t<N> min() { return std::numeric_limits<result_type>::min(); }
-            inline rand_t<N> max() { return std::numeric_limits<result_type>::max(); }
+            static inline result_type min() { return std::numeric_limits<result_type>::min(); }
+            static inline result_type max() { return std::numeric_limits<result_type>::max(); }
+            
 
             explicit JsfRand(result_type seed = 0xdeadbeef) noexcept
             {
