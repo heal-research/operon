@@ -6,6 +6,7 @@
 
 namespace Operon
 {
+    // TODO: think of a way to eliminate duplicated code between the different recombinators
     template<typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
     class BasicRecombinator : public RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>
     {
@@ -66,7 +67,7 @@ namespace Operon
             explicit BroodRecombinator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut) : RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut) { }
 
             using T = typename TSelector::SelectableType;
-            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation, size_t broodSize) 
+            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) 
             {
                 std::uniform_real_distribution<double> uniformReal;
 
@@ -77,24 +78,21 @@ namespace Operon
 
                 std::optional<T> best;
 
+                std::vector<T> brood;
                 for (size_t i = 0; i < broodSize; ++i)
                 {
                     auto first = this->selector(random);
-                    auto fit   = population[first].Fitness[Idx];
 
                     typename TSelector::SelectableType child;
 
                     bool doCrossover = uniformReal(random) < pCrossover;
                     bool doMutation  = uniformReal(random) < pMutation;
 
-                    if (!(doCrossover || doMutation)) return std::nullopt;
+                    if (!(doCrossover || doMutation)) continue;
                     if (doCrossover)
                     {
                         auto second = this->selector(random);
                         child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
-
-                        if constexpr(TSelector::Maximization) { fit = std::max(fit, population[second].Fitness[Idx]); }
-                        else                                  { fit = std::min(fit, population[second].Fitness[Idx]); } 
                     }
 
                     if (doMutation)
@@ -108,15 +106,28 @@ namespace Operon
                         this->mutator(random, child.Genotype);
                     }
 
-                    auto f = this->evaluator(random, child);
-                    child.Fitness[Idx] = ceres::IsFinite(f) ? f : (Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max());
 
-                    if (!best.has_value() || (Max && child.Fitness[Idx] > best.value().Fitness[Idx]) || (!Max && child.Fitness[Idx] < best.value().Fitness[Idx]))
-                    {
-                        best = std::make_optional(child);
-                    }
+                    brood.push_back(child);
                 }
 
+                auto eval = [&](gsl::index idx) {
+                    auto f = this->evaluator(random, brood[idx]);
+                    brood[idx].Fitness[Idx] = ceres::IsFinite(f) ? f : (Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max());
+                };
+
+                std::uniform_int_distribution<gsl::index> uniformInt(0, brood.size() - 1);
+                auto bestIdx = uniformInt(random);
+                eval(bestIdx);
+                for (size_t i = 1; i < broodTournamentSize; ++i)
+                {
+                    auto currIdx = uniformInt(random);
+                    eval(currIdx);
+                    if ((Max && brood[bestIdx].Fitness[Idx] < brood[currIdx].Fitness[Idx]) || (!Max && brood[bestIdx].Fitness[Idx] > brood[currIdx].Fitness[Idx]))
+                    {
+                        bestIdx = currIdx;
+                    }
+                }
+                best = std::make_optional(brood[bestIdx]);
                 return best;
             }
 
@@ -124,6 +135,16 @@ namespace Operon
             {
                 this->Selector().Prepare(pop);
             }
+
+            void BroodSize(size_t value) { broodSize = value; }
+            size_t BroodSize() const     { return broodSize;  }
+
+            void BroodTournamentSize(size_t value) { broodTournamentSize = value; }
+            size_t BroodTournamentSize() const     { return broodTournamentSize;  }
+
+        private:
+            size_t broodSize;
+            size_t broodTournamentSize;
     };
 
     template<typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>

@@ -99,12 +99,12 @@ namespace Operon
             EvaluatorBase(Problem& p) : problem(p) { }
 
             virtual void Prepare(const gsl::span<const T> pop) = 0;
-            size_t TotalEvaluations()   const { return fitnessEvaluations + localEvaluations; }
-            size_t FitnessEvaluations() const { return fitnessEvaluations;                    }
-            size_t LocalEvaluations()   const { return localEvaluations;                      }
+            size_t  TotalEvaluations()   const { return fitnessEvaluations + localEvaluations; }
+            size_t  FitnessEvaluations() const { return fitnessEvaluations;                    }
+            size_t  LocalEvaluations()   const { return localEvaluations;                      }
 
-            void LocalOptimizationIterations(size_t value) { iterations = value; }
-            size_t LocalOptimizationIterations() const     { return iterations;  }
+            void    LocalOptimizationIterations(size_t value) { iterations = value; }
+            size_t  LocalOptimizationIterations() const       { return iterations;  }
 
         protected: 
             gsl::span<const T> population;
