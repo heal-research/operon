@@ -31,7 +31,11 @@ namespace Operon::Test
         std::vector<Tree> trees(100000);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
 
-        double avgLength = std::transform_reduce(std::execution::seq, trees.begin(), trees.end(), 0UL, [&](size_t lhs, size_t rhs) { return lhs + rhs; }, [&](auto &t) { return t.Length();} );
+#if _MSC_VER
+        double avgLength = std::reduce(trees.begin(), trees.end(), 0.0, [](double partial, const auto& t) { return partial + t.Length(); });
+#else
+        double avgLength = std::transform_reduce(std::execution::seq, trees.begin(), trees.end(), 0UL, [](size_t lhs, size_t rhs) { return lhs + rhs; }, [&](auto &t) { return t.Length();} );
+#endif    
         avgLength /= trees.size();
 
         fmt::print("Average length: {}\n", avgLength);

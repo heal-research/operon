@@ -43,7 +43,11 @@ namespace Operon::Test
 
         Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
 
+#ifdef _MSC_VER
+        auto totalNodes = std::reduce(trees.begin(), trees.end(), 0UL, [](size_t partial, const auto& t) { return partial + t.Length(); }); 
+#else
         auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, [](size_t lhs, size_t rhs) { return lhs + rhs; }, [](auto& tree) { return tree.Length();} );
+#endif
 
         auto print_performance = [&](auto d)
         {
@@ -61,7 +65,7 @@ namespace Operon::Test
             BENCHMARK("Sequential")
             {
                 ++k;
-                std::transform(std::execution::unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
+                std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
             };
             model.finish();
             print_performance(model.elapsed() / k);
@@ -87,7 +91,7 @@ namespace Operon::Test
             BENCHMARK("Sequential")
             {
                 ++k;
-                std::transform(std::execution::unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
+                std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
             };
             model.finish();
             print_performance(model.elapsed() / k);
@@ -113,7 +117,7 @@ namespace Operon::Test
             BENCHMARK("Sequential")
             {
                 ++k;
-                std::transform(std::execution::unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
+                std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
             };
             model.finish();
             print_performance(model.elapsed() / k);
@@ -139,7 +143,7 @@ namespace Operon::Test
             BENCHMARK("Sequential")
             {
                 ++k;
-                std::transform(std::execution::unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
+                std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
             };
             model.finish();
             print_performance(model.elapsed() / k);
@@ -165,7 +169,7 @@ namespace Operon::Test
             BENCHMARK("Sequential")
             {
                 ++k;
-                std::transform(std::execution::unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
+                std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
             };
             model.finish();
             print_performance(model.elapsed() / k);

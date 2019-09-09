@@ -98,8 +98,11 @@ namespace Operon
             // preserve one elite
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [&](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
             auto best = Max ? maxElem : minElem;
-
+#ifdef _MSC_VER 
+            auto sum = std::reduce(parents.begin(), parents.end(), 0UL, [](size_t partial, const auto& p) { return partial + p.Genotype.Length(); });
+#else
             auto sum = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, [&](size_t lhs, size_t rhs) { return lhs + rhs; }, [&](Ind& p) { return p.Genotype.Length();} );
+#endif
 
             auto& bestTree = best->Genotype;
             bestTree.Reduce(); // makes it a little nicer to visualize

@@ -124,10 +124,10 @@ target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_FAST_COMPILE CATCH_C
 set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 
 if(MSVC)
-    target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")
-    target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")
-    target_compile_options(operon-osgp PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")
-    target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O2>")
+    target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+    target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+    target_compile_options(operon-osgp PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+    target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     # ugly hack to set the include dir correctly
     find_path(FMT_INCLUDE_DIR fmt/core.h)
     include_directories(${FMT_INCLUDE_DIR})
