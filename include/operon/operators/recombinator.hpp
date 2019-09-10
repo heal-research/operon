@@ -153,23 +153,25 @@ namespace Operon
                 constexpr gsl::index Idx = TSelector::SelectableIndex;
 
                 auto population = this->Selector().Population();
+                auto first = this->selector(random);
+                auto second = this->selector(random);
 
-                std::optional<T> best;
+                T child;
 
                 std::vector<T> brood;
                 for (size_t i = 0; i < broodSize; ++i)
                 {
-                    auto first = this->selector(random);
-
-                    typename TSelector::SelectableType child;
-
                     bool doCrossover = uniformReal(random) < pCrossover;
                     bool doMutation  = uniformReal(random) < pMutation;
 
-                    if (!(doCrossover || doMutation)) continue;
+                    if (!(doCrossover || doMutation)) 
+                    {
+                        child = population[first];
+                        continue;
+                    };
+
                     if (doCrossover)
                     {
-                        auto second = this->selector(random);
                         child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
                     }
 
@@ -183,8 +185,6 @@ namespace Operon
                         }
                         this->mutator(random, child.Genotype);
                     }
-
-
                     brood.push_back(child);
                 }
 
@@ -205,8 +205,7 @@ namespace Operon
                         bestIdx = currIdx;
                     }
                 }
-                best = std::make_optional(brood[bestIdx]);
-                return best;
+                return std::make_optional(brood[bestIdx]);
             }
 
             void Prepare(const gsl::span<const T> pop) override
