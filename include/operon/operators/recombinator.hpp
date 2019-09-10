@@ -14,7 +14,7 @@ namespace Operon
             explicit BasicRecombinator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut) : RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut) { }
 
             using T = typename TSelector::SelectableType;
-            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation)
+            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) override
             {
                 std::uniform_real_distribution<double> uniformReal;
 
@@ -67,7 +67,7 @@ namespace Operon
             explicit PlusRecombinator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut) : RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut) { } 
 
             using T = typename TSelector::SelectableType;
-            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) 
+            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) override 
             {
                 std::uniform_real_distribution<double> uniformReal;
                 bool doCrossover = uniformReal(random) < pCrossover;
@@ -145,7 +145,7 @@ namespace Operon
             explicit BroodRecombinator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut) : RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut) { }
 
             using T = typename TSelector::SelectableType;
-            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) 
+            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) override 
             {
                 std::uniform_real_distribution<double> uniformReal;
 
@@ -232,7 +232,7 @@ namespace Operon
             explicit OffspringSelectionRecombinator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut) : RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut) { }
 
             using T = typename TSelector::SelectableType;
-            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) 
+            std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) override 
             {
                 std::uniform_real_distribution<double> uniformReal;
                 bool doCrossover = uniformReal(random) < pCrossover;
