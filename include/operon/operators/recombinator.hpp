@@ -167,23 +167,24 @@ namespace Operon
                     if (!(doCrossover || doMutation)) 
                     {
                         child = population[first];
-                        continue;
-                    };
-
-                    if (doCrossover)
-                    {
-                        child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
                     }
-
-                    if (doMutation)
+                    else
                     {
-                        // make a copy
-                        if (!doCrossover)
+                        if (doCrossover)
                         {
-                            // if no crossover was performed we take a copy of the first parent and mutate it
-                            child.Genotype = population[first].Genotype;
+                            child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
                         }
-                        this->mutator(random, child.Genotype);
+
+                        if (doMutation)
+                        {
+                            // make a copy
+                            if (!doCrossover)
+                            {
+                                // if no crossover was performed we take a copy of the first parent and mutate it
+                                child.Genotype = population[first].Genotype;
+                            }
+                            this->mutator(random, child.Genotype);
+                        }
                     }
                     brood.push_back(child);
                 }
