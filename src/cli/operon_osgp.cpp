@@ -1,7 +1,8 @@
 #include <fmt/core.h>
 #include <cxxopts.hpp>
 
-//#include "algorithms/sgp.hpp"
+#include <tbb/task_scheduler_init.h>
+
 #include "algorithms/osgp.hpp"
 #include "operators/initialization.hpp"
 #include "operators/crossover.hpp"
@@ -35,6 +36,7 @@ int main(int argc, char* argv[])
         ("enable-symbols",        "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)",  cxxopts::value<std::string>())
         ("disable-symbols",       "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
         ("show-grammar",          "Show grammar (primitive set) used by the algorithm")
+        ("threads",               "Number of threads to use for parallelism",                                                           cxxopts::value<size_t>()->default_value("0"))
         ("debug",                 "Debug mode (more information displayed)")
         ("help",                  "Print help")
     ;
@@ -71,6 +73,7 @@ int main(int argc, char* argv[])
     std::unique_ptr<Dataset> dataset;
     std::string fileName; // data file name
     std::string target;
+    auto threads = tbb::task_scheduler_init::default_num_threads();
     //bool debug = false;
     //bool showGrammar = false;
     GrammarConfig grammarConfig = Grammar::Arithmetic;
@@ -136,6 +139,10 @@ int main(int argc, char* argv[])
                 auto mask = ~ParseGrammarConfig(value);
                 grammarConfig &= mask;
             }
+            if (key == "threads")
+            {
+                threads = kv.as<size_t>();
+            }
             //if (key == "debug")
             //{
             //    debug = true;
@@ -192,6 +199,8 @@ int main(int argc, char* argv[])
 
         const bool maximization  = false;
         const size_t idx         = 0;
+
+        tbb::task_scheduler_init init(threads);
 
         //RandomSelector<Individual<1>, idx, maximization> selector;
         TournamentSelector<Individual<1>, idx, maximization> selector(2);

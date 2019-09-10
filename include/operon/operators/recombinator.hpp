@@ -158,7 +158,7 @@ namespace Operon
 
                 T child;
 
-                std::vector<T> brood;
+                std::vector<T> brood; brood.reserve(broodSize);
                 for (size_t i = 0; i < broodSize; ++i)
                 {
                     bool doCrossover = uniformReal(random) < pCrossover;

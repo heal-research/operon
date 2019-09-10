@@ -36,6 +36,8 @@ namespace Operon
     template<typename TCreator, typename TRecombinator>
     void OffspringSelectionGeneticAlgorithm(operon::rand_t& random, const Problem& problem, const OffspringSelectionGeneticAlgorithmConfig config, TCreator& creator, TRecombinator& recombinator)
     {
+        auto t0 = std::chrono::high_resolution_clock::now();
+
         auto& grammar      = problem.GetGrammar();
         auto& dataset      = problem.GetDataset();
         auto target        = problem.TargetVariable();
@@ -109,7 +111,10 @@ namespace Operon
 
             auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
             auto nmseTest  = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
-            fmt::print("{}\t{}\t{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - best->Fitness[Idx], 1 - nmseTest);
+            auto t1 = std::chrono::high_resolution_clock::now();
+
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
+            fmt::print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", elapsed, gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - best->Fitness[Idx], 1 - nmseTest);
 
             if (terminate)
             {
