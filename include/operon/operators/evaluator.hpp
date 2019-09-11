@@ -2,6 +2,7 @@
 #define EVALUATOR_HPP
 
 #include "core/operator.hpp"
+#include "core/eval.hpp"
 
 namespace Operon
 {

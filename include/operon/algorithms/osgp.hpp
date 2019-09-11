@@ -101,20 +101,20 @@ namespace Operon
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [&](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
             auto best = Max ? maxElem : minElem;
 #ifdef _MSC_VER 
-            auto sum = std::reduce(parents.begin(), parents.end(), 0UL, [](size_t partial, const auto& p) { return partial + p.Genotype.Length(); });
-#else
-            auto sum = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, [&](size_t lhs, size_t rhs) { return lhs + rhs; }, [&](Ind& p) { return p.Genotype.Length();} );
-#endif
+            auto avgLength = std::reduce(parents.begin(), parents.end(), 0UL, [](size_t partial, const auto& p) { return partial + p.Genotype.Length(); }) / static_cast<double>(config.PopulationSize);
+            auto avgQuality = std::reduce(parents.begin(), parents.end(), 0., [&](size_t partial, const auto& p) { return partial + p.Fitness[Idx]; }) / static_cast<double>(config.PopulationSize);
 
-            auto& bestTree = best->Genotype;
-            bestTree.Reduce(); // makes it a little nicer to visualize
+#else
+            auto avgLength = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, std::plus<size_t>{}, [](Ind& p) { return p.Genotype.Length();} ) / static_cast<double>(config.PopulationSize);
+            auto avgQuality = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0.0, std::plus<double>{}, [&](Ind& p) { return p.Fitness[Idx];} ) / static_cast<double>(config.PopulationSize);
+#endif
 
             auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
             auto nmseTest  = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
             auto t1 = std::chrono::high_resolution_clock::now();
 
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
-            fmt::print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", elapsed, gen+1, (double)sum / config.PopulationSize, selectionPressure, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - best->Fitness[Idx], 1 - nmseTest);
+            fmt::print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", elapsed, gen+1, avgLength, 1- avgQuality, selectionPressure, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - best->Fitness[Idx], 1 - nmseTest);
 
             if (terminate)
             {
