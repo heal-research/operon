@@ -46,6 +46,8 @@ set_target_properties(csv PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set_target_properties(csv_stats PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set_target_properties(csv_info PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
+set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-checks=bugprone-*,cppcoreguidelines-*,modernize-*,performance-*,readability-*")
+
 add_library(
     operon
     STATIC 
