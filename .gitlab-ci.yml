@@ -5,3 +5,7 @@ operon:
         - cmake -DCMAKE_BUILD_TYPE=Release ..
         - make
 
+    tags:
+        - operon
+        - cpp
+
