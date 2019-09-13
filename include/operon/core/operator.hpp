@@ -3,6 +3,7 @@
 
 #include <random>
 #include <atomic>
+#include <Eigen/Core>
 #include "gsl/gsl"
 
 #include "common.hpp"
@@ -96,6 +97,9 @@ namespace Operon
         // some fitness measures are relative to the whole population (eg. diversity) 
         // and the evaluator needs to do some preparation work using the entire pop
         public:
+            static constexpr size_t DefaultLocalOptimizationIterations = 50;
+            static constexpr size_t DefaultEvaluationBudget            = 100'000;
+
             EvaluatorBase(Problem& p) : problem(p) { }
 
             virtual void Prepare(const gsl::span<const T> pop) = 0;
@@ -106,12 +110,23 @@ namespace Operon
             void    LocalOptimizationIterations(size_t value) { iterations = value; }
             size_t  LocalOptimizationIterations() const       { return iterations;  }
 
+            void   Budget(size_t value)    { budget = value;                       }
+            size_t Budget() const          { return budget;                        }
+            bool   BudgetExhausted() const { return TotalEvaluations() > Budget(); }
+
+            void Reset()    
+            {
+                fitnessEvaluations = 0;
+                localEvaluations = 0;
+            }
+
         protected: 
             gsl::span<const T> population;
             std::reference_wrapper<const Problem> problem;
             std::atomic_ulong fitnessEvaluations = 0;
             std::atomic_ulong localEvaluations = 0;
-            size_t iterations = 50;
+            size_t iterations = DefaultLocalOptimizationIterations;
+            size_t budget     = DefaultEvaluationBudget;
     };
 
     template<typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
@@ -132,12 +147,23 @@ namespace Operon
             TEvaluator& Evaluator() const { return evaluator.get(); }
 
             virtual void Prepare(gsl::span<const typename TSelector::SelectableType> pop) = 0;
+            virtual bool Terminate() const { return evaluator.get().BudgetExhausted(); }
         
         protected:
             std::reference_wrapper<TEvaluator> evaluator;
             std::reference_wrapper<TSelector>  selector;
             std::reference_wrapper<TCrossover> crossover;
             std::reference_wrapper<TMutator>   mutator;
+    };
+
+    template<typename T>
+    class PopulationAnalyzerBase : public StatelessOperator<double, gsl::index>
+    {
+        public:
+            virtual void Prepare(const gsl::span<T> pop) = 0;
+
+        protected:
+            Eigen::MatrixXd diversityMatrix;
     };
 }
 #endif

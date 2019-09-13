@@ -46,7 +46,7 @@ set_target_properties(csv PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set_target_properties(csv_stats PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set_target_properties(csv_info PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
-set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-checks=bugprone-*,cppcoreguidelines-*,modernize-*,performance-*,readability-*")
+#set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-checks=bugprone-*,cppcoreguidelines-*,modernize-*,performance-*,readability-*")
 
 add_library(
     operon
@@ -134,13 +134,13 @@ if(MSVC)
     find_path(FMT_INCLUDE_DIR fmt/core.h)
     include_directories(${FMT_INCLUDE_DIR})
 else()
-    target_compile_options(operon PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
+    target_compile_options(operon PRIVATE -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
     target_link_libraries(operon PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-gp PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
+    target_compile_options(operon-gp PRIVATE -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
     target_link_libraries(operon-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-osgp PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
+    target_compile_options(operon-osgp PRIVATE -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
     target_link_libraries(operon-osgp PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-test PRIVATE -Wall -Wextra -Wno-unknown-pragmas "$<$<CONFIG:Debug>:-Og;-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
+    target_compile_options(operon-test PRIVATE -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-march=native>")
 endif(MSVC)
 
 include(CTest)

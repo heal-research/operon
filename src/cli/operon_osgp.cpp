@@ -46,17 +46,8 @@ int main(int argc, char* argv[])
         fmt::print("{}\n", opts.help());
         return 0;
     }
-    if (result.count("dataset") == 0)
-    {
-        throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no dataset given.", opts.help()));
-    }
-    if (result.count("target") == 0)
-    {
-        throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no target variable given.", opts.help()));
-    }
 
     // parse and set default values
-    //OffspringSelectionGeneticAlgorithmConfig config;
     OffspringSelectionGeneticAlgorithmConfig config;
     config.Generations          = result["generations"].as<size_t>();
     config.PopulationSize       = result["population-size"].as<size_t>();
@@ -74,13 +65,14 @@ int main(int argc, char* argv[])
     std::string fileName; // data file name
     std::string target;
     auto threads = tbb::task_scheduler_init::default_num_threads();
+    bool showGrammar = false;
     //bool debug = false;
     //bool showGrammar = false;
     GrammarConfig grammarConfig = Grammar::Arithmetic;
 
     try 
     {
-        for (auto kv : result.arguments())
+        for (auto& kv : result.arguments())
         {
             auto& key   = kv.key();
             auto& value = kv.value();
@@ -143,15 +135,33 @@ int main(int argc, char* argv[])
             {
                 threads = kv.as<size_t>();
             }
-            //if (key == "debug")
-            //{
-            //    debug = true;
-            //}
-            //if (key == "show-grammar")
-            //{
-            //    showGrammar = true;
-            //}
+            if (key == "show-grammar")
+            {
+                showGrammar = true;
+            }
         }
+
+        if (showGrammar)
+        {
+            Grammar tmpGrammar;
+            tmpGrammar.SetConfig(grammarConfig);
+            for (auto& s : tmpGrammar.AllowedSymbols())
+            {
+                auto n = Node(s.first);
+                fmt::print("{}\t{}\n", n.Name(), s.second);
+            }
+            return 0;
+        }
+
+        if (result.count("dataset") == 0)
+        {
+            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no dataset given.", opts.help()));
+        }
+        if (result.count("target") == 0)
+        {
+            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no target variable given.", opts.help()));
+        }
+
         if (result.count("train") == 0)
         {
             trainingRange = { 0, 2 * dataset->Rows() / 3 }; // by default use 66% of the data as training 
@@ -197,16 +207,17 @@ int main(int argc, char* argv[])
         auto problem       = Problem(*dataset, inputs, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
 
-        const bool maximization  = false;
         const size_t idx         = 0;
 
         tbb::task_scheduler_init init(threads);
 
-        //RandomSelector<Individual<1>, idx, maximization> selector;
-        TournamentSelector<Individual<1>, idx, maximization> selector(2);
-        NormalizedMeanSquaredErrorEvaluator<Individual<1>> evaluator(problem);
+        using Evaluator = NormalizedMeanSquaredErrorEvaluator<Individual<1>>;
+        Evaluator evaluator(problem);
         evaluator.LocalOptimizationIterations(config.Iterations);
+        evaluator.Budget(config.Evaluations);
+        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(2);
         OffspringSelectionRecombinator recombinator(evaluator, selector, crossover, mutator);
+        recombinator.MaxSelectionPressure(100);
         OffspringSelectionGeneticAlgorithm(random, problem, config, creator, recombinator);
     }
     catch(std::exception& e) 

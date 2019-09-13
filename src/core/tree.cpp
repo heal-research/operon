@@ -119,7 +119,7 @@ namespace Operon {
             s.CalculatedHashValue = xxh::xxhash<64>(hashes);        
             hashes.clear();
         }
-        return *this;
+        return this->UpdateNodes();
     }
 
     vector<gsl::index> Tree::ChildIndices(gsl::index i) const

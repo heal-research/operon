@@ -12,18 +12,10 @@
 #include "core/stats.hpp"
 #include "core/format.hpp"
 
+#include "algorithms/config.hpp"
+
 namespace Operon 
 {
-    struct GeneticAlgorithmConfig
-    {
-        size_t Generations;
-        size_t Evaluations;
-        size_t Iterations;
-        size_t PopulationSize;
-        double CrossoverProbability;
-        double MutationProbability;
-    };
-
     // this should be designed such that it has:
     // - ExecutionPolicy (par, par_unseq)
     // - InitializationPolicy

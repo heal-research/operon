@@ -11,20 +11,11 @@
 #include "core/eval.hpp"
 #include "core/stats.hpp"
 #include "core/format.hpp"
+#include "analyzers/diversity.hpp"
+#include "algorithms/config.hpp"
 
 namespace Operon 
 {
-    struct OffspringSelectionGeneticAlgorithmConfig
-    {
-        size_t Generations;
-        size_t Evaluations;
-        size_t Iterations;
-        size_t PopulationSize;
-        double CrossoverProbability;
-        double MutationProbability;
-        size_t MaxSelectionPressure;
-    };
-
     // this should be designed such that it has:
     // - ExecutionPolicy (par, seq)
     // - InitializationPolicy
@@ -49,6 +40,8 @@ namespace Operon
         using Ind = typename TRecombinator::SelectorType::SelectableType;
         constexpr bool Idx = TRecombinator::SelectorType::SelectableIndex;
         constexpr bool Max = TRecombinator::SelectorType::Maximization;
+
+        PopulationDiversityAnalyzer<Ind> diversityAnalyzer;
 
         // we run with two populations which get swapped with each other
         std::vector<Ind> parents(config.PopulationSize);   // parent population
@@ -97,24 +90,29 @@ namespace Operon
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&](){ return random(); });
 
+#ifdef _MSC_VER 
+            auto avgLength = std::reduce(parents.begin(), parents.end(), 0UL, [](size_t partial, const auto& p) { return partial + p.Genotype.Length(); }) / static_cast<double>(config.PopulationSize);
+            auto avgQuality = std::reduce(parents.begin(), parents.end(), 0., [=](size_t partial, const auto& p) { return partial + p.Fitness[Idx]; }) / static_cast<double>(config.PopulationSize);
+#else
+            auto avgLength = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, std::plus<size_t>{}, [](Ind& p) { return p.Genotype.Length();} ) / static_cast<double>(config.PopulationSize);
+            auto avgQuality = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0.0, std::plus<double>{}, [=](Ind& p) { return p.Fitness[Idx];} ) / static_cast<double>(config.PopulationSize);
+#endif
+            avgQuality = std::clamp(avgQuality, 0.0, 1.0);
+
             // preserve one elite
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [&](const Ind& lhs, const Ind& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
             auto best = Max ? maxElem : minElem;
-#ifdef _MSC_VER 
-            auto avgLength = std::reduce(parents.begin(), parents.end(), 0UL, [](size_t partial, const auto& p) { return partial + p.Genotype.Length(); }) / static_cast<double>(config.PopulationSize);
-            auto avgQuality = std::reduce(parents.begin(), parents.end(), 0., [&](size_t partial, const auto& p) { return partial + p.Fitness[Idx]; }) / static_cast<double>(config.PopulationSize);
-
-#else
-            auto avgLength = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0UL, std::plus<size_t>{}, [](Ind& p) { return p.Genotype.Length();} ) / static_cast<double>(config.PopulationSize);
-            auto avgQuality = std::transform_reduce(std::execution::par_unseq, parents.begin(), parents.end(), 0.0, std::plus<double>{}, [&](Ind& p) { return p.Fitness[Idx];} ) / static_cast<double>(config.PopulationSize);
-#endif
-
+            double errorTrain = std::clamp(best->Fitness[Idx], 0.0, 1.0);
             auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
-            auto nmseTest  = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
+            double errorTest  = std::clamp(NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin()), 0.0, 1.0);
             auto t1 = std::chrono::high_resolution_clock::now();
 
+            //diversityAnalyzer.Prepare(parents);
+            //auto diversity = diversityAnalyzer.Diversity();
+            auto diversity = 0.0;
+
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
-            fmt::print("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6f}\t{:.6f}\n", elapsed, gen+1, avgLength, 1- avgQuality, selectionPressure, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - best->Fitness[Idx], 1 - nmseTest);
+            fmt::print("{:#3.3f}\t{}\t{:.1f}\t{:.3f}\t{:.4f}\t{:.1f}\t{}\t{}\t{}\t{:.4f}\t{:.4f}\n", elapsed, gen+1, avgLength, diversity, 1 - avgQuality, selectionPressure, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - errorTrain, 1 - errorTest);
 
             if (terminate)
             {
@@ -131,21 +129,10 @@ namespace Operon
             // produce some offspring
             auto iterate = [&](gsl::index i) 
             {
-                if (terminate) 
-                {
-                    return;
-                }
-
                 rndlocal.Seed(seeds[i]);
 
-                do {
+                while (!(terminate = recombinator.Terminate())) {
                     auto recombinant  = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability);
-                    selectionPressure = static_cast<double>(evaluator.FitnessEvaluations() - lastEvaluations) / config.PopulationSize;
-
-                    if (evaluator.TotalEvaluations() > config.Evaluations || selectionPressure > config.MaxSelectionPressure)
-                    {
-                        terminate = true;
-                    }
 
                     if (recombinant.has_value())
                     {
@@ -153,10 +140,17 @@ namespace Operon
                         return;
                     }
                 }
-                while (!terminate);
             };
             std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
-
+            // we check for empty offspring (in case of early termination due to selection pressure)
+            // and fill them with the parents
+            for(auto i : indices)
+            {
+                if (offspring[i].Genotype.Nodes().empty())
+                {
+                    offspring[i] = parents[i];
+                }
+            }
             // the offspring become the parents
             parents.swap(offspring);
         }

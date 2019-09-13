@@ -280,10 +280,24 @@ namespace Operon
                 return std::nullopt;
             }
 
+            void MaxSelectionPressure(size_t value) { maxSelectionPressure = value; }
+            size_t MaxSelectionPressure() const { return maxSelectionPressure; }
+
             void Prepare(const gsl::span<const T> pop) override
             {
                 this->Selector().Prepare(pop);
+                lastEvaluations = this->evaluator.get().FitnessEvaluations();
             }
+
+            bool Terminate() const override 
+            {
+                return RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>::Terminate() || 
+                    (this->evaluator.get().FitnessEvaluations() - lastEvaluations) > maxSelectionPressure * this->Selector().Population().size();
+            };
+
+        private:
+            size_t lastEvaluations;
+            size_t maxSelectionPressure;
     };
 
 }

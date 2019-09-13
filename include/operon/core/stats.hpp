@@ -80,15 +80,15 @@ namespace Operon {
                 cn           = cn + delta * (x - xMean);
             }
             template<typename InputIt1, typename InputIt2>
-                static double Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+            static double Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+            {
+                CovarianceCalculator calc;
+                for(; xBegin < xEnd; ++xBegin, ++yBegin)
                 {
-                    CovarianceCalculator calc;
-                    for(; xBegin < xEnd; ++xBegin, ++yBegin)
-                    {
-                        calc.Add(*xBegin, *yBegin);
-                    }
-                    return calc.Covariance();
+                    calc.Add(*xBegin, *yBegin);
                 }
+                return calc.Covariance();
+            }
             static double Calculate(const std::vector<double>& first, const std::vector<double>& second)
             {
                 return Calculate(first.begin(), first.end(), second.begin());

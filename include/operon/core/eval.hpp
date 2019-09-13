@@ -33,7 +33,7 @@ namespace Operon {
         auto mid = (min + max) / 2.0;
         for (auto& v : values)
         {
-            if (ceres::IsFinite(v)) { std::clamp(v, min, max); }
+            if (ceres::IsFinite(v)) { v = std::clamp(v, min, max); }
             else                    { v = mid;                 }
         }
     }

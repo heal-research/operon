@@ -45,14 +45,6 @@ int main(int argc, char* argv[])
         fmt::print("{}\n", opts.help());
         return 0;
     }
-    if (result.count("dataset") == 0)
-    {
-        throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no dataset given.", opts.help()));
-    }
-    if (result.count("target") == 0)
-    {
-        throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no target variable given.", opts.help()));
-    }
 
     // parse and set default values
     //OffspringSelectionGeneticAlgorithmConfig config;
@@ -72,9 +64,8 @@ int main(int argc, char* argv[])
     std::unique_ptr<Dataset> dataset;
     std::string fileName; // data file name
     std::string target;
+    bool showGrammar = false;
     auto threads = tbb::task_scheduler_init::default_num_threads();
-    //bool debug = false;
-    //bool showGrammar = false;
     GrammarConfig grammarConfig = Grammar::Arithmetic;
 
     try 
@@ -142,11 +133,33 @@ int main(int argc, char* argv[])
             //{
             //    debug = true;
             //}
-            //if (key == "show-grammar")
-            //{
-            //    showGrammar = true;
-            //}
+            if (key == "show-grammar")
+            {
+                showGrammar = true;
+            }
         }
+
+        if (showGrammar)
+        {
+            Grammar tmpGrammar;
+            tmpGrammar.SetConfig(grammarConfig);
+            for (auto& s : tmpGrammar.AllowedSymbols())
+            {
+                auto n = Node(s.first);
+                fmt::print("{}\t{}\n", n.Name(), s.second);
+            }
+            return 0;
+        }
+
+        if (result.count("dataset") == 0)
+        {
+            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no dataset given.", opts.help()));
+        }
+        if (result.count("target") == 0)
+        {
+            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no target variable given.", opts.help()));
+        }
+
         if (result.count("train") == 0)
         {
             trainingRange = { 0, 2 * dataset->Rows() / 3 }; // by default use 66% of the data as training 
@@ -204,7 +217,7 @@ int main(int argc, char* argv[])
         evaluator.LocalOptimizationIterations(config.Iterations);
         //BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
         BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
-        recombinator.BroodSize(50);
+        recombinator.BroodSize(10);
         recombinator.BroodTournamentSize(10);
         //PlusRecombinator recombinator(evaluator, selector, crossover, mutator);
         //

@@ -119,6 +119,7 @@ namespace Operon {
             size_t Depth() const noexcept;
             size_t Depth(gsl::index) const noexcept;
             size_t Level(gsl::index) const noexcept;
+            bool   Empty() const noexcept { return nodes.empty(); }
 
             operon::hash_t HashValue() const { return nodes.empty() ? 0 : nodes.back().CalculatedHashValue; }
 
