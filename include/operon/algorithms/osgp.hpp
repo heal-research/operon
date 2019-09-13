@@ -83,8 +83,6 @@ namespace Operon
         // perform evaluation
         std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
 
-        double selectionPressure = 0;
-    
         for (size_t gen = 0; gen < config.Generations; ++gen)
         {
             // get some new seeds
@@ -107,12 +105,17 @@ namespace Operon
             double errorTest  = std::clamp(NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin()), 0.0, 1.0);
             auto t1 = std::chrono::high_resolution_clock::now();
 
-            //diversityAnalyzer.Prepare(parents);
-            //auto diversity = diversityAnalyzer.Diversity();
-            auto diversity = 0.0;
+            diversityAnalyzer.Prepare(parents);
+            auto hybridDiversity = diversityAnalyzer.HybridDiversity();
+            auto structDiversity = diversityAnalyzer.StructuralDiversity();
+
+            if ((Max && std::abs(1 - best->Fitness[Idx]) < 1e-6) || (!Max && std::abs(best->Fitness[Idx]) < 1e-6))
+            {
+                terminate = true;
+            }
 
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
-            fmt::print("{:#3.3f}\t{}\t{:.1f}\t{:.3f}\t{:.4f}\t{:.1f}\t{}\t{}\t{}\t{:.4f}\t{:.4f}\n", elapsed, gen+1, avgLength, diversity, 1 - avgQuality, selectionPressure, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - errorTrain, 1 - errorTest);
+            fmt::print("{:#3.3f}\t{}\t{:.1f}\t{:.3f}\t{:.3f}\t{:.4f}\t{:.1f}\t{}\t{}\t{}\t{:.4f}\t{:.4f}\n", elapsed, gen+1, avgLength, hybridDiversity, structDiversity, 1 - avgQuality, recombinator.SelectionPressure(), evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - errorTrain, 1 - errorTest);
 
             if (terminate)
             {
@@ -121,10 +124,6 @@ namespace Operon
 
             offspring[0] = *best;
             recombinator.Prepare(parents);
-
-            // we use the number of actual fitness evaluations to calculate selection pressure
-            // total number of evaluations is used as a stopping criterion
-            auto lastEvaluations = evaluator.FitnessEvaluations();
             
             // produce some offspring
             auto iterate = [&](gsl::index i) 
@@ -142,7 +141,7 @@ namespace Operon
                 }
             };
             std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cend(), iterate);
-            // we check for empty offspring (in case of early termination due to selection pressure)
+            // we check for empty offspring (in case of early termination due to selection pressure or stuff)
             // and fill them with the parents
             for(auto i : indices)
             {

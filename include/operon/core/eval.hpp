@@ -71,7 +71,7 @@ namespace Operon {
                         }
                     case NodeType::Variable:
                         {
-                            auto values = dataset.GetValues(s.CalculatedHashValue).subspan(range.Start + row, remainingRows);
+                            auto values = dataset.GetValues(s.HashValue).subspan(range.Start + row, remainingRows);
                             auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
                             std::transform(values.begin(), values.end(), r.data(), [&](double v) { return T(v * w); });
                             break;

@@ -98,7 +98,8 @@ namespace Operon {
             }
 
             Tree& UpdateNodes();
-            Tree& Sort();
+            Tree& UpdateNodeDepth();
+            Tree& Sort(bool strict = true);
             Tree& Reduce();
             Tree& Simplify();
 

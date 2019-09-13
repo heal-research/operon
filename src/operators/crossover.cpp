@@ -18,7 +18,7 @@ namespace Operon
         {
             auto& node = tree[i];
             auto length = node.IsLeaf() ? 1UL : node.Length + 1UL;
-            if (length > maxBranchLength || tree.Depth(i) > maxBranchDepth)
+            if (length > maxBranchLength || tree[i].Depth > maxBranchDepth)
             {
                 continue;
             }

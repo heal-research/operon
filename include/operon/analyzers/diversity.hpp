@@ -1,6 +1,8 @@
 #ifndef DIVERSITY_HPP
 #define DIVERSITY_HPP
 
+#include <Eigen/Core>
+
 #include <execution>
 #include "core/operator.hpp"
 
@@ -15,43 +17,77 @@ namespace Operon
                 return this->diversityMatrix.row(i).mean();
             }
 
-            double Diversity() const { return this->diversityMatrix.mean(); }
+            double HybridDiversity() const 
+            { 
+                double mean = 0;
+                auto dim = diversityMatrix.rows();
+                for (Eigen::Index i = 0; i < dim - 1; ++i)
+                {
+                    for (Eigen::Index j = i + 1; j < dim; ++j)
+                    {
+                        mean += diversityMatrix(i, j);
+                    }
+                }
+                return mean / (dim * (dim-1) / 2); 
+            }
+
+            double StructuralDiversity() const 
+            { 
+                double mean = 0;
+                auto dim = diversityMatrix.rows();
+                for (Eigen::Index i = 0; i < dim - 1; ++i)
+                {
+                    for (Eigen::Index j = i + 1; j < dim; ++j)
+                    {
+                        mean += diversityMatrix(j, i);
+                    }
+                }
+                return mean / (dim * (dim-1) / 2); 
+            }
+
 
             void Prepare(const gsl::span<T> pop)
             {
-                //auto individuals = std::vector<T>(pop.begin(), pop.end());
+                std::vector<std::vector<operon::hash_t>> hashesHybrid(pop.size());
+                std::vector<std::vector<operon::hash_t>> hashesStruct(pop.size());
 
-                std::vector<std::vector<operon::hash_t>> hashes(pop.size());
                 std::vector<gsl::index> indices(pop.size());
                 std::iota(indices.begin(), indices.end(), 0);
 
                 auto hashTree = [&](gsl::index i)
                 {
                     auto& ind = pop[i];
-                    ind.Genotype.Sort();
                     const auto& nodes = ind.Genotype.Nodes();
-                    auto& h = hashes[i];
-                    h.resize(nodes.size());
-                    std::transform(nodes.begin(), nodes.end(), h.begin(), [](const auto& node) { return node.CalculatedHashValue; });
-                    std::sort(h.begin(), h.end());
+                    // hybrid hashing
+                    ind.Genotype.Sort(/* strict = */ true);
+                    auto& hHybrid = hashesHybrid[i];
+                    hHybrid.resize(nodes.size());
+                    std::transform(nodes.begin(), nodes.end(), hHybrid.begin(), [](const auto& node) { return node.CalculatedHashValue; });
+                    std::sort(hHybrid.begin(), hHybrid.end());
+                    // structural hashing
+                    ind.Genotype.Sort(/* strict = */ false);
+                    auto& hStruct = hashesStruct[i];
+                    hStruct.resize(nodes.size());
+                    std::transform(nodes.begin(), nodes.end(), hStruct.begin(), [](const auto& node) { return node.CalculatedHashValue; });
+                    std::sort(hStruct.begin(), hStruct.end());
                 };
 
                 std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), hashTree);
 
-                this->diversityMatrix = Eigen::MatrixXd::Zero(hashes.size(), hashes.size());
+                this->diversityMatrix = Eigen::MatrixXd::Zero(pop.size(), pop.size());
 
-                for (size_t i = 0; i < hashes.size() - 1; ++i)
+                std::for_each(std::execution::par_unseq, indices.begin(), indices.end() - 1, [&](gsl::index i)
                 {
-                    for (size_t j = i + 1; j < hashes.size(); ++j)
+                    for(size_t j = i + 1; j < indices.size(); ++j)
                     {
-                        auto distance = CalculateDistance(hashes[i], hashes[j]);
-                        this->diversityMatrix(i, j) = distance;
-                        this->diversityMatrix(j, i) = distance;
-                    }
-                }
+                        diversityMatrix(i, j) = CalculateDistance(hashesHybrid[i], hashesHybrid[j]);
+                        diversityMatrix(j, i) = CalculateDistance(hashesStruct[i], hashesStruct[j]);
+                    };
+                });
             }
 
         private:
+            Eigen::MatrixXd diversityMatrix;
             double CalculateDistance(const std::vector<operon::hash_t>& lhs, const std::vector<operon::hash_t>& rhs)
             {
                 size_t count = 0;

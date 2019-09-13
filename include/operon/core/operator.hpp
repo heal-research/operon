@@ -3,7 +3,6 @@
 
 #include <random>
 #include <atomic>
-#include <Eigen/Core>
 #include "gsl/gsl"
 
 #include "common.hpp"
@@ -161,9 +160,6 @@ namespace Operon
     {
         public:
             virtual void Prepare(const gsl::span<T> pop) = 0;
-
-        protected:
-            Eigen::MatrixXd diversityMatrix;
     };
 }
 #endif

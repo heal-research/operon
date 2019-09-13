@@ -62,6 +62,7 @@ namespace Operon {
 
         uint16_t       Arity;   // 0-65535
         uint16_t       Length;  // 0-65535
+        uint16_t       Depth;   // 0-65535
 
         gsl::index     Parent; // index of parent node
         operon::hash_t HashValue;

@@ -30,7 +30,7 @@ namespace Operon
             } 
             else
             {
-                fmt::format_to(std::back_inserter(current), "{}\n", s.Name());
+                fmt::format_to(std::back_inserter(current), "{} {}\n", s.Name(), s.Depth);
             }
 
             if (s.IsLeaf()) { return; }

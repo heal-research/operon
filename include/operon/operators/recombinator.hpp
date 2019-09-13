@@ -289,10 +289,19 @@ namespace Operon
                 lastEvaluations = this->evaluator.get().FitnessEvaluations();
             }
 
+            double SelectionPressure() const 
+            { 
+                if (this->Selector().Population().empty())
+                {
+                    return 0;
+                }
+                return (this->evaluator.get().FitnessEvaluations() - lastEvaluations) / static_cast<double>(this->Selector().Population().size()); 
+            }
+
             bool Terminate() const override 
             {
                 return RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>::Terminate() || 
-                    (this->evaluator.get().FitnessEvaluations() - lastEvaluations) > maxSelectionPressure * this->Selector().Population().size();
+                    SelectionPressure() > maxSelectionPressure;
             };
 
         private:

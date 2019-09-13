@@ -18,17 +18,23 @@ namespace Operon {
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto& s = nodes[i];
 
+            s.Depth = 1;
+            s.Length = s.Arity;
             if (s.IsLeaf()) 
             {
                 s.Arity = s.Length = 0;
                 continue;
             }
-            s.Length = s.Arity;
             for (auto it = Children(i); it.HasNext(); ++it)
             {
                 s.Length += it->Length;
+                if (s.Depth < it->Depth)
+                {
+                    s.Depth = it->Depth;
+                }
                 nodes[it.Index()].Parent = i;
             }
+            ++s.Depth;
         }
         return *this;
     }
@@ -64,7 +70,7 @@ namespace Operon {
         return this->UpdateNodes();
     }
 
-    Tree& Tree::Sort()
+    Tree& Tree::Sort(bool strict)
     {
         // preallocate memory to reduce fragmentation
         vector<Node> sorted;
@@ -80,8 +86,24 @@ namespace Operon {
         for (size_t i = 0; i < nodes.size(); ++i) 
         {
             auto& s = nodes[i];
-            if (s.IsLeaf())
+
+            if (s.IsConstant())
             {
+                continue;
+            }
+
+            if (s.IsVariable())
+            {
+                if (strict)
+                {
+                    auto weightHash = xxh::xxhash<64>({ s.Value });
+                    s.CalculatedHashValue = xxh::xxhash<64>({ s.HashValue, weightHash });
+                    continue;
+                }
+                else
+                {
+                    s.CalculatedHashValue = s.HashValue;
+                }
                 continue;
             }
 
@@ -163,39 +185,7 @@ namespace Operon {
     
     size_t Tree::Depth() const noexcept 
     {
-        return Depth(nodes.size() - 1);
-    }
-
-    // calculate the depth of subtree at index i
-    size_t Tree::Depth(gsl::index i) const noexcept 
-    {
-        size_t depth = 1; 
-
-        std::stack<std::pair<size_t, size_t>> st;
-        st.push({ i, 1 });
-
-        while(!st.empty())
-        {
-            auto t = st.top();
-            st.pop();
-            auto currDepth = t.second + 1;
-
-            for (auto it = Children(t.first); it.HasNext(); ++it)
-            {
-                if (it->IsLeaf())
-                {
-                    continue;
-                }
-                st.push({ it.Index(), currDepth });
-
-                if (depth < currDepth) 
-                {
-                    depth = currDepth;
-                }
-            }
-        }
-
-        return depth; // +1 for the level of leafs
+        return nodes.back().Depth;
     }
 
     // calculate the level in the tree (distance to tree root) for the subtree at index i
