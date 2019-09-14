@@ -18,12 +18,12 @@ namespace Operon
         {
             auto& node = tree[i];
             auto length = node.IsLeaf() ? 1UL : node.Length + 1UL;
-            if (length > maxBranchLength || tree[i].Depth > maxBranchDepth)
+            if (length > maxBranchLength || node.Depth > maxBranchDepth)
             {
                 continue;
             }
 
-            if ((uniformReal(random) < internalProb) != tree[i].IsLeaf())
+            if ((uniformReal(random) < internalProb) != node.IsLeaf())
             {
                 return std::make_optional(i);
             }
@@ -60,9 +60,10 @@ namespace Operon
         if (auto result = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength); result.has_value())
         {
             auto j = result.value();
-            std::vector<Node> nodes;
             auto& left           = lhs.Nodes();
             auto& right          = rhs.Nodes();
+            std::vector<Node> nodes;
+            nodes.reserve(right[j].Length - left[i].Length + left.size());
             copy_n(left.begin(),                        i - left[i].Length,    back_inserter(nodes));
             copy_n(right.begin() + j - right[j].Length, right[j].Length + 1,   back_inserter(nodes));
             copy_n(left.begin() + i + 1,                left.size() - (i + 1), back_inserter(nodes));
