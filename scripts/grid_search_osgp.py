@@ -23,7 +23,7 @@ base_path = os.path.dirname(data_path)
 
 reps = args.reps
 
-population_size = [ 5000 ]
+population_size = [ 1000, 5000 ]
 iteration_count = [ 0 ]
 evaluation_budget = [ 10000000 ]
 
@@ -79,7 +79,7 @@ for pop_size, iter_count, eval_count in parameter_space:
                     "--iterations", str(iter_count), 
                     "--evaluations", str(eval_count), 
                     "--population-size", str(pop_size),
-                    "--enable-symbols", "exp,log,sin,cos,sqrt"]);
+                    "--enable-symbols", "exp,log,sin,cos,sqrt,square"]);
 
                 n = df.shape[0]
 

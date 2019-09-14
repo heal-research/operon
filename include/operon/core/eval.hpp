@@ -34,7 +34,7 @@ namespace Operon {
         for (auto& v : values)
         {
             if (ceres::IsFinite(v)) { v = std::clamp(v, min, max); }
-            else                    { v = mid;                 }
+            else                    { v = mid;                     }
         }
     }
 

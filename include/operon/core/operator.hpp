@@ -15,20 +15,12 @@ namespace Operon
 {
     // operator base classes for two types of operators: stateless and stateful
     template<typename Ret, typename... Args>
-    struct StatelessOperator 
+    struct OperatorBase 
     {
         using return_type = Ret;
         using argument_type = std::tuple<Args...>;
         // all operators take a random device (source of randomness) as the first parameter
         virtual Ret operator()(operon::rand_t& random, Args... args) const = 0;
-    };
-
-    template<typename Ret, typename... Args>
-    struct StatefulOperator
-    {
-        using return_type = Ret;
-        using argument_type = std::tuple<Args...>;
-        virtual Ret operator()(operon::rand_t& random, Args... args) = 0;
     };
 
     // it's useful to have a data structure holding additional attributes for a solution candidate 
@@ -44,38 +36,18 @@ namespace Operon
     };
 
     // the creator builds a new tree using the existing grammar and allowed inputs
-    struct CreatorBase : public StatelessOperator<Tree, const Grammar&, const gsl::span<const Variable>> { };
+    struct CreatorBase : public OperatorBase<Tree, const Grammar&, const gsl::span<const Variable>> { };
 
     // crossover takes two parent trees and returns a child
-    struct CrossoverBase : public StatelessOperator<Tree, const Tree&, const Tree&> { };
+    struct CrossoverBase : public OperatorBase<Tree, const Tree&, const Tree&> { };
 
     // the mutator can work in place or return a copy (child) 
-    template<bool InPlace, typename RetType = std::conditional_t<InPlace, void, Tree>, typename ArgType = std::conditional_t<InPlace, Tree&, const Tree&>>
-    struct MutatorBase  : public StatelessOperator<RetType, ArgType> 
-    {
-        static constexpr bool inPlace = InPlace;
-
-        RetType operator()(operon::rand_t& random, ArgType tree) const override
-        {
-            if constexpr (InPlace)
-            {
-                Mutate(random, tree);
-            }
-            else
-            {
-                auto child = tree;
-                Mutate(random, child);
-                return child;
-            }
-        }
-
-        virtual void Mutate(operon::rand_t& random, Tree& tree) const = 0;
-    };
+    struct MutatorBase  : public OperatorBase<Tree, Tree> { };
 
     // the selector a vector of individuals and returns the index of a selected individual per each call of operator() 
     // this operator is meant to be a lightweight object that is initialized with a population and some other parameters on-the-fly
     template<typename T, gsl::index Idx, bool Max>
-    class SelectorBase : public StatelessOperator<gsl::index> 
+    class SelectorBase : public OperatorBase<gsl::index> 
     {
         public:
             using  SelectableType                       = T;
@@ -91,7 +63,7 @@ namespace Operon
     };
 
     template<typename T>
-    class EvaluatorBase : public StatefulOperator<double, T&> 
+    class EvaluatorBase : public OperatorBase<double, T&> 
     {
         // some fitness measures are relative to the whole population (eg. diversity) 
         // and the evaluator needs to do some preparation work using the entire pop
@@ -102,12 +74,12 @@ namespace Operon
             EvaluatorBase(Problem& p) : problem(p) { }
 
             virtual void Prepare(const gsl::span<const T> pop) = 0;
-            size_t  TotalEvaluations()   const { return fitnessEvaluations + localEvaluations; }
-            size_t  FitnessEvaluations() const { return fitnessEvaluations;                    }
-            size_t  LocalEvaluations()   const { return localEvaluations;                      }
+            size_t TotalEvaluations()   const { return fitnessEvaluations + localEvaluations; }
+            size_t FitnessEvaluations() const { return fitnessEvaluations;                    }
+            size_t LocalEvaluations()   const { return localEvaluations;                      }
 
-            void    LocalOptimizationIterations(size_t value) { iterations = value; }
-            size_t  LocalOptimizationIterations() const       { return iterations;  }
+            void   LocalOptimizationIterations(size_t value) { iterations = value; }
+            size_t LocalOptimizationIterations() const       { return iterations;  }
 
             void   Budget(size_t value)    { budget = value;                       }
             size_t Budget() const          { return budget;                        }
@@ -122,14 +94,14 @@ namespace Operon
         protected: 
             gsl::span<const T> population;
             std::reference_wrapper<const Problem> problem;
-            std::atomic_ulong fitnessEvaluations = 0;
-            std::atomic_ulong localEvaluations = 0;
+            mutable std::atomic_ulong fitnessEvaluations = 0;
+            mutable std::atomic_ulong localEvaluations = 0;
             size_t iterations = DefaultLocalOptimizationIterations;
             size_t budget     = DefaultEvaluationBudget;
     };
 
     template<typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
-    class RecombinatorBase : public StatefulOperator<std::optional<typename TSelector::SelectableType>, double, double>
+    class RecombinatorBase : public OperatorBase<std::optional<typename TSelector::SelectableType>, double, double>
     {
         public:
             using EvaluatorType = TEvaluator;
@@ -156,7 +128,7 @@ namespace Operon
     };
 
     template<typename T>
-    class PopulationAnalyzerBase : public StatelessOperator<double, gsl::index>
+    class PopulationAnalyzerBase : public OperatorBase<double, gsl::index>
     {
         public:
             virtual void Prepare(const gsl::span<T> pop) = 0;

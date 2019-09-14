@@ -194,30 +194,35 @@ int main(int argc, char* argv[])
         auto seed = std::random_device{}();
         Operon::Random::JsfRand<64> random(seed);
 
-        auto creator             = GrowTreeCreator(maxDepth, maxLength);
-        auto crossover           = SubtreeCrossover(0.9, maxDepth, maxLength);
-
-        constexpr bool inPlace   = true; // utilize in-place mutation
-        auto mutator             = OnePointMutation<inPlace>();
 
         auto variables = dataset->Variables();
         std::vector<Variable> inputs;
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& var) { return var.Name != target; });
 
-        auto problem       = Problem(*dataset, inputs, target, trainingRange, testRange);
+        auto problem   = Problem(*dataset, inputs, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
 
-        const size_t idx         = 0;
+        const size_t idx = 0;
 
         tbb::task_scheduler_init init(threads);
 
-        using Evaluator = NormalizedMeanSquaredErrorEvaluator<Individual<1>>;
+        //using Evaluator = NormalizedMeanSquaredErrorEvaluator<Individual<1>>;
+        using Evaluator  = RSquaredEvaluator<Individual<1>>;
         Evaluator evaluator(problem);
         evaluator.LocalOptimizationIterations(config.Iterations);
         evaluator.Budget(config.Evaluations);
         TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(2);
+        auto crossover   = SubtreeCrossover(0.9, maxDepth, maxLength);
+        auto mutator     = MultiMutation();
+        auto onePoint    = OnePointMutation();
+        auto multiPoint  = MultiPointMutation();
+        auto changeVar   = ChangeVariableMutation(inputs);
+        mutator.Add(onePoint, 1.0);
+        mutator.Add(changeVar, 1.0);
+        mutator.Add(multiPoint, 1.0);
         OffspringSelectionRecombinator recombinator(evaluator, selector, crossover, mutator);
         recombinator.MaxSelectionPressure(100);
+        auto creator     = RampedHalfAndHalfCreator(maxDepth, maxLength);
         OffspringSelectionGeneticAlgorithm(random, problem, config, creator, recombinator);
     }
     catch(std::exception& e) 

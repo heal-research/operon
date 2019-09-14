@@ -14,7 +14,7 @@ namespace Operon
 
             NormalizedMeanSquaredErrorEvaluator(Problem &problem) : EvaluatorBase<T>(problem) { }
 
-            double operator()(operon::rand_t&, T& ind)
+            double operator()(operon::rand_t&, T& ind) const
             {
                 ++this->fitnessEvaluations;
                 auto& problem  = this->problem.get();
@@ -32,6 +32,7 @@ namespace Operon
 
                 auto estimatedValues = Evaluate<double>(genotype, dataset, trainingRange);
                 auto nmse = NormalizedMeanSquaredError(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
+                if (!std::isfinite(nmse)) { nmse = std::numeric_limits<double>::max(); }
                 return nmse;
             }
 
@@ -49,7 +50,7 @@ namespace Operon
 
             RSquaredEvaluator(Problem &problem) : EvaluatorBase<T>(problem) { }
 
-            double operator()(operon::rand_t&, T& ind)
+            double operator()(operon::rand_t&, T& ind) const
             {
                 ++this->fitnessEvaluations;
                 auto& problem  = this->problem.get();
@@ -65,8 +66,10 @@ namespace Operon
                     this->localEvaluations += summary.iterations.size();
                 }
 
-                auto estimatedValues = Evaluate<double>(genotype, dataset, trainingRange, nullptr);
-                return RSquared(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
+                auto estimatedValues = Evaluate<double>(genotype, dataset, trainingRange);
+                auto r2 = RSquared(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
+                if (!std::isfinite(r2)) { r2 = 0; }
+                return r2;
             }
 
             void Prepare(const gsl::span<const T> pop) 

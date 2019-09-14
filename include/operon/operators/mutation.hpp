@@ -5,42 +5,40 @@
 
 namespace Operon 
 {
-    template<bool InPlace>
-    struct OnePointMutation : public MutatorBase<InPlace>
+    struct OnePointMutation : public MutatorBase
     {
-        void Mutate(operon::rand_t& random, Tree& tree) const
-        {
-            auto& nodes = tree.Nodes();
-
-            auto leafCount = std::count_if(nodes.begin(), nodes.end(), [](const Node& node) { return node.IsLeaf(); });
-            std::uniform_int_distribution<gsl::index> uniformInt(1, leafCount);
-            auto index = uniformInt(random);
-
-            size_t i = 0;
-            for (; i < nodes.size(); ++i)
-            {
-                if (nodes[i].IsLeaf() && --index == 0) break;
-            }
-
-            std::normal_distribution<double> normalReal(0, 1);
-            tree[i].Value += normalReal(random);
-        }
+        Tree operator()(operon::rand_t& random, Tree tree) const override;
     };
 
-    template<bool InPlace>
-    struct MultiPointMutation : public MutatorBase<InPlace>
+    struct MultiPointMutation : public MutatorBase
     {
-        void Mutate(operon::rand_t& random, Tree& tree)
+        Tree operator()(operon::rand_t& random, Tree tree) const override; 
+    };
+
+    struct MultiMutation : public MutatorBase
+    {
+        Tree operator()(operon::rand_t& random, Tree tree) const override;
+
+        void Add(const MutatorBase& op, double prob)
         {
-            std::normal_distribution<double> normalReal(0, 1);
-            for (auto& node : tree.Nodes())
-            {
-                if (node.IsLeaf())
-                {
-                    node.Value += normalReal(random);
-                }
-            }
+            operators.push_back(std::ref(op));
+            partials.push_back(partials.empty() ? prob : prob + partials.back());
         }
+
+        private:
+            static constexpr double eps = std::numeric_limits<double>::epsilon();
+            std::vector<std::reference_wrapper<const MutatorBase>> operators;
+            std::vector<double> partials;
+    };
+    
+    struct ChangeVariableMutation : public MutatorBase
+    {
+        ChangeVariableMutation(const std::vector<Variable>& vars) : variables(vars) { }
+
+        Tree operator()(operon::rand_t& random, Tree tree) const override;
+   
+        private:
+            const gsl::span<const Variable> variables;
     };
 }
 

@@ -192,11 +192,6 @@ int main(int argc, char* argv[])
         auto seed = std::random_device{}();
         Operon::Random::JsfRand<64> random(seed);
 
-        auto creator             = GrowTreeCreator(maxDepth, maxLength);
-        auto crossover           = SubtreeCrossover(0.9, maxDepth, maxLength);
-
-        constexpr bool inPlace   = true; // utilize in-place mutation
-        auto mutator             = OnePointMutation<inPlace>();
 
         auto variables = dataset->Variables();
         std::vector<Variable> inputs;
@@ -205,22 +200,34 @@ int main(int argc, char* argv[])
         auto problem       = Problem(*dataset, inputs, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
 
-        const bool maximization  = false;
         const size_t idx         = 0;
 
         tbb::task_scheduler_init init(threads);
 
-        //RandomSelector<Individual<1>, idx, maximization> selector;
-        TournamentSelector<Individual<1>, idx, maximization> selector(2);
-        //ProportionalSelector<Individual<1>, idx, maximization> selector;
-        NormalizedMeanSquaredErrorEvaluator<Individual<1>> evaluator(problem);
+        using Evaluator = RSquaredEvaluator<Individual<1>>;
+        //using Evaluator = NormalizedMeanSquaredErrorEvaluator<Individual<1>>;
+        Evaluator evaluator(problem);
         evaluator.LocalOptimizationIterations(config.Iterations);
-        //BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
-        BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
-        recombinator.BroodSize(10);
-        recombinator.BroodTournamentSize(10);
-        //PlusRecombinator recombinator(evaluator, selector, crossover, mutator);
-        //
+        evaluator.Budget(config.Evaluations);
+        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(5);
+
+        //auto creator  = FullTreeCreator(5, maxLength);
+        //auto creator  = GrowTreeCreator(maxDepth, maxLength);
+        auto creator    = RampedHalfAndHalfCreator(maxDepth, maxLength);
+        auto crossover  = SubtreeCrossover(0.9, maxDepth, maxLength);
+        //auto mutator    = OnePointMutation();
+        auto mutator = MultiMutation();
+        auto onePoint = OnePointMutation();
+        auto multiPoint = MultiPointMutation();
+        auto changeVar = ChangeVariableMutation(inputs);
+        mutator.Add(onePoint, 1.0);
+        mutator.Add(changeVar, 1.0);
+        mutator.Add(multiPoint, 1.0);
+        BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
+        //BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
+        //recombinator.BroodSize(10);
+        //recombinator.BroodTournamentSize(2);
+
         GeneticAlgorithm(random, problem, config, creator, recombinator);
     }
     catch(std::exception& e) 

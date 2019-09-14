@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include <algorithm>
+#include <execution>
 
 #include "tree.hpp"
 #include "jsf.hpp"
@@ -14,12 +15,18 @@ namespace Operon
     class Grammar
     {
         public:
-            bool          IsEnabled(NodeType type) const { return static_cast<bool>(config & type); }
-            void          SetEnabled(NodeType type, bool enabled) { config = enabled ? (config | type) : (config & ~type); }
-            void          SetFrequency(NodeType type, double frequency) { symbolFrequencies[type] = frequency; };
-            double        GetFrequency(NodeType type) const { return symbolFrequencies.find(type)->second; }
-            GrammarConfig GetConfig() const { return config; }
-            void          SetConfig(GrammarConfig cfg) { config = cfg; }
+            Grammar() 
+            {
+                config = Grammar::Arithmetic;
+                UpdatePartials();
+            }
+
+            bool          IsEnabled(NodeType type) const                { return static_cast<bool>(config & type);               }
+            void          SetEnabled(NodeType type, bool enabled)       { config = enabled ? (config | type) : (config & ~type); }
+            void          SetFrequency(NodeType type, double frequency) { symbolFrequencies[type] = frequency;                   }
+            double        GetFrequency(NodeType type) const             { return symbolFrequencies.find(type)->second;           }
+            GrammarConfig GetConfig() const                             { return config;                                         }
+            void          SetConfig(GrammarConfig cfg)                  { config = cfg; UpdatePartials();                        }
 
             static const GrammarConfig Arithmetic   = NodeType::Constant | NodeType::Variable | NodeType::Add  | NodeType::Sub | NodeType::Mul | NodeType::Div;
             static const GrammarConfig TypeCoherent = Arithmetic         | NodeType::Exp      | NodeType::Log  | NodeType::Sin | NodeType::Cos | NodeType::Square;
@@ -47,6 +54,29 @@ namespace Operon
                 return minArity;
             }
 
+            Node SampleRandomFunction(operon::rand_t& random) const 
+            {
+                return Sample(random, functionPartials);
+            }
+
+            Node SampleRandomTerminal(operon::rand_t& random) const
+            {
+                return Sample(random, terminalPartials);
+            }
+
+            Node SampleRandomSymbol(operon::rand_t& random) const
+            {
+                return Sample(random, symbolPartials);
+            }
+
+            static Node Sample(operon::rand_t& random, const std::vector<std::pair<NodeType, double>>& partials)
+            {
+                std::uniform_real_distribution<double> uniformReal(0, partials.back().second - std::numeric_limits<double>::epsilon());
+                auto r    = uniformReal(random);
+                auto it   = find_if(partials.begin(), partials.end(), [=](const auto& p) { return p.second > r; });
+                return Node(it->first);
+            }
+
         private:
             NodeType config = Grammar::Arithmetic;
             std::unordered_map<NodeType, double> symbolFrequencies = {
@@ -65,6 +95,29 @@ namespace Operon
                 { NodeType::Constant, 1.0 },
                 { NodeType::Variable, 1.0 },
             };
+            std::vector<std::pair<NodeType, double>> functionPartials;
+            std::vector<std::pair<NodeType, double>> terminalPartials;
+            std::vector<std::pair<NodeType, double>> symbolPartials;
+
+            void UpdatePartials()
+            {
+                using P = std::pair<NodeType, double>;
+                std::vector<P> funcs;
+                std::copy_if(symbolFrequencies.begin(), symbolFrequencies.end(), std::back_inserter(funcs), [&](auto p) { return IsEnabled(p.first) && p.first < NodeType::Constant; });
+
+                std::vector<P> terms;
+                std::copy_if(symbolFrequencies.begin(), symbolFrequencies.end(), std::back_inserter(terms), [&](auto p) { return IsEnabled(p.first) && p.first > NodeType::Square; });
+
+                functionPartials.clear();
+                std::inclusive_scan(std::execution::seq, funcs.begin(), funcs.end(), std::back_inserter(functionPartials), [](const auto& lhs, const auto& rhs) { return std::make_pair(rhs.first, lhs.second + rhs.second); });
+
+                terminalPartials.clear();
+                std::inclusive_scan(std::execution::seq, terms.begin(), terms.end(), std::back_inserter(terminalPartials), [](const auto& lhs, const auto& rhs) { return std::make_pair(rhs.first, lhs.second + rhs.second); });
+
+                symbolPartials.clear();
+                auto allowed = AllowedSymbols();
+                std::inclusive_scan(std::execution::seq, allowed.begin(), allowed.end(), std::back_inserter(symbolPartials), [](const auto& lhs, const auto& rhs) { return std::make_pair(rhs.first, lhs.second + rhs.second); });
+            }
     };
 
 }

@@ -102,12 +102,14 @@ namespace Operon
             auto best = Max ? maxElem : minElem;
             double errorTrain = std::clamp(best->Fitness[Idx], 0.0, 1.0);
             auto estimatedTest = Evaluate<double>(best->Genotype, dataset, testRange);
-            double errorTest  = std::clamp(NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin()), 0.0, 1.0);
+            double errorTest  = std::clamp(RSquared(estimatedTest.begin(), estimatedTest.end(), targetTest.begin()), 0.0, 1.0);
             auto t1 = std::chrono::high_resolution_clock::now();
 
-            diversityAnalyzer.Prepare(parents);
-            auto hybridDiversity = diversityAnalyzer.HybridDiversity();
-            auto structDiversity = diversityAnalyzer.StructuralDiversity();
+            //diversityAnalyzer.Prepare(parents);
+            //auto hybridDiversity = diversityAnalyzer.HybridDiversity();
+            //auto structDiversity = diversityAnalyzer.StructuralDiversity();
+            auto hybridDiversity = 0.0;
+            auto structDiversity = 0.0;
 
             if ((Max && std::abs(1 - best->Fitness[Idx]) < 1e-6) || (!Max && std::abs(best->Fitness[Idx]) < 1e-6))
             {
@@ -115,7 +117,7 @@ namespace Operon
             }
 
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
-            fmt::print("{:#3.3f}\t{}\t{:.1f}\t{:.3f}\t{:.3f}\t{:.4f}\t{:.1f}\t{}\t{}\t{}\t{:.4f}\t{:.4f}\n", elapsed, gen+1, avgLength, hybridDiversity, structDiversity, 1 - avgQuality, recombinator.SelectionPressure(), evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), 1 - errorTrain, 1 - errorTest);
+            fmt::print("{:#3.3f}\t{}\t{:.1f}\t{:.3f}\t{:.3f}\t{:.4f}\t{:.1f}\t{}\t{}\t{}\t{:.4f}\t{:.4f}\n", elapsed, gen+1, avgLength, hybridDiversity, structDiversity, avgQuality, recombinator.SelectionPressure(), evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations(), errorTrain, errorTest);
 
             if (terminate)
             {

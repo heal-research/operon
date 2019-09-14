@@ -162,6 +162,17 @@ namespace Operon {
             }
             double Beta() const { return beta; }
             double Alpha() const { return alpha; }
+
+            template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
+            static std::pair<double, double> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+            {
+                LinearScalingCalculator calc;
+                for(; xBegin != xEnd; ++xBegin, ++yBegin)
+                {
+                    calc.Add(*xBegin, *yBegin);
+                }
+                return { calc.Alpha(), calc.Beta() };
+            }
         private:
             double alpha; // additive constant 
             double beta; // multiplicative factor
