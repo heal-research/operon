@@ -59,7 +59,7 @@ namespace Operon
             gsl::span<const T> Population() const { return population; }
 
         protected:
-            gsl::span<const T> population;
+            mutable gsl::span<const T> population;
     };
 
     template<typename T>
@@ -117,7 +117,7 @@ namespace Operon
             TMutator&   Mutator()   const { return mutator.get();   }
             TEvaluator& Evaluator() const { return evaluator.get(); }
 
-            virtual void Prepare(gsl::span<const typename TSelector::SelectableType> pop) = 0;
+            virtual void Prepare(gsl::span<const typename TSelector::SelectableType> pop) const = 0;
             virtual bool Terminate() const { return evaluator.get().BudgetExhausted(); }
         
         protected:

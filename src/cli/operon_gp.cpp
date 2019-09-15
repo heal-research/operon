@@ -3,7 +3,7 @@
 
 #include <tbb/task_scheduler_init.h>
 
-#include "algorithms/sgp.hpp"
+#include "algorithms/gp.hpp"
 #include "operators/initialization.hpp"
 #include "operators/crossover.hpp"
 #include "operators/mutation.hpp"
@@ -28,6 +28,7 @@ int main(int argc, char* argv[])
         ("generations",           "Number of generations",                                                                              cxxopts::value<size_t>()->default_value("1000"))
         ("evaluations",           "Evaluation budget",                                                                                  cxxopts::value<size_t>()->default_value("1000000"))
         ("iterations",            "Local optimization iterations",                                                                      cxxopts::value<size_t>()->default_value("50"))
+        ("selection-pressure",    "Selection pressure",                                                                                 cxxopts::value<size_t>()->default_value("100"))
         ("maxlength",             "Maximum length",                                                                                     cxxopts::value<size_t>()->default_value("50"))
         ("maxdepth",              "Maximum depth",                                                                                      cxxopts::value<size_t>()->default_value("12"))
         ("crossover-probability", "The probability to apply crossover",                                                                 cxxopts::value<double>()->default_value("1.0"))
@@ -94,6 +95,10 @@ int main(int argc, char* argv[])
             if (key == "population-size")
             {
                 config.PopulationSize = kv.as<size_t>();
+            }
+            if (key == "selection-pressure")
+            {
+                config.MaxSelectionPressure = kv.as<size_t>();
             }
             if (key == "generations")
             {
@@ -192,47 +197,91 @@ int main(int argc, char* argv[])
         auto seed = std::random_device{}();
         Operon::Random::JsfRand<64> random(seed);
 
-
         auto variables = dataset->Variables();
         std::vector<Variable> inputs;
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& var) { return var.Name != target; });
 
-        auto problem       = Problem(*dataset, inputs, target, trainingRange, testRange);
+        auto problem     = Problem(*dataset, inputs, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
-
-        const size_t idx         = 0;
 
         tbb::task_scheduler_init init(threads);
 
-        using Evaluator = RSquaredEvaluator<Individual<1>>;
-        //using Evaluator = NormalizedMeanSquaredErrorEvaluator<Individual<1>>;
+        using Ind = Individual<1>;
+        using Evaluator  = RSquaredEvaluator<Ind>;
+        //using Evaluator = NormalizedMeanSquaredErrorEvaluator<Ind>;
         Evaluator evaluator(problem);
         evaluator.LocalOptimizationIterations(config.Iterations);
         evaluator.Budget(config.Evaluations);
-        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(5);
+
+        const size_t idx = 0;
+        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(2);
 
         //auto creator  = FullTreeCreator(5, maxLength);
         //auto creator  = GrowTreeCreator(maxDepth, maxLength);
-        auto creator    = RampedHalfAndHalfCreator(maxDepth, maxLength);
-        auto crossover  = SubtreeCrossover(0.9, maxDepth, maxLength);
-        //auto mutator    = OnePointMutation();
-        auto mutator = MultiMutation();
-        auto onePoint = OnePointMutation();
-        auto multiPoint = MultiPointMutation();
-        auto changeVar = ChangeVariableMutation(inputs);
+        auto creator     = RampedHalfAndHalfCreator(maxDepth, maxLength);
+        auto crossover   = SubtreeCrossover(0.9, maxDepth, maxLength);
+        auto mutator     = MultiMutation();
+        auto onePoint    = OnePointMutation();
+        auto multiPoint  = MultiPointMutation();
+        auto changeVar   = ChangeVariableMutation(inputs);
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
         mutator.Add(multiPoint, 1.0);
-        BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
+        //BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
         //BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
-        //recombinator.BroodSize(10);
+        //recombinator.BroodSize(5);
         //recombinator.BroodTournamentSize(2);
+        OffspringSelectionRecombinator recombinator(evaluator, selector, crossover, mutator);
+        recombinator.MaxSelectionPressure(100);
 
-        GeneticAlgorithm(random, problem, config, creator, recombinator);
+        auto t0 = std::chrono::high_resolution_clock::now();
+        GeneticProgrammingAlgorithm gp(problem, config, creator, recombinator);
+
+        auto targetValues  = problem.TargetValues();
+        auto trainingRange = problem.TrainingRange();
+        auto testRange     = problem.TestRange();
+        auto targetTrain   = targetValues.subspan(trainingRange.Start, trainingRange.Size());
+        auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
+
+        // some boilerplate for reporting results
+        auto getBest = [&]()
+        {
+            auto pop = gp.Parents();
+            auto [minElem, maxElem] = std::minmax_element(pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return lhs.Fitness[idx] < rhs.Fitness[idx]; });
+
+            return Evaluator::Maximization ? *maxElem : *minElem;
+        };
+
+        auto report = [&]()
+        {
+            auto best = getBest(); 
+            auto estimatedTrain = Evaluate<double>(best.Genotype, problem.GetDataset(), trainingRange);
+            auto estimatedTest  = Evaluate<double>(best.Genotype, problem.GetDataset(), testRange);
+            
+            // scale values
+            LinearScalingCalculator lsp;
+            auto [a, b] = lsp.Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
+            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a=a, b=b](double v) { return b * v + a; });
+            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a=a, b=b](double v) { return b * v + a; });
+
+            auto r2Train        = RSquared(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
+            auto r2Test         = RSquared(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
+
+            auto nmseTrain      = NormalizedMeanSquaredError(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
+            auto nmseTest       = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
+
+            auto t1 = std::chrono::high_resolution_clock::now();
+
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
+            fmt::print("{:.4f}\t{}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\n", elapsed, gp.Generation() + 1, r2Train, r2Test, nmseTrain, nmseTest);
+        };
+
+        gp.Run(random, report);
     }
     catch(std::exception& e) 
     {
-        throw std::runtime_error(e.what());
+        fmt::print("{}\n", e.what());
+        std::exit(1);
     }
 
     return 0;

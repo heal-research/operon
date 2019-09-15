@@ -3,6 +3,7 @@
 
 #include "core/operator.hpp"
 #include "core/eval.hpp"
+#include "core/stats.hpp"
 
 namespace Operon
 {

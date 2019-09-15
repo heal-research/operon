@@ -88,23 +88,6 @@ target_include_directories(
 )
 set_target_properties(operon-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 
-# binary for OSGP algorithm cli version
-add_executable(
-    operon-osgp
-    src/cli/operon_osgp.cpp
-)
-target_compile_features(operon-osgp PRIVATE cxx_std_17)
-target_link_libraries(operon-osgp PRIVATE operon cxxopts::cxxopts TBB::tbb)
-target_include_directories(
-    operon-osgp 
-    PRIVATE ${PROJECT_SOURCE_DIR}/include/operon
-    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
-    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
-    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
-    PRIVATE ${CERES_INCLUDE_DIRS}
-)
-set_target_properties(operon-osgp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
-
 find_package(Catch2 REQUIRED)
 add_executable(
     operon-test
@@ -129,7 +112,6 @@ set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 if(MSVC)
     target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
-    target_compile_options(operon-osgp PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     # ugly hack to set the include dir correctly
     find_path(FMT_INCLUDE_DIR fmt/core.h)
@@ -139,8 +121,6 @@ else()
     target_link_libraries(operon PRIVATE "$<$<CONFIG:Debug>:gcov>")
     target_compile_options(operon-gp PRIVATE -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_link_libraries(operon-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-osgp PRIVATE -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
-    target_link_libraries(operon-osgp PRIVATE "$<$<CONFIG:Debug>:gcov>")
     target_compile_options(operon-test PRIVATE -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
 endif(MSVC)
 

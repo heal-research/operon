@@ -59,7 +59,7 @@ namespace Operon
             void MaxSelectionPressure(size_t value) { maxSelectionPressure = value; }
             size_t MaxSelectionPressure() const { return maxSelectionPressure; }
 
-            void Prepare(const gsl::span<const T> pop) override
+            void Prepare(const gsl::span<const T> pop) const override
             {
                 this->Selector().Prepare(pop);
                 lastEvaluations = this->evaluator.get().FitnessEvaluations();
@@ -81,7 +81,7 @@ namespace Operon
             };
 
         private:
-            size_t lastEvaluations;
+            mutable size_t lastEvaluations;
             size_t maxSelectionPressure;
     };
 } // namespace Operon

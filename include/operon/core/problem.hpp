@@ -27,16 +27,18 @@ namespace Operon
                     std::sort(inputVariables.begin(), inputVariables.end(), [](const auto& lhs, const auto& rhs) { return lhs.Hash < rhs.Hash; });
                 }
 
-            Range TrainingRange()               const           { return training;   }
-            Range TestRange()                   const           { return test;       }
-            Range ValidationRange()             const           { return validation; }
+            Range TrainingRange()               const              { return training;                  }
+            Range TestRange()                   const              { return test;                      }
+            Range ValidationRange()             const              { return validation;                }
 
-            const std::string& TargetVariable() const           { return target;  }
-            const Grammar& GetGrammar()         const           { return grammar; }
-            Grammar& GetGrammar()                               { return grammar; }
-            const Dataset& GetDataset()         const           { return dataset; }
-            Dataset& GetDataset()                               { return dataset; }
-            const gsl::span<const Variable> InputVariables() const { return inputVariables; }
+            const std::string& TargetVariable() const              { return target;                    }
+            const Grammar& GetGrammar()         const              { return grammar;                   }
+            Grammar& GetGrammar()                                  { return grammar;                   }
+            const Dataset& GetDataset()         const              { return dataset;                   }
+            Dataset& GetDataset()                                  { return dataset;                   }
+
+            const gsl::span<const Variable> InputVariables() const { return inputVariables;            }
+            const gsl::span<const double> TargetValues() const     { return dataset.GetValues(target); }
 
             Solution CreateSolution(const Tree&) const;
             

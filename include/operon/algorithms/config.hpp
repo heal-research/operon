@@ -1,7 +1,7 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include <cstdint>
+#include <cstddef>
 
 struct GeneticAlgorithmConfig
 {
@@ -11,11 +11,11 @@ struct GeneticAlgorithmConfig
     size_t PopulationSize;
     double CrossoverProbability;
     double MutationProbability;
-};
-
-struct OffspringSelectionGeneticAlgorithmConfig : public GeneticAlgorithmConfig
-{
+    // offspring selection recombinator
     size_t MaxSelectionPressure;
+    // brood recombinator
+    size_t BroodSize;
+    size_t BroodTournamentSize;
 };
 
 #endif
