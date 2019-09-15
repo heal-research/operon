@@ -1,8 +1,6 @@
 #ifndef GP_HPP
 #define GP_HPP
 
-#include <chrono>
-
 #include "core/eval.hpp"
 #include "operators/recombinator.hpp"
 #include "operators/crossover.hpp"

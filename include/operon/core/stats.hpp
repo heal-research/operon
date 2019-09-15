@@ -150,6 +150,9 @@ namespace Operon {
                 tCalculator.Reset();
                 ovCalculator.Reset();
                 otCalculator.Reset();
+
+                alpha = 0;
+                beta  = 0;
             }
             void Add(double original, double target) {
                 tCalculator.Add(target);
