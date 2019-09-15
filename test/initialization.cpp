@@ -21,6 +21,7 @@ namespace Operon::Test
 
         auto creator = GrowTreeCreator(maxDepth, maxLength);
         Grammar grammar;
+        grammar.SetFrequency(NodeType::Add, 2);
         Operon::Random::JsfRand<64> rd(std::random_device{}());
         
         auto trees = std::vector<Tree>(10000);
@@ -49,6 +50,7 @@ namespace Operon::Test
         for (size_t i = 0; i < symbolFrequencies.size(); ++i)
         {
             auto node = Node(static_cast<NodeType>(1u << i));
+            if (!grammar.IsEnabled(node.Type)) continue;
             fmt::print("{}\t{:.3f} %\n", node.Name(), symbolFrequencies[i] / totalLength);
         }
     }
@@ -92,6 +94,7 @@ namespace Operon::Test
         for (size_t i = 0; i < symbolFrequencies.size(); ++i)
         {
             auto node = Node(static_cast<NodeType>(1u << i));
+            if (!grammar.IsEnabled(node.Type)) continue;
             fmt::print("{}\t{:.3f} %\n", node.Name(), symbolFrequencies[i] / totalLength);
         }
     }

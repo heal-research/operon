@@ -23,7 +23,7 @@ namespace Operon
 
             bool          IsEnabled(NodeType type) const                { return static_cast<bool>(config & type);               }
             void          SetEnabled(NodeType type, bool enabled)       { config = enabled ? (config | type) : (config & ~type); }
-            void          SetFrequency(NodeType type, double frequency) { symbolFrequencies[type] = frequency;                   }
+            void          SetFrequency(NodeType type, double frequency) { symbolFrequencies[type] = frequency; UpdatePartials(); }
             double        GetFrequency(NodeType type) const             { return symbolFrequencies.find(type)->second;           }
             GrammarConfig GetConfig() const                             { return config;                                         }
             void          SetConfig(GrammarConfig cfg)                  { config = cfg; UpdatePartials();                        }
