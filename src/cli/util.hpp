@@ -70,49 +70,54 @@ namespace Operon
             {
                 config |= GrammarConfig::Add;
             }
-            if (s == "sub")
+            else if (s == "sub")
             {
                 config |= GrammarConfig::Sub;
             }
-            if (s == "mul")
+            else if (s == "mul")
             {
                 config |= GrammarConfig::Mul;
             }
-            if (s == "div")
+            else if (s == "div")
             {
                 config |= GrammarConfig::Div;
             }
-            if (s == "exp")
+            else if (s == "exp")
             {
                 config |= GrammarConfig::Exp;
             }
-            if (s == "log")
+            else if (s == "log")
             {
                 config |= GrammarConfig::Log;
             }
-            if (s == "sin")
+            else if (s == "sin")
             {
                 config |= GrammarConfig::Sin;
             }
-            if (s == "cos")
+            else if (s == "cos")
             {
                 config |= GrammarConfig::Cos;
             }
-            if (s == "tan")
+            else if (s == "tan")
             {
                 config |= GrammarConfig::Tan;
             }
-            if (s == "sqrt")
+            else if (s == "sqrt")
             {
                 config |= GrammarConfig::Sqrt;
             }
-            if (s == "cbrt")
+            else if (s == "cbrt")
             {
                 config |= GrammarConfig::Cbrt;
             }
-            if (s == "square")
+            else if (s == "square")
             {
                 config |= GrammarConfig::Square;
+            }
+            else
+            {
+                fmt::print("Unrecognized symbol {}\n", s);
+                std::exit(1);
             }
         }
         return config;
