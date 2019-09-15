@@ -11,6 +11,8 @@ import logging
 import argparse
 from colorama import init
 from colorama import Fore as fg
+from colorama import Back as bg
+from colorama import Style as st
 
 init(autoreset=True)
 
@@ -68,8 +70,8 @@ for pop_size, iter_count, eval_count in parameter_space:
             problem_name = os.path.splitext(f)[0]
             config_str = 'Configuration [{}/{}]\tpopulation size: {}\titerations: {}\tevaluation budget: {}'.format(idx, total_configurations, pop_size, iter_count, eval_count)
             problem_str = 'Problem [{}/{}]\t{}\tRows: {}\tTarget: {}\tRepetitions: {}'.format(i+1, data_count, problem_name, train, target, reps)
-            logger.info(fg.GREEN + config_str)
-            logger.info(problem_str)
+            logger.info(fg.MAGENTA + config_str)
+            logger.info(fg.MAGENTA + problem_str)
 
             df2 = pd.DataFrame(columns=header)
 
@@ -96,10 +98,10 @@ for pop_size, iter_count, eval_count in parameter_space:
                     vals = [ np.nan if v == 'nan' else float(v) for v in line.split(b'\t') ]
                     df.loc[i + n] = meta + vals
 
-            logger.info(config_str)
-            logger.info(problem_str)
+            logger.info(fg.GREEN + config_str)
+            logger.info(fg.GREEN + problem_str)
             for l in str(df2.median(axis=0)).split('\n'):
-                logger.info(l)
+                logger.info(fg.CYAN + l)
 
             df2.to_excel('GP_{}_{}_{}_{}.xlsx'.format(problem_name, pop_size, iter_count, eval_count))
                         
