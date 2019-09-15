@@ -21,7 +21,7 @@ namespace Operon
         std::uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1); 
         std::normal_distribution<double> normalReal(0, 1);
 
-        size_t freeSpace = maxLength - 1; // we have 1 root node
+        int freeSpace = maxLength - 1; // we have 1 root node
 
         while(!stk.empty())
         {
