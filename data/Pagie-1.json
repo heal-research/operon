@@ -4,7 +4,7 @@
         "filename": "Pagie-1.csv",
         "formula": "F(x,y) = 1/(1 + x^(-4)) + 1/(1 + y^(-4))",
         "kind": "synthetic",
-        "target": "Y",
+        "target": "F",
         "test_rows": {
             "end": 1676,
             "start": 676
