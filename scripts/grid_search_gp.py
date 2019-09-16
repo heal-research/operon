@@ -29,9 +29,9 @@ base_path = os.path.dirname(data_path)
 
 reps = args.reps
 
-population_size = [ 500, 1000 ]
+population_size = [ 1000 ]
 iteration_count = [ 0 ]
-evaluation_budget = [ 500000, 1000000 ]
+evaluation_budget = [ 500000 ]
 
 meta_header = ['Problem', 
         'Pop size',
@@ -44,7 +44,12 @@ output_header = ['Elapsed',
         'R2 (train)',
         'R2 (test)',
         'NMSE (train)',
-        'NMSE (test)']
+        'NMSE (test)',
+        'Average quality',
+        'Average length',
+        'Fitness evaluations',
+        'Local evaluations',
+        'Total evaluations']
 
 header = meta_header + output_header
 
@@ -58,6 +63,7 @@ coloredlogs.install(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger("operon-gp")
 
 idx = 0
+dataframes = []
 for pop_size, iter_count, eval_count in parameter_space:
     idx = idx+1
     
@@ -83,7 +89,7 @@ for pop_size, iter_count, eval_count in parameter_space:
                     "--iterations", str(iter_count), 
                     "--evaluations", str(eval_count), 
                     "--population-size", str(pop_size),
-                    "--enable-symbols", "exp,log,sin,cos"]);
+                    "--enable-symbols", ""]);
 
                 n = df.shape[0]
 
@@ -94,9 +100,7 @@ for pop_size, iter_count, eval_count in parameter_space:
                 meta = [ problem_name, pop_size, iter_count, eval_count, j+1 ]
                 df2.loc[j] = meta  + [ np.nan if v == 'nan' else float(v) for v in lines[-1].split(b'\t') ]
 
-                for i,line in enumerate(lines):
-                    vals = [ np.nan if v == 'nan' else float(v) for v in line.split(b'\t') ]
-                    df.loc[i + n] = meta + vals
+                dataframes.append(df2)
 
             logger.info(fg.GREEN + config_str)
             logger.info(fg.GREEN + problem_str)
@@ -105,5 +109,8 @@ for pop_size, iter_count, eval_count in parameter_space:
 
             df2.to_excel('GP_{}_{}_{}_{}.xlsx'.format(problem_name, pop_size, iter_count, eval_count))
                         
+df = pd.concat(dataframes, axis=0, ignore_index=True)
+for l in str(df.median(axis=0)).split('\n'):
+    logger.info(fg.YELLOW + l)
 df.to_excel('GP.xlsx')
 
