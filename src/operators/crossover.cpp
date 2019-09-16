@@ -2,7 +2,7 @@
 
 namespace Operon
 {
-    std::optional<size_t> SubtreeCrossover::SelectRandomBranch(operon::rand_t& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength) const
+    static std::optional<size_t> SelectRandomBranch(operon::rand_t& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength)
     {
         if (maxBranchDepth == 0 || maxBranchLength == 0)
         {
@@ -14,6 +14,8 @@ namespace Operon
         iota(indices.begin(), indices.end(), 0);
         shuffle(indices.begin(), indices.end(), random);
 
+        auto choice = uniformReal(random) < internalProb;
+
         for(auto i : indices)
         {
             auto& node = tree[i];
@@ -23,7 +25,7 @@ namespace Operon
                 continue;
             }
 
-            if ((uniformReal(random) < internalProb) != node.IsLeaf())
+            if (choice != node.IsLeaf())
             {
                 return std::make_optional(i);
             }
@@ -31,45 +33,30 @@ namespace Operon
         return std::nullopt;
     }
 
-    size_t SubtreeCrossover::CutRandom(operon::rand_t& random, const Tree& tree, double internalProb) const
-    {
-        std::uniform_real_distribution<double> uniformReal(0, 1);
-        // create a vector of indices and shuffle it to ensure fair sampling
-        std::vector<size_t> indices(tree.Length());
-        iota(indices.begin(), indices.end(), 0);
-        shuffle(indices.begin(), indices.end(), random);
-
-        for (auto i : indices)
-        {
-            if ((uniformReal(random) < internalProb) != tree[i].IsLeaf())
-            {
-                return i; 
-            }
-        }
-        return indices.back();
-    }
-
     Tree SubtreeCrossover::operator()(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const
     {
-        auto i = CutRandom(random, lhs, internalProbability);
-
-        long maxBranchDepth  = maxDepth - lhs.Level(i);
-        long partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
-        long maxBranchLength = maxLength - partialTreeLength;
-
-        if (auto result = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength); result.has_value())
+        if (auto cut = SelectRandomBranch(random, lhs, internalProbability, maxDepth, maxLength); cut.has_value())
         {
-            auto j = result.value();
-            auto& left           = lhs.Nodes();
-            auto& right          = rhs.Nodes();
-            std::vector<Node> nodes;
-            nodes.reserve(right[j].Length - left[i].Length + left.size());
-            copy_n(left.begin(),                        i - left[i].Length,    back_inserter(nodes));
-            copy_n(right.begin() + j - right[j].Length, right[j].Length + 1,   back_inserter(nodes));
-            copy_n(left.begin() + i + 1,                left.size() - (i + 1), back_inserter(nodes));
+            auto i = cut.value();
 
-            auto child = Tree(nodes).UpdateNodes();
-            return child;
+            long maxBranchDepth    = maxDepth - lhs.Level(i);
+            long partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
+            long maxBranchLength   = maxLength - partialTreeLength;
+
+            if (auto result = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength); result.has_value())
+            {
+                auto j      = result.value();
+                auto& left  = lhs.Nodes();
+                auto& right = rhs.Nodes();
+                std::vector<Node> nodes;
+                nodes.reserve(right[j].Length - left[i].Length + left.size());
+                copy_n(left.begin(),                        i - left[i].Length,    back_inserter(nodes));
+                copy_n(right.begin() + j - right[j].Length, right[j].Length + 1,   back_inserter(nodes));
+                copy_n(left.begin() + i + 1,                left.size() - (i + 1), back_inserter(nodes));
+
+                auto child = Tree(nodes).UpdateNodes();
+                return child;
+            }
         }
 
         return lhs;
