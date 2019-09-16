@@ -17,6 +17,7 @@ namespace Operon
         static constexpr bool Idx = TRecombinator::SelectorType::SelectableIndex;
         static constexpr bool Max = TRecombinator::SelectorType::Maximization;
 
+
         private:
             std::reference_wrapper<const Problem> problem_;
             std::reference_wrapper<const GeneticAlgorithmConfig> config_;
@@ -108,14 +109,14 @@ namespace Operon
                         terminate = true;
                     }
 
-                    if (terminate)
-                    {
-                        return;
-                    }
-
                     if (report)
                     {
                         std::invoke(report);
+                    }
+
+                    if (terminate)
+                    {
+                        return;
                     }
 
                     offspring[0] = *best;
