@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Breiman-I",
+        "filename": "Breiman-I.csv",
+        "formula": "",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 10001,
+            "start": 5001
+        },
+        "training_rows": {
+            "end": 5001,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

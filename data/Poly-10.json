@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Poly-10",
+        "filename": "Poly-10.csv",
+        "formula": "",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 200,
+            "start": 100
+        },
+        "training_rows": {
+            "end": 100,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

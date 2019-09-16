@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Vladislavleva-7",
+        "filename": "Vladislavleva-7.csv",
+        "formula": "F7(X1, X2) = (X1 - 3)(X2 - 3) + 2 * sin((X1 - 4)(X2 - 4))",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 1300,
+            "start": 300
+        },
+        "training_rows": {
+            "end": 300,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

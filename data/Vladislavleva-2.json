@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Vladislavleva-3",
+        "filename": "Vladislavleva-2.csv",
+        "formula": "F2(X) = exp(-X) * X³ * cos(X) * sin(X) * (cos(X)sin(X)² - 1)",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 321,
+            "start": 100
+        },
+        "training_rows": {
+            "end": 100,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

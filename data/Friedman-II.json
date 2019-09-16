@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Friedman-II",
+        "filename": "Friedman-II.csv",
+        "formula": "",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 10000,
+            "start": 5000
+        },
+        "training_rows": {
+            "end": 5000,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

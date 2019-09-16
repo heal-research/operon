@@ -275,7 +275,9 @@ int main(int argc, char* argv[])
             auto t1 = std::chrono::high_resolution_clock::now();
 
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
-            fmt::print("{:.4f}\t{}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.1f}\t{}\t{}\t{}\n", elapsed, gp.Generation() + 1, r2Train, r2Test, nmseTrain, nmseTest, avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
+            fmt::print("{:.4f}\t{}\t",                     elapsed,    gp.Generation() + 1);
+            fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train,    r2Test,    nmseTrain,                      nmseTest);
+            fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\n",     avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
         };
 
         gp.Run(random, report);

@@ -13,6 +13,7 @@ from colorama import init
 from colorama import Fore as fg
 from colorama import Back as bg
 from colorama import Style as st
+import json
 
 init(autoreset=True)
 
@@ -53,64 +54,80 @@ output_header = ['Elapsed',
 
 header = meta_header + output_header
 
-df = pd.DataFrame(columns=header)
 parameter_space = list(itertools.product(population_size, iteration_count, evaluation_budget))
 total_configurations = len(parameter_space)
-data_files = list(os.listdir(data_path)) if os.path.isdir(data_path) else [ os.path.basename(data_path) ]
+all_files = list(os.listdir(data_path)) if os.path.isdir(data_path) else [ os.path.basename(data_path) ]
+data_files = [ f for f in all_files if f.endswith('.json') ]
 data_count = len(data_files)
+reps_range = list(range(reps))
 
 coloredlogs.install(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger("operon-gp")
 
 idx = 0
-dataframes = []
+
+total_idx = reps * len(parameter_space) * data_count
+global_result = {}
 for pop_size, iter_count, eval_count in parameter_space:
     idx = idx+1
     
     for i,f in enumerate(data_files):
         with open(os.path.join(base_path, f), 'r') as h:
-            lines = h.readlines()
-            count = len(lines) - 1
-            train = int(count * 2 / 4)
-            target = lines[0].split(',')[-1].strip('\n')
-            problem_name = os.path.splitext(f)[0]
-            config_str = 'Configuration [{}/{}]\tpopulation size: {}\titerations: {}\tevaluation budget: {}'.format(idx, total_configurations, pop_size, iter_count, eval_count)
-            problem_str = 'Problem [{}/{}]\t{}\tRows: {}\tTarget: {}\tRepetitions: {}'.format(i+1, data_count, problem_name, train, target, reps)
+            info           = json.load(h)
+            metadata       = info['metadata']
+            target         = metadata['target']
+            training_rows  = metadata['training_rows']
+            training_start = training_rows['start']
+            training_end   = training_rows['end']
+            test_rows      = metadata['test_rows']
+            test_start     = test_rows['start']
+            test_end       = test_rows['end']
+            problem_name   = metadata['name']
+            problem_csv    = metadata['filename']
+
+            problem_name   = os.path.splitext(f)[0]
+            config_str     = 'Configuration [{}/{}]\tpopulation size: {}\titerations: {}\tevaluation budget: {}'.format(idx, total_configurations, pop_size, iter_count, eval_count)
+            problem_str    = 'Problem [{}/{}]\t{}\tRows: {}\tTarget: {}\tRepetitions: {}'.format(i+1, data_count, problem_name, training_rows, target, reps)
             logger.info(fg.MAGENTA + config_str)
             logger.info(fg.MAGENTA + problem_str)
 
-            df2 = pd.DataFrame(columns=header)
+            problem_result = {}
 
-            for j in range(reps):
+            for j in reps_range:
                 output = subprocess.check_output([bin_path, 
-                    "--dataset", os.path.join(base_path, f), 
+                    "--dataset", os.path.join(base_path, problem_csv), 
                     "--target", target, 
-                    "--train", '0:{}'.format(train), 
+                    "--train", '{}:{}'.format(training_start, training_end), 
+                    "--test", '{}:{}'.format(test_start, test_end),
                     "--iterations", str(iter_count), 
                     "--evaluations", str(eval_count), 
                     "--population-size", str(pop_size),
-                    "--enable-symbols", ""]);
+                    "--enable-symbols", "exp,log,sin,cos"]);
 
-                n = df.shape[0]
+                n = len(global_result) 
 
                 lines = list(filter(lambda x: x, output.split(b'\n')))
                 result = '\t'.join([v.decode('ascii') for v in lines[-1].split(b'\t') ])
                 logger.info('[{:#2d}/{}]\t{}\t{}'.format(j+1, reps, problem_name, result))
 
                 meta = [ problem_name, pop_size, iter_count, eval_count, j+1 ]
-                df2.loc[j] = meta  + [ np.nan if v == 'nan' else float(v) for v in lines[-1].split(b'\t') ]
+                problem_result[j] = meta  + [ np.nan if v == 'nan' else float(v) for v in lines[-1].split(b'\t') ]
 
-                dataframes.append(df2)
+                for i,line in enumerate(lines):
+                    vals = [ np.nan if v == 'nan' else float(v) for v in line.split(b'\t') ]
+                    global_result[i + n] = meta + vals
 
             logger.info(fg.GREEN + config_str)
             logger.info(fg.GREEN + problem_str)
+
+            df2 = pd.DataFrame.from_dict(problem_result, orient='index', columns=header) 
             for l in str(df2.median(axis=0)).split('\n'):
                 logger.info(fg.CYAN + l)
 
             df2.to_excel('GP_{}_{}_{}_{}.xlsx'.format(problem_name, pop_size, iter_count, eval_count))
                         
-df = pd.concat(dataframes, axis=0, ignore_index=True)
-for l in str(df.median(axis=0)).split('\n'):
+df = pd.DataFrame.from_dict(global_result, orient='index', columns=header)
+for l in str(df.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count']).median(numeric_only=False)).split('\n'):
     logger.info(fg.YELLOW + l)
 df.to_excel('GP.xlsx')
 

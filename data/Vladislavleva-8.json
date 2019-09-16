@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Vladislavleva-8",
+        "filename": "Vladislavleva-8.csv",
+        "formula": "F8(X1, X2) = ((X1 - 3)^4 + (X2 - 3)³ - (X2 -3)) / ((X2 - 2)^4 + 10)",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 1206,
+            "start": 50
+        },
+        "training_rows": {
+            "end": 50,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

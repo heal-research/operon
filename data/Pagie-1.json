@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Spatial Coevolution",
+        "filename": "Pagie-1.csv",
+        "formula": "F(x,y) = 1/(1 + x^(-4)) + 1/(1 + y^(-4))",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 1676,
+            "start": 676
+        },
+        "training_rows": {
+            "end": 676,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

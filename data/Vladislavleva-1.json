@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Vladislavleva-1",
+        "filename": "Vladislavleva-1.csv",
+        "formula": "F1(X1,X2) = exp(- (X1 - 1)²) / (1.2 + (X2 - 2.5)²)",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 2125,
+            "start": 100
+        },
+        "training_rows": {
+            "end": 100,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Vladislavleva-4",
+        "filename": "Vladislavleva-5.csv",
+        "formula": "F5(X1, X2, X3) = 30 * ((X1 - 1) * (X3 -1)) / (X2² * (X1 - 10))",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 3000,
+            "start": 300
+        },
+        "training_rows": {
+            "end": 300,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

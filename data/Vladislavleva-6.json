@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Vladislavleva-6",
+        "filename": "Vladislavleva-6.csv",
+        "formula": "F6(X1, X2) = 6 * sin(X1) * cos(X2)",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 93666,
+            "start": 30
+        },
+        "training_rows": {
+            "end": 30,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}

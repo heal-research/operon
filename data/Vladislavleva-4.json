@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Vladislavleva-1",
+        "filename": "Vladislavleva-4.csv",
+        "formula": "F4(X1, X2, X3, X4, X5) = 10 / (5 + Sum(Xi - 3)^2)",
+        "kind": "synthetic",
+        "target": "Y",
+        "test_rows": {
+            "end": 6024,
+            "start": 1024 
+        },
+        "training_rows": {
+            "end": 1024,
+            "start": 0
+        }
+    },
+    "timestamp": "Mon, 16 Sep 2019 18:48:21 +0000"
+}
