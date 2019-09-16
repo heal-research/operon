@@ -213,29 +213,29 @@ int main(int argc, char* argv[])
         evaluator.LocalOptimizationIterations(config.Iterations);
         evaluator.Budget(config.Evaluations);
 
-        const size_t idx = 0;
+        const gsl::index idx { 0 };
         TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(2);
 
         //auto creator  = FullTreeCreator(5, maxLength);
         //auto creator  = GrowTreeCreator(maxDepth, maxLength);
-        auto creator     = RampedHalfAndHalfCreator(maxDepth, maxLength);
-        auto crossover   = SubtreeCrossover(0.9, maxDepth, maxLength);
-        auto mutator     = MultiMutation();
-        auto onePoint    = OnePointMutation();
-        auto multiPoint  = MultiPointMutation();
-        auto changeVar   = ChangeVariableMutation(inputs);
-        mutator.Add(onePoint, 1.0);
-        mutator.Add(changeVar, 1.0);
+        auto creator     = RampedHalfAndHalfCreator{ maxDepth, maxLength };
+        auto crossover   = SubtreeCrossover{ 0.9, maxDepth, maxLength };
+        auto mutator     = MultiMutation{ };
+        auto onePoint    = OnePointMutation{ };
+        auto multiPoint  = MultiPointMutation{ };
+        auto changeVar   = ChangeVariableMutation{ inputs };
+        mutator.Add(onePoint,   1.0);
+        mutator.Add(changeVar,  1.0);
         mutator.Add(multiPoint, 1.0);
         //BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
         //BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
         //recombinator.BroodSize(5);
         //recombinator.BroodTournamentSize(2);
-        OffspringSelectionRecombinator recombinator(evaluator, selector, crossover, mutator);
+        OffspringSelectionRecombinator recombinator{ evaluator, selector, crossover, mutator };
         recombinator.MaxSelectionPressure(100);
 
         auto t0 = std::chrono::high_resolution_clock::now();
-        GeneticProgrammingAlgorithm gp(problem, config, creator, recombinator);
+        GeneticProgrammingAlgorithm gp{ problem, config, creator, recombinator };
 
         auto targetValues  = problem.TargetValues();
         auto trainingRange = problem.TrainingRange();
@@ -244,17 +244,16 @@ int main(int argc, char* argv[])
         auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
 
         // some boilerplate for reporting results
-        auto getBest = [&]()
+        auto getBest = [&](const gsl::span<const Ind> pop)
         {
-            auto pop = gp.Parents();
             auto [minElem, maxElem] = std::minmax_element(pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return lhs.Fitness[idx] < rhs.Fitness[idx]; });
-
             return Evaluator::Maximization ? *maxElem : *minElem;
         };
 
         auto report = [&]()
         {
-            auto best = getBest(); 
+            auto pop  = gp.Parents();
+            auto best = getBest(pop); 
             auto estimatedTrain = Evaluate<double>(best.Genotype, problem.GetDataset(), trainingRange);
             auto estimatedTest  = Evaluate<double>(best.Genotype, problem.GetDataset(), testRange);
             
@@ -270,10 +269,13 @@ int main(int argc, char* argv[])
             auto nmseTrain      = NormalizedMeanSquaredError(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
             auto nmseTest       = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
 
+            auto avgLength      = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<size_t>{}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
+            auto avgQuality     = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<double>{}, [=](const auto& ind) { return ind.Fitness[idx]; }) / pop.size();
+
             auto t1 = std::chrono::high_resolution_clock::now();
 
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
-            fmt::print("{:.4f}\t{}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\n", elapsed, gp.Generation() + 1, r2Train, r2Test, nmseTrain, nmseTest);
+            fmt::print("{:.4f}\t{}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.1f}\t{}\t{}\t{}\n", elapsed, gp.Generation() + 1, r2Train, r2Test, nmseTrain, nmseTest, avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
         };
 
         gp.Run(random, report);
