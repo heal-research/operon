@@ -71,6 +71,8 @@ total_idx = reps * len(parameter_space) * data_count
 raw_data = {}
 
 problem_results = []
+
+prefix = 'GP_Brood(10,5)'
 for pop_size, iter_count, eval_count in parameter_space:
     idx = idx+1
 
@@ -133,13 +135,14 @@ for pop_size, iter_count, eval_count in parameter_space:
             for l in str(df.median(axis=0)).split('\n'):
                 logger.info(fg.CYAN + l)
 
-            df.to_excel('GP_{}_{}_{}_{}.xlsx'.format(problem_name, pop_size, iter_count, eval_count))
+            df.to_excel('{}_{}_{}_{}_{}.xlsx'.format(prefix, problem_name, pop_size, iter_count, eval_count))
             problem_results.append(df)
                         
 df_raw = pd.DataFrame.from_dict(raw_data, orient='index', columns=header)
-df.to_excel('GP.xlsx')
+df_raw.to_excel('{}_raw.xlsx'.format(prefix))
 
 df_all = pd.concat(problem_results, axis=0)
 for l in str(df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count']).median(numeric_only=False)).split('\n'):
     logger.info(fg.YELLOW + l)
+df_all.to_excel('{}.xlsx'.format(prefix))
 
