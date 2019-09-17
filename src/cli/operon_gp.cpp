@@ -63,7 +63,7 @@ int main(int argc, char* argv[])
     // parse remaining config options
     Range trainingRange;
     Range testRange;
-    std::unique_ptr<Dataset> dataset;
+    std::optional<Dataset> optionalDataset;
     std::string fileName; // data file name
     std::string target;
     bool showGrammar = false;
@@ -80,7 +80,7 @@ int main(int argc, char* argv[])
             if (key == "dataset")
             {
                 fileName = value;
-                dataset = std::make_unique<Dataset>(fileName, true);
+                optionalDataset = std::make_optional(Dataset(fileName, true));
             }
             if (key == "train")
             {
@@ -162,6 +162,8 @@ int main(int argc, char* argv[])
             return 0;
         }
 
+        const auto& dataset = optionalDataset.value();
+
         if (result.count("dataset") == 0)
         {
             throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no dataset given.", opts.help()));
@@ -173,12 +175,12 @@ int main(int argc, char* argv[])
 
         if (result.count("train") == 0)
         {
-            trainingRange = { 0, 2 * dataset->Rows() / 3 }; // by default use 66% of the data as training 
+            trainingRange = { 0, 2 * dataset.Rows() / 3 }; // by default use 66% of the data as training 
         }
         // validate training range
-        if (trainingRange.Start >= dataset->Rows() || trainingRange.End > dataset->Rows())
+        if (trainingRange.Start >= dataset.Rows() || trainingRange.End > dataset.Rows())
         {
-            throw std::runtime_error(fmt::format("The training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start, trainingRange.End, dataset->Rows()));
+            throw std::runtime_error(fmt::format("The training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start, trainingRange.End, dataset.Rows()));
         }
         if (trainingRange.Start > trainingRange.End)
         {
@@ -191,9 +193,9 @@ int main(int argc, char* argv[])
             {
                 testRange = { 0, trainingRange.Start};
             }
-            else if (trainingRange.End < dataset->Rows())
+            else if (trainingRange.End < dataset.Rows())
             {
-                testRange = { trainingRange.End, dataset->Rows() };
+                testRange = { trainingRange.End, dataset.Rows() };
             }
             else 
             {
@@ -202,11 +204,11 @@ int main(int argc, char* argv[])
         }
         Operon::Random::JsfRand<64> random(seed);
 
-        auto variables = dataset->Variables();
+        auto variables = dataset.Variables();
         std::vector<Variable> inputs;
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& var) { return var.Name != target; });
 
-        auto problem     = Problem(*dataset, inputs, target, trainingRange, testRange);
+        auto problem     = Problem(dataset, inputs, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
 
         tbb::task_scheduler_init init(threads);
@@ -219,7 +221,7 @@ int main(int argc, char* argv[])
         evaluator.Budget(config.Evaluations);
 
         const gsl::index idx { 0 };
-        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(2);
+        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(5);
 
         //auto creator  = FullTreeCreator(5, maxLength);
         //auto creator  = GrowTreeCreator(maxDepth, maxLength);
@@ -232,12 +234,12 @@ int main(int argc, char* argv[])
         mutator.Add(onePoint,   1.0);
         mutator.Add(changeVar,  1.0);
         mutator.Add(multiPoint, 1.0);
-        //BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
+        BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
         //BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
-        //recombinator.BroodSize(5);
-        //recombinator.BroodTournamentSize(2);
-        OffspringSelectionRecombinator recombinator{ evaluator, selector, crossover, mutator };
-        recombinator.MaxSelectionPressure(100);
+        //recombinator.BroodSize(10);
+        //recombinator.BroodTournamentSize(5);
+        //OffspringSelectionRecombinator recombinator{ evaluator, selector, crossover, mutator };
+        //recombinator.MaxSelectionPressure(100);
 
         auto t0 = std::chrono::high_resolution_clock::now();
         GeneticProgrammingAlgorithm gp{ problem, config, creator, recombinator };
