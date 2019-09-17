@@ -13,19 +13,20 @@ namespace Operon
         const auto& nodes = tree.Nodes();
         // create a vector of indices and shuffle it to ensure fair sampling
         std::vector<gsl::index> indices(nodes.size());
-        size_t leafs = 0;
-        for (size_t i = 0; i < indices.size(); ++i)
+        size_t head = 0;
+        size_t tail = nodes.size() - 1; 
+        
+        for(size_t i = 0; i < nodes.size(); ++i)
         {
-            indices[i] = i;
-            if (nodes[i].IsLeaf()) ++leafs;
+            const auto& node = nodes[i];
+            auto idx         = node.IsLeaf() ? head++ : tail--;
+            indices[idx]     = i;
         }
-
-        std::sort(indices.begin(), indices.end(), [&](auto i, auto j) { return nodes[i].Arity < nodes[j].Arity; } );
 
         if (choice)
         {
-            std::shuffle(indices.begin() + leafs, indices.end(), random);
-            for(size_t i = leafs; i < indices.size(); ++i)
+            std::shuffle(indices.begin() + head, indices.end(), random);
+            for(size_t i = head; i < indices.size(); ++i)
             {
                 auto        idx  = indices[i];
                 const auto& node = nodes[idx];
@@ -38,8 +39,9 @@ namespace Operon
                 return std::make_optional(idx);
             }
         }
-        std::uniform_int_distribution<size_t> uniformInt(0, leafs-1);
-        return std::make_optional(indices[uniformInt(random)]);
+        std::uniform_int_distribution<size_t> uniformInt(0, head-1);
+        auto idx = uniformInt(random);
+        return std::make_optional(indices[idx]);
     }
 
     Tree SubtreeCrossover::operator()(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const
