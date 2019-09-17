@@ -22,14 +22,15 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--bin', help='Path to algorithm executable', type=str)
 parser.add_argument('--data', help='Data path (can be either a directory or a .csv file', type=str)
 parser.add_argument('--reps', help='The number of repetitions for each configuration', type=int)
+parser.add_argument('--prefix', help='Prefix to add to output filenames', type=str)
 
 args = parser.parse_args()
 
 bin_path=args.bin
 data_path=args.data
 base_path = os.path.dirname(data_path)
-
 reps = args.reps
+prefix = args.prefix
 
 population_size = [ 1000 ]
 iteration_count = [ 0 ]
@@ -72,7 +73,6 @@ raw_data = {}
 
 problem_results = []
 
-prefix = 'GP_Brood(10,5)'
 for pop_size, iter_count, eval_count in parameter_space:
     idx = idx+1
 
@@ -132,7 +132,18 @@ for pop_size, iter_count, eval_count in parameter_space:
             logger.info(fg.GREEN + problem_str)
 
             df = pd.DataFrame.from_dict(problem_result, orient='index', columns=header) 
-            for l in str(df.median(axis=0)).split('\n'):
+            median = df.median(axis=0)
+            q1, q3 = df['R2 (train)'].quantile([0.25, 0.75])
+            median['R2 (train) IQR'] = q3 - q1
+            q1, q3 = df['R2 (test)'].quantile([0.25, 0.75])
+            median['R2 (test) IQR'] = q3 - q1
+            q1, q3 = df['NMSE (train)'].quantile([0.25, 0.75])
+            median['NMSE (train) IQR'] = q3 - q1
+            q1, q3 = df['NMSE (test)'].quantile([0.25, 0.75])
+            median['NMSE (test) IQR'] = q3 - q1
+            #median = median.reindex(sorted(median.columns), axis=1)
+
+            for l in str(median).split('\n'):
                 logger.info(fg.CYAN + l)
 
             df.to_excel('{}_{}_{}_{}_{}.xlsx'.format(prefix, problem_name, pop_size, iter_count, eval_count))
@@ -142,7 +153,16 @@ df_raw = pd.DataFrame.from_dict(raw_data, orient='index', columns=header)
 df_raw.to_excel('{}_raw.xlsx'.format(prefix))
 
 df_all = pd.concat(problem_results, axis=0)
-for l in str(df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count']).median(numeric_only=False)).split('\n'):
+group = df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count'])
+median_all = group.median(numeric_only=False)
+q25 = group.quantile(0.25)
+q75 = group.quantile(0.75)
+median_all['R2 (train) IQR'] =q75['R2 (train)'] - q25['R2 (train)']
+median_all['R2 (test) IQR'] =q75['R2 (test)'] - q25['R2 (test)']
+median_all['NMSE (train) IQR'] =q75['NMSE (train)'] - q25['NMSE (train)']
+median_all['NMSE (test) IQR'] =q75['NMSE (test)'] - q25['NMSE (test)']
+for l in str(median_all).split('\n'):
     logger.info(fg.YELLOW + l)
 df_all.to_excel('{}.xlsx'.format(prefix))
+median_all.to_excel('{}_median.xlsx'.format(prefix))
 

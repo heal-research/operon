@@ -19,12 +19,10 @@ namespace Operon
         for(auto i : indices)
         {
             auto& node = tree[i];
-            //auto length = node.IsLeaf() ? 1UL : node.Length + 1UL;
             if (node.Length + 1U > maxBranchLength || node.Depth > maxBranchDepth)
             {
                 continue;
             }
-
             if (choice != node.IsLeaf())
             {
                 return std::make_optional(i);
