@@ -25,6 +25,7 @@ int main(int argc, char* argv[])
         ("test",                  "Test range specified as start:end",                                                                  cxxopts::value<std::string>())
         ("target",                "Name of the target variable (required)",                                                             cxxopts::value<std::string>())
         ("population-size",       "Population size",                                                                                    cxxopts::value<size_t>()->default_value("1000"))
+        ("seed",                  "Random number seed",                                                                                 cxxopts::value<operon::rand_t::result_type>()->default_value("0"))
         ("generations",           "Number of generations",                                                                              cxxopts::value<size_t>()->default_value("1000"))
         ("evaluations",           "Evaluation budget",                                                                                  cxxopts::value<size_t>()->default_value("1000000"))
         ("iterations",            "Local optimization iterations",                                                                      cxxopts::value<size_t>()->default_value("50"))
@@ -67,6 +68,7 @@ int main(int argc, char* argv[])
     std::string target;
     bool showGrammar = false;
     auto threads = tbb::task_scheduler_init::default_num_threads();
+    operon::rand_t::result_type seed = std::random_device{}();
     GrammarConfig grammarConfig = Grammar::Arithmetic;
 
     try 
@@ -95,6 +97,10 @@ int main(int argc, char* argv[])
             if (key == "population-size")
             {
                 config.PopulationSize = kv.as<size_t>();
+            }
+            if (key == "seed")
+            {
+                seed = kv.as<operon::rand_t::result_type>();
             }
             if (key == "selection-pressure")
             {
@@ -194,7 +200,6 @@ int main(int argc, char* argv[])
                 testRange = { 0, 0 };
             }
         }
-        auto seed = std::random_device{}();
         Operon::Random::JsfRand<64> random(seed);
 
         auto variables = dataset->Variables();
