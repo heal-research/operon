@@ -6,11 +6,11 @@
         "kind": "synthetic",
         "target": "Y",
         "test_rows": {
-            "end": 200,
-            "start": 100
+            "end": 500,
+            "start": 250
         },
         "training_rows": {
-            "end": 100,
+            "end": 250,
             "start": 0
         }
     },

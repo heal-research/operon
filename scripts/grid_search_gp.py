@@ -1,19 +1,20 @@
 #!/bin/python
 
+from colorama import Back as bg
+from colorama import Fore as fg
+from colorama import Style as st
+from colorama import init
+import argparse
+import coloredlogs
+import itertools
+import json
+import logging
+import math
+import numpy as np
 import os
+import pandas as pd
 import subprocess
 import sys
-import pandas as pd
-import numpy as np
-import itertools
-import coloredlogs
-import logging
-import argparse
-from colorama import init
-from colorama import Fore as fg
-from colorama import Back as bg
-from colorama import Style as st
-import json
 
 init(autoreset=True)
 
@@ -57,6 +58,7 @@ header = meta_header + output_header
 parameter_space = list(itertools.product(population_size, iteration_count, evaluation_budget))
 total_configurations = len(parameter_space)
 all_files = list(os.listdir(data_path)) if os.path.isdir(data_path) else [ os.path.basename(data_path) ]
+print('all files', all_files)
 data_files = [ f for f in all_files if f.endswith('.json') ]
 data_count = len(data_files)
 reps_range = list(range(reps))
@@ -67,9 +69,14 @@ logger = logging.getLogger("operon-gp")
 idx = 0
 
 total_idx = reps * len(parameter_space) * data_count
-global_result = {}
+raw_data = {}
+
+problem_results = []
 for pop_size, iter_count, eval_count in parameter_space:
     idx = idx+1
+
+    gen_count = int(math.ceil(eval_count / pop_size))
+    print('gen count', gen_count)
     
     for i,f in enumerate(data_files):
         with open(os.path.join(base_path, f), 'r') as h:
@@ -102,9 +109,10 @@ for pop_size, iter_count, eval_count in parameter_space:
                     "--iterations", str(iter_count), 
                     "--evaluations", str(eval_count), 
                     "--population-size", str(pop_size),
+                    "--generations", str(gen_count),
                     "--enable-symbols", "exp,log,sin,cos"]);
 
-                n = len(global_result) 
+                n = len(raw_data) 
 
                 lines = list(filter(lambda x: x, output.split(b'\n')))
                 result = '\t'.join([v.decode('ascii') for v in lines[-1].split(b'\t') ])
@@ -115,19 +123,22 @@ for pop_size, iter_count, eval_count in parameter_space:
 
                 for i,line in enumerate(lines):
                     vals = [ np.nan if v == 'nan' else float(v) for v in line.split(b'\t') ]
-                    global_result[i + n] = meta + vals
+                    raw_data[i + n] = meta + vals
 
             logger.info(fg.GREEN + config_str)
             logger.info(fg.GREEN + problem_str)
 
-            df2 = pd.DataFrame.from_dict(problem_result, orient='index', columns=header) 
-            for l in str(df2.median(axis=0)).split('\n'):
+            df = pd.DataFrame.from_dict(problem_result, orient='index', columns=header) 
+            for l in str(df.median(axis=0)).split('\n'):
                 logger.info(fg.CYAN + l)
 
-            df2.to_excel('GP_{}_{}_{}_{}.xlsx'.format(problem_name, pop_size, iter_count, eval_count))
+            df.to_excel('GP_{}_{}_{}_{}.xlsx'.format(problem_name, pop_size, iter_count, eval_count))
+            problem_results.append(df)
                         
-df = pd.DataFrame.from_dict(global_result, orient='index', columns=header)
-for l in str(df.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count']).median(numeric_only=False)).split('\n'):
-    logger.info(fg.YELLOW + l)
+df_raw = pd.DataFrame.from_dict(raw_data, orient='index', columns=header)
 df.to_excel('GP.xlsx')
+
+df_all = pd.concat(problem_results, axis=1)
+for l in str(df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count']).median(numeric_only=False)).split('\n'):
+    logger.info(fg.YELLOW + l)
 
