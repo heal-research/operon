@@ -9,26 +9,37 @@ namespace Operon
             return std::nullopt;
         }
         std::uniform_real_distribution<double> uniformReal(0, 1);
-        // create a vector of indices and shuffle it to ensure fair sampling
-        std::vector<gsl::index> indices(tree.Length());
-        iota(indices.begin(), indices.end(), 0);
-        shuffle(indices.begin(), indices.end(), random);
-
         auto choice = uniformReal(random) < internalProb;
-
-        for(auto i : indices)
+        const auto& nodes = tree.Nodes();
+        // create a vector of indices and shuffle it to ensure fair sampling
+        std::vector<gsl::index> indices(nodes.size());
+        size_t leafs = 0;
+        for (size_t i = 0; i < indices.size(); ++i)
         {
-            auto& node = tree[i];
-            if (node.Length + 1U > maxBranchLength || node.Depth > maxBranchDepth)
+            indices[i] = i;
+            if (nodes[i].IsLeaf()) ++leafs;
+        }
+
+        std::sort(indices.begin(), indices.end(), [&](auto i, auto j) { return nodes[i].Arity < nodes[j].Arity; } );
+
+        if (choice)
+        {
+            std::shuffle(indices.begin() + leafs, indices.end(), random);
+            for(size_t i = leafs; i < indices.size(); ++i)
             {
-                continue;
-            }
-            if (choice != node.IsLeaf())
-            {
-                return std::make_optional(i);
+                auto        idx  = indices[i];
+                const auto& node = nodes[idx];
+
+                if (node.Length + 1u > maxBranchLength || node.Depth > maxBranchDepth)
+                {
+                    continue;
+                }
+
+                return std::make_optional(idx);
             }
         }
-        return std::nullopt;
+        std::uniform_int_distribution<size_t> uniformInt(0, leafs-1);
+        return std::make_optional(indices[uniformInt(random)]);
     }
 
     Tree SubtreeCrossover::operator()(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const
@@ -36,7 +47,6 @@ namespace Operon
         if (auto cut = SelectRandomBranch(random, lhs, internalProbability, maxDepth, maxLength); cut.has_value())
         {
             auto i = cut.value();
-
             long maxBranchDepth    = maxDepth - lhs.Level(i);
             long partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
             long maxBranchLength   = maxLength - partialTreeLength;
@@ -56,7 +66,6 @@ namespace Operon
                 return child;
             }
         }
-
         return lhs;
     }
 }
