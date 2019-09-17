@@ -58,7 +58,6 @@ header = meta_header + output_header
 parameter_space = list(itertools.product(population_size, iteration_count, evaluation_budget))
 total_configurations = len(parameter_space)
 all_files = list(os.listdir(data_path)) if os.path.isdir(data_path) else [ os.path.basename(data_path) ]
-print('all files', all_files)
 data_files = [ f for f in all_files if f.endswith('.json') ]
 data_count = len(data_files)
 reps_range = list(range(reps))
@@ -101,7 +100,9 @@ for pop_size, iter_count, eval_count in parameter_space:
             problem_result = {}
 
             for j in reps_range:
+                os.environ["LD_PRELOAD"] = "/usr/lib/libjemalloc.so"
                 output = subprocess.check_output([bin_path, 
+                    "--threads", str(6),
                     "--dataset", os.path.join(base_path, problem_csv), 
                     "--target", target, 
                     "--train", '{}:{}'.format(training_start, training_end), 
@@ -109,7 +110,7 @@ for pop_size, iter_count, eval_count in parameter_space:
                     "--iterations", str(iter_count), 
                     "--evaluations", str(eval_count), 
                     "--population-size", str(pop_size),
-                    "--generations", str(gen_count),
+                    "--generations", str(1000),
                     "--enable-symbols", "exp,log,sin,cos"]);
 
                 n = len(raw_data) 
@@ -138,7 +139,7 @@ for pop_size, iter_count, eval_count in parameter_space:
 df_raw = pd.DataFrame.from_dict(raw_data, orient='index', columns=header)
 df.to_excel('GP.xlsx')
 
-df_all = pd.concat(problem_results, axis=1)
+df_all = pd.concat(problem_results, axis=0)
 for l in str(df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count']).median(numeric_only=False)).split('\n'):
     logger.info(fg.YELLOW + l)
 
