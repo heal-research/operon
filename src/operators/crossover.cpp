@@ -9,21 +9,21 @@ namespace Operon
             return std::nullopt;
         }
         std::uniform_real_distribution<double> uniformReal(0, 1);
-        auto choice = uniformReal(random) < internalProb;
+        auto selectInternalNode = uniformReal(random) < internalProb;
         const auto& nodes = tree.Nodes();
-        // create a vector of indices and shuffle it to ensure fair sampling
+        // create a vector of indices where leafs are in the front and internal nodes in the back
         std::vector<gsl::index> indices(nodes.size());
         size_t head = 0;
         size_t tail = nodes.size() - 1; 
-        
         for(size_t i = 0; i < nodes.size(); ++i)
         {
             const auto& node = nodes[i];
             auto idx         = node.IsLeaf() ? head++ : tail--;
             indices[idx]     = i;
         }
-
-        if (choice)
+        // if we want an internal node, we shuffle the corresponding part of the indices vector
+        // then we walk over it and return the first index that satisfies the constraints
+        if (selectInternalNode)
         {
             std::shuffle(indices.begin() + head, indices.end(), random);
             for(size_t i = head; i < indices.size(); ++i)
@@ -39,6 +39,7 @@ namespace Operon
                 return std::make_optional(idx);
             }
         }
+        // if we couldn't find a suitable internal node or just wanted a leaf, fallback here
         std::uniform_int_distribution<size_t> uniformInt(0, head-1);
         auto idx = uniformInt(random);
         return std::make_optional(indices[idx]);
