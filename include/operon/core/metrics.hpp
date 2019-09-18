@@ -41,7 +41,7 @@ namespace Operon
                 xEnd,
                 yBegin,
                 T(0), 
-                std::plus<double>{},
+                std::plus<T>{},
                 [](auto a, auto b) { return (a-b) * (a-b); }
                 ) / std::distance(xBegin, xEnd);
     }
