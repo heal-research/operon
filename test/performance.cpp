@@ -4,6 +4,7 @@
 #include "core/eval.hpp"
 #include "core/jsf.hpp"
 #include "core/grammar.hpp"
+#include "core/metrics.hpp"
 #include "core/stats.hpp"
 #include "operators/initialization.hpp"
 
@@ -16,7 +17,7 @@ namespace Operon::Test
         size_t maxDepth = 12;
 
         auto rd = Random::JsfRand<64>();
-        auto ds = Dataset("../data/poly-10.csv", true);
+        auto ds = Dataset("../data/Poly-10.csv", true);
 
         auto target = "Y";
         auto targetValues = ds.GetValues(target);
@@ -37,7 +38,7 @@ namespace Operon::Test
         auto evaluate = [&](auto& tree)
         {
             auto estimated = Evaluate<double>(tree, ds, range); 
-            auto r2 = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + range.Start);
+            auto r2 = RSquared(estimated.begin(), estimated.end(), targetValues.begin() + range.Size());
             return r2;
         };
 

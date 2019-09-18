@@ -59,7 +59,7 @@ namespace Operon
                 auto& genotype = ind.Genotype;
 
                 auto trainingRange = problem.TrainingRange();
-                auto targetValues  = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start, trainingRange.Size());
+                auto targetValues  = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
                 if (this->iterations > 0)
                 {

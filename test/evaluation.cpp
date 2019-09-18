@@ -3,16 +3,17 @@
 #include "core/eval.hpp"
 #include "core/format.hpp"
 #include "core/stats.hpp"
+#include "core/metrics.hpp"
 
 namespace Operon::Test
 {
     TEST_CASE("Evaluation correctness", "[implementation]")
     {
-        auto ds = Dataset("../data/poly-10.csv", true);
+        auto ds = Dataset("../data/Poly-10.csv", true);
         auto variables = ds.Variables();
 
         auto range = Range { 0, 10 };
-        auto targetValues = ds.GetValues("Y").subspan(range.Start, range.Size());
+        auto targetValues = ds.GetValues("Y").subspan(range.Start(), range.Size());
 
         auto x1Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X1"; }); 
         auto x2Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X2"; }); 
@@ -37,8 +38,8 @@ namespace Operon::Test
 
         SECTION("Addition")
         {
-            auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start, range.Size());
-            auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start, range.Size());
+            auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start(), range.Size());
+            auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
             tree = Tree({ x1, x2, add });
             auto values = Evaluate<double>(tree, ds, range);
@@ -53,8 +54,8 @@ namespace Operon::Test
 
         SECTION("Subtraction")
         {
-            auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start, range.Size());
-            auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start, range.Size());
+            auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start(), range.Size());
+            auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
             tree = Tree({ x1, x2, sub }); // this is actually x2 - x1 due to how postfix works
             auto values = Evaluate<double>(tree, ds, range);
@@ -69,8 +70,8 @@ namespace Operon::Test
 
         SECTION("Multiplication")
         {
-            auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start, range.Size());
-            auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start, range.Size());
+            auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start(), range.Size());
+            auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
             tree = Tree({ x1, x2, mul });
             auto values = Evaluate<double>(tree, ds, range);
@@ -85,8 +86,8 @@ namespace Operon::Test
 
         SECTION("Division")
         {
-            auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start, range.Size());
-            auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start, range.Size());
+            auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start(), range.Size());
+            auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
             tree = Tree{ x1, x2, div };
             auto values = Evaluate<double>(tree, ds, range);
@@ -103,9 +104,9 @@ namespace Operon::Test
         {
             tree = Tree{ x3, x6, x5, mul, sub };
 
-            auto x3Values = ds.GetValues(x3Var.Hash).subspan(range.Start, range.Size());
-            auto x5Values = ds.GetValues(x5Var.Hash).subspan(range.Start, range.Size());
-            auto x6Values = ds.GetValues(x6Var.Hash).subspan(range.Start, range.Size());
+            auto x3Values = ds.GetValues(x3Var.Hash).subspan(range.Start(), range.Size());
+            auto x5Values = ds.GetValues(x5Var.Hash).subspan(range.Start(), range.Size());
+            auto x6Values = ds.GetValues(x6Var.Hash).subspan(range.Start(), range.Size());
 
             auto values = Evaluate<double>(tree, ds, range);
             auto r2 = RSquared(values.begin(), values.end(), targetValues.begin());
@@ -124,7 +125,7 @@ namespace Operon::Test
         auto variables = ds.Variables();
 
         auto range = Range { 0, 250 };
-        auto targetValues = ds.GetValues("Y").subspan(range.Start, range.Size());
+        auto targetValues = ds.GetValues("Y").subspan(range.Start(), range.Size());
 
         auto x1Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X1"; }); 
         auto x2Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X2"; }); 
@@ -169,7 +170,7 @@ namespace Operon::Test
         auto variables = ds.Variables();
 
         auto range = Range { 0, 250 };
-        auto targetValues = ds.GetValues("Y").subspan(range.Start, range.Size());
+        auto targetValues = ds.GetValues("Y").subspan(range.Start(), range.Size());
 
         auto x1Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X1"; }); 
         auto x2Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X2"; }); 

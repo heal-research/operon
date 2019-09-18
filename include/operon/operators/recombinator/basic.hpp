@@ -16,6 +16,9 @@ namespace Operon
             std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) const override
             {
                 std::uniform_real_distribution<double> uniformReal;
+                bool doCrossover = uniformReal(random) < pCrossover;
+                bool doMutation  = uniformReal(random) < pMutation;
+                if (!(doCrossover || doMutation)) return std::nullopt;
 
                 constexpr bool Max       = TSelector::Maximization;
                 constexpr gsl::index Idx = TSelector::SelectableIndex;
@@ -23,13 +26,7 @@ namespace Operon
                 auto population = this->Selector().Population();
 
                 auto first = this->selector(random);
-
-                typename TSelector::SelectableType child;
-
-                bool doCrossover = uniformReal(random) < pCrossover;
-                bool doMutation  = uniformReal(random) < pMutation;
-
-                if (!(doCrossover || doMutation)) return std::nullopt;
+                T child;
 
                 if (doCrossover)
                 {

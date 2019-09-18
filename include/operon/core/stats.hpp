@@ -7,14 +7,18 @@
 #include <cmath>
 #include <numeric>
 
+#include "core/common.hpp"
+
 namespace Operon {
 
-    constexpr double eps = std::numeric_limits<double>::epsilon();
+    template<typename T>
+    constexpr T eps = std::numeric_limits<T>::epsilon();
 
+    template<typename T>
     class MeanVarianceCalculator {
         public:
             MeanVarianceCalculator() { Reset(); }
-            void Add(double x) 
+            void Add(T x) 
             {
                 ++n;
                 if (n == 1) 
@@ -30,119 +34,127 @@ namespace Operon {
                     oldVar  = newVar;
                 }
             }
-            template<typename InputIt> void Add(InputIt xBegin, InputIt xEnd)
+
+            template<typename InputIt, typename U = typename InputIt::value_type>
+            void Add(InputIt xBegin, InputIt xEnd)
             {
-                for(; xBegin < xEnd; ++xBegin)
+                static_assert(std::is_same_v<T, U>);
+                for(; xBegin != xEnd; ++xBegin) 
                 {
                     Add(*xBegin);
                 }
             }
-            void   Reset()                    { n = 0;                                  }
-            double Mean() const               { return n > 0 ? newMean : 0.0;           }
-            double Variance() const           { return  n > 1 ? newVar / (n - 1) : 0.0; }
-            double PopulationVariance() const { return n > 1 ? newVar / n : 0.0;        }
-            double Stddev() const             { return std::sqrt(Variance());           }
-            double PopulationStddev() const   { return std::sqrt(PopulationVariance()); }
 
-            template<typename InputIt>
-                static std::pair<double, double> CalculateSampleMeanVariance(InputIt xBegin, InputIt xEnd)
-                {
-                    MeanVarianceCalculator calc;
-                    calc.Add(xBegin, xEnd);
-                    return { calc.Mean(), calc.Variance() };
-                }
+            void Reset()                 { n = 0;                                  }
+            T Mean() const               { return n > 0 ? newMean : 0.0;           }
+            T Variance() const           { return  n > 1 ? newVar / (n - 1) : 0.0; }
+            T PopulationVariance() const { return n > 1 ? newVar / n : 0.0;        }
+            T Stddev() const             { return std::sqrt(Variance());           }
+            T PopulationStddev() const   { return std::sqrt(PopulationVariance()); }
 
-            template<typename InputIt>
-                static std::pair<double, double> CalculatePopulationMeanVariance(InputIt xBegin, InputIt xEnd)
-                {
-                    MeanVarianceCalculator calc;
-                    calc.Add(xBegin, xEnd);
-                    return { calc.Mean(), calc.PopulationVariance() };
-                }
+            template<typename InputIt, typename U = typename InputIt::value_type>
+            static std::pair<T, T> CalculateSampleMeanVariance(InputIt xBegin, InputIt xEnd)
+            {
+                static_assert(std::is_same_v<T, U>);
+                MeanVarianceCalculator calc;
+                calc.Add(xBegin, xEnd);
+                return { calc.Mean(), calc.Variance() };
+            }
+
+            template<typename InputIt, typename U = typename InputIt::value_type>
+            static std::pair<T, T> CalculatePopulationMeanVariance(InputIt xBegin, InputIt xEnd)
+            {
+                static_assert(std::is_same_v<T, U>);
+                MeanVarianceCalculator calc;
+                calc.Add(xBegin,xEnd);
+                return { calc.Mean(), calc.PopulationVariance() };
+            }
 
         private:
-            double newMean = 0, oldMean = 0, newVar = 0, oldVar = 0;
+            T newMean = 0, oldMean = 0, newVar = 0, oldVar = 0;
             int n = 0; // number of elements
     };
 
+    template<typename T>
     class CovarianceCalculator {
         public:
-            CovarianceCalculator() { Reset(); }
+            CovarianceCalculator() : n(0), xMean(0), yMean(0), cn(0) { }
 
-            double Covariance() { return n > 0 ? cn / n : 0.0;  }
-            void   Reset()      { n = 0; xMean = yMean = cn = 0.0; }
-            void   Add(double x, double y)
+            T Covariance() { return n > T(0) ? cn / n : T(0);     }
+            void Reset()   { n = T(0); xMean = yMean = cn = T(0); }
+            void Add(T x, T y)
             {
                 ++n;
-                xMean        = xMean + (x - xMean) / n;
-                double delta = y - yMean;
-                yMean        = yMean + delta / n;
-                cn           = cn + delta * (x - xMean);
+                xMean   = xMean + (x - xMean) / n;
+                T delta = y - yMean;
+                yMean   = yMean + delta / n;
+                cn      = cn + delta * (x - xMean);
             }
+
             template<typename InputIt1, typename InputIt2>
-            static double Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+            static T Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
             {
+                static_assert(std::is_same_v<T, typename InputIt1::value_type>);
                 CovarianceCalculator calc;
-                for(; xBegin < xEnd; ++xBegin, ++yBegin)
+                for(; xBegin != xEnd; ++xBegin, ++yBegin)
                 {
                     calc.Add(*xBegin, *yBegin);
                 }
                 return calc.Covariance();
             }
-            static double Calculate(const std::vector<double>& first, const std::vector<double>& second)
-            {
-                return Calculate(first.begin(), first.end(), second.begin());
-            }
+
         private:
-            double xMean, yMean, cn;
-            int n;
+            size_t n;
+            T xMean, yMean, cn;
     };
 
+    template<typename T>
     class PearsonsRCalculator {
         public:
             PearsonsRCalculator() { Reset(); } 
-            void Add(double x, double y) 
+            void Add(T x, T y) 
             {
                 sxCalculator.Add(x);
                 syCalculator.Add(y);
                 covCalculator.Add(x,y);
             }
+            
             void Reset() 
             {
                 sxCalculator.Reset();
                 syCalculator.Reset();
                 covCalculator.Reset();
             }
+
             template<typename InputIt1, typename InputIt2>
-                static double Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
-                {
-                    PearsonsRCalculator calc;
-                    // the two vectors should have the same size
-                    for(; xBegin < xEnd; ++xBegin, ++yBegin)
-                    {
-                        calc.Add(*xBegin, *yBegin);
-                    }
-                    return calc.R();
-                }
-            static double Calculate(const std::vector<double>& first, const std::vector<double>& second) 
+            static T Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
             {
-                return Calculate(first.begin(), first.end(), second.begin());
+                static_assert(std::is_same_v<T, typename InputIt1::value_type>);
+                PearsonsRCalculator calc;
+                // the two vectors should have the same size
+                for(; xBegin != xEnd; ++xBegin, ++yBegin)
+                {
+                    calc.Add(*xBegin, *yBegin);
+                }
+                return calc.R();
             }
-            double R() 
+
+            T R() 
             { 
-                double xvar = sxCalculator.PopulationVariance();
-                double yvar = syCalculator.PopulationVariance();
-                if( xvar < eps || yvar < eps)  { return 0.0; }
+                T xvar = sxCalculator.PopulationVariance();
+                T yvar = syCalculator.PopulationVariance();
+                if( xvar < eps<T> || yvar < eps<T>)  { return 0.0; }
                 return covCalculator.Covariance() / std::sqrt(xvar * yvar);
             }
         private:
-            MeanVarianceCalculator sxCalculator;
-            MeanVarianceCalculator syCalculator;
-            CovarianceCalculator   covCalculator;
+            MeanVarianceCalculator<T> sxCalculator;
+            MeanVarianceCalculator<T> syCalculator;
+            CovarianceCalculator<T>   covCalculator;
     };
 
     // linear scaling parameter calculator
     // the reasons for scaling are explained in: http://www2.cs.uidaho.edu/~cs472_572/f11/scaledsymbolicRegression.pdf
+    template<typename T>
     class LinearScalingCalculator {
         public: 
             LinearScalingCalculator() { Reset(); }
@@ -154,21 +166,22 @@ namespace Operon {
                 alpha = 0;
                 beta  = 0;
             }
-            void Add(double original, double target) {
+            void Add(T original, T target) {
                 tCalculator.Add(target);
                 ovCalculator.Add(original);
                 otCalculator.Add(original, target);
 
-                if (ovCalculator.Variance() < eps) beta = 1;
+                if (ovCalculator.Variance() < eps<T>) beta = 1;
                 else beta = otCalculator.Covariance() / ovCalculator.Variance();
                 alpha = tCalculator.Mean() - beta * ovCalculator.Mean(); 
             }
-            double Beta() const { return beta; }
-            double Alpha() const { return alpha; }
+            T Beta() const { return beta; }
+            T Alpha() const { return alpha; }
 
-            template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
-            static std::pair<double, double> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+            template<typename InputIt1, typename InputIt2>
+            static std::pair<T, T> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
             {
+                static_assert(std::is_same_v<T, typename InputIt1::value_type>);
                 LinearScalingCalculator calc;
                 for(; xBegin != xEnd; ++xBegin, ++yBegin)
                 {
@@ -177,88 +190,13 @@ namespace Operon {
                 return { calc.Alpha(), calc.Beta() };
             }
         private:
-            double alpha; // additive constant 
-            double beta; // multiplicative factor
+            T alpha; // additive constant 
+            T beta; // multiplicative factor
 
-            MeanVarianceCalculator tCalculator;
-            MeanVarianceCalculator ovCalculator; // original values
-            CovarianceCalculator   otCalculator; // original - target covariance calculator
+            MeanVarianceCalculator<T> tCalculator;
+            MeanVarianceCalculator<T> ovCalculator; // original values
+            CovarianceCalculator<T>   otCalculator; // original - target covariance calculator
     };
-
-    // error measures
-    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
-    inline double MeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin) 
-    {
-        auto size = std::distance(xBegin, xEnd);
-        auto mse  = std::inner_product(xBegin, xEnd, yBegin, T(0.), std::plus<T>(), [](T a, T b) { return (a - b) * (a - b); }) / size;
-        return mse;
-    }
-
-    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
-    inline double NormalizedMeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
-    {
-        MeanVarianceCalculator varCalc;
-        MeanVarianceCalculator mseCalc;
-
-        for(; xBegin != xEnd; ++xBegin, ++yBegin)
-        {
-            auto e = *xBegin;
-            auto t = *yBegin;
-            if (!std::isnan(t)) 
-            {
-                varCalc.Add(t);                
-            }
-            double err;
-            err = e - t;
-            mseCalc.Add(err * err);
-        }
-        double var = varCalc.PopulationVariance();
-        double mse = mseCalc.Mean();
-
-        return var > 0 ? mse / var : 0.0;
-    }
-
-    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type> 
-    inline double RSquared(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
-    {
-        PearsonsRCalculator calc;
-        for (; xBegin != xEnd; ++xBegin, ++yBegin)
-        {
-            calc.Add(*xBegin, *yBegin);
-        }
-        auto r = calc.R();
-        return r * r;
-    }
-
-    template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
-    inline double RootMeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
-    {
-        return std::sqrt(MeanSquaredError(xBegin, xEnd, yBegin));
-    }
-
-    template<typename T>
-    inline double MeanSquaredError(const std::vector<T>& estimated, const std::vector<T>& original)
-    {
-        return MeanSquaredError(estimated.begin(), estimated.end(), original.begin());
-    }
-
-    template<typename T>
-    inline double NormalizedMeanSquaredError(const std::vector<T>& estimated, const std::vector<T>& original)
-    {
-        return NormalizedMeanSquaredError(estimated.begin(), estimated.end(), original.begin());
-    }
-
-    template<typename T>
-    inline double RootMeanSquaredError(const std::vector<T>& estimated, const std::vector<T>& target)
-    {
-        return RootMeanSquaredError(estimated.begin(), estimated.end(), target.begin()); 
-    }
-
-    template<typename T>
-    inline double RSquared(const std::vector<T>& estimated, const std::vector<T>& original)
-    {
-        return RSquared(estimated.begin(), estimated.end(), original.begin());
-    }
 }
 #endif
 

@@ -14,12 +14,25 @@ namespace Operon
         using rand_t = Random::JsfRand<64>;
     }
 
-    struct Range 
+    class Range 
     {
-        size_t Start;
-        size_t End;
+        public:
+            inline size_t Start() const noexcept { return range_.first; }
+            inline size_t End() const noexcept { return range_.second; }
+            inline size_t Size() const noexcept { return range_.second - range_.first; }
+            std::pair<size_t, size_t> Bounds() const noexcept { return range_; }
+            
+            Range() {} 
+            Range(size_t start, size_t end) : range_(CheckRange(start, end)) {}
+            Range(std::pair<size_t, size_t> range) : range_(CheckRange(range.first, range.second)) {}
 
-        inline int Size() const { return gsl::narrow<int>(End - Start); }
+        private:
+            static std::pair<size_t, size_t> CheckRange(size_t start, size_t end)
+            {
+                Expects(start <= end);
+                return { start, end };
+            }
+            std::pair<size_t, size_t> range_;
     };
 
     // a dataset variable described by: name, hash value (for hashing), data column index

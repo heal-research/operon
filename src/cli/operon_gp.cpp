@@ -1,8 +1,11 @@
+#include <cstdlib>
+
 #include <fmt/core.h>
 #include <cxxopts.hpp>
 
 #include <tbb/task_scheduler_init.h>
 
+#include <core/metrics.hpp>
 #include "algorithms/gp.hpp"
 #include "operators/initialization.hpp"
 #include "operators/crossover.hpp"
@@ -45,7 +48,7 @@ int main(int argc, char* argv[])
     if (result.arguments().empty() || result.count("help") > 0) 
     {
         fmt::print("{}\n", opts.help());
-        return 0;
+        exit(EXIT_SUCCESS); 
     }
 
     // parse and set default values
@@ -166,11 +169,13 @@ int main(int argc, char* argv[])
 
         if (result.count("dataset") == 0)
         {
-            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no dataset given.", opts.help()));
+            fmt::print(stderr, "{}\n{}\n", "Error: no dataset given.", opts.help());
+            exit(EXIT_FAILURE);
         }
         if (result.count("target") == 0)
         {
-            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no target variable given.", opts.help()));
+            fmt::print(stderr, "{}\n{}\n", "Error: no target variable given.", opts.help());
+            exit(EXIT_FAILURE);
         }
 
         if (result.count("train") == 0)
@@ -178,24 +183,26 @@ int main(int argc, char* argv[])
             trainingRange = { 0, 2 * dataset.Rows() / 3 }; // by default use 66% of the data as training 
         }
         // validate training range
-        if (trainingRange.Start >= dataset.Rows() || trainingRange.End > dataset.Rows())
+        if (trainingRange.Start() >= dataset.Rows() || trainingRange.End() > dataset.Rows())
         {
-            throw std::runtime_error(fmt::format("The training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start, trainingRange.End, dataset.Rows()));
+            fmt::print(stderr, "The training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start(), trainingRange.End(), dataset.Rows());
+            exit(EXIT_FAILURE);
         }
-        if (trainingRange.Start > trainingRange.End)
+        if (trainingRange.Start() > trainingRange.End())
         {
-            throw std::runtime_error(fmt::format("Invalid training range {}:{}\n", trainingRange.Start, trainingRange.End));
+            fmt::print(stderr, "Invalid training range {}:{}\n", trainingRange.Start(), trainingRange.End());
+            exit(EXIT_FAILURE);
         }
         if (result.count("test") == 0)
         {
             // if no test range is specified, we try to infer a reasonable range based on the trainingRange
-            if (trainingRange.Start > 0) 
+            if (trainingRange.Start() > 0) 
             {
-                testRange = { 0, trainingRange.Start};
+                testRange = { 0, trainingRange.Start()};
             }
-            else if (trainingRange.End < dataset.Rows())
+            else if (trainingRange.End() < dataset.Rows())
             {
-                testRange = { trainingRange.End, dataset.Rows() };
+                testRange = { trainingRange.End(), dataset.Rows() };
             }
             else 
             {
@@ -229,11 +236,9 @@ int main(int argc, char* argv[])
         auto crossover   = SubtreeCrossover{ 0.9, maxDepth, maxLength };
         auto mutator     = MultiMutation{ };
         auto onePoint    = OnePointMutation{ };
-        auto multiPoint  = MultiPointMutation{ };
         auto changeVar   = ChangeVariableMutation{ inputs };
         mutator.Add(onePoint,   1.0);
         mutator.Add(changeVar,  1.0);
-        mutator.Add(multiPoint, 1.0);
         BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
         //BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
         //recombinator.BroodSize(10);
@@ -247,8 +252,8 @@ int main(int argc, char* argv[])
         auto targetValues  = problem.TargetValues();
         auto trainingRange = problem.TrainingRange();
         auto testRange     = problem.TestRange();
-        auto targetTrain   = targetValues.subspan(trainingRange.Start, trainingRange.Size());
-        auto targetTest    = targetValues.subspan(testRange.Start, testRange.Size());
+        auto targetTrain   = targetValues.subspan(trainingRange.Start(), trainingRange.Size());
+        auto targetTest    = targetValues.subspan(testRange.Start(), testRange.Size());
 
         // some boilerplate for reporting results
         auto getBest = [&](const gsl::span<const Ind> pop)
@@ -265,7 +270,7 @@ int main(int argc, char* argv[])
             auto estimatedTest  = Evaluate<double>(best.Genotype, problem.GetDataset(), testRange);
             
             // scale values
-            LinearScalingCalculator lsp;
+            LinearScalingCalculator<double> lsp;
             auto [a, b] = lsp.Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
             std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a=a, b=b](double v) { return b * v + a; });
             std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a=a, b=b](double v) { return b * v + a; });

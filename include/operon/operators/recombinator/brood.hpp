@@ -20,8 +20,8 @@ namespace Operon
                 constexpr gsl::index Idx = TSelector::SelectableIndex;
 
                 auto population = this->Selector().Population();
-                auto first = this->selector(random);
-                auto second = this->selector(random);
+                auto first      = this->selector(random);
+                auto second     = this->selector(random);
 
                 T child;
 

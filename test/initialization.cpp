@@ -13,7 +13,7 @@ namespace Operon::Test
     TEST_CASE("Tree initialization (grow)")
     {
         auto target = "Y";
-        auto ds = Dataset("../data/Poly-10 y.csv", true);
+        auto ds = Dataset("../data/Poly-10.csv", true);
         auto variables = ds.Variables();
         std::vector<Variable> inputs;
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
@@ -58,7 +58,7 @@ namespace Operon::Test
     TEST_CASE("Tree initialization (full)")
     {
         auto target = "Y";
-        auto ds = Dataset("../data/Poly-10 y.csv", true);
+        auto ds = Dataset("../data/Poly-10.csv", true);
         auto variables = ds.Variables();
         std::vector<Variable> inputs;
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
@@ -102,7 +102,7 @@ namespace Operon::Test
     TEST_CASE("Tree depth calculation")
     {
         auto target = "Y";
-        auto ds = Dataset("../data/Poly-10 y.csv", true);
+        auto ds = Dataset("../data/Poly-10.csv", true);
         auto variables = ds.Variables();
         std::vector<Variable> inputs;
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
