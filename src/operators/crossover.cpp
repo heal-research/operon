@@ -2,12 +2,8 @@
 
 namespace Operon
 {
-    static std::optional<size_t> SelectRandomBranch(operon::rand_t& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength)
+    static gsl::index SelectRandomBranch(operon::rand_t& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength)
     {
-        if (maxBranchDepth == 0 || maxBranchLength == 0)
-        {
-            return std::nullopt;
-        }
         std::uniform_real_distribution<double> uniformReal(0, 1);
         auto selectInternalNode = uniformReal(random) < internalProb;
         const auto& nodes = tree.Nodes();
@@ -36,27 +32,25 @@ namespace Operon
                     continue;
                 }
 
-                return std::make_optional(idx);
+                return idx;
             }
         }
         // if we couldn't find a suitable internal node or just wanted a leaf, fallback here
         std::uniform_int_distribution<size_t> uniformInt(0, head-1);
         auto idx = uniformInt(random);
-        return std::make_optional(indices[idx]);
+        return indices[idx];
     }
 
     Tree SubtreeCrossover::operator()(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const
     {
-        if (auto cut = SelectRandomBranch(random, lhs, internalProbability, maxDepth, maxLength); cut.has_value())
+        if (auto i = SelectRandomBranch(random, lhs, internalProbability, maxDepth, maxLength))
         {
-            auto i = cut.value();
             long maxBranchDepth    = maxDepth - lhs.Level(i);
             long partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
             long maxBranchLength   = maxLength - partialTreeLength;
 
-            if (auto result = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength); result.has_value())
+            if (auto j = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength))
             {
-                auto j      = result.value();
                 auto& left  = lhs.Nodes();
                 auto& right = rhs.Nodes();
                 std::vector<Node> nodes;
