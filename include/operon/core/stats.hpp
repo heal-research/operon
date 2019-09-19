@@ -93,9 +93,9 @@ namespace Operon {
     class CovarianceCalculator 
     {
         public:
-            CovarianceCalculator() : n(0), xMean(0), yMean(0), cn(0) { }
+            CovarianceCalculator() { Reset(); }
 
-            T Covariance() { return n > T(0) ? cn / n : T(0);     }
+            T Covariance() { return n > 0 ? cn / n : 0;     }
             void Reset()   
             { 
                 n     = 0;
@@ -189,16 +189,15 @@ namespace Operon {
                 alpha = 0;
                 beta  = 0;
             }
-            void Add(T original, T target) {
+            void Add(T original, T target) 
+            {
                 tCalculator.Add(target);
                 ovCalculator.Add(original);
                 otCalculator.Add(original, target);
 
-                //if (ovCalculator.Variance() < eps<T>) beta = 1;
-                auto variance = ovCalculator.Variance();
-                beta = variance < eps<T> ? 1 : (otCalculator.Covariance() / variance);
-                //else beta = otCalculator.Covariance() / ovCalculator.Variance();
-                alpha = tCalculator.Mean() - beta * ovCalculator.Mean(); 
+                auto [mean, var] = ovCalculator.SampleMeanVariance();
+                beta = var < eps<T> ? 1 : (otCalculator.Covariance() / var);
+                alpha = tCalculator.Mean() - beta * mean;
             }
             T Beta() const { return beta; }
             T Alpha() const { return alpha; }
