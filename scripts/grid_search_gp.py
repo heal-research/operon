@@ -34,9 +34,9 @@ reps = args.reps
 prefix = args.prefix
 results_path = args.out
 
-population_size = [ 1000 ]
+population_size = [ 500, 1000 ]
 iteration_count = [ 0 ]
-evaluation_budget = [ 500000 ]
+evaluation_budget = [ 500000, 10000000 ]
 
 meta_header = ['Problem', 
         'Pop size',
@@ -50,11 +50,11 @@ output_header = ['Elapsed',
         'R2 (test)',
         'NMSE (train)',
         'NMSE (test)',
-        'Average quality',
-        'Average length',
-        'Fitness evaluations',
-        'Local evaluations',
-        'Total evaluations']
+        'Avg fit',
+        'Avg len',
+        'Fitness eval',
+        'Local eval',
+        'Total eval']
 
 header = meta_header + output_header
 
@@ -133,18 +133,18 @@ for pop_size, iter_count, eval_count in parameter_space:
             logger.info(fg.GREEN + config_str)
             logger.info(fg.GREEN + problem_str)
 
-            df = pd.DataFrame.from_dict(problem_result, orient='index', columns=header) 
-            median = df.median(axis=0)
-            q1, q3 = df['R2 (train)'].quantile([0.25, 0.75])
-            median['R2 (train) IQR'] = q3 - q1
-            q1, q3 = df['R2 (test)'].quantile([0.25, 0.75])
-            median['R2 (test) IQR'] = q3 - q1
-            q1, q3 = df['NMSE (train)'].quantile([0.25, 0.75])
+            df                         = pd.DataFrame.from_dict(problem_result, orient='index', columns=header)
+            median                     = df.median(axis=0)
+            q1, q3                     = df['R2 (train)'].quantile([0.25, 0.75])
+            median['R2 (train) IQR']   = q3 - q1
+            q1, q3                     = df['R2 (test)'].quantile([0.25, 0.75])
+            median['R2 (test) IQR']    = q3 - q1
+            q1, q3                     = df['NMSE (train)'].quantile([0.25, 0.75])
             median['NMSE (train) IQR'] = q3 - q1
-            q1, q3 = df['NMSE (test)'].quantile([0.25, 0.75])
-            median['NMSE (test) IQR'] = q3 - q1
+            q1, q3                     = df['NMSE (test)'].quantile([0.25, 0.75])
+            median['NMSE (test) IQR']  = q3 - q1
 
-            for l in str(median).split('\n'):
+            for l in df.describe().to_string().split('\n'):
                 logger.info(fg.CYAN + l)
 
             df.to_excel(os.path.join(results_path, '{}_{}_{}_{}_{}.xlsx'.format(prefix, problem_name, pop_size, iter_count, eval_count)))
@@ -158,11 +158,11 @@ group = df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count'])
 median_all = group.median(numeric_only=False)
 q25 = group.quantile(0.25)
 q75 = group.quantile(0.75)
-median_all['R2 (train) IQR'] =q75['R2 (train)'] - q25['R2 (train)']
-median_all['R2 (test) IQR'] =q75['R2 (test)'] - q25['R2 (test)']
-median_all['NMSE (train) IQR'] =q75['NMSE (train)'] - q25['NMSE (train)']
-median_all['NMSE (test) IQR'] =q75['NMSE (test)'] - q25['NMSE (test)']
-for l in str(median_all).split('\n'):
+median_all['R2 (train) IQR']   = q75['R2 (train)'] - q25['R2 (train)']
+median_all['R2 (test) IQR']    = q75['R2 (test)'] - q25['R2 (test)']
+median_all['NMSE (train) IQR'] = q75['NMSE (train)'] - q25['NMSE (train)']
+median_all['NMSE (test) IQR']  = q75['NMSE (test)'] - q25['NMSE (test)']
+for l in median_all.to_string().split('\n'):
     logger.info(fg.YELLOW + l)
 df_all.to_excel(os.path.join(results_path, '{}.xlsx'.format(prefix)))
 median_all.to_excel(os.path.join(results_path, '{}_median.xlsx'.format(prefix)))
