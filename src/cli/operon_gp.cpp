@@ -228,7 +228,8 @@ int main(int argc, char* argv[])
         evaluator.Budget(config.Evaluations);
 
         const gsl::index idx { 0 };
-        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(5);
+//        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(5);
+        RandomSelector<Ind, idx, Evaluator::Maximization> selector;        
 
         //auto creator  = FullTreeCreator(5, maxLength);
         //auto creator  = GrowTreeCreator(maxDepth, maxLength);
@@ -239,12 +240,12 @@ int main(int argc, char* argv[])
         auto changeVar   = ChangeVariableMutation{ inputs };
         mutator.Add(onePoint,   1.0);
         mutator.Add(changeVar,  1.0);
-        BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
+        //BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
         //BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
         //recombinator.BroodSize(10);
-        //recombinator.BroodTournamentSize(5);
-        //OffspringSelectionRecombinator recombinator{ evaluator, selector, crossover, mutator };
-        //recombinator.MaxSelectionPressure(100);
+        //recombinator.BroodTournamentSize(10);
+        OffspringSelectionRecombinator recombinator{ evaluator, selector, crossover, mutator };
+        recombinator.MaxSelectionPressure(config.MaxSelectionPressure);
 
         auto t0 = std::chrono::high_resolution_clock::now();
         GeneticProgrammingAlgorithm gp{ problem, config, creator, recombinator };
@@ -270,8 +271,7 @@ int main(int argc, char* argv[])
             auto estimatedTest  = Evaluate<double>(best.Genotype, problem.GetDataset(), testRange);
             
             // scale values
-            LinearScalingCalculator<double> lsp;
-            auto [a, b] = lsp.Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
+            auto [a, b] = LinearScalingCalculator<double>::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
             std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a=a, b=b](double v) { return b * v + a; });
             std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a=a, b=b](double v) { return b * v + a; });
 
