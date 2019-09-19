@@ -32,7 +32,8 @@ namespace Operon
         std::array<double, D>   Fitness;
         static constexpr size_t Dimension = D;
 
-        inline double operator[](gsl::index i) const { return Fitness[i]; }
+        double& operator[](gsl::index i) noexcept { return Fitness[i]; }
+        double operator[](gsl::index i) const noexcept { return Fitness[i]; }
     };
 
     // the creator builds a new tree using the existing grammar and allowed inputs
