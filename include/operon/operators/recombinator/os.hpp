@@ -20,23 +20,23 @@ namespace Operon
 
                 if (!(doCrossover || doMutation)) return std::nullopt;
 
+
                 constexpr bool Max       = TSelector::Maximization;
                 constexpr gsl::index Idx = TSelector::SelectableIndex;
-
                 auto population = this->Selector().Population();
 
                 auto first = this->selector(random);
-                auto fit   = population[first].Fitness[Idx];
+                auto fit   = population[first][Idx];
 
                 typename TSelector::SelectableType child;
 
                 if (doCrossover)
                 {
-                    auto second = this->selector(random);
+                    auto second    = this->selector(random);
                     child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
 
-                    if constexpr(TSelector::Maximization) { fit = std::max(fit, population[second].Fitness[Idx]); }
-                    else                                  { fit = std::min(fit, population[second].Fitness[Idx]); } 
+                    if constexpr(TSelector::Maximization) { fit = std::max(fit, population[second][Idx]); }
+                    else                                  { fit = std::min(fit, population[second][Idx]); } 
                 }
 
                 if (doMutation)
@@ -46,10 +46,11 @@ namespace Operon
                         : this->mutator(random, population[first].Genotype);
                 }
 
-                auto f = this->evaluator(random, child);
-                child.Fitness[Idx] = std::isfinite(f) ? f : (Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max());
+                std::conditional_t<Max, std::less<>, std::greater<>> comp;
 
-                if ((Max && child.Fitness[Idx] > fit) || (!Max && child.Fitness[Idx] < fit))
+                child[Idx] = this->evaluator(random, child);
+
+                if (std::isfinite(child[Idx]) && comp(fit, child[Idx])) 
                 {
                     return std::make_optional(child);
                 }
