@@ -28,7 +28,7 @@ namespace Operon
         double var = varCalc.PopulationVariance();
         double mse = mseCalc.Mean();
 
-        return var > 0 ? mse / var : 0.0;
+        return var > 0.0 ? mse / var : 0.0;
     }
 
     template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type, typename ExecutionPolicy = std::execution::sequenced_policy>
@@ -40,7 +40,7 @@ namespace Operon
                 xBegin,
                 xEnd,
                 yBegin,
-                T(0), 
+                T{0}, 
                 std::plus<T>{},
                 [](auto a, auto b) { return (a-b) * (a-b); }
                 ) / std::distance(xBegin, xEnd);
@@ -55,8 +55,9 @@ namespace Operon
     template<typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
     T RSquared(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
     {
-        return PearsonsRCalculator<T>::Calculate(xBegin, xEnd, yBegin);
+        T r = PearsonsRCalculator<T>::Calculate(xBegin, xEnd, yBegin);
+        return r * r;
     }
 }
-
 #endif
+
