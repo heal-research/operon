@@ -60,11 +60,13 @@ namespace Operon
                 std::uniform_int_distribution<gsl::index> uniformInt(0, brood.size() - 1);
                 auto bestIdx = uniformInt(random);
                 eval(bestIdx);
+
+                std::conditional_t<Max, std::less<>, std::greater<>> comp; 
                 for (size_t i = 1; i < broodTournamentSize; ++i)
                 {
                     auto currIdx = uniformInt(random);
                     eval(currIdx);
-                    if ((Max && brood[bestIdx].Fitness[Idx] < brood[currIdx].Fitness[Idx]) || (!Max && brood[bestIdx].Fitness[Idx] > brood[currIdx].Fitness[Idx]))
+                    if (comp(brood[bestIdx][Idx], brood[currIdx][Idx]))
                     {
                         bestIdx = currIdx;
                     }

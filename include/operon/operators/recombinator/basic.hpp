@@ -20,8 +20,6 @@ namespace Operon
                 bool doMutation  = uniformReal(random) < pMutation;
                 if (!(doCrossover || doMutation)) return std::nullopt;
 
-                constexpr bool Max       = TSelector::Maximization;
-                constexpr gsl::index Idx = TSelector::SelectableIndex;
 
                 auto population = this->Selector().Population();
 
@@ -41,7 +39,9 @@ namespace Operon
                         : this->mutator(random, population[first].Genotype);
                 }
 
-                auto f = this->evaluator(random, child);
+                auto f                   = this->evaluator(random, child);
+                constexpr bool Max       = TSelector::Maximization;
+                constexpr gsl::index Idx = TSelector::SelectableIndex;
                 child.Fitness[Idx] = std::isfinite(f) ? f : (Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max());
 
                 return std::make_optional(child);
