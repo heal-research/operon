@@ -115,6 +115,7 @@ for pop_size, iter_count, eval_count in parameter_space:
                     "--evaluations", str(eval_count), 
                     "--population-size", str(pop_size),
                     "--generations", str(1000),
+                    "--selection-pressure", str(100),
                     "--enable-symbols", "exp,log,sin,cos"]);
 
                 n = len(raw_data) 
