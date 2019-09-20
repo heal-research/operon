@@ -3,8 +3,7 @@
 
 #include <cstddef>
 
-struct GeneticAlgorithmConfig
-{
+struct GeneticAlgorithmConfig {
     size_t Generations;
     size_t Evaluations;
     size_t Iterations;
@@ -19,4 +18,3 @@ struct GeneticAlgorithmConfig
 };
 
 #endif
-

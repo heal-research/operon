@@ -7,4 +7,3 @@
 #include "recombinator/plus.hpp"
 
 #endif
-

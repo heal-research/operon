@@ -1,10 +1,9 @@
 #include "core/problem.hpp"
 
-namespace Operon
+namespace Operon {
+Solution Problem::CreateSolution(const Tree& tree) const
 {
-    Solution Problem::CreateSolution(const Tree& tree) const
-    {
-        Solution sol;
-        return sol;
-    }
+    Solution sol;
+    return sol;
+}
 }
