@@ -57,12 +57,12 @@ public:
 
     void Run(operon::rand_t& random, std::function<void()> report = nullptr)
     {
-        auto& config       = GetConfig();
-        auto& creator      = GetCreator();
+        auto& config = GetConfig();
+        auto& creator = GetCreator();
         auto& recombinator = GetRecombinator();
-        auto& problem      = GetProblem();
-        auto& grammar      = problem.GetGrammar();
-        auto targetValues  = problem.TargetValues();
+        auto& problem = GetProblem();
+        auto& grammar = problem.GetGrammar();
+        auto targetValues = problem.TargetValues();
 
         // easier to work with indices
         std::vector<gsl::index> indices(config.PopulationSize);

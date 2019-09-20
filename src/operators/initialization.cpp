@@ -20,7 +20,7 @@ Tree GrowTreeCreator::operator()(operon::rand_t& random, const Grammar& grammar,
     std::uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1);
     std::normal_distribution<double> normalReal(0, 1);
 
-    int freeSpace = maxLength - 1; // we have 1 root node
+    int freeSpace = maxLength - (1 + root.Arity); // we have 1 root node + at least root.Arity children
 
     while (!stk.empty()) {
         auto [node, slot, depth] = stk.top();
@@ -32,7 +32,7 @@ Tree GrowTreeCreator::operator()(operon::rand_t& random, const Grammar& grammar,
         }
         stk.push({ node, slot - 1, depth });
 
-        auto child = depth == maxDepth - 1 || freeSpace < 2 // a function node can have arity 2 so we need at least 2 space
+        auto child = freeSpace < 2 || depth == maxDepth - 1 // a function node can have arity 2 so we need at least (2+1) space
             ? grammar.SampleRandomTerminal(random)
             : grammar.SampleRandomSymbol(random);
 
@@ -43,7 +43,7 @@ Tree GrowTreeCreator::operator()(operon::rand_t& random, const Grammar& grammar,
             child.Value = normalReal(random);
         }
         stk.push({ child, child.Arity, depth + 1 });
-        --freeSpace;
+        freeSpace -= (1 + node.Arity);
     }
     auto tree = Tree(nodes).UpdateNodes();
     return tree;

@@ -2,9 +2,9 @@
 #define EVALUATOR_HPP
 
 #include "core/eval.hpp"
+#include "core/metrics.hpp"
 #include "core/operator.hpp"
 #include "core/stats.hpp"
-#include "core/metrics.hpp"
 
 namespace Operon {
 template <typename T>

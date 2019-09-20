@@ -39,9 +39,9 @@ static gsl::index SelectRandomBranch(operon::rand_t& random, const Tree& tree, d
 Tree SubtreeCrossover::operator()(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const
 {
     if (auto i = SelectRandomBranch(random, lhs, internalProbability, maxDepth, maxLength)) {
-        long maxBranchDepth = maxDepth - lhs.Level(i);
-        long partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
-        long maxBranchLength = maxLength - partialTreeLength;
+        size_t maxBranchDepth = maxDepth - lhs.Level(i);
+        size_t partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
+        size_t maxBranchLength = maxLength - partialTreeLength;
 
         if (auto j = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength)) {
             auto& left = lhs.Nodes();

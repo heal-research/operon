@@ -18,8 +18,8 @@ public:
 
 private:
     double internalProbability;
-    long maxDepth;
-    long maxLength;
+    size_t maxDepth;
+    size_t maxLength;
 };
 }
 #endif
