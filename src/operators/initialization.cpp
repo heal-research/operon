@@ -11,7 +11,7 @@ namespace Operon {
 Tree GrowTreeCreator::operator()(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables) const
 {
     std::vector<Node> nodes;
-    std::stack<std::tuple<Node, int, size_t>> stk;
+    std::stack<std::tuple<Node, size_t, size_t>> stk;
 
     // always start with a function node
     auto root = grammar.SampleRandomSymbol(random, /* min arity */ 1, /* max arity */ 2);
@@ -54,7 +54,7 @@ Tree GrowTreeCreator::operator()(operon::rand_t& random, const Grammar& grammar,
 Tree FullTreeCreator::operator()(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables) const
 {
     std::vector<Node> nodes;
-    std::stack<std::tuple<Node, int, size_t>> stk;
+    std::stack<std::tuple<Node, size_t, size_t>> stk;
 
     // always start with a function node
     auto root = grammar.SampleRandomSymbol(random, /* min arity */ 1, /* max arity */ 2);
