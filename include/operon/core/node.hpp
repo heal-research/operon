@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <type_traits>
+#include <bitset>
 
 #include "common.hpp"
 #include <fmt/format.h>
@@ -28,6 +29,17 @@ enum class NodeType : uint16_t {
 };
 
 using utype = std::underlying_type_t<NodeType>;
+struct NodeTypes
+{
+    // magic number keeping track of the number of different node types
+    static constexpr size_t Count = 14;
+    // returns the index of the given type in the NodeType enum
+    static gsl::index GetIndex(NodeType type) 
+    {
+        return std::bitset<Count>(static_cast<utype>(type)-1).count();
+    }
+};
+
 inline constexpr NodeType operator&(NodeType lhs, NodeType rhs) { return static_cast<NodeType>(static_cast<utype>(lhs) & static_cast<utype>(rhs)); }
 inline constexpr NodeType operator|(NodeType lhs, NodeType rhs) { return static_cast<NodeType>(static_cast<utype>(lhs) | static_cast<utype>(rhs)); }
 inline constexpr NodeType operator^(NodeType lhs, NodeType rhs) { return static_cast<NodeType>(static_cast<utype>(lhs) ^ static_cast<utype>(rhs)); }

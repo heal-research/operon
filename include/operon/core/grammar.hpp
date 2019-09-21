@@ -2,6 +2,7 @@
 #define GRAMMAR_HPP
 
 #include <algorithm>
+#include <bitset>
 #include <execution>
 #include <unordered_map>
 
@@ -16,113 +17,88 @@ public:
     Grammar()
     {
         config = Grammar::Arithmetic;
-        UpdatePartials();
+
+        for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
+            if (!IsEnabled(static_cast<NodeType>(1u << i))) {
+                frequencies[i] = 0;
+            }
+        }
     }
 
     bool IsEnabled(NodeType type) const { return static_cast<bool>(config & type); }
-    void SetEnabled(NodeType type, bool enabled) { config = enabled ? (config | type) : (config & ~type); }
-    void SetFrequency(NodeType type, double frequency)
+    void Enable(NodeType type, size_t freq)
     {
-        symbolFrequencies[type] = frequency;
-        UpdatePartials();
+        config |= type;
+        frequencies[NodeTypes::GetIndex(type)] = freq;
     }
-    double GetFrequency(NodeType type) const { return symbolFrequencies.find(type)->second; }
+    void Disable(NodeType type)
+    {
+        config &= ~type;
+        frequencies[NodeTypes::GetIndex(type)] = 0;
+    }
     GrammarConfig GetConfig() const { return config; }
     void SetConfig(GrammarConfig cfg)
     {
         config = cfg;
-        UpdatePartials();
+        for(auto i = 0u; i < frequencies.size(); ++i)
+        {
+            auto type = static_cast<NodeType>(1u << i);
+            if (IsEnabled(type))
+            {
+                if (frequencies[i] == 0) 
+                {
+                    frequencies[i] = 1;
+                }
+            }
+        }
     }
+    size_t GetFrequency(NodeType type) const { return frequencies[NodeTypes::GetIndex(type)]; }
 
     static const GrammarConfig Arithmetic = NodeType::Constant | NodeType::Variable | NodeType::Add | NodeType::Sub | NodeType::Mul | NodeType::Div;
     static const GrammarConfig TypeCoherent = Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
     static const GrammarConfig Full = TypeCoherent | NodeType::Tan | NodeType::Sqrt | NodeType::Cbrt;
 
-    std::vector<std::pair<NodeType, double>> AllowedSymbols() const
+    std::vector<std::pair<NodeType, size_t>> EnabledSymbols() const
     {
-        std::vector<std::pair<NodeType, double>> allowed;
-        std::copy_if(symbolFrequencies.begin(), symbolFrequencies.end(), std::back_inserter(allowed), [&](auto& t) { return IsEnabled(t.first); });
+        std::vector<std::pair<NodeType, size_t>> allowed;
+        for (size_t i = 0; i < frequencies.size(); ++i) {
+            if (auto f = frequencies[i]; f > 0) {
+                allowed.push_back({ static_cast<NodeType>(1u << i), f });
+            }
+        }
         return allowed;
     };
 
-    size_t MinimumFunctionArity() const
+    Node SampleRandomSymbol(operon::rand_t& random, size_t minArity = 0, size_t maxArity = 2) const
     {
-        auto minArity = std::numeric_limits<size_t>::max();
-        for (auto& [key, val] : symbolFrequencies) {
-            if (!IsEnabled(key) || key > NodeType::Square || val < 1e-6) {
-                continue;
-            }
-            auto arity = key < NodeType::Log ? 2U : 1U;
-            if (minArity > arity)
-                minArity = arity;
+        decltype(frequencies)::const_iterator head = frequencies.end();
+        decltype(frequencies)::const_iterator tail = frequencies.end();
+
+        if (minArity == 0) {
+            tail = frequencies.end();
+        } else if (minArity == 1) {
+            tail = frequencies.end() - 2;
+        } else {
+            tail = frequencies.begin() + 4;
         }
-        return minArity;
-    }
 
-    Node SampleRandomFunction(operon::rand_t& random) const
-    {
-        return Sample(random, functionPartials);
-    }
+        if (maxArity == 0) {
+            head = frequencies.end() - 2;
+        } else if (maxArity == 1) {
+            head = frequencies.begin() + 4;
+        } else {
+            head = frequencies.begin();
+        }
 
-    Node SampleRandomTerminal(operon::rand_t& random) const
-    {
-        return Sample(random, terminalPartials);
-    }
-
-    Node SampleRandomSymbol(operon::rand_t& random) const
-    {
-        return Sample(random, symbolPartials);
-    }
-
-    static Node Sample(operon::rand_t& random, const std::vector<std::pair<NodeType, double>>& partials)
-    {
-        std::uniform_real_distribution<double> uniformReal(0, partials.back().second - std::numeric_limits<double>::epsilon());
-        auto r = uniformReal(random);
-        auto it = find_if(partials.begin(), partials.end(), [=](const auto& p) { return p.second > r; });
-        return Node(it->first);
+        auto d = std::distance(frequencies.begin(), head);
+        //fmt::print("minArity = {}, maxArity = {}, d = {}\n", d, minArity, maxArity);
+        auto i = std::discrete_distribution<size_t>(head, tail)(random) + d;
+        return Node(static_cast<NodeType>(1u << i));
     }
 
 private:
     NodeType config = Grammar::Arithmetic;
-    std::unordered_map<NodeType, double> symbolFrequencies = {
-        { NodeType::Add, 1.0 },
-        { NodeType::Mul, 1.0 },
-        { NodeType::Sub, 1.0 },
-        { NodeType::Div, 1.0 },
-        { NodeType::Log, 1.0 },
-        { NodeType::Exp, 1.0 },
-        { NodeType::Sin, 1.0 },
-        { NodeType::Cos, 1.0 },
-        { NodeType::Tan, 1.0 },
-        { NodeType::Sqrt, 1.0 },
-        { NodeType::Cbrt, 1.0 },
-        { NodeType::Square, 1.0 },
-        { NodeType::Constant, 1.0 },
-        { NodeType::Variable, 1.0 },
-    };
-    std::vector<std::pair<NodeType, double>> functionPartials;
-    std::vector<std::pair<NodeType, double>> terminalPartials;
-    std::vector<std::pair<NodeType, double>> symbolPartials;
-
-    void UpdatePartials()
-    {
-        using P = std::pair<NodeType, double>;
-        std::vector<P> funcs;
-        std::copy_if(symbolFrequencies.begin(), symbolFrequencies.end(), std::back_inserter(funcs), [&](auto p) { return IsEnabled(p.first) && p.first < NodeType::Constant; });
-
-        std::vector<P> terms;
-        std::copy_if(symbolFrequencies.begin(), symbolFrequencies.end(), std::back_inserter(terms), [&](auto p) { return IsEnabled(p.first) && p.first > NodeType::Square; });
-
-        functionPartials.clear();
-        std::inclusive_scan(std::execution::seq, funcs.begin(), funcs.end(), std::back_inserter(functionPartials), [](const auto& lhs, const auto& rhs) { return std::make_pair(rhs.first, lhs.second + rhs.second); });
-
-        terminalPartials.clear();
-        std::inclusive_scan(std::execution::seq, terms.begin(), terms.end(), std::back_inserter(terminalPartials), [](const auto& lhs, const auto& rhs) { return std::make_pair(rhs.first, lhs.second + rhs.second); });
-
-        symbolPartials.clear();
-        auto allowed = AllowedSymbols();
-        std::inclusive_scan(std::execution::seq, allowed.begin(), allowed.end(), std::back_inserter(symbolPartials), [](const auto& lhs, const auto& rhs) { return std::make_pair(rhs.first, lhs.second + rhs.second); });
-    }
+    std::array<size_t, Operon::NodeTypes::Count> frequencies = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 };
 
 }

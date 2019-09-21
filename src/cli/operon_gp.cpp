@@ -50,7 +50,6 @@ int main(int argc, char* argv[])
     }
 
     // parse and set default values
-    //OffspringSelectionGeneticAlgorithmConfig config;
     GeneticAlgorithmConfig config;
     config.Generations = result["generations"].as<size_t>();
     config.PopulationSize = result["population-size"].as<size_t>();
@@ -136,9 +135,13 @@ int main(int argc, char* argv[])
         if (showGrammar) {
             Grammar tmpGrammar;
             tmpGrammar.SetConfig(grammarConfig);
-            for (auto& s : tmpGrammar.AllowedSymbols()) {
-                auto n = Node(s.first);
-                fmt::print("{}\t{}\n", n.Name(), s.second);
+            for (auto i = 0u; i < NodeTypes::Count; ++i) {
+                auto type = static_cast<NodeType>(1u << i);
+                auto n = Node(type);
+                if (tmpGrammar.IsEnabled(type))
+                {
+                    fmt::print("{}\t{}\n", n.Name(), tmpGrammar.GetFrequency(type));
+                }
             }
             return 0;
         }
@@ -193,24 +196,24 @@ int main(int argc, char* argv[])
         evaluator.Budget(config.Evaluations);
 
         const gsl::index idx { 0 };
-        //        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(5);
-        RandomSelector<Ind, idx, Evaluator::Maximization> selector;
+        TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(5);
+        //RandomSelector<Ind, idx, Evaluator::Maximization> selector;
 
         //auto creator  = FullTreeCreator(5, maxLength);
-        //auto creator  = GrowTreeCreator(maxDepth, maxLength);
-        auto creator = RampedHalfAndHalfCreator { maxDepth, maxLength };
+        auto creator  = GrowTreeCreator(maxDepth, maxLength);
+        //auto creator = RampedHalfAndHalfCreator { maxDepth, maxLength };
         auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator = MultiMutation {};
         auto onePoint = OnePointMutation {};
         auto changeVar = ChangeVariableMutation { inputs };
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
-        //BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
+        BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
         //BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
         //recombinator.BroodSize(10);
         //recombinator.BroodTournamentSize(10);
-        OffspringSelectionRecombinator recombinator { evaluator, selector, crossover, mutator };
-        recombinator.MaxSelectionPressure(config.MaxSelectionPressure);
+        //OffspringSelectionRecombinator recombinator { evaluator, selector, crossover, mutator };
+        //recombinator.MaxSelectionPressure(config.MaxSelectionPressure);
 
         auto t0 = std::chrono::high_resolution_clock::now();
         GeneticProgrammingAlgorithm gp { problem, config, creator, recombinator };
@@ -245,7 +248,7 @@ int main(int argc, char* argv[])
             auto nmseTest   = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
 
             auto avgLength  = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
-            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<double> {}, [=](const auto& ind) { return ind.Fitness[idx]; }) / pop.size();
+            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<double> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
 
             auto t1         = std::chrono::high_resolution_clock::now();
 
@@ -258,7 +261,7 @@ int main(int argc, char* argv[])
         gp.Run(random, report);
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
-        std::exit(1);
+        std::exit(EXIT_FAILURE);
     }
 
     return 0;

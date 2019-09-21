@@ -196,8 +196,6 @@ TEST_CASE("Tree creation performance")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
-    Range range = { 0, ds.Rows() };
-
     auto growCreator = GrowTreeCreator { maxDepth, maxLength };
 
     std::vector<Tree> trees(n);
@@ -205,11 +203,6 @@ TEST_CASE("Tree creation performance")
     Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
 
     auto print_performance = [&](auto d) {
-#ifdef _MSC_VER
-        auto totalNodes = std::reduce(trees.begin(), trees.end(), 0UL, [](size_t partial, const auto& t) { return partial + t.Length(); });
-#else
-        auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
-#endif
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d);
         fmt::print("\nElapsed: {} s, performance: {:.4e} trees/s, \n", elapsed.count() / 1000.0, trees.size() * 1000.0 / elapsed.count());
     };

@@ -3,8 +3,7 @@
 namespace Operon {
 static gsl::index SelectRandomBranch(operon::rand_t& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength)
 {
-    std::uniform_real_distribution<double> uniformReal(0, 1);
-    auto selectInternalNode = uniformReal(random) < internalProb;
+    auto selectInternalNode = std::bernoulli_distribution(internalProb)(random);
     const auto& nodes = tree.Nodes();
     // create a vector of indices where leafs are in the front and internal nodes in the back
     std::vector<gsl::index> indices(nodes.size());
