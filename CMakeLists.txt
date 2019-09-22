@@ -54,7 +54,6 @@ add_library(
     src/core/tree.cpp
     src/core/problem.cpp
     src/core/dataset.cpp
-    src/operators/initialization.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
 )
@@ -95,6 +94,7 @@ add_executable(
     test/performance.cpp
     test/evaluation.cpp
     test/initialization.cpp
+    test/implementation.cpp
 )
 target_compile_features(operon-test PRIVATE cxx_std_17)
 target_link_libraries(operon-test PRIVATE operon Catch2::Catch2 TBB::tbb)

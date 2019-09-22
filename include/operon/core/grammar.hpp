@@ -40,15 +40,14 @@ public:
     void SetConfig(GrammarConfig cfg)
     {
         config = cfg;
-        for(auto i = 0u; i < frequencies.size(); ++i)
-        {
+        for (auto i = 0u; i < frequencies.size(); ++i) {
             auto type = static_cast<NodeType>(1u << i);
-            if (IsEnabled(type))
-            {
-                if (frequencies[i] == 0) 
-                {
+            if (IsEnabled(type)) {
+                if (frequencies[i] == 0) {
                     frequencies[i] = 1;
                 }
+            } else {
+                frequencies[i] = 0;
             }
         }
     }

@@ -200,7 +200,9 @@ int main(int argc, char* argv[])
         //RandomSelector<Ind, idx, Evaluator::Maximization> selector;
 
         //auto creator  = FullTreeCreator(5, maxLength);
-        auto creator  = GrowTreeCreator(maxDepth, maxLength);
+        std::uniform_int_distribution<size_t> sizeDistribution(2, 10);
+        //std::normal_distribution<double> sizeDistribution(25, 7);
+        auto creator  = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
         //auto creator = RampedHalfAndHalfCreator { maxDepth, maxLength };
         auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator = MultiMutation {};

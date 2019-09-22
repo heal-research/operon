@@ -34,9 +34,9 @@ reps = args.reps
 prefix = args.prefix
 results_path = args.out
 
-population_size = [ 500, 1000 ]
+population_size = [ 1000 ]
 iteration_count = [ 0 ]
-evaluation_budget = [ 500000, 10000000 ]
+evaluation_budget = [ 500000 ]
 
 meta_header = ['Problem', 
         'Pop size',
@@ -71,7 +71,6 @@ logger = logging.getLogger("operon-gp")
 idx = 0
 
 total_idx = reps * len(parameter_space) * data_count
-raw_data = {}
 
 problem_results = []
 
@@ -106,7 +105,7 @@ for pop_size, iter_count, eval_count in parameter_space:
             for j in reps_range:
                 os.environ["LD_PRELOAD"] = "/usr/lib/libjemalloc.so"
                 output = subprocess.check_output([bin_path, 
-                    "--threads", str(6),
+                    "--threads", str(4),
                     "--dataset", os.path.join(base_path, problem_csv), 
                     "--target", target, 
                     "--train", '{}:{}'.format(training_start, training_end), 
@@ -118,8 +117,6 @@ for pop_size, iter_count, eval_count in parameter_space:
                     "--selection-pressure", str(100),
                     "--enable-symbols", "exp,log,sin,cos"]);
 
-                n = len(raw_data) 
-
                 lines = list(filter(lambda x: x, output.split(b'\n')))
                 result = '\t'.join([v.decode('ascii') for v in lines[-1].split(b'\t') ])
                 logger.info('[{:#2d}/{}]\t{}\t{}'.format(j+1, reps, problem_name, result))
@@ -129,7 +126,6 @@ for pop_size, iter_count, eval_count in parameter_space:
 
                 for i,line in enumerate(lines):
                     vals = [ np.nan if v == 'nan' else float(v) for v in line.split(b'\t') ]
-                    raw_data[i + n] = meta + vals
 
             logger.info(fg.GREEN + config_str)
             logger.info(fg.GREEN + problem_str)
@@ -151,9 +147,6 @@ for pop_size, iter_count, eval_count in parameter_space:
             df.to_excel(os.path.join(results_path, '{}_{}_{}_{}_{}.xlsx'.format(prefix, problem_name, pop_size, iter_count, eval_count)))
             problem_results.append(df)
                         
-df_raw = pd.DataFrame.from_dict(raw_data, orient='index', columns=header)
-df_raw.to_excel(os.path.join(results_path, '{}_raw.xlsx'.format(prefix)))
-
 df_all = pd.concat(problem_results, axis=0)
 group = df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count'])
 median_all = group.median(numeric_only=False)

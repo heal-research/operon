@@ -26,7 +26,8 @@ TEST_CASE("Evaluation performance", "[performance]")
 
     Range range = { 0, ds.Rows() };
 
-    auto creator = GrowTreeCreator { maxDepth, maxLength };
+    std::uniform_int_distribution<size_t> sizeDistribution(2, maxLength);
+    auto creator = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     std::vector<Tree> trees(n);
     std::vector<double> fit(n);
@@ -196,7 +197,8 @@ TEST_CASE("Tree creation performance")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
-    auto growCreator = GrowTreeCreator { maxDepth, maxLength };
+    std::uniform_int_distribution<size_t> sizeDistribution(2, maxLength);
+    auto growCreator = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     std::vector<Tree> trees(n);
 
@@ -216,25 +218,20 @@ TEST_CASE("Tree creation performance")
         BENCHMARK("Sequential")
         {
             ++k;
-            std::generate(trees.begin(), trees.end(), [&]() { return growCreator(rd, grammar, inputs); });
+            std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return growCreator(rd, grammar, inputs); });
         };
         model.finish();
         print_performance(model.elapsed() / k);
-    }
 
-    auto fullCreator = FullTreeCreator { static_cast<size_t>(std::log2(maxDepth)), maxLength };
-    SECTION("Full tree creator")
-    {
         k = 0;
         model.start();
-        BENCHMARK("Sequential")
+        BENCHMARK("Parallel")
         {
             ++k;
-            std::generate(trees.begin(), trees.end(), [&]() { return fullCreator(rd, grammar, inputs); });
+            std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return growCreator(rd, grammar, inputs); });
         };
         model.finish();
         print_performance(model.elapsed() / k);
     }
 }
-
 }
