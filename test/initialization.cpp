@@ -56,14 +56,15 @@ TEST_CASE("Tree initialization (grow)")
     auto variables = ds.Variables();
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
-    size_t maxDepth = 12, maxLength = 50;
 
-    const size_t nTrees = 10'000;
+    size_t maxDepth = 1000, maxLength = 100;
 
-    auto sizeDistribution = std::uniform_int_distribution<size_t>(0, 10);
+    const size_t nTrees = 100'000;
+
+    auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
-    grammar.SetConfig(Grammar::TypeCoherent);
+    grammar.SetConfig(Grammar::Full);
     Operon::Random::JsfRand<64> rd(std::random_device {}());
 
     auto trees = std::vector<Tree>(nTrees);
@@ -88,15 +89,19 @@ TEST_CASE("Tree initialization (grow)")
         fmt::print("{}\t{:.3f} %\n", node.Name(), symbolFrequencies[i] / totalLength);
     }
 
-    fmt::print("Variable frequencoes:\n");
+    fmt::print("Variable frequencies:\n");
     size_t totalVars = 0;
     std::vector<size_t> variableFrequencies(inputs.size());
     for (const auto& t : trees) {
         for (const auto& node : t.Nodes()) {
             if (node.IsVariable()) {
-                auto it = std::find_if(inputs.begin(), inputs.end(), [&](const auto& v) { return node.HashValue == v.Hash; });
-                variableFrequencies[it->Index]++;
-                totalVars++;
+                if (auto it = std::find_if(inputs.begin(), inputs.end(), [&](const auto& v) { return node.HashValue == v.Hash; }); it != inputs.end()) {
+                    variableFrequencies[it->Index]++;
+                    totalVars++;
+                } else {
+                    fmt::print("Could not find variable {} with hash {} and calculated hash {} within the inputs\n", node.Name(), node.HashValue, node.CalculatedHashValue);
+                    std::exit(EXIT_FAILURE);
+                }
             }
         }
     }

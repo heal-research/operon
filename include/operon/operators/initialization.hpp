@@ -26,16 +26,29 @@ public:
         std::vector<Node> nodes;
         std::stack<std::tuple<Node, size_t, size_t>> stk;
 
-        // always start with a function node
-        auto root = grammar.SampleRandomSymbol(random, /* min arity */ 1, /* max arity */ 2);
-        stk.push({ root, root.Arity, 1 }); // node, slot, depth, available length
-
         std::uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1);
         std::normal_distribution<double> normalReal(0, 1);
 
-        size_t freeSpace = SampleFromDistribution(random);
-        size_t minLength = root.Arity;
-        freeSpace = std::clamp(freeSpace, minLength, maxLength - 1);
+        size_t minLength = 1u; // a leaf as root node
+        size_t targetLen = std::clamp(SampleFromDistribution(random), minLength, maxLength);
+
+        auto [minArity, maxArity] = grammar.FunctionArityLimits();
+
+        minArity = std::min(minArity, targetLen - 1);
+        maxArity = std::min(maxArity, targetLen - 1);
+
+        auto init = [&](Node& node) {
+            if (node.IsVariable()) {
+                node.HashValue = node.CalculatedHashValue = variables[uniformInt(random)].Hash;
+            }
+            node.Value = normalReal(random);
+        };
+
+        auto root = grammar.SampleRandomSymbol(random, minArity, maxArity);
+        init(root);
+
+        stk.push({ root, root.Arity, 1 }); // node, slot, depth, available length
+        targetLen = targetLen - 1; // because we already added 1 root node
         size_t openSlots = root.Arity;
 
         while (!stk.empty()) {
@@ -48,18 +61,13 @@ public:
             }
             stk.push({ node, slot - 1, depth });
 
-            size_t minArity = 1u;
-            size_t maxArity = depth == maxDepth - 1u ? 0u : freeSpace - openSlots;
+            maxArity = depth == maxDepth - 1u ? 0u : targetLen - openSlots;
             auto child = grammar.SampleRandomSymbol(random, std::min(minArity, maxArity), maxArity);
-            freeSpace = freeSpace - 1;
+            init(child);
+
+            targetLen = targetLen - 1;
             openSlots = openSlots + child.Arity - 1;
 
-            if (child.IsVariable()) {
-                child.HashValue = child.CalculatedHashValue = variables[uniformInt(random)].Hash;
-            }
-            if (child.IsLeaf()) {
-                child.Value = normalReal(random);
-            }
             stk.push({ child, child.Arity, depth + 1 });
         }
         auto tree = Tree(nodes).UpdateNodes();

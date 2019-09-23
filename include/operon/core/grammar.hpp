@@ -68,6 +68,22 @@ public:
         return allowed;
     };
 
+    std::pair<size_t, size_t> FunctionArityLimits() const 
+    {
+        size_t minArity = std::numeric_limits<size_t>::max();
+        size_t maxArity = std::numeric_limits<size_t>::min();
+        for(size_t i = 0; i < frequencies.size() - 2; ++i)
+        {
+            if (frequencies[i] == 0) {
+                continue;
+            }
+            size_t arity = i < 4 ? 2 : 1;
+            minArity = std::min(minArity, arity);
+            maxArity = std::max(maxArity, arity);
+        }
+        return { minArity, maxArity };
+    }
+
     Node SampleRandomSymbol(operon::rand_t& random, size_t minArity = 0, size_t maxArity = 2) const
     {
         decltype(frequencies)::const_iterator head = frequencies.end();

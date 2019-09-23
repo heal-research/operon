@@ -52,10 +52,9 @@ TEST_CASE("Evaluation performance", "[performance]")
 
     Grammar grammar;
 
-    SECTION("Arithmetic")
+    auto measurePerformance = [&]()
     {
         size_t k = 0;
-        grammar.SetConfig(Grammar::Arithmetic);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
         // [+, -, *, /]
         model.start();
@@ -76,110 +75,46 @@ TEST_CASE("Evaluation performance", "[performance]")
         };
         model.finish();
         print_performance(model.elapsed() / k);
+    };
+
+    SECTION("Arithmetic")
+    {
+        grammar.SetConfig(Grammar::Arithmetic);
+        measurePerformance();
     }
 
     SECTION("Arithmetic + Exp + Log")
     {
         // [+, -, *, /, exp, log]
-        size_t k = 0;
         grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log);
-        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
-        model.start();
-        BENCHMARK("Sequential")
-        {
-            ++k;
-            std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
-        };
-        model.finish();
-        print_performance(model.elapsed() / k);
-
-        k = 0;
-        model.start();
-        BENCHMARK("Parallel")
-        {
-            ++k;
-            std::transform(std::execution::par_unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
-        };
-        model.finish();
-        print_performance(model.elapsed() / k);
+        measurePerformance();
     }
 
     SECTION("Arithmetic + Sin + Cos")
     {
         // [+, -, *, /, exp, log]
-        size_t k = 0;
         grammar.SetConfig(Grammar::Arithmetic | NodeType::Sin | NodeType::Cos);
-        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
-        model.start();
-        BENCHMARK("Sequential")
-        {
-            ++k;
-            std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
-        };
-        model.finish();
-        print_performance(model.elapsed() / k);
+        measurePerformance();
+    }
 
-        k = 0;
-        model.start();
-        BENCHMARK("Parallel")
-        {
-            ++k;
-            std::transform(std::execution::par_unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
-        };
-        model.finish();
-        print_performance(model.elapsed() / k);
+    SECTION("Arithmetic + Exp + Log + Sin + Cos")
+    {
+        grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos);
+        measurePerformance();
     }
 
     SECTION("Arithmetic + Sqrt + Cbrt + Square")
     {
         // [+, -, *, /, exp, log]
-        size_t k = 0;
         grammar.SetConfig(Grammar::Arithmetic | NodeType::Sqrt | NodeType::Cbrt | NodeType::Square);
-        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
-        model.start();
-        BENCHMARK("Sequential")
-        {
-            ++k;
-            std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
-        };
-        model.finish();
-        print_performance(model.elapsed() / k);
-
-        k = 0;
-        model.start();
-        BENCHMARK("Parallel")
-        {
-            ++k;
-            std::transform(std::execution::par_unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
-        };
-        model.finish();
-        print_performance(model.elapsed() / k);
+        measurePerformance();
     }
 
     SECTION("Arithmetic + Exp + Log + Sin + Cos + Tan + Sqrt + Cbrt + Square")
     {
         // [+, -, *, /, exp, log]
-        size_t k = 0;
         grammar.SetConfig(Grammar::Full);
-        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
-        model.start();
-        BENCHMARK("Sequential")
-        {
-            ++k;
-            std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
-        };
-        model.finish();
-        print_performance(model.elapsed() / k);
-
-        k = 0;
-        model.start();
-        BENCHMARK("Parallel")
-        {
-            ++k;
-            std::transform(std::execution::par_unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
-        };
-        model.finish();
-        print_performance(model.elapsed() / k);
+        measurePerformance();
     }
 }
 
