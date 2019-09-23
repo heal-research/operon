@@ -68,12 +68,11 @@ public:
         return allowed;
     };
 
-    std::pair<size_t, size_t> FunctionArityLimits() const 
+    std::pair<size_t, size_t> FunctionArityLimits() const
     {
         size_t minArity = std::numeric_limits<size_t>::max();
         size_t maxArity = std::numeric_limits<size_t>::min();
-        for(size_t i = 0; i < frequencies.size() - 2; ++i)
-        {
+        for (size_t i = 0; i < frequencies.size() - 2; ++i) {
             if (frequencies[i] == 0) {
                 continue;
             }
