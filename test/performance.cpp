@@ -205,59 +205,59 @@ TEST_CASE("Selection performance")
         return sum;
     };
 
-//    SECTION("Tournament Selector")
-//    {
-//        TournamentSelector<Ind, 0, true> tournamentSelector(2);
-//        tournamentSelector.Prepare(individuals);
-//        BENCHMARK("Tournament (prepare)") { tournamentSelector.Prepare(individuals);                                    };
-//        // unfortunately due to how Catch works we have to unroll this 
-//        BENCHMARK("Tournament size 2")    { tournamentSelector.TournamentSize(2); benchSelector(tournamentSelector);    };
-//        BENCHMARK("Tournament size 3")    { tournamentSelector.TournamentSize(3); benchSelector(tournamentSelector);    };
-//        BENCHMARK("Tournament size 4")    { tournamentSelector.TournamentSize(4); benchSelector(tournamentSelector);    };
-//        BENCHMARK("Tournament size 5")    { tournamentSelector.TournamentSize(5); benchSelector(tournamentSelector);    };
-//        BENCHMARK("Tournament size 6")    { tournamentSelector.TournamentSize(6); benchSelector(tournamentSelector);    };
-//        BENCHMARK("Tournament size 7")    { tournamentSelector.TournamentSize(7); benchSelector(tournamentSelector);    };
-//        BENCHMARK("Tournament size 8")    { tournamentSelector.TournamentSize(8); benchSelector(tournamentSelector);    };
-//        BENCHMARK("Tournament size 9")    { tournamentSelector.TournamentSize(9); benchSelector(tournamentSelector);    };
-//        BENCHMARK("Tournament size 10")   { tournamentSelector.TournamentSize(10); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 11")   { tournamentSelector.TournamentSize(11); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 12")   { tournamentSelector.TournamentSize(12); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 13")   { tournamentSelector.TournamentSize(13); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 14")   { tournamentSelector.TournamentSize(14); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 15")   { tournamentSelector.TournamentSize(15); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 16")   { tournamentSelector.TournamentSize(16); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 17")   { tournamentSelector.TournamentSize(17); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 18")   { tournamentSelector.TournamentSize(18); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 19")   { tournamentSelector.TournamentSize(19); benchSelector(tournamentSelector);   };
-//        BENCHMARK("Tournament size 20")   { tournamentSelector.TournamentSize(20); benchSelector(tournamentSelector);   };
-//    }
-
-    SECTION("Tournament Selector (optimized)")
+    SECTION("Tournament Selector")
     {
-        RankedTournamentSelector<Ind, 0, true> rankedSelector(2);
-        rankedSelector.Prepare(individuals);
-        BENCHMARK("Tournament (prepare)") { rankedSelector.Prepare(individuals);                                   };
+        TournamentSelector<Ind, 0, true> tournamentSelector(2);
+        tournamentSelector.Prepare(individuals);
+        BENCHMARK("Tournament (prepare)") { tournamentSelector.Prepare(individuals);                                    };
         // unfortunately due to how Catch works we have to unroll this 
-        BENCHMARK("Tournament size 2")    { rankedSelector.TournamentSize(2); benchSelector(rankedSelector);  };
-        BENCHMARK("Tournament size 3")    { rankedSelector.TournamentSize(3); benchSelector(rankedSelector);  };
-        BENCHMARK("Tournament size 4")    { rankedSelector.TournamentSize(4); benchSelector(rankedSelector);  };
-        BENCHMARK("Tournament size 5")    { rankedSelector.TournamentSize(5); benchSelector(rankedSelector);  };
-        BENCHMARK("Tournament size 6")    { rankedSelector.TournamentSize(6); benchSelector(rankedSelector);  };
-        BENCHMARK("Tournament size 7")    { rankedSelector.TournamentSize(7); benchSelector(rankedSelector);  };
-        BENCHMARK("Tournament size 8")    { rankedSelector.TournamentSize(8); benchSelector(rankedSelector);  };
-        BENCHMARK("Tournament size 9")    { rankedSelector.TournamentSize(9); benchSelector(rankedSelector);  };
-        BENCHMARK("Tournament size 10")   { rankedSelector.TournamentSize(10); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 11")   { rankedSelector.TournamentSize(11); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 12")   { rankedSelector.TournamentSize(12); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 13")   { rankedSelector.TournamentSize(13); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 14")   { rankedSelector.TournamentSize(14); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 15")   { rankedSelector.TournamentSize(15); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 16")   { rankedSelector.TournamentSize(16); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 17")   { rankedSelector.TournamentSize(17); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 18")   { rankedSelector.TournamentSize(18); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 19")   { rankedSelector.TournamentSize(19); benchSelector(rankedSelector); };
-        BENCHMARK("Tournament size 20")   { rankedSelector.TournamentSize(20); benchSelector(rankedSelector); };
+        BENCHMARK("Tournament size 2")    { tournamentSelector.TournamentSize(2); benchSelector(tournamentSelector);    };
+        BENCHMARK("Tournament size 3")    { tournamentSelector.TournamentSize(3); benchSelector(tournamentSelector);    };
+        BENCHMARK("Tournament size 4")    { tournamentSelector.TournamentSize(4); benchSelector(tournamentSelector);    };
+        BENCHMARK("Tournament size 5")    { tournamentSelector.TournamentSize(5); benchSelector(tournamentSelector);    };
+        BENCHMARK("Tournament size 6")    { tournamentSelector.TournamentSize(6); benchSelector(tournamentSelector);    };
+        BENCHMARK("Tournament size 7")    { tournamentSelector.TournamentSize(7); benchSelector(tournamentSelector);    };
+        BENCHMARK("Tournament size 8")    { tournamentSelector.TournamentSize(8); benchSelector(tournamentSelector);    };
+        BENCHMARK("Tournament size 9")    { tournamentSelector.TournamentSize(9); benchSelector(tournamentSelector);    };
+        BENCHMARK("Tournament size 10")   { tournamentSelector.TournamentSize(10); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 11")   { tournamentSelector.TournamentSize(11); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 12")   { tournamentSelector.TournamentSize(12); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 13")   { tournamentSelector.TournamentSize(13); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 14")   { tournamentSelector.TournamentSize(14); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 15")   { tournamentSelector.TournamentSize(15); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 16")   { tournamentSelector.TournamentSize(16); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 17")   { tournamentSelector.TournamentSize(17); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 18")   { tournamentSelector.TournamentSize(18); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 19")   { tournamentSelector.TournamentSize(19); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 20")   { tournamentSelector.TournamentSize(20); benchSelector(tournamentSelector);   };
     }
+
+//    SECTION("Tournament Selector (optimized)")
+//    {
+//        RankTournamentSelector<Ind, 0, true> rankedSelector(2);
+//        rankedSelector.Prepare(individuals);
+//        BENCHMARK("Tournament (prepare)") { rankedSelector.Prepare(individuals);                                   };
+//        // unfortunately due to how Catch works we have to unroll this 
+//        BENCHMARK("Tournament size 2")    { rankedSelector.TournamentSize(2); benchSelector(rankedSelector);  };
+//        BENCHMARK("Tournament size 3")    { rankedSelector.TournamentSize(3); benchSelector(rankedSelector);  };
+//        BENCHMARK("Tournament size 4")    { rankedSelector.TournamentSize(4); benchSelector(rankedSelector);  };
+//        BENCHMARK("Tournament size 5")    { rankedSelector.TournamentSize(5); benchSelector(rankedSelector);  };
+//        BENCHMARK("Tournament size 6")    { rankedSelector.TournamentSize(6); benchSelector(rankedSelector);  };
+//        BENCHMARK("Tournament size 7")    { rankedSelector.TournamentSize(7); benchSelector(rankedSelector);  };
+//        BENCHMARK("Tournament size 8")    { rankedSelector.TournamentSize(8); benchSelector(rankedSelector);  };
+//        BENCHMARK("Tournament size 9")    { rankedSelector.TournamentSize(9); benchSelector(rankedSelector);  };
+//        BENCHMARK("Tournament size 10")   { rankedSelector.TournamentSize(10); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 11")   { rankedSelector.TournamentSize(11); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 12")   { rankedSelector.TournamentSize(12); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 13")   { rankedSelector.TournamentSize(13); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 14")   { rankedSelector.TournamentSize(14); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 15")   { rankedSelector.TournamentSize(15); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 16")   { rankedSelector.TournamentSize(16); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 17")   { rankedSelector.TournamentSize(17); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 18")   { rankedSelector.TournamentSize(18); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 19")   { rankedSelector.TournamentSize(19); benchSelector(rankedSelector); };
+//        BENCHMARK("Tournament size 20")   { rankedSelector.TournamentSize(20); benchSelector(rankedSelector); };
+//    }
 
 //    SECTION("Proportional Selector")
 //    {

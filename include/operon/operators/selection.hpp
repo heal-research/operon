@@ -45,9 +45,9 @@ private:
 };
 
 template <typename T, gsl::index Idx, bool Max>
-class RankedTournamentSelector : public SelectorBase<T, Idx, Max> {
+class RankTournamentSelector : public SelectorBase<T, Idx, Max> {
 public:
-    RankedTournamentSelector(size_t tSize)
+    RankTournamentSelector(size_t tSize)
         : tournamentSize(tSize)
     {
     }
@@ -58,10 +58,12 @@ public:
         auto best = uniformInt(random);
         for (size_t i = 1; i < tournamentSize; ++i) {
             auto curr = uniformInt(random);
-            if (best < curr)
+            if (best < curr) {
                 best = curr;
+            }
         }
-        return indices[best];
+        return best;
+        //return indices[best];
     }
 
     void Prepare(const gsl::span<const T> pop) override
@@ -83,6 +85,56 @@ private:
     size_t tournamentSize;
     std::conditional_t<Max, std::less<>, std::greater<>> comparison;
     std::vector<size_t> indices;
+};
+
+template <typename T, gsl::index Idx, bool Max>
+class RoundingTournamentSelector : public SelectorBase<T, Idx, Max> {
+public:
+    RoundingTournamentSelector(size_t tSize)
+        : RoundingTournamentSelector(tSize, 1e6)
+    {
+    }
+
+    RoundingTournamentSelector(size_t tSize, double rFactor)
+        : tournamentSize(tSize)
+        , roundingFactor(rFactor)
+    {
+    }
+
+    gsl::index operator()(operon::rand_t& random) const override
+    {
+        std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
+        auto best = uniformInt(random);
+        for (size_t i = 1; i < tournamentSize; ++i) {
+            auto curr = uniformInt(random);
+            if (comparison(fitness[best], fitness[curr])) {
+                best = curr;
+            }
+        }
+        return best;
+    }
+
+    void Prepare(const gsl::span<const T> pop) override
+    {
+        this->population = gsl::span<const T>(pop);
+        fitness.resize(pop.size());
+        std::transform(pop.begin(), pop.end(), fitness.begin(), [&](const auto& p) { return static_cast<size_t>(std::round(p[Idx] * roundingFactor)); });
+    }
+
+    void TournamentSize(size_t size)
+    {
+        tournamentSize = size;
+    }
+
+    void RoundingFactor(double v) { roundingFactor = v; }
+
+    size_t TournamentSize() const { return tournamentSize; }
+
+private:
+    size_t tournamentSize;
+    double roundingFactor;
+    std::conditional_t<Max, std::less<>, std::greater<>> comparison;
+    std::vector<size_t> fitness;
 };
 
 template <typename T, gsl::index Idx, bool Max>

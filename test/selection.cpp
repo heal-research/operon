@@ -34,18 +34,23 @@ TEST_CASE("Selection Distribution")
         individuals[i][0] = std::uniform_real_distribution(0.0, 1.0)(random);
     }
 
-    constexpr bool Maximization = true;
+    using Ind = Individual<1>;
+    constexpr gsl::index Idx = 0;
+    constexpr bool Max= true;
 
-    ProportionalSelector<Individual<1>, 0, Maximization> proportionalSelector;
+    ProportionalSelector<Ind, Idx, Max> proportionalSelector;
     proportionalSelector.Prepare(individuals);
 
-    TournamentSelector<Individual<1>, 0, Maximization> tournamentSelector(2);
+    TournamentSelector<Ind, Idx, Max> tournamentSelector(2);
     tournamentSelector.Prepare(individuals);
 
-    RankedTournamentSelector<Individual<1>, 0, Maximization> rankedSelector(2);
+    RankTournamentSelector<Ind, Idx, Max> rankedSelector(2);
     rankedSelector.Prepare(individuals);
 
-    auto plotHist = [&](SelectorBase<Individual<1>, 0, Maximization>& selector)
+    RoundingTournamentSelector<Ind, Idx, Max> roundingSelector(2);
+    roundingSelector.Prepare(individuals);
+
+    auto plotHist = [&](SelectorBase<Ind, Idx, Max>& selector)
     {
         std::vector<size_t> hist(individuals.size());
 
@@ -72,9 +77,14 @@ TEST_CASE("Selection Distribution")
         plotHist(tournamentSelector);
     }
 
-    SECTION("Tournament New Size 2")
+    SECTION("Rank Tournament Size 2")
     {
         plotHist(rankedSelector);
+    }
+    
+    SECTION("Rounding Tournament Size 2")
+    {
+        plotHist(roundingSelector);
     }
 
     SECTION("Tournament Size 3")
@@ -83,10 +93,16 @@ TEST_CASE("Selection Distribution")
         plotHist(tournamentSelector);
     }
 
-    SECTION("Tournament New Size 3")
+    SECTION("Rank Tournament Size 3")
     {
         rankedSelector.TournamentSize(3);
         plotHist(rankedSelector);
+    }
+
+    SECTION("Rounding Tournament Size 3")
+    {
+        roundingSelector.TournamentSize(3);
+        plotHist(roundingSelector);
     }
 }
 }
