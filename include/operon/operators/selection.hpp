@@ -24,15 +24,7 @@ public:
         auto best = uniformInt(random);
         for (size_t i = 1; i < tournamentSize; ++i) {
             auto curr = uniformInt(random);
-            bool better = false;
-
-            if constexpr (Max) {
-                better = this->population[best][Idx] < this->population[curr][Idx];
-            } else {
-                better = this->population[best][Idx] > this->population[curr][Idx];
-            }
-
-            if (better) {
+            if (comparison(this->population[best][Idx], this->population[curr][Idx])) {
                 best = curr;
             }
         }
@@ -44,8 +36,53 @@ public:
         this->population = gsl::span<const T>(pop);
     }
 
+    void TournamentSize(size_t size) { tournamentSize = size; }
+    size_t TournamentSize() const { return tournamentSize; }
+
+private:
+    std::conditional_t<Max, std::less<>, std::greater<>> comparison;
+    size_t tournamentSize;
+};
+
+template <typename T, gsl::index Idx, bool Max>
+class RankedTournamentSelector : public SelectorBase<T, Idx, Max> {
+public:
+    RankedTournamentSelector(size_t tSize)
+        : tournamentSize(tSize)
+    {
+    }
+
+    gsl::index operator()(operon::rand_t& random) const override
+    {
+        std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
+        auto best = uniformInt(random);
+        for (size_t i = 1; i < tournamentSize; ++i) {
+            auto curr = uniformInt(random);
+            if (best < curr)
+                best = curr;
+        }
+        return indices[best];
+    }
+
+    void Prepare(const gsl::span<const T> pop) override
+    {
+        this->population = gsl::span<const T>(pop);
+        indices.resize(pop.size());
+        std::iota(indices.begin(), indices.end(), 0);
+        std::sort(indices.begin(), indices.end(), [&](auto lhs, auto rhs) { return comparison(pop[lhs][Idx], pop[rhs][Idx]); });
+    }
+
+    void TournamentSize(size_t size)
+    {
+        tournamentSize = size;
+    }
+
+    size_t TournamentSize() const { return tournamentSize; }
+
 private:
     size_t tournamentSize;
+    std::conditional_t<Max, std::less<>, std::greater<>> comparison;
+    std::vector<size_t> indices;
 };
 
 template <typename T, gsl::index Idx, bool Max>
@@ -69,14 +106,12 @@ private:
         fitness.clear();
         fitness.reserve(this->population.size());
 
-        double vmin = this->population[0].Fitness[Idx], vmax = vmin;
+        double vmin = this->population[0][Idx], vmax = vmin;
         for (gsl::index i = 0; i < this->population.size(); ++i) {
             auto f = this->population[i].Fitness[Idx];
-            fitness.push_back(std::make_pair(f, i));
-            if (vmin > f)
-                vmin = f;
-            if (vmax < f)
-                vmax = f;
+            fitness.push_back({ f, i });
+            vmin = std::min(vmin, f);
+            vmax = std::max(vmax, f);
         }
         auto prepare = [=](auto p) {
             auto f = p.first;
@@ -87,7 +122,7 @@ private:
         };
         std::transform(fitness.begin(), fitness.end(), fitness.begin(), prepare);
         std::sort(fitness.begin(), fitness.end());
-        std::inclusive_scan(std::execution::par_unseq, fitness.begin(), fitness.end(), fitness.begin(), [](auto lhs, auto rhs) { return std::make_pair(lhs.first + rhs.first, rhs.second); });
+        std::inclusive_scan(std::execution::seq, fitness.begin(), fitness.end(), fitness.begin(), [](auto lhs, auto rhs) { return std::make_pair(lhs.first + rhs.first, rhs.second); });
     }
 
     // discrete CDF of the population fitness values

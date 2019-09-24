@@ -95,6 +95,7 @@ add_executable(
     test/evaluation.cpp
     test/initialization.cpp
     test/implementation.cpp
+    test/selection.cpp
 )
 target_compile_features(operon-test PRIVATE cxx_std_17)
 target_link_libraries(operon-test PRIVATE operon Catch2::Catch2 TBB::tbb)

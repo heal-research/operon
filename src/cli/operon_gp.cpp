@@ -197,10 +197,11 @@ int main(int argc, char* argv[])
 
         const gsl::index idx { 0 };
         TournamentSelector<Individual<1>, idx, Evaluator::Maximization> selector(5);
+        //ProportionalSelector<Ind, idx, Evaluator::Maximization> selector;
         //RandomSelector<Ind, idx, Evaluator::Maximization> selector;
 
         //auto creator  = FullTreeCreator(5, maxLength);
-        std::uniform_int_distribution<size_t> sizeDistribution(2, 10);
+        std::uniform_int_distribution<size_t> sizeDistribution(2, maxLength / 2);
         //std::normal_distribution<double> sizeDistribution(25, 7);
         auto creator  = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
         //auto creator = RampedHalfAndHalfCreator { maxDepth, maxLength };

@@ -57,11 +57,12 @@ TEST_CASE("Tree initialization (grow)")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
 
-    size_t maxDepth = 1000, maxLength = 100;
+    size_t maxDepth = 10, maxLength = 100;
 
     const size_t nTrees = 100'000;
 
-    auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
+    //auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
+    auto sizeDistribution = std::normal_distribution<double>(maxLength / 2, 10);
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
     grammar.SetConfig(Grammar::Full);
@@ -112,16 +113,14 @@ TEST_CASE("Tree initialization (grow)")
 
     auto [minLen, maxLen] = std::minmax_element(trees.begin(), trees.end(), [](const auto& lhs, const auto& rhs) { return lhs.Length() < rhs.Length(); });
 
-    std::vector<size_t> lengthHistogram(maxLen->Length() + 1);
+    std::vector<size_t> lengthHistogram(maxLength + 1);
     for(auto& tree : trees)
     {
         lengthHistogram[tree.Length()]++;
     }
     fmt::print("Tree length histogram:\n");
-    for (auto i = 0u; i < lengthHistogram.size(); ++i)
+    for (auto i = 1u; i < lengthHistogram.size(); ++i)
     {
-        auto v = lengthHistogram[i];
-        if (v == 0) continue;
         fmt::print("{}\t{}\n", i, lengthHistogram[i]);
     }
     auto [minDep, maxDep] = std::minmax_element(trees.begin(), trees.end(), [](const auto& lhs, const auto& rhs) { return lhs.Depth() < rhs.Depth(); });
