@@ -27,10 +27,9 @@ FetchContent_Declare(
 
 FetchContent_Declare(
     csv
-    GIT_REPOSITORY https://github.com/vincentlaucsb/csv-parser.git 
-    GIT_TAG master
-    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/CSV
-    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/CSV
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
+    URL https://raw.githubusercontent.com/vincentlaucsb/csv-parser/master/single_include/csv.hpp
+    DOWNLOAD_NO_EXTRACT 1
 )
 
 FetchContent_Declare(
@@ -41,10 +40,6 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(xxhash gsl csv)
-# prevent compilation of unused targets
-set_target_properties(csv PROPERTIES EXCLUDE_FROM_ALL TRUE)
-set_target_properties(csv_stats PROPERTIES EXCLUDE_FROM_ALL TRUE)
-set_target_properties(csv_info PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 #set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-checks=bugprone-*,cppcoreguidelines-*,modernize-*,performance-*,readability-*")
 
@@ -58,7 +53,7 @@ add_library(
     src/operators/mutation.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
-target_link_libraries(operon PRIVATE csv fmt::fmt ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
+target_link_libraries(operon PRIVATE fmt::fmt ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
 target_include_directories(
     operon
     PRIVATE ${PROJECT_SOURCE_DIR}/include/operon
