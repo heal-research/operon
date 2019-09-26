@@ -142,7 +142,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 break;
             }
             case NodeType::Cbrt: {
-                r = m.col(i - 1).array().unaryExpr([](T v) { return ceres::cbrt(v); });
+                r = m.col(i - 1).array().unaryExpr([](T v) { return T(ceres::cbrt(v)); });
                 break;
             }
             case NodeType::Square: {

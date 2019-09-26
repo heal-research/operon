@@ -63,7 +63,6 @@ public:
             }
         }
         return best;
-        //return indices[best];
     }
 
     void Prepare(const gsl::span<const T> pop) override
