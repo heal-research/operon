@@ -73,7 +73,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
             case NodeType::Variable: {
                 auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                r = dataset.Values().block(range.Start() + row, dataset.GetIndex(s.HashValue), range.Size(), 1) * w;
+                r = dataset.Values().block(range.Start() + row, dataset.GetIndex(s.HashValue), remainingRows, 1).cast<T>() * w;
                 break;
             }
             case NodeType::Add: {
