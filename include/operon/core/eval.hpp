@@ -72,9 +72,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 break;
             }
             case NodeType::Variable: {
-                auto values = dataset.GetValues(s.HashValue).subspan(range.Start() + row, remainingRows);
                 auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                std::transform(values.begin(), values.end(), r.data(), [&](double v) { return T(v * w); });
+                r = dataset.Values().block(range.Start() + row, dataset.GetIndex(s.HashValue), range.Size(), 1) * w;
                 break;
             }
             case NodeType::Add: {

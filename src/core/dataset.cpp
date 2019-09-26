@@ -14,50 +14,54 @@
 namespace Operon {
 Dataset::Dataset(const std::string& file, bool hasHeader)
 {
-    csv::CSVReader reader(file);
-    long ncol = reader.get_col_names().size();
-    variables.resize(ncol);
-    values.resize(ncol);
+    auto info = csv::get_file_info(file);
+    auto nrows = info.n_rows;
+    auto ncols = info.n_cols;
+    variables.resize(ncols);
 
-    // fill in variable names
-    std::vector<std::string> names;
     if (hasHeader) {
-        names = reader.get_col_names();
+        for (auto i = 0; i < ncols; ++i) {
+            variables[i].Name = info.col_names[i];
+            variables[i].Index = i;
+        }
     } else {
-        int i = 0;
-        std::generate(names.begin(), names.end(), [&]() { return fmt::format("X{}", ++i); });
+        for (auto i = 0; i < ncols; ++i) {
+            variables[i].Name = fmt::format("X{}", i + 1);
+            variables[i].Index = i;
+        }
+        variables.back().Name = "Y";
     }
 
+    csv::CSVReader reader(file);
+
+    values = MatrixType(nrows, ncols);
+    gsl::index i = 0;
     for (auto& row : reader) {
-        int i = 0;
+        gsl::index j = 0;
         for (auto& field : row) {
             if (field.is_num()) {
-                auto value = field.get<double>();
-                values[i++].push_back(value);
+                values(i, j) = field.get<double>();
+                ++j;
             } else {
-                throw std::runtime_error(fmt::format("The field {} could not be parsed as a number.", field.get()));
+                throw new std::runtime_error(fmt::format("Could not cast {} as a floating-point type.", field.get()));
             }
         }
-    }
-
-    // the code below sorts the variables vector by variable name, then assigns hash values (also sorted, increasing order) and indices
-    // this is done for the purpose of enabling searching with std::equal_range so we can retrieve data using name, hash value or index
-
-    // fill in variable names
-    for (gsl::index i = 0; i < ncol; ++i) {
-        variables[i].Name = names[i];
-        variables[i].Index = i;
+        ++i;
     }
 
     std::sort(variables.begin(), variables.end(), [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); });
-    // fill in variable hash values
+    // fill in variable hash values using a fixed seed
     Random::JsfRand<64> jsf(1234);
-    // generate some hash values
-    std::vector<operon::hash_t> hashes(ncol);
+    std::vector<operon::hash_t> hashes(ncols);
     std::generate(hashes.begin(), hashes.end(), [&]() { return jsf(); });
     std::sort(hashes.begin(), hashes.end());
-    for (gsl::index i = 0; i < ncol; ++i) {
+    for (auto i = 0; i < ncols; ++i) {
         variables[i].Hash = hashes[i];
+    }
+
+    auto [r, c] = Dimensions();
+    if (r == 0 || c == 0) {
+        throw std::runtime_error(fmt::format("Invalid matrix dimensions {} x {}\n", r, c));
     }
 }
 }

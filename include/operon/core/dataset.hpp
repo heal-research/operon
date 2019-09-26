@@ -9,6 +9,11 @@
 
 #include "common.hpp"
 
+#include <fmt/core.h>
+#include <Eigen/Core>
+#include <Eigen/Dense>
+#include <Eigen/Eigen>
+
 namespace Operon {
 // compare strings size first, as an attempt to have eg X1, X2, X10 in this order and not X1, X10, X2
 namespace {
@@ -21,7 +26,8 @@ namespace {
 class Dataset {
 private:
     std::vector<Variable> variables;
-    std::vector<std::vector<double>> values;
+    using MatrixType = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
+    MatrixType values;
 
     Dataset();
 
@@ -29,18 +35,25 @@ public:
     Dataset(const std::string& file, bool hasHeader = false);
     Dataset(const Dataset& rhs)
         : variables(rhs.variables)
-        , values(rhs.values)
+          , values(rhs.values)
     {
     }
     Dataset(Dataset&& rhs) noexcept
         : variables(rhs.variables)
         , values(std::move(rhs.values))
-    {
-    }
+        {
+        }
     Dataset(const std::vector<Variable> vars, const std::vector<std::vector<double>> vals)
         : variables(vars)
-        , values(std::move(vals))
     {
+        values = MatrixType(vals.front().size(), vals.size());
+        for (size_t i = 0; i < vals.size(); ++i)
+        {
+            for (size_t j = 0; j < vals[i].size(); ++j)
+            {
+                values(j, i) = vals[i][j];
+            }
+        }
     }
 
     Dataset& operator=(Dataset rhs)
@@ -55,9 +68,11 @@ public:
         values.swap(rhs.values);
     }
 
-    size_t Rows() const { return values[0].size(); }
-    size_t Cols() const { return variables.size(); }
+    size_t Rows() const { return values.rows(); }
+    size_t Cols() const { return values.cols(); }
     std::pair<size_t, size_t> Dimensions() const { return { Rows(), Cols() }; }
+
+    const MatrixType& Values() const { return values; }
 
     const std::vector<std::string> VariableNames() const
     {
@@ -70,19 +85,19 @@ public:
     {
         auto needle = Variable { name, 0, 0 };
         auto record = std::equal_range(variables.begin(), variables.end(), needle, [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); });
-        return gsl::span<const double>(values[record.first->Index]);
+        return gsl::span<const double>(values.col(record.first->Index).data(), values.rows());
     }
 
     const gsl::span<const double> GetValues(operon::hash_t hashValue) const
     {
         auto needle = Variable { "", hashValue, 0 };
         auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; });
-        return gsl::span<const double>(values[record.first->Index]);
+        return gsl::span<const double>(values.col(record.first->Index).data(), values.rows());
     }
 
     const gsl::span<const double> GetValues(gsl::index index) const
     {
-        return gsl::span<const double>(values[index]);
+        return gsl::span<const double>(values.col(index).data(), values.rows());
     }
 
     const std::string& GetName(operon::hash_t hashValue) const
@@ -99,6 +114,12 @@ public:
         return record.first->Hash;
     }
 
+    gsl::index GetIndex(operon::hash_t hashValue) const 
+    {
+        auto needle = Variable { "", hashValue, 0 };
+        auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; });
+        return record.first->Index;
+    }
     const std::string& GetName(int index) const { return variables[index].Name; }
     const gsl::span<const Variable> Variables() const { return gsl::span<const Variable>(variables); }
 };

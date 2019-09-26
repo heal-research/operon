@@ -110,9 +110,6 @@ TEST_CASE("Tree initialization (grow)")
         fmt::print("{}\t{:.3f}%\n", ds.GetName(v.Hash), static_cast<double>(variableFrequencies[v.Index]) / totalVars);
     }
 
-
-    auto [minLen, maxLen] = std::minmax_element(trees.begin(), trees.end(), [](const auto& lhs, const auto& rhs) { return lhs.Length() < rhs.Length(); });
-
     std::vector<size_t> lengthHistogram(maxLength + 1);
     for(auto& tree : trees)
     {
