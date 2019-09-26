@@ -9,12 +9,16 @@
 #include "operators/selection.hpp"
 #include "operators/initialization.hpp"
 
+#include <tbb/task_scheduler_init.h>
+
 namespace Operon::Test {
 
 TEST_CASE("Sextic GPops", "[performance]")
 {
+    auto threads = tbb::task_scheduler_init::default_num_threads();
+    tbb::task_scheduler_init init(threads);
     auto rd = Random::JsfRand<64>();
-    auto ds = Dataset("../data/Sextic-big.csv", true);
+    auto ds = Dataset("../data/Sextic.csv", true);
     auto target = "Y";
     auto variables = ds.Variables();
     std::vector<Variable> inputs;
@@ -22,12 +26,15 @@ TEST_CASE("Sextic GPops", "[performance]")
 
     size_t n = 10'000;
     std::vector<size_t> numRows { 50, 500, 5000 };
-    std::vector<size_t> avgLen { 10, 50, 100, 200 };
+    std::vector<size_t> avgLen { 10, 50, 100, 200, 500, 1000 };
+    std::vector<double> results;
 
-    size_t maxDepth = 1000;
-    size_t maxLength = 1000;
+    size_t maxDepth = 10000;
+    size_t maxLength = 10000;
 
     Grammar grammar;
+
+    using T = double;
 
     for (auto len : avgLen) {
         std::uniform_int_distribution<size_t> sizeDistribution(1, 2 * len);
@@ -35,11 +42,12 @@ TEST_CASE("Sextic GPops", "[performance]")
         std::vector<Tree> trees(n);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
         for(auto nRows : numRows) {
+
             Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
             Range range { 0, nRows };
 
             auto evaluate = [&](auto& tree) -> size_t {
-                auto estimated = Evaluate<double>(tree, ds, range);
+                auto estimated = Evaluate<T>(tree, ds, range);
                 return estimated.size();
             };
 
@@ -58,8 +66,15 @@ TEST_CASE("Sextic GPops", "[performance]")
             auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
 #endif
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed() / reps);
+            results.push_back(totalNodes * range.Size() * 1000.0 / elapsed.count());
             fmt::print("\nTotal nodes: {}, elapsed: {} s, performance: {} GPops/s\n", totalNodes, elapsed.count() / 1000.0, totalNodes * range.Size() * 1000.0 / elapsed.count());
         }
+    }
+    size_t i = 0;
+    fmt::print("Average length,Test cases,GPops/s\n");
+    for(auto len : avgLen) for(auto nRows : numRows) 
+    {
+        fmt::print("{},{},{}\n", len, nRows, results[i++]);
     }
 }
 
@@ -70,7 +85,7 @@ TEST_CASE("Evaluation performance", "[performance]")
     size_t maxDepth = 1000;
 
     auto rd = Random::JsfRand<64>();
-    auto ds = Dataset("../data/Sextic-big.csv", true);
+    auto ds = Dataset("../data/Sextic.csv", true);
 
     auto target = "Y";
     auto variables = ds.Variables();
