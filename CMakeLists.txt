@@ -46,6 +46,7 @@ FetchContent_MakeAvailable(xxhash gsl csv)
 add_library(
     operon
     STATIC 
+    src/core/metrics.cpp
     src/core/tree.cpp
     src/core/problem.cpp
     src/core/dataset.cpp
@@ -102,7 +103,7 @@ target_include_directories(
     PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     PRIVATE ${CERES_INCLUDE_DIRS}
 )
-target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_FAST_COMPILE CATCH_CONFIG_ENABLE_BENCHMARKING)
+target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
 set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 
 if(MSVC)

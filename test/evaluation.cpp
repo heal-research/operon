@@ -1,8 +1,9 @@
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "core/format.hpp"
-#include "core/metrics.hpp"
 #include "core/stats.hpp"
+#include "core/metrics.hpp"
+
 #include <catch2/catch.hpp>
 
 namespace Operon::Test {
@@ -47,12 +48,12 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
         tree = Tree({ x1, x2, add });
-        auto values = Evaluate<double>(tree, ds, range);
-        auto r2 = RSquared(values.begin(), values.end(), targetValues.begin());
+        auto estimatedValues = Evaluate<double>(tree, ds, range);
+        auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
-        for (size_t i = 0; i < values.size(); ++i) {
-            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], values[i]);
+        for (long i = 0; i < targetValues.size(); ++i) {
+            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], targetValues[i]);
         }
     }
 
@@ -62,12 +63,12 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
         tree = Tree({ x1, x2, sub }); // this is actually x2 - x1 due to how postfix works
-        auto values = Evaluate<double>(tree, ds, range);
-        auto r2 = RSquared(values.begin(), values.end(), targetValues.begin());
+        auto estimatedValues = Evaluate<double>(tree, ds, range);
+        auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
-        for (size_t i = 0; i < values.size(); ++i) {
-            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], values[i]);
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], estimatedValues[i]);
         }
     }
 
@@ -77,12 +78,12 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
         tree = Tree({ x1, x2, mul });
-        auto values = Evaluate<double>(tree, ds, range);
-        auto r2 = RSquared(values.begin(), values.end(), targetValues.begin());
+        auto estimatedValues = Evaluate<double>(tree, ds, range);
+        auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
-        for (size_t i = 0; i < values.size(); ++i) {
-            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], values[i]);
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], estimatedValues[i]);
         }
     }
 
@@ -92,12 +93,12 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
         tree = Tree { x1, x2, div };
-        auto values = Evaluate<double>(tree, ds, range);
-        auto r2 = RSquared(values.begin(), values.end(), targetValues.begin());
+        auto estimatedValues = Evaluate<double>(tree, ds, range);
+        auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
-        for (size_t i = 0; i < values.size(); ++i) {
-            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], values[i]);
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], estimatedValues[i]);
         }
     }
 
@@ -109,12 +110,12 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x5Values = ds.GetValues(x5Var.Hash).subspan(range.Start(), range.Size());
         auto x6Values = ds.GetValues(x6Var.Hash).subspan(range.Start(), range.Size());
 
-        auto values = Evaluate<double>(tree, ds, range);
-        auto r2 = RSquared(values.begin(), values.end(), targetValues.begin());
+        auto estimatedValues = Evaluate<double>(tree, ds, range);
+        auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds, 12), r2);
 
-        for (size_t i = 0; i < values.size(); ++i) {
-            fmt::print("{}\t{}\t{}\t{}\n", x3Values[i], x5Values[i], x6Values[i], values[i]);
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            fmt::print("{}\t{}\t{}\t{}\n", x3Values[i], x5Values[i], x6Values[i], estimatedValues[i]);
         }
     }
 }
