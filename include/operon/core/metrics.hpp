@@ -21,7 +21,7 @@ double NormalizedMeanSquaredError(gsl::span<const double> x, gsl::span<const dou
         auto e = x[i] - y[i];
         errcalc.Add(e * e);
     }
-    auto yvar = ycalc.SampleVariance();
+    auto yvar = ycalc.NaiveVariance();
     auto errmean = errcalc.Mean();
     return yvar > 0 ? errmean / yvar : yvar;
 }
@@ -50,7 +50,8 @@ double RSquared(gsl::span<const double> x, gsl::span<const double> y)
     for(int i = 0; i < x.size(); ++i) {
         pcalc.Add(x[i], y[i]);
     }
-    return pcalc.Correlation();
+    auto r = pcalc.Correlation();
+    return r * r;
 }
 }
 #endif

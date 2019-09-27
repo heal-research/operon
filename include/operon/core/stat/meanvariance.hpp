@@ -109,7 +109,11 @@ public:
         m2 += other.m2 + tmp * tmp / (on * n * oldn);
     }
 
-    double NaiveVariance() const { return m2 / n; }
+    double NaiveVariance() const 
+    {
+        Expects(n > 0);
+        return m2 / n; 
+    }
 
     double SampleVariance() const
     {
