@@ -4,56 +4,53 @@
 #include <execution>
 
 #include "core/common.hpp"
-#include "core/stats.hpp"
+#include "core/stat/meanvariance.hpp"
+#include "core/stat/pearson.hpp"
 
 namespace Operon {
-template <typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
-T NormalizedMeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+double NormalizedMeanSquaredError(gsl::span<const double> x, gsl::span<const double> y)
 {
-    MeanVarianceCalculator<T> varCalc;
-    MeanVarianceCalculator<T> mseCalc;
-
-    for (; xBegin != xEnd; ++xBegin, ++yBegin) {
-        auto e = *xBegin;
-        auto t = *yBegin;
-        if (!std::isnan(t)) {
-            varCalc.Add(t);
+    Expects(x.size() == y.size());
+    Expects(x.size() > 0);
+    MeanVarianceCalculator ycalc;
+    MeanVarianceCalculator errcalc;
+    for(int i = 0; i < x.size(); ++i) {
+        if (!std::isnan(y[i])) {
+            ycalc.Add(y[i]);
         }
-        auto err = e - t;
-        mseCalc.Add(err * err);
+        auto e = x[i] - y[i];
+        errcalc.Add(e * e);
     }
-    double var = varCalc.PopulationVariance();
-    double mse = mseCalc.Mean();
-
-    return var > 0.0 ? mse / var : 0.0;
+    auto yvar = ycalc.SampleVariance();
+    auto errmean = errcalc.Mean();
+    return yvar > 0 ? errmean / yvar : yvar;
 }
 
-template <typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type, typename ExecutionPolicy = std::execution::sequenced_policy>
-T MeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+double MeanSquaredError(gsl::span<const double> x, gsl::span<const double> y)
 {
-    ExecutionPolicy policy;
-    return std::transform_reduce(
-               policy,
-               xBegin,
-               xEnd,
-               yBegin,
-               T { 0 },
-               std::plus<T> {},
-               [](auto a, auto b) { return (a - b) * (a - b); })
-        / std::distance(xBegin, xEnd);
+    Expects(x.size() == y.size());
+    Expects(x.size() > 0);
+    MeanVarianceCalculator mcalc;
+    for(int i = 0; i < x.size(); ++i) {
+        mcalc.Add((x[i] - y[i]) * (x[i] - y[i]));
+    }
+    return mcalc.Mean();
 }
 
-template <typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
-T RootMeanSquaredError(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+double RootMeanSquaredError(gsl::span<const double> x, gsl::span<const double> y)
 {
-    return std::sqrt(MeanSquaredError(xBegin, xEnd, yBegin));
+    return std::sqrt(MeanSquaredError(x, y));
 }
 
-template <typename InputIt1, typename InputIt2, typename T = typename InputIt1::value_type>
-T RSquared(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+double RSquared(gsl::span<const double> x, gsl::span<const double> y)
 {
-    T r = PearsonsRCalculator<T>::Calculate(xBegin, xEnd, yBegin);
-    return r * r;
+    Expects(x.size() == y.size());
+    Expects(x.size() > 0);
+    PearsonsRCalculator pcalc;
+    for(int i = 0; i < x.size(); ++i) {
+        pcalc.Add(x[i], y[i]);
+    }
+    return pcalc.Correlation();
 }
 }
 #endif

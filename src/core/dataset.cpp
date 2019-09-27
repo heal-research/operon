@@ -1,6 +1,5 @@
 #include "core/dataset.hpp"
 #include "core/jsf.hpp"
-#include "core/stats.hpp"
 #include <fmt/core.h>
 
 #pragma GCC diagnostic ignored "-Wreorder"

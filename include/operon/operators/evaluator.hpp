@@ -4,7 +4,8 @@
 #include "core/eval.hpp"
 #include "core/metrics.hpp"
 #include "core/operator.hpp"
-#include "core/stats.hpp"
+#include "core/stat/pearson.hpp"
+#include "core/stat/meanvariance.hpp"
 
 namespace Operon {
 template <typename T>
@@ -25,7 +26,7 @@ public:
         auto& genotype = ind.Genotype;
 
         auto trainingRange = problem.TrainingRange();
-        auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start, trainingRange.Size());
+        auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         if (this->iterations > 0) {
             auto summary = OptimizeAutodiff(genotype, dataset, targetValues, trainingRange, this->iterations);
@@ -33,7 +34,7 @@ public:
         }
 
         auto estimatedValues = Evaluate<double>(genotype, dataset, trainingRange);
-        auto nmse = NormalizedMeanSquaredError(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
+        auto nmse = NormalizedMeanSquaredError(estimatedValues, targetValues);
         if (!std::isfinite(nmse)) {
             nmse = std::numeric_limits<double>::max();
         }
@@ -72,7 +73,7 @@ public:
         }
 
         auto estimatedValues = Evaluate<double>(genotype, dataset, trainingRange);
-        auto r2 = RSquared(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
+        auto r2 = RSquared(estimatedValues, targetValues);
         if (!std::isfinite(r2)) {
             r2 = 0;
         }

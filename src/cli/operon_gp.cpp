@@ -12,7 +12,8 @@
 #include "operators/mutation.hpp"
 #include "operators/recombinator.hpp"
 #include "operators/selection.hpp"
-#include <core/metrics.hpp>
+#include "core/metrics.hpp"
+#include "core/stat/linearscaler.hpp"
 
 #include "util.hpp"
 
@@ -201,7 +202,7 @@ int main(int argc, char* argv[])
         //RandomSelector<Ind, idx, Evaluator::Maximization> selector;
 
         //auto creator  = FullTreeCreator(5, maxLength);
-        std::uniform_int_distribution<size_t> sizeDistribution(2, maxLength / 2);
+        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength / 2);
         //std::normal_distribution<double> sizeDistribution(25, 7);
         auto creator  = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
         //auto creator = RampedHalfAndHalfCreator { maxDepth, maxLength };
@@ -240,15 +241,15 @@ int main(int argc, char* argv[])
             auto estimatedTest  = Evaluate<double>(best.Genotype, problem.GetDataset(), testRange);
 
             // scale values
-            auto [a, b] = LinearScalingCalculator<double>::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
+            auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
             std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](double v) { return b * v + a; });
             std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](double v) { return b * v + a; });
+            
+            auto r2Train    = RSquared(estimatedTrain, targetTrain);
+            auto r2Test     = RSquared(estimatedTest, targetTest);
 
-            auto r2Train    = RSquared(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-            auto r2Test     = RSquared(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
-
-            auto nmseTrain  = NormalizedMeanSquaredError(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-            auto nmseTest   = NormalizedMeanSquaredError(estimatedTest.begin(), estimatedTest.end(), targetTest.begin());
+            auto nmseTrain  = NormalizedMeanSquaredError(estimatedTrain, targetTrain);
+            auto nmseTest   = NormalizedMeanSquaredError(estimatedTest, targetTest);
 
             auto avgLength  = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
             auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<double> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();

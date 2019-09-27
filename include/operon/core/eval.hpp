@@ -73,47 +73,58 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
             case NodeType::Variable: {
                 auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                r = dataset.Values().block(range.Start() + row, dataset.GetIndex(s.HashValue), remainingRows, 1).cast<T>() * w;
+                r.segment(0, remainingRows) = dataset.Values().col(dataset.GetIndex(s.HashValue)).segment(range.Start() + row, remainingRows).cast<T>() * w;
                 break;
             }
             case NodeType::Add: {
-                auto c = i - 1; // first child index
-                r = m.col(c).array();
-                for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                    r += m.col(j).array();
-                }
+                //r = m.col(c).array();
+                //for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
+                //    r += m.col(j).array();
+                //}
+                auto c1 = i - 1; // first child index
+                auto c2 = c1 - 1 - nodes[c1].Length;
+                r = m.col(c1).array() + m.col(c2).array();
                 break;
             }
             case NodeType::Sub: {
-                auto c = i - 1; // first child index
-                if (s.Arity == 1) {
-                    r = -m.col(c).array();
-                } else {
-                    r = m.col(c).array();
-                    for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                        r -= m.col(j).array();
-                    }
-                }
+                //auto c = i - 1; // first child index
+                //if (s.Arity == 1) {
+                //    r = -m.col(c).array();
+                //} else {
+                //    r = m.col(c).array();
+                //    for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
+                //        r -= m.col(j).array();
+                //    }
+                //}
+                auto c1 = i - 1; // first child index
+                auto c2 = c1 - 1 - nodes[c1].Length;
+                r = m.col(c1).array() - m.col(c2).array();
                 break;
             }
             case NodeType::Mul: {
-                auto c = i - 1; // first child index
-                r = m.col(c).array();
-                for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                    r *= m.col(j).array();
-                }
+                //auto c = i - 1; // first child index
+                //r = m.col(c).array();
+                //for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
+                //    r *= m.col(j).array();
+                //}
+                auto c1 = i - 1; // first child index
+                auto c2 = c1 - 1 - nodes[c1].Length;
+                r = m.col(c1).array() * m.col(c2).array();
                 break;
             }
             case NodeType::Div: {
-                auto c = i - 1; // first child index
-                if (s.Arity == 1) {
-                    r = m.col(c).array().inverse();
-                } else {
-                    r = m.col(c).array();
-                    for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                        r /= m.col(j).array();
-                    }
-                }
+                //auto c = i - 1; // first child index
+                //if (s.Arity == 1) {
+                //    r = m.col(c).array().inverse();
+                //} else {
+                //    r = m.col(c).array();
+                //    for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
+                //        r /= m.col(j).array();
+                //    }
+                //}
+                auto c1 = i - 1; // first child index
+                auto c2 = c1 - 1 - nodes[c1].Length;
+                r = m.col(c1).array() / m.col(c2).array();
                 break;
             }
             case NodeType::Log: {
