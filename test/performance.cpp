@@ -15,8 +15,8 @@ namespace Operon::Test {
 
 TEST_CASE("Sextic GPops", "[performance]")
 {
-    auto threads = tbb::task_scheduler_init::default_num_threads();
-    tbb::task_scheduler_init init(threads);
+//    auto threads = tbb::task_scheduler_init::default_num_threads();
+//    tbb::task_scheduler_init init(threads);
     auto rd = Random::JsfRand<64>();
     auto ds = Dataset("../data/Sextic.csv", true);
     auto target = "Y";
@@ -34,11 +34,9 @@ TEST_CASE("Sextic GPops", "[performance]")
 
     Grammar grammar;
 
-    using T = double;
-
     for (auto len : avgLen) {
-        std::uniform_int_distribution<size_t> sizeDistribution(1, 2 * len);
-        auto creator = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
+        std::uniform_int_distribution<size_t> sizeDistribution(len, len);
+        auto creator = GrowTreeCreator { sizeDistribution, maxDepth, len };
         std::vector<Tree> trees(n);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
         for(auto nRows : numRows) {
@@ -46,35 +44,32 @@ TEST_CASE("Sextic GPops", "[performance]")
             Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
             Range range { 0, nRows };
 
-            auto evaluate = [&](auto& tree) -> size_t {
-                auto estimated = Evaluate<T>(tree, ds, range);
-                return estimated.size();
-            };
-
             size_t reps = 0;
-            fmt::print("Rows: {}\tAvg len: {}\n", nRows, len);
             model.start();
             BENCHMARK("Parallel")
             {
                 ++reps;
-                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), evaluate);
+                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<float>(tree, ds, range).size(); });
             };
             model.finish();
-#ifdef _MSC_VER
-            auto totalNodes = std::reduce(trees.begin(), trees.end(), 0UL, [](size_t partial, const auto& t) { return partial + t.Length(); });
-#else
             auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
-#endif
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed() / reps);
-            results.push_back(totalNodes * range.Size() * 1000.0 / elapsed.count());
-            fmt::print("\nTotal nodes: {}, elapsed: {} s, performance: {} GPops/s\n", totalNodes, elapsed.count() / 1000.0, totalNodes * range.Size() * 1000.0 / elapsed.count());
+            auto gpops = totalNodes * range.Size() * 1000.0 / elapsed.count();
+	    fmt::print("Float,{},{},{:.4e}\n", len, nRows, gpops);
+
+            reps = 0;
+            model.start();
+            BENCHMARK("Parallel")
+            {
+                ++reps;
+                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<double>(tree, ds, range).size(); });
+            };
+            model.finish();
+            totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+            elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed() / reps);
+            gpops = totalNodes * range.Size() * 1000.0 / elapsed.count();
+	    fmt::print("Double,{},{},{:.4e}\n", len, nRows, gpops);
         }
-    }
-    size_t i = 0;
-    fmt::print("Average length,Test cases,GPops/s\n");
-    for(auto len : avgLen) for(auto nRows : numRows) 
-    {
-        fmt::print("{},{},{}\n", len, nRows, results[i++]);
     }
 }
 
