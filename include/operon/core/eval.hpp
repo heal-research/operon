@@ -58,22 +58,47 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
     auto& nodes = tree.Nodes();
     Eigen::Matrix<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
 
+    std::vector<gsl::index> indices(nodes.size());
+    gsl::index head = 0;
+    gsl::index tail = nodes.size() - 1;
+
     gsl::index numRows = range.Size();
+
+    for (size_t i = 0, j = 0; i < nodes.size(); ++i) {
+        const auto& node = nodes[i];
+        if (node.IsConstant()) {
+            auto v = parameters == nullptr ? T(nodes[i].Value) : parameters[j++];
+            m.col(i).array().setConstant(v);
+        } else if (node.IsVariable()) {
+            indices[head++] = i;
+        } else {
+            indices[tail--] = i;
+        }
+    }
+
+    auto nConst = tail - head + 1;
     for (gsl::index row = 0; row < numRows; row += BATCHSIZE) {
-        gsl::index idx = 0;
         auto remainingRows = std::min(BATCHSIZE, numRows - row);
-        for (size_t i = 0; i < nodes.size(); ++i) {
+
+        for (gsl::index j = 0; j < head; ++j) {
+            auto i = indices[j];
+            auto w = parameters == nullptr ? T(nodes[i].Value) : parameters[nConst + j];
+            m.col(i).array().segment(0, remainingRows) = dataset.Values().col(dataset.GetIndex(nodes[i].HashValue)).segment(range.Start() + row, remainingRows).cast<T>() * w;
+        }
+
+        for (gsl::index j = nodes.size() - 1; j >= tail; --j) {
+            auto i = indices[j];
             auto r = m.col(i).array();
 
             switch (auto const& s = nodes[i]; s.Type) {
             case NodeType::Constant: {
-                auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                r.setConstant(v);
+                //auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
+                //r.setConstant(v);
                 break;
             }
             case NodeType::Variable: {
-                auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                r.segment(0, remainingRows) = dataset.Values().col(dataset.GetIndex(s.HashValue)).segment(range.Start() + row, remainingRows).cast<T>() * w;
+                //auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
+                //r.segment(0, remainingRows) = dataset.Values().col(dataset.GetIndex(s.HashValue)).segment(range.Start() + row, remainingRows).cast<T>() * w;
                 break;
             }
             case NodeType::Add: {
@@ -161,7 +186,6 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
             default: {
                 std::terminate();
-                break;
             }
             }
         }
