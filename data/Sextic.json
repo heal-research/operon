@@ -7,10 +7,10 @@
         "target": "Y",
         "test_rows": {
             "end": 5000,
-            "start": 2500 
+            "start": 50 
         },
         "training_rows": {
-            "end": 2500,
+            "end": 50,
             "start": 0
         }
     },
