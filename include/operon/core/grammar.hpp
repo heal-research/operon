@@ -18,9 +18,10 @@ public:
     {
         config = Grammar::Arithmetic;
 
+        frequencies.fill(0);
         for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
-            if (!IsEnabled(static_cast<NodeType>(1u << i))) {
-                frequencies[i] = 0;
+            if (IsEnabled(static_cast<NodeType>(1u << i))) {
+                frequencies[i] = 1;
             }
         }
     }
@@ -88,6 +89,9 @@ public:
         decltype(frequencies)::const_iterator head = frequencies.end();
         decltype(frequencies)::const_iterator tail = frequencies.end();
 
+        Expects(maxArity <= 2);
+        Expects(minArity <= maxArity);
+
         if (minArity == 0) {
             tail = frequencies.end();
         } else if (minArity == 1) {
@@ -104,15 +108,23 @@ public:
             head = frequencies.begin();
         }
 
+        if (std::all_of(head, tail, [](size_t v) { return v == 0; })) {
+            if (minArity == 0 && maxArity == 2) {
+                throw new std::runtime_error(fmt::format("Could not sample any symbol as all frequencies are set to zero"));
+            }
+            return SampleRandomSymbol(random, minArity - 1, maxArity);
+        }
         auto d = std::distance(frequencies.begin(), head);
-        //fmt::print("minArity = {}, maxArity = {}, d = {}\n", d, minArity, maxArity);
         auto i = std::discrete_distribution<size_t>(head, tail)(random) + d;
-        return Node(static_cast<NodeType>(1u << i));
+        auto node = Node(static_cast<NodeType>(1u << i));
+        Ensures(IsEnabled(node.Type));
+
+        return node;
     }
 
 private:
     NodeType config = Grammar::Arithmetic;
-    std::array<size_t, Operon::NodeTypes::Count> frequencies = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
+    std::array<size_t, Operon::NodeTypes::Count> frequencies;
 };
 
 }

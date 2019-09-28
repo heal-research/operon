@@ -31,11 +31,12 @@ public:
 
         size_t minLength = 1u; // a leaf as root node
         size_t targetLen = std::clamp(SampleFromDistribution(random), minLength, maxLength);
+        Expects(targetLen > 0);
 
-        auto [minArity, maxArity] = grammar.FunctionArityLimits();
+        auto [grammarMinArity, grammarMaxArity] = grammar.FunctionArityLimits();
 
-        minArity = std::min(minArity, targetLen - 1);
-        maxArity = std::min(maxArity, targetLen - 1);
+        auto minArity = std::min(grammarMinArity, targetLen - 1);
+        auto maxArity = std::min(grammarMaxArity, targetLen - 1);
 
         auto init = [&](Node& node) {
             if (node.IsVariable()) {
@@ -61,8 +62,9 @@ public:
             }
             stk.push({ node, slot - 1, depth });
 
-            maxArity = depth == maxDepth - 1u ? 0u : targetLen - openSlots;
-            auto child = grammar.SampleRandomSymbol(random, std::min(minArity, maxArity), maxArity);
+            maxArity = depth == maxDepth - 1u ? 0u : std::min(grammarMaxArity, targetLen - openSlots);
+            minArity = std::min(minArity, maxArity);
+            auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
             init(child);
 
             targetLen = targetLen - 1;

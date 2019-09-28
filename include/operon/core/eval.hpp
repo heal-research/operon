@@ -61,14 +61,11 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
     auto indices = std::vector<gsl::index>(nodes.size());
     gsl::index idx = 0;
     for (size_t i = 0; i < nodes.size(); ++i) {
-        if (nodes[i].IsConstant())
-        {
+        if (nodes[i].IsConstant()) {
             auto v = parameters == nullptr ? T(nodes[i].Value) : parameters[idx];
             m.col(i).array().setConstant(v);
             idx++;
-        }
-        else if (nodes[i].IsVariable())
-        {
+        } else if (nodes[i].IsVariable()) {
             indices[i] = dataset.GetIndex(nodes[i].HashValue);
             idx++;
         }
@@ -175,8 +172,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 break;
             }
             default: {
+                fmt::print(stderr, "Unknown node type {}\n", nodes[i].Name());
                 std::terminate();
-                break;
             }
             }
         }
