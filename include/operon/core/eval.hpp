@@ -58,22 +58,37 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
     auto& nodes = tree.Nodes();
     Eigen::Matrix<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
 
+    auto indices = std::vector<gsl::index>(nodes.size());
+    gsl::index idx = 0;
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        if (nodes[i].IsConstant())
+        {
+            auto v = parameters == nullptr ? T(nodes[i].Value) : parameters[idx];
+            m.col(i).array().setConstant(v);
+            idx++;
+        }
+        else if (nodes[i].IsVariable())
+        {
+            indices[i] = dataset.GetIndex(nodes[i].HashValue);
+            idx++;
+        }
+    }
+
     gsl::index numRows = range.Size();
     for (gsl::index row = 0; row < numRows; row += BATCHSIZE) {
-        gsl::index idx = 0;
+        idx = 0;
         auto remainingRows = std::min(BATCHSIZE, numRows - row);
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto r = m.col(i).array();
 
             switch (auto const& s = nodes[i]; s.Type) {
             case NodeType::Constant: {
-                auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                r.setConstant(v);
+                idx++;
                 break;
             }
             case NodeType::Variable: {
                 auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                r.segment(0, remainingRows) = dataset.Values().col(dataset.GetIndex(s.HashValue)).segment(range.Start() + row, remainingRows).cast<T>() * w;
+                r.segment(0, remainingRows) = dataset.Values().col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>() * w;
                 break;
             }
             case NodeType::Add: {
