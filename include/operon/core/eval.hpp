@@ -58,29 +58,21 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
     auto& nodes = tree.Nodes();
     Eigen::Matrix<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
 
-    auto nConst = 0;
-    for (size_t i = 0; i < nodes.size(); ++i) {
-        const auto& node = nodes[i];
-        if (node.IsConstant()) {
-            auto v = parameters == nullptr ? T(nodes[i].Value) : parameters[nConst++];
-            m.col(i).array().setConstant(v);
-        } 
-    }
-
     gsl::index numRows = range.Size();
     for (gsl::index row = 0; row < numRows; row += BATCHSIZE) {
+        gsl::index idx = 0;
         auto remainingRows = std::min(BATCHSIZE, numRows - row);
-        auto nVar = nConst;
-
         for (size_t i = 0; i < nodes.size(); ++i) {
-            if (nodes[i].IsConstant()) {
-                continue;
-            }
             auto r = m.col(i).array();
 
             switch (auto const& s = nodes[i]; s.Type) {
+            case NodeType::Constant: {
+                auto v = parameters == nullptr ? T(s.Value) : parameters[idx++];
+                r.setConstant(v);
+                break;
+            }
             case NodeType::Variable: {
-                auto w = parameters == nullptr ? T(s.Value) : parameters[nVar++];
+                auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
                 r.segment(0, remainingRows) = dataset.Values().col(dataset.GetIndex(s.HashValue)).segment(range.Start() + row, remainingRows).cast<T>() * w;
                 break;
             }
@@ -169,6 +161,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
             default: {
                 std::terminate();
+                break;
             }
             }
         }
