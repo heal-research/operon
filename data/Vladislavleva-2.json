@@ -1,6 +1,6 @@
 {
     "metadata": {
-        "name": "Vladislavleva-3",
+        "name": "Vladislavleva-2",
         "filename": "Vladislavleva-2.csv",
         "formula": "F2(X) = exp(-X) * X³ * cos(X) * sin(X) * (cos(X)sin(X)² - 1)",
         "kind": "synthetic",

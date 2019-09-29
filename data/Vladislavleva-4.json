@@ -1,6 +1,6 @@
 {
     "metadata": {
-        "name": "Vladislavleva-1",
+        "name": "Vladislavleva-4",
         "filename": "Vladislavleva-4.csv",
         "formula": "F4(X1, X2, X3, X4, X5) = 10 / (5 + Sum(Xi - 3)^2)",
         "kind": "synthetic",
