@@ -94,7 +94,6 @@ for pop_size, iter_count, eval_count in parameter_space:
             problem_name   = metadata['name']
             problem_csv    = metadata['filename']
 
-            problem_name   = os.path.splitext(f)[0]
             config_str     = 'Configuration [{}/{}]\tpopulation size: {}\titerations: {}\tevaluation budget: {}'.format(idx, total_configurations, pop_size, iter_count, eval_count)
             problem_str    = 'Problem [{}/{}]\t{}\tRows: {}\tTarget: {}\tRepetitions: {}'.format(i+1, data_count, problem_name, training_rows, target, reps)
             logger.info(fg.MAGENTA + config_str)
@@ -103,9 +102,7 @@ for pop_size, iter_count, eval_count in parameter_space:
             problem_result = {}
 
             for j in reps_range:
-                os.environ["LD_PRELOAD"] = "/usr/lib/libjemalloc.so"
                 output = subprocess.check_output([bin_path, 
-                    "--threads", str(4),
                     "--dataset", os.path.join(base_path, problem_csv), 
                     "--target", target, 
                     "--train", '{}:{}'.format(training_start, training_end), 
