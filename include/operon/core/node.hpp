@@ -1,10 +1,10 @@
 #ifndef NODE_HPP
 #define NODE_HPP
 
+#include <bitset>
 #include <cstdint>
 #include <functional>
 #include <type_traits>
-#include <bitset>
 
 #include "common.hpp"
 #include <fmt/format.h>
@@ -29,14 +29,13 @@ enum class NodeType : uint16_t {
 };
 
 using utype = std::underlying_type_t<NodeType>;
-struct NodeTypes
-{
+struct NodeTypes {
     // magic number keeping track of the number of different node types
     static constexpr size_t Count = 14;
     // returns the index of the given type in the NodeType enum
-    static gsl::index GetIndex(NodeType type) 
+    static gsl::index GetIndex(NodeType type)
     {
-        return std::bitset<Count>(static_cast<utype>(type)-1).count();
+        return std::bitset<Count>(static_cast<utype>(type) - 1).count();
     }
 };
 
@@ -61,38 +60,21 @@ inline NodeType& operator^=(NodeType& lhs, NodeType rhs)
 };
 
 namespace {
-    const std::unordered_map<NodeType, std::string> nodeNames = {
-        { NodeType::Add, "+" },
-        { NodeType::Mul, "*" },
-        { NodeType::Sub, "-" },
-        { NodeType::Div, "/" },
-        { NodeType::Log, "Log" },
-        { NodeType::Exp, "Exp" },
-        { NodeType::Sin, "Sin" },
-        { NodeType::Cos, "Cos" },
-        { NodeType::Tan, "Tan" },
-        { NodeType::Sqrt, "Sqrt" },
-        { NodeType::Cbrt, "Cbrt" },
-        { NodeType::Square, "Square" },
-        { NodeType::Constant, "Constant" },
-        { NodeType::Variable, "Variable" }
-    };
+    std::vector<std::string> nodeNames = { "+", "*", "-", "/", "Log", "Exp", "Sin", "Cos", "Tan", "Sqrt", "Cbrt", "Square", "Constant", "Variable" };
 }
 
 struct Node {
-    NodeType Type;
-
-    bool IsEnabled;
-
+    double Value; // value for constants or weighting factor for variables
+    operon::hash_t HashValue;
+    operon::hash_t CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
     uint16_t Arity; // 0-65535
     uint16_t Length; // 0-65535
     uint16_t Depth; // 0-65535
 
-    gsl::index Parent; // index of parent node
-    operon::hash_t HashValue;
-    operon::hash_t CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
+    uint16_t Parent; // index of parent node
+    NodeType Type;
 
-    double Value; // value for constants or weighting factor for variables
+    bool IsEnabled;
 
     Node() = delete;
     explicit Node(NodeType type) noexcept
@@ -100,9 +82,9 @@ struct Node {
     {
     }
     explicit Node(NodeType type, operon::hash_t hashValue) noexcept
-        : Type(type)
-        , HashValue(hashValue)
+        : HashValue(hashValue)
         , CalculatedHashValue(hashValue)
+        , Type(type)
     {
         Arity = 0;
         if (Type < NodeType::Log) // Add, Mul
@@ -119,7 +101,7 @@ struct Node {
         Value = IsConstant() ? 1. : 0.;
     }
 
-    const std::string& Name() const noexcept { return nodeNames.find(Type)->second; }
+    const std::string& Name() const noexcept { return nodeNames[NodeTypes::GetIndex(Type)]; }
 
     // comparison operators
     inline bool operator==(const Node& rhs) const noexcept
@@ -184,7 +166,7 @@ struct formatter<Operon::Node> {
     template <typename FormatContext>
     auto format(const Operon::Node& s, FormatContext& ctx)
     {
-        return format_to(ctx.begin(), "Name: {}, Hash: {}, Value: {}, Arity: {}, Length: {}, Parent: {}", Operon::nodeNames.find(s.Type)->second, s.CalculatedHashValue, s.Value, s.Arity, s.Length, s.Parent);
+        return format_to(ctx.begin(), "Name: {}, Hash: {}, Value: {}, Arity: {}, Length: {}, Parent: {}", Operon::nodeNames[Operon::NodeTypes::GetIndex(s.Type)], s.CalculatedHashValue, s.Value, s.Arity, s.Length, s.Parent);
     }
 };
 }
