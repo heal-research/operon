@@ -16,7 +16,7 @@ public:
     using SizeDistributionParamType = typename T::param_type;
 
     GrowTreeCreator(T distribution, size_t depth, size_t length)
-        : dist(distribution)
+        : dist(distribution.param())
         , maxDepth(depth)
         , maxLength(length)
     {

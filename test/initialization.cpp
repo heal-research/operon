@@ -62,7 +62,7 @@ TEST_CASE("Tree initialization (grow)")
     const size_t nTrees = 100'000;
 
     //auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
-    auto sizeDistribution = std::normal_distribution<double>(maxLength / 2, 10);
+    auto sizeDistribution = std::normal_distribution<double> { maxLength / 2.0, 10 };
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
     grammar.SetConfig(Grammar::Full);

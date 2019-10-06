@@ -60,7 +60,7 @@ inline NodeType& operator^=(NodeType& lhs, NodeType rhs)
 };
 
 namespace {
-    std::vector<std::string> nodeNames = { "+", "*", "-", "/", "Log", "Exp", "Sin", "Cos", "Tan", "Sqrt", "Cbrt", "Square", "Constant", "Variable" };
+    std::array<std::string, NodeTypes::Count> nodeNames = { "+", "*", "-", "/", "Log", "Exp", "Sin", "Cos", "Tan", "Sqrt", "Cbrt", "Square", "Constant", "Variable" };
 }
 
 struct Node {
