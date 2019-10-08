@@ -8,8 +8,9 @@
 namespace Operon {
 // we always use 64 bit hash values
 namespace operon {
-    using hash_t = xxh::hash64_t;
-    using rand_t = Random::JsfRand<64>;
+    using hash_t   = xxh::hash64_t;
+    using rand_t   = Random::JsfRand<64>;
+    using scalar_t = double;
 }
 
 class Range {

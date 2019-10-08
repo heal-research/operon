@@ -64,7 +64,7 @@ namespace {
 }
 
 struct Node {
-    double Value; // value for constants or weighting factor for variables
+    operon::scalar_t Value; // value for constants or weighting factor for variables
     operon::hash_t HashValue;
     operon::hash_t CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
     uint16_t Arity; // 0-65535

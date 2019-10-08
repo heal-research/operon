@@ -10,10 +10,10 @@
 namespace Operon {
 struct Solution {
     Tree Model;
-    double TrainR2;
-    double TestR2;
-    double TrainNmse;
-    double TestNmse;
+    operon::scalar_t TrainR2;
+    operon::scalar_t TestR2;
+    operon::scalar_t TrainNmse;
+    operon::scalar_t TestNmse;
 };
 
 class Problem {
@@ -40,7 +40,7 @@ public:
     Dataset& GetDataset() { return dataset; }
 
     const gsl::span<const Variable> InputVariables() const { return inputVariables; }
-    const gsl::span<const double> TargetValues() const { return dataset.GetValues(target); }
+    const gsl::span<const operon::scalar_t> TargetValues() const { return dataset.GetValues(target); }
 
     Solution CreateSolution(const Tree&) const;
 

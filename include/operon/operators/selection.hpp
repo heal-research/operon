@@ -157,7 +157,7 @@ private:
         fitness.clear();
         fitness.reserve(this->population.size());
 
-        double vmin = this->population[0][Idx], vmax = vmin;
+        operon::scalar_t vmin = this->population[0][Idx], vmax = vmin;
         for (gsl::index i = 0; i < this->population.size(); ++i) {
             auto f = this->population[i].Fitness[Idx];
             fitness.push_back({ f, i });
@@ -177,7 +177,7 @@ private:
     }
 
     // discrete CDF of the population fitness values
-    std::vector<std::pair<double, gsl::index>> fitness;
+    std::vector<std::pair<operon::scalar_t, gsl::index>> fitness;
 };
 
 template <typename T, gsl::index Idx, bool Max>

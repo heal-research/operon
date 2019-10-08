@@ -1,7 +1,7 @@
 #include "core/metrics.hpp"
 
 namespace Operon {
-double NormalizedMeanSquaredError(gsl::span<const double> x, gsl::span<const double> y)
+operon::scalar_t NormalizedMeanSquaredError(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y)
 {
     Expects(x.size() == y.size());
     Expects(x.size() > 0);
@@ -19,7 +19,7 @@ double NormalizedMeanSquaredError(gsl::span<const double> x, gsl::span<const dou
     return yvar > 0 ? errmean / yvar : yvar;
 }
 
-double MeanSquaredError(gsl::span<const double> x, gsl::span<const double> y)
+operon::scalar_t MeanSquaredError(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y)
 {
     Expects(x.size() == y.size());
     Expects(x.size() > 0);
@@ -30,12 +30,12 @@ double MeanSquaredError(gsl::span<const double> x, gsl::span<const double> y)
     return mcalc.Mean();
 }
 
-double RootMeanSquaredError(gsl::span<const double> x, gsl::span<const double> y)
+operon::scalar_t RootMeanSquaredError(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y)
 {
     return std::sqrt(MeanSquaredError(x, y));
 }
 
-double RSquared(gsl::span<const double> x, gsl::span<const double> y)
+operon::scalar_t RSquared(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y)
 {
     Expects(x.size() == y.size());
     Expects(x.size() > 0);

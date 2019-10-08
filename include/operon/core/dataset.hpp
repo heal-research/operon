@@ -26,7 +26,7 @@ namespace {
 class Dataset {
 private:
     std::vector<Variable> variables;
-    using MatrixType = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
+    using MatrixType = Eigen::Matrix<operon::scalar_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
     MatrixType values;
 
     Dataset();
@@ -43,7 +43,7 @@ public:
         , values(std::move(rhs.values))
         {
         }
-    Dataset(const std::vector<Variable> vars, const std::vector<std::vector<double>> vals)
+    Dataset(const std::vector<Variable> vars, const std::vector<std::vector<operon::scalar_t>> vals)
         : variables(vars)
     {
         values = MatrixType(vals.front().size(), vals.size());
@@ -81,23 +81,23 @@ public:
         return names;
     }
 
-    const gsl::span<const double> GetValues(const std::string& name) const
+    const gsl::span<const operon::scalar_t> GetValues(const std::string& name) const
     {
         auto needle = Variable { name, 0, 0 };
         auto record = std::equal_range(variables.begin(), variables.end(), needle, [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); });
-        return gsl::span<const double>(values.col(record.first->Index).data(), values.rows());
+        return gsl::span<const operon::scalar_t>(values.col(record.first->Index).data(), values.rows());
     }
 
-    const gsl::span<const double> GetValues(operon::hash_t hashValue) const
+    const gsl::span<const operon::scalar_t> GetValues(operon::hash_t hashValue) const
     {
         auto needle = Variable { "", hashValue, 0 };
         auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; });
-        return gsl::span<const double>(values.col(record.first->Index).data(), values.rows());
+        return gsl::span<const operon::scalar_t>(values.col(record.first->Index).data(), values.rows());
     }
 
-    const gsl::span<const double> GetValues(gsl::index index) const
+    const gsl::span<const operon::scalar_t> GetValues(gsl::index index) const
     {
-        return gsl::span<const double>(values.col(index).data(), values.rows());
+        return gsl::span<const operon::scalar_t>(values.col(index).data(), values.rows());
     }
 
     const std::string& GetName(operon::hash_t hashValue) const

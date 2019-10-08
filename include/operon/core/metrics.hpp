@@ -6,9 +6,9 @@
 
 namespace Operon {
 
-double NormalizedMeanSquaredError(gsl::span<const double> x, gsl::span<const double> y);
-double MeanSquaredError(gsl::span<const double> x, gsl::span<const double> y);
-double RootMeanSquaredError(gsl::span<const double> x, gsl::span<const double> y);
-double RSquared(gsl::span<const double> x, gsl::span<const double> y);
+operon::scalar_t NormalizedMeanSquaredError(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y);
+operon::scalar_t MeanSquaredError(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y);
+operon::scalar_t RootMeanSquaredError(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y);
+operon::scalar_t RSquared(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y);
 } // namespace
 #endif

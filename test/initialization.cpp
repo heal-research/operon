@@ -15,38 +15,39 @@ TEST_CASE("Sample nodes from grammar")
     grammar.SetConfig(Grammar::TypeCoherent);
     Operon::Random::JsfRand<64> rd(std::random_device {}());
 
-    std::vector<size_t> observed(4, 0);
-    double r = observed.size() + 1;
+    std::vector<double> observed(NodeTypes::Count, 0);
+    size_t r = grammar.EnabledSymbols().size() + 1;
 
-    const size_t nTrials = 10'000;
+    const size_t nTrials = 1'000'000;
     for (auto i = 0u; i < nTrials; ++i)
     {
         auto node = grammar.SampleRandomSymbol(rd, 0, 2);
         ++observed[NodeTypes::GetIndex(node.Type)];
     }
-    auto freqSum = 0.0;
-    fmt::print("Observed counts:\n");
+    std::transform(std::execution::unseq, observed.begin(), observed.end(), observed.begin(), [&](double v) { return v / nTrials; });
+    std::vector<double> actual(NodeTypes::Count, 0);
     for(size_t i = 0; i < observed.size(); ++i)
     {
         auto nodeType = static_cast<NodeType>(1u << i);
-        fmt::print("{}:\t{}\n", Node(nodeType).Name(), observed[i]);
-        freqSum += grammar.GetFrequency(nodeType);
+        actual[NodeTypes::GetIndex(nodeType)] = grammar.GetFrequency(nodeType);
     }
-    auto sum = 0.0;
+    auto freqSum = std::reduce(std::execution::unseq, actual.begin(), actual.end(), 0.0, std::plus{});
+    std::transform(std::execution::unseq, actual.begin(), actual.end(), actual.begin(), [&](double v) { return v / freqSum; });
+    auto chi = 0.0;
     for(auto i = 0u; i < observed.size(); ++i)
     {
         auto nodeType = static_cast<NodeType>(1u << i);
-        auto x = static_cast<double>(observed[i]);
-        auto y = grammar.GetFrequency(nodeType) / freqSum; 
-        fmt::print("observed {:.3f}, expected {:.3f}\n", x / nTrials, y);
-        sum += x * x / y;
+        if (!grammar.IsEnabled(nodeType)) continue;
+        auto x = observed[i];
+        auto y = actual[i]; 
+        fmt::print("{:>8} observed {:.4f}, expected {:.4f}\n", Node(nodeType).Name(), x , y);
+        chi += (x - y) * (x - y) / y;
     }
-
-    auto chi = sum / nTrials - nTrials; 
-    auto c = 2 * std::sqrt(r);
-    auto lower = r - c;
-    auto upper = r + c;
-    REQUIRE((chi >= lower && chi <= upper));
+    chi *= nTrials;
+    
+    auto criticalValue = r + 2 * std::sqrt(r);
+    fmt::print("chi = {}, critical value = {}\n", chi, criticalValue);
+    REQUIRE(chi <= criticalValue);
 }
 
 TEST_CASE("Tree initialization (grow)")
@@ -57,12 +58,12 @@ TEST_CASE("Tree initialization (grow)")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
 
-    size_t maxDepth = 10, maxLength = 100;
+    size_t maxDepth = 1000, maxLength = 100;
 
     const size_t nTrees = 100'000;
 
     //auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
-    auto sizeDistribution = std::normal_distribution<double> { maxLength / 2.0, 10 };
+    auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
     grammar.SetConfig(Grammar::Full);
@@ -107,7 +108,7 @@ TEST_CASE("Tree initialization (grow)")
         }
     }
     for (const auto& v : inputs) {
-        fmt::print("{}\t{:.3f}%\n", ds.GetName(v.Hash), static_cast<double>(variableFrequencies[v.Index]) / totalVars);
+        fmt::print("{}\t{:.3f}%\n", ds.GetName(v.Hash), static_cast<operon::scalar_t>(variableFrequencies[v.Index]) / totalVars);
     }
 
     std::vector<size_t> lengthHistogram(maxLength + 1);

@@ -26,11 +26,11 @@ struct OperatorBase {
 template <size_t D = 1UL>
 struct Individual {
     Tree Genotype;
-    std::array<double, D> Fitness;
+    std::array<operon::scalar_t, D> Fitness;
     static constexpr size_t Dimension = D;
 
-    double& operator[](gsl::index i) noexcept { return Fitness[i]; }
-    double operator[](gsl::index i) const noexcept { return Fitness[i]; }
+    operon::scalar_t& operator[](gsl::index i) noexcept { return Fitness[i]; }
+    operon::scalar_t operator[](gsl::index i) const noexcept { return Fitness[i]; }
 };
 
 // the creator builds a new tree using the existing grammar and allowed inputs
@@ -63,7 +63,7 @@ protected:
 };
 
 template <typename T>
-class EvaluatorBase : public OperatorBase<double, T&> {
+class EvaluatorBase : public OperatorBase<operon::scalar_t, T&> {
     // some fitness measures are relative to the whole population (eg. diversity)
     // and the evaluator needs to do some preparation work using the entire pop
 public:

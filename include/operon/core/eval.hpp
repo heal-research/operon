@@ -18,8 +18,8 @@ template <typename T>
 inline std::pair<T, T> MinMax(gsl::span<T> values) noexcept
 {
     // get first finite (not NaN, not infinity) value
-    auto min = T(std::numeric_limits<double>::max());
-    auto max = T(std::numeric_limits<double>::min());
+    auto min = T(std::numeric_limits<operon::scalar_t>::max());
+    auto max = T(std::numeric_limits<operon::scalar_t>::min());
     for (auto const& v : values) {
         if (!ceres::IsFinite(v))
             continue;
@@ -186,7 +186,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 }
 
 struct ParameterizedEvaluation {
-    ParameterizedEvaluation(const Tree& tree, const Dataset& dataset, const gsl::span<const double> targetValues, const Range range)
+    ParameterizedEvaluation(const Tree& tree, const Dataset& dataset, const gsl::span<const operon::scalar_t> targetValues, const Range range)
         : tree_ref(tree)
         , dataset_ref(dataset)
         , target_ref(targetValues)
@@ -199,20 +199,24 @@ struct ParameterizedEvaluation {
     {
         auto res = gsl::span<T>(residuals, range.Size());
         Evaluate(tree_ref, dataset_ref, range, parameters[0], res);
-        std::transform(res.cbegin(), res.cend(), target_ref.begin(), res.begin(), [](const T& a, const double b) { return a - b; });
+        if constexpr (std::is_same_v<float, decltype(target_ref)::value_type>) {
+            std::transform(std::execution::unseq, res.cbegin(), res.cend(), target_ref.begin(), res.begin(), [](const T& a, const operon::scalar_t b) { return a - double{b}; });
+        } else {
+            std::transform(std::execution::unseq, res.cbegin(), res.cend(), target_ref.begin(), res.begin(), [](const T& a, const operon::scalar_t b) { return a - b; });
+        }
         return true;
     }
 
 private:
     std::reference_wrapper<const Tree> tree_ref;
     std::reference_wrapper<const Dataset> dataset_ref;
-    gsl::span<const double> target_ref;
+    gsl::span<const operon::scalar_t> target_ref;
     Range range;
 };
 
 // returns an array of optimized parameters
 template <bool autodiff = true>
-ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const double> targetValues, const Range range, size_t iterations = 50, bool writeCoefficients = true, bool report = false)
+ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const operon::scalar_t> targetValues, const Range range, size_t iterations = 50, bool writeCoefficients = true, bool report = false)
 {
     using ceres::CauchyLoss;
     using ceres::DynamicAutoDiffCostFunction;

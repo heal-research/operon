@@ -27,7 +27,7 @@ public:
         sumWe = 0.;
     }
 
-    void Add(double x, double y)
+    void Add(operon::scalar_t x, operon::scalar_t y)
     {
         if (sumWe <= 0.) {
             sumX = x;
@@ -36,12 +36,12 @@ public:
             return;
         }
         // Delta to previous mean
-        double deltaX = x * sumWe - sumX;
-        double deltaY = y * sumWe - sumY;
-        double oldWe = sumWe;
+        operon::scalar_t deltaX = x * sumWe - sumX;
+        operon::scalar_t deltaY = y * sumWe - sumY;
+        operon::scalar_t oldWe = sumWe;
         // Incremental update
         sumWe += 1;
-        double f = 1. / (sumWe * oldWe);
+        operon::scalar_t f = 1. / (sumWe * oldWe);
         // Update
         sumXX += f * deltaX * deltaX;
         sumYY += f * deltaY * deltaY;
@@ -52,7 +52,7 @@ public:
         sumY += y;
     }
 
-    void Add(double x, double y, double w)
+    void Add(operon::scalar_t x, operon::scalar_t y, operon::scalar_t w)
     {
         if (w == 0.) {
             return;
@@ -64,12 +64,12 @@ public:
             return;
         }
         // Delta to previous mean
-        double deltaX = x * sumWe - sumX;
-        double deltaY = y * sumWe - sumY;
-        double oldWe = sumWe;
+        operon::scalar_t deltaX = x * sumWe - sumX;
+        operon::scalar_t deltaY = y * sumWe - sumY;
+        operon::scalar_t oldWe = sumWe;
         // Incremental update
         sumWe += w;
-        double f = w / (sumWe * oldWe);
+        operon::scalar_t f = w / (sumWe * oldWe);
         // Update
         sumXX += f * deltaX * deltaX;
         sumYY += f * deltaY * deltaY;
@@ -80,7 +80,7 @@ public:
         sumY += y * w;
     }
 
-    double Correlation() const
+    operon::scalar_t Correlation() const
     {
         if (!(sumXX > 0. && sumYY > 0.)) {
             return (sumXX == sumYY) ? 1. : 0.;
@@ -88,75 +88,75 @@ public:
         return sumXY / std::sqrt(sumXX * sumYY);
     }
 
-    double Count() const
+    operon::scalar_t Count() const
     {
         return sumWe;
     }
 
-    double MeanX() const
+    operon::scalar_t MeanX() const
     {
         return sumX / sumWe;
     }
 
-    double MeanY() const
+    operon::scalar_t MeanY() const
     {
         return sumY / sumWe;
     }
 
-    double NaiveCovariance()
+    operon::scalar_t NaiveCovariance()
     {
         return sumXY / sumWe;
     }
 
-    double SampleCovariance()
+    operon::scalar_t SampleCovariance()
     {
         Expects(sumWe > 1.);
         return sumXY / (sumWe - 1.);
     }
 
-    double NaiveVarianceX()
+    operon::scalar_t NaiveVarianceX()
     {
         return sumXX / sumWe;
     }
 
-    double SampleVarianceX()
+    operon::scalar_t SampleVarianceX()
     {
         Expects(sumWe > 1.);
         return sumXX / (sumWe - 1.);
     }
 
-    double NaiveStddevX()
+    operon::scalar_t NaiveStddevX()
     {
         return std::sqrt(NaiveVarianceX());
     }
 
-    double SampleStddevX()
+    operon::scalar_t SampleStddevX()
     {
         return std::sqrt(SampleVarianceX());
     }
 
-    double NaiveVarianceY()
+    operon::scalar_t NaiveVarianceY()
     {
         return sumYY / sumWe;
     }
 
-    double SampleVarianceY()
+    operon::scalar_t SampleVarianceY()
     {
         Expects(sumWe > 1.);
         return sumYY / (sumWe - 1.);
     }
 
-    double NaiveStddevY()
+    operon::scalar_t NaiveStddevY()
     {
         return std::sqrt(NaiveVarianceY());
     }
 
-    double SampleStddevY()
+    operon::scalar_t SampleStddevY()
     {
         return std::sqrt(SampleVarianceY());
     }
 
-    static double Coefficient(gsl::span<const double> x, gsl::span<const double> y)
+    static operon::scalar_t Coefficient(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y)
     {
         auto xdim = x.size();
         auto ydim = y.size();
@@ -164,18 +164,18 @@ public:
         Expects(xdim > 0);
         // Inlined computation of Pearson correlation, to avoid allocating objects!
         // This is a numerically stabilized version, avoiding sum-of-squares.
-        double sumXX = 0., sumYY = 0., sumXY = 0.;
-        double sumX = x[0], sumY = y[0];
+        operon::scalar_t sumXX = 0., sumYY = 0., sumXY = 0.;
+        operon::scalar_t sumX = x[0], sumY = y[0];
         int i = 1;
         while(i < xdim) {
-            double xv = x[i], yv = y[i];
+            operon::scalar_t xv = x[i], yv = y[i];
             // Delta to previous mean
-            double deltaX = xv * i - sumX;
-            double deltaY = yv * i - sumY;
+            operon::scalar_t deltaX = xv * i - sumX;
+            operon::scalar_t deltaY = yv * i - sumY;
             // Increment count first
-            double oldi = i; // Convert to double!
+            operon::scalar_t oldi = i; // Convert to operon::scalar_t!
             ++i;
-            double f = 1. / (i * oldi);
+            operon::scalar_t f = 1. / (i * oldi);
             // Update
             sumXX += f * deltaX * deltaX;
             sumYY += f * deltaY * deltaY;
@@ -192,7 +192,7 @@ public:
         return sumXY / std::sqrt(sumXX * sumYY);
     }
 
-    static double WeightedCoefficient(gsl::span<const double> x, gsl::span<const double> y, gsl::span<const double> weights)
+    static operon::scalar_t WeightedCoefficient(gsl::span<const operon::scalar_t> x, gsl::span<const operon::scalar_t> y, gsl::span<const operon::scalar_t> weights)
     {
         auto xdim = x.size();
         auto ydim = y.size();
@@ -201,17 +201,17 @@ public:
         Expects(xdim == weights.size());
         // Inlined computation of Pearson correlation, to avoid allocating objects!
         // This is a numerically stabilized version, avoiding sum-of-squares.
-        double sumXX = 0., sumYY = 0., sumXY = 0., sumWe = weights[0];
-        double sumX = x[0] * sumWe, sumY = y[0] * sumWe;
+        operon::scalar_t sumXX = 0., sumYY = 0., sumXY = 0., sumWe = weights[0];
+        operon::scalar_t sumX = x[0] * sumWe, sumY = y[0] * sumWe;
         for(int i = 1; i < xdim; ++i) {
-            double xv = x[i], yv = y[i], w = weights[i];
+            operon::scalar_t xv = x[i], yv = y[i], w = weights[i];
             // Delta to previous mean
-            double deltaX = xv * sumWe - sumX;
-            double deltaY = yv * sumWe - sumY;
+            operon::scalar_t deltaX = xv * sumWe - sumX;
+            operon::scalar_t deltaY = yv * sumWe - sumY;
             // Increment count first
-            double oldWe = sumWe; // Convert to double!
+            operon::scalar_t oldWe = sumWe; // Convert to operon::scalar_t!
             sumWe += w;
-            double f = w / (sumWe * oldWe);
+            operon::scalar_t f = w / (sumWe * oldWe);
             // Update
             sumXX += f * deltaX * deltaX;
             sumYY += f * deltaY * deltaY;
@@ -230,16 +230,16 @@ public:
 
 private:
     // Aggregation for squared residuals - we are not using sum-of-squares!
-    double sumXX;
-    double sumXY;
-    double sumYY;
+    operon::scalar_t sumXX;
+    operon::scalar_t sumXY;
+    operon::scalar_t sumYY;
 
     // Current mean for X and Y.
-    double sumX;
-    double sumY;
+    operon::scalar_t sumX;
+    operon::scalar_t sumY;
 
     // Weight sum
-    double sumWe;
+    operon::scalar_t sumWe;
 };
 
 } // namespace

@@ -25,9 +25,9 @@ TEST_CASE("Sextic GPops", "[performance]")
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     size_t n = 10'000;
-    std::vector<size_t> numRows { 50, 500, 5000 };
-    std::vector<size_t> avgLen { 10, 50, 100, 200, 500, 1000 };
-    std::vector<double> results;
+    std::vector<size_t> numRows { 1000 };
+    std::vector<size_t> avgLen { 50 };
+    std::vector<operon::scalar_t> results;
 
     size_t maxDepth = 10000;
     size_t maxLength = 10000;
@@ -62,7 +62,7 @@ TEST_CASE("Sextic GPops", "[performance]")
             BENCHMARK("Parallel")
             {
                 ++reps;
-                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<double>(tree, ds, range).size(); });
+                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<operon::scalar_t>(tree, ds, range).size(); });
             };
             model.finish();
             totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
@@ -93,10 +93,10 @@ TEST_CASE("Evaluation performance", "[performance]")
     auto creator = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     std::vector<Tree> trees(n);
-    std::vector<double> fit(n);
+    std::vector<operon::scalar_t> fit(n);
 
     auto evaluate = [&](auto& tree) -> size_t {
-        auto estimated = Evaluate<double>(tree, ds, range);
+        auto estimated = Evaluate<operon::scalar_t>(tree, ds, range);
         return estimated.size();
     };
 

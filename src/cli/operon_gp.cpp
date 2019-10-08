@@ -36,8 +36,8 @@ int main(int argc, char* argv[])
         ("selection-pressure", "Selection pressure", cxxopts::value<size_t>()->default_value("100"))
         ("maxlength", "Maximum length", cxxopts::value<size_t>()->default_value("50"))
         ("maxdepth", "Maximum depth", cxxopts::value<size_t>()->default_value("12"))
-        ("crossover-probability", "The probability to apply crossover", cxxopts::value<double>()->default_value("1.0"))
-        ("mutation-probability", "The probability to apply mutation", cxxopts::value<double>()->default_value("0.25"))
+        ("crossover-probability", "The probability to apply crossover", cxxopts::value<operon::scalar_t>()->default_value("1.0"))
+        ("mutation-probability", "The probability to apply mutation", cxxopts::value<operon::scalar_t>()->default_value("0.25"))
         ("enable-symbols", "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
         ("disable-symbols", "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
         ("show-grammar", "Show grammar (primitive set) used by the algorithm")
@@ -56,8 +56,8 @@ int main(int argc, char* argv[])
     config.PopulationSize = result["population-size"].as<size_t>();
     config.Evaluations = result["evaluations"].as<size_t>();
     config.Iterations = result["iterations"].as<size_t>();
-    config.CrossoverProbability = result["crossover-probability"].as<double>();
-    config.MutationProbability = result["mutation-probability"].as<double>();
+    config.CrossoverProbability = result["crossover-probability"].as<operon::scalar_t>();
+    config.MutationProbability = result["mutation-probability"].as<operon::scalar_t>();
     auto maxLength = result["maxlength"].as<size_t>();
     auto maxDepth = result["maxdepth"].as<size_t>();
 
@@ -203,7 +203,7 @@ int main(int argc, char* argv[])
 
         //auto creator  = FullTreeCreator(5, maxLength);
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength / 2);
-        //std::normal_distribution<double> sizeDistribution(25, 7);
+        //std::normal_distribution<operon::scalar_t> sizeDistribution(25, 7);
         auto creator  = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
         //auto creator = RampedHalfAndHalfCreator { maxDepth, maxLength };
         auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
@@ -234,16 +234,23 @@ int main(int argc, char* argv[])
             return Evaluator::Maximization ? *maxElem : *minElem;
         };
 
+        char sizes[] = " KMGT"; 
+        auto bytesToSize = [&](size_t bytes) -> std::string {
+            auto p = static_cast<size_t>(std::floor(std::log(bytes) / std::log(1024)));
+            auto i = static_cast<size_t>(std::round(bytes / std::pow(1024, p)));
+            return fmt::format("{} {}b", bytes / std::pow(1024, i), sizes[i]);
+        };
+
         auto report = [&]() {
             auto pop            = gp.Parents();
             auto best           = getBest(pop);
-            auto estimatedTrain = Evaluate<double>(best.Genotype, problem.GetDataset(), trainingRange);
-            auto estimatedTest  = Evaluate<double>(best.Genotype, problem.GetDataset(), testRange);
+            auto estimatedTrain = Evaluate<operon::scalar_t>(best.Genotype, problem.GetDataset(), trainingRange);
+            auto estimatedTest  = Evaluate<operon::scalar_t>(best.Genotype, problem.GetDataset(), testRange);
 
             // scale values
             auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](double v) { return b * v + a; });
-            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](double v) { return b * v + a; });
+            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](operon::scalar_t v) { return b * v + a; });
+            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](operon::scalar_t v) { return b * v + a; });
             
             auto r2Train    = RSquared(estimatedTrain, targetTrain);
             auto r2Test     = RSquared(estimatedTest, targetTest);
@@ -252,14 +259,24 @@ int main(int argc, char* argv[])
             auto nmseTest   = NormalizedMeanSquaredError(estimatedTest, targetTest);
 
             auto avgLength  = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
-            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<double> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
+            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<operon::scalar_t> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
 
             auto t1         = std::chrono::high_resolution_clock::now();
 
             auto elapsed    = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
+
+            // calculate memory consumption
+            size_t totalMemory = 0u;
+            totalMemory += std::transform_reduce(std::execution::par_unseq, 
+                    pop.begin(), 
+                    pop.end(), 
+                    0U, 
+                    std::plus<operon::scalar_t> {}, [](const auto& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Node) * ind.Genotype.Nodes().capacity(); });
+
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, nmseTrain, nmseTest);
             fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\n", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
+            //fmt::print("{}\n", bytesToSize(totalMemory));
         };
 
         gp.Run(random, report);

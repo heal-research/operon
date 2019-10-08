@@ -18,7 +18,7 @@ public:
     {
     }
 
-    double operator()(operon::rand_t&, T& ind) const
+    operon::scalar_t operator()(operon::rand_t&, T& ind) const
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();
@@ -33,10 +33,10 @@ public:
             this->localEvaluations += summary.iterations.size();
         }
 
-        auto estimatedValues = Evaluate<double>(genotype, dataset, trainingRange);
+        auto estimatedValues = Evaluate<operon::scalar_t>(genotype, dataset, trainingRange);
         auto nmse = NormalizedMeanSquaredError(estimatedValues, targetValues);
         if (!std::isfinite(nmse)) {
-            nmse = std::numeric_limits<double>::max();
+            nmse = std::numeric_limits<operon::scalar_t>::max();
         }
         return nmse;
     }
@@ -57,7 +57,7 @@ public:
     {
     }
 
-    double operator()(operon::rand_t&, T& ind) const
+    operon::scalar_t operator()(operon::rand_t&, T& ind) const
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();
@@ -72,7 +72,7 @@ public:
             this->localEvaluations += summary.iterations.size();
         }
 
-        auto estimatedValues = Evaluate<double>(genotype, dataset, trainingRange);
+        auto estimatedValues = Evaluate<operon::scalar_t>(genotype, dataset, trainingRange);
         auto r2 = RSquared(estimatedValues, targetValues);
         if (!std::isfinite(r2)) {
             r2 = 0;
