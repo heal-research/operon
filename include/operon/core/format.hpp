@@ -22,7 +22,7 @@ class TreeFormatter {
             auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}\n" : "{{:.{}f}} * {{}}\n", decimalPrecision);
             fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetName(s.CalculatedHashValue));
         } else {
-            fmt::format_to(std::back_inserter(current), "{} {}\n", s.Name(), s.Depth);
+            fmt::format_to(std::back_inserter(current), "{} {} {}\n", s.Name(), s.Depth, s.Length+1);
         }
 
         if (s.IsLeaf()) {

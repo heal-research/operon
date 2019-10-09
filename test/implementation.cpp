@@ -42,6 +42,7 @@ TEST_CASE("Node is small")
     fmt::print("-------------------------\n");
     fmt::print("sizeof(Tree)        {:>2}\n", sizeof(Tree));
     fmt::print("sizeof(vector<Node>) {:>2}\n", sizeof(std::vector<Node>));
+
     REQUIRE(sizeof(Node) <= size_t{64});
 }
 } // namespace Operon::Test

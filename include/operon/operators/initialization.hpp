@@ -24,7 +24,7 @@ public:
     Tree operator()(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables) const override
     {
         std::vector<Node> nodes;
-        std::stack<std::tuple<Node, size_t, size_t>> stk;
+        std::stack<std::tuple<Node, size_t, size_t, size_t>> stk;
 
         std::uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1);
         std::normal_distribution<double> normalReal(0, 1);
@@ -48,29 +48,38 @@ public:
         auto root = grammar.SampleRandomSymbol(random, minArity, maxArity);
         init(root);
 
-        stk.push({ root, root.Arity, 1 }); // node, slot, depth, available length
         targetLen = targetLen - 1; // because we already added 1 root node
         size_t openSlots = root.Arity;
+        stk.push({ root, root.Arity, 1, targetLen }); // node, slot, depth, available length
 
         while (!stk.empty()) {
-            auto [node, slot, depth] = stk.top();
+            auto [node, slot, depth, length] = stk.top();
             stk.pop();
 
             if (slot == 0) {
                 nodes.push_back(node); // this node's children have been filled
                 continue;
             }
-            stk.push({ node, slot - 1, depth });
+            stk.push({ node, slot - 1, depth, length });
 
-            maxArity = depth == maxDepth - 1u ? 0u : std::min(grammarMaxArity, targetLen - openSlots);
-            minArity = std::min(minArity, maxArity);
+            auto childLen = length / node.Arity - 1;
+            if (slot == node.Arity)
+                childLen += length % node.Arity;
+
+            maxArity = depth == maxDepth - 1u ? 0u : std::min(grammarMaxArity, std::min(childLen, targetLen - openSlots));
+            minArity = std::min(grammarMinArity, maxArity);
             auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
             init(child);
 
             targetLen = targetLen - 1;
             openSlots = openSlots + child.Arity - 1;
 
-            stk.push({ child, child.Arity, depth + 1 });
+            //if (node.Arity > 0) {
+            //    fmt::print("target length: {}\n", targetLen);
+            //    for (size_t i = 0; i < depth; ++i) fmt::print("\t");
+            //    fmt::print("length: {}, child length: {}\n", length, childLen);
+            //}
+            stk.push({ child, child.Arity, depth + 1, childLen });
         }
         auto tree = Tree(nodes).UpdateNodes();
         return tree;
