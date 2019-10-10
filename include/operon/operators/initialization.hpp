@@ -33,6 +33,7 @@ public:
         size_t targetLen = std::clamp(SampleFromDistribution(random), minLength, maxLength);
         Expects(targetLen > 0);
 
+        fmt::print("Target length = {}\n", targetLen);
         auto [grammarMinArity, grammarMaxArity] = grammar.FunctionArityLimits();
 
         auto minArity = std::min(grammarMinArity, targetLen - 1);
@@ -64,7 +65,6 @@ public:
             stk.push({ node, slot - 1, depth, length });
 
             auto childLen = length / node.Arity - 1 + childLenLeft;
-            childLenLeft = 0;
 
             if (slot == node.Arity)
                 childLen += length % node.Arity;
@@ -74,7 +74,7 @@ public:
             auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
             init(child);
 
-            childLenLeft += childLen - 1;
+            childLenLeft = child.IsLeaf() ? childLen : 0u;
 
             targetLen = targetLen - 1;
             openSlots = openSlots + child.Arity - 1;
