@@ -52,6 +52,7 @@ public:
         size_t openSlots = root.Arity;
         stk.push({ root, root.Arity, 1, targetLen }); // node, slot, depth, available length
 
+        auto childLenLeft = 0u;
         while (!stk.empty()) {
             auto [node, slot, depth, length] = stk.top();
             stk.pop();
@@ -62,7 +63,9 @@ public:
             }
             stk.push({ node, slot - 1, depth, length });
 
-            auto childLen = length / node.Arity - 1;
+            auto childLen = length / node.Arity - 1 + childLenLeft;
+            childLenLeft = 0;
+
             if (slot == node.Arity)
                 childLen += length % node.Arity;
 
@@ -71,14 +74,11 @@ public:
             auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
             init(child);
 
+            childLenLeft += childLen - 1;
+
             targetLen = targetLen - 1;
             openSlots = openSlots + child.Arity - 1;
 
-            //if (node.Arity > 0) {
-            //    fmt::print("target length: {}\n", targetLen);
-            //    for (size_t i = 0; i < depth; ++i) fmt::print("\t");
-            //    fmt::print("length: {}, child length: {}\n", length, childLen);
-            //}
             stk.push({ child, child.Arity, depth + 1, childLen });
         }
         auto tree = Tree(nodes).UpdateNodes();
