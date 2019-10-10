@@ -33,7 +33,6 @@ public:
         size_t targetLen = std::clamp(SampleFromDistribution(random), minLength, maxLength);
         Expects(targetLen > 0);
 
-        fmt::print("Target length = {}\n", targetLen);
         auto [grammarMinArity, grammarMaxArity] = grammar.FunctionArityLimits();
 
         auto minArity = std::min(grammarMinArity, targetLen - 1);

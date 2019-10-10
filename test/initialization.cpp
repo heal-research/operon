@@ -63,7 +63,7 @@ TEST_CASE("Tree shape")
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
 
     Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic);
+    grammar.SetConfig(Grammar::TypeCoherent);
     Operon::Random::JsfRand<64> rd(std::random_device {}());
 
     auto tree = creator(rd, grammar, inputs);
@@ -83,11 +83,11 @@ TEST_CASE("Tree initialization (grow)")
 
     const size_t nTrees = 100'000;
 
-    auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
-    //auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
+    //auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
+    auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic);
+    grammar.SetConfig(Grammar::TypeCoherent);
     Operon::Random::JsfRand<64> rd(std::random_device {}());
 
     auto trees = std::vector<Tree>(nTrees);
