@@ -13,8 +13,6 @@ namespace Operon {
 template <typename T>
 class GrowTreeCreator : public CreatorBase {
 public:
-    using SizeDistributionParamType = typename T::param_type;
-
     GrowTreeCreator(T distribution, size_t depth, size_t length)
         : dist(distribution.param())
         , maxDepth(depth)
@@ -52,7 +50,7 @@ public:
         size_t openSlots = root.Arity;
         stk.push({ root, root.Arity, 1, targetLen }); // node, slot, depth, available length
 
-        auto childLenLeft = 0u;
+        auto childLen = 0ul;
         while (!stk.empty()) {
             auto [node, slot, depth, length] = stk.top();
             stk.pop();
@@ -63,17 +61,13 @@ public:
             }
             stk.push({ node, slot - 1, depth, length });
 
-            auto childLen = length / node.Arity - 1 + childLenLeft;
-
-            if (slot == node.Arity)
-                childLen += length % node.Arity;
+            childLen = slot == node.Arity ? length % node.Arity : childLen;
+            childLen += length / node.Arity - 1;
 
             maxArity = depth == maxDepth - 1u ? 0u : std::min(grammarMaxArity, std::min(childLen, targetLen - openSlots));
             minArity = std::min(grammarMinArity, maxArity);
             auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
             init(child);
-
-            childLenLeft = child.IsLeaf() ? childLen : 0u;
 
             targetLen = targetLen - 1;
             openSlots = openSlots + child.Arity - 1;

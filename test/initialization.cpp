@@ -12,7 +12,8 @@ namespace Operon::Test {
 TEST_CASE("Sample nodes from grammar")
 {
     Grammar grammar;
-    grammar.SetConfig(Grammar::TypeCoherent);
+    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    grammar.Enable(NodeType::Add, 2);
     Operon::Random::JsfRand<64> rd(std::random_device {}());
 
     std::vector<double> observed(NodeTypes::Count, 0);
@@ -58,15 +59,19 @@ TEST_CASE("Tree shape")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
     size_t maxDepth = 1000,
-           maxLength = 50;
+           maxLength = 10;
     auto sizeDistribution = std::uniform_int_distribution<size_t>(maxLength, maxLength);
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
 
     Grammar grammar;
-    grammar.SetConfig(Grammar::TypeCoherent);
-    Operon::Random::JsfRand<64> rd(std::random_device {}());
+    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    grammar.Enable(NodeType::Add, 2);
+    grammar.Enable(NodeType::Mul, 2);
+    grammar.Enable(NodeType::Sub, 2);
+    grammar.Enable(NodeType::Div, 2);
+    operon::rand_t random(1234);
 
-    auto tree = creator(rd, grammar, inputs);
+    auto tree = creator(random, grammar, inputs);
     fmt::print("Tree length: {}\n", tree.Length());
     fmt::print("{}\n", TreeFormatter::Format(tree, ds));
 }
@@ -83,15 +88,16 @@ TEST_CASE("Tree initialization (grow)")
 
     const size_t nTrees = 100'000;
 
-    //auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
-    auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
+    auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
+    //auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
-    grammar.SetConfig(Grammar::TypeCoherent);
-    Operon::Random::JsfRand<64> rd(std::random_device {}());
+    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    //Operon::Random::JsfRand<64> rd(std::random_device {}());
+    operon::rand_t random(1234);
 
     auto trees = std::vector<Tree>(nTrees);
-    std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
+    std::generate(trees.begin(), trees.end(), [&]() { return creator(random, grammar, inputs); });
 
     auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.Length(); });
     fmt::print("Grow tree creator - length({},{}) = {}\n", maxDepth, maxLength, totalLength / trees.size());
@@ -113,6 +119,24 @@ TEST_CASE("Tree initialization (grow)")
                 continue;
             fmt::print("{}\t{:.3f} %\n", node.Name(), symbolFrequencies[i] / totalLength);
         }
+    }
+
+    SECTION("Symbol frequency vs tree length")
+    {
+        Eigen::MatrixXd counts = Eigen::MatrixXd::Zero(maxLength, NodeTypes::Count);
+        std::cout << "\t";
+        for(size_t i = 0; i < NodeTypes::Count; ++i) {
+            std::cout << Node(static_cast<NodeType>(1u << i)).Name() << "\t";
+        }
+        std::cout << "\n";
+
+        for (const auto& tree : trees) {
+            for (const auto& node : tree.Nodes()) {
+                Expects(grammar.IsEnabled(node.Type));
+                counts(tree.Length() - 1, NodeTypes::GetIndex(node.Type))++;
+            }
+        }
+        std::cout << counts << "\n";
     }
 
     SECTION("Variable frequencies")
