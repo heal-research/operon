@@ -29,7 +29,7 @@ namespace Operon {
 // we always use 64 bit hash values
 namespace operon {
     using hash_t   = xxh::hash64_t;
-    using rand_t   = Random::Jsf64;
+    using rand_t   = Random::Sfc64;
     using scalar_t = double;
 }
 
