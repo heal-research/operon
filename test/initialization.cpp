@@ -1,21 +1,20 @@
 /* This file is part of:
  * Operon - Large Scale Genetic Programming Framework
  *
+ * Licensed under the ISC License <https://opensource.org/licenses/ISC> 
  * Copyright (C) 2019 Bogdan Burlacu 
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- * 
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- * SOFTWARE.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+ * FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+ * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE. 
  */
 
 #include "operators/initialization.hpp"
@@ -34,7 +33,7 @@ TEST_CASE("Sample nodes from grammar")
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
     grammar.Enable(NodeType::Add, 2);
-    Operon::Random::JsfRand<64> rd(std::random_device {}());
+    operon::rand_t rd(std::random_device {}());
 
     std::vector<double> observed(NodeTypes::Count, 0);
     size_t r = grammar.EnabledSymbols().size() + 1;
@@ -104,7 +103,7 @@ TEST_CASE("Tree initialization (grow)")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
 
-    size_t maxDepth = 10, maxLength = 100;
+    size_t maxDepth = 1000, maxLength = 100;
 
     const size_t nTrees = 100'000;
 
@@ -113,7 +112,7 @@ TEST_CASE("Tree initialization (grow)")
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
-    //Operon::Random::JsfRand<64> rd(std::random_device {}());
+    //operon::rand_t rd(std::random_device {}());
     operon::rand_t random(1234);
 
     auto trees = std::vector<Tree>(nTrees);
@@ -226,7 +225,7 @@ TEST_CASE("Tree depth calculation")
     auto sizeDistribution = std::uniform_int_distribution<size_t>(2, maxLength);
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
-    Operon::Random::JsfRand<64> rd(std::random_device {}());
+    operon::rand_t rd(std::random_device {}());
 
     //fmt::print("Min function arity: {}\n", grammar.MinimumFunctionArity());
 

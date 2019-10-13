@@ -1,21 +1,20 @@
 /* This file is part of:
  * Operon - Large Scale Genetic Programming Framework
  *
+ * Licensed under the ISC License <https://opensource.org/licenses/ISC> 
  * Copyright (C) 2019 Bogdan Burlacu 
- * 
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- * 
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- * SOFTWARE.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+ * FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+ * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE. 
  */
 
 #include <catch2/catch.hpp>
@@ -23,11 +22,11 @@
 
 #include "core/eval.hpp"
 #include "core/grammar.hpp"
-#include "core/jsf.hpp"
 #include "core/metrics.hpp"
 #include "core/stats.hpp"
 #include "operators/selection.hpp"
 #include "operators/initialization.hpp"
+#include "random/jsf.hpp"
 
 #include <tbb/task_scheduler_init.h>
 
@@ -37,7 +36,7 @@ TEST_CASE("Sextic GPops", "[performance]")
 {
 //    auto threads = tbb::task_scheduler_init::default_num_threads();
 //    tbb::task_scheduler_init init(threads);
-    auto rd = Random::JsfRand<64>();
+    operon::rand_t rd;
     auto ds = Dataset("../data/Sextic.csv", true);
     auto target = "Y";
     auto variables = ds.Variables();
@@ -99,7 +98,7 @@ TEST_CASE("Evaluation performance", "[performance]")
     size_t maxLength = 100;
     size_t maxDepth = 1000;
 
-    auto rd = Random::JsfRand<64>();
+    auto rd = operon::rand_t();
     auto ds = Dataset("../data/Sextic.csv", true);
 
     auto target = "Y";
@@ -206,7 +205,7 @@ TEST_CASE("Tree creation performance")
     size_t maxLength = 100;
     size_t maxDepth = 12;
 
-    auto rd = Random::JsfRand<64>();
+    auto rd = operon::rand_t();
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
@@ -258,7 +257,7 @@ TEST_CASE("Selection performance")
     size_t maxLength = 100;
     size_t maxDepth = 12;
 
-    auto random = Random::JsfRand<64>(1234);
+    auto random = operon::rand_t(1234);
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";

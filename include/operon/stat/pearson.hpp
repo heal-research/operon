@@ -1,4 +1,4 @@
-/* This file is adapted from ELKI:
+/* This code represents derived work from ELKI:
  * Environment for Developing KDD-Applications Supported by Index-Structures
  *
  * Copyright (C) 2019
