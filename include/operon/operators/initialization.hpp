@@ -1,3 +1,23 @@
+/* This file is part of:
+ * Operon - Large Scale Genetic Programming Framework
+ *
+ * Copyright (C) 2019 Bogdan Burlacu 
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SOFTWARE.
+ */
+
 #ifndef INITIALIZATION_HPP
 #define INITIALIZATION_HPP
 
@@ -51,9 +71,12 @@ public:
         stk.push({ root, root.Arity, 1, targetLen }); // node, slot, depth, available length
 
         auto childLen = 0ul;
+        auto runningLength = root.Arity + 1; // 1 root node
         while (!stk.empty()) {
             auto [node, slot, depth, length] = stk.top();
             stk.pop();
+
+            //fmt::print("{}: current length: {}\n", slot, runningLength);
 
             if (slot == 0) {
                 nodes.push_back(node); // this node's children have been filled
@@ -63,16 +86,20 @@ public:
 
             childLen = slot == node.Arity ? length % node.Arity : childLen;
             childLen += length / node.Arity - 1;
+            if (childLen > 0 && childLen % 2 == 0) childLen--;
 
             maxArity = depth == maxDepth - 1u ? 0u : std::min(grammarMaxArity, std::min(childLen, targetLen - openSlots));
             minArity = std::min(grammarMinArity, maxArity);
             auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
             init(child);
 
+            runningLength += child.Arity;
+            
             targetLen = targetLen - 1;
             openSlots = openSlots + child.Arity - 1;
 
             stk.push({ child, child.Arity, depth + 1, childLen });
+
         }
         auto tree = Tree(nodes).UpdateNodes();
         return tree;

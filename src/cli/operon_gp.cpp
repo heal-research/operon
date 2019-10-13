@@ -1,3 +1,23 @@
+/* This file is part of:
+ * Operon - Large Scale Genetic Programming Framework
+ *
+ * Copyright (C) 2019 Bogdan Burlacu 
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SOFTWARE.
+ */
+
 #include <cstdlib>
 
 #include <cxxopts.hpp>
@@ -202,7 +222,7 @@ int main(int argc, char* argv[])
         //RandomSelector<Ind, idx, Evaluator::Maximization> selector;
 
         //auto creator  = FullTreeCreator(5, maxLength);
-        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength / 2);
+        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength / 4);
         //std::normal_distribution<operon::scalar_t> sizeDistribution(25, 7);
         auto creator  = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
         //auto creator = RampedHalfAndHalfCreator { maxDepth, maxLength };

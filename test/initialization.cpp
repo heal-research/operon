@@ -1,3 +1,23 @@
+/* This file is part of:
+ * Operon - Large Scale Genetic Programming Framework
+ *
+ * Copyright (C) 2019 Bogdan Burlacu 
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * SOFTWARE.
+ */
+
 #include "operators/initialization.hpp"
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
@@ -59,7 +79,7 @@ TEST_CASE("Tree shape")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
     size_t maxDepth = 1000,
-           maxLength = 10;
+           maxLength = 100;
     auto sizeDistribution = std::uniform_int_distribution<size_t>(maxLength, maxLength);
     auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
 
@@ -84,7 +104,7 @@ TEST_CASE("Tree initialization (grow)")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
 
-    size_t maxDepth = 1000, maxLength = 100;
+    size_t maxDepth = 10, maxLength = 100;
 
     const size_t nTrees = 100'000;
 
