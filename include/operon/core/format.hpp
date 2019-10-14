@@ -49,7 +49,7 @@ class TreeFormatter {
         }
 
         if (i != tree.Length() - 1) {
-            indent += isLast ? "    " : "|   ";
+            indent += isLast ? "    " : "│   ";
         }
 
         for (auto it = tree.Children(i); it.HasNext(); ++it) {
