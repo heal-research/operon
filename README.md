@@ -1,6 +1,6 @@
 # Introduction 
 
-*Operon* is a [Genetic Programming](https://en.wikipedia.org/wiki/Genetic_programming) (GP) system written in modern C++ with an emphasis on usability and performance, developed at the [SymReg](http://www.symreg.at) group in Hagenberg, Austria.
+*Operon* is a [Genetic Programming](https://en.wikipedia.org/wiki/Genetic_programming) (GP) system written in modern C++ with an emphasis on usability and performance.
 
 ## Why yet another GP framework? 
 
@@ -25,8 +25,8 @@ At the same time, we wanted an efficient implementation using modern concepts an
 * tree initialization with the grow method
 
 ## Fitness evaluation
-* Support common performance metrics $`R^2`$, MSE, NMSE, etc
-* Efficient tree interpreter implementing [vectorization](https://en.wikipedia.org/wiki/Automatic_vectorization)
+* Support common performance metrics R^2, MSE, NMSE, etc
+* Efficient model evaluation using [Eigen](https://eigen.tuxfamily.org/)
 * Efficient parallelization using Intel's [thread building blocks](https://github.com/intel/tbb) library
 * Support numerical and automatic differentiation of expression trees
 * Hybridization with local search
