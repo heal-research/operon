@@ -62,7 +62,7 @@ public:
         }
 
         auto f = this->evaluator(random, child);
-        child.Fitness[Idx] = std::isfinite(f) ? f : (Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max());
+        child.Fitness[Idx] = std::isfinite(f) ? f : (Max ? operon::scalar::min() : operon::scalar::max());
 
         if (doCrossover) {
             // we have two parents

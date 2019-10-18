@@ -97,7 +97,7 @@ public:
 
         thread_local operon::rand_t rndlocal;
 
-        const auto worst = Max ? std::numeric_limits<double>::min() : std::numeric_limits<double>::max();
+        const auto worst = Max ? operon::scalar::min() : operon::scalar::max();
         auto create = [&](gsl::index i) {
             // create one random generator per thread
             rndlocal = operon::rand_t{seeds[i]};
