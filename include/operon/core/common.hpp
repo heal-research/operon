@@ -31,6 +31,18 @@ namespace operon {
     using hash_t   = xxh::hash64_t;
     using rand_t   = Random::Sfc64;
     using scalar_t = double;
+
+    namespace scalar {
+        static inline scalar_t max() 
+        { 
+            return std::numeric_limits<scalar_t>::max(); 
+        }
+        static inline scalar_t min() 
+        {
+            if constexpr (std::is_floating_point_v<scalar_t>) return std::numeric_limits<scalar_t>::lowest(); 
+            else return std::numeric_limits<scalar_t>::min(); 
+        }
+    }
 }
 
 class Range {
