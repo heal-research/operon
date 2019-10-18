@@ -17,7 +17,8 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include "operators/initialization.hpp"
+#include "operators/creator.hpp"
+#include "operators/crossover.hpp"
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "core/format.hpp"
@@ -80,7 +81,7 @@ TEST_CASE("Tree shape")
     size_t maxDepth = 1000,
            maxLength = 100;
     auto sizeDistribution = std::uniform_int_distribution<size_t>(maxLength, maxLength);
-    auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
+    auto creator = BalancedTreeCreator(sizeDistribution, maxDepth, maxLength);
 
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
@@ -95,7 +96,7 @@ TEST_CASE("Tree shape")
     fmt::print("{}\n", TreeFormatter::Format(tree, ds));
 }
 
-TEST_CASE("Tree initialization (grow)")
+TEST_CASE("Tree initialization (balanced)")
 {
     auto target = "Y";
     auto ds = Dataset("../data/Poly-10.csv", true);
@@ -109,7 +110,7 @@ TEST_CASE("Tree initialization (grow)")
 
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
     //auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
-    auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
+    auto creator = BalancedTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
     //operon::rand_t rd(std::random_device {}());
@@ -119,7 +120,9 @@ TEST_CASE("Tree initialization (grow)")
     std::generate(trees.begin(), trees.end(), [&]() { return creator(random, grammar, inputs); });
 
     auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.Length(); });
-    fmt::print("Grow tree creator - length({},{}) = {}\n", maxDepth, maxLength, totalLength / trees.size());
+    auto totalShape = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.VisitationLength(); });
+    fmt::print("Balanced tree creator - length({},{}) = {}\n", maxDepth, maxLength, totalLength / trees.size());
+    fmt::print("Balanced tree creator - shape({},{}) = {}\n", maxDepth, maxLength, totalShape / trees.size());
 
     SECTION("Symbol frequencies")
     {
@@ -213,6 +216,152 @@ TEST_CASE("Tree initialization (grow)")
     }
 }
 
+TEST_CASE("Tree initialization (uniform)")
+{
+    auto target = "Y";
+    auto ds = Dataset("../data/Poly-10.csv", true);
+    auto variables = ds.Variables();
+    std::vector<Variable> inputs;
+    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
+
+    size_t maxDepth = 1000, maxLength = 100;
+
+    const size_t nTrees = 100'000;
+
+    auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
+    //auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
+    auto creator = UniformTreeCreator(sizeDistribution, maxDepth, maxLength);
+    Grammar grammar;
+    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    //operon::rand_t rd(std::random_device {}());
+    operon::rand_t random(1234);
+
+    auto trees = std::vector<Tree>(nTrees);
+    std::generate(trees.begin(), trees.end(), [&]() { return creator(random, grammar, inputs); });
+
+    auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.Length(); });
+    auto totalShape = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.VisitationLength(); });
+    fmt::print("Balanced tree creator - length({},{}) = {}\n", maxDepth, maxLength, totalLength / trees.size());
+    fmt::print("Balanced tree creator - shape({},{}) = {}\n", maxDepth, maxLength, totalShape / trees.size());
+
+    SECTION("Symbol frequencies")
+    {
+        std::array<size_t, NodeTypes::Count> symbolFrequencies;
+        symbolFrequencies.fill(0u);
+        for (const auto& tree : trees) {
+            for (const auto& node : tree.Nodes()) {
+                symbolFrequencies[NodeTypes::GetIndex(node.Type)]++;
+            }
+        }
+        fmt::print("Symbol frequencies: \n");
+
+        for (size_t i = 0; i < symbolFrequencies.size(); ++i) {
+            auto node = Node(static_cast<NodeType>(1u << i));
+            if (!grammar.IsEnabled(node.Type))
+                continue;
+            fmt::print("{}\t{:.3f} %\n", node.Name(), symbolFrequencies[i] / totalLength);
+        }
+    }
+
+    SECTION("Symbol frequency vs tree length")
+    {
+        Eigen::MatrixXd counts = Eigen::MatrixXd::Zero(maxLength, NodeTypes::Count);
+        std::cout << "\t";
+        for(size_t i = 0; i < NodeTypes::Count; ++i) {
+            std::cout << Node(static_cast<NodeType>(1u << i)).Name() << "\t";
+        }
+        std::cout << "\n";
+
+        for (const auto& tree : trees) {
+            for (const auto& node : tree.Nodes()) {
+                Expects(grammar.IsEnabled(node.Type));
+                counts(tree.Length() - 1, NodeTypes::GetIndex(node.Type))++;
+            }
+        }
+        std::cout << counts << "\n";
+    }
+
+    SECTION("Variable frequencies")
+    {
+        fmt::print("Variable frequencies:\n");
+        size_t totalVars = 0;
+        std::vector<size_t> variableFrequencies(inputs.size());
+        for (const auto& t : trees) {
+            for (const auto& node : t.Nodes()) {
+                if (node.IsVariable()) {
+                    if (auto it = std::find_if(inputs.begin(), inputs.end(), [&](const auto& v) { return node.HashValue == v.Hash; }); it != inputs.end()) {
+                        variableFrequencies[it->Index]++;
+                        totalVars++;
+                    } else {
+                        fmt::print("Could not find variable {} with hash {} and calculated hash {} within the inputs\n", node.Name(), node.HashValue, node.CalculatedHashValue);
+                        std::exit(EXIT_FAILURE);
+                    }
+                }
+            }
+        }
+        for (const auto& v : inputs) {
+            fmt::print("{}\t{:.3f}%\n", ds.GetName(v.Hash), static_cast<operon::scalar_t>(variableFrequencies[v.Index]) / totalVars);
+        }
+    }
+
+    SECTION("Tree length histogram")
+    {
+        std::vector<size_t> lengthHistogram(maxLength + 1);
+        for(auto& tree : trees)
+        {
+            lengthHistogram[tree.Length()]++;
+        }
+        fmt::print("Tree length histogram:\n");
+        for (auto i = 1u; i < lengthHistogram.size(); ++i)
+        {
+            fmt::print("{}\t{}\n", i, lengthHistogram[i]);
+        }
+    }
+
+    SECTION("Tree depth histogram")
+    {
+        auto [minDep, maxDep] = std::minmax_element(trees.begin(), trees.end(), [](const auto& lhs, const auto& rhs) { return lhs.Depth() < rhs.Depth(); });
+        std::vector<size_t> depthHistogram(maxDep->Depth() + 1);
+        for(auto& tree : trees)
+        {
+            depthHistogram[tree.Depth()]++;
+        }
+        fmt::print("Tree depth histogram:\n");
+        for (auto i = 0u; i < depthHistogram.size(); ++i)
+        {
+            auto v = depthHistogram[i];
+            if (v == 0) continue;
+            fmt::print("{}\t{}\n", i, depthHistogram[i]);
+        }
+    }
+
+    SECTION("Shape balancing")
+    {
+        auto crossover = SubtreeCrossover(0.5, maxDepth, maxLength);
+        auto oldShape = totalShape / trees.size();
+        int steps = 0;
+
+        while (steps < 5) 
+        {
+            std::shuffle(trees.begin(), trees.end(), random);
+            for(size_t i = 0; i < trees.size()-1; i += 2) 
+            {
+                auto j = i+1;
+                auto [x,y] = crossover.FindCompatibleSwapLocations(random, trees[i], trees[j]);
+                auto c1 = crossover.Cross(trees[i], trees[j], x, y);
+                auto c2 = crossover.Cross(trees[j], trees[i], y, x);
+                std::swap(trees[i], c1);
+                std::swap(trees[j], c2);
+            }
+            auto newShape = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.VisitationLength(); }) / trees.size();
+            if (newShape < oldShape) oldShape = newShape;
+            else ++steps;
+            fmt::print("new shape: {}\n", newShape);
+        }
+    }
+}
+
+
 TEST_CASE("Tree depth calculation")
 {
     auto target = "Y";
@@ -223,7 +372,7 @@ TEST_CASE("Tree depth calculation")
     size_t maxDepth = 20, maxLength = 50;
 
     auto sizeDistribution = std::uniform_int_distribution<size_t>(2, maxLength);
-    auto creator = GrowTreeCreator(sizeDistribution, maxDepth, maxLength);
+    auto creator = BalancedTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
     operon::rand_t rd(std::random_device {}());
 

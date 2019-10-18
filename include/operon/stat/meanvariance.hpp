@@ -37,6 +37,8 @@ public:
     void Reset()
     {
         m2 = 0;
+        sum = 0;
+        n = 0;
     }
 
     void Add(operon::scalar_t val)

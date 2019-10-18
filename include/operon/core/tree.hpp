@@ -158,6 +158,7 @@ public:
     inline const Node& operator[](gsl::index i) const noexcept { return nodes[i]; }
 
     size_t Length() const noexcept { return nodes.size(); }
+    size_t VisitationLength() const noexcept;
     size_t Depth() const noexcept;
     size_t Depth(gsl::index) const noexcept;
     size_t Level(gsl::index) const noexcept;

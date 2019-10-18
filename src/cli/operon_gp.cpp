@@ -30,7 +30,7 @@
 #include "core/metrics.hpp"
 #include "operators/crossover.hpp"
 #include "operators/evaluator.hpp"
-#include "operators/initialization.hpp"
+#include "operators/creator.hpp"
 #include "operators/mutation.hpp"
 #include "operators/recombinator.hpp"
 #include "operators/selection.hpp"
@@ -225,7 +225,7 @@ int main(int argc, char* argv[])
         //auto creator  = FullTreeCreator(5, maxLength);
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength / 4);
         //std::normal_distribution<operon::scalar_t> sizeDistribution(25, 7);
-        auto creator  = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
+        auto creator  = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
         //auto creator = RampedHalfAndHalfCreator { maxDepth, maxLength };
         auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator = MultiMutation {};
@@ -255,12 +255,12 @@ int main(int argc, char* argv[])
             return Evaluator::Maximization ? *maxElem : *minElem;
         };
 
-        char sizes[] = " KMGT"; 
-        auto bytesToSize = [&](size_t bytes) -> std::string {
-            auto p = static_cast<size_t>(std::floor(std::log(bytes) / std::log(1024)));
-            auto i = static_cast<size_t>(std::round(bytes / std::pow(1024, p)));
-            return fmt::format("{} {}b", bytes / std::pow(1024, i), sizes[i]);
-        };
+//        char sizes[] = " KMGT"; 
+//        auto bytesToSize = [&](size_t bytes) -> std::string {
+//            auto p = static_cast<size_t>(std::floor(std::log(bytes) / std::log(1024)));
+//            auto i = static_cast<size_t>(std::round(bytes / std::pow(1024, p)));
+//            return fmt::format("{} {}b", bytes / std::pow(1024, i), sizes[i]);
+//        };
 
         auto report = [&]() {
             auto pop            = gp.Parents();

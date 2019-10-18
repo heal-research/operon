@@ -25,7 +25,7 @@
 #include "core/metrics.hpp"
 #include "core/stats.hpp"
 #include "operators/selection.hpp"
-#include "operators/initialization.hpp"
+#include "operators/creator.hpp"
 #include "random/jsf.hpp"
 
 #include <tbb/task_scheduler_init.h>
@@ -55,7 +55,7 @@ TEST_CASE("Sextic GPops", "[performance]")
 
     for (auto len : avgLen) {
         std::uniform_int_distribution<size_t> sizeDistribution(len, len);
-        auto creator = GrowTreeCreator { sizeDistribution, maxDepth, len };
+        auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, len };
         std::vector<Tree> trees(n);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
         for(auto nRows : numRows) {
@@ -109,7 +109,7 @@ TEST_CASE("Evaluation performance", "[performance]")
     Range range = { 0, ds.Rows() };
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    auto creator = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
+    auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     std::vector<Tree> trees(n);
     std::vector<operon::scalar_t> fit(n);
@@ -214,7 +214,7 @@ TEST_CASE("Tree creation performance")
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    auto growCreator = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
+    auto growCreator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     std::vector<Tree> trees(n);
 
@@ -227,7 +227,7 @@ TEST_CASE("Tree creation performance")
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic);
     size_t k = 0;
-    SECTION("Grow tree creator")
+    SECTION("Balanced tree creator")
     {
         k = 0;
         model.start();
@@ -266,7 +266,7 @@ TEST_CASE("Selection performance")
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    auto creator = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
+    auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     using Ind = Individual<1>;
 
