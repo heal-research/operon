@@ -22,7 +22,7 @@
 #include "core/format.hpp"
 #include "core/grammar.hpp"
 #include "core/stats.hpp"
-#include "operators/initialization.hpp"
+#include "operators/creator.hpp"
 #include "operators/selection.hpp"
 #include <algorithm>
 #include <catch2/catch.hpp>
@@ -44,7 +44,7 @@ TEST_CASE("Selection Distribution")
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    auto creator = GrowTreeCreator { sizeDistribution, maxDepth, maxLength };
+    auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     std::vector<Individual<1>> individuals(nTrees);
     Grammar grammar;

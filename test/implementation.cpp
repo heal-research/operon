@@ -21,7 +21,7 @@
 
 #include "core/node.hpp"
 #include "core/grammar.hpp"
-#include "operators/initialization.hpp"
+#include "operators/creator.hpp"
 
 #include "random/jsf.hpp"
 #include "random/sfc64.hpp"

@@ -54,26 +54,20 @@ static gsl::index SelectRandomBranch(operon::rand_t& random, const Tree& tree, d
     return indices[idx];
 }
 
+std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const
+{
+    auto i = SelectRandomBranch(random, lhs, internalProbability, maxDepth, maxLength);
+    size_t maxBranchDepth    = maxDepth - lhs.Level(i);
+    size_t partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
+    size_t maxBranchLength   = maxLength - partialTreeLength;
+
+    auto j = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength);
+    return std::make_pair(i, j);
+}
+
 Tree SubtreeCrossover::operator()(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const
 {
-    if (auto i = SelectRandomBranch(random, lhs, internalProbability, maxDepth, maxLength)) {
-        size_t maxBranchDepth = maxDepth - lhs.Level(i);
-        size_t partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
-        size_t maxBranchLength = maxLength - partialTreeLength;
-
-        if (auto j = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength)) {
-            auto& left = lhs.Nodes();
-            auto& right = rhs.Nodes();
-            std::vector<Node> nodes;
-            nodes.reserve(right[j].Length - left[i].Length + left.size());
-            copy_n(left.begin(), i - left[i].Length, back_inserter(nodes));
-            copy_n(right.begin() + j - right[j].Length, right[j].Length + 1, back_inserter(nodes));
-            copy_n(left.begin() + i + 1, left.size() - (i + 1), back_inserter(nodes));
-
-            auto child = Tree(nodes).UpdateNodes();
-            return child;
-        }
-    }
-    return lhs;
+    auto [i, j] = FindCompatibleSwapLocations(random, lhs, rhs);
+    return Cross(lhs, rhs, i, j);
 }
 }

@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <execution>
 #include <iostream>
 #include <iterator>
 #include <optional>
@@ -181,6 +182,11 @@ size_t Tree::Depth() const noexcept
     return nodes.back().Depth;
 }
 
+size_t Tree::VisitationLength() const noexcept
+{
+    return std::transform_reduce(std::execution::unseq, nodes.begin(), nodes.end(), 0UL, std::plus<> {}, [](const auto& node) { return node.Length + 1; });
+}
+
 // calculate the level in the tree (distance to tree root) for the subtree at index i
 size_t Tree::Level(gsl::index i) const noexcept
 {
@@ -194,4 +200,4 @@ size_t Tree::Level(gsl::index i) const noexcept
     }
     return level;
 }
-}
+} // namespace Operon

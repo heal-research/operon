@@ -17,8 +17,8 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef INITIALIZATION_HPP
-#define INITIALIZATION_HPP
+#ifndef BALANCED_TREE_CREATOR_HPP
+#define BALANCED_TREE_CREATOR_HPP 
 
 #include <algorithm>
 #include <execution>
@@ -29,10 +29,14 @@
 
 namespace Operon {
 
+// this tree creator cares about the shape of the resulting tree and tries to 
+// build balanced trees by splitting the available length between child nodes 
+// the creator will follow a given distribution of tree sizes but due to shape
+// restrictions it can't guarantee desired symbol frequencies (TODO)
 template <typename T>
-class GrowTreeCreator : public CreatorBase {
+class BalancedTreeCreator : public CreatorBase {
 public:
-    GrowTreeCreator(T distribution, size_t depth, size_t length)
+    BalancedTreeCreator(T distribution, size_t depth, size_t length)
         : dist(distribution.param())
         , maxDepth(depth)
         , maxLength(length)
@@ -67,20 +71,18 @@ public:
 
         targetLen = targetLen - 1; // because we already added 1 root node
         size_t openSlots = root.Arity;
-        stk.push({ root, root.Arity, 1, targetLen }); // node, slot, depth, available length
+        stk.emplace(root, root.Arity, 1, targetLen); // node, slot, depth, available length
 
         auto childLen = 0ul;
         while (!stk.empty()) {
             auto [node, slot, depth, length] = stk.top();
             stk.pop();
 
-            //fmt::print("{}: current length: {}\n", slot, runningLength);
-
             if (slot == 0) {
                 nodes.push_back(node); // this node's children have been filled
                 continue;
             }
-            stk.push({ node, slot - 1, depth, length });
+            stk.emplace(node, slot - 1, depth, length);
 
             childLen = slot == node.Arity ? length % node.Arity : childLen;
             childLen += length / node.Arity - 1;
@@ -93,7 +95,7 @@ public:
             targetLen = targetLen - 1;
             openSlots = openSlots + child.Arity - 1;
 
-            stk.push({ child, child.Arity, depth + 1, childLen });
+            stk.emplace(child, child.Arity, depth + 1, childLen);
 
         }
         auto tree = Tree(nodes).UpdateNodes();

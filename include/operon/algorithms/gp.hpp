@@ -23,7 +23,7 @@
 #include "algorithms/config.hpp"
 #include "core/eval.hpp"
 #include "operators/crossover.hpp"
-#include "operators/initialization.hpp"
+#include "operators/creator.hpp"
 #include "operators/mutation.hpp"
 #include "operators/recombinator.hpp"
 

@@ -34,8 +34,24 @@ public:
     {
     }
     auto operator()(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const -> Tree override;
+    std::pair<gsl::index, gsl::index> FindCompatibleSwapLocations(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const;
+
+    static inline Tree Cross(const Tree& lhs, const Tree& rhs, gsl::index i, gsl::index j) 
+    {
+        auto& left = lhs.Nodes();
+        auto& right = rhs.Nodes();
+        std::vector<Node> nodes;
+        nodes.reserve(right[j].Length - left[i].Length + left.size());
+        copy_n(left.begin(), i - left[i].Length, back_inserter(nodes));
+        copy_n(right.begin() + j - right[j].Length, right[j].Length + 1, back_inserter(nodes));
+        copy_n(left.begin() + i + 1, left.size() - (i + 1), back_inserter(nodes));
+
+        auto child = Tree(nodes).UpdateNodes();
+        return child;
+    }
 
 private:
+
     double internalProbability;
     size_t maxDepth;
     size_t maxLength;
