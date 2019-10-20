@@ -98,44 +98,39 @@ public:
 
     const gsl::span<const operon::scalar_t> GetValues(const std::string& name) const
     {
-        auto needle = Variable { name, 0, 0 };
-        auto record = std::equal_range(variables.begin(), variables.end(), needle, [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); });
-        return gsl::span<const operon::scalar_t>(values.col(record.first->Index).data(), values.rows());
+        auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
+        return gsl::span<const operon::scalar_t>(values.col(it->Index).data(), values.rows());
     }
 
-    const gsl::span<const operon::scalar_t> GetValues(operon::hash_t hashValue) const
+    const gsl::span<const operon::scalar_t> GetValues(operon::hash_t hashValue) const noexcept
     {
-        auto needle = Variable { "", hashValue, 0 };
-        auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; });
-        return gsl::span<const operon::scalar_t>(values.col(record.first->Index).data(), values.rows());
+        auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
+        return gsl::span<const operon::scalar_t>(values.col(it->Index).data(), values.rows());
     }
 
-    const gsl::span<const operon::scalar_t> GetValues(gsl::index index) const
+    const gsl::span<const operon::scalar_t> GetValues(gsl::index index) const noexcept
     {
         return gsl::span<const operon::scalar_t>(values.col(index).data(), values.rows());
     }
 
     const std::string& GetName(operon::hash_t hashValue) const
     {
-        auto needle = Variable { "", hashValue, 0 };
-        auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; });
-        return record.first->Name;
+        auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
+        return it->Name;
     }
 
     operon::hash_t GetHashValue(const std::string& name) const
     {
-        auto needle = Variable { name, 0 /* hash value */, 0 /* index */ };
-        auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); });
-        return record.first->Hash;
+        auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
+        return it->Hash;
     }
 
     gsl::index GetIndex(operon::hash_t hashValue) const
     {
-        auto needle = Variable { "", hashValue, 0 };
-        auto record = std::equal_range(variables.begin(), variables.end(), needle, [](const Variable& a, const Variable& b) { return a.Hash < b.Hash; });
-        return record.first->Index;
+        auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
+        return it->Index;
     }
-    const std::string& GetName(int index) const { return variables[index].Name; }
+    const std::string& GetName(gsl::index index) const { return variables[index].Name; }
     const gsl::span<const Variable> Variables() const { return gsl::span<const Variable>(variables); }
 };
 }
