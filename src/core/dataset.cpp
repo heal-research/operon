@@ -75,10 +75,5 @@ Dataset::Dataset(const std::string& file, bool hasHeader)
     for (auto i = 0; i < ncols; ++i) {
         variables[i].Hash = hashes[i];
     }
-
-    auto [r, c] = Dimensions();
-    if (r == 0 || c == 0) {
-        throw std::runtime_error(fmt::format("Invalid matrix dimensions {} x {}\n", r, c));
-    }
 }
 }

@@ -95,11 +95,11 @@ TEST_CASE("Sextic GPops", "[performance]")
 TEST_CASE("Evaluation performance", "[performance]")
 {
     size_t n = 10'000;
-    size_t maxLength = 100;
+    size_t maxLength = 50;
     size_t maxDepth = 1000;
 
     auto rd = operon::rand_t();
-    auto ds = Dataset("../data/Sextic.csv", true);
+    auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
     auto variables = ds.Variables();

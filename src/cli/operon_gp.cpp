@@ -28,6 +28,7 @@
 
 #include "core/common.hpp"
 #include "core/metrics.hpp"
+#include "core/format.hpp"
 #include "operators/crossover.hpp"
 #include "operators/evaluator.hpp"
 #include "operators/creator.hpp"
@@ -233,12 +234,13 @@ int main(int argc, char* argv[])
         auto changeVar = ChangeVariableMutation { inputs };
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
-        BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
+        //BasicRecombinator recombinator(evaluator, selector, crossover, mutator);
         //BroodRecombinator recombinator(evaluator, selector, crossover, mutator);
         //recombinator.BroodSize(10);
         //recombinator.BroodTournamentSize(10);
         //OffspringSelectionRecombinator recombinator { evaluator, selector, crossover, mutator };
         //recombinator.MaxSelectionPressure(config.MaxSelectionPressure);
+        PlusRecombinator recombinator { evaluator, selector, crossover, mutator };
 
         auto t0 = std::chrono::high_resolution_clock::now();
         GeneticProgrammingAlgorithm gp { problem, config, creator, recombinator };
@@ -255,14 +257,13 @@ int main(int argc, char* argv[])
             return Evaluator::Maximization ? *maxElem : *minElem;
         };
 
-//        char sizes[] = " KMGT"; 
-//        auto bytesToSize = [&](size_t bytes) -> std::string {
-//            auto p = static_cast<size_t>(std::floor(std::log(bytes) / std::log(1024)));
-//            auto i = static_cast<size_t>(std::round(bytes / std::pow(1024, p)));
-//            return fmt::format("{} {}b", bytes / std::pow(1024, i), sizes[i]);
-//        };
+        char sizes[] = " KMGT"; 
+        auto bytesToSize = [&](size_t bytes) -> std::string {
+            auto p = static_cast<size_t>(std::floor(std::log2(bytes) / std::log2(1024)));
+            return fmt::format("{:.2f} {}b", bytes / std::pow(1024, p), sizes[p]);
+        };
 
-        auto report = [&]() {
+        auto report = [&]() { 
             auto pop            = gp.Parents();
             auto best           = getBest(pop);
             auto estimatedTrain = Evaluate<operon::scalar_t>(best.Genotype, problem.GetDataset(), trainingRange);
@@ -283,24 +284,23 @@ int main(int argc, char* argv[])
             auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<operon::scalar_t> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
 
             auto t1         = std::chrono::high_resolution_clock::now();
-
             auto elapsed    = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
 
             // calculate memory consumption
-            size_t totalMemory = 0u;
-            totalMemory += std::transform_reduce(std::execution::par_unseq, 
+            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, 
                     pop.begin(), 
                     pop.end(), 
                     0U, 
-                    std::plus<operon::scalar_t> {}, [](const auto& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Node) * ind.Genotype.Nodes().capacity(); });
+                    std::plus<operon::scalar_t> {}, [](const auto& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); });
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, nmseTrain, nmseTest);
-            fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\n", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
-            //fmt::print("{}\n", bytesToSize(totalMemory));
+            fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
+            fmt::print("{}\n", bytesToSize(2 * totalMemory)); // times 2 because internally we use two populations
         };
 
         gp.Run(random, report);
+        fmt::print("{}\n", TreeFormatter::Format(getBest(gp.Parents()).Genotype, dataset));
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);
