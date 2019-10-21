@@ -34,7 +34,7 @@ public:
     using T = typename TSelector::SelectableType;
     std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) const override
     {
-        std::uniform_real_distribution<double> uniformReal;
+        std::uniform_real_distribution<double> uniformReal(0, 1);
         bool doCrossover = uniformReal(random) < pCrossover;
         bool doMutation = uniformReal(random) < pMutation;
 
@@ -64,19 +64,22 @@ public:
         auto f = this->evaluator(random, child);
         child.Fitness[Idx] = std::isfinite(f) ? f : (Max ? operon::scalar::min() : operon::scalar::max());
 
+        const auto& p1 = population[first];
+        const auto& p2 = population[second];
+
+        auto compare = std::conditional_t<Max, std::less<>, std::greater<>>{};
+
         if (doCrossover) {
-            // we have two parents
-            if (Max && child.Fitness[Idx] < std::max(population[first].Fitness[Idx], population[second].Fitness[Idx])) {
-                child = population[first].Fitness[Idx] > population[second].Fitness[Idx] ? population[first] : population[second];
-            } else if (!Max && child.Fitness[Idx] > std::min(population[first].Fitness[Idx], population[second].Fitness[Idx])) {
-                child = population[first].Fitness[Idx] < population[second].Fitness[Idx] ? population[first] : population[second];
+            // the child becomes the best of the two parents
+            if (compare(child[Idx], std::max(p1[Idx], p2[Idx])))
+            {
+                child = compare(p1[Idx], p2[Idx]) ? p2 : p1;
             }
-        } else {
+        } else if (doMutation) {
             // we have one parent
-            if (Max && child.Fitness[Idx] < population[first].Fitness[Idx]) {
-                child = population[first];
-            } else if (!Max && child.Fitness[Idx] > population[first].Fitness[Idx]) {
-                child = population[first];
+            if (compare(child[Idx], p1[Idx]))
+            {
+                child = p1;
             }
         }
 

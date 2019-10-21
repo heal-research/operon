@@ -62,8 +62,14 @@ TEST_CASE("Node is small")
     fmt::print("Total               {:>2}\n", szTotal); 
     fmt::print("Total + padding     {:>2}\n", sizeof(Node));
     fmt::print("-------------------------\n");
-    fmt::print("sizeof(Tree)        {:>2}\n", sizeof(Tree));
-    fmt::print("sizeof(vector<Node>) {:>2}\n", sizeof(std::vector<Node>));
+    std::vector<Node> nodes;
+    std::generate_n(std::back_inserter(nodes), 50, [](){ return Node(NodeType::Add); });
+    Tree tree { nodes };
+    fmt::print("sizeof(Tree)        {:>2}\n", sizeof(tree));
+    fmt::print("sizeof(vector<Node>) {:>2}\n", sizeof(nodes));
+    Individual<1> ind { tree, { 0 } };
+    fmt::print("sizeof(Individual)  {:>2}\n", sizeof(ind));
+
 
     REQUIRE(sizeof(Node) <= size_t{64});
 }
