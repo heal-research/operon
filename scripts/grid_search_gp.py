@@ -34,9 +34,11 @@ reps = args.reps
 prefix = args.prefix
 results_path = args.out
 
-population_size = [ 1000 ]
+population_size = [ 1000, 10000, 100000 ]
 iteration_count = [ 0 ]
-evaluation_budget = [ 500000 ]
+evaluation_budget = [ 10000000 ]
+recombinators = ['basic', 'plus', 'os:100', 'brood:10:10']
+selectors = ['random', 'proportional', 'tournament:5', 'tournament:10', 'tournament:50']
 
 meta_header = ['Problem', 
         'Pop size',
@@ -54,11 +56,12 @@ output_header = ['Elapsed',
         'Avg len',
         'Fitness eval',
         'Local eval',
-        'Total eval']
+        'Total eval',
+        'Total memory']
 
 header = meta_header + output_header
 
-parameter_space = list(itertools.product(population_size, iteration_count, evaluation_budget))
+parameter_space = list(itertools.product(population_size, iteration_count, evaluation_budget, recombinators, selectors))
 total_configurations = len(parameter_space)
 all_files = list(os.listdir(data_path)) if os.path.isdir(data_path) else [ os.path.basename(data_path) ]
 data_files = [ f for f in all_files if f.endswith('.json') ]
@@ -74,11 +77,10 @@ total_idx = reps * len(parameter_space) * data_count
 
 problem_results = []
 
-for pop_size, iter_count, eval_count in parameter_space:
+for pop_size, iter_count, eval_count, recombinator, selector in parameter_space:
     idx = idx+1
 
     gen_count = int(math.ceil(eval_count / pop_size))
-    print('gen count', gen_count)
     
     for i,f in enumerate(data_files):
         with open(os.path.join(base_path, f), 'r') as h:
@@ -93,8 +95,7 @@ for pop_size, iter_count, eval_count in parameter_space:
             test_end       = test_rows['end']
             problem_name   = metadata['name']
             problem_csv    = metadata['filename']
-
-            config_str     = 'Configuration [{}/{}]\tpopulation size: {}\titerations: {}\tevaluation budget: {}'.format(idx, total_configurations, pop_size, iter_count, eval_count)
+            config_str     = 'Configuration [{}/{}]\tpopulation size: {}\titerations: {}\tevaluation budget: {}\tselector: {}\trecombinator: {}'.format(idx, total_configurations, pop_size, iter_count, eval_count, selector, recombinator)
             problem_str    = 'Problem [{}/{}]\t{}\tRows: {}\tTarget: {}\tRepetitions: {}'.format(i+1, data_count, problem_name, training_rows, target, reps)
             logger.info(fg.MAGENTA + config_str)
             logger.info(fg.MAGENTA + problem_str)
@@ -110,8 +111,9 @@ for pop_size, iter_count, eval_count in parameter_space:
                     "--iterations", str(iter_count), 
                     "--evaluations", str(eval_count), 
                     "--population-size", str(pop_size),
-                    "--generations", str(1000),
-                    "--selection-pressure", str(100),
+                    "--generations", str(gen_count),
+                    "--selector", selector,
+                    "--recombinator", recombinator,
                     "--enable-symbols", "exp,log,sin,cos"]);
 
                 lines = list(filter(lambda x: x, output.split(b'\n')))
