@@ -87,11 +87,6 @@ public:
         return std::make_optional(brood[bestIdx]);
     }
 
-    void Prepare(const gsl::span<const T> pop) const override
-    {
-        this->Selector().Prepare(pop);
-    }
-
     void BroodSize(size_t value) { broodSize = value; }
     size_t BroodSize() const { return broodSize; }
 

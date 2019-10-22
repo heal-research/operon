@@ -50,11 +50,6 @@ public:
         return best;
     }
 
-    void Prepare(const gsl::span<const T> pop) override
-    {
-        this->population = gsl::span<const T>(pop);
-    }
-
     void TournamentSize(size_t size) { tournamentSize = size; }
     size_t TournamentSize() const { return tournamentSize; }
 
@@ -84,9 +79,9 @@ public:
         return best;
     }
 
-    void Prepare(const gsl::span<const T> pop) override
+    void Prepare(const gsl::span<const T> pop) const override
     {
-        this->population = gsl::span<const T>(pop);
+        SelectorBase<T, Idx, Max>::Prepare(pop);
         indices.resize(pop.size());
         std::iota(indices.begin(), indices.end(), 0);
         std::sort(indices.begin(), indices.end(), [&](auto lhs, auto rhs) { return comparison(pop[lhs][Idx], pop[rhs][Idx]); });
@@ -102,7 +97,7 @@ public:
 private:
     size_t tournamentSize;
     std::conditional_t<Max, std::less<>, std::greater<>> comparison;
-    std::vector<size_t> indices;
+    mutable std::vector<size_t> indices;
 };
 
 template <typename T, gsl::index Idx, bool Max>
@@ -132,9 +127,9 @@ public:
         return best;
     }
 
-    void Prepare(const gsl::span<const T> pop) override
+    void Prepare(const gsl::span<const T> pop) const override
     {
-        this->population = gsl::span<const T>(pop);
+        SelectorBase<T, Idx, Max>::Prepare(pop);
         fitness.resize(pop.size());
         std::transform(pop.begin(), pop.end(), fitness.begin(), [&](const auto& p) { return static_cast<size_t>(std::round(p[Idx] * roundingFactor)); });
     }
@@ -152,7 +147,7 @@ private:
     size_t tournamentSize;
     double roundingFactor;
     std::conditional_t<Max, std::less<>, std::greater<>> comparison;
-    std::vector<size_t> fitness;
+    mutable std::vector<size_t> fitness;
 };
 
 template <typename T, gsl::index Idx, bool Max>
@@ -164,21 +159,21 @@ public:
         return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), 0L), std::less {})->second;
     }
 
-    void Prepare(const gsl::span<const T> pop)
+    void Prepare(const gsl::span<const T> pop) const override
     {
-        this->population = gsl::span<const T>(pop);
+        SelectorBase<T, Idx, Max>::Prepare(pop);
         Prepare();
     }
 
 private:
-    void Prepare()
+    void Prepare() const 
     {
         fitness.clear();
         fitness.reserve(this->population.size());
 
         operon::scalar_t vmin = this->population[0][Idx], vmax = vmin;
         for (gsl::index i = 0; i < this->population.size(); ++i) {
-            auto f = this->population[i].Fitness[Idx];
+            auto f = this->population[i][Idx];
             fitness.push_back({ f, i });
             vmin = std::min(vmin, f);
             vmax = std::max(vmax, f);
@@ -196,7 +191,7 @@ private:
     }
 
     // discrete CDF of the population fitness values
-    std::vector<std::pair<operon::scalar_t, gsl::index>> fitness;
+    mutable std::vector<std::pair<operon::scalar_t, gsl::index>> fitness;
 };
 
 template <typename T, gsl::index Idx, bool Max>
@@ -206,11 +201,6 @@ public:
     {
         std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
         return uniformInt(random);
-    }
-
-    void Prepare(const gsl::span<const T> pop) override
-    {
-        this->population = gsl::span<const T>(pop);
     }
 };
 }
