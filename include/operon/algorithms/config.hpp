@@ -29,11 +29,7 @@ struct GeneticAlgorithmConfig {
     size_t PopulationSize;
     double CrossoverProbability;
     double MutationProbability;
-    // offspring selection recombinator
-    size_t MaxSelectionPressure;
-    // brood recombinator
-    size_t BroodSize;
-    size_t BroodTournamentSize;
+    size_t Seed;
 };
 
 #endif

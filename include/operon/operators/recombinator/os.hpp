@@ -82,7 +82,7 @@ public:
 
     void Prepare(const gsl::span<const T> pop) const override
     {
-        this->Selector().Prepare(pop);
+        RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>::Prepare(pop);
         lastEvaluations = this->evaluator.get().FitnessEvaluations();
     }
 

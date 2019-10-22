@@ -73,7 +73,9 @@ public:
     static constexpr gsl::index SelectableIndex = Idx;
     static constexpr bool Maximization = Max;
 
-    virtual void Prepare(const gsl::span<const T> pop) = 0;
+    virtual void Prepare(const gsl::span<const T> pop) const {
+        this->population = gsl::span<const T>(pop);
+    };
 
     gsl::span<const T> Population() const { return population; }
 
@@ -142,7 +144,10 @@ public:
     TMutator& Mutator() const { return mutator.get(); }
     TEvaluator& Evaluator() const { return evaluator.get(); }
 
-    virtual void Prepare(gsl::span<const typename TSelector::SelectableType> pop) const = 0;
+    virtual void Prepare(gsl::span<const typename TSelector::SelectableType> pop) const 
+    {
+        this->Selector().Prepare(pop);
+    }
     virtual bool Terminate() const { return evaluator.get().BudgetExhausted(); }
 
 protected:

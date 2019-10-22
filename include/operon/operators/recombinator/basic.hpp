@@ -64,11 +64,6 @@ public:
 
         return std::make_optional(child);
     }
-
-    void Prepare(const gsl::span<const T> pop) const override
-    {
-        this->Selector().Prepare(pop);
-    }
 };
 
 } // namespace Operon
