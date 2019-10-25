@@ -203,7 +203,7 @@ TEST_CASE("Tree creation performance")
 {
     size_t n = 5000;
     size_t maxLength = 100;
-    size_t maxDepth = 12;
+    size_t maxDepth = 100;
 
     auto rd = operon::rand_t();
     auto ds = Dataset("../data/Poly-10.csv", true);

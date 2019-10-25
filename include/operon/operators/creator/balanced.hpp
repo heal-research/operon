@@ -29,13 +29,13 @@
 
 namespace Operon {
 
-// this tree creator cares about the shape of the resulting tree and tries to 
-// build balanced trees by splitting the available length between child nodes 
-// the creator will follow a given distribution of tree sizes but due to shape
-// restrictions it can't guarantee desired symbol frequencies (TODO)
+// this tree creator expands bread-wise using a "horizon" of open expansion slots
+// at the end the breadth sequence of nodes is converted to a postfix sequence
 template <typename T>
 class BalancedTreeCreator : public CreatorBase {
 public:
+    using U = std::tuple<Node, size_t, size_t>;
+
     BalancedTreeCreator(T distribution, size_t depth, size_t length)
         : dist(distribution.param())
         , maxDepth(depth)
@@ -44,21 +44,17 @@ public:
     }
     Tree operator()(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables) const override
     {
-        std::vector<Node> nodes;
-        std::stack<std::tuple<Node, size_t, size_t, size_t>> stk;
+        size_t minLength = 1u;
+        size_t targetLen = std::clamp(SampleLength(random), minLength, maxLength);
+        assert(targetLen > 0);
+
+        auto [minFunctionArity, maxFunctionArity] = grammar.FunctionArityLimits();
+        if (minFunctionArity > 1 && targetLen % 2 == 0) {
+            targetLen = std::bernoulli_distribution(0.5)(random) ? targetLen-1 : targetLen+1;
+        }
 
         std::uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1);
         std::normal_distribution<double> normalReal(0, 1);
-
-        size_t minLength = 1u; // a leaf as root node
-        size_t targetLen = std::clamp(SampleFromDistribution(random), minLength, maxLength);
-        Expects(targetLen > 0);
-
-        auto [grammarMinArity, grammarMaxArity] = grammar.FunctionArityLimits();
-
-        auto minArity = std::min(grammarMinArity, targetLen - 1);
-        auto maxArity = std::min(grammarMaxArity, targetLen - 1);
-
         auto init = [&](Node& node) {
             if (node.IsVariable()) {
                 node.HashValue = node.CalculatedHashValue = variables[uniformInt(random)].Hash;
@@ -66,38 +62,36 @@ public:
             node.Value = normalReal(random);
         };
 
-        auto root = grammar.SampleRandomSymbol(random, minArity, maxArity);
+        std::vector<U> tuples;
+        tuples.reserve(targetLen);
+
+        --targetLen; // we'll have at least a root symbol so we count it out
+        auto minArity = std::min(minFunctionArity, targetLen);
+        auto maxArity = std::min(maxFunctionArity, targetLen);
+
+        auto root = grammar.SampleRandomSymbol(random, minArity, maxArity); 
         init(root);
+        tuples.emplace_back(root, 0, 1);
 
-        targetLen = targetLen - 1; // because we already added 1 root node
         size_t openSlots = root.Arity;
-        stk.emplace(root, root.Arity, 1, targetLen); // node, slot, depth, available length
 
-        auto childLen = 0ul;
-        while (!stk.empty()) {
-            auto [node, slot, depth, length] = stk.top();
-            stk.pop();
+        for (size_t i = 0; i <= targetLen; ++i)
+        {
+            auto [node, nodeDepth, childIndex] = tuples[i];
+            auto childDepth = nodeDepth + 1;
 
-            if (slot == 0) {
-                nodes.push_back(node); // this node's children have been filled
-                continue;
+            for (int j = 0; j < node.Arity; ++j)
+            {
+                maxArity = childDepth == maxDepth - 1 ? 0 : std::min(maxFunctionArity, targetLen-openSlots);
+                minArity = std::min(minFunctionArity, maxArity);
+                auto child = grammar.SampleRandomSymbol(random, minArity, maxArity); 
+                init(child);
+                if (j == 0) std::get<2>(tuples[i]) = tuples.size();
+                tuples.emplace_back(child, childDepth, 0); 
+                openSlots += child.Arity;
             }
-            stk.emplace(node, slot - 1, depth, length);
-
-            childLen = slot == node.Arity ? length % node.Arity : childLen;
-            childLen += length / node.Arity - 1;
-
-            maxArity = depth == maxDepth - 1u ? 0u : std::min(grammarMaxArity, std::min(childLen, targetLen - openSlots));
-            minArity = std::min(grammarMinArity, maxArity);
-            auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
-            init(child);
-
-            targetLen = targetLen - 1;
-            openSlots = openSlots + child.Arity - 1;
-
-            stk.emplace(child, child.Arity, depth + 1, childLen);
-
         }
+        auto nodes = BreadthToPostfix(tuples);
         auto tree = Tree(nodes).UpdateNodes();
         return tree;
     }
@@ -107,7 +101,25 @@ private:
     size_t maxDepth;
     size_t maxLength;
 
-    inline size_t SampleFromDistribution(operon::rand_t& random) const
+    std::vector<Node> BreadthToPostfix(const std::vector<U>& tuples) const noexcept
+    {
+        int j = tuples.size();
+        std::vector<Node> postfix(j);
+        std::function<void(const U&)> add = [&](const U& t) 
+        {
+            auto [node, nodeDepth, nodeChildIndex] = t;
+            postfix[--j] = node; 
+            if (node.IsLeaf()) return;
+            for (size_t i = nodeChildIndex; i < nodeChildIndex + node.Arity; ++i)
+            {
+                add(tuples[i]);
+            }
+        };
+        add(tuples.front());
+        return postfix;
+    }
+
+    inline size_t SampleLength(operon::rand_t& random) const
     {
         auto val = dist(random);
         if constexpr (std::is_floating_point_v<typename T::result_type>) {
