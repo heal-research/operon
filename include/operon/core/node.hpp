@@ -95,7 +95,8 @@ struct Node {
 
     bool IsEnabled;
 
-    Node() = delete;
+    Node() : Node(NodeType::Constant) {} 
+
     explicit Node(NodeType type) noexcept
         : Node(type, static_cast<operon::hash_t>(type))
     {

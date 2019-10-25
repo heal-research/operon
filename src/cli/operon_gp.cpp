@@ -198,8 +198,7 @@ int main(int argc, char* argv[])
         using Selector = SelectorBase<Ind, idx, Evaluator::Maximization>;
         using Recombinator = RecombinatorBase<Evaluator, Selector, SubtreeCrossover, MultiMutation>;
 
-
-        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength / 4);
+        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
         auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator = MultiMutation {};
