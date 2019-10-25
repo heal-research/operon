@@ -38,7 +38,7 @@ population_size = [ 1000, 10000, 100000 ]
 iteration_count = [ 0 ]
 evaluation_budget = [ 10000000 ]
 recombinators = ['basic', 'plus', 'os:100', 'brood:10:10']
-selectors = ['random', 'proportional', 'tournament:5', 'tournament:10', 'tournament:50']
+selectors = ['random', 'proportional', 'tournament:5', 'tournament:10']
 
 meta_header = ['Problem', 
         'Pop size',
@@ -143,7 +143,7 @@ for pop_size, iter_count, eval_count, recombinator, selector in parameter_space:
             for l in df.describe().to_string().split('\n'):
                 logger.info(fg.CYAN + l)
 
-            df.to_excel(os.path.join(results_path, '{}_{}_{}_{}_{}.xlsx'.format(prefix, problem_name, pop_size, iter_count, eval_count)))
+            df.to_excel(os.path.join(results_path, '{}_{}_{}_{}_{}_{}_{}.xlsx'.format(prefix, problem_name, pop_size, iter_count, eval_count, selector, recombinator)))
             problem_results.append(df)
                         
 df_all = pd.concat(problem_results, axis=0)
