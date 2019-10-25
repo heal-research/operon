@@ -85,10 +85,10 @@ TEST_CASE("Tree shape")
 
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
-    grammar.Enable(NodeType::Add, 2);
-    grammar.Enable(NodeType::Mul, 2);
-    grammar.Enable(NodeType::Sub, 2);
-    grammar.Enable(NodeType::Div, 2);
+    grammar.Enable(NodeType::Add, 1);
+    grammar.Enable(NodeType::Mul, 1);
+    grammar.Enable(NodeType::Sub, 1);
+    grammar.Enable(NodeType::Div, 1);
     operon::rand_t random(1234);
 
     auto tree = creator(random, grammar, inputs);

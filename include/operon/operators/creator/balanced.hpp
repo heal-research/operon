@@ -62,6 +62,7 @@ public:
             node.Value = normalReal(random);
         };
 
+        //std::cout << "target len " << targetLen << "\n";
         std::vector<U> tuples;
         tuples.reserve(targetLen);
 
@@ -75,7 +76,7 @@ public:
 
         size_t openSlots = root.Arity;
 
-        for (size_t i = 0; i <= targetLen; ++i)
+        for (size_t i = 0; i < tuples.size(); ++i)
         {
             auto [node, nodeDepth, childIndex] = tuples[i];
             auto childDepth = nodeDepth + 1;
