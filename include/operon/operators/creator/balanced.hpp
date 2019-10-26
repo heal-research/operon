@@ -18,7 +18,7 @@
  */
 
 #ifndef BALANCED_TREE_CREATOR_HPP
-#define BALANCED_TREE_CREATOR_HPP 
+#define BALANCED_TREE_CREATOR_HPP
 
 #include <algorithm>
 #include <execution>
@@ -50,7 +50,7 @@ public:
 
         auto [minFunctionArity, maxFunctionArity] = grammar.FunctionArityLimits();
         if (minFunctionArity > 1 && targetLen % 2 == 0) {
-            targetLen = std::bernoulli_distribution(0.5)(random) ? targetLen-1 : targetLen+1;
+            targetLen = std::bernoulli_distribution(0.5)(random) ? targetLen - 1 : targetLen + 1;
         }
 
         std::uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1);
@@ -70,25 +70,24 @@ public:
         auto minArity = std::min(minFunctionArity, targetLen);
         auto maxArity = std::min(maxFunctionArity, targetLen);
 
-        auto root = grammar.SampleRandomSymbol(random, minArity, maxArity); 
+        auto root = grammar.SampleRandomSymbol(random, minArity, maxArity);
         init(root);
         tuples.emplace_back(root, 0, 1);
 
         size_t openSlots = root.Arity;
 
-        for (size_t i = 0; i < tuples.size(); ++i)
-        {
+        for (size_t i = 0; i < tuples.size(); ++i) {
             auto [node, nodeDepth, childIndex] = tuples[i];
             auto childDepth = nodeDepth + 1;
 
-            for (int j = 0; j < node.Arity; ++j)
-            {
-                maxArity = childDepth == maxDepth - 1 ? 0 : std::min(maxFunctionArity, targetLen-openSlots);
+            for (int j = 0; j < node.Arity; ++j) {
+                maxArity = childDepth == maxDepth - 1 ? 0 : std::min(maxFunctionArity, targetLen - openSlots);
                 minArity = std::min(minFunctionArity, maxArity);
-                auto child = grammar.SampleRandomSymbol(random, minArity, maxArity); 
+                auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
                 init(child);
-                if (j == 0) std::get<2>(tuples[i]) = tuples.size();
-                tuples.emplace_back(child, childDepth, 0); 
+                if (j == 0)
+                    std::get<2>(tuples[i]) = tuples.size();
+                tuples.emplace_back(child, childDepth, 0);
                 openSlots += child.Arity;
             }
         }
@@ -106,13 +105,12 @@ private:
     {
         int j = tuples.size();
         std::vector<Node> postfix(j);
-        std::function<void(const U&)> add = [&](const U& t) 
-        {
+        std::function<void(const U&)> add = [&](const U& t) {
             auto [node, nodeDepth, nodeChildIndex] = t;
-            postfix[--j] = node; 
-            if (node.IsLeaf()) return;
-            for (size_t i = nodeChildIndex; i < nodeChildIndex + node.Arity; ++i)
-            {
+            postfix[--j] = node;
+            if (node.IsLeaf())
+                return;
+            for (size_t i = nodeChildIndex; i < nodeChildIndex + node.Arity; ++i) {
                 add(tuples[i]);
             }
         };
