@@ -34,9 +34,9 @@ reps = args.reps
 prefix = args.prefix
 results_path = args.out
 
-population_size = [ 1000, 10000, 100000 ]
+population_size = [ 1000, 5000, 10000, 50000 ]
 iteration_count = [ 0 ]
-evaluation_budget = [ 10000000 ]
+evaluation_budget = [ 1000000 ]
 recombinators = ['basic', 'plus', 'os:100', 'brood:10:10']
 selectors = ['random', 'proportional', 'tournament:5', 'tournament:10']
 
@@ -44,7 +44,8 @@ meta_header = ['Problem',
         'Pop size',
         'Iter count',
         'Eval count',
-        'Run index']
+        'Selector',
+        'Recombinator']
 
 output_header = ['Elapsed',
         'Generation', 
@@ -112,15 +113,15 @@ for pop_size, iter_count, eval_count, recombinator, selector in parameter_space:
                     "--evaluations", str(eval_count), 
                     "--population-size", str(pop_size),
                     "--generations", str(gen_count),
-                    "--selector", selector,
-                    "--recombinator", recombinator,
+                    "--selector", str(selector),
+                    "--recombinator", str(recombinator),
                     "--enable-symbols", "exp,log,sin,cos"]);
 
                 lines = list(filter(lambda x: x, output.split(b'\n')))
                 result = '\t'.join([v.decode('ascii') for v in lines[-1].split(b'\t') ])
                 logger.info('[{:#2d}/{}]\t{}\t{}'.format(j+1, reps, problem_name, result))
 
-                meta = [ problem_name, pop_size, iter_count, eval_count, j+1 ]
+                meta = [ problem_name, pop_size, iter_count, eval_count, selector, recombinator ]
                 problem_result[j] = meta  + [ np.nan if v == 'nan' else float(v) for v in lines[-1].split(b'\t') ]
 
                 for i,line in enumerate(lines):
@@ -147,7 +148,7 @@ for pop_size, iter_count, eval_count, recombinator, selector in parameter_space:
             problem_results.append(df)
                         
 df_all = pd.concat(problem_results, axis=0)
-group = df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count'])
+group = df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count', 'Selector', 'Recombinator'])
 median_all = group.median(numeric_only=False)
 q25 = group.quantile(0.25)
 q75 = group.quantile(0.75)
