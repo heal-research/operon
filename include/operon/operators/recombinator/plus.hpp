@@ -67,18 +67,16 @@ public:
         const auto& p1 = population[first];
         const auto& p2 = population[second];
 
-        auto compare = std::conditional_t<Max, std::less<>, std::greater<>>{};
+        auto compare = std::conditional_t<Max, std::less<>, std::greater<>> {};
 
         if (doCrossover) {
             // the child becomes the best of the two parents
-            if (compare(child[Idx], std::max(p1[Idx], p2[Idx])))
-            {
+            if (compare(child[Idx], std::max(p1[Idx], p2[Idx]))) {
                 child = compare(p1[Idx], p2[Idx]) ? p2 : p1;
             }
         } else if (doMutation) {
             // we have one parent
-            if (compare(child[Idx], p1[Idx]))
-            {
+            if (compare(child[Idx], p1[Idx])) {
                 child = p1;
             }
         }

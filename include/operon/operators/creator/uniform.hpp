@@ -18,7 +18,7 @@
  */
 
 #ifndef UNIFORM_TREE_CREATOR_HPP
-#define UNIFORM_TREE_CREATOR_HPP 
+#define UNIFORM_TREE_CREATOR_HPP
 
 #include <algorithm>
 #include <execution>
