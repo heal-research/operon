@@ -44,7 +44,7 @@ TEST_CASE("Sextic GPops", "[performance]")
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     size_t n = 10'000;
-    std::vector<size_t> numRows { 1000 };
+    std::vector<size_t> numRows { 5000 };
     std::vector<size_t> avgLen { 50 };
     std::vector<operon::scalar_t> results;
 
@@ -59,7 +59,6 @@ TEST_CASE("Sextic GPops", "[performance]")
         std::vector<Tree> trees(n);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
         for(auto nRows : numRows) {
-
             Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
             Range range { 0, nRows };
 
@@ -74,7 +73,7 @@ TEST_CASE("Sextic GPops", "[performance]")
             auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed() / reps);
             auto gpops = totalNodes * range.Size() * 1000.0 / elapsed.count();
-	    fmt::print("Float,{},{},{:.4e}\n", len, nRows, gpops);
+            fmt::print("Float,{},{},{:.4e}\n", len, nRows, gpops);
 
             reps = 0;
             model.start();
@@ -87,7 +86,7 @@ TEST_CASE("Sextic GPops", "[performance]")
             totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
             elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed() / reps);
             gpops = totalNodes * range.Size() * 1000.0 / elapsed.count();
-	    fmt::print("Double,{},{},{:.4e}\n", len, nRows, gpops);
+            fmt::print("Double,{},{},{:.4e}\n", len, nRows, gpops);
         }
     }
 }
@@ -214,7 +213,6 @@ TEST_CASE("Tree creation performance")
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    auto growCreator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     std::vector<Tree> trees(n);
 
@@ -227,6 +225,7 @@ TEST_CASE("Tree creation performance")
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic);
     size_t k = 0;
+    auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
     SECTION("Balanced tree creator")
     {
         k = 0;
@@ -234,7 +233,7 @@ TEST_CASE("Tree creation performance")
         BENCHMARK("Sequential")
         {
             ++k;
-            std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return growCreator(rd, grammar, inputs); });
+            std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
         };
         model.finish();
         print_performance(model.elapsed() / k);
@@ -244,7 +243,31 @@ TEST_CASE("Tree creation performance")
         BENCHMARK("Parallel")
         {
             ++k;
-            std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return growCreator(rd, grammar, inputs); });
+            std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
+        };
+        model.finish();
+        print_performance(model.elapsed() / k);
+    }
+
+    auto utc = UniformTreeCreator{ sizeDistribution, maxDepth, maxLength };
+    SECTION("Uniform tree creator")
+    {
+        k = 0;
+        model.start();
+        BENCHMARK("Sequential")
+        {
+            ++k;
+            std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return utc(rd, grammar, inputs); });
+        };
+        model.finish();
+        print_performance(model.elapsed() / k);
+
+        k = 0;
+        model.start();
+        BENCHMARK("Parallel")
+        {
+            ++k;
+            std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return utc(rd, grammar, inputs); });
         };
         model.finish();
         print_performance(model.elapsed() / k);

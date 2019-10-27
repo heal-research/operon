@@ -155,7 +155,7 @@ class ProportionalSelector : public SelectorBase<T, Idx, Max> {
 public:
     gsl::index operator()(operon::rand_t& random) const override
     {
-        std::uniform_real_distribution<double> uniformReal(0, fitness.back().first - std::numeric_limits<double>::epsilon());
+        std::uniform_real_distribution<operon::scalar_t> uniformReal(0, fitness.back().first - std::numeric_limits<double>::epsilon());
         return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), 0L), std::less {})->second;
     }
 

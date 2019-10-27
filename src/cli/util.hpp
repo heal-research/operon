@@ -76,6 +76,13 @@ std::string FormatDuration(std::chrono::duration<double> d)
     return fmt::format("{:#02d}:{:#02d}:{:#02d}.{:#03d}", h.count(), m.count(), s.count(), l.count());
 }
 
+std::string FormatBytes(size_t bytes)
+{
+    constexpr char sizes[] = " KMGT";
+    auto p = static_cast<size_t>(std::floor(std::log2(bytes) / std::log2(1024)));
+    return fmt::format("{:.2f} {}b", bytes / std::pow(1024, p), sizes[p]);
+}
+
 GrammarConfig ParseGrammarConfig(const std::string& options)
 {
     GrammarConfig config = static_cast<GrammarConfig>(0);

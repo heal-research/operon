@@ -200,6 +200,7 @@ int main(int argc, char* argv[])
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+        //auto creator = UniformTreeCreator { sizeDistribution, maxDepth, maxLength };
         auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator = MultiMutation {};
         auto onePoint = OnePointMutation {};
@@ -305,11 +306,6 @@ int main(int argc, char* argv[])
             return Evaluator::Maximization ? *maxElem : *minElem;
         };
 
-        char sizes[] = " KMGT";
-        auto bytesToSize = [&](size_t bytes) -> std::string {
-            auto p = static_cast<size_t>(std::floor(std::log2(bytes) / std::log2(1024)));
-            return fmt::format("{:.2f} {}b", bytes / std::pow(1024, p), sizes[p]);
-        };
 
         auto report = [&]() {
             auto pop = gp.Parents();
@@ -328,8 +324,8 @@ int main(int argc, char* argv[])
             auto nmseTrain = NormalizedMeanSquaredError(estimatedTrain, targetTrain);
             auto nmseTest = NormalizedMeanSquaredError(estimatedTest, targetTest);
 
-            auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
-            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<operon::scalar_t> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
+            auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
+            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
 
             auto t1 = std::chrono::high_resolution_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
