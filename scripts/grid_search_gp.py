@@ -34,7 +34,7 @@ reps = args.reps
 prefix = args.prefix
 results_path = args.out
 
-population_size = [ 1000, 5000, 10000, 50000 ]
+population_size = [ 10000 ]
 iteration_count = [ 0 ]
 evaluation_budget = [ 1000000 ]
 recombinators = ['basic', 'plus', 'os:100', 'brood:10:10']
@@ -81,7 +81,7 @@ problem_results = []
 for pop_size, iter_count, eval_count, recombinator, selector in parameter_space:
     idx = idx+1
 
-    gen_count = int(math.ceil(eval_count / pop_size))
+    gen_count = eval_count // pop_size + 1 
     
     for i,f in enumerate(data_files):
         with open(os.path.join(base_path, f), 'r') as h:
