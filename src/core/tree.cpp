@@ -194,7 +194,7 @@ size_t Tree::Level(gsl::index i) const noexcept
     gsl::index root = Length() - 1;
 
     size_t level = 0;
-    while (i < root && nodes[i].Parent != root) {
+    while (i < root) {
         i = nodes[i].Parent;
         ++level;
     }
