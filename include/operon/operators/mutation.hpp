@@ -37,13 +37,13 @@ struct MultiMutation : public MutatorBase {
     void Add(const MutatorBase& op, double prob)
     {
         operators.push_back(std::ref(op));
-        partials.push_back(partials.empty() ? prob : prob + partials.back());
+        probabilities.push_back(prob);
     }
 
 private:
     static constexpr double eps = std::numeric_limits<double>::epsilon();
     std::vector<std::reference_wrapper<const MutatorBase>> operators;
-    std::vector<double> partials;
+    std::vector<double> probabilities;
 };
 
 struct ChangeVariableMutation : public MutatorBase {
