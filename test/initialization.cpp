@@ -17,13 +17,13 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include "operators/creator.hpp"
-#include "operators/crossover.hpp"
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "core/format.hpp"
 #include "core/grammar.hpp"
 #include "core/stats.hpp"
+#include "operators/creator.hpp"
+#include "operators/crossover.hpp"
 #include <algorithm>
 #include <catch2/catch.hpp>
 #include <execution>
@@ -40,32 +40,30 @@ TEST_CASE("Sample nodes from grammar")
     size_t r = grammar.EnabledSymbols().size() + 1;
 
     const size_t nTrials = 1'000'000;
-    for (auto i = 0u; i < nTrials; ++i)
-    {
+    for (auto i = 0u; i < nTrials; ++i) {
         auto node = grammar.SampleRandomSymbol(rd, 0, 2);
         ++observed[NodeTypes::GetIndex(node.Type)];
     }
     std::transform(std::execution::unseq, observed.begin(), observed.end(), observed.begin(), [&](double v) { return v / nTrials; });
     std::vector<double> actual(NodeTypes::Count, 0);
-    for(size_t i = 0; i < observed.size(); ++i)
-    {
+    for (size_t i = 0; i < observed.size(); ++i) {
         auto nodeType = static_cast<NodeType>(1u << i);
         actual[NodeTypes::GetIndex(nodeType)] = grammar.GetFrequency(nodeType);
     }
-    auto freqSum = std::reduce(std::execution::unseq, actual.begin(), actual.end(), 0.0, std::plus{});
+    auto freqSum = std::reduce(std::execution::unseq, actual.begin(), actual.end(), 0.0, std::plus {});
     std::transform(std::execution::unseq, actual.begin(), actual.end(), actual.begin(), [&](double v) { return v / freqSum; });
     auto chi = 0.0;
-    for(auto i = 0u; i < observed.size(); ++i)
-    {
+    for (auto i = 0u; i < observed.size(); ++i) {
         auto nodeType = static_cast<NodeType>(1u << i);
-        if (!grammar.IsEnabled(nodeType)) continue;
+        if (!grammar.IsEnabled(nodeType))
+            continue;
         auto x = observed[i];
-        auto y = actual[i]; 
-        fmt::print("{:>8} observed {:.4f}, expected {:.4f}\n", Node(nodeType).Name(), x , y);
+        auto y = actual[i];
+        fmt::print("{:>8} observed {:.4f}, expected {:.4f}\n", Node(nodeType).Name(), x, y);
         chi += (x - y) * (x - y) / y;
     }
     chi *= nTrials;
-    
+
     auto criticalValue = r + 2 * std::sqrt(r);
     fmt::print("chi = {}, critical value = {}\n", chi, criticalValue);
     REQUIRE(chi <= criticalValue);
@@ -104,15 +102,17 @@ TEST_CASE("Tree initialization (balanced)")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
 
-    size_t maxDepth = 1000, maxLength = 100;
+    size_t maxDepth = 1000, 
+           minLength = 100,
+           maxLength = 100;
 
-    const size_t nTrees = 100'000;
+    const size_t nTrees = 1'000'000;
 
-    auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
+    auto sizeDistribution = std::uniform_int_distribution<size_t>(minLength, maxLength);
     //auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
     auto creator = BalancedTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    grammar.SetConfig(NodeType::Add | NodeType::Exp | NodeType::Variable);
     //operon::rand_t rd(std::random_device {}());
     operon::rand_t random(1234);
 
@@ -147,7 +147,7 @@ TEST_CASE("Tree initialization (balanced)")
     {
         Eigen::MatrixXd counts = Eigen::MatrixXd::Zero(maxLength, NodeTypes::Count);
         std::cout << "\t";
-        for(size_t i = 0; i < NodeTypes::Count; ++i) {
+        for (size_t i = 0; i < NodeTypes::Count; ++i) {
             std::cout << Node(static_cast<NodeType>(1u << i)).Name() << "\t";
         }
         std::cout << "\n";
@@ -187,14 +187,36 @@ TEST_CASE("Tree initialization (balanced)")
     SECTION("Tree length histogram")
     {
         std::vector<size_t> lengthHistogram(maxLength + 1);
-        for(auto& tree : trees)
-        {
+        for (auto& tree : trees) {
             lengthHistogram[tree.Length()]++;
         }
         fmt::print("Tree length histogram:\n");
-        for (auto i = 1u; i < lengthHistogram.size(); ++i)
-        {
+        for (auto i = 1u; i < lengthHistogram.size(); ++i) {
             fmt::print("{}\t{}\n", i, lengthHistogram[i]);
+        }
+    }
+
+    SECTION("Tree level size")
+    {
+        std::vector<double> levels;
+        size_t minlevel = 0, maxlevel = 0;
+        for (auto& tree : trees) {
+            const auto& nodes = tree.Nodes();
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                auto level = tree.Level(i);
+                minlevel = std::min(minlevel, level);
+                maxlevel = std::max(maxlevel, level);
+                if (level < levels.size()) {
+                    ++levels[level];
+                } else {
+                    levels.push_back(0);
+                }
+            }
+        }
+        fmt::print("min level: {}, max level: {}\n", minlevel, maxlevel);
+        std::transform(levels.begin(), levels.end(), levels.begin(), [&](double d) { return d / trees.size(); });
+        for (size_t i = 0; i < levels.size(); ++i) {
+            fmt::print("{} {}\n", i + 1, levels[i]);
         }
     }
 
@@ -202,15 +224,14 @@ TEST_CASE("Tree initialization (balanced)")
     {
         auto [minDep, maxDep] = std::minmax_element(trees.begin(), trees.end(), [](const auto& lhs, const auto& rhs) { return lhs.Depth() < rhs.Depth(); });
         std::vector<size_t> depthHistogram(maxDep->Depth() + 1);
-        for(auto& tree : trees)
-        {
+        for (auto& tree : trees) {
             depthHistogram[tree.Depth()]++;
         }
         fmt::print("Tree depth histogram:\n");
-        for (auto i = 0u; i < depthHistogram.size(); ++i)
-        {
+        for (auto i = 0u; i < depthHistogram.size(); ++i) {
             auto v = depthHistogram[i];
-            if (v == 0) continue;
+            if (v == 0)
+                continue;
             fmt::print("{}\t{}\n", i, depthHistogram[i]);
         }
     }
@@ -267,7 +288,7 @@ TEST_CASE("Tree initialization (uniform)")
     {
         Eigen::MatrixXd counts = Eigen::MatrixXd::Zero(maxLength, NodeTypes::Count);
         std::cout << "\t";
-        for(size_t i = 0; i < NodeTypes::Count; ++i) {
+        for (size_t i = 0; i < NodeTypes::Count; ++i) {
             std::cout << Node(static_cast<NodeType>(1u << i)).Name() << "\t";
         }
         std::cout << "\n";
@@ -307,13 +328,11 @@ TEST_CASE("Tree initialization (uniform)")
     SECTION("Tree length histogram")
     {
         std::vector<size_t> lengthHistogram(maxLength + 1);
-        for(auto& tree : trees)
-        {
+        for (auto& tree : trees) {
             lengthHistogram[tree.Length()]++;
         }
         fmt::print("Tree length histogram:\n");
-        for (auto i = 1u; i < lengthHistogram.size(); ++i)
-        {
+        for (auto i = 1u; i < lengthHistogram.size(); ++i) {
             fmt::print("{}\t{}\n", i, lengthHistogram[i]);
         }
     }
@@ -322,15 +341,14 @@ TEST_CASE("Tree initialization (uniform)")
     {
         auto [minDep, maxDep] = std::minmax_element(trees.begin(), trees.end(), [](const auto& lhs, const auto& rhs) { return lhs.Depth() < rhs.Depth(); });
         std::vector<size_t> depthHistogram(maxDep->Depth() + 1);
-        for(auto& tree : trees)
-        {
+        for (auto& tree : trees) {
             depthHistogram[tree.Depth()]++;
         }
         fmt::print("Tree depth histogram:\n");
-        for (auto i = 0u; i < depthHistogram.size(); ++i)
-        {
+        for (auto i = 0u; i < depthHistogram.size(); ++i) {
             auto v = depthHistogram[i];
-            if (v == 0) continue;
+            if (v == 0)
+                continue;
             fmt::print("{}\t{}\n", i, depthHistogram[i]);
         }
     }
@@ -341,26 +359,25 @@ TEST_CASE("Tree initialization (uniform)")
         auto oldShape = totalShape / trees.size();
         int steps = 0;
 
-        while (steps < 5) 
-        {
+        while (steps < 5) {
             std::shuffle(trees.begin(), trees.end(), random);
-            for(size_t i = 0; i < trees.size()-1; i += 2) 
-            {
-                auto j = i+1;
-                auto [x,y] = crossover.FindCompatibleSwapLocations(random, trees[i], trees[j]);
+            for (size_t i = 0; i < trees.size() - 1; i += 2) {
+                auto j = i + 1;
+                auto [x, y] = crossover.FindCompatibleSwapLocations(random, trees[i], trees[j]);
                 auto c1 = crossover.Cross(trees[i], trees[j], x, y);
                 auto c2 = crossover.Cross(trees[j], trees[i], y, x);
                 std::swap(trees[i], c1);
                 std::swap(trees[j], c2);
             }
             auto newShape = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.VisitationLength(); }) / trees.size();
-            if (newShape < oldShape) oldShape = newShape;
-            else ++steps;
+            if (newShape < oldShape)
+                oldShape = newShape;
+            else
+                ++steps;
             fmt::print("new shape: {}\n", newShape);
         }
     }
 }
-
 
 TEST_CASE("Tree depth calculation")
 {
