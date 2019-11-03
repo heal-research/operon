@@ -66,9 +66,6 @@ TEST_CASE("Selection Distribution")
     RankTournamentSelector<Ind, Idx, Max> rankedSelector(2);
     rankedSelector.Prepare(individuals);
 
-    RoundingTournamentSelector<Ind, Idx, Max> roundingSelector(2);
-    roundingSelector.Prepare(individuals);
-
     auto plotHist = [&](SelectorBase<Ind, Idx, Max>& selector)
     {
         std::vector<size_t> hist(individuals.size());
@@ -101,11 +98,6 @@ TEST_CASE("Selection Distribution")
         plotHist(rankedSelector);
     }
     
-    SECTION("Rounding Tournament Size 2")
-    {
-        plotHist(roundingSelector);
-    }
-
     SECTION("Tournament Size 3")
     {
         tournamentSelector.TournamentSize(3);
@@ -116,12 +108,6 @@ TEST_CASE("Selection Distribution")
     {
         rankedSelector.TournamentSize(3);
         plotHist(rankedSelector);
-    }
-
-    SECTION("Rounding Tournament Size 3")
-    {
-        roundingSelector.TournamentSize(3);
-        plotHist(roundingSelector);
     }
 }
 }
