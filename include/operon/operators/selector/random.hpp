@@ -17,11 +17,28 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef SELECTION_HPP
-#define SELECTION_HPP
+#ifndef RANDOM_SELECTOR_HPP
+#define RANDOM_SELECTOR_HPP
 
-#include "selector/proportional.hpp"
-#include "selector/random.hpp"
-#include "selector/tournament.hpp"
+#include <algorithm>
+#include <execution>
+#include <random>
+#include <vector>
+
+#include "core/operator.hpp"
+#include "gsl/span"
+
+namespace Operon {
+template <typename T, gsl::index Idx, bool Max>
+class RandomSelector : public SelectorBase<T, Idx, Max> {
+public:
+    gsl::index operator()(operon::rand_t& random) const override
+    {
+        std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
+        return uniformInt(random);
+    }
+};
+}
 
 #endif
+
