@@ -115,6 +115,18 @@ public:
         std::for_each(executionPolicy, indices.begin(), indices.end(), create);
         std::for_each(executionPolicy, parents.begin(), parents.end(), evaluate);
 
+        // produce some offspring
+        auto iterate = [&](gsl::index i) {
+            rndlocal = operon::rand_t {seeds[i]};
+
+            while (!(terminate = recombinator.Terminate())) {
+                if (auto recombinant = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability); recombinant.has_value()) {
+                    offspring[i] = std::move(recombinant.value());
+                    return;
+                }
+            }
+        };
+
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
         for (generation = 0; generation < config.Generations; ++generation) {
             // get some new seeds
@@ -139,18 +151,6 @@ public:
 
             offspring[0] = *best;
             recombinator.Prepare(parents);
-
-            // produce some offspring
-            auto iterate = [&](gsl::index i) {
-                rndlocal = operon::rand_t {seeds[i]};
-
-                while (!(terminate = recombinator.Terminate())) {
-                    if (auto recombinant = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability); recombinant.has_value()) {
-                        offspring[i] = std::move(recombinant.value());
-                        return;
-                    }
-                }
-            };
             std::for_each(executionPolicy, indices.cbegin() + 1, indices.cend(), iterate);
             // we check for empty offspring (in case the recombinator terminated early) and fill them with the parents
             for (auto i : indices) {

@@ -337,14 +337,21 @@ int main(int argc, char* argv[])
                 0U,
                 std::plus<operon::scalar_t> {}, [](const auto& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); });
 
+            auto off = gp.Offspring();
+            totalMemory += std::transform_reduce(std::execution::par_unseq,
+                off.begin(),
+                off.end(),
+                0U,
+                std::plus<operon::scalar_t> {}, [](const auto& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); });
+
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, nmseTrain, nmseTest);
             fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
-            fmt::print("{}\n", 2 * totalMemory); // times 2 because internally we use two populations
+            fmt::print("{}\n", totalMemory); // times 2 because internally we use two populations
         };
 
         gp.Run(random, report);
-//        fmt::print("{}\n", TreeFormatter::Format(getBest(gp.Parents()).Genotype, *dataset));
+        //fmt::print("{}\n", InfixFormatter::Format(getBest(gp.Parents()).Genotype, *dataset));
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);
