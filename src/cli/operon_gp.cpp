@@ -82,6 +82,7 @@ int main(int argc, char* argv[])
     config.Iterations = result["iterations"].as<size_t>();
     config.CrossoverProbability = result["crossover-probability"].as<operon::scalar_t>();
     config.MutationProbability = result["mutation-probability"].as<operon::scalar_t>();
+    config.Seed = std::random_device{}();
 
     // parse remaining config options
     Range trainingRange;
@@ -91,7 +92,6 @@ int main(int argc, char* argv[])
     std::string target;
     bool showGrammar = false;
     auto threads = tbb::task_scheduler_init::default_num_threads();
-    operon::rand_t::result_type seed = std::random_device {}();
     GrammarConfig grammarConfig = Grammar::Arithmetic;
 
     auto maxLength = result["maxlength"].as<size_t>();
@@ -287,7 +287,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        operon::rand_t random(seed);
+        operon::rand_t random(config.Seed);
         tbb::task_scheduler_init init(threads);
 
         auto t0 = std::chrono::high_resolution_clock::now();

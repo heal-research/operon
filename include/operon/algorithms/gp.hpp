@@ -121,7 +121,7 @@ public:
 
             while (!(terminate = recombinator.Terminate())) {
                 if (auto recombinant = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability); recombinant.has_value()) {
-                    offspring[i] = std::move(recombinant.value());
+                    std::swap(offspring[i], recombinant.value());
                     return;
                 }
             }
