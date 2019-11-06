@@ -27,6 +27,7 @@ struct GeneticAlgorithmConfig {
     size_t Evaluations;
     size_t Iterations;
     size_t PopulationSize;
+    size_t PoolSize;
     double CrossoverProbability;
     double MutationProbability;
     size_t Seed;
