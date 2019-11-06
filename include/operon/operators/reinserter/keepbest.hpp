@@ -39,7 +39,7 @@ class KeepBestReinserter : public ReinserterBase<T, Idx, Max> {
                     // if pool individual better than pop individual
                     pop[j++] = std::move(pool[i++]);
                 } else {
-                    ++i;
+                    ++j;
                 }
             }
         }

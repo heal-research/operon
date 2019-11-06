@@ -34,17 +34,21 @@ reps = args.reps
 prefix = args.prefix
 results_path = args.out
 
-population_size = [ 10000 ]
+population_size = [ 1000 ]
+pool_size = [ 100, 500, 1000 ]
 iteration_count = [ 0 ]
 evaluation_budget = [ 1000000 ]
-recombinators = ['basic', 'plus', 'os:100', 'brood:10:10']
-selectors = ['random', 'proportional', 'tournament:5', 'tournament:10']
+recombinators = ['basic', 'os:100']
+selectors =['tournament:5'] 
+reinserters = ['replace-worst', 'keep-best']
 
 meta_header = ['Problem', 
         'Pop size',
+        'Pool size',
         'Iter count',
         'Eval count',
         'Selector',
+        'Reinserter',
         'Recombinator']
 
 output_header = ['Elapsed',
@@ -62,7 +66,7 @@ output_header = ['Elapsed',
 
 header = meta_header + output_header
 
-parameter_space = list(itertools.product(population_size, iteration_count, evaluation_budget, recombinators, selectors))
+parameter_space = list(itertools.product(population_size, pool_size, iteration_count, evaluation_budget, recombinators, selectors, reinserters))
 total_configurations = len(parameter_space)
 all_files = list(os.listdir(data_path)) if os.path.isdir(data_path) else [ os.path.basename(data_path) ]
 data_files = [ f for f in all_files if f.endswith('.json') ]
@@ -78,7 +82,7 @@ total_idx = reps * len(parameter_space) * data_count
 
 problem_results = []
 
-for pop_size, iter_count, eval_count, recombinator, selector in parameter_space:
+for pop_size, pol_size, iter_count, eval_count, recombinator, selector, reinserter in parameter_space:
     idx = idx+1
 
     gen_count = eval_count // pop_size + 1 
@@ -96,12 +100,12 @@ for pop_size, iter_count, eval_count, recombinator, selector in parameter_space:
             test_end       = test_rows['end']
             problem_name   = metadata['name']
             problem_csv    = metadata['filename']
-            config_str     = 'Configuration [{}/{}]\tpopulation size: {}\titerations: {}\tevaluation budget: {}\tselector: {}\trecombinator: {}'.format(idx, total_configurations, pop_size, iter_count, eval_count, selector, recombinator)
+            config_str     = 'Configuration [{}/{}]\tpopulation size: {}\tpool size: {}\titerations: {}\tevaluation budget: {}\tselector: {}\trecombinator: {}\treinserter: {}'.format(idx, total_configurations, pop_size, pol_size, iter_count, eval_count, selector, recombinator, reinserter)
             problem_str    = 'Problem [{}/{}]\t{}\tRows: {}\tTarget: {}\tRepetitions: {}'.format(i+1, data_count, problem_name, training_rows, target, reps)
             logger.info(fg.MAGENTA + config_str)
             logger.info(fg.MAGENTA + problem_str)
 
-            results_file   = os.path.join(results_path, '{}_{}_{}_{}_{}_{}_{}.xlsx'.format(prefix, problem_name, pop_size, iter_count, eval_count, selector, recombinator))
+            results_file   = os.path.join(results_path, '{}_{}_{}_{}_{}_{}_{}_{}_{}.xlsx'.format(prefix, problem_name, pop_size, pol_size, iter_count, eval_count, selector, recombinator, reinserter))
 
             if os.path.exists(results_file):
                 continue
@@ -117,16 +121,18 @@ for pop_size, iter_count, eval_count, recombinator, selector in parameter_space:
                     "--iterations", str(iter_count), 
                     "--evaluations", str(eval_count), 
                     "--population-size", str(pop_size),
+                    "--pool-size", str(pol_size),
                     "--generations", str(gen_count),
                     "--selector", str(selector),
                     "--recombinator", str(recombinator),
+                    "--reinserter", str(reinserter),
                     "--enable-symbols", "exp,log,sin,cos"]);
 
                 lines = list(filter(lambda x: x, output.split(b'\n')))
                 result = '\t'.join([v.decode('ascii') for v in lines[-1].split(b'\t') ])
                 logger.info('[{:#2d}/{}]\t{}\t{}'.format(j+1, reps, problem_name, result))
 
-                meta = [ problem_name, pop_size, iter_count, eval_count, selector, recombinator ]
+                meta = [ problem_name, pop_size, pol_size, iter_count, eval_count, selector, recombinator, reinserter ]
                 problem_result[j] = meta  + [ np.nan if v == 'nan' else float(v) for v in lines[-1].split(b'\t') ]
 
                 for i,line in enumerate(lines):
@@ -153,7 +159,7 @@ for pop_size, iter_count, eval_count, recombinator, selector in parameter_space:
             problem_results.append(df)
                         
 df_all = pd.concat(problem_results, axis=0)
-group = df_all.groupby(['Problem', 'Pop size', 'Iter count', 'Eval count', 'Selector', 'Recombinator'])
+group = df_all.groupby(['Problem', 'Pop size', 'Pool size', 'Iter count', 'Eval count', 'Selector', 'Recombinator', 'Reinserter'])
 median_all = group.median(numeric_only=False)
 q25 = group.quantile(0.25)
 q75 = group.quantile(0.75)

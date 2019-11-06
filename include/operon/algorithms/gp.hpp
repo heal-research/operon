@@ -86,8 +86,6 @@ public:
         auto& problem      = GetProblem();
         auto& grammar      = problem.GetGrammar();
         auto targetValues  = problem.TargetValues();
-
-        std::cout << "pool size: " << config.PoolSize << "\n";
         // easier to work with indices
         std::vector<gsl::index> indices(std::max(config.PopulationSize, config.PoolSize));
         std::iota(indices.begin(), indices.end(), 0L);
