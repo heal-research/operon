@@ -204,7 +204,6 @@ int main(int argc, char* argv[])
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
-        //auto creator = UniformTreeCreator { sizeDistribution, maxDepth, maxLength };
         auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator = MultiMutation {};
         auto onePoint = OnePointMutation {};
@@ -257,8 +256,6 @@ int main(int argc, char* argv[])
             auto tokens = Split(value, ':');
             if (tokens[0] == "basic") {
                 recombinator.reset(new BasicRecombinator(evaluator, *selector, crossover, mutator));
-            } else if (tokens[0] == "plus") {
-                recombinator.reset(new PlusRecombinator(evaluator, *selector, crossover, mutator));
             } else if (tokens[0] == "brood") {
                 size_t broodSize = 10, broodTournamentSize = 2;
                 if (tokens.size() > 1) {
@@ -362,7 +359,7 @@ int main(int argc, char* argv[])
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, nmseTrain, nmseTest);
             fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
-            fmt::print("{}\n", totalMemory); // times 2 because internally we use two populations
+            fmt::print("{}\n", totalMemory); 
         };
 
         gp.Run(random, report);

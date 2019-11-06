@@ -155,14 +155,7 @@ public:
             offspring[0] = *best;
             recombinator.Prepare(parents);
             std::for_each(executionPolicy, indices.cbegin() + 1, indices.cbegin() + config.PoolSize, iterate);
-            // we check for empty offspring (in case the recombinator terminated early) and fill them with the parents
-//            for (size_t i = 0; i < config.PoolSize; ++i) {
-//                if (offspring[i].Genotype.Nodes().empty()) {
-//                    offspring[i] = parents[i];
-//                }
-//            }
-            // the offspring become the parents
-            //parents.swap(offspring);
+            // merge pool back into pop
             reinserter(random, parents, offspring);
         }
     }
