@@ -83,6 +83,10 @@ protected:
     mutable gsl::span<const T> population;
 };
 
+template <typename T, gsl::index Idx, bool Max>
+class ReinserterBase : public OperatorBase<void, std::vector<T>&, std::vector<T>&> {
+};
+
 template <typename T>
 class EvaluatorBase : public OperatorBase<operon::scalar_t, T&> {
     // some fitness measures are relative to the whole population (eg. diversity)

@@ -35,6 +35,8 @@
 #include "operators/mutation.hpp"
 #include "operators/recombinator.hpp"
 #include "operators/selection.hpp"
+#include "operators/reinserter/keepbest.hpp"
+#include "operators/reinserter/replaceworst.hpp"
 #include "stat/linearscaler.hpp"
 
 #include "util.hpp"
@@ -51,6 +53,7 @@ int main(int argc, char* argv[])
         ("test", "Test range specified as start:end", cxxopts::value<std::string>())
         ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
         ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))
+        ("pool-size", "Recombination pool size (how many generated offspring per generation)", cxxopts::value<size_t>()->default_value("1000"))
         ("seed", "Random number seed", cxxopts::value<operon::rand_t::result_type>()->default_value("0"))
         ("generations", "Number of generations", cxxopts::value<size_t>()->default_value("1000"))
         ("evaluations", "Evaluation budget", cxxopts::value<size_t>()->default_value("1000000"))
@@ -62,6 +65,7 @@ int main(int argc, char* argv[])
         ("mutation-probability", "The probability to apply mutation", cxxopts::value<operon::scalar_t>()->default_value("0.25"))
         ("selector", "Selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
         ("recombinator", "Recombinator operator, with optional parameters separated by : (eg --recombinator brood:10:10)", cxxopts::value<std::string>())
+        ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>())
         ("enable-symbols", "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
         ("disable-symbols", "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
         ("show-grammar", "Show grammar (primitive set) used by the algorithm")
@@ -78,6 +82,7 @@ int main(int argc, char* argv[])
     GeneticAlgorithmConfig config;
     config.Generations = result["generations"].as<size_t>();
     config.PopulationSize = result["population-size"].as<size_t>();
+    config.PoolSize = result["pool-size"].as<size_t>();
     config.Evaluations = result["evaluations"].as<size_t>();
     config.Iterations = result["iterations"].as<size_t>();
     config.CrossoverProbability = result["crossover-probability"].as<operon::scalar_t>();
@@ -122,8 +127,6 @@ int main(int argc, char* argv[])
             }
             if (key == "maxdepth") {
                 maxDepth = kv.as<size_t>();
-            }
-            if (key == "recombinator") {
             }
             if (key == "enable-symbols") {
                 auto mask = ParseGrammarConfig(value);
@@ -196,6 +199,7 @@ int main(int argc, char* argv[])
         using Ind = Individual<1>;
         using Evaluator = RSquaredEvaluator<Ind>;
         using Selector = SelectorBase<Ind, idx, Evaluator::Maximization>;
+        using Reinserter = ReinserterBase<Ind, idx, Evaluator::Maximization>;
         using Recombinator = RecombinatorBase<Evaluator, Selector, SubtreeCrossover, MultiMutation>;
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
@@ -286,13 +290,24 @@ int main(int argc, char* argv[])
                 recombinator.reset(ptr);
             }
         }
+        std::unique_ptr<Reinserter> reinserter;
+        if (result.count("reinserter") == 0) {
+            reinserter.reset(new ReplaceWorstReinserter<Ind, idx, Evaluator::Maximization>());
+        } else {
+            auto value = result["reinserter"].as<std::string>();
+            if (value == "keep-best") {
+                reinserter.reset(new KeepBestReinserter<Ind, idx, Evaluator::Maximization>());
+            } else if (value == "replace-worst") {
+                reinserter.reset(new ReplaceWorstReinserter<Ind, idx, Evaluator::Maximization>());
+            }
+        }
 
         operon::rand_t random(config.Seed);
         tbb::task_scheduler_init init(threads);
 
         auto t0 = std::chrono::high_resolution_clock::now();
-        Expects(recombinator);
-        GeneticProgrammingAlgorithm gp { problem, config, creator, *recombinator };
+
+        GeneticProgrammingAlgorithm gp { problem, config, creator, *recombinator, *reinserter };
 
         auto targetValues = problem.TargetValues();
         auto trainingRange = problem.TrainingRange();
@@ -301,15 +316,22 @@ int main(int argc, char* argv[])
         auto targetTest = targetValues.subspan(testRange.Start(), testRange.Size());
 
         // some boilerplate for reporting results
-        auto getBest = [&](const gsl::span<const Ind> pop) {
+        auto getBest = [&](const gsl::span<const Ind> pop) -> Ind {
             auto [minElem, maxElem] = std::minmax_element(pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return lhs.Fitness[idx] < rhs.Fitness[idx]; });
             return Evaluator::Maximization ? *maxElem : *minElem;
         };
 
-
         auto report = [&]() {
             auto pop = gp.Parents();
             auto best = getBest(pop);
+            if (best.Genotype.Nodes().empty()) {
+                fmt::print(stderr, "Empty individual encountered\n");
+                for (auto i = 0; i < pop.size(); ++i) {
+                    auto& p = pop[i];
+                    fmt::print("{} {} {}\n", i, p.Genotype.Nodes().size(), p[idx]);
+                }
+                exit(EXIT_FAILURE);
+            }
             auto estimatedTrain = Evaluate<operon::scalar_t>(best.Genotype, problem.GetDataset(), trainingRange);
             auto estimatedTest = Evaluate<operon::scalar_t>(best.Genotype, problem.GetDataset(), testRange);
 
@@ -330,19 +352,12 @@ int main(int argc, char* argv[])
             auto t1 = std::chrono::high_resolution_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
 
-            // calculate memory consumption
-            size_t totalMemory = std::transform_reduce(std::execution::par_unseq,
-                pop.begin(),
-                pop.end(),
-                0U,
-                std::plus<operon::scalar_t> {}, [](const auto& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); });
+            auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
 
+            // calculate memory consumption
+            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<operon::scalar_t>{}, getSize);
             auto off = gp.Offspring();
-            totalMemory += std::transform_reduce(std::execution::par_unseq,
-                off.begin(),
-                off.end(),
-                0U,
-                std::plus<operon::scalar_t> {}, [](const auto& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); });
+            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<operon::scalar_t>{}, getSize);
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, nmseTrain, nmseTest);
