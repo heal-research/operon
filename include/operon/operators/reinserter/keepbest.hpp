@@ -28,19 +28,19 @@ class KeepBestReinserter : public ReinserterBase<T, Idx, Max> {
     public:
         // keep the best |pop| individuals from pop+pool
         virtual void operator()(operon::rand_t&, std::vector<T>& pop, std::vector<T>& pool) const override {
-            std::conditional_t<Max, std::greater<>, std::less<>> comp;
+            std::conditional_t<Max, std::less<>, std::greater<>> comp;
             ExecutionPolicy ep;
             // sort the population and the recombination pool
             std::sort(ep, pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return comp(lhs[Idx], rhs[Idx]); });
             std::sort(ep, pool.begin(), pool.end(), [&](const auto& lhs, const auto& rhs) { return comp(lhs[Idx], rhs[Idx]); });
 
+            size_t count = 0u;
             for (size_t i = 0, j = 0; i < pool.size() && j < pop.size();) {
-                if (!pool[i].Genotype.Empty() && comp(pool[i][Idx], pop[j][Idx])) {
-                    // if pool individual better than pop individual
-                    pop[j++] = std::move(pool[i++]);
-                } else {
-                    ++j;
+                if (comp(pop[j][Idx], pool[i][Idx])) {
+                    pop[j++] = std::move(pool[i]);
+                    ++count;
                 }
+                ++i;
             }
         }
 };
