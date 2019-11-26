@@ -36,10 +36,11 @@ class BalancedTreeCreator : public CreatorBase {
 public:
     using U = std::tuple<Node, size_t, size_t>;
 
-    BalancedTreeCreator(T distribution, size_t depth, size_t length)
+    BalancedTreeCreator(T distribution, size_t depth, size_t length, double bias = 1.0)
         : dist(distribution.param())
         , maxDepth(depth)
         , maxLength(length)
+        , irregularityBias(bias)
     {
     }
     Tree operator()(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables) const override
@@ -62,7 +63,6 @@ public:
             node.Value = normalReal(random);
         };
 
-        //std::cout << "target len " << targetLen << "\n";
         std::vector<U> tuples;
         tuples.reserve(targetLen);
 
@@ -76,13 +76,15 @@ public:
 
         size_t openSlots = root.Arity;
 
+        std::bernoulli_distribution sampleIrregular(irregularityBias);
+
         for (size_t i = 0; i < tuples.size(); ++i) {
             auto [node, nodeDepth, childIndex] = tuples[i];
             auto childDepth = nodeDepth + 1;
 
             for (int j = 0; j < node.Arity; ++j) {
                 maxArity = childDepth == maxDepth - 1 ? 0 : std::min(maxFunctionArity, targetLen - openSlots);
-                minArity = std::min(minFunctionArity, maxArity);
+                minArity = std::min((openSlots - tuples.size() > 1 && sampleIrregular(random)) ? 0 : minFunctionArity, maxArity);
                 auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
                 init(child);
                 if (j == 0)
@@ -100,6 +102,7 @@ private:
     mutable T dist;
     size_t maxDepth;
     size_t maxLength;
+    double irregularityBias;
 
     std::vector<Node> BreadthToPostfix(const std::vector<U>& tuples) const noexcept
     {
