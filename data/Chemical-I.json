@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Chemical-I",
+        "filename": "Chemical-I.csv",
+        "formula": "",
+        "kind": "real-world",
+        "target": "Y",
+        "test_rows": {
+            "end": 711,
+            "start": 1066
+        },
+        "training_rows": {
+            "end": 711,
+            "start": 0
+        }
+    },
+    "timestamp": "Wed, 27 Nov 2019 10:50:45 +0000"
+}
