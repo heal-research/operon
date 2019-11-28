@@ -21,6 +21,7 @@
 #define DATASET_H
 
 #include "core/common.hpp"
+#include "stat/meanvariance.hpp"
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Eigen>
@@ -140,6 +141,24 @@ public:
         // generate a random permutation
         std::shuffle(perm.indices().data(), perm.indices().data() + perm.indices().size(), random);
         values = perm * values; // permute rows
+    }
+
+    void Normalize(gsl::index i, Range range) 
+    {
+        Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
+    }
+
+    void Standardize(gsl::index i, Range range) 
+    {
+        Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
+        auto segment = values.col(i).segment(range.Start(), range.Size());
+        MeanVarianceCalculator calc;
+        auto vals = gsl::span<operon::scalar_t>(segment.data(), segment.size());
+        calc.Reset();
+        calc.Add(vals);
+
+        segment = (segment.array() - calc.Mean()) / std::sqrt(calc.SampleVariance());
+        fmt::print("Mean = {} ({})\n", segment.mean(), calc.Mean());
     }
 };
 }
