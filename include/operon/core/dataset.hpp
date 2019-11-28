@@ -132,6 +132,15 @@ public:
     }
     const std::string& GetName(gsl::index index) const { return variables[index].Name; }
     const gsl::span<const Variable> Variables() const { return gsl::span<const Variable>(variables); }
+
+    void Shuffle(operon::rand_t& random) 
+    {
+        Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values.rows());
+        perm.setIdentity();
+        // generate a random permutation
+        std::shuffle(perm.indices().data(), perm.indices().data() + perm.indices().size(), random);
+        values = perm * values; // permute rows
+    }
 };
 }
 

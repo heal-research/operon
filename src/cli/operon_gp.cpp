@@ -49,6 +49,7 @@ int main(int argc, char* argv[])
 
     opts.add_options()
         ("dataset", "Dataset file name (csv) (required)", cxxopts::value<std::string>())
+        ("shuffle", "Shuffle the input data", cxxopts::value<bool>()->default_value("false"))
         ("train", "Training range specified as start:end (required)", cxxopts::value<std::string>())
         ("test", "Test range specified as start:end", cxxopts::value<std::string>())
         ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
@@ -165,7 +166,6 @@ int main(int argc, char* argv[])
             fmt::print(stderr, "{}\n{}\n", "Error: no target variable given.", opts.help());
             exit(EXIT_FAILURE);
         }
-
         if (result.count("train") == 0) {
             trainingRange = { 0, 2 * dataset->Rows() / 3 }; // by default use 66% of the data as training
         }
@@ -300,6 +300,12 @@ int main(int argc, char* argv[])
         }
 
         operon::rand_t random(config.Seed);
+        auto shuffleData = result["shuffle"].as<bool>();
+        if (shuffleData) 
+        {
+            problem.GetDataset().Shuffle(random);
+        }
+
         tbb::task_scheduler_init init(threads);
 
         auto t0 = std::chrono::high_resolution_clock::now();
