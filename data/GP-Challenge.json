@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "GP-Challenge",
+        "filename": "GP-Challenge.csv",
+        "formula": "",
+        "kind": "real-world",
+        "target": "energy",
+        "test_rows": {
+            "end": 0,
+            "start": 5000
+        },
+        "training_rows": {
+            "end": 5000,
+            "start": 82966
+        }
+    },
+    "timestamp": "Thu, 28 Nov 2019 11:00:23 +0000"
+}

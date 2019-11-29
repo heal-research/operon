@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Concrete Compressive Strength",
+        "filename": "Concrete.csv",
+        "formula": "",
+        "kind": "real-world",
+        "target": "Y",
+        "test_rows": {
+            "end": 1000,
+            "start": 500 
+        },
+        "training_rows": {
+            "end": 500,
+            "start": 0
+        }
+    },
+    "timestamp": "Fri, 29 Nov 2019 15:39:26 +0000"
+}
