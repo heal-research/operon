@@ -50,6 +50,7 @@ int main(int argc, char* argv[])
     opts.add_options()
         ("dataset", "Dataset file name (csv) (required)", cxxopts::value<std::string>())
         ("shuffle", "Shuffle the input data", cxxopts::value<bool>()->default_value("false"))
+        ("standardize", "Standardize the training partition (zero mean, unit variance)", cxxopts::value<bool>()->default_value("false"))
         ("train", "Training range specified as start:end (required)", cxxopts::value<std::string>())
         ("test", "Test range specified as start:end", cxxopts::value<std::string>())
         ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
@@ -300,10 +301,13 @@ int main(int argc, char* argv[])
         }
 
         operon::rand_t random(config.Seed);
-        auto shuffleData = result["shuffle"].as<bool>();
-        if (shuffleData) 
+        if (result["shuffle"].as<bool>()) 
         {
             problem.GetDataset().Shuffle(random);
+        }
+        if (result["standardize"].as<bool>())
+        {
+            problem.StandardizeData(problem.TrainingRange());
         }
 
         tbb::task_scheduler_init init(threads);
@@ -349,6 +353,9 @@ int main(int argc, char* argv[])
             auto nmseTrain = NormalizedMeanSquaredError(estimatedTrain, targetTrain);
             auto nmseTest = NormalizedMeanSquaredError(estimatedTest, targetTest);
 
+            auto rmseTrain = RootMeanSquaredError(estimatedTrain, targetTrain);
+            auto rmseTest = RootMeanSquaredError(estimatedTest, targetTest);
+
             auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
             auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
 
@@ -363,7 +370,7 @@ int main(int argc, char* argv[])
             totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<operon::scalar_t>{}, getSize);
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
-            fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, nmseTrain, nmseTest);
+            fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, nmseTrain, nmseTest, rmseTrain, rmseTest);
             fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
             fmt::print("{}\n", totalMemory); 
         };

@@ -34,11 +34,9 @@ class KeepBestReinserter : public ReinserterBase<T, Idx, Max> {
             std::sort(ep, pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return comp(lhs[Idx], rhs[Idx]); });
             std::sort(ep, pool.begin(), pool.end(), [&](const auto& lhs, const auto& rhs) { return comp(lhs[Idx], rhs[Idx]); });
 
-            size_t count = 0u;
             for (size_t i = 0, j = 0; i < pool.size() && j < pop.size();) {
                 if (comp(pop[j][Idx], pool[i][Idx])) {
                     pop[j++] = std::move(pool[i]);
-                    ++count;
                 }
                 ++i;
             }
@@ -47,3 +45,4 @@ class KeepBestReinserter : public ReinserterBase<T, Idx, Max> {
 } // namespace operon
 
 #endif
+

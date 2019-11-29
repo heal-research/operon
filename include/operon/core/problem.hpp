@@ -63,6 +63,13 @@ public:
 
     Solution CreateSolution(const Tree&) const;
 
+    void StandardizeData(Range range)
+    {
+        for (const auto& var : inputVariables) {
+            dataset.Standardize(var.Index, range);
+        }
+    }
+
 private:
     Dataset dataset;
     Grammar grammar;

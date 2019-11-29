@@ -138,7 +138,7 @@ Tree& Tree::Sort(bool strict)
         }
         transform(sBegin, sEnd, back_inserter(hashes), [](const Node& x) { return x.CalculatedHashValue; });
         hashes.push_back(s.HashValue);
-        s.CalculatedHashValue = xxh::xxhash<64>(hashes);
+        s.CalculatedHashValue = xxh::xxhash3<64>(hashes);
         hashes.clear();
     }
     return this->UpdateNodes();
