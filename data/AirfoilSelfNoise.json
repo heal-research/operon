@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Airfoil Self-Noise",
+        "filename": "AirfoilSelfNoise.csv",
+        "formula": "",
+        "kind": "real-world",
+        "target": "Y",
+        "test_rows": {
+            "end": 1503,
+            "start": 1000
+        },
+        "training_rows": {
+            "end": 1000,
+            "start": 0
+        }
+    },
+    "timestamp": "Fri, 29 Nov 2019 13:48:21 +0000"
+}
