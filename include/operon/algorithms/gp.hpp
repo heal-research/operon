@@ -93,8 +93,6 @@ public:
         std::vector<operon::rand_t::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
 
-        // flag to signal algorithm termination
-        std::atomic_bool terminate = false;
 
         const auto& inputs = problem.InputVariables();
 
@@ -116,6 +114,8 @@ public:
         std::for_each(executionPolicy, indices.begin(), indices.begin() + config.PopulationSize, create);
         std::for_each(executionPolicy, parents.begin(), parents.end(), evaluate);
 
+        // flag to signal algorithm termination
+        std::atomic_bool terminate = false;
         // produce some offspring
         auto iterate = [&](gsl::index i) {
             operon::rand_t rndlocal{seeds[i]};
@@ -130,15 +130,11 @@ public:
 
         std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
         for (generation = 0; generation < config.Generations; ++generation) {
-            if (report) {
-                std::invoke(report);
-            }
-
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
 
             // preserve one elite
-            auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [=](const auto& lhs, const auto& rhs) { return lhs.Fitness[Idx] < rhs.Fitness[Idx]; });
+            auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [=](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; });
             auto best = Max ? maxElem : minElem;
 
             // this assumes fitness is in [0, 1]
@@ -146,12 +142,18 @@ public:
                 terminate = true;
             }
 
+            if (report) {
+                std::invoke(report);
+            }
+
+
             if (terminate) {
                 return;
             }
 
             offspring[0] = *best;
             recombinator.Prepare(parents);
+            // we always allow one elite (maybe this should be more configurable?)
             std::for_each(executionPolicy, indices.cbegin() + 1, indices.cbegin() + config.PoolSize, iterate);
             // merge pool back into pop
             reinserter(random, parents, offspring);

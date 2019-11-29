@@ -148,6 +148,7 @@ public:
         Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
     }
 
+    // standardize column i using mean and stddev calculated over the specified range
     void Standardize(gsl::index i, Range range) 
     {
         Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
@@ -157,8 +158,8 @@ public:
         calc.Reset();
         calc.Add(vals);
 
-        segment = (segment.array() - calc.Mean()) / std::sqrt(calc.SampleVariance());
-        fmt::print("Mean = {} ({})\n", segment.mean(), calc.Mean());
+        //segment = (segment.array() - calc.Mean()) / std::sqrt(calc.SampleVariance());
+        values.col(i) = (values.col(i).array() - calc.Mean()) / calc.StandardDeviation();
     }
 };
 }
