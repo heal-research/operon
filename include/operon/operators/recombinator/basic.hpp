@@ -42,7 +42,6 @@ public:
             return std::nullopt;
 
         auto population = this->Selector().Population();
-        auto max = operon::scalar::max();
 
         auto first = this->selector(random);
         T child;
@@ -58,11 +57,8 @@ public:
                 : this->mutator(random, population[first].Genotype);
         }
 
-        auto eval = this->evaluator(random, child);
-        auto f = TEvaluator::Maximization ? 1 - eval : eval;
-        if (!std::isfinite(f)) {
-            f = max;
-        }
+        auto f = this->evaluator(random, child);
+        if (!std::isfinite(f)) { f = operon::scalar::max(); }
         child[TSelector::SelectableIndex] = f;
         return std::make_optional(child);
     }

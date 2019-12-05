@@ -23,19 +23,20 @@
 #include "core/eval.hpp"
 #include "core/metrics.hpp"
 #include "core/operator.hpp"
-#include "stat/pearson.hpp"
 #include "stat/meanvariance.hpp"
+#include "stat/pearson.hpp"
 
 namespace Operon {
 template <typename T>
-class NormalizedMeanSquaredErrorEvaluator : public EvaluatorBase<T, false> {
+class NormalizedMeanSquaredErrorEvaluator : public EvaluatorBase<T> {
 public:
     NormalizedMeanSquaredErrorEvaluator(Problem& problem)
-        : EvaluatorBase<T, false>(problem)
+        : EvaluatorBase<T>(problem)
     {
     }
 
-    operon::scalar_t operator()(operon::rand_t&, T& ind) const
+    typename NormalizedMeanSquaredErrorEvaluator::ReturnType
+    operator()(operon::rand_t&, T& ind) const override
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();
@@ -65,16 +66,18 @@ public:
 };
 
 template <typename T>
-class RSquaredEvaluator : public EvaluatorBase<T, true> {
+class RSquaredEvaluator : public EvaluatorBase<T> {
 public:
-    static constexpr bool Maximization = true;
+    static constexpr operon::scalar_t LowerBound = 0.0;
+    static constexpr operon::scalar_t UpperBound = 1.0;
 
     RSquaredEvaluator(Problem& problem)
-        : EvaluatorBase<T, true>(problem)
+        : EvaluatorBase<T>(problem)
     {
     }
 
-    operon::scalar_t operator()(operon::rand_t&, T& ind) const
+    typename RSquaredEvaluator::ReturnType
+    operator()(operon::rand_t&, T& ind) const
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();
@@ -91,10 +94,11 @@ public:
 
         auto estimatedValues = Evaluate<operon::scalar_t>(genotype, dataset, trainingRange);
         auto r2 = RSquared(estimatedValues, targetValues);
-        //if (!std::isfinite(r2)) {
-        //    r2 = 0;
-        //}
-        return r2;
+        if (!std::isfinite(r2)) {
+            r2 = 0;
+        }
+        std::clamp(r2, LowerBound, UpperBound);
+        return UpperBound - r2 + LowerBound;
     }
 
     void Prepare(const gsl::span<const T> pop)

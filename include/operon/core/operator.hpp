@@ -55,8 +55,8 @@ struct Individual {
 // operator base classes for two types of operators: stateless and stateful
 template <typename Ret, typename... Args>
 struct OperatorBase {
-    using return_type = Ret;
-    using argument_type = std::tuple<Args...>;
+    using ReturnType = Ret;
+    using ArgumentType = std::tuple<Args...>;
     // all operators take a random device (source of randomness) as the first parameter
     virtual Ret operator()(operon::rand_t& random, Args... args) const = 0;
 };
@@ -95,14 +95,13 @@ template <typename T, gsl::index Idx>
 class ReinserterBase : public OperatorBase<void, std::vector<T>&, std::vector<T>&> {
 };
 
-template <typename T, bool Max>
+template <typename T>
 class EvaluatorBase : public OperatorBase<operon::scalar_t, T&> {
     // some fitness measures are relative to the whole population (eg. diversity)
     // and the evaluator needs to do some preparation work using the entire pop
 public:
     static constexpr size_t DefaultLocalOptimizationIterations = 50;
     static constexpr size_t DefaultEvaluationBudget = 100'000;
-    static constexpr bool Maximization = Max;
 
     EvaluatorBase(Problem& p)
         : problem(p)

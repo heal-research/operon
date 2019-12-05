@@ -95,19 +95,17 @@ public:
 
         const auto& inputs = problem.InputVariables();
 
-        const auto worst = operon::scalar::max();
         auto create = [&](gsl::index i) {
             // create one random generator per thread
             operon::rand_t rndlocal{seeds[i]};
             parents[i].Genotype = creator(rndlocal, grammar, inputs);
-            parents[i].Fitness[Idx] = worst;
+            parents[i][Idx] = operon::scalar::max();
         };
         const auto& evaluator = recombinator.Evaluator();
         auto evaluate = [&](T& ind) {
-            auto eval = evaluator(random, ind);
-            auto fitness = TRecombinator::EvaluatorType::Maximization ? 1 - eval : eval;
-            if (!std::isfinite(fitness)) { fitness = worst; }
-            ind[Idx] = fitness;
+            auto f = evaluator(random, ind);
+            if (!std::isfinite(f)) { f = operon::scalar::max(); }
+            ind[Idx] = f;
         };
 
         ExecutionPolicy executionPolicy;
@@ -135,7 +133,7 @@ public:
             std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
 
             // preserve one elite
-            auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [=](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; });
+            auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; });
 
             auto best = minElem;
 
@@ -147,7 +145,6 @@ public:
             if (report) {
                 std::invoke(report);
             }
-
 
             if (terminate) {
                 return;

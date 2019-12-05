@@ -58,11 +58,7 @@ operon::scalar_t RSquared(gsl::span<const operon::scalar_t> x, gsl::span<const o
 {
     Expects(x.size() == y.size());
     Expects(x.size() > 0);
-    PearsonsRCalculator pcalc;
-    for(int i = 0; i < x.size(); ++i) {
-        pcalc.Add(x[i], y[i]);
-    }
-    auto r = pcalc.Correlation();
+    auto r = PearsonsRCalculator::Coefficient(x, y);
     return r * r;
 }
 } // namespace Operon

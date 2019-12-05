@@ -193,7 +193,7 @@ public:
             operon::scalar_t deltaX = xv * i - sumX;
             operon::scalar_t deltaY = yv * i - sumY;
             // Increment count first
-            operon::scalar_t oldi = i; // Convert to operon::scalar_t!
+            operon::scalar_t oldi = i;
             ++i;
             operon::scalar_t f = 1. / (i * oldi);
             // Update
