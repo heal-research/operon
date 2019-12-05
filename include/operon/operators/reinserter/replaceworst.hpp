@@ -23,7 +23,7 @@
 #include "core/operator.hpp"
 
 namespace Operon {
-template <typename T, gsl::index Idx, bool Max, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+template <typename T, gsl::index Idx, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class ReplaceWorstReinserter : public ReinserterBase<T, Idx> {
     public:
         // replace the worst individuals in pop with the best individuals from pool

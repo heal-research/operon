@@ -62,7 +62,7 @@ public:
                 : this->mutator(random, population[first].Genotype);
         }
 
-        auto f = TEvaluator::Maximization ? 1 / this->evaluator(random, child) : this->evaluator(random, child);
+        auto f = this->evaluator(random, child);
 
         if (std::isfinite(f) && f < fit) {
             child[Idx] = this->evaluator(random, child);

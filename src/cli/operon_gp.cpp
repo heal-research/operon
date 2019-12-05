@@ -290,13 +290,13 @@ int main(int argc, char* argv[])
         }
         std::unique_ptr<Reinserter> reinserter;
         if (result.count("reinserter") == 0) {
-            reinserter.reset(new ReplaceWorstReinserter<Ind, idx, Evaluator::Maximization>());
+            reinserter.reset(new ReplaceWorstReinserter<Ind, idx>());
         } else {
             auto value = result["reinserter"].as<std::string>();
             if (value == "keep-best") {
                 reinserter.reset(new KeepBestReinserter<Ind, idx>());
             } else if (value == "replace-worst") {
-                reinserter.reset(new ReplaceWorstReinserter<Ind, idx, Evaluator::Maximization>());
+                reinserter.reset(new ReplaceWorstReinserter<Ind, idx>());
             }
         }
 

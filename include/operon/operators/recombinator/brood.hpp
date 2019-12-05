@@ -68,8 +68,8 @@ public:
 
         auto eval = [&](gsl::index idx) {
             auto f = this->evaluator(random, brood[idx]);
-            if (TEvaluator::Maximization) { f = 1 / f; }
-            brood[idx].Fitness[Idx] = std::isfinite(f) ? f : operon::scalar::max();
+            if (!std::isfinite(f)) { f = operon::scalar::max(); }
+            brood[idx].Fitness[Idx] = f;
         };
 
         std::uniform_int_distribution<gsl::index> uniformInt(0, brood.size() - 1);
