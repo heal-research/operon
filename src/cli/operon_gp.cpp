@@ -199,8 +199,8 @@ int main(int argc, char* argv[])
         const gsl::index idx { 0 };
         using Ind = Individual<1>;
         using Evaluator = RSquaredEvaluator<Ind>;
-        using Selector = SelectorBase<Ind, idx, Evaluator::Maximization>;
-        using Reinserter = ReinserterBase<Ind, idx, Evaluator::Maximization>;
+        using Selector = SelectorBase<Ind, idx>;
+        using Reinserter = ReinserterBase<Ind, idx>;
         using Recombinator = RecombinatorBase<Evaluator, Selector, SubtreeCrossover, MultiMutation>;
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
@@ -220,7 +220,7 @@ int main(int argc, char* argv[])
 
         std::unique_ptr<Selector> selector;
         if (result.count("selector") == 0) {
-            selector.reset(new TournamentSelector<Individual<1>, idx, Evaluator::Maximization> { 5u });
+            selector.reset(new TournamentSelector<Individual<1>, idx> { 5u });
         } else {
             auto value = result["selector"].as<std::string>();
             auto tokens = Split(value, ':');
@@ -232,9 +232,9 @@ int main(int argc, char* argv[])
                         exit(EXIT_FAILURE);
                     }
                 }
-                selector.reset(new TournamentSelector<Ind, 0, Evaluator::Maximization> { tSize });
+                selector.reset(new TournamentSelector<Ind, 0> { tSize });
             } else if (tokens[0] == "proportional") {
-                selector.reset(new ProportionalSelector<Ind, 0, Evaluator::Maximization> {});
+                selector.reset(new ProportionalSelector<Ind, 0> {});
             } else if (tokens[0] == "rank") {
                 size_t tSize = 5;
                 if (tokens.size() > 1) {
@@ -243,9 +243,9 @@ int main(int argc, char* argv[])
                         exit(EXIT_FAILURE);
                     }
                 }
-                selector.reset(new RankTournamentSelector<Ind, 0, Evaluator::Maximization> { tSize });
+                selector.reset(new RankTournamentSelector<Ind, 0> { tSize });
             } else if (tokens[0] == "random") {
-                selector.reset(new RandomSelector<Ind, 0, Evaluator::Maximization> {});
+                selector.reset(new RandomSelector<Ind, 0> {});
             }
         }
 
@@ -294,7 +294,7 @@ int main(int argc, char* argv[])
         } else {
             auto value = result["reinserter"].as<std::string>();
             if (value == "keep-best") {
-                reinserter.reset(new KeepBestReinserter<Ind, idx, Evaluator::Maximization>());
+                reinserter.reset(new KeepBestReinserter<Ind, idx>());
             } else if (value == "replace-worst") {
                 reinserter.reset(new ReplaceWorstReinserter<Ind, idx, Evaluator::Maximization>());
             }
@@ -325,7 +325,7 @@ int main(int argc, char* argv[])
         // some boilerplate for reporting results
         auto getBest = [&](const gsl::span<const Ind> pop) -> Ind {
             auto [minElem, maxElem] = std::minmax_element(pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return lhs.Fitness[idx] < rhs.Fitness[idx]; });
-            return Evaluator::Maximization ? *maxElem : *minElem;
+            return *minElem;
         };
 
         auto report = [&]() {
@@ -339,6 +339,11 @@ int main(int argc, char* argv[])
                 }
                 exit(EXIT_FAILURE);
             }
+            //fmt::print("Qualities\n");
+            //for(const auto& ind : pop) {
+            //    fmt::print("{} ", ind[0]);
+            //}
+            //fmt::print("\n");
             auto estimatedTrain = Evaluate<operon::scalar_t>(best.Genotype, problem.GetDataset(), trainingRange);
             auto estimatedTest = Evaluate<operon::scalar_t>(best.Genotype, problem.GetDataset(), testRange);
 

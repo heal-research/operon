@@ -23,19 +23,19 @@
 #include "core/operator.hpp"
 
 namespace Operon {
-template <typename T, gsl::index Idx, bool Max, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
-class KeepBestReinserter : public ReinserterBase<T, Idx, Max> {
+template <typename T, gsl::index Idx, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+class KeepBestReinserter : public ReinserterBase<T, Idx> {
     public:
         // keep the best |pop| individuals from pop+pool
         virtual void operator()(operon::rand_t&, std::vector<T>& pop, std::vector<T>& pool) const override {
-            std::conditional_t<Max, std::less<>, std::greater<>> comp;
             ExecutionPolicy ep;
+            auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; };
             // sort the population and the recombination pool
-            std::sort(ep, pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return comp(lhs[Idx], rhs[Idx]); });
-            std::sort(ep, pool.begin(), pool.end(), [&](const auto& lhs, const auto& rhs) { return comp(lhs[Idx], rhs[Idx]); });
+            std::sort(ep, pop.begin(), pop.end(), comp);
+            std::sort(ep, pool.begin(), pool.end(), comp);
 
             for (size_t i = 0, j = 0; i < pool.size() && j < pop.size();) {
-                if (comp(pop[j][Idx], pool[i][Idx])) {
+                if (pop[j][Idx] > pool[i][Idx]) {
                     pop[j++] = std::move(pool[i]);
                 }
                 ++i;

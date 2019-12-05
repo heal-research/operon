@@ -30,8 +30,8 @@
 
 namespace Operon {
 
-template <typename T, gsl::index Idx, bool Max>
-class TournamentSelector : public SelectorBase<T, Idx, Max> {
+template <typename T, gsl::index Idx>
+class TournamentSelector : public SelectorBase<T, Idx> {
 public:
     TournamentSelector(size_t tSize)
         : tournamentSize(tSize)
@@ -44,7 +44,7 @@ public:
         auto best = uniformInt(random);
         for (size_t i = 1; i < tournamentSize; ++i) {
             auto curr = uniformInt(random);
-            if (comparison(this->population[best][Idx], this->population[curr][Idx])) {
+            if (this->population[best][Idx] > this->population[curr][Idx]) {
                 best = curr;
             }
         }
@@ -55,12 +55,11 @@ public:
     size_t TournamentSize() const { return tournamentSize; }
 
 private:
-    std::conditional_t<Max, std::less<>, std::greater<>> comparison;
     size_t tournamentSize;
 };
 
-template <typename T, gsl::index Idx, bool Max>
-class RankTournamentSelector : public SelectorBase<T, Idx, Max> {
+template <typename T, gsl::index Idx>
+class RankTournamentSelector : public SelectorBase<T, Idx> {
 public:
     RankTournamentSelector(size_t tSize)
         : tournamentSize(tSize)
@@ -82,10 +81,10 @@ public:
 
     void Prepare(const gsl::span<const T> pop) const override
     {
-        SelectorBase<T, Idx, Max>::Prepare(pop);
+        SelectorBase<T, Idx>::Prepare(pop);
         indices.resize(pop.size());
         std::iota(indices.begin(), indices.end(), 0);
-        std::sort(indices.begin(), indices.end(), [&](auto lhs, auto rhs) { return comparison(pop[lhs][Idx], pop[rhs][Idx]); });
+        std::sort(indices.begin(), indices.end(), [&](auto lhs, auto rhs) { return pop[lhs][Idx] < pop[rhs][Idx]; });
     }
 
     void TournamentSize(size_t size)
@@ -97,7 +96,6 @@ public:
 
 private:
     size_t tournamentSize;
-    std::conditional_t<Max, std::less<>, std::greater<>> comparison;
     mutable std::vector<size_t> indices;
 };
 

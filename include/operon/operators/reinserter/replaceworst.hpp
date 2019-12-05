@@ -24,16 +24,16 @@
 
 namespace Operon {
 template <typename T, gsl::index Idx, bool Max, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
-class ReplaceWorstReinserter : public ReinserterBase<T, Idx, Max> {
+class ReplaceWorstReinserter : public ReinserterBase<T, Idx> {
     public:
         // replace the worst individuals in pop with the best individuals from pool
         virtual void operator()(operon::rand_t&, std::vector<T>& pop, std::vector<T>& pool) const override {
             ExecutionPolicy ep;
-            std::conditional_t<Max, std::greater<>, std::less<>> comp;
+            auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; };
             if (pop.size() > pool.size()) {
-                std::sort(ep, pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return comp(lhs[Idx], rhs[Idx]); });
+                std::sort(ep, pop.begin(), pop.end(), comp);
             } else if (pop.size() < pool.size()) {
-                std::sort(ep, pool.begin(), pool.end(), [&](const auto& lhs, const auto& rhs) { return comp(lhs[Idx], rhs[Idx]); });
+                std::sort(ep, pool.begin(), pool.end(), comp);
             }
             auto offset = std::min(pop.size(), pool.size());
             std::copy_if(ep, std::make_move_iterator(pool.begin()), std::make_move_iterator(pool.begin() + offset), pop.begin() + pop.size() - offset, [](const auto& ind) { return !ind.Genotype.Empty(); });

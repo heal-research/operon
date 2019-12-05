@@ -31,15 +31,6 @@
 #include "tree.hpp"
 
 namespace Operon {
-// operator base classes for two types of operators: stateless and stateful
-template <typename Ret, typename... Args>
-struct OperatorBase {
-    using return_type = Ret;
-    using argument_type = std::tuple<Args...>;
-    // all operators take a random device (source of randomness) as the first parameter
-    virtual Ret operator()(operon::rand_t& random, Args... args) const = 0;
-};
-
 // it's useful to have a data structure holding additional attributes for a solution candidate
 // maybe we should have an array of trees here?
 template <size_t D = 1UL>
@@ -50,6 +41,24 @@ struct Individual {
 
     operon::scalar_t& operator[](gsl::index i) noexcept { return Fitness[i]; }
     operon::scalar_t operator[](gsl::index i) const noexcept { return Fitness[i]; }
+
+    // returns true if this dominates rhs 
+    inline bool operator<(const Individual& rhs) const noexcept {
+        for (size_t i = 0; i < D; ++i) {
+            if (Fitness[i] < rhs.Fitness[i]) { continue; }
+            return false;
+        }
+        return true;
+    }
+};
+
+// operator base classes for two types of operators: stateless and stateful
+template <typename Ret, typename... Args>
+struct OperatorBase {
+    using return_type = Ret;
+    using argument_type = std::tuple<Args...>;
+    // all operators take a random device (source of randomness) as the first parameter
+    virtual Ret operator()(operon::rand_t& random, Args... args) const = 0;
 };
 
 // the creator builds a new tree using the existing grammar and allowed inputs
@@ -66,12 +75,11 @@ struct MutatorBase : public OperatorBase<Tree, Tree> {
 
 // the selector a vector of individuals and returns the index of a selected individual per each call of operator()
 // this operator is meant to be a lightweight object that is initialized with a population and some other parameters on-the-fly
-template <typename T, gsl::index Idx, bool Max>
+template <typename T, gsl::index Idx>
 class SelectorBase : public OperatorBase<gsl::index> {
 public:
     using SelectableType = T;
     static constexpr gsl::index SelectableIndex = Idx;
-    static constexpr bool Maximization = Max;
 
     virtual void Prepare(const gsl::span<const T> pop) const {
         this->population = gsl::span<const T>(pop);
@@ -83,17 +91,18 @@ protected:
     mutable gsl::span<const T> population;
 };
 
-template <typename T, gsl::index Idx, bool Max>
+template <typename T, gsl::index Idx>
 class ReinserterBase : public OperatorBase<void, std::vector<T>&, std::vector<T>&> {
 };
 
-template <typename T>
+template <typename T, bool Max>
 class EvaluatorBase : public OperatorBase<operon::scalar_t, T&> {
     // some fitness measures are relative to the whole population (eg. diversity)
     // and the evaluator needs to do some preparation work using the entire pop
 public:
     static constexpr size_t DefaultLocalOptimizationIterations = 50;
     static constexpr size_t DefaultEvaluationBudget = 100'000;
+    static constexpr bool Maximization = Max;
 
     EvaluatorBase(Problem& p)
         : problem(p)
@@ -101,6 +110,7 @@ public:
     }
 
     virtual void Prepare(const gsl::span<const T> pop) = 0;
+
     size_t TotalEvaluations() const { return fitnessEvaluations + localEvaluations; }
     size_t FitnessEvaluations() const { return fitnessEvaluations; }
     size_t LocalEvaluations() const { return localEvaluations; }

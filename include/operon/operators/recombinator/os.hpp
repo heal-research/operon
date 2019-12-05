@@ -41,7 +41,6 @@ public:
         if (!(doCrossover || doMutation))
             return std::nullopt;
 
-        constexpr bool Max = TSelector::Maximization;
         constexpr gsl::index Idx = TSelector::SelectableIndex;
         auto population = this->Selector().Population();
 
@@ -54,11 +53,7 @@ public:
             auto second = this->selector(random);
             child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
 
-            if constexpr (TSelector::Maximization) {
-                fit = std::max(fit, population[second][Idx]);
-            } else {
-                fit = std::min(fit, population[second][Idx]);
-            }
+            fit = std::min(fit, population[second][Idx]);
         }
 
         if (doMutation) {
@@ -67,11 +62,10 @@ public:
                 : this->mutator(random, population[first].Genotype);
         }
 
-        std::conditional_t<Max, std::less<>, std::greater<>> comp;
+        auto f = TEvaluator::Maximization ? 1 / this->evaluator(random, child) : this->evaluator(random, child);
 
-        child[Idx] = this->evaluator(random, child);
-
-        if (std::isfinite(child[Idx]) && comp(fit, child[Idx])) {
+        if (std::isfinite(f) && f < fit) {
+            child[Idx] = this->evaluator(random, child);
             return std::make_optional(child);
         }
         return std::nullopt;
