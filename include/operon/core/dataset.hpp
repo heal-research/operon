@@ -158,7 +158,6 @@ public:
         calc.Reset();
         calc.Add(vals);
 
-        //segment = (segment.array() - calc.Mean()) / std::sqrt(calc.SampleVariance());
         values.col(i) = (values.col(i).array() - calc.Mean()) / calc.StandardDeviation();
     }
 };

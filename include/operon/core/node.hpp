@@ -97,6 +97,8 @@ struct Node {
 
     Node() : Node(NodeType::Constant) {} 
 
+    Node(Node const&) = default;
+
     explicit Node(NodeType type) noexcept
         : Node(type, static_cast<operon::hash_t>(type))
     {

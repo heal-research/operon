@@ -42,6 +42,7 @@ public:
             return std::nullopt;
 
         auto population = this->Selector().Population();
+        auto max = operon::scalar::max();
 
         auto first = this->selector(random);
         T child;
@@ -57,11 +58,12 @@ public:
                 : this->mutator(random, population[first].Genotype);
         }
 
-        auto f = this->evaluator(random, child);
-        constexpr bool Max = TSelector::Maximization;
-        constexpr gsl::index Idx = TSelector::SelectableIndex;
-        child.Fitness[Idx] = std::isfinite(f) ? f : (Max ? operon::scalar::min() : operon::scalar::max());
-
+        auto eval = this->evaluator(random, child);
+        auto f = TEvaluator::Maximization ? 1 - eval : eval;
+        if (!std::isfinite(f)) {
+            f = max;
+        }
+        child[TSelector::SelectableIndex] = f;
         return std::make_optional(child);
     }
 };

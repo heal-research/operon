@@ -29,8 +29,8 @@
 #include "gsl/span"
 
 namespace Operon {
-template <typename T, gsl::index Idx, bool Max>
-class RandomSelector : public SelectorBase<T, Idx, Max> {
+template <typename T, gsl::index Idx>
+class RandomSelector : public SelectorBase<T, Idx> {
 public:
     gsl::index operator()(operon::rand_t& random) const override
     {

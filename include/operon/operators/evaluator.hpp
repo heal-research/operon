@@ -28,12 +28,10 @@
 
 namespace Operon {
 template <typename T>
-class NormalizedMeanSquaredErrorEvaluator : public EvaluatorBase<T> {
+class NormalizedMeanSquaredErrorEvaluator : public EvaluatorBase<T, false> {
 public:
-    static constexpr bool Maximization = false;
-
     NormalizedMeanSquaredErrorEvaluator(Problem& problem)
-        : EvaluatorBase<T>(problem)
+        : EvaluatorBase<T, false>(problem)
     {
     }
 
@@ -55,7 +53,7 @@ public:
         auto estimatedValues = Evaluate<operon::scalar_t>(genotype, dataset, trainingRange);
         auto nmse = NormalizedMeanSquaredError(estimatedValues, targetValues);
         if (!std::isfinite(nmse)) {
-            nmse = std::numeric_limits<operon::scalar_t>::max();
+            nmse = operon::scalar::max();
         }
         return nmse;
     }
@@ -67,12 +65,12 @@ public:
 };
 
 template <typename T>
-class RSquaredEvaluator : public EvaluatorBase<T> {
+class RSquaredEvaluator : public EvaluatorBase<T, true> {
 public:
     static constexpr bool Maximization = true;
 
     RSquaredEvaluator(Problem& problem)
-        : EvaluatorBase<T>(problem)
+        : EvaluatorBase<T, true>(problem)
     {
     }
 
@@ -93,9 +91,9 @@ public:
 
         auto estimatedValues = Evaluate<operon::scalar_t>(genotype, dataset, trainingRange);
         auto r2 = RSquared(estimatedValues, targetValues);
-        if (!std::isfinite(r2)) {
-            r2 = 0;
-        }
+        //if (!std::isfinite(r2)) {
+        //    r2 = 0;
+        //}
         return r2;
     }
 

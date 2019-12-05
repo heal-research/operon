@@ -32,7 +32,6 @@ template <typename TCreator, typename TRecombinator, typename TReinserter, typen
 class GeneticProgrammingAlgorithm {
     using T = typename TRecombinator::SelectorType::SelectableType;
     static constexpr bool Idx = TRecombinator::SelectorType::SelectableIndex;
-    static constexpr bool Max = TRecombinator::SelectorType::Maximization;
 
 private:
     std::reference_wrapper<const Problem> problem_;
@@ -96,7 +95,7 @@ public:
 
         const auto& inputs = problem.InputVariables();
 
-        const auto worst = Max ? operon::scalar::min() : operon::scalar::max();
+        const auto worst = operon::scalar::max();
         auto create = [&](gsl::index i) {
             // create one random generator per thread
             operon::rand_t rndlocal{seeds[i]};
@@ -105,8 +104,10 @@ public:
         };
         const auto& evaluator = recombinator.Evaluator();
         auto evaluate = [&](T& ind) {
-            auto fitness = evaluator(random, ind);
-            ind.Fitness[Idx] = std::isfinite(fitness) ? fitness : worst;
+            auto eval = evaluator(random, ind);
+            auto fitness = TRecombinator::EvaluatorType::Maximization ? 1 - eval : eval;
+            if (!std::isfinite(fitness)) { fitness = worst; }
+            ind[Idx] = fitness;
         };
 
         ExecutionPolicy executionPolicy;
@@ -135,10 +136,11 @@ public:
 
             // preserve one elite
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [=](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; });
-            auto best = Max ? maxElem : minElem;
+
+            auto best = minElem;
 
             // this assumes fitness is in [0, 1]
-            if ((Max && std::abs(1 - best->Fitness[Idx]) < 1e-6) || (!Max && std::abs(best->Fitness[Idx]) < 1e-6)) {
+            if (std::abs(best->Fitness[Idx]) < 1e-6) {
                 terminate = true;
             }
 

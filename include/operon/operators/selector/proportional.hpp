@@ -29,8 +29,8 @@
 #include "gsl/span"
 
 namespace Operon {
-template <typename T, gsl::index Idx, bool Max>
-class ProportionalSelector : public SelectorBase<T, Idx, Max> {
+template <typename T, gsl::index Idx>
+class ProportionalSelector : public SelectorBase<T, Idx> {
 public:
     gsl::index operator()(operon::rand_t& random) const override
     {
@@ -40,7 +40,7 @@ public:
 
     void Prepare(const gsl::span<const T> pop) const override
     {
-        SelectorBase<T, Idx, Max>::Prepare(pop);
+        SelectorBase<T, Idx>::Prepare(pop);
         Prepare();
     }
 
@@ -57,13 +57,7 @@ private:
             vmin = std::min(vmin, f);
             vmax = std::max(vmax, f);
         }
-        auto prepare = [=](auto p) {
-            auto f = p.first;
-            if constexpr (Max)
-                return std::make_pair(f - vmin, p.second);
-            else
-                return std::make_pair(vmax - f, p.second);
-        };
+        auto prepare = [=](auto p) { return std::make_pair(vmax - p.first, p.second); };
         std::transform(fitness.begin(), fitness.end(), fitness.begin(), prepare);
         std::sort(fitness.begin(), fitness.end());
         std::inclusive_scan(std::execution::seq, fitness.begin(), fitness.end(), fitness.begin(), [](auto lhs, auto rhs) { return std::make_pair(lhs.first + rhs.first, rhs.second); });
