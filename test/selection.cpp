@@ -55,18 +55,17 @@ TEST_CASE("Selection Distribution")
 
     using Ind = Individual<1>;
     constexpr gsl::index Idx = 0;
-    constexpr bool Max= true;
 
-    ProportionalSelector<Ind, Idx, Max> proportionalSelector;
+    ProportionalSelector<Ind, Idx> proportionalSelector;
     proportionalSelector.Prepare(individuals);
 
-    TournamentSelector<Ind, Idx, Max> tournamentSelector(2);
+    TournamentSelector<Ind, Idx> tournamentSelector(2);
     tournamentSelector.Prepare(individuals);
 
-    RankTournamentSelector<Ind, Idx, Max> rankedSelector(2);
+    RankTournamentSelector<Ind, Idx> rankedSelector(2);
     rankedSelector.Prepare(individuals);
 
-    auto plotHist = [&](SelectorBase<Ind, Idx, Max>& selector)
+    auto plotHist = [&](SelectorBase<Ind, Idx>& selector)
     {
         std::vector<size_t> hist(individuals.size());
 
