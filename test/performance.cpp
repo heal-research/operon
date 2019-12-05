@@ -300,7 +300,7 @@ TEST_CASE("Selection performance")
         individuals[i][0] = std::uniform_real_distribution(0.0, 1.0)(random);
     }
 
-    auto benchSelector = [&](SelectorBase<Individual<1>, 0, true>& selector) -> size_t {
+    auto benchSelector = [&](SelectorBase<Individual<1>, 0>& selector) -> size_t {
         size_t sum = 0u;
         for (size_t i = 0; i < nTrees; ++i) {
             sum += selector(random); 
@@ -310,7 +310,7 @@ TEST_CASE("Selection performance")
 
     SECTION("Tournament Selector")
     {
-        TournamentSelector<Ind, 0, true> tournamentSelector(2);
+        TournamentSelector<Ind, 0> tournamentSelector(2);
         tournamentSelector.Prepare(individuals);
         BENCHMARK("Tournament (prepare)") { tournamentSelector.Prepare(individuals);                                    };
         // unfortunately due to how Catch works we have to unroll this 
