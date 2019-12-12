@@ -42,10 +42,13 @@ struct Individual {
     operon::scalar_t& operator[](gsl::index i) noexcept { return Fitness[i]; }
     operon::scalar_t operator[](gsl::index i) const noexcept { return Fitness[i]; }
 
-    // returns true if this dominates rhs 
-    inline bool operator<(const Individual& rhs) const noexcept {
+    // returns true if this dominates rhs
+    inline bool operator<(const Individual& rhs) const noexcept
+    {
         for (size_t i = 0; i < D; ++i) {
-            if (Fitness[i] < rhs.Fitness[i]) { continue; }
+            if (Fitness[i] < rhs.Fitness[i]) {
+                continue;
+            }
             return false;
         }
         return true;
@@ -81,7 +84,8 @@ public:
     using SelectableType = T;
     static constexpr gsl::index SelectableIndex = Idx;
 
-    virtual void Prepare(const gsl::span<const T> pop) const {
+    virtual void Prepare(const gsl::span<const T> pop) const
+    {
         this->population = gsl::span<const T>(pop);
     };
 
@@ -157,7 +161,7 @@ public:
     TMutator& Mutator() const { return mutator.get(); }
     TEvaluator& Evaluator() const { return evaluator.get(); }
 
-    virtual void Prepare(gsl::span<const typename TSelector::SelectableType> pop) const 
+    virtual void Prepare(gsl::span<const typename TSelector::SelectableType> pop) const
     {
         this->Selector().Prepare(pop);
     }
@@ -173,7 +177,8 @@ protected:
 template <typename T>
 class PopulationAnalyzerBase : public OperatorBase<double, gsl::index> {
 public:
-    virtual void Prepare(const gsl::span<T> pop) = 0;
+    virtual void Prepare(gsl::span<const T> pop) = 0;
+
 };
-}
+} // namespace Operon
 #endif

@@ -23,101 +23,118 @@
 #include <Eigen/Core>
 
 #include "core/operator.hpp"
+#include "core/stats.hpp"
 #include <execution>
+#include <unordered_set>
 
 namespace Operon {
-template <typename T>
-class PopulationDiversityAnalyzer : PopulationAnalyzerBase<T> {
+template <typename T, typename Scalar = uint32_t>
+class PopulationDiversityAnalyzer final : PopulationAnalyzerBase<T> {
 public:
     double operator()(operon::rand_t&, gsl::index i) const
     {
-        return this->diversityMatrix.row(i).mean();
+        MeanVarianceCalculator calc;
+        for (const auto& ind : population) {
+            calc.Add(ind.Genotype.Length());
+        }
+        return 1 - sim.row(i).mean() / calc.Mean();
     }
 
     double HybridDiversity() const
     {
-        double mean = 0;
-        auto dim = diversityMatrix.rows();
-        for (Eigen::Index i = 0; i < dim - 1; ++i) {
-            for (Eigen::Index j = i + 1; j < dim; ++j) {
-                mean += diversityMatrix(i, j);
+        MeanVarianceCalculator calc;
+        for (Eigen::Index i = 0; i < sim.rows() - 1; ++i) {
+            for (Eigen::Index j = i + 1; j < sim.rows(); ++j) {
+                double total = population[i].Genotype.Length() + population[j].Genotype.Length();
+                auto distance = (total - sim(i, j)) / total;
+                calc.Add(distance);
             }
         }
-        return mean / (dim * (dim - 1) / 2);
+        return calc.Mean();
     }
 
     double StructuralDiversity() const
     {
-        double mean = 0;
-        auto dim = diversityMatrix.rows();
-        for (Eigen::Index i = 0; i < dim - 1; ++i) {
-            for (Eigen::Index j = i + 1; j < dim; ++j) {
-                mean += diversityMatrix(j, i);
+        MeanVarianceCalculator calc;
+        for (Eigen::Index i = 0; i < sim.rows() - 1; ++i) {
+            for (Eigen::Index j = i + 1; j < sim.rows(); ++j) {
+                double total = population[i].Genotype.Length() + population[j].Genotype.Length();
+                auto distance = (total - sim(j, i)) / total;
+                calc.Add(distance);
             }
         }
-        return mean / (dim * (dim - 1) / 2);
+        return calc.Mean();
     }
 
-    void Prepare(const gsl::span<T> pop)
+    void Prepare(gsl::span<const T> pop)
     {
-        std::vector<std::vector<operon::hash_t>> hashesHybrid(pop.size());
-        std::vector<std::vector<operon::hash_t>> hashesStruct(pop.size());
+        population = pop;
+
+        // warning: this will fail if the population size is too large
+        // (not to mention this whole analyzer will be SLOW)
+        // for large population sizes it is recommended to use the sampling analyzer
+        sim = MatrixType::Zero(pop.size(), pop.size());
+
+        std::vector<std::vector<operon::hash_t>> hybrid(pop.size());
+        std::vector<std::vector<operon::hash_t>> strukt(pop.size());
 
         std::vector<gsl::index> indices(pop.size());
         std::iota(indices.begin(), indices.end(), 0);
 
-        auto hashTree = [&](gsl::index i) {
-            auto& ind = pop[i];
-            const auto& nodes = ind.Genotype.Nodes();
-            // hybrid hashing
-            ind.Genotype.Sort(/* strict = */ true);
-            auto& hHybrid = hashesHybrid[i];
-            hHybrid.resize(nodes.size());
-            std::transform(nodes.begin(), nodes.end(), hHybrid.begin(), [](const auto& node) { return node.CalculatedHashValue; });
-            std::sort(hHybrid.begin(), hHybrid.end());
-            // structural hashing
-            ind.Genotype.Sort(/* strict = */ false);
-            auto& hStruct = hashesStruct[i];
-            hStruct.resize(nodes.size());
-            std::transform(nodes.begin(), nodes.end(), hStruct.begin(), [](const auto& node) { return node.CalculatedHashValue; });
-            std::sort(hStruct.begin(), hStruct.end());
-        };
+        // hybrid (strict) hashing
+        std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](gsl::index i) {
+            auto tree = population[i].Genotype;
+            hybrid[i] = HashTree(tree, true);
+            strukt[i] = HashTree(tree, false);
+        });
 
-        std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), hashTree);
-
-        this->diversityMatrix = Eigen::MatrixXd::Zero(pop.size(), pop.size());
-
+        // calculate intersections
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end() - 1, [&](gsl::index i) {
             for (size_t j = i + 1; j < indices.size(); ++j) {
-                diversityMatrix(i, j) = CalculateDistance(hashesHybrid[i], hashesHybrid[j]);
-                diversityMatrix(j, i) = CalculateDistance(hashesStruct[i], hashesStruct[j]);
-            };
+                sim(i, j) = Intersect(hybrid[i], hybrid[j]);
+                sim(j, i) = Intersect(strukt[i], strukt[j]);
+            }
         });
     }
 
-private:
-    Eigen::MatrixXd diversityMatrix;
-    double CalculateDistance(const std::vector<operon::hash_t>& lhs, const std::vector<operon::hash_t>& rhs)
+    static inline Scalar Intersect(const std::vector<operon::hash_t>& lhs, const std::vector<operon::hash_t>& rhs)
     {
-        size_t count = 0;
-        double total = lhs.size() + rhs.size();
+        Scalar count = 0;
 
-        for (size_t i = 0, j = 0; i < lhs.size() && j < rhs.size();) {
-            if (lhs[i] == rhs[j]) {
-                ++count;
-                ++i;
-                ++j;
-            } else if (lhs[i] < rhs[j]) {
-                ++i;
-            } else {
-                ++j;
-            }
+        if (lhs.size() < rhs.size()) { return Intersect(rhs, lhs); }
+        size_t i = 0;
+        size_t j = 0;
+
+        operon::hash_t lmax = lhs.back();
+        operon::hash_t rmax = rhs.back();
+
+        while(i < lhs.size() && j < rhs.size()) {
+            auto a  = lhs[i];
+            auto b  = rhs[j];
+            count  += a == b;
+            i      += a <= b;
+            j      += a >= b;
+
+            if (a > rmax || b > lmax) { break; }
         }
-        auto distance = (total - count) / total;
-
-        return distance;
+        return count;
     }
+
+    static inline std::vector<operon::hash_t> HashTree(Tree& tree, bool strict = true)
+    {
+        tree.Sort(strict);
+        const auto& nodes = tree.Nodes();
+        std::vector<operon::hash_t> hashes(tree.Length());
+        std::transform(nodes.begin(), nodes.end(), hashes.begin(), [](const auto& n) { return n.CalculatedHashValue; });
+        std::sort(hashes.begin(), hashes.end());
+        return hashes;
+    }
+
+private:
+    using MatrixType = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
+    MatrixType sim;
+    gsl::span<const T> population;
 };
-}
+} // namespace Operon
 
 #endif
