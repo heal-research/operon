@@ -25,12 +25,15 @@
 #include "random/sfc64.hpp"
 #include "xxhash/xxhash.hpp"
 
+#include <random>
+
 namespace Operon {
 // we always use 64 bit hash values
 namespace operon {
-    using hash_t   = xxh::hash64_t;
-    using rand_t   = Random::Sfc64;
-    using scalar_t = double;
+    constexpr uint8_t hash_bits = 64; // can be 32 or 64
+    using hash_t                = xxh::hash_t<hash_bits>;
+    using rand_t                = Random::Sfc64;
+    using scalar_t              = double;
 
     namespace scalar {
         static inline scalar_t max() 
