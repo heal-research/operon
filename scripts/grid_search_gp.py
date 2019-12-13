@@ -57,6 +57,8 @@ output_header = ['Elapsed',
         'R2 (test)',
         'NMSE (train)',
         'NMSE (test)',
+        'RMSE (train)',
+        'RMSE (test)',
         'Avg fit',
         'Avg len',
         'Fitness eval',
@@ -151,6 +153,10 @@ for pop_size, pol_size, iter_count, eval_count, recombinator, selector, reinsert
             median['NMSE (train) IQR'] = q3 - q1
             q1, q3                     = df['NMSE (test)'].quantile([0.25, 0.75])
             median['NMSE (test) IQR']  = q3 - q1
+            q1, q3                     = df['RMSE (train)'].quantile([0.25, 0.75])
+            median['RMSE (train) IQR'] = q3 - q1
+            q1, q3                     = df['RMSE (test)'].quantile([0.25, 0.75])
+            median['RMSE (test) IQR']  = q3 - q1
 
             for l in df.describe().to_string().split('\n'):
                 logger.info(fg.CYAN + l)
