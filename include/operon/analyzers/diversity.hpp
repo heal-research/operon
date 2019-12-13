@@ -100,8 +100,6 @@ public:
     static inline Scalar Intersect(const std::vector<operon::hash_t>& lhs, const std::vector<operon::hash_t>& rhs)
     {
         Scalar count = 0;
-
-        if (lhs.size() < rhs.size()) { return Intersect(rhs, lhs); }
         size_t i = 0;
         size_t j = 0;
 
