@@ -27,8 +27,10 @@
 #include "operators/selection.hpp"
 #include "operators/creator.hpp"
 #include "random/jsf.hpp"
+#include "analyzers/diversity.hpp"
 
 #include <tbb/task_scheduler_init.h>
+#include <unordered_set>
 
 namespace Operon::Test {
 
@@ -44,8 +46,8 @@ TEST_CASE("Sextic GPops", "[performance]")
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     size_t n = 10'000;
-    std::vector<size_t> numRows { 5000 };
-    std::vector<size_t> avgLen { 50 };
+    std::vector<size_t> numRows { 1000, 5000 };
+    std::vector<size_t> avgLen { 50, 100 };
     std::vector<operon::scalar_t> results;
 
     size_t maxDepth = 10000;
@@ -274,6 +276,130 @@ TEST_CASE("Tree creation performance")
     }
 }
 
+TEST_CASE("Tree hashing performance") {
+    size_t n = 100000;
+    size_t maxLength = 200;
+    size_t maxDepth = 100;
+
+    auto rd = operon::rand_t();
+    auto ds = Dataset("../data/Poly-10.csv", true);
+
+    auto target = "Y";
+    auto variables = ds.Variables();
+    std::vector<Variable> inputs;
+    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+
+    std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+
+    Grammar grammar;
+    grammar.SetConfig(Grammar::Arithmetic);
+
+    std::vector<Tree> trees(n);
+    auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+    std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
+    Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
+
+    model.start();
+    std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [](auto& t) {t.Sort(true); });
+    model.finish();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed());
+    auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+
+    fmt::print("\nElapsed: {} s, performance: {:.4e} nodes/second.\n", elapsed.count() / 1000.0, totalNodes * 1000.0 / elapsed.count());
+}
+
+TEST_CASE("Hash collisions") {
+    size_t n = 1000000;
+    size_t maxLength = 200;
+    size_t maxDepth = 100;
+
+    auto rd = operon::rand_t(1234);
+    auto ds = Dataset("../data/Poly-10.csv", true);
+
+    auto target = "Y";
+    auto variables = ds.Variables();
+    std::vector<Variable> inputs;
+    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+
+    std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+
+    Grammar grammar;
+    grammar.SetConfig(Grammar::Arithmetic);
+
+    std::vector<size_t> indices(n);
+    std::vector<operon::hash_t> seeds(n);
+    std::vector<Tree> trees(n);
+
+    auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+
+    std::iota(indices.begin(), indices.end(), 0);
+    std::generate(std::execution::unseq, seeds.begin(), seeds.end(), [&](){ return rd(); });
+    std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
+        operon::rand_t rand(seeds[i]);
+        auto tree = btc(rand, grammar, inputs);
+        tree.Sort(true);
+        return tree;
+            });
+
+    std::unordered_set<uint64_t> set64; 
+    std::unordered_set<uint32_t> set32; 
+
+    auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<>{}, [](auto& tree) { return tree.Length(); });
+
+    for(auto& tree : trees) {
+        for(auto& node : tree.Nodes()) {
+            auto h = node.CalculatedHashValue;
+            set64.insert(h);
+            //auto [it, ok] = set64.insert({h, node});
+            //if (!ok) {
+            //    std::cout << node.Name() << " " << node.Value << " === " << set64[h].Name() << " " << set64[h].Value << "\n";
+            //    //fmt::print("{} {}\n", node.Name(), node.Value);
+            //    //return;
+            //}
+            set32.insert(static_cast<uint32_t>(h & 0xFFFFFFFFLL));
+        }
+        tree.Nodes().clear();
+    }
+    double s64 = set64.size();
+    double s32 = set32.size();
+    fmt::print("total nodes: {}, {:.3f}% unique, unique 64-bit hashes: {}, unique 32-bit hashes: {}, collision rate: {:.3f}%\n", totalNodes, s64/totalNodes * 100, s64, s32, (1 - s32/s64) * 100);
+}
+
+TEST_CASE("Tree distance performance") 
+{
+    size_t n = 5000;
+    size_t maxLength = 200;
+    size_t maxDepth = 100;
+
+    auto rd = operon::rand_t(1234);
+    auto ds = Dataset("../data/Poly-10.csv", true);
+
+    auto target = "Y";
+    auto variables = ds.Variables();
+    std::vector<Variable> inputs;
+    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+
+    std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+
+    using Ind = Individual<1>;
+
+    Grammar grammar;
+    grammar.SetConfig(Grammar::Arithmetic);
+
+    std::vector<Ind> trees(n);
+    auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+    std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return Ind { btc(rd, grammar, inputs), {0.0} }; });
+    Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
+
+    PopulationDiversityAnalyzer<Ind, uint8_t> analyzer;
+    model.start();
+    analyzer.Prepare(trees);
+    fmt::print("Structural diversity: {:.3f}, hybrid diversity: {:.3f}\n", analyzer.StructuralDiversity(), analyzer.HybridDiversity());
+    model.finish();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed());
+    fmt::print("\nElapsed: {} s, performance: {:.4e} pairwise distance calculations per second.\n", elapsed.count() / 1000.0, n * (n-1) / 2 * 1000.0 / elapsed.count());
+}
+
 TEST_CASE("Selection performance")
 {
     size_t nTrees = 10'000;
@@ -335,40 +461,6 @@ TEST_CASE("Selection performance")
         BENCHMARK("Tournament size 20")   { tournamentSelector.TournamentSize(20); benchSelector(tournamentSelector);   };
     }
 
-//    SECTION("Tournament Selector (optimized)")
-//    {
-//        RankTournamentSelector<Ind, 0, true> rankedSelector(2);
-//        rankedSelector.Prepare(individuals);
-//        BENCHMARK("Tournament (prepare)") { rankedSelector.Prepare(individuals);                                   };
-//        // unfortunately due to how Catch works we have to unroll this 
-//        BENCHMARK("Tournament size 2")    { rankedSelector.TournamentSize(2); benchSelector(rankedSelector);  };
-//        BENCHMARK("Tournament size 3")    { rankedSelector.TournamentSize(3); benchSelector(rankedSelector);  };
-//        BENCHMARK("Tournament size 4")    { rankedSelector.TournamentSize(4); benchSelector(rankedSelector);  };
-//        BENCHMARK("Tournament size 5")    { rankedSelector.TournamentSize(5); benchSelector(rankedSelector);  };
-//        BENCHMARK("Tournament size 6")    { rankedSelector.TournamentSize(6); benchSelector(rankedSelector);  };
-//        BENCHMARK("Tournament size 7")    { rankedSelector.TournamentSize(7); benchSelector(rankedSelector);  };
-//        BENCHMARK("Tournament size 8")    { rankedSelector.TournamentSize(8); benchSelector(rankedSelector);  };
-//        BENCHMARK("Tournament size 9")    { rankedSelector.TournamentSize(9); benchSelector(rankedSelector);  };
-//        BENCHMARK("Tournament size 10")   { rankedSelector.TournamentSize(10); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 11")   { rankedSelector.TournamentSize(11); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 12")   { rankedSelector.TournamentSize(12); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 13")   { rankedSelector.TournamentSize(13); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 14")   { rankedSelector.TournamentSize(14); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 15")   { rankedSelector.TournamentSize(15); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 16")   { rankedSelector.TournamentSize(16); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 17")   { rankedSelector.TournamentSize(17); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 18")   { rankedSelector.TournamentSize(18); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 19")   { rankedSelector.TournamentSize(19); benchSelector(rankedSelector); };
-//        BENCHMARK("Tournament size 20")   { rankedSelector.TournamentSize(20); benchSelector(rankedSelector); };
-//    }
+}
+}
 
-//    SECTION("Proportional Selector")
-//    {
-//        ProportionalSelector<Individual<1>, 0, true> proportionalSelector;
-//        proportionalSelector.Prepare(individuals);
-//
-//        BENCHMARK("Proportional proportionalSelector (prepare)") { proportionalSelector.Prepare(individuals); };
-//        BENCHMARK("Proportional selection") { benchSelector(proportionalSelector); };
-//    }
-}
-}
