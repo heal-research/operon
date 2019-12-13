@@ -98,15 +98,10 @@ Tree& Tree::Sort(bool strict)
     for (size_t i = 0; i < nodes.size(); ++i) {
         auto& s = nodes[i];
 
-        if (s.IsConstant()) {
-            continue;
-        }
-
-        if (s.IsVariable()) {
+        if (s.IsLeaf()) {
             if (strict) {
-                auto weightHash = xxh::xxhash<64>({ s.Value });
-                s.CalculatedHashValue = xxh::xxhash<64>({ s.HashValue, weightHash });
-                continue;
+                auto valueHash = xxh::xxhash3<operon::hash_bits>({ s.Value });
+                s.CalculatedHashValue = xxh::xxhash3<operon::hash_bits>({ s.HashValue, valueHash });
             } else {
                 s.CalculatedHashValue = s.HashValue;
             }
@@ -138,7 +133,7 @@ Tree& Tree::Sort(bool strict)
         }
         transform(sBegin, sEnd, back_inserter(hashes), [](const Node& x) { return x.CalculatedHashValue; });
         hashes.push_back(s.HashValue);
-        s.CalculatedHashValue = xxh::xxhash3<64>(hashes);
+        s.CalculatedHashValue = xxh::xxhash3<operon::hash_bits>(hashes);
         hashes.clear();
     }
     return this->UpdateNodes();
