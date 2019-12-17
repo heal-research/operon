@@ -93,25 +93,12 @@ public:
         });
 
         // calculate intersections
-        std::atomic<size_t> mismatches = 0;
-        std::for_each(std::execution::seq, indices.begin(), indices.end() - 1, [&](gsl::index i) {
+        std::for_each(std::execution::par_unseq, indices.begin(), indices.end() - 1, [&](gsl::index i) {
             for (size_t j = i + 1; j < indices.size(); ++j) {
-                sim(i, j) = IntersectVector(hybrid[i], hybrid[j]);
-                sim(j, i) = IntersectVector(strukt[i], strukt[j]);
-
-                auto s = Intersect(strukt[i], strukt[j]);
-
-                if (s != sim(j, i)) {
-                    ++mismatches;
-                    for (auto v : strukt[i]) fmt::print("{} ", v); fmt::print("\n");
-                    for (auto v : strukt[j]) fmt::print("{} ", v); fmt::print("\n");
-                    fmt::print("Hash count mismatch {} (scalar) != {} (vector)\n", s, sim(j, i));
-                    throw std::runtime_error("");
-                    
-                }
+                sim(i, j) = Intersect(hybrid[i], hybrid[j]);
+                sim(j, i) = Intersect(strukt[i], strukt[j]);
             }
         });
-        fmt::print("mismatches = {}\n", mismatches);
     }
 
     static Scalar Intersect(const detail::hash_vector_t& lhs, const detail::hash_vector_t& rhs)
