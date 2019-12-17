@@ -368,7 +368,7 @@ TEST_CASE("Hash collisions") {
 TEST_CASE("Tree distance performance") 
 {
     size_t n = 5000;
-    size_t maxLength = 200;
+    size_t maxLength = 8;
     size_t maxDepth = 100;
 
     auto rd = operon::rand_t(1234);
@@ -379,12 +379,12 @@ TEST_CASE("Tree distance performance")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
-    std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+    std::uniform_int_distribution<size_t> sizeDistribution(maxLength, maxLength);
 
     using Ind = Individual<1>;
 
     Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic);
+    grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log);
 
     std::vector<Ind> trees(n);
     auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
@@ -394,7 +394,7 @@ TEST_CASE("Tree distance performance")
     PopulationDiversityAnalyzer<Ind, uint8_t> analyzer;
     model.start();
     analyzer.Prepare(trees);
-    fmt::print("Structural diversity: {:.3f}, hybrid diversity: {:.3f}\n", analyzer.StructuralDiversity(), analyzer.HybridDiversity());
+    fmt::print("Structural diversity: {:.6f}, hybrid diversity: {:.6f}\n", analyzer.StructuralDiversity(), analyzer.HybridDiversity());
     model.finish();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed());
     fmt::print("\nElapsed: {} s, performance: {:.4e} pairwise distance calculations per second.\n", elapsed.count() / 1000.0, n * (n-1) / 2 * 1000.0 / elapsed.count());
