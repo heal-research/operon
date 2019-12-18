@@ -368,7 +368,7 @@ TEST_CASE("Hash collisions") {
 TEST_CASE("Tree distance performance") 
 {
     size_t n = 5000;
-    size_t maxLength = 8;
+    size_t maxLength = 100;
     size_t maxDepth = 100;
 
     auto rd = operon::rand_t(1234);

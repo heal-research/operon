@@ -28,9 +28,9 @@
 #include <unordered_set>
 
 namespace Operon {
-    namespace detail {
-        using hash_vector_t = std::vector<operon::hash_t, Eigen::aligned_allocator<operon::hash_t>>;
-    }
+namespace detail {
+    using hash_vector_t = std::vector<operon::hash_t, Eigen::aligned_allocator<operon::hash_t>>;
+}
 
 template <typename T, typename Scalar = uint32_t>
 class PopulationDiversityAnalyzer final : PopulationAnalyzerBase<T> {
@@ -88,154 +88,113 @@ public:
         // hybrid (strict) hashing
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](gsl::index i) {
             auto tree = population[i].Genotype;
-            hybrid[i] = HashTree(tree, true);
-            strukt[i] = HashTree(tree, false);
+            hybrid[i] = HashTree(tree, /*hybrid hashing*/true);
+            strukt[i] = HashTree(tree, /*struct hashing*/false);
         });
 
         // calculate intersections
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end() - 1, [&](gsl::index i) {
             for (size_t j = i + 1; j < indices.size(); ++j) {
-                sim(i, j) = Intersect(hybrid[i], hybrid[j]);
-                sim(j, i) = Intersect(strukt[i], strukt[j]);
+                //sim(i, j) = Intersect1(hybrid[i], hybrid[j]);
+                sim(j, i) = Intersect1(strukt[i], strukt[j]);
             }
         });
     }
 
-    static Scalar Intersect(const detail::hash_vector_t& lhs, const detail::hash_vector_t& rhs)
+    static Scalar Intersect1(detail::hash_vector_t const& lhs, detail::hash_vector_t const& rhs)
     {
         Scalar count = 0;
         size_t i = 0;
         size_t j = 0;
+        size_t ls = lhs.size();
+        size_t rs = rhs.size();
 
-        operon::hash_t lmax = lhs.back();
-        operon::hash_t rmax = rhs.back();
+        operon::hash_t const* p = lhs.data();
+        operon::hash_t const* q = rhs.data();
 
-        while (i < lhs.size() && j < rhs.size()) {
+        auto lt = (ls / 4) * 4;
+        auto rt = (rs / 4) * 4;
+
+        while (i < lt && j < rt) {
+            if (FastProbe(p + i, q + j)) {
+                auto a = *(p + i + 3);
+                auto b = *(q + j + 3);
+                i += (a < b) * 4;
+                j += (b < a) * 4;
+            } else {
+                break;
+            }
+        }
+
+        auto lm = lhs.back();
+        auto rm = rhs.back();
+
+        while (i < ls && j < rs) {
             auto a = lhs[i];
             auto b = rhs[j];
+
             count += a == b;
             i += a <= b;
             j += a >= b;
 
-            if (a > rmax || b > lmax) {
+            if (a > rm || b > lm) {
                 break;
             }
         }
         return count;
     }
 
-    static Scalar IntersectVector(detail::hash_vector_t const& lhs, detail::hash_vector_t const& rhs)
+    static Scalar Intersect2(detail::hash_vector_t const& lhs, detail::hash_vector_t const& rhs)
     {
-        Scalar count                     = 0;
-        size_t i                         = 0;
-        size_t j                         = 0;
+        Scalar count = 0;
+        size_t i = 0;
+        size_t j = 0;
+        size_t ls = lhs.size();
+        size_t rs = rhs.size();
 
-        uint64_t const* a                = lhs.data();
-        uint64_t const* b                = rhs.data();
+        auto lm = lhs.back();
+        auto rm = rhs.back();
 
-        // trim lengths to be a multiple of 4
-        size_t aLen                      = (lhs.size() / 4) * 4;
-        size_t bLen                      = (rhs.size() / 4) * 4;
+        while (i != ls && j != rs) {
+            auto a = lhs[i];
+            auto b = rhs[j];
 
-        __m256i bmask_prev               = _mm256_set_epi64x(0,0,0,0);
-        __m256i cmp_prev                 = _mm256_set_epi64x(0,0,0,0);
+            count += a == b;
+            i += a <= b;
+            j += a >= b;
 
-        int mask;
-
-        while (i < aLen && j < bLen) {
-            // load segments of four 64-bit elements
-            __m256i va                   = _mm256_load_si256((__m256i*)&a[i]);
-            __m256i vb                   = _mm256_load_si256((__m256i*)&b[j]);
-
-            size_t i_prev                = i; // track i
-            size_t j_prev                = j; // track j
-
-            // move pointers
-            uint64_t a_max               = _mm256_extract_epi64(va, 3);
-            uint64_t b_max               = _mm256_extract_epi64(vb, 3);
-            i                           += (a_max <= b_max) * 4;
-            j                           += (a_max >= b_max) * 4;
-
-            // part 1
-            __m256i bmask                = _mm256_set_epi64x(0,0,0,0);
-            bmask                        = _mm256_or_si256(bmask, bmask_prev);
-
-            __m256i cmp_mask1            = _mm256_cmpeq_epi64(va, vb);
-            cmp_mask1                    = _mm256_andnot_si256(bmask, cmp_mask1);
-            bmask                        = _mm256_or_si256(cmp_mask1, bmask);
-
-            // part 2
-            constexpr auto cyclic_shift  = _MM_SHUFFLE(0,3,2,1);
-            vb                           = _mm256_permute4x64_epi64(vb, cyclic_shift);
-            bmask_prev                   = _mm256_permute4x64_epi64(bmask_prev, cyclic_shift);
-            bmask                        = _mm256_permute4x64_epi64(bmask, cyclic_shift);
-            bmask                        = _mm256_or_si256(bmask, bmask_prev);
-            __m256i cmp_mask2            = _mm256_cmpeq_epi64(va, vb);
-            cmp_mask2                    = _mm256_andnot_si256(bmask, cmp_mask2);
-            bmask                        = _mm256_or_si256(cmp_mask2, bmask);
-
-            // part 3
-            vb                           = _mm256_permute4x64_epi64(vb, cyclic_shift);
-            bmask_prev                   = _mm256_permute4x64_epi64(bmask_prev, cyclic_shift);
-            bmask                        = _mm256_permute4x64_epi64(bmask, cyclic_shift);
-            bmask                        = _mm256_or_si256(bmask, bmask_prev);
-            __m256i cmp_mask3            = _mm256_cmpeq_epi64(va, vb);
-            cmp_mask3                    = _mm256_andnot_si256(bmask, cmp_mask3);
-            bmask                        = _mm256_or_si256(cmp_mask3, bmask);
-
-            // part 4
-            vb                           = _mm256_permute4x64_epi64(vb, cyclic_shift);
-            bmask_prev                   = _mm256_permute4x64_epi64(bmask_prev, cyclic_shift);
-            bmask                        = _mm256_permute4x64_epi64(bmask, cyclic_shift);
-            bmask                        = _mm256_or_si256(bmask, bmask_prev);
-            __m256i cmp_mask4            = _mm256_cmpeq_epi64(va, vb);
-            cmp_mask4                    = _mm256_andnot_si256(bmask, cmp_mask4);
-            bmask                        = _mm256_or_si256(cmp_mask4, bmask);
-
-            // finish bmask cycle 
-            bmask = _mm256_permute4x64_epi64(bmask, cyclic_shift);
-
-            __m256i cmp_mask             = _mm256_or_si256(_mm256_or_si256(cmp_mask1, cmp_mask2), _mm256_or_si256(cmp_mask3, cmp_mask4)); // OR-ing of comparison masks
-            cmp_mask                     = _mm256_andnot_si256(cmp_prev, cmp_mask);
-
-            // convert the 256-bit mask to 4-bit
-            mask                         = _mm256_movemask_pd((__m256d)cmp_mask);
-            auto cnt                     = __builtin_popcount(mask); // a number of elements is a weight of the mask
-            count                       += cnt;
-
-            if (j_prev < j) {
-                j_prev                   = j;
-                bmask_prev               = _mm256_set_epi64x(0,0,0,0);
-            } else {
-                bmask_prev               = bmask;
-            }
-            if (i_prev < i) {
-                i_prev                   = i;
-                cmp_prev                 = _mm256_set_epi64x(0,0,0,0);
-            } else {
-                cmp_prev                 = cmp_mask;
-            }
-        }
-        
-        int bm = _mm256_movemask_pd((__m256d)bmask_prev); 
-        j += __builtin_popcount(bm);
-
-        // intersect the tail using scalar intersection
-        while(i < lhs.size() && j < rhs.size()) {
-            if(a[i] < b[j]) {
-                ++i;
-            } else if(b[j] < a[i]) {
-                ++j;
-            } else {
-                ++count;
-                ++i;
-                ++j;
+            if (a > rm || b > lm) {
+                break;
             }
         }
         return count;
     }
 
-    static inline std::vector<operon::hash_t, Eigen::aligned_allocator<operon::hash_t>> HashTree(Tree& tree, bool strict = true)
+
+
+    static bool FastProbe(operon::hash_t const* lhs, operon::hash_t const* rhs)
+    {
+        __m256i a = _mm256_load_si256((__m256i*)lhs);
+        __m256i b = _mm256_load_si256((__m256i*)rhs);
+
+        constexpr int c1 = _MM_SHUFFLE(0, 3, 2, 1);
+        constexpr int c2 = _MM_SHUFFLE(1, 0, 3, 2);
+        constexpr int c3 = _MM_SHUFFLE(2, 1, 0, 3);
+
+        __m256i r0 = _mm256_cmpeq_epi64(a, b);
+        if (!_mm256_testz_si256(r0, r0)) return false;
+
+        __m256i r1 = _mm256_cmpeq_epi64(a, _mm256_shuffle_epi32(b, c1));
+        if (!_mm256_testz_si256(r1, r1)) return false;
+
+        __m256i r2 = _mm256_cmpeq_epi64(a, _mm256_shuffle_epi32(b, c2));
+        if (!_mm256_testz_si256(r2, r2)) return false;
+
+        __m256i r3 = _mm256_cmpeq_epi64(a, _mm256_shuffle_epi32(b, c3));
+        return _mm256_testz_si256(r3, r3);
+    }
+
+    static inline detail::hash_vector_t HashTree(Tree& tree, bool strict = true)
     {
         tree.Sort(strict);
         const auto& nodes = tree.Nodes();
@@ -245,11 +204,11 @@ public:
         return hashes;
     }
 
-private:
-    using MatrixType = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
-    MatrixType sim;
-    gsl::span<const T> population;
-};
+    private:
+        using MatrixType = Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>;
+        MatrixType sim;
+        gsl::span<const T> population;
+    };
 } // namespace Operon
 
 #endif

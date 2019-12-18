@@ -70,6 +70,12 @@ public:
         }
     }
 
+    void NormalizeData(Range range) {
+        for (const auto& var : inputVariables) {
+            dataset.Normalize(var.Index, range);
+        }
+    }
+
 private:
     Dataset dataset;
     Grammar grammar;
