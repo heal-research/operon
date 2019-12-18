@@ -29,8 +29,6 @@
 #include "core/common.hpp"
 #include "core/tree.hpp"
 
-using namespace std;
-
 namespace Operon {
 Tree& Tree::UpdateNodes()
 {
@@ -85,13 +83,13 @@ Tree& Tree::Reduce()
 Tree& Tree::Sort(bool strict)
 {
     // preallocate memory to reduce fragmentation
-    vector<Node> sorted;
+    std::vector<Node> sorted;
     sorted.reserve(nodes.size());
 
-    vector<int> children;
+    std::vector<int> children;
     children.reserve(nodes.size());
 
-    vector<operon::hash_t> hashes;
+    std::vector<operon::hash_t> hashes;
     hashes.reserve(nodes.size());
 
     auto start = nodes.begin();
@@ -115,23 +113,23 @@ Tree& Tree::Sort(bool strict)
 
         if (s.IsCommutative()) {
             if (arity == size) {
-                sort(sBegin, sEnd);
+                std::sort(sBegin, sEnd);
             } else {
                 for (auto it = Children(i); it.HasNext(); ++it) {
                     children.push_back(it.Index());
                 }
-                sort(children.begin(), children.end(), [&](int a, int b) { return nodes[a] < nodes[b]; }); // sort child indices
+                std::sort(children.begin(), children.end(), [&](int a, int b) { return nodes[a] < nodes[b]; }); // sort child indices
 
                 for (auto j : children) {
                     auto& c = nodes[j];
-                    copy_n(start + j - c.Length, c.Length + 1, back_inserter(sorted));
+                    std::copy_n(start + j - c.Length, c.Length + 1, std::back_inserter(sorted));
                 }
-                copy(sorted.begin(), sorted.end(), sBegin);
+                std::copy(sorted.begin(), sorted.end(), sBegin);
                 sorted.clear();
                 children.clear();
             }
         }
-        transform(sBegin, sEnd, back_inserter(hashes), [](const Node& x) { return x.CalculatedHashValue; });
+        std::transform(sBegin, sEnd, std::back_inserter(hashes), [](const Node& x) { return x.CalculatedHashValue; });
         hashes.push_back(s.HashValue);
         s.CalculatedHashValue = xxh::xxhash3<operon::hash_bits>(hashes);
         hashes.clear();
@@ -139,7 +137,7 @@ Tree& Tree::Sort(bool strict)
     return this->UpdateNodes();
 }
 
-vector<gsl::index> Tree::ChildIndices(gsl::index i) const
+std::vector<gsl::index> Tree::ChildIndices(gsl::index i) const
 {
     if (nodes[i].IsLeaf()) {
         return std::vector<gsl::index> {};
@@ -196,3 +194,4 @@ size_t Tree::Level(gsl::index i) const noexcept
     return level;
 }
 } // namespace Operon
+
