@@ -146,15 +146,19 @@ public:
     void Normalize(gsl::index i, Range range) 
     {
         Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
+        auto seg = values.col(i).segment(range.Start(), range.Size());
+        auto min = seg.minCoeff();
+        auto max = seg.maxCoeff();
+        values.col(i) = (values.col(i).array() - min) / (max - min);
     }
 
     // standardize column i using mean and stddev calculated over the specified range
     void Standardize(gsl::index i, Range range) 
     {
         Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
-        auto segment = values.col(i).segment(range.Start(), range.Size());
+        auto seg = values.col(i).segment(range.Start(), range.Size());
         MeanVarianceCalculator calc;
-        auto vals = gsl::span<operon::scalar_t>(segment.data(), segment.size());
+        auto vals = gsl::span<operon::scalar_t>(seg.data(), seg.size());
         calc.Reset();
         calc.Add(vals);
 
