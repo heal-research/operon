@@ -30,6 +30,33 @@
 namespace Operon {
 namespace detail {
     using hash_vector_t = std::vector<operon::hash_t, Eigen::aligned_allocator<operon::hash_t>>;
+
+    constexpr int shift_one { _MM_SHUFFLE(0, 3, 2, 1) };
+    constexpr int shift_two { _MM_SHUFFLE(1, 0, 3, 2) };
+    constexpr int shift_thr { _MM_SHUFFLE(2, 1, 0, 3) };
+
+    static inline bool _mm256_is_zero(__m256i m) noexcept { return _mm256_testz_si256(m, m); }
+
+    static inline bool probe_nullintersect_fast(operon::hash_t const* lhs, operon::hash_t const* rhs) noexcept {
+        __m256i a { _mm256_load_si256((__m256i*)lhs) };
+        __m256i b { _mm256_load_si256((__m256i*)rhs) };
+
+        __m256i r0 { _mm256_cmpeq_epi64(a, b) };
+        if (!_mm256_is_zero(r0)) return false;
+
+        __m256i r1 { _mm256_cmpeq_epi64(a, _mm256_shuffle_epi32(b, shift_one)) };
+        if (!_mm256_is_zero(r1)) return false;
+
+        __m256i r2 { _mm256_cmpeq_epi64(a, _mm256_shuffle_epi32(b, shift_two)) };
+        if (!_mm256_is_zero(r2)) return false;
+
+        __m256i r3 { _mm256_cmpeq_epi64(a, _mm256_shuffle_epi32(b, shift_thr)) };
+        return _mm256_is_zero(r3);
+    }
+
+    static inline bool is_set(hash_vector_t const& vec) {
+        return std::adjacent_find(vec.begin(), vec.end(), std::equal_to{}) == vec.end();
+    }
 }
 
 template <typename T, typename Scalar = uint32_t>
@@ -95,13 +122,13 @@ public:
         // calculate intersections
         std::for_each(std::execution::par_unseq, indices.begin(), indices.end() - 1, [&](gsl::index i) {
             for (size_t j = i + 1; j < indices.size(); ++j) {
-                //sim(i, j) = Intersect1(hybrid[i], hybrid[j]);
+                sim(i, j) = Intersect1(hybrid[i], hybrid[j]);
                 sim(j, i) = Intersect1(strukt[i], strukt[j]);
             }
         });
     }
 
-    static Scalar Intersect1(detail::hash_vector_t const& lhs, detail::hash_vector_t const& rhs)
+    static Scalar Intersect1(detail::hash_vector_t const& lhs, detail::hash_vector_t const& rhs) noexcept
     {
         Scalar count = 0;
         size_t i = 0;
@@ -116,9 +143,9 @@ public:
         auto rt = (rs / 4) * 4;
 
         while (i < lt && j < rt) {
-            if (FastProbe(p + i, q + j)) {
-                auto a = *(p + i + 3);
-                auto b = *(q + j + 3);
+            if (detail::probe_nullintersect_fast(&p[i], &q[j])) {
+                auto a = p[i + 3];
+                auto b = q[j + 3];
                 i += (a < b) * 4;
                 j += (b < a) * 4;
             } else {
@@ -144,7 +171,7 @@ public:
         return count;
     }
 
-    static Scalar Intersect2(detail::hash_vector_t const& lhs, detail::hash_vector_t const& rhs)
+    static Scalar Intersect2(detail::hash_vector_t const& lhs, detail::hash_vector_t const& rhs) noexcept
     {
         Scalar count = 0;
         size_t i = 0;
@@ -168,30 +195,6 @@ public:
             }
         }
         return count;
-    }
-
-
-
-    static bool FastProbe(operon::hash_t const* lhs, operon::hash_t const* rhs)
-    {
-        __m256i a = _mm256_load_si256((__m256i*)lhs);
-        __m256i b = _mm256_load_si256((__m256i*)rhs);
-
-        constexpr int c1 = _MM_SHUFFLE(0, 3, 2, 1);
-        constexpr int c2 = _MM_SHUFFLE(1, 0, 3, 2);
-        constexpr int c3 = _MM_SHUFFLE(2, 1, 0, 3);
-
-        __m256i r0 = _mm256_cmpeq_epi64(a, b);
-        if (!_mm256_testz_si256(r0, r0)) return false;
-
-        __m256i r1 = _mm256_cmpeq_epi64(a, _mm256_shuffle_epi32(b, c1));
-        if (!_mm256_testz_si256(r1, r1)) return false;
-
-        __m256i r2 = _mm256_cmpeq_epi64(a, _mm256_shuffle_epi32(b, c2));
-        if (!_mm256_testz_si256(r2, r2)) return false;
-
-        __m256i r3 = _mm256_cmpeq_epi64(a, _mm256_shuffle_epi32(b, c3));
-        return _mm256_testz_si256(r3, r3);
     }
 
     static inline detail::hash_vector_t HashTree(Tree& tree, bool strict = true)
