@@ -33,7 +33,7 @@
 namespace Operon {
 class Tree;
 
-namespace {
+namespace detail {
     template <bool IsConst, typename T = std::conditional_t<IsConst, Tree const, Tree>, typename U = std::conditional_t<IsConst, Node const, Node>>
     class ChildIteratorImpl {
     public:
@@ -96,10 +96,11 @@ namespace {
     };
 }
 
+
 class Tree {
 public:
-    using ChildIterator = ChildIteratorImpl<false>;
-    using ConstChildIterator = ChildIteratorImpl<true>;
+    using ChildIterator = detail::ChildIteratorImpl<false>;
+    using ConstChildIterator = detail::ChildIteratorImpl<true>;
 
     Tree() {}
     Tree(std::initializer_list<Node> list)
@@ -132,7 +133,7 @@ public:
 
     Tree& UpdateNodes();
     Tree& UpdateNodeDepth();
-    Tree& Sort(bool strict = true);
+    Tree& Sort(Operon::HashMode);
     Tree& Reduce();
     Tree& Simplify();
 
@@ -172,6 +173,6 @@ public:
 private:
     std::vector<Node> nodes;
 };
-
 }
 #endif // TREE_H
+
