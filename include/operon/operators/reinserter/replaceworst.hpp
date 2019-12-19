@@ -27,7 +27,7 @@ template <typename T, gsl::index Idx, typename ExecutionPolicy = std::execution:
 class ReplaceWorstReinserter : public ReinserterBase<T, Idx> {
     public:
         // replace the worst individuals in pop with the best individuals from pool
-        virtual void operator()(operon::rand_t&, std::vector<T>& pop, std::vector<T>& pool) const override {
+        virtual void operator()(Operon::Random&, std::vector<T>& pop, std::vector<T>& pool) const override {
             ExecutionPolicy ep;
             auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; };
             if (pop.size() > pool.size()) {

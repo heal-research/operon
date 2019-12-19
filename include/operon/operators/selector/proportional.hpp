@@ -32,9 +32,9 @@ namespace Operon {
 template <typename T, gsl::index Idx>
 class ProportionalSelector : public SelectorBase<T, Idx> {
 public:
-    gsl::index operator()(operon::rand_t& random) const override
+    gsl::index operator()(Operon::Random& random) const override
     {
-        std::uniform_real_distribution<operon::scalar_t> uniformReal(0, fitness.back().first - std::numeric_limits<double>::epsilon());
+        std::uniform_real_distribution<Operon::Scalar> uniformReal(0, fitness.back().first - std::numeric_limits<double>::epsilon());
         return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), 0L), std::less {})->second;
     }
 
@@ -50,7 +50,7 @@ private:
         fitness.clear();
         fitness.reserve(this->population.size());
 
-        operon::scalar_t vmin = this->population[0][Idx], vmax = vmin;
+        Operon::Scalar vmin = this->population[0][Idx], vmax = vmin;
         for (gsl::index i = 0; i < this->population.size(); ++i) {
             auto f = this->population[i][Idx];
             fitness.push_back({ f, i });
@@ -64,7 +64,7 @@ private:
     }
 
     // discrete CDF of the population fitness values
-    mutable std::vector<std::pair<operon::scalar_t, gsl::index>> fitness;
+    mutable std::vector<std::pair<Operon::Scalar, gsl::index>> fitness;
 };
 } // namespace Operon
 

@@ -83,9 +83,9 @@ namespace {
 }
 
 struct Node {
-    operon::scalar_t Value; // value for constants or weighting factor for variables
-    operon::hash_t HashValue;
-    operon::hash_t CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
+    Operon::Scalar Value; // value for constants or weighting factor for variables
+    Operon::Hash HashValue;
+    Operon::Hash CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
     uint16_t Arity; // 0-65535
     uint16_t Length; // 0-65535
     uint16_t Depth; // 0-65535
@@ -100,10 +100,10 @@ struct Node {
     Node(Node const&) = default;
 
     explicit Node(NodeType type) noexcept
-        : Node(type, static_cast<operon::hash_t>(type))
+        : Node(type, static_cast<Operon::Hash>(type))
     {
     }
-    explicit Node(NodeType type, operon::hash_t hashValue) noexcept
+    explicit Node(NodeType type, Operon::Hash hashValue) noexcept
         : HashValue(hashValue)
         , CalculatedHashValue(hashValue)
         , Type(type)

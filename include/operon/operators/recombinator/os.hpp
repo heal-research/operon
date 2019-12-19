@@ -32,7 +32,7 @@ public:
     }
 
     using T = typename TSelector::SelectableType;
-    std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) const override
+    std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
         std::uniform_real_distribution<double> uniformReal;
         bool doCrossover = uniformReal(random) < pCrossover;

@@ -32,7 +32,7 @@ public:
     }
 
     using T = typename TSelector::SelectableType;
-    std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) const override
+    std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
         std::uniform_real_distribution<double> uniformReal;
 
@@ -68,7 +68,7 @@ public:
 
         auto eval = [&](gsl::index idx) {
             auto f = this->evaluator(random, brood[idx]);
-            if (!std::isfinite(f)) { f = operon::scalar::max(); }
+            if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
             brood[idx].Fitness[Idx] = f;
         };
 

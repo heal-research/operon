@@ -76,7 +76,7 @@ TEST_CASE("Node is small")
 
 TEST_CASE("Jsf is copyable") 
 {
-    Random::JsfRand<64> jsf(1234);
+    RandomGenerator::JsfRand<64> jsf(1234);
     jsf();
     jsf();
     auto tmp = jsf;
@@ -86,7 +86,7 @@ TEST_CASE("Jsf is copyable")
 
 TEST_CASE("Sfc64 is copyable")
 {
-    Random::Sfc64 sfc(1234);
+    RandomGenerator::Sfc64 sfc(1234);
     sfc();
     sfc();
     auto tmp = sfc;

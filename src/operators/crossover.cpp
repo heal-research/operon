@@ -20,7 +20,7 @@
 #include "operators/crossover.hpp"
 
 namespace Operon {
-static gsl::index SelectRandomBranch(operon::rand_t& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength)
+static gsl::index SelectRandomBranch(Operon::Random& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength)
 {
     auto selectInternalNode = std::bernoulli_distribution(internalProb)(random);
     const auto& nodes = tree.Nodes();
@@ -54,7 +54,7 @@ static gsl::index SelectRandomBranch(operon::rand_t& random, const Tree& tree, d
     return indices[idx];
 }
 
-std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const
+std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(Operon::Random& random, const Tree& lhs, const Tree& rhs) const
 {
     auto i = SelectRandomBranch(random, lhs, internalProbability, maxDepth, maxLength);
     size_t maxBranchDepth    = maxDepth - lhs.Level(i);
@@ -65,7 +65,7 @@ std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(
     return std::make_pair(i, j);
 }
 
-Tree SubtreeCrossover::operator()(operon::rand_t& random, const Tree& lhs, const Tree& rhs) const
+Tree SubtreeCrossover::operator()(Operon::Random& random, const Tree& lhs, const Tree& rhs) const
 {
     auto [i, j] = FindCompatibleSwapLocations(random, lhs, rhs);
     return Cross(lhs, rhs, i, j);

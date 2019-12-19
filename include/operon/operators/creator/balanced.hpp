@@ -43,7 +43,7 @@ public:
         , irregularityBias(bias)
     {
     }
-    Tree operator()(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables) const override
+    Tree operator()(Operon::Random& random, const Grammar& grammar, const gsl::span<const Variable> variables) const override
     {
         size_t minLength = 1u;
         size_t targetLen = std::clamp(SampleLength(random), minLength, maxLength);
@@ -121,7 +121,7 @@ private:
         return postfix;
     }
 
-    inline size_t SampleLength(operon::rand_t& random) const
+    inline size_t SampleLength(Operon::Random& random) const
     {
         auto val = dist(random);
         if constexpr (std::is_floating_point_v<typename T::result_type>) {

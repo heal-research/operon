@@ -37,23 +37,23 @@ namespace Operon {
                 alpha = 0;
                 beta = 0;
             }
-            void Add(operon::scalar_t original, operon::scalar_t target)
+            void Add(Operon::Scalar original, Operon::Scalar target)
             {
                 tCalculator.Add(target);
                 ovCalculator.Add(original);
                 otCalculator.Add(original, target);
 
-                //if (ovCalculator.Variance() < eps<operon::scalar_t>) beta = 1;
+                //if (ovCalculator.Variance() < eps<Operon::Scalar>) beta = 1;
                 auto variance = ovCalculator.Count() > 1 ? ovCalculator.SampleVariance() : 0;
-                beta = variance < std::numeric_limits<operon::scalar_t>::epsilon() ? 1 : (otCalculator.SampleCovariance() / variance);
+                beta = variance < std::numeric_limits<Operon::Scalar>::epsilon() ? 1 : (otCalculator.SampleCovariance() / variance);
                 //else beta = otCalculator.Covariance() / ovCalculator.Variance();
                 alpha = tCalculator.Mean() - beta * ovCalculator.Mean();
             }
-            operon::scalar_t Beta() const { return beta; }
-            operon::scalar_t Alpha() const { return alpha; }
+            Operon::Scalar Beta() const { return beta; }
+            Operon::Scalar Alpha() const { return alpha; }
 
             template <typename InputIt1, typename InputIt2, typename U = typename InputIt1::value_type>
-                static std::pair<operon::scalar_t, operon::scalar_t> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+                static std::pair<Operon::Scalar, Operon::Scalar> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
                 {
                     static_assert(std::is_floating_point_v<U>);
                     LinearScalingCalculator calc;
@@ -64,8 +64,8 @@ namespace Operon {
                 }
 
         private:
-            operon::scalar_t alpha; // additive constant
-            operon::scalar_t beta; // multiplicative factor
+            Operon::Scalar alpha; // additive constant
+            Operon::Scalar beta; // multiplicative factor
 
             MeanVarianceCalculator tCalculator; // target values
             MeanVarianceCalculator ovCalculator; // original values

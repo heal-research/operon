@@ -40,7 +40,7 @@ public:
         , maxLength(length)
     {
     }
-    Tree operator()(operon::rand_t& random, const Grammar& grammar, const gsl::span<const Variable> variables) const override
+    Tree operator()(Operon::Random& random, const Grammar& grammar, const gsl::span<const Variable> variables) const override
     {
         std::vector<Node> nodes;
         std::stack<std::tuple<Node, size_t, size_t>> stk;
@@ -100,7 +100,7 @@ private:
     size_t maxDepth;
     size_t maxLength;
 
-    inline size_t SampleFromDistribution(operon::rand_t& random) const
+    inline size_t SampleFromDistribution(Operon::Random& random) const
     {
         auto val = dist(random);
         if constexpr (std::is_floating_point_v<typename T::result_type>) {

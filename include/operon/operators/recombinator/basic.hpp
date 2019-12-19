@@ -33,7 +33,7 @@ public:
     }
 
     using T = typename TSelector::SelectableType;
-    std::optional<T> operator()(operon::rand_t& random, double pCrossover, double pMutation) const override
+    std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
         std::uniform_real_distribution<double> uniformReal;
         bool doCrossover = uniformReal(random) < pCrossover;
@@ -58,7 +58,7 @@ public:
         }
 
         auto f = this->evaluator(random, child);
-        if (!std::isfinite(f)) { f = operon::scalar::max(); }
+        if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
         child[TSelector::SelectableIndex] = f;
         return std::make_optional(child);
     }

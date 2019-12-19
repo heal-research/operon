@@ -36,11 +36,11 @@ namespace Operon {
 template <size_t D = 1UL>
 struct Individual {
     Tree Genotype;
-    std::array<operon::scalar_t, D> Fitness;
+    std::array<Operon::Scalar, D> Fitness;
     static constexpr size_t Dimension = D;
 
-    operon::scalar_t& operator[](gsl::index i) noexcept { return Fitness[i]; }
-    operon::scalar_t operator[](gsl::index i) const noexcept { return Fitness[i]; }
+    Operon::Scalar& operator[](gsl::index i) noexcept { return Fitness[i]; }
+    Operon::Scalar operator[](gsl::index i) const noexcept { return Fitness[i]; }
 
     // returns true if this dominates rhs
     inline bool operator<(const Individual& rhs) const noexcept
@@ -61,7 +61,7 @@ struct OperatorBase {
     using ReturnType = Ret;
     using ArgumentType = std::tuple<Args...>;
     // all operators take a random device (source of randomness) as the first parameter
-    virtual Ret operator()(operon::rand_t& random, Args... args) const = 0;
+    virtual Ret operator()(Operon::Random& random, Args... args) const = 0;
 };
 
 // the creator builds a new tree using the existing grammar and allowed inputs
@@ -100,7 +100,7 @@ class ReinserterBase : public OperatorBase<void, std::vector<T>&, std::vector<T>
 };
 
 template <typename T>
-class EvaluatorBase : public OperatorBase<operon::scalar_t, T&> {
+class EvaluatorBase : public OperatorBase<Operon::Scalar, T&> {
     // some fitness measures are relative to the whole population (eg. diversity)
     // and the evaluator needs to do some preparation work using the entire pop
 public:

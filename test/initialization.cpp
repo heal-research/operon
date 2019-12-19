@@ -34,7 +34,7 @@ TEST_CASE("Sample nodes from grammar")
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
     grammar.Enable(NodeType::Add, 2);
-    operon::rand_t rd(std::random_device {}());
+    Operon::Random rd(std::random_device {}());
 
     std::vector<double> observed(NodeTypes::Count, 0);
     size_t r = grammar.EnabledSymbols().size() + 1;
@@ -87,7 +87,7 @@ TEST_CASE("Tree shape")
     grammar.Enable(NodeType::Mul, 1);
     grammar.Enable(NodeType::Sub, 1);
     grammar.Enable(NodeType::Div, 1);
-    operon::rand_t random(1234);
+    Operon::Random random(1234);
 
     auto tree = creator(random, grammar, inputs);
     fmt::print("Tree length: {}\n", tree.Length());
@@ -109,12 +109,12 @@ TEST_CASE("Tree initialization (balanced)")
     const size_t nTrees = 1'000'000;
 
     auto sizeDistribution = std::uniform_int_distribution<size_t>(minLength, maxLength);
-    //auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
+    //auto sizeDistribution = std::normal_distribution<Operon::Scalar> { maxLength / 2.0, 10 };
     auto creator = BalancedTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
     grammar.SetConfig(NodeType::Add | NodeType::Exp | NodeType::Variable);
-    //operon::rand_t rd(std::random_device {}());
-    operon::rand_t random(1234);
+    //Operon::Random rd(std::random_device {}());
+    Operon::Random random(1234);
 
     auto trees = std::vector<Tree>(nTrees);
     std::generate(trees.begin(), trees.end(), [&]() { return creator(random, grammar, inputs); });
@@ -180,7 +180,7 @@ TEST_CASE("Tree initialization (balanced)")
             }
         }
         for (const auto& v : inputs) {
-            fmt::print("{}\t{:.3f}%\n", ds.GetName(v.Hash), static_cast<operon::scalar_t>(variableFrequencies[v.Index]) / totalVars);
+            fmt::print("{}\t{:.3f}%\n", ds.GetName(v.Hash), static_cast<Operon::Scalar>(variableFrequencies[v.Index]) / totalVars);
         }
     }
 
@@ -250,12 +250,12 @@ TEST_CASE("Tree initialization (uniform)")
     const size_t nTrees = 100'000;
 
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
-    //auto sizeDistribution = std::normal_distribution<operon::scalar_t> { maxLength / 2.0, 10 };
+    //auto sizeDistribution = std::normal_distribution<Operon::Scalar> { maxLength / 2.0, 10 };
     auto creator = UniformTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
-    //operon::rand_t rd(std::random_device {}());
-    operon::rand_t random(1234);
+    //Operon::Random rd(std::random_device {}());
+    Operon::Random random(1234);
 
     auto trees = std::vector<Tree>(nTrees);
     std::generate(trees.begin(), trees.end(), [&]() { return creator(random, grammar, inputs); });
@@ -321,7 +321,7 @@ TEST_CASE("Tree initialization (uniform)")
             }
         }
         for (const auto& v : inputs) {
-            fmt::print("{}\t{:.3f}%\n", ds.GetName(v.Hash), static_cast<operon::scalar_t>(variableFrequencies[v.Index]) / totalVars);
+            fmt::print("{}\t{:.3f}%\n", ds.GetName(v.Hash), static_cast<Operon::Scalar>(variableFrequencies[v.Index]) / totalVars);
         }
     }
 
@@ -391,7 +391,7 @@ TEST_CASE("Tree depth calculation")
     auto sizeDistribution = std::uniform_int_distribution<size_t>(2, maxLength);
     auto creator = BalancedTreeCreator(sizeDistribution, maxDepth, maxLength);
     Grammar grammar;
-    operon::rand_t rd(std::random_device {}());
+    Operon::Random rd(std::random_device {}());
 
     //fmt::print("Min function arity: {}\n", grammar.MinimumFunctionArity());
 

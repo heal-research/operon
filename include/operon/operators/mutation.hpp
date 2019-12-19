@@ -24,15 +24,15 @@
 
 namespace Operon {
 struct OnePointMutation : public MutatorBase {
-    Tree operator()(operon::rand_t&, Tree) const override;
+    Tree operator()(Operon::Random&, Tree) const override;
 };
 
 struct MultiPointMutation : public MutatorBase {
-    Tree operator()(operon::rand_t&, Tree) const override;
+    Tree operator()(Operon::Random&, Tree) const override;
 };
 
 struct MultiMutation : public MutatorBase {
-    Tree operator()(operon::rand_t&, Tree) const override;
+    Tree operator()(Operon::Random&, Tree) const override;
 
     void Add(const MutatorBase& op, double prob)
     {
@@ -51,7 +51,7 @@ struct ChangeVariableMutation : public MutatorBase {
     {
     }
 
-    Tree operator()(operon::rand_t&, Tree) const override;
+    Tree operator()(Operon::Random&, Tree) const override;
 
 private:
     const gsl::span<const Variable> variables;

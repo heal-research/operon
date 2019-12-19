@@ -20,7 +20,7 @@
 #include "operators/mutation.hpp"
 
 namespace Operon {
-Tree OnePointMutation::operator()(operon::rand_t& random, Tree tree) const
+Tree OnePointMutation::operator()(Operon::Random& random, Tree tree) const
 {
     auto& nodes = tree.Nodes();
 
@@ -40,7 +40,7 @@ Tree OnePointMutation::operator()(operon::rand_t& random, Tree tree) const
     return tree;
 }
 
-Tree MultiPointMutation::operator()(operon::rand_t& random, Tree tree) const
+Tree MultiPointMutation::operator()(Operon::Random& random, Tree tree) const
 {
     std::normal_distribution<double> normalReal(0, 1);
     for (auto& node : tree.Nodes()) {
@@ -51,14 +51,14 @@ Tree MultiPointMutation::operator()(operon::rand_t& random, Tree tree) const
     return tree;
 }
 
-Tree MultiMutation::operator()(operon::rand_t& random, Tree tree) const
+Tree MultiMutation::operator()(Operon::Random& random, Tree tree) const
 {
     auto i = std::discrete_distribution<gsl::index>(probabilities.begin(), probabilities.end())(random);
     auto op = operators[i];
     return op(random, std::move(tree));
 }
 
-Tree ChangeVariableMutation::operator()(operon::rand_t& random, Tree tree) const
+Tree ChangeVariableMutation::operator()(Operon::Random& random, Tree tree) const
 {
     auto& nodes = tree.Nodes();
 

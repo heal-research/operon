@@ -67,7 +67,7 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
         tree = Tree({ x1, x2, add });
-        auto estimatedValues = Evaluate<operon::scalar_t>(tree, ds, range);
+        auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
         auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
@@ -82,7 +82,7 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
         tree = Tree({ x1, x2, sub }); // this is actually x2 - x1 due to how postfix works
-        auto estimatedValues = Evaluate<operon::scalar_t>(tree, ds, range);
+        auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
         auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
@@ -97,7 +97,7 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
         tree = Tree({ x1, x2, mul });
-        auto estimatedValues = Evaluate<operon::scalar_t>(tree, ds, range);
+        auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
         auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
@@ -112,7 +112,7 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
 
         tree = Tree { x1, x2, div };
-        auto estimatedValues = Evaluate<operon::scalar_t>(tree, ds, range);
+        auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
         auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
@@ -129,7 +129,7 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto x5Values = ds.GetValues(x5Var.Hash).subspan(range.Start(), range.Size());
         auto x6Values = ds.GetValues(x6Var.Hash).subspan(range.Start(), range.Size());
 
-        auto estimatedValues = Evaluate<operon::scalar_t>(tree, ds, range);
+        auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
         auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds, 12), r2);
 

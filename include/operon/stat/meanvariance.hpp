@@ -41,7 +41,7 @@ public:
         n = 0;
     }
 
-    void Add(operon::scalar_t val)
+    void Add(Operon::Scalar val)
     {
         if (n <= 0) {
             n = 1;
@@ -49,14 +49,14 @@ public:
             m2 = 0;
             return;
         }
-        operon::scalar_t tmp = n * val - sum;
-        operon::scalar_t oldn = n; // tmp copy
+        Operon::Scalar tmp = n * val - sum;
+        Operon::Scalar oldn = n; // tmp copy
         n += 1.0;
         sum += val;
         m2 += tmp * tmp / (n * oldn);
     }
 
-    void Add(operon::scalar_t val, operon::scalar_t weight)
+    void Add(Operon::Scalar val, Operon::Scalar weight)
     {
         if (weight == 0.) {
             return;
@@ -67,14 +67,14 @@ public:
             return;
         }
         val *= weight;
-        operon::scalar_t tmp = n * val - sum * weight;
-        operon::scalar_t oldn = n; // tmp copy
+        Operon::Scalar tmp = n * val - sum * weight;
+        Operon::Scalar oldn = n; // tmp copy
         n += weight;
         sum += val;
         m2 += tmp * tmp / (weight * n * oldn);
     }
 
-    void Add(gsl::span<const operon::scalar_t> vals)
+    void Add(gsl::span<const Operon::Scalar> vals)
     {
         int l = vals.size();
         if (l < 2) {
@@ -84,15 +84,15 @@ public:
             return;
         }
         // First pass:
-        operon::scalar_t s1 = 0.;
+        Operon::Scalar s1 = 0.;
         for (int i = 0; i < l; i++) {
             s1 += vals[i];
         }
-        operon::scalar_t om1 = s1 / l;
+        Operon::Scalar om1 = s1 / l;
         // Second pass:
-        operon::scalar_t om2 = 0., err = 0.;
+        Operon::Scalar om2 = 0., err = 0.;
         for (int i = 0; i < l; i++) {
-            operon::scalar_t v = vals[i] - om1;
+            Operon::Scalar v = vals[i] - om1;
             om2 += v * v;
             err += v;
         }
@@ -104,14 +104,14 @@ public:
             m2 = om2;
             return;
         }
-        operon::scalar_t tmp = n * s1 - sum * l;
-        operon::scalar_t oldn = n; // tmp copy
+        Operon::Scalar tmp = n * s1 - sum * l;
+        Operon::Scalar oldn = n; // tmp copy
         n += l;
         sum += s1 + err;
         m2 += om2 + tmp * tmp / (l * n * oldn);
     }
 
-    void Add(gsl::span<const operon::scalar_t> vals, gsl::span<const operon::scalar_t> weights)
+    void Add(gsl::span<const Operon::Scalar> vals, gsl::span<const Operon::Scalar> weights)
     {
         Expects(vals.size() == weights.size());
         for (int i = 0, end = vals.size(); i < end; i++) {
@@ -123,37 +123,37 @@ public:
     // combine data from another MeanVarianceCalculator instance
     void Combine(MeanVarianceCalculator other)
     {
-        operon::scalar_t on = other.n, osum = other.sum;
-        operon::scalar_t tmp = n * osum - sum * on;
-        operon::scalar_t oldn = n; // tmp copy
+        Operon::Scalar on = other.n, osum = other.sum;
+        Operon::Scalar tmp = n * osum - sum * on;
+        Operon::Scalar oldn = n; // tmp copy
         n += on;
         sum += osum;
         m2 += other.m2 + tmp * tmp / (on * n * oldn);
     }
 
-    operon::scalar_t NaiveVariance() const 
+    Operon::Scalar NaiveVariance() const 
     {
         Expects(n > 0);
         return m2 / n; 
     }
 
-    operon::scalar_t SampleVariance() const
+    Operon::Scalar SampleVariance() const
     {
         Expects(n > 1);
         return m2 / (n - 1);
     }
 
-    operon::scalar_t SumOfSquares() const { return m2; }
-    operon::scalar_t StandardDeviation() const { return std::sqrt(SampleVariance()); }
+    Operon::Scalar SumOfSquares() const { return m2; }
+    Operon::Scalar StandardDeviation() const { return std::sqrt(SampleVariance()); }
 
-    operon::scalar_t Count() const { return n; }
+    Operon::Scalar Count() const { return n; }
 
-    operon::scalar_t Mean() const { return sum / n; }
+    Operon::Scalar Mean() const { return sum / n; }
 
 private:
-    operon::scalar_t m2;
-    operon::scalar_t sum;
-    operon::scalar_t n;
+    Operon::Scalar m2;
+    Operon::Scalar sum;
+    Operon::Scalar n;
 };
 } // namespace Operon
 #endif

@@ -38,7 +38,7 @@
 #include <limits>
 
 namespace Operon {
-namespace Random {
+namespace RandomGenerator {
     class Sfc64 final {
     public:
         using result_type = uint64_t;
