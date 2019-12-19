@@ -89,7 +89,7 @@ Tree& Tree::Sort(Operon::HashMode mode)
     std::vector<int> children;
     children.reserve(nodes.size());
 
-    std::vector<operon::hash_t> hashes;
+    std::vector<Operon::Hash> hashes;
     hashes.reserve(nodes.size());
 
     auto start = nodes.begin();
@@ -98,8 +98,8 @@ Tree& Tree::Sort(Operon::HashMode mode)
 
         if (s.IsLeaf()) {
             if (mode == Operon::HashMode::Strict) {
-                auto valueHash = xxh::xxhash3<operon::hash_bits>({ s.Value });
-                s.CalculatedHashValue = xxh::xxhash3<operon::hash_bits>({ s.HashValue, valueHash });
+                auto valueHash = xxh::xxhash3<Operon::HashBits>({ s.Value });
+                s.CalculatedHashValue = xxh::xxhash3<Operon::HashBits>({ s.HashValue, valueHash });
             } else if (mode == Operon::HashMode::Relaxed) {
                 s.CalculatedHashValue = s.HashValue;
             }
@@ -131,7 +131,7 @@ Tree& Tree::Sort(Operon::HashMode mode)
         }
         std::transform(sBegin, sEnd, std::back_inserter(hashes), [](const Node& x) { return x.CalculatedHashValue; });
         hashes.push_back(s.HashValue);
-        s.CalculatedHashValue = xxh::xxhash3<operon::hash_bits>(hashes);
+        s.CalculatedHashValue = xxh::xxhash3<Operon::HashBits>(hashes);
         hashes.clear();
     }
     return this->UpdateNodes();

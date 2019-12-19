@@ -56,15 +56,15 @@ int main(int argc, char* argv[])
         ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
         ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))
         ("pool-size", "Recombination pool size (how many generated offspring per generation)", cxxopts::value<size_t>()->default_value("1000"))
-        ("seed", "Random number seed", cxxopts::value<operon::rand_t::result_type>()->default_value("0"))
+        ("seed", "Random number seed", cxxopts::value<Operon::Random::result_type>()->default_value("0"))
         ("generations", "Number of generations", cxxopts::value<size_t>()->default_value("1000"))
         ("evaluations", "Evaluation budget", cxxopts::value<size_t>()->default_value("1000000"))
         ("iterations", "Local optimization iterations", cxxopts::value<size_t>()->default_value("50"))
         ("selection-pressure", "Selection pressure", cxxopts::value<size_t>()->default_value("100"))
         ("maxlength", "Maximum length", cxxopts::value<size_t>()->default_value("50"))
         ("maxdepth", "Maximum depth", cxxopts::value<size_t>()->default_value("12"))
-        ("crossover-probability", "The probability to apply crossover", cxxopts::value<operon::scalar_t>()->default_value("1.0"))
-        ("mutation-probability", "The probability to apply mutation", cxxopts::value<operon::scalar_t>()->default_value("0.25"))
+        ("crossover-probability", "The probability to apply crossover", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
+        ("mutation-probability", "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))
         ("selector", "Selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
         ("recombinator", "Recombinator operator, with optional parameters separated by : (eg --recombinator brood:10:10)", cxxopts::value<std::string>())
         ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>())
@@ -87,8 +87,8 @@ int main(int argc, char* argv[])
     config.PoolSize = result["pool-size"].as<size_t>();
     config.Evaluations = result["evaluations"].as<size_t>();
     config.Iterations = result["iterations"].as<size_t>();
-    config.CrossoverProbability = result["crossover-probability"].as<operon::scalar_t>();
-    config.MutationProbability = result["mutation-probability"].as<operon::scalar_t>();
+    config.CrossoverProbability = result["crossover-probability"].as<Operon::Scalar>();
+    config.MutationProbability = result["mutation-probability"].as<Operon::Scalar>();
     config.Seed = std::random_device{}();
 
     // parse remaining config options
@@ -300,7 +300,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        operon::rand_t random(config.Seed);
+        Operon::Random random(config.Seed);
         if (result["shuffle"].as<bool>()) 
         {
             problem.GetDataset().Shuffle(random);
@@ -344,13 +344,13 @@ int main(int argc, char* argv[])
             //    fmt::print("{} ", ind[0]);
             //}
             //fmt::print("\n");
-            auto estimatedTrain = Evaluate<operon::scalar_t>(best.Genotype, problem.GetDataset(), trainingRange);
-            auto estimatedTest = Evaluate<operon::scalar_t>(best.Genotype, problem.GetDataset(), testRange);
+            auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
+            auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);
 
             // scale values
             auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](operon::scalar_t v) { return b * v + a; });
-            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](operon::scalar_t v) { return b * v + a; });
+            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
+            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
 
             auto r2Train = RSquared(estimatedTrain, targetTrain);
             auto r2Test = RSquared(estimatedTest, targetTest);
@@ -370,9 +370,9 @@ int main(int argc, char* argv[])
             auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
 
             // calculate memory consumption
-            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<operon::scalar_t>{}, getSize);
+            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
             auto off = gp.Offspring();
-            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<operon::scalar_t>{}, getSize);
+            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, nmseTrain, nmseTest, rmseTrain, rmseTest);

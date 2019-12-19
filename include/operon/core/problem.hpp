@@ -29,10 +29,10 @@
 namespace Operon {
 struct Solution {
     Tree Model;
-    operon::scalar_t TrainR2;
-    operon::scalar_t TestR2;
-    operon::scalar_t TrainNmse;
-    operon::scalar_t TestNmse;
+    Operon::Scalar TrainR2;
+    Operon::Scalar TestR2;
+    Operon::Scalar TrainNmse;
+    Operon::Scalar TestNmse;
 };
 
 class Problem {
@@ -59,7 +59,7 @@ public:
     Dataset& GetDataset() { return dataset; }
 
     const gsl::span<const Variable> InputVariables() const { return inputVariables; }
-    const gsl::span<const operon::scalar_t> TargetValues() const { return dataset.GetValues(target); }
+    const gsl::span<const Operon::Scalar> TargetValues() const { return dataset.GetValues(target); }
 
     Solution CreateSolution(const Tree&) const;
 

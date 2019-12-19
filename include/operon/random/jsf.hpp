@@ -31,7 +31,7 @@
 // the name JSF (Jenkins Small Fast) was coined by Doty-Humphrey when he included it in PractRand
 // a more detailed analysis at http://www.pcg-random.org/posts/bob-jenkins-small-prng-passes-practrand.html
 namespace Operon {
-namespace Random {
+namespace RandomGenerator {
     namespace detail {
         using _rand32_underlying = uint32_t;
         using _rand64_underlying = uint64_t;

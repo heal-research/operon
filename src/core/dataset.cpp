@@ -68,8 +68,8 @@ Dataset::Dataset(const std::string& file, bool hasHeader)
 
     std::sort(variables.begin(), variables.end(), [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); });
     // fill in variable hash values using a fixed seed
-    Operon::Random::JsfRand<operon::hash_bits> random(1234);
-    std::vector<operon::hash_t> hashes(ncols);
+    Operon::RandomGenerator::JsfRand<Operon::HashBits> random(1234);
+    std::vector<Operon::Hash> hashes(ncols);
     std::generate(hashes.begin(), hashes.end(), [&]() { return random(); });
     std::sort(hashes.begin(), hashes.end());
     for (auto i = 0; i < ncols; ++i) {

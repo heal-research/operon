@@ -36,7 +36,7 @@ public:
     }
 
     typename NormalizedMeanSquaredErrorEvaluator::ReturnType
-    operator()(operon::rand_t&, T& ind) const override
+    operator()(Operon::Random&, T& ind) const override
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();
@@ -51,10 +51,10 @@ public:
             this->localEvaluations += summary.iterations.size();
         }
 
-        auto estimatedValues = Evaluate<operon::scalar_t>(genotype, dataset, trainingRange);
+        auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
         auto nmse = NormalizedMeanSquaredError(estimatedValues, targetValues);
         if (!std::isfinite(nmse)) {
-            nmse = operon::scalar::max();
+            nmse = Operon::Numeric::Max<Operon::Scalar>();
         }
         return nmse;
     }
@@ -68,8 +68,8 @@ public:
 template <typename T>
 class RSquaredEvaluator : public EvaluatorBase<T> {
 public:
-    static constexpr operon::scalar_t LowerBound = 0.0;
-    static constexpr operon::scalar_t UpperBound = 1.0;
+    static constexpr Operon::Scalar LowerBound = 0.0;
+    static constexpr Operon::Scalar UpperBound = 1.0;
 
     RSquaredEvaluator(Problem& problem)
         : EvaluatorBase<T>(problem)
@@ -77,7 +77,7 @@ public:
     }
 
     typename RSquaredEvaluator::ReturnType
-    operator()(operon::rand_t&, T& ind) const
+    operator()(Operon::Random&, T& ind) const
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();
@@ -92,7 +92,7 @@ public:
             this->localEvaluations += summary.iterations.size();
         }
 
-        auto estimatedValues = Evaluate<operon::scalar_t>(genotype, dataset, trainingRange);
+        auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
         auto r2 = RSquared(estimatedValues, targetValues);
         if (!std::isfinite(r2)) {
             r2 = 0;

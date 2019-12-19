@@ -24,6 +24,7 @@
 #include "core/grammar.hpp"
 #include "core/metrics.hpp"
 #include "core/stats.hpp"
+#include "core/distance.hpp"
 #include "operators/selection.hpp"
 #include "operators/creator.hpp"
 #include "random/jsf.hpp"
@@ -38,7 +39,7 @@ TEST_CASE("Sextic GPops", "[performance]")
 {
 //    auto threads = tbb::task_scheduler_init::default_num_threads();
 //    tbb::task_scheduler_init init(threads);
-    operon::rand_t rd;
+    Operon::Random rd;
     auto ds = Dataset("../data/Sextic.csv", true);
     auto target = "Y";
     auto variables = ds.Variables();
@@ -48,7 +49,7 @@ TEST_CASE("Sextic GPops", "[performance]")
     size_t n = 10'000;
     std::vector<size_t> numRows { 1000, 5000 };
     std::vector<size_t> avgLen { 50, 100 };
-    std::vector<operon::scalar_t> results;
+    std::vector<Operon::Scalar> results;
 
     size_t maxDepth = 10000;
     size_t maxLength = 10000;
@@ -82,7 +83,7 @@ TEST_CASE("Sextic GPops", "[performance]")
             BENCHMARK("Parallel")
             {
                 ++reps;
-                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<operon::scalar_t>(tree, ds, range).size(); });
+                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<Operon::Scalar>(tree, ds, range).size(); });
             };
             model.finish();
             totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
@@ -99,7 +100,7 @@ TEST_CASE("Evaluation performance", "[performance]")
     size_t maxLength = 50;
     size_t maxDepth = 1000;
 
-    auto rd = operon::rand_t();
+    auto rd = Operon::Random();
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
@@ -113,10 +114,10 @@ TEST_CASE("Evaluation performance", "[performance]")
     auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     std::vector<Tree> trees(n);
-    std::vector<operon::scalar_t> fit(n);
+    std::vector<Operon::Scalar> fit(n);
 
     auto evaluate = [&](auto& tree) -> size_t {
-        auto estimated = Evaluate<operon::scalar_t>(tree, ds, range);
+        auto estimated = Evaluate<Operon::Scalar>(tree, ds, range);
         return estimated.size();
     };
 
@@ -206,7 +207,7 @@ TEST_CASE("Tree creation performance")
     size_t maxLength = 100;
     size_t maxDepth = 100;
 
-    auto rd = operon::rand_t();
+    auto rd = Operon::Random();
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
@@ -281,7 +282,7 @@ TEST_CASE("Tree hashing performance") {
     size_t maxLength = 200;
     size_t maxDepth = 100;
 
-    auto rd = operon::rand_t();
+    auto rd = Operon::Random();
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
@@ -313,7 +314,7 @@ TEST_CASE("Hash collisions") {
     size_t maxLength = 200;
     size_t maxDepth = 100;
 
-    auto rd = operon::rand_t(1234);
+    auto rd = Operon::Random(1234);
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
@@ -327,7 +328,7 @@ TEST_CASE("Hash collisions") {
     grammar.SetConfig(Grammar::Arithmetic);
 
     std::vector<size_t> indices(n);
-    std::vector<operon::hash_t> seeds(n);
+    std::vector<Operon::Hash> seeds(n);
     std::vector<Tree> trees(n);
 
     auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
@@ -335,7 +336,7 @@ TEST_CASE("Hash collisions") {
     std::iota(indices.begin(), indices.end(), 0);
     std::generate(std::execution::unseq, seeds.begin(), seeds.end(), [&](){ return rd(); });
     std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
-        operon::rand_t rand(seeds[i]);
+        Operon::Random rand(seeds[i]);
         auto tree = btc(rand, grammar, inputs);
         tree.Sort(Operon::HashMode::Strict);
         return tree;
@@ -350,12 +351,6 @@ TEST_CASE("Hash collisions") {
         for(auto& node : tree.Nodes()) {
             auto h = node.CalculatedHashValue;
             set64.insert(h);
-            //auto [it, ok] = set64.insert({h, node});
-            //if (!ok) {
-            //    std::cout << node.Name() << " " << node.Value << " === " << set64[h].Name() << " " << set64[h].Value << "\n";
-            //    //fmt::print("{} {}\n", node.Name(), node.Value);
-            //    //return;
-            //}
             set32.insert(static_cast<uint32_t>(h & 0xFFFFFFFFLL));
         }
         tree.Nodes().clear();
@@ -371,7 +366,7 @@ TEST_CASE("Tree distance performance")
     size_t maxLength = 100;
     size_t maxDepth = 100;
 
-    auto rd = operon::rand_t(1234);
+    auto rd = Operon::Random(1234);
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
@@ -379,125 +374,124 @@ TEST_CASE("Tree distance performance")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
-    std::uniform_int_distribution<size_t> sizeDistribution(2, maxLength);
+    std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log);
 
     std::vector<Tree> trees(n);
     auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
-    std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
+    std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
     Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
 
-    using Ind = Individual<1>;
-
-    auto print_performance = [&](auto d) {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d);
-        fmt::print("\nElapsed: {} s, performance: {:.4e} pairwise distances / s, \n", elapsed.count() / 1000.0, n * (n-1) / 2 * 1000.0 / elapsed.count());
-    };
-
     SECTION("Strict diversity") {
-        using Analyzer = PopulationDiversityAnalyzer<Ind, Operon::HashMode::Strict>;
-        std::vector<detail::hash_vector_t> hashes(trees.size());
-        std::transform(trees.begin(), trees.end(), hashes.begin(), [](Tree tree) { return Analyzer::HashTree(tree, Operon::HashMode::Strict); });
+        std::vector<Operon::Distance::HashVector> hashes(trees.size());
+        std::transform(trees.begin(), trees.end(), hashes.begin(), [](Tree tree) { return MakeHashes(tree, Operon::HashMode::Strict); });
+        size_t reps = 50;
         
+        // measure speed of vectorized intersection
+        auto totalOps = n * (n-1) / 2;
+        double tMean, tStddev, opsPerSecond;
         double diversity;
-        model.start();
-        size_t rep{0};
-        for(rep = 0; rep < 50; ++rep) {
-            auto calculateDistance = [&](size_t i, size_t j) {
-                double h = Analyzer::Intersect1(hashes[i], hashes[j]); 
-                size_t s = hashes[i].size() + hashes[j].size();
-                return (s-h) / s;
-            };
 
+        // measured speed of vectorized intersection
+        MeanVarianceCalculator elapsedCalc;
+        for(size_t k = 0; k < reps; ++k) {
             MeanVarianceCalculator calc;
+            model.start();
             for (size_t i = 0; i < hashes.size() - 1; ++i) {
                 for (size_t j = i+1; j < hashes.size(); ++j) {
-                    calc.Add(calculateDistance(i, j));
+                    double s = hashes[i].size() + hashes[j].size();
+                    size_t c = Operon::Distance::CountIntersectSIMD(hashes[i], hashes[j]);
+                    calc.Add(1 - c / s);
                 }
             }
+            model.finish();
             diversity = calc.Mean();
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count();
+            elapsedCalc.Add(ms);
         };
-        model.finish();
-        fmt::print("\ndiversity strict (vector): {:.6f}\n", diversity);
-        print_performance(model.elapsed() / static_cast<double>(rep));
+        tMean        = elapsedCalc.Mean();
+        tStddev      = elapsedCalc.StandardDeviation();
+        opsPerSecond = 1000 * totalOps / tMean; // from ms to second
+        fmt::print("strict diversity (vector): {:.6f}, elapsed ms: {:.3f} ± {:.3f}, speed: {:.3e} operations/s\n", diversity, tMean, tStddev, opsPerSecond);
 
-        rep = 0;
-        model.start();
-        for(rep = 0; rep < 50; ++rep) {
-            ++rep;
-
-            auto calculateDistance = [&](size_t i, size_t j) {
-                double h = Analyzer::Intersect2(hashes[i], hashes[j]); 
-                size_t s = hashes[i].size() + hashes[j].size();
-                return (s-h) / s;
-            };
-
+        // measured speed of scalar intersection
+        elapsedCalc.Reset();
+        for(size_t k = 0; k < reps; ++k) {
             MeanVarianceCalculator calc;
+            model.start();
             for (size_t i = 0; i < hashes.size() - 1; ++i) {
                 for (size_t j = i+1; j < hashes.size(); ++j) {
-                    calc.Add(calculateDistance(i, j));
+                    double s = hashes[i].size() + hashes[j].size();
+                    size_t c = Operon::Distance::CountIntersect(hashes[i], hashes[j]);
+                    calc.Add(1 - c / s);
                 }
             }
+            model.finish();
             diversity = calc.Mean();
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count();
+            elapsedCalc.Add(ms);
         };
-        model.finish();
-        fmt::print("\ndiversity strict (scalar): {:.6f}\n", diversity);
-        print_performance(model.elapsed() / static_cast<double>(rep));
+        tMean        = elapsedCalc.Mean();
+        tStddev      = elapsedCalc.StandardDeviation();
+        opsPerSecond = 1000 * totalOps / tMean;
+        fmt::print("strict diversity (scalar): {:.6f}, elapsed ms: {:.3f} ± {:.3f}, speed: {:.3e} operations/s\n", diversity, tMean, tStddev, opsPerSecond);
     }
 
     SECTION("Relaxed diversity") {
-        using Analyzer = PopulationDiversityAnalyzer<Ind, Operon::HashMode::Relaxed>;
-        std::vector<detail::hash_vector_t> hashes(trees.size());
-        std::transform(trees.begin(), trees.end(), hashes.begin(), [](Tree tree) { return Analyzer::HashTree(tree, Operon::HashMode::Relaxed); });
+        std::vector<Operon::Distance::HashVector> hashes(trees.size());
+        std::transform(trees.begin(), trees.end(), hashes.begin(), [](Tree tree) { return MakeHashes(tree, Operon::HashMode::Relaxed); });
+        size_t reps = 50;
         
+        // measure speed of vectorized intersection
+        auto totalOps = n * (n-1) / 2;
+        double tMean, tStddev, opsPerSecond;
         double diversity;
-        model.start();
-        size_t rep{0};
-        for(rep = 0; rep < 50; ++rep) {
-            auto calculateDistance = [&](size_t i, size_t j) {
-                double h = Analyzer::Intersect1(hashes[i], hashes[j]); 
-                size_t s = hashes[i].size() + hashes[j].size();
-                return (s-h) / s;
-            };
 
+        // measured speed of vectorized intersection
+        MeanVarianceCalculator elapsedCalc;
+        for(size_t k = 0; k < reps; ++k) {
             MeanVarianceCalculator calc;
+            model.start();
             for (size_t i = 0; i < hashes.size() - 1; ++i) {
                 for (size_t j = i+1; j < hashes.size(); ++j) {
-                    calc.Add(calculateDistance(i, j));
+                    double s = hashes[i].size() + hashes[j].size();
+                    size_t c = Operon::Distance::CountIntersectSIMD(hashes[i], hashes[j]);
+                    calc.Add(1 - c / s);
                 }
             }
+            model.finish();
             diversity = calc.Mean();
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count();
+            elapsedCalc.Add(ms);
         };
-        model.finish();
-        fmt::print("\ndiversity relaxed (vector): {:.6f}\n", diversity);
-        print_performance(model.elapsed() / static_cast<double>(rep));
+        tMean        = elapsedCalc.Mean();
+        tStddev      = elapsedCalc.StandardDeviation();
+        opsPerSecond = 1000 * totalOps / tMean; // from ms to second
+        fmt::print("relaxed diversity (vector): {:.6f}, elapsed ms: {:.3f} ± {:.3f}, speed: {:.3e} operations/s\n", diversity, tMean, tStddev, opsPerSecond);
 
-        rep = 0;
-        model.start();
-        for(rep = 0; rep < 50; ++rep) {
-            ++rep;
-
-            auto calculateDistance = [&](size_t i, size_t j) {
-                double h = Analyzer::Intersect2(hashes[i], hashes[j]); 
-                size_t s = hashes[i].size() + hashes[j].size();
-                return (s-h) / s;
-            };
-
+        // measured speed of scalar intersection
+        elapsedCalc.Reset();
+        for(size_t k = 0; k < reps; ++k) {
             MeanVarianceCalculator calc;
+            model.start();
             for (size_t i = 0; i < hashes.size() - 1; ++i) {
                 for (size_t j = i+1; j < hashes.size(); ++j) {
-                    calc.Add(calculateDistance(i, j));
+                    double s = hashes[i].size() + hashes[j].size();
+                    size_t c = Operon::Distance::CountIntersect(hashes[i], hashes[j]);
+                    calc.Add(1 - c / s);
                 }
             }
+            model.finish();
             diversity = calc.Mean();
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count();
+            elapsedCalc.Add(ms);
         };
-        model.finish();
-        fmt::print("\ndiversity relaxed (scalar): {:.6f}\n", diversity);
-        print_performance(model.elapsed() / static_cast<double>(rep));
-        //auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed());
-        //fmt::print("\nElapsed: {} s, performance: {:.4e} pairwise distance calculations per second.\n", elapsed.count() / 1000.0, n * (n-1) / 2 * 1000.0 / elapsed.count());
+        tMean        = elapsedCalc.Mean();
+        tStddev      = elapsedCalc.StandardDeviation();
+        opsPerSecond = 1000 * totalOps / tMean;
+        fmt::print("relaxed diversity (scalar): {:.6f}, elapsed ms: {:.3f} ± {:.3f}, speed: {:.3e} operations/s\n", diversity, tMean, tStddev, opsPerSecond);
     }
 }
 
@@ -507,7 +501,7 @@ TEST_CASE("Selection performance")
     size_t maxLength = 100;
     size_t maxDepth = 12;
 
-    auto random = operon::rand_t(1234);
+    auto random = Operon::Random(1234);
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
@@ -539,27 +533,27 @@ TEST_CASE("Selection performance")
     {
         TournamentSelector<Ind, 0> tournamentSelector(2);
         tournamentSelector.Prepare(individuals);
-        BENCHMARK("Tournament (prepare)") { tournamentSelector.Prepare(individuals);                                    };
+        BENCHMARK("Tournament (prepare)") { tournamentSelector.Prepare(individuals);                                  };
         // unfortunately due to how Catch works we have to unroll this 
-        BENCHMARK("Tournament size 2")    { tournamentSelector.TournamentSize(2); benchSelector(tournamentSelector);    };
-        BENCHMARK("Tournament size 3")    { tournamentSelector.TournamentSize(3); benchSelector(tournamentSelector);    };
-        BENCHMARK("Tournament size 4")    { tournamentSelector.TournamentSize(4); benchSelector(tournamentSelector);    };
-        BENCHMARK("Tournament size 5")    { tournamentSelector.TournamentSize(5); benchSelector(tournamentSelector);    };
-        BENCHMARK("Tournament size 6")    { tournamentSelector.TournamentSize(6); benchSelector(tournamentSelector);    };
-        BENCHMARK("Tournament size 7")    { tournamentSelector.TournamentSize(7); benchSelector(tournamentSelector);    };
-        BENCHMARK("Tournament size 8")    { tournamentSelector.TournamentSize(8); benchSelector(tournamentSelector);    };
-        BENCHMARK("Tournament size 9")    { tournamentSelector.TournamentSize(9); benchSelector(tournamentSelector);    };
-        BENCHMARK("Tournament size 10")   { tournamentSelector.TournamentSize(10); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 11")   { tournamentSelector.TournamentSize(11); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 12")   { tournamentSelector.TournamentSize(12); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 13")   { tournamentSelector.TournamentSize(13); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 14")   { tournamentSelector.TournamentSize(14); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 15")   { tournamentSelector.TournamentSize(15); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 16")   { tournamentSelector.TournamentSize(16); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 17")   { tournamentSelector.TournamentSize(17); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 18")   { tournamentSelector.TournamentSize(18); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 19")   { tournamentSelector.TournamentSize(19); benchSelector(tournamentSelector);   };
-        BENCHMARK("Tournament size 20")   { tournamentSelector.TournamentSize(20); benchSelector(tournamentSelector);   };
+        BENCHMARK("Tournament size 2")    { tournamentSelector.TournamentSize(2); benchSelector(tournamentSelector);  };
+        BENCHMARK("Tournament size 3")    { tournamentSelector.TournamentSize(3); benchSelector(tournamentSelector);  };
+        BENCHMARK("Tournament size 4")    { tournamentSelector.TournamentSize(4); benchSelector(tournamentSelector);  };
+        BENCHMARK("Tournament size 5")    { tournamentSelector.TournamentSize(5); benchSelector(tournamentSelector);  };
+        BENCHMARK("Tournament size 6")    { tournamentSelector.TournamentSize(6); benchSelector(tournamentSelector);  };
+        BENCHMARK("Tournament size 7")    { tournamentSelector.TournamentSize(7); benchSelector(tournamentSelector);  };
+        BENCHMARK("Tournament size 8")    { tournamentSelector.TournamentSize(8); benchSelector(tournamentSelector);  };
+        BENCHMARK("Tournament size 9")    { tournamentSelector.TournamentSize(9); benchSelector(tournamentSelector);  };
+        BENCHMARK("Tournament size 10")   { tournamentSelector.TournamentSize(10); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 11")   { tournamentSelector.TournamentSize(11); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 12")   { tournamentSelector.TournamentSize(12); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 13")   { tournamentSelector.TournamentSize(13); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 14")   { tournamentSelector.TournamentSize(14); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 15")   { tournamentSelector.TournamentSize(15); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 16")   { tournamentSelector.TournamentSize(16); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 17")   { tournamentSelector.TournamentSize(17); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 18")   { tournamentSelector.TournamentSize(18); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 19")   { tournamentSelector.TournamentSize(19); benchSelector(tournamentSelector); };
+        BENCHMARK("Tournament size 20")   { tournamentSelector.TournamentSize(20); benchSelector(tournamentSelector); };
     }
 
 }

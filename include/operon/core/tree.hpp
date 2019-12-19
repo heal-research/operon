@@ -165,7 +165,7 @@ public:
     size_t Level(gsl::index) const noexcept;
     bool Empty() const noexcept { return nodes.empty(); }
 
-    operon::hash_t HashValue() const { return nodes.empty() ? 0 : nodes.back().CalculatedHashValue; }
+    Operon::Hash HashValue() const { return nodes.empty() ? 0 : nodes.back().CalculatedHashValue; }
 
     ChildIterator Children(gsl::index i) { return ChildIterator(*this, i); }
     ConstChildIterator Children(gsl::index i) const { return ConstChildIterator(*this, i); }

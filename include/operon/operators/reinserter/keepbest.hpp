@@ -27,7 +27,7 @@ template <typename T, gsl::index Idx, typename ExecutionPolicy = std::execution:
 class KeepBestReinserter : public ReinserterBase<T, Idx> {
     public:
         // keep the best |pop| individuals from pop+pool
-        virtual void operator()(operon::rand_t&, std::vector<T>& pop, std::vector<T>& pool) const override {
+        virtual void operator()(Operon::Random&, std::vector<T>& pop, std::vector<T>& pool) const override {
             ExecutionPolicy ep;
             auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; };
             // sort the population and the recombination pool

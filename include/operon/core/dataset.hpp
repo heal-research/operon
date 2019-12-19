@@ -44,7 +44,7 @@ namespace {
 class Dataset {
 private:
     std::vector<Variable> variables;
-    using MatrixType = Eigen::Matrix<operon::scalar_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
+    using MatrixType = Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
     MatrixType values;
 
     Dataset();
@@ -61,7 +61,7 @@ public:
         , values(std::move(rhs.values))
     {
     }
-    Dataset(const std::vector<Variable> vars, const std::vector<std::vector<operon::scalar_t>> vals)
+    Dataset(const std::vector<Variable> vars, const std::vector<std::vector<Operon::Scalar>> vals)
         : variables(vars)
     {
         values = MatrixType(vals.front().size(), vals.size());
@@ -97,36 +97,36 @@ public:
         return names;
     }
 
-    const gsl::span<const operon::scalar_t> GetValues(const std::string& name) const
+    const gsl::span<const Operon::Scalar> GetValues(const std::string& name) const
     {
         auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
-        return gsl::span<const operon::scalar_t>(values.col(it->Index).data(), values.rows());
+        return gsl::span<const Operon::Scalar>(values.col(it->Index).data(), values.rows());
     }
 
-    const gsl::span<const operon::scalar_t> GetValues(operon::hash_t hashValue) const noexcept
+    const gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept
     {
         auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
-        return gsl::span<const operon::scalar_t>(values.col(it->Index).data(), values.rows());
+        return gsl::span<const Operon::Scalar>(values.col(it->Index).data(), values.rows());
     }
 
-    const gsl::span<const operon::scalar_t> GetValues(gsl::index index) const noexcept
+    const gsl::span<const Operon::Scalar> GetValues(gsl::index index) const noexcept
     {
-        return gsl::span<const operon::scalar_t>(values.col(index).data(), values.rows());
+        return gsl::span<const Operon::Scalar>(values.col(index).data(), values.rows());
     }
 
-    const std::string& GetName(operon::hash_t hashValue) const
+    const std::string& GetName(Operon::Hash hashValue) const
     {
         auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
         return it->Name;
     }
 
-    operon::hash_t GetHashValue(const std::string& name) const
+    Operon::Hash GetHashValue(const std::string& name) const
     {
         auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
         return it->Hash;
     }
 
-    gsl::index GetIndex(operon::hash_t hashValue) const
+    gsl::index GetIndex(Operon::Hash hashValue) const
     {
         auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
         return it->Index;
@@ -134,7 +134,7 @@ public:
     const std::string& GetName(gsl::index index) const { return variables[index].Name; }
     const gsl::span<const Variable> Variables() const { return gsl::span<const Variable>(variables); }
 
-    void Shuffle(operon::rand_t& random) 
+    void Shuffle(Operon::Random& random) 
     {
         Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values.rows());
         perm.setIdentity();
@@ -158,7 +158,7 @@ public:
         Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
         auto seg = values.col(i).segment(range.Start(), range.Size());
         MeanVarianceCalculator calc;
-        auto vals = gsl::span<operon::scalar_t>(seg.data(), seg.size());
+        auto vals = gsl::span<Operon::Scalar>(seg.data(), seg.size());
         calc.Reset();
         calc.Add(vals);
 

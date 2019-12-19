@@ -35,7 +35,7 @@ TEST_CASE("Selection Distribution")
     size_t maxLength = 100;
     size_t maxDepth = 12;
 
-    auto random = operon::rand_t();
+    auto random = Operon::Random(1234);
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";

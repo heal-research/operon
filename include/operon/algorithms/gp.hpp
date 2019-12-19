@@ -76,7 +76,7 @@ public:
         generation = 0;
     }
 
-    void Run(operon::rand_t& random, std::function<void()> report = nullptr)
+    void Run(Operon::Random& random, std::function<void()> report = nullptr)
     {
         auto& config       = GetConfig();
         auto& creator      = GetCreator();
@@ -89,7 +89,7 @@ public:
         std::vector<gsl::index> indices(std::max(config.PopulationSize, config.PoolSize));
         std::iota(indices.begin(), indices.end(), 0L);
         // random seeds for each thread
-        std::vector<operon::rand_t::result_type> seeds(config.PopulationSize);
+        std::vector<Operon::Random::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
 
 
@@ -97,14 +97,14 @@ public:
 
         auto create = [&](gsl::index i) {
             // create one random generator per thread
-            operon::rand_t rndlocal{seeds[i]};
+            Operon::Random rndlocal{seeds[i]};
             parents[i].Genotype = creator(rndlocal, grammar, inputs);
-            parents[i][Idx] = operon::scalar::max();
+            parents[i][Idx] = Operon::Numeric::Max<Operon::Scalar>();
         };
         const auto& evaluator = recombinator.Evaluator();
         auto evaluate = [&](T& ind) {
             auto f = evaluator(random, ind);
-            if (!std::isfinite(f)) { f = operon::scalar::max(); }
+            if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
             ind[Idx] = f;
         };
 
@@ -117,7 +117,7 @@ public:
         std::atomic_bool terminate = false;
         // produce some offspring
         auto iterate = [&](gsl::index i) {
-            operon::rand_t rndlocal{seeds[i]};
+            Operon::Random rndlocal{seeds[i]};
 
             while (!(terminate = recombinator.Terminate())) {
                 if (auto recombinant = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability); recombinant.has_value()) {
@@ -162,3 +162,4 @@ public:
 } // namespace operon
 
 #endif
+

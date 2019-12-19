@@ -103,7 +103,7 @@ public:
         return { minArity, maxArity };
     }
 
-    Node SampleRandomSymbol(operon::rand_t& random, size_t minArity = 0, size_t maxArity = 2) const
+    Node SampleRandomSymbol(Operon::Random& random, size_t minArity = 0, size_t maxArity = 2) const
     {
         decltype(frequencies)::const_iterator head = frequencies.end();
         decltype(frequencies)::const_iterator tail = frequencies.end();
