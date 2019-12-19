@@ -80,7 +80,7 @@ Tree& Tree::Reduce()
     return this->UpdateNodes();
 }
 
-Tree& Tree::Sort(bool strict)
+Tree& Tree::Sort(Operon::HashMode mode)
 {
     // preallocate memory to reduce fragmentation
     std::vector<Node> sorted;
@@ -97,10 +97,10 @@ Tree& Tree::Sort(bool strict)
         auto& s = nodes[i];
 
         if (s.IsLeaf()) {
-            if (strict) {
+            if (mode == Operon::HashMode::Strict) {
                 auto valueHash = xxh::xxhash3<operon::hash_bits>({ s.Value });
                 s.CalculatedHashValue = xxh::xxhash3<operon::hash_bits>({ s.HashValue, valueHash });
-            } else {
+            } else if (mode == Operon::HashMode::Relaxed) {
                 s.CalculatedHashValue = s.HashValue;
             }
             continue;

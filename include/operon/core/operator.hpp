@@ -175,7 +175,7 @@ protected:
 };
 
 template <typename T>
-class PopulationAnalyzerBase : public OperatorBase<double, gsl::index> {
+class PopulationAnalyzerBase : public OperatorBase<double> {
 public:
     virtual void Prepare(gsl::span<const T> pop) = 0;
 
