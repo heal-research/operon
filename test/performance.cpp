@@ -226,7 +226,7 @@ TEST_CASE("Tree creation performance")
     };
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic);
-    size_t k = 0;
+    double k = 0;
     auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
     SECTION("Balanced tree creator")
     {
@@ -300,7 +300,7 @@ TEST_CASE("Tree hashing performance") {
     Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
 
     model.start();
-    std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [](auto& t) {t.Sort(true); });
+    std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [](auto& t) {t.Sort(Operon::HashMode::Strict); });
     model.finish();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed());
     auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
@@ -337,7 +337,7 @@ TEST_CASE("Hash collisions") {
     std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         operon::rand_t rand(seeds[i]);
         auto tree = btc(rand, grammar, inputs);
-        tree.Sort(true);
+        tree.Sort(Operon::HashMode::Strict);
         return tree;
             });
 
@@ -367,7 +367,7 @@ TEST_CASE("Hash collisions") {
 
 TEST_CASE("Tree distance performance") 
 {
-    size_t n = 5000;
+    size_t n = 1000;
     size_t maxLength = 100;
     size_t maxDepth = 100;
 
@@ -379,25 +379,126 @@ TEST_CASE("Tree distance performance")
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
-    std::uniform_int_distribution<size_t> sizeDistribution(maxLength, maxLength);
-
-    using Ind = Individual<1>;
+    std::uniform_int_distribution<size_t> sizeDistribution(2, maxLength);
 
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log);
 
-    std::vector<Ind> trees(n);
+    std::vector<Tree> trees(n);
     auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
-    std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return Ind { btc(rd, grammar, inputs), {0.0} }; });
+    std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
     Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
 
-    PopulationDiversityAnalyzer<Ind, uint8_t> analyzer;
-    model.start();
-    analyzer.Prepare(trees);
-    fmt::print("Structural diversity: {:.6f}, hybrid diversity: {:.6f}\n", analyzer.StructuralDiversity(), analyzer.HybridDiversity());
-    model.finish();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed());
-    fmt::print("\nElapsed: {} s, performance: {:.4e} pairwise distance calculations per second.\n", elapsed.count() / 1000.0, n * (n-1) / 2 * 1000.0 / elapsed.count());
+    using Ind = Individual<1>;
+
+    auto print_performance = [&](auto d) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d);
+        fmt::print("\nElapsed: {} s, performance: {:.4e} pairwise distances / s, \n", elapsed.count() / 1000.0, n * (n-1) / 2 * 1000.0 / elapsed.count());
+    };
+
+    SECTION("Strict diversity") {
+        using Analyzer = PopulationDiversityAnalyzer<Ind, Operon::HashMode::Strict>;
+        std::vector<detail::hash_vector_t> hashes(trees.size());
+        std::transform(trees.begin(), trees.end(), hashes.begin(), [](Tree tree) { return Analyzer::HashTree(tree, Operon::HashMode::Strict); });
+        
+        double diversity;
+        model.start();
+        size_t rep{0};
+        for(rep = 0; rep < 50; ++rep) {
+            auto calculateDistance = [&](size_t i, size_t j) {
+                double h = Analyzer::Intersect1(hashes[i], hashes[j]); 
+                size_t s = hashes[i].size() + hashes[j].size();
+                return (s-h) / s;
+            };
+
+            MeanVarianceCalculator calc;
+            for (size_t i = 0; i < hashes.size() - 1; ++i) {
+                for (size_t j = i+1; j < hashes.size(); ++j) {
+                    calc.Add(calculateDistance(i, j));
+                }
+            }
+            diversity = calc.Mean();
+        };
+        model.finish();
+        fmt::print("\ndiversity strict (vector): {:.6f}\n", diversity);
+        print_performance(model.elapsed() / static_cast<double>(rep));
+
+        rep = 0;
+        model.start();
+        for(rep = 0; rep < 50; ++rep) {
+            ++rep;
+
+            auto calculateDistance = [&](size_t i, size_t j) {
+                double h = Analyzer::Intersect2(hashes[i], hashes[j]); 
+                size_t s = hashes[i].size() + hashes[j].size();
+                return (s-h) / s;
+            };
+
+            MeanVarianceCalculator calc;
+            for (size_t i = 0; i < hashes.size() - 1; ++i) {
+                for (size_t j = i+1; j < hashes.size(); ++j) {
+                    calc.Add(calculateDistance(i, j));
+                }
+            }
+            diversity = calc.Mean();
+        };
+        model.finish();
+        fmt::print("\ndiversity strict (scalar): {:.6f}\n", diversity);
+        print_performance(model.elapsed() / static_cast<double>(rep));
+    }
+
+    SECTION("Relaxed diversity") {
+        using Analyzer = PopulationDiversityAnalyzer<Ind, Operon::HashMode::Relaxed>;
+        std::vector<detail::hash_vector_t> hashes(trees.size());
+        std::transform(trees.begin(), trees.end(), hashes.begin(), [](Tree tree) { return Analyzer::HashTree(tree, Operon::HashMode::Relaxed); });
+        
+        double diversity;
+        model.start();
+        size_t rep{0};
+        for(rep = 0; rep < 50; ++rep) {
+            auto calculateDistance = [&](size_t i, size_t j) {
+                double h = Analyzer::Intersect1(hashes[i], hashes[j]); 
+                size_t s = hashes[i].size() + hashes[j].size();
+                return (s-h) / s;
+            };
+
+            MeanVarianceCalculator calc;
+            for (size_t i = 0; i < hashes.size() - 1; ++i) {
+                for (size_t j = i+1; j < hashes.size(); ++j) {
+                    calc.Add(calculateDistance(i, j));
+                }
+            }
+            diversity = calc.Mean();
+        };
+        model.finish();
+        fmt::print("\ndiversity relaxed (vector): {:.6f}\n", diversity);
+        print_performance(model.elapsed() / static_cast<double>(rep));
+
+        rep = 0;
+        model.start();
+        for(rep = 0; rep < 50; ++rep) {
+            ++rep;
+
+            auto calculateDistance = [&](size_t i, size_t j) {
+                double h = Analyzer::Intersect2(hashes[i], hashes[j]); 
+                size_t s = hashes[i].size() + hashes[j].size();
+                return (s-h) / s;
+            };
+
+            MeanVarianceCalculator calc;
+            for (size_t i = 0; i < hashes.size() - 1; ++i) {
+                for (size_t j = i+1; j < hashes.size(); ++j) {
+                    calc.Add(calculateDistance(i, j));
+                }
+            }
+            diversity = calc.Mean();
+        };
+        model.finish();
+        fmt::print("\ndiversity relaxed (scalar): {:.6f}\n", diversity);
+        print_performance(model.elapsed() / static_cast<double>(rep));
+        //auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed());
+        //fmt::print("\nElapsed: {} s, performance: {:.4e} pairwise distance calculations per second.\n", elapsed.count() / 1000.0, n * (n-1) / 2 * 1000.0 / elapsed.count());
+    }
 }
 
 TEST_CASE("Selection performance")
