@@ -127,7 +127,6 @@ public:
             }
         };
 
-        std::uniform_real_distribution<double> uniformReal(0, 1); // for crossover and mutation
         for (generation = 0; generation < config.Generations; ++generation) {
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });

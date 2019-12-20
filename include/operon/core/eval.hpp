@@ -64,9 +64,9 @@ inline void LimitToRange(gsl::span<T> values, T min, T max) noexcept
 }
 
 template <typename T>
-std::vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
+Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
 {
-    std::vector<T> result(range.Size());
+    Operon::Vector<T> result(range.Size());
     Evaluate(tree, dataset, range, parameters, gsl::span<T>(result));
     return result;
 }
@@ -76,6 +76,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 {
     auto& nodes = tree.Nodes();
     Eigen::Matrix<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
+    Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1); 
 
     auto indices = std::vector<gsl::index>(nodes.size());
     gsl::index idx = 0;
@@ -197,11 +198,11 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
         }
         // the final result is found in the last section of the buffer corresponding to the root node
-        std::copy_n(m.rightCols(1).data(), remainingRows, result.begin() + row);
+        res.segment(row, remainingRows) = m.rightCols(1);
     }
     // replace nan and inf values
-    auto [min, max] = MinMax(result);
-    LimitToRange(result, min, max);
+    //auto [min, max] = MinMax(result);
+    //LimitToRange(result, min, max);
 }
 
 struct ParameterizedEvaluation {
