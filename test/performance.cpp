@@ -35,65 +35,6 @@
 
 namespace Operon::Test {
 
-TEST_CASE("Sextic GPops", "[performance]")
-{
-//    auto threads = tbb::task_scheduler_init::default_num_threads();
-//    tbb::task_scheduler_init init(threads);
-    Operon::Random rd;
-    auto ds = Dataset("../data/Sextic.csv", true);
-    auto target = "Y";
-    auto variables = ds.Variables();
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
-
-    size_t n = 10'000;
-    std::vector<size_t> numRows { 1000, 5000 };
-    std::vector<size_t> avgLen { 50, 100 };
-    std::vector<Operon::Scalar> results;
-
-    size_t maxDepth = 10000;
-    size_t maxLength = 10000;
-
-    Grammar grammar;
-
-    for (auto len : avgLen) {
-        std::uniform_int_distribution<size_t> sizeDistribution(len, len);
-        auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, len };
-        std::vector<Tree> trees(n);
-        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
-        for(auto nRows : numRows) {
-            Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
-            Range range { 0, nRows };
-
-            size_t reps = 0;
-            model.start();
-            BENCHMARK("Parallel")
-            {
-                ++reps;
-                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<float>(tree, ds, range).size(); });
-            };
-            model.finish();
-            auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed() / reps);
-            auto gpops = totalNodes * range.Size() * 1000.0 / elapsed.count();
-            fmt::print("Float,{},{},{:.4e}\n", len, nRows, gpops);
-
-            reps = 0;
-            model.start();
-            BENCHMARK("Parallel")
-            {
-                ++reps;
-                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<Operon::Scalar>(tree, ds, range).size(); });
-            };
-            model.finish();
-            totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
-            elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed() / reps);
-            gpops = totalNodes * range.Size() * 1000.0 / elapsed.count();
-            fmt::print("Double,{},{},{:.4e}\n", len, nRows, gpops);
-        }
-    }
-}
-
 TEST_CASE("Evaluation performance", "[performance]")
 {
     size_t n = 10'000;
