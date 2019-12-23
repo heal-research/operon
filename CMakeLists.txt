@@ -87,11 +87,11 @@ find_package(Catch2 REQUIRED)
 add_executable(
     operon-test
     test/test.cpp
-    test/performance.cpp
-    test/evaluation.cpp
-    test/initialization.cpp
-    test/implementation.cpp
-    test/selection.cpp
+    test/performance/evaluation.cpp
+    #test/evaluation.cpp
+    #test/initialization.cpp
+    #test/implementation.cpp
+    #test/selection.cpp
 )
 target_compile_features(operon-test PRIVATE cxx_std_17)
 target_link_libraries(operon-test PRIVATE operon Catch2::Catch2 TBB::tbb)
