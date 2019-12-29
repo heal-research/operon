@@ -18,7 +18,7 @@ namespace Operon {
     // alignment can be controlled with the EIGEN_MAX_ALIGN_BYTES macro
     // https://eigen.tuxfamily.org/dox/TopicPreprocessorDirectives.html#TopicPreprocessorDirectivesPerformance
     template<typename T>
-    using Vector = std::vector<T, Eigen::aligned_allocator<T>>;
+    using Vector               = std::vector<T, Eigen::aligned_allocator<T>>;
 
     namespace Numeric {
         template<typename T> 

@@ -99,15 +99,6 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             auto r = m.col(i).array();
 
             switch (auto const& s = nodes[i]; s.Type) {
-            case NodeType::Constant: {
-                idx++;
-                break;
-            }
-            case NodeType::Variable: {
-                auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                r.segment(0, remainingRows) = dataset.Values().col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>() * w;
-                break;
-            }
             case NodeType::Add: {
                 //r = m.col(c).array();
                 //for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
@@ -116,6 +107,17 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
                 r = m.col(c1).array() + m.col(c2).array();
+                break;
+            }
+            case NodeType::Mul: {
+                //auto c = i - 1; // first child index
+                //r = m.col(c).array();
+                //for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
+                //    r *= m.col(j).array();
+                //}
+                auto c1 = i - 1; // first child index
+                auto c2 = c1 - 1 - nodes[c1].Length;
+                r = m.col(c1).array() * m.col(c2).array();
                 break;
             }
             case NodeType::Sub: {
@@ -131,17 +133,6 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
                 r = m.col(c1).array() - m.col(c2).array();
-                break;
-            }
-            case NodeType::Mul: {
-                //auto c = i - 1; // first child index
-                //r = m.col(c).array();
-                //for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                //    r *= m.col(j).array();
-                //}
-                auto c1 = i - 1; // first child index
-                auto c2 = c1 - 1 - nodes[c1].Length;
-                r = m.col(c1).array() * m.col(c2).array();
                 break;
             }
             case NodeType::Div: {
@@ -191,6 +182,15 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 r = m.col(i - 1).array().square();
                 break;
             }
+            case NodeType::Constant: {
+                idx++;
+                break;
+            }
+            case NodeType::Variable: {
+                auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
+                r.segment(0, remainingRows) = dataset.Values().col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>() * w;
+                break;
+            }
             default: {
                 fmt::print(stderr, "Unknown node type {}\n", nodes[i].Name());
                 std::terminate();
@@ -201,8 +201,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
         res.segment(row, remainingRows) = m.rightCols(1);
     }
     // replace nan and inf values
-    //auto [min, max] = MinMax(result);
-    //LimitToRange(result, min, max);
+    auto [min, max] = MinMax(result);
+    LimitToRange(result, min, max);
 }
 
 struct ParameterizedEvaluation {
