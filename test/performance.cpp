@@ -35,6 +35,65 @@
 
 namespace Operon::Test {
 
+TEST_CASE("Sextic GPops", "[performance]")
+{
+//    auto threads = tbb::task_scheduler_init::default_num_threads();
+//    tbb::task_scheduler_init init(threads);
+    Operon::Random rd;
+    auto ds = Dataset("../data/Sextic.csv", true);
+    auto target = "Y";
+    auto variables = ds.Variables();
+    std::vector<Variable> inputs;
+    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+
+    size_t n = 10'000;
+    std::vector<size_t> numRows { 1000, 5000 };
+    std::vector<size_t> avgLen { 50, 100 };
+    std::vector<Operon::Scalar> results;
+
+    size_t maxDepth = 10000;
+    size_t maxLength = 10000;
+
+    Grammar grammar;
+
+    for (auto len : avgLen) {
+        std::uniform_int_distribution<size_t> sizeDistribution(len, len);
+        auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, len };
+        std::vector<Tree> trees(n);
+        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
+        for(auto nRows : numRows) {
+            Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
+            Range range { 0, nRows };
+
+            size_t reps = 0;
+            model.start();
+            BENCHMARK("Parallel")
+            {
+                ++reps;
+                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<float>(tree, ds, range).size(); });
+            };
+            model.finish();
+            auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed() / reps);
+            auto gpops = totalNodes * range.Size() * 1000.0 / elapsed.count();
+            fmt::print("Float,{},{},{:.4e}\n", len, nRows, gpops);
+
+            reps = 0;
+            model.start();
+            BENCHMARK("Parallel")
+            {
+                ++reps;
+                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<Operon::Scalar>(tree, ds, range).size(); });
+            };
+            model.finish();
+            totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+            elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed() / reps);
+            gpops = totalNodes * range.Size() * 1000.0 / elapsed.count();
+            fmt::print("Double,{},{},{:.4e}\n", len, nRows, gpops);
+        }
+    }
+}
+
 TEST_CASE("Evaluation performance", "[performance]")
 {
     size_t n = 10'000;
@@ -342,9 +401,48 @@ TEST_CASE("Tree distance performance")
             model.start();
             for (size_t i = 0; i < hashes.size() - 1; ++i) {
                 for (size_t j = i+1; j < hashes.size(); ++j) {
-                    double s = hashes[i].size() + hashes[j].size();
                     size_t c = Operon::Distance::CountIntersectSIMD(hashes[i], hashes[j]);
-                    calc.Add(1 - c / s);
+                    double s = hashes[i].size() + hashes[j].size() - c;
+                    calc.Add((s - c) / s);
+                }
+            }
+            model.finish();
+            diversity = calc.Mean();
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count();
+            elapsedCalc.Add(ms);
+        };
+        tMean        = elapsedCalc.Mean();
+        tStddev      = elapsedCalc.StandardDeviation();
+        opsPerSecond = 1000 * totalOps / tMean; // from ms to second
+        fmt::print("strict diversity (vector): {:.6f}, elapsed ms: {:.3f} ± {:.3f}, speed: {:.3e} operations/s\n", diversity, tMean, tStddev, opsPerSecond);
+
+        // measured speed of vectorized intersection - multi-threaded
+        elapsedCalc.Reset();
+        std::vector<std::pair<size_t, size_t>> pairs(n);
+        std::vector<size_t> indices(n);
+        std::iota(indices.begin(), indices.end(), 0);
+        std::vector<double> distances(n);
+        for(size_t k = 0; k < reps; ++k) {
+            MeanVarianceCalculator calc;
+            model.start();
+            size_t idx = 0;
+            size_t total = totalOps;
+            for (size_t i = 0; i < hashes.size() - 1; ++i) {
+                for (size_t j = i+1; j < hashes.size(); ++j) {
+                    pairs[idx++] = { i, j };
+
+                    if (idx == std::min(n, total)) {
+                        idx = 0;
+                        total -= n;
+
+                        std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](auto m) { 
+                                auto& p = pairs[m];
+                                size_t c = Operon::Distance::CountIntersectSIMD(hashes[p.first], hashes[p.second]);
+                                double s = hashes[p.first].size() + hashes[p.second].size() - c;
+                                distances[m] = (s - c) / s;
+                        }); 
+                        calc.Add(distances);
+                    }
                 }
             }
             model.finish();
@@ -364,9 +462,9 @@ TEST_CASE("Tree distance performance")
             model.start();
             for (size_t i = 0; i < hashes.size() - 1; ++i) {
                 for (size_t j = i+1; j < hashes.size(); ++j) {
-                    double s = hashes[i].size() + hashes[j].size();
                     size_t c = Operon::Distance::CountIntersect(hashes[i], hashes[j]);
-                    calc.Add(1 - c / s);
+                    double s = hashes[i].size() + hashes[j].size() - c;
+                    calc.Add((s - c) / s);
                 }
             }
             model.finish();
@@ -397,9 +495,9 @@ TEST_CASE("Tree distance performance")
             model.start();
             for (size_t i = 0; i < hashes.size() - 1; ++i) {
                 for (size_t j = i+1; j < hashes.size(); ++j) {
-                    double s = hashes[i].size() + hashes[j].size();
                     size_t c = Operon::Distance::CountIntersectSIMD(hashes[i], hashes[j]);
-                    calc.Add(1 - c / s);
+                    double s = hashes[i].size() + hashes[j].size() - c;
+                    calc.Add((s - c) / s);
                 }
             }
             model.finish();
@@ -419,9 +517,9 @@ TEST_CASE("Tree distance performance")
             model.start();
             for (size_t i = 0; i < hashes.size() - 1; ++i) {
                 for (size_t j = i+1; j < hashes.size(); ++j) {
-                    double s = hashes[i].size() + hashes[j].size();
                     size_t c = Operon::Distance::CountIntersect(hashes[i], hashes[j]);
-                    calc.Add(1 - c / s);
+                    double s = hashes[i].size() + hashes[j].size() - c;
+                    calc.Add((s - c) / s);
                 }
             }
             model.finish();
