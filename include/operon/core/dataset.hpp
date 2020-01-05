@@ -61,7 +61,7 @@ public:
         , values(std::move(rhs.values))
     {
     }
-    Dataset(const std::vector<Variable> vars, const std::vector<std::vector<Operon::Scalar>> vals)
+    Dataset(const std::vector<Variable>& vars, const std::vector<std::vector<Operon::Scalar>>& vals)
         : variables(vars)
     {
         values = MatrixType(vals.front().size(), vals.size());
@@ -119,6 +119,7 @@ public:
         auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
         return it->Name;
     }
+    const std::string& GetName(gsl::index index) const { return variables[index].Name; }
 
     Operon::Hash GetHashValue(const std::string& name) const
     {
@@ -131,7 +132,6 @@ public:
         auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
         return it->Index;
     }
-    const std::string& GetName(gsl::index index) const { return variables[index].Name; }
     const gsl::span<const Variable> Variables() const { return gsl::span<const Variable>(variables); }
 
     void Shuffle(Operon::Random& random) 

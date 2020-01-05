@@ -72,7 +72,7 @@ Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range
 }
 
 template <typename T>
-void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result)
+void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result) noexcept
 {
     auto& nodes = tree.Nodes();
     Eigen::Matrix<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());

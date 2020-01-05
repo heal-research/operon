@@ -29,7 +29,7 @@
 #include <execution>
 
 namespace Operon::Test {
-TEST_CASE("Sample nodes from grammar")
+TEST_CASE("Sample nodes from grammar", "[implementation]")
 {
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
@@ -69,7 +69,7 @@ TEST_CASE("Sample nodes from grammar")
     REQUIRE(chi <= criticalValue);
 }
 
-TEST_CASE("Tree shape")
+TEST_CASE("Tree shape", "[implementation]")
 {
     auto target = "Y";
     auto ds = Dataset("../data/Poly-10.csv", true);
@@ -94,7 +94,7 @@ TEST_CASE("Tree shape")
     fmt::print("{}\n", TreeFormatter::Format(tree, ds));
 }
 
-TEST_CASE("Tree initialization (balanced)")
+TEST_CASE("Tree initialization (balanced)", "[implementation]")
 {
     auto target = "Y";
     auto ds = Dataset("../data/Poly-10.csv", true);
@@ -237,7 +237,7 @@ TEST_CASE("Tree initialization (balanced)")
     }
 }
 
-TEST_CASE("Tree initialization (uniform)")
+TEST_CASE("Tree initialization (uniform)", "[implementation]")
 {
     auto target = "Y";
     auto ds = Dataset("../data/Poly-10.csv", true);
@@ -379,7 +379,7 @@ TEST_CASE("Tree initialization (uniform)")
     }
 }
 
-TEST_CASE("Tree depth calculation")
+TEST_CASE("Tree depth calculation", "[implementation]")
 {
     auto target = "Y";
     auto ds = Dataset("../data/Poly-10.csv", true);

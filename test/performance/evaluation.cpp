@@ -29,6 +29,16 @@
 
 namespace Operon {
 namespace Test {
+
+    std::size_t TotalNodes(const std::vector<Tree>& trees) {
+#ifdef _MSC_VER
+        auto totalNodes = std::reduce(trees.begin(), trees.end(), 0UL, [](size_t partial, const auto& t) { return partial + t.Length(); });
+#else
+        auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+#endif
+        return totalNodes;
+    }
+
     // used by some Langdon & Banzhaf papers as benchmark for measuring GPops/s
     TEST_CASE("Sextic GPops", "[performance]")
     {
@@ -53,13 +63,14 @@ namespace Test {
             auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, len };
             std::vector<Tree> trees(n);
             std::generate(trees.begin(), trees.end(), [&]() { return creator(random, grammar, inputs); });
-            auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus{}, [](auto& tree) { return tree.Length(); });
+
+            auto totalNodes = TotalNodes(trees);
 
             // test different number of rows
             for (auto nRows : numRows) {
                 Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
                 Range range { 0, nRows };
-                auto totalOps = totalNodes * range.Size() * 1000.0;
+                auto totalOps = totalNodes * range.Size();
 
                 MeanVarianceCalculator calc;
                 BENCHMARK("Parallel")
@@ -67,7 +78,7 @@ namespace Test {
                     model.start();
                     std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<float>(tree, ds, range).size(); });
                     model.finish();
-                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0; // ms to s
                     auto gpops = totalOps / elapsed;
                     calc.Add(gpops);
                 };
@@ -79,7 +90,7 @@ namespace Test {
                     model.start();
                     std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<double>(tree, ds, range).size(); });
                     model.finish();
-                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0; // ms to s
                     auto gpops = totalOps / elapsed;
                     calc.Add(gpops);
                 };
@@ -88,5 +99,109 @@ namespace Test {
         }
     }
 
-}
-}
+    TEST_CASE("Evaluation performance", "[performance]")
+    {
+        size_t n = 10'000;
+        size_t maxLength = 50;
+        size_t maxDepth = 1000;
+
+        auto rd = Operon::Random();
+        auto ds = Dataset("../data/Poly-10.csv", true);
+
+        auto target = "Y";
+        auto variables = ds.Variables();
+        std::vector<Variable> inputs;
+        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+
+        Range range = { 0, ds.Rows() };
+
+        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+        auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+
+        std::vector<Tree> trees(n);
+        std::vector<Operon::Scalar> fit(n);
+
+        auto evaluate = [&](auto& tree) -> size_t {
+            auto estimated = Evaluate<Operon::Scalar>(tree, ds, range);
+            return estimated.size();
+        };
+
+        Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
+
+        Grammar grammar;
+        MeanVarianceCalculator calc;
+
+
+        auto measurePerformance = [&]()
+        {
+            std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
+            auto totalNodes = TotalNodes(trees);
+            auto totalOps = totalNodes * range.Size();
+            // [+, -, *, /]
+            BENCHMARK("Sequential")
+            {
+                model.start();
+                std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
+                model.finish();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0;
+                auto gpops = totalOps / elapsed;
+                calc.Add(gpops);
+            };
+            fmt::print("\nGPops/second: {:.3e} ± {:.3e}\n", calc.Mean(), calc.StandardDeviation());
+
+            calc.Reset();
+            BENCHMARK("Parallel")
+            {
+                model.start();
+                std::transform(std::execution::par_unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
+                model.finish();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0;
+                auto gpops = totalOps / elapsed;
+                calc.Add(gpops);
+            };
+            fmt::print("\nGPops/second: {:.3e} ± {:.3e}\n", calc.Mean(), calc.StandardDeviation());
+        };
+
+        SECTION("Arithmetic")
+        {
+            grammar.SetConfig(Grammar::Arithmetic);
+            measurePerformance();
+        }
+
+        SECTION("Arithmetic + Exp + Log")
+        {
+            // [+, -, *, /, exp, log]
+            grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log);
+            measurePerformance();
+        }
+
+        SECTION("Arithmetic + Sin + Cos")
+        {
+            // [+, -, *, /, exp, log]
+            grammar.SetConfig(Grammar::Arithmetic | NodeType::Sin | NodeType::Cos);
+            measurePerformance();
+        }
+
+        SECTION("Arithmetic + Exp + Log + Sin + Cos")
+        {
+            grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos);
+            measurePerformance();
+        }
+
+        SECTION("Arithmetic + Sqrt + Cbrt + Square")
+        {
+            // [+, -, *, /, exp, log]
+            grammar.SetConfig(Grammar::Arithmetic | NodeType::Sqrt | NodeType::Cbrt | NodeType::Square);
+            measurePerformance();
+        }
+
+        SECTION("Arithmetic + Exp + Log + Sin + Cos + Tan + Sqrt + Cbrt + Square")
+        {
+            // [+, -, *, /, exp, log]
+            grammar.SetConfig(Grammar::Full);
+            measurePerformance();
+        }
+    }
+} // namespace Test
+} // namespace Operon
+

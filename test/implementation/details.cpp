@@ -19,20 +19,18 @@
 
 #include <catch2/catch.hpp>
 
-#include "core/node.hpp"
-#include "core/grammar.hpp"
-#include "operators/creator.hpp"
+#include "core/tree.hpp"
+#include "core/common.hpp"
+#include "core/operator.hpp"
 
-#include "random/jsf.hpp"
-#include "random/sfc64.hpp"
-
-namespace Operon::Test {
-TEST_CASE("Node is trivial")
+namespace Operon {
+namespace Test {
+TEST_CASE("Node is trivial", "[detail]")
 {
     REQUIRE(std::is_trivial_v<Operon::Node>);
 }
 
-TEST_CASE("Node is small")
+TEST_CASE("Node is small", "[detail]")
 {
     // this test case basically wants to ensure that, 
     // for memory efficiency purposes, the Node struct
@@ -74,7 +72,7 @@ TEST_CASE("Node is small")
     REQUIRE(sizeof(Node) <= size_t{64});
 }
 
-TEST_CASE("Jsf is copyable") 
+TEST_CASE("Jsf is copyable", "[detail]") 
 {
     RandomGenerator::JsfRand<64> jsf(1234);
     jsf();
@@ -84,7 +82,7 @@ TEST_CASE("Jsf is copyable")
     REQUIRE(tmp() == jsf());
 }
 
-TEST_CASE("Sfc64 is copyable")
+TEST_CASE("Sfc64 is copyable", "[detail]")
 {
     RandomGenerator::Sfc64 sfc(1234);
     sfc();
@@ -93,4 +91,5 @@ TEST_CASE("Sfc64 is copyable")
 
     REQUIRE(tmp() == sfc());
 }
-} // namespace Operon::Test
+} // namespace Test
+} // namespace Operon

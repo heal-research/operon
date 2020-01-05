@@ -22,6 +22,7 @@
 
 #include <cstddef>
 
+namespace Operon {
 struct GeneticAlgorithmConfig {
     size_t Generations;
     size_t Evaluations;
@@ -32,5 +33,6 @@ struct GeneticAlgorithmConfig {
     double MutationProbability;
     size_t Seed;
 };
+} // namespace Operon
 
 #endif
