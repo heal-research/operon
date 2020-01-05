@@ -25,7 +25,8 @@
 
 #include <catch2/catch.hpp>
 
-namespace Operon::Test {
+namespace Operon {
+namespace Test {
 TEST_CASE("Evaluation correctness", "[implementation]")
 {
     auto ds = Dataset("../data/Poly-10.csv", true);
@@ -284,4 +285,7 @@ TEST_CASE("Constant optimization (numeric)", "[implementation]")
     auto coef = OptimizeNumeric(poly10, ds, targetValues, range, 100, true);
     fmt::print("{}\n", InfixFormatter::Format(poly10, ds, 6));
 }
-}
+
+} // namespace Test
+} // namespace Operon
+
