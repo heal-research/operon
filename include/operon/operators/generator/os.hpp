@@ -17,17 +17,18 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef OS_RECOMBINATOR_HPP
-#define OS_RECOMBINATOR_HPP
+#ifndef OS_GENERATOR_HPP
+#define OS_GENERATOR_HPP
 
 #include "core/operator.hpp"
 
 namespace Operon {
 template <typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
-class OffspringSelectionRecombinator : public RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator> {
+class OffspringSelectionGenerator : public OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator> {
 public:
-    explicit OffspringSelectionRecombinator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
-        : RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut)
+    explicit OffspringSelectionGenerator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
+        : OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut)
+          , basicGenerator(eval, sel, cx, mut)
     {
     }
 
@@ -76,7 +77,7 @@ public:
 
     void Prepare(const gsl::span<const T> pop) const override
     {
-        RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>::Prepare(pop);
+        OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator>::Prepare(pop);
         lastEvaluations = this->evaluator.get().FitnessEvaluations();
     }
 
@@ -90,12 +91,13 @@ public:
 
     bool Terminate() const override
     {
-        return RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>::Terminate() || SelectionPressure() > maxSelectionPressure;
+        return OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator>::Terminate() || SelectionPressure() > maxSelectionPressure;
     };
 
 private:
     mutable size_t lastEvaluations;
     size_t maxSelectionPressure;
+    BasicOffspringGenerator<TEvaluator, TSelector, TCrossover, TMutator> basicGenerator;
 };
 } // namespace Operon
 

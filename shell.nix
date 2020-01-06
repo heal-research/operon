@@ -23,11 +23,15 @@ pkgs.gcc9Stdenv.mkDerivation {
     hardeningDisable = [ "all" ]; 
 
     buildInputs = with pkgs; [
+        # python environment for bindings and scripting
+        python37
+        python37Packages.pybind11
+        python37Packages.colorama
+        python37Packages.pandas
+        python37Packages.coloredlogs
         # Project dependencies
         bear # generate compilation database
         git
-        python38
-        python38Packages.pybind11
         cmake
         cxxopts
         eigen

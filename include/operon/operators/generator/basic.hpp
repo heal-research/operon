@@ -17,18 +17,18 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef BASIC_RECOMBINATOR_HPP
-#define BASIC_RECOMBINATOR_HPP
+#ifndef BASIC_GENERATOR_HPP
+#define BASIC_GENERATOR_HPP
 
 #include "core/operator.hpp"
 
 namespace Operon {
 // TODO: think of a way to eliminate duplicated code between the different recombinators
 template <typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
-class BasicRecombinator : public RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator> {
+class BasicOffspringGenerator : public OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator> {
 public:
-    explicit BasicRecombinator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
-        : RecombinatorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut)
+    explicit BasicOffspringGenerator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
+        : OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut)
     {
     }
 
@@ -36,8 +36,9 @@ public:
     std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
         std::uniform_real_distribution<double> uniformReal;
-        bool doCrossover = uniformReal(random) < pCrossover;
-        bool doMutation = uniformReal(random) < pMutation;
+        bool doCrossover = std::bernoulli_distribution(pCrossover)(random);
+        bool doMutation = std::bernoulli_distribution(pMutation)(random);
+
         if (!(doCrossover || doMutation))
             return std::nullopt;
 

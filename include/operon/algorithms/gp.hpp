@@ -25,20 +25,20 @@
 #include "operators/crossover.hpp"
 #include "operators/creator.hpp"
 #include "operators/mutation.hpp"
-#include "operators/recombinator.hpp"
+#include "operators/generator.hpp"
 
 namespace Operon {
-template <typename TCreator, typename TRecombinator, typename TReinserter, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+template <typename TCreator, typename TGenerator, typename TReinserter, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class GeneticProgrammingAlgorithm {
-    using T = typename TRecombinator::SelectorType::SelectableType;
-    static constexpr bool Idx = TRecombinator::SelectorType::SelectableIndex;
+    using T = typename TGenerator::SelectorType::SelectableType;
+    static constexpr bool Idx = TGenerator::SelectorType::SelectableIndex;
 
 private:
     std::reference_wrapper<const Problem> problem_;
     std::reference_wrapper<const GeneticAlgorithmConfig> config_;
 
     std::reference_wrapper<const TCreator> creator_;
-    std::reference_wrapper<const TRecombinator> recombinator_;
+    std::reference_wrapper<const TGenerator> recombinator_;
     std::reference_wrapper<const TReinserter> reinserter_;
 
     std::vector<T> parents;
@@ -47,7 +47,7 @@ private:
     size_t generation;
 
 public:
-    explicit GeneticProgrammingAlgorithm(const Problem& problem, const GeneticAlgorithmConfig& config, const TCreator& creator, const TRecombinator& recombinator, const TReinserter& reinserter)
+    explicit GeneticProgrammingAlgorithm(const Problem& problem, const GeneticAlgorithmConfig& config, const TCreator& creator, const TGenerator& recombinator, const TReinserter& reinserter)
         : problem_(problem)
         , config_(config)
         , creator_(creator)
@@ -66,7 +66,7 @@ public:
     const GeneticAlgorithmConfig& GetConfig() const { return config_.get(); }
 
     const TCreator& GetCreator() const { return creator_.get(); }
-    const TRecombinator& GetRecombinator() const { return recombinator_.get(); }
+    const TGenerator& GetRecombinator() const { return recombinator_.get(); }
     const TReinserter& GetReinserter() const { return reinserter_.get(); }
 
     size_t Generation() const { return generation; }

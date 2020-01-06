@@ -77,4 +77,25 @@ Tree ChangeVariableMutation::operator()(Operon::Random& random, Tree tree) const
 
     return tree;
 }
+
+Tree ChangeFunctionMutation::operator()(Operon::Random& random, Tree tree) const {
+    auto& nodes = tree.Nodes();
+    auto funcCount = std::count_if(nodes.begin(), nodes.end(), [](const Node& node) { return !node.IsLeaf(); });
+
+    if (funcCount == 0) {
+        return tree;
+    }
+
+    std::uniform_int_distribution<gsl::index> uniformInt(1, funcCount);
+    auto index = uniformInt(random);
+
+    size_t i = 0;
+    for (; i < nodes.size(); ++i) {
+        if (!nodes[i].IsLeaf() && --index == 0)
+            break;
+    }
+    nodes[i].Type = grammar.SampleRandomSymbol(random, nodes[i].Arity, nodes[i].Arity).Type;
+    return tree;
+}
+
 } // namespace Operon
