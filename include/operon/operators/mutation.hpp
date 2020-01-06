@@ -56,6 +56,19 @@ struct ChangeVariableMutation : public MutatorBase {
 private:
     const gsl::span<const Variable> variables;
 };
+
+struct ChangeFunctionMutation : public MutatorBase {
+    ChangeFunctionMutation(Grammar g) 
+        : grammar(g) 
+    {
+    }
+
+    Tree operator()(Operon::Random&, Tree) const override;
+
+private:
+    Grammar grammar;
+
+};
 }
 
 #endif

@@ -4,10 +4,10 @@
         "filename": "Chemical-I.csv",
         "formula": "",
         "kind": "real-world",
-        "target": "Y",
+        "target": "y",
         "test_rows": {
-            "end": 711,
-            "start": 1066
+            "end": 1066,
+            "start": 711
         },
         "training_rows": {
             "end": 711,

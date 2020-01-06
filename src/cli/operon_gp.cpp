@@ -33,7 +33,7 @@
 #include "operators/crossover.hpp"
 #include "operators/evaluator.hpp"
 #include "operators/mutation.hpp"
-#include "operators/recombinator.hpp"
+#include "operators/generator.hpp"
 #include "operators/selection.hpp"
 #include "operators/reinserter/keepbest.hpp"
 #include "operators/reinserter/replaceworst.hpp"
@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
         ("crossover-probability", "The probability to apply crossover", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
         ("mutation-probability", "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))
         ("selector", "Selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
-        ("recombinator", "Recombinator operator, with optional parameters separated by : (eg --recombinator brood:10:10)", cxxopts::value<std::string>())
+        ("offspring-generator", "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)", cxxopts::value<std::string>())
         ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>())
         ("enable-symbols", "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
         ("disable-symbols", "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
@@ -201,7 +201,7 @@ int main(int argc, char* argv[])
         using Evaluator = RSquaredEvaluator<Ind>;
         using Selector = SelectorBase<Ind, idx>;
         using Reinserter = ReinserterBase<Ind, idx>;
-        using Recombinator = RecombinatorBase<Evaluator, Selector, SubtreeCrossover, MultiMutation>;
+        using OffspringGenerator = OffspringGeneratorBase<Evaluator, Selector, SubtreeCrossover, MultiMutation>;
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
@@ -209,8 +209,10 @@ int main(int argc, char* argv[])
         auto mutator = MultiMutation {};
         auto onePoint = OnePointMutation {};
         auto changeVar = ChangeVariableMutation { inputs };
+        auto changeFunc = ChangeFunctionMutation { problem.GetGrammar() };
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
+        mutator.Add(changeFunc, 1.0);
 
         Evaluator evaluator(problem);
         evaluator.LocalOptimizationIterations(config.Iterations);
@@ -249,31 +251,24 @@ int main(int argc, char* argv[])
             }
         }
 
-        std::unique_ptr<Recombinator> recombinator;
-        if (result.count("recombinator") == 0) {
-            recombinator.reset(new BasicRecombinator(evaluator, *selector, crossover, mutator));
+        std::unique_ptr<OffspringGenerator> recombinator;
+        if (result.count("offspring-generator") == 0) {
+            recombinator.reset(new BasicOffspringGenerator(evaluator, *selector, crossover, mutator));
         } else {
-            auto value = result["recombinator"].as<std::string>();
+            auto value = result["offspring-generator"].as<std::string>();
             auto tokens = Split(value, ':');
             if (tokens[0] == "basic") {
-                recombinator.reset(new BasicRecombinator(evaluator, *selector, crossover, mutator));
+                recombinator.reset(new BasicOffspringGenerator(evaluator, *selector, crossover, mutator));
             } else if (tokens[0] == "brood") {
-                size_t broodSize = 10, broodTournamentSize = 2;
+                size_t broodSize = 10;
                 if (tokens.size() > 1) {
                     if (auto [p, ec] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), broodSize); ec != std::errc()) {
                         fmt::print(stderr, "{}\n{}\n", "Error: could not parse brood size argument.", opts.help());
                         exit(EXIT_FAILURE);
                     }
                 }
-                if (tokens.size() > 2) {
-                    if (auto [p, ec] = std::from_chars(tokens[2].data(), tokens[1].data() + tokens[2].size(), broodTournamentSize); ec != std::errc()) {
-                        fmt::print(stderr, "{}\n{}\n", "Error: could not parse brood size argument.", opts.help());
-                        exit(EXIT_FAILURE);
-                    }
-                }
-                auto ptr = new BroodRecombinator(evaluator, *selector, crossover, mutator);
+                auto ptr = new BroodOffspringGenerator(evaluator, *selector, crossover, mutator);
                 ptr->BroodSize(broodSize);
-                ptr->BroodTournamentSize(broodTournamentSize);
                 recombinator.reset(ptr);
             } else if (tokens[0] == "os") {
                 size_t selectionPressure = 100;
@@ -283,7 +278,7 @@ int main(int argc, char* argv[])
                         exit(EXIT_FAILURE);
                     }
                 }
-                auto ptr = new OffspringSelectionRecombinator(evaluator, *selector, crossover, mutator);
+                auto ptr = new OffspringSelectionGenerator(evaluator, *selector, crossover, mutator);
                 ptr->MaxSelectionPressure(selectionPressure);
                 recombinator.reset(ptr);
             }

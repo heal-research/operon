@@ -17,11 +17,11 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef RECOMBINATOR_HPP
-#define RECOMBINATOR_HPP
+#ifndef GENERATOR_HPP
+#define GENERATOR_HPP
 
-#include "recombinator/basic.hpp"
-#include "recombinator/brood.hpp"
-#include "recombinator/os.hpp"
+#include "generator/basic.hpp"
+#include "generator/brood.hpp"
+#include "generator/os.hpp"
 
 #endif

@@ -141,14 +141,14 @@ protected:
 };
 
 template <typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
-class RecombinatorBase : public OperatorBase<std::optional<typename TSelector::SelectableType>, double, double> {
+class OffspringGeneratorBase : public OperatorBase<std::optional<typename TSelector::SelectableType>, double, double> {
 public:
     using EvaluatorType = TEvaluator;
     using SelectorType = TSelector;
     using CrossoverType = TCrossover;
     using MutatorType = TMutator;
 
-    RecombinatorBase(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
+    OffspringGeneratorBase(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
         : evaluator(eval)
         , selector(sel)
         , crossover(cx)
