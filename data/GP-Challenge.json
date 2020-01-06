@@ -6,12 +6,12 @@
         "kind": "real-world",
         "target": "energy",
         "test_rows": {
-            "end": 0,
+            "end": 82965,
             "start": 5000
         },
         "training_rows": {
             "end": 5000,
-            "start": 82966
+            "start": 0 
         }
     },
     "timestamp": "Thu, 28 Nov 2019 11:00:23 +0000"
