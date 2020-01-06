@@ -162,7 +162,7 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter 
             problem_results.append(df)
                         
 df_all = pd.concat(problem_results, axis=0)
-group = df_all.groupby(['Problem', 'Pop size', 'Pool size', 'Iter count', 'Eval count', 'Selector', 'Generator', 'Reinserter'])
+group = df_all.groupby(['Problem', 'Pop size', 'Pool size', 'Iter count', 'Eval count', 'Selector', 'Reinserter', 'Generator'])
 median_all = group.median(numeric_only=False)
 q25 = group.quantile(0.25)
 q75 = group.quantile(0.75)
