@@ -334,11 +334,6 @@ int main(int argc, char* argv[])
                 }
                 exit(EXIT_FAILURE);
             }
-            //fmt::print("Qualities\n");
-            //for(const auto& ind : pop) {
-            //    fmt::print("{} ", ind[0]);
-            //}
-            //fmt::print("\n");
             auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
             auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);
 
@@ -376,7 +371,6 @@ int main(int argc, char* argv[])
         };
 
         gp.Run(random, report);
-        //fmt::print("{}\n", InfixFormatter::Format(getBest(gp.Parents()).Genotype, *dataset));
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);

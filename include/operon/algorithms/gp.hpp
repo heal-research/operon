@@ -38,7 +38,7 @@ private:
     std::reference_wrapper<const GeneticAlgorithmConfig> config_;
 
     std::reference_wrapper<const TCreator> creator_;
-    std::reference_wrapper<const TGenerator> recombinator_;
+    std::reference_wrapper<const TGenerator> generator_;
     std::reference_wrapper<const TReinserter> reinserter_;
 
     std::vector<T> parents;
@@ -47,11 +47,11 @@ private:
     size_t generation;
 
 public:
-    explicit GeneticProgrammingAlgorithm(const Problem& problem, const GeneticAlgorithmConfig& config, const TCreator& creator, const TGenerator& recombinator, const TReinserter& reinserter)
+    explicit GeneticProgrammingAlgorithm(const Problem& problem, const GeneticAlgorithmConfig& config, const TCreator& creator, const TGenerator& generator, const TReinserter& reinserter)
         : problem_(problem)
         , config_(config)
         , creator_(creator)
-        , recombinator_(recombinator)
+        , generator_(generator)
         , reinserter_(reinserter)
         , parents(config.PopulationSize)
         , offspring(config.PoolSize)
@@ -66,7 +66,7 @@ public:
     const GeneticAlgorithmConfig& GetConfig() const { return config_.get(); }
 
     const TCreator& GetCreator() const { return creator_.get(); }
-    const TGenerator& GetRecombinator() const { return recombinator_.get(); }
+    const TGenerator& GetRecombinator() const { return generator_.get(); }
     const TReinserter& GetReinserter() const { return reinserter_.get(); }
 
     size_t Generation() const { return generation; }
@@ -80,7 +80,7 @@ public:
     {
         auto& config       = GetConfig();
         auto& creator      = GetCreator();
-        auto& recombinator = GetRecombinator();
+        auto& generator = GetRecombinator();
         auto& reinserter   = GetReinserter();
         auto& problem      = GetProblem();
         auto& grammar      = problem.GetGrammar();
@@ -101,7 +101,7 @@ public:
             parents[i].Genotype = creator(rndlocal, grammar, inputs);
             parents[i][Idx] = Operon::Numeric::Max<Operon::Scalar>();
         };
-        const auto& evaluator = recombinator.Evaluator();
+        const auto& evaluator = generator.Evaluator();
         auto evaluate = [&](T& ind) {
             auto f = evaluator(random, ind);
             if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
@@ -119,9 +119,9 @@ public:
         auto iterate = [&](gsl::index i) {
             Operon::Random rndlocal{seeds[i]};
 
-            while (!(terminate = recombinator.Terminate())) {
-                if (auto recombinant = recombinator(rndlocal, config.CrossoverProbability, config.MutationProbability); recombinant.has_value()) {
-                    offspring[i] = std::move(recombinant.value());
+            while (!(terminate = generator.Terminate())) {
+                if (auto result = generator(rndlocal, config.CrossoverProbability, config.MutationProbability); result.has_value()) {
+                    offspring[i] = std::move(result.value());
                     return;
                 }
             }
@@ -150,7 +150,7 @@ public:
             }
 
             offspring[0] = *best;
-            recombinator.Prepare(parents);
+            generator.Prepare(parents);
             // we always allow one elite (maybe this should be more configurable?)
             std::for_each(executionPolicy, indices.cbegin() + 1, indices.cbegin() + config.PoolSize, iterate);
             // merge pool back into pop
