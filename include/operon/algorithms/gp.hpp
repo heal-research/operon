@@ -30,8 +30,8 @@
 namespace Operon {
 template <typename TCreator, typename TGenerator, typename TReinserter, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class GeneticProgrammingAlgorithm {
-    using T = typename TGenerator::SelectorType::SelectableType;
-    static constexpr bool Idx = TGenerator::SelectorType::SelectableIndex;
+    using T = typename TGenerator::FemaleSelectorType::SelectableType;
+    static constexpr bool Idx = TGenerator::FemaleSelectorType::SelectableIndex;
 
 private:
     std::reference_wrapper<const Problem> problem_;

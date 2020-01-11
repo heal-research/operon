@@ -24,17 +24,20 @@
 
 namespace Operon {
 // TODO: think of a way to eliminate duplicated code between the different recombinators
-template <typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
-class BasicOffspringGenerator : public OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator> {
+template <typename TEvaluator, typename TCrossover, typename TMutator, typename TFemaleSelector, typename TMaleSelector = TFemaleSelector>
+class BasicOffspringGenerator : public OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector> {
 public:
-    explicit BasicOffspringGenerator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
-        : OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut)
+    explicit BasicOffspringGenerator(TEvaluator& eval, TCrossover& cx, TMutator& mut, TFemaleSelector& femSel, TMaleSelector& maleSel)
+        : OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>(eval, cx, mut, femSel, maleSel)
     {
     }
 
-    using T = typename TSelector::SelectableType;
+    using T = typename TFemaleSelector::SelectableType;
+    using U = typename TMaleSelector::SelectableType;
+    constexpr static int Idx = TFemaleSelector::SelectableIndex;
     std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
+        static_assert(std::is_same_v<T, U>);
         std::uniform_real_distribution<double> uniformReal;
         bool doCrossover = std::bernoulli_distribution(pCrossover)(random);
         bool doMutation = std::bernoulli_distribution(pMutation)(random);
@@ -42,13 +45,13 @@ public:
         if (!(doCrossover || doMutation))
             return std::nullopt;
 
-        auto population = this->Selector().Population();
+        auto population = this->FemaleSelector().Population();
 
-        auto first = this->selector(random);
+        auto first = this->femaleSelector(random);
         T child;
 
         if (doCrossover) {
-            auto second = this->selector(random);
+            auto second = this->maleSelector(random);
             child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
         }
 
@@ -60,7 +63,7 @@ public:
 
         auto f = this->evaluator(random, child);
         if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
-        child[TSelector::SelectableIndex] = f;
+        child[Idx] = f;
         return std::make_optional(child);
     }
 };

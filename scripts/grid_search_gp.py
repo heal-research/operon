@@ -34,9 +34,9 @@ results_path = args.out
 population_size = [ 1000 ]
 pool_size = [ 1000 ]
 iteration_count = [ 0 ]
-evaluation_budget = [ 500000 ]
-generators = ['basic', 'brood:10', 'os:100']
-selectors =['tournament:5'] 
+evaluation_budget = [ 1000000 ]
+generators = ['brood:10' ]
+selectors =[ ('random', 'tournament:5'), ('random', 'random') ] 
 reinserters = ['replace-worst']
 
 meta_header = ['Problem', 
@@ -52,10 +52,10 @@ output_header = ['Elapsed',
         'Generation', 
         'R2 (train)',
         'R2 (test)',
-        'NMSE (train)',
-        'NMSE (test)',
         'RMSE (train)',
         'RMSE (test)',
+        'NMSE (train)',
+        'NMSE (test)',
         'Avg fit',
         'Avg len',
         'Fitness eval',
@@ -68,7 +68,7 @@ header = meta_header + output_header
 parameter_space = list(itertools.product(population_size, pool_size, iteration_count, evaluation_budget, generators, selectors, reinserters))
 total_configurations = len(parameter_space)
 all_files = list(os.listdir(data_path)) if os.path.isdir(data_path) else [ os.path.basename(data_path) ]
-data_files = [ f for f in all_files if f.endswith('.json') ]
+data_files = sorted([ f for f in all_files if f.endswith('.json') ])
 data_count = len(data_files)
 reps_range = list(range(reps))
 
@@ -122,7 +122,8 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter 
                     "--population-size", str(pop_size),
                     "--pool-size", str(pol_size),
                     "--generations", str(gen_count),
-                    "--selector", str(selector),
+                    "--female-selector", str(selector[0]),
+                    "--male-selector", str(selector[1]),
                     "--offspring-generator", str(generator),
                     "--reinserter", str(reinserter),
                     "--enable-symbols", "exp,log,sin,cos"]);
@@ -144,16 +145,21 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter 
             median                     = df.median(axis=0)
             q1, q3                     = df['R2 (train)'].quantile([0.25, 0.75])
             median['R2 (train) IQR']   = q3 - q1
+
             q1, q3                     = df['R2 (test)'].quantile([0.25, 0.75])
             median['R2 (test) IQR']    = q3 - q1
-            q1, q3                     = df['NMSE (train)'].quantile([0.25, 0.75])
-            median['NMSE (train) IQR'] = q3 - q1
-            q1, q3                     = df['NMSE (test)'].quantile([0.25, 0.75])
-            median['NMSE (test) IQR']  = q3 - q1
+
             q1, q3                     = df['RMSE (train)'].quantile([0.25, 0.75])
             median['RMSE (train) IQR'] = q3 - q1
+
             q1, q3                     = df['RMSE (test)'].quantile([0.25, 0.75])
             median['RMSE (test) IQR']  = q3 - q1
+
+            q1, q3                     = df['NMSE (train)'].quantile([0.25, 0.75])
+            median['NMSE (train) IQR'] = q3 - q1
+            
+            q1, q3                     = df['NMSE (test)'].quantile([0.25, 0.75])
+            median['NMSE (test) IQR']  = q3 - q1
 
             for l in df.describe().to_string().split('\n'):
                 logger.info(fg.CYAN + l)
@@ -168,6 +174,8 @@ q25 = group.quantile(0.25)
 q75 = group.quantile(0.75)
 median_all['R2 (train) IQR']   = q75['R2 (train)'] - q25['R2 (train)']
 median_all['R2 (test) IQR']    = q75['R2 (test)'] - q25['R2 (test)']
+median_all['RMSE (train) IQR'] = q75['RMSE (train)'] - q25['RMSE (train)']
+median_all['RMSE (test) IQR']  = q75['RMSE (test)'] - q25['RMSE (test)']
 median_all['NMSE (train) IQR'] = q75['NMSE (train)'] - q25['NMSE (train)']
 median_all['NMSE (test) IQR']  = q75['NMSE (test)'] - q25['NMSE (test)']
 for l in median_all.to_string().split('\n'):

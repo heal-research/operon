@@ -23,23 +23,23 @@
 #include "core/operator.hpp"
 
 namespace Operon {
-template <typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
-class BroodOffspringGenerator : public OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator> {
+template <typename TEvaluator, typename TCrossover, typename TMutator, typename TFemaleSelector, typename TMaleSelector = TFemaleSelector>
+class BroodOffspringGenerator : public OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector> {
 public:
-    explicit BroodOffspringGenerator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
-        : OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut)
-          , basicGenerator(eval, sel, cx, mut)
+    explicit BroodOffspringGenerator(TEvaluator& eval, TCrossover& cx, TMutator& mut, TFemaleSelector& femSel, TMaleSelector& maleSel)
+        : OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>(eval, cx, mut, femSel, maleSel)
+          , basicGenerator(eval, cx, mut, femSel, maleSel)
     {
     }
 
-    using T = typename TSelector::SelectableType;
+    using T = typename TFemaleSelector::SelectableType;
     std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
         std::uniform_real_distribution<double> uniformReal;
 
-        constexpr gsl::index Idx = TSelector::SelectableIndex;
+        constexpr gsl::index Idx = TFemaleSelector::SelectableIndex;
 
-        auto population = this->Selector().Population();
+        auto population = this->FemaleSelector().Population();
 
         // assuming the basic generator never fails
         auto best = basicGenerator(random, pCrossover, pMutation).value();
@@ -58,7 +58,7 @@ public:
     size_t BroodSize() const { return broodSize; }
 
 private:
-    BasicOffspringGenerator<TEvaluator, TSelector, TCrossover, TMutator> basicGenerator;
+    BasicOffspringGenerator<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector> basicGenerator;
     size_t broodSize;
 };
 } // namespace Operon

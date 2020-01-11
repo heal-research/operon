@@ -65,7 +65,8 @@ int main(int argc, char* argv[])
         ("maxdepth", "Maximum depth", cxxopts::value<size_t>()->default_value("12"))
         ("crossover-probability", "The probability to apply crossover", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
         ("mutation-probability", "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))
-        ("selector", "Selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
+        ("female-selector", "Female selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
+        ("male-selector", "Male selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
         ("offspring-generator", "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)", cxxopts::value<std::string>())
         ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>())
         ("enable-symbols", "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
@@ -197,19 +198,19 @@ int main(int argc, char* argv[])
         auto inputs = problem.InputVariables();
 
         const gsl::index idx { 0 };
-        using Ind = Individual<1>;
-        using Evaluator = RSquaredEvaluator<Ind>;
-        using Selector = SelectorBase<Ind, idx>;
-        using Reinserter = ReinserterBase<Ind, idx>;
-        using OffspringGenerator = OffspringGeneratorBase<Evaluator, Selector, SubtreeCrossover, MultiMutation>;
+        using Ind                = Individual<1>;
+        using Evaluator          = RSquaredEvaluator<Ind>;
+        using Selector           = SelectorBase<Ind, idx>;
+        using Reinserter         = ReinserterBase<Ind, idx>;
+        using OffspringGenerator = OffspringGeneratorBase<Evaluator, SubtreeCrossover, MultiMutation, Selector, Selector>;
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
-        auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
-        auto mutator = MultiMutation {};
-        auto onePoint = OnePointMutation {};
-        auto changeVar = ChangeVariableMutation { inputs };
-        auto changeFunc = ChangeFunctionMutation { problem.GetGrammar() };
+        auto creator             = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+        auto crossover           = SubtreeCrossover { 0.9, maxDepth, maxLength };
+        auto mutator             = MultiMutation {};
+        auto onePoint            = OnePointMutation {};
+        auto changeVar           = ChangeVariableMutation { inputs };
+        auto changeFunc          = ChangeFunctionMutation { problem.GetGrammar() };
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
@@ -220,45 +221,52 @@ int main(int argc, char* argv[])
 
         Expects(problem.TrainingRange().Size() > 0);
 
-        std::unique_ptr<Selector> selector;
-        if (result.count("selector") == 0) {
-            selector.reset(new TournamentSelector<Individual<1>, idx> { 5u });
-        } else {
-            auto value = result["selector"].as<std::string>();
-            auto tokens = Split(value, ':');
-            if (tokens[0] == "tournament") {
-                size_t tSize = 5;
-                if (tokens.size() > 1) {
-                    if (auto [p, ec] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), tSize); ec != std::errc()) {
-                        fmt::print(stderr, "{}\n{}\n", "Error: could not parse tournament size argument.", opts.help());
-                        exit(EXIT_FAILURE);
+        auto parseSelector = [&](const std::string& name) -> Selector* {
+            if (result.count(name) == 0) {
+                return new TournamentSelector<Individual<1>, idx> { 5u };
+            } else {
+                auto value = result[name].as<std::string>();
+                auto tokens = Split(value, ':');
+                if (tokens[0] == "tournament") {
+                    size_t tSize = 5;
+                    if (tokens.size() > 1) {
+                        if (auto [p, ec] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), tSize); ec != std::errc()) {
+                            fmt::print(stderr, "{}\n{}\n", "Error: could not parse tournament size argument.", opts.help());
+                            exit(EXIT_FAILURE);
+                        }
                     }
-                }
-                selector.reset(new TournamentSelector<Ind, 0> { tSize });
-            } else if (tokens[0] == "proportional") {
-                selector.reset(new ProportionalSelector<Ind, 0> {});
-            } else if (tokens[0] == "rank") {
-                size_t tSize = 5;
-                if (tokens.size() > 1) {
-                    if (auto [p, ec] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), tSize); ec != std::errc()) {
-                        fmt::print(stderr, "{}\n{}\n", "Error: could not parse tournament size argument.", opts.help());
-                        exit(EXIT_FAILURE);
+                    return new TournamentSelector<Ind, 0> { tSize };
+                } else if (tokens[0] == "proportional") {
+                    return new ProportionalSelector<Ind, 0> {};
+                } else if (tokens[0] == "rank") {
+                    size_t tSize = 5;
+                    if (tokens.size() > 1) {
+                        if (auto [p, ec] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), tSize); ec != std::errc()) {
+                            fmt::print(stderr, "{}\n{}\n", "Error: could not parse tournament size argument.", opts.help());
+                            exit(EXIT_FAILURE);
+                        }
                     }
+                    return new RankTournamentSelector<Ind, 0> { tSize };
+                } else if (tokens[0] == "random") {
+                    return new RandomSelector<Ind, 0> {};
                 }
-                selector.reset(new RankTournamentSelector<Ind, 0> { tSize });
-            } else if (tokens[0] == "random") {
-                selector.reset(new RandomSelector<Ind, 0> {});
             }
-        }
+        };
 
-        std::unique_ptr<OffspringGenerator> recombinator;
+        std::unique_ptr<Selector> femaleSelector;
+        std::unique_ptr<Selector> maleSelector;
+
+        femaleSelector.reset(parseSelector("female-selector"));
+        maleSelector.reset(parseSelector("male-selector"));
+
+        std::unique_ptr<OffspringGenerator> generator;
         if (result.count("offspring-generator") == 0) {
-            recombinator.reset(new BasicOffspringGenerator(evaluator, *selector, crossover, mutator));
+            generator.reset(new BasicOffspringGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector));
         } else {
             auto value = result["offspring-generator"].as<std::string>();
             auto tokens = Split(value, ':');
             if (tokens[0] == "basic") {
-                recombinator.reset(new BasicOffspringGenerator(evaluator, *selector, crossover, mutator));
+                generator.reset(new BasicOffspringGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector));
             } else if (tokens[0] == "brood") {
                 size_t broodSize = 10;
                 if (tokens.size() > 1) {
@@ -267,9 +275,9 @@ int main(int argc, char* argv[])
                         exit(EXIT_FAILURE);
                     }
                 }
-                auto ptr = new BroodOffspringGenerator(evaluator, *selector, crossover, mutator);
+                auto ptr = new BroodOffspringGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector);
                 ptr->BroodSize(broodSize);
-                recombinator.reset(ptr);
+                generator.reset(ptr);
             } else if (tokens[0] == "os") {
                 size_t selectionPressure = 100;
                 if (tokens.size() > 1) {
@@ -278,9 +286,9 @@ int main(int argc, char* argv[])
                         exit(EXIT_FAILURE);
                     }
                 }
-                auto ptr = new OffspringSelectionGenerator(evaluator, *selector, crossover, mutator);
+                auto ptr = new OffspringSelectionGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector);
                 ptr->MaxSelectionPressure(selectionPressure);
-                recombinator.reset(ptr);
+                generator.reset(ptr);
             }
         }
         std::unique_ptr<Reinserter> reinserter;
@@ -309,7 +317,7 @@ int main(int argc, char* argv[])
 
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        GeneticProgrammingAlgorithm gp { problem, config, creator, *recombinator, *reinserter };
+        GeneticProgrammingAlgorithm gp { problem, config, creator, *generator, *reinserter };
 
         auto targetValues = problem.TargetValues();
         auto trainingRange = problem.TrainingRange();
@@ -323,9 +331,11 @@ int main(int argc, char* argv[])
             return *minElem;
         };
 
+        Ind best;
+
         auto report = [&]() {
             auto pop = gp.Parents();
-            auto best = getBest(pop);
+            best = getBest(pop);
             if (best.Genotype.Nodes().empty()) {
                 fmt::print(stderr, "Empty individual encountered\n");
                 for (auto i = 0; i < pop.size(); ++i) {
@@ -334,43 +344,46 @@ int main(int argc, char* argv[])
                 }
                 exit(EXIT_FAILURE);
             }
-            auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
-            auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);
-
-            // scale values
-            auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
-            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
-
-            auto r2Train = RSquared(estimatedTrain, targetTrain);
-            auto r2Test = RSquared(estimatedTest, targetTest);
-
-            auto nmseTrain = NormalizedMeanSquaredError(estimatedTrain, targetTrain);
-            auto nmseTest = NormalizedMeanSquaredError(estimatedTest, targetTest);
-
-            auto rmseTrain = RootMeanSquaredError(estimatedTrain, targetTrain);
-            auto rmseTest = RootMeanSquaredError(estimatedTest, targetTest);
-
-            auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
-            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
-
-            auto t1 = std::chrono::high_resolution_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
-
-            auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
-
-            // calculate memory consumption
-            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
-            auto off = gp.Offspring();
-            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
-
-            fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
-            fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, nmseTrain, nmseTest, rmseTrain, rmseTest);
-            fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
-            fmt::print("{}\n", totalMemory); 
         };
 
         gp.Run(random, report);
+        auto pop = gp.Parents();
+        best = getBest(pop);
+
+        auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
+        auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);
+
+        // scale values
+        auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
+        std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
+        std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
+
+        auto r2Train = RSquared(estimatedTrain, targetTrain);
+        auto r2Test = RSquared(estimatedTest, targetTest);
+
+        auto nmseTrain = NormalizedMeanSquaredError(estimatedTrain, targetTrain);
+        auto nmseTest = NormalizedMeanSquaredError(estimatedTest, targetTest);
+
+        auto rmseTrain = RootMeanSquaredError(estimatedTrain, targetTrain);
+        auto rmseTest = RootMeanSquaredError(estimatedTest, targetTest);
+
+        auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
+        auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
+
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
+
+        auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
+
+        // calculate memory consumption
+        size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
+        auto off = gp.Offspring();
+        totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
+
+        fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
+        fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
+        fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
+        fmt::print("{}\n", totalMemory); 
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);
