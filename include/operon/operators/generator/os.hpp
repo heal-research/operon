@@ -23,16 +23,15 @@
 #include "core/operator.hpp"
 
 namespace Operon {
-template <typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
-class OffspringSelectionGenerator : public OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator> {
+template <typename TEvaluator, typename TCrossover, typename TMutator, typename TFemaleSelector, typename TMaleSelector = TFemaleSelector>
+class OffspringSelectionGenerator : public OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector> {
 public:
-    explicit OffspringSelectionGenerator(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
-        : OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator>(eval, sel, cx, mut)
-          , basicGenerator(eval, sel, cx, mut)
+    explicit OffspringSelectionGenerator(TEvaluator& eval, TCrossover& cx, TMutator& mut, TFemaleSelector& femSel, TMaleSelector &maleSel)
+        : OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>(eval, cx, mut, femSel, maleSel)
     {
     }
 
-    using T = typename TSelector::SelectableType;
+    using T = typename TFemaleSelector::SelectableType;
     std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
         std::uniform_real_distribution<double> uniformReal;
@@ -42,16 +41,16 @@ public:
         if (!(doCrossover || doMutation))
             return std::nullopt;
 
-        constexpr gsl::index Idx = TSelector::SelectableIndex;
-        auto population = this->Selector().Population();
+        constexpr gsl::index Idx = TFemaleSelector::SelectableIndex;
+        auto population = this->FemaleSelector().Population();
 
-        auto first = this->selector(random);
+        auto first = this->femaleSelector(random);
         auto fit = population[first][Idx];
 
-        typename TSelector::SelectableType child;
+        typename TFemaleSelector::SelectableType child;
 
         if (doCrossover) {
-            auto second = this->selector(random);
+            auto second = this->maleSelector(random);
             child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
 
             fit = std::min(fit, population[second][Idx]);
@@ -77,27 +76,26 @@ public:
 
     void Prepare(const gsl::span<const T> pop) const override
     {
-        OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator>::Prepare(pop);
+        OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>::Prepare(pop);
         lastEvaluations = this->evaluator.get().FitnessEvaluations();
     }
 
     double SelectionPressure() const
     {
-        if (this->Selector().Population().empty()) {
+        if (this->FemaleSelector().Population().empty()) {
             return 0;
         }
-        return (this->evaluator.get().FitnessEvaluations() - lastEvaluations) / static_cast<double>(this->Selector().Population().size());
+        return (this->evaluator.get().FitnessEvaluations() - lastEvaluations) / static_cast<double>(this->FemaleSelector().Population().size());
     }
 
     bool Terminate() const override
     {
-        return OffspringGeneratorBase<TEvaluator, TSelector, TCrossover, TMutator>::Terminate() || SelectionPressure() > maxSelectionPressure;
+        return OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>::Terminate() || SelectionPressure() > maxSelectionPressure;
     };
 
 private:
     mutable size_t lastEvaluations;
     size_t maxSelectionPressure;
-    BasicOffspringGenerator<TEvaluator, TSelector, TCrossover, TMutator> basicGenerator;
 };
 } // namespace Operon
 

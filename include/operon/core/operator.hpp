@@ -140,36 +140,46 @@ protected:
     size_t budget = DefaultEvaluationBudget;
 };
 
-template <typename TEvaluator, typename TSelector, typename TCrossover, typename TMutator>
-class OffspringGeneratorBase : public OperatorBase<std::optional<typename TSelector::SelectableType>, double, double> {
+// TODO: Maybe remove all the template parameters and go for accepting references to operator bases
+template <typename TEvaluator, typename TCrossover, typename TMutator, typename TFemaleSelector, typename TMaleSelector = TFemaleSelector>
+class OffspringGeneratorBase : public OperatorBase<std::optional<typename TFemaleSelector::SelectableType>, /* crossover prob. */ double, /* mutation prob. */ double> {
 public:
     using EvaluatorType = TEvaluator;
-    using SelectorType = TSelector;
+    using FemaleSelectorType = TFemaleSelector;
+    using MaleSelectorType = TMaleSelector;
     using CrossoverType = TCrossover;
     using MutatorType = TMutator;
 
-    OffspringGeneratorBase(TEvaluator& eval, TSelector& sel, TCrossover& cx, TMutator& mut)
+    using T = typename TFemaleSelector::SelectableType;
+    using U = typename TMaleSelector::SelectableType;
+
+    OffspringGeneratorBase(TEvaluator& eval, TCrossover& cx, TMutator& mut, TFemaleSelector& femSel, TMaleSelector& maleSel)
         : evaluator(eval)
-        , selector(sel)
         , crossover(cx)
         , mutator(mut)
+        , femaleSelector(femSel)
+        , maleSelector(maleSel)
     {
     }
 
-    TSelector& Selector() const { return selector.get(); }
+    TFemaleSelector& FemaleSelector() const { return femaleSelector.get(); }
+    TMaleSelector& MaleSelector() const { return maleSelector.get(); }
     TCrossover& Crossover() const { return crossover.get(); }
     TMutator& Mutator() const { return mutator.get(); }
     TEvaluator& Evaluator() const { return evaluator.get(); }
 
-    virtual void Prepare(gsl::span<const typename TSelector::SelectableType> pop) const
+    virtual void Prepare(gsl::span<const T> pop) const
     {
-        this->Selector().Prepare(pop);
+        static_assert(std::is_same_v<T, U>);
+        this->FemaleSelector().Prepare(pop);
+        this->MaleSelector().Prepare(pop);
     }
     virtual bool Terminate() const { return evaluator.get().BudgetExhausted(); }
 
 protected:
     std::reference_wrapper<TEvaluator> evaluator;
-    std::reference_wrapper<TSelector> selector;
+    std::reference_wrapper<TFemaleSelector> femaleSelector;
+    std::reference_wrapper<TFemaleSelector> maleSelector;
     std::reference_wrapper<TCrossover> crossover;
     std::reference_wrapper<TMutator> mutator;
 };
