@@ -145,10 +145,10 @@ template <typename TEvaluator, typename TCrossover, typename TMutator, typename 
 class OffspringGeneratorBase : public OperatorBase<std::optional<typename TFemaleSelector::SelectableType>, /* crossover prob. */ double, /* mutation prob. */ double> {
 public:
     using EvaluatorType = TEvaluator;
-    using FemaleSelectorType = TFemaleSelector;
-    using MaleSelectorType = TMaleSelector;
     using CrossoverType = TCrossover;
     using MutatorType = TMutator;
+    using FemaleSelectorType = TFemaleSelector;
+    using MaleSelectorType = TMaleSelector;
 
     using T = typename TFemaleSelector::SelectableType;
     using U = typename TMaleSelector::SelectableType;
@@ -178,10 +178,10 @@ public:
 
 protected:
     std::reference_wrapper<TEvaluator> evaluator;
-    std::reference_wrapper<TFemaleSelector> femaleSelector;
-    std::reference_wrapper<TFemaleSelector> maleSelector;
     std::reference_wrapper<TCrossover> crossover;
     std::reference_wrapper<TMutator> mutator;
+    std::reference_wrapper<TFemaleSelector> femaleSelector;
+    std::reference_wrapper<TFemaleSelector> maleSelector;
 };
 
 template <typename T>

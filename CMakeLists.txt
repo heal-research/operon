@@ -129,6 +129,22 @@ target_include_directories(
 target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
 set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 
+add_executable(
+    operon-example-gp
+    examples/gp.cpp
+    )
+target_compile_features(operon-example-gp PRIVATE cxx_std_17)
+target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${CERES_LIBRARIES} TBB::tbb)
+target_include_directories(
+    operon-example-gp 
+    PRIVATE ${PROJECT_SOURCE_DIR}/include/operon
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
+    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
+    PRIVATE ${CERES_INCLUDE_DIRS}
+)
+set_target_properties(operon-example-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+
 if(MSVC)
     target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
@@ -144,6 +160,7 @@ else()
     target_link_libraries(operon-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
     target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native;-mavx2>")
     target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC;--coverage>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
+    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native;-mavx2>")
 endif(MSVC)
 
 include(CTest)

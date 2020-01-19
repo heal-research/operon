@@ -44,7 +44,7 @@ namespace {
 class Dataset {
 private:
     std::vector<Variable> variables;
-    using MatrixType = Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
+    using MatrixType = Eigen::Array<Operon::Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
     MatrixType values;
 
     Dataset();
@@ -140,7 +140,7 @@ public:
         perm.setIdentity();
         // generate a random permutation
         std::shuffle(perm.indices().data(), perm.indices().data() + perm.indices().size(), random);
-        values = perm * values; // permute rows
+        values = perm * values.matrix(); // permute rows
     }
 
     void Normalize(gsl::index i, Range range) 

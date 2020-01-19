@@ -68,17 +68,17 @@ namespace Test {
 
             // test different number of rows
             for (auto nRows : numRows) {
-                Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
+                Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> chronometer;
                 Range range { 0, nRows };
                 auto totalOps = totalNodes * range.Size();
 
                 MeanVarianceCalculator calc;
                 BENCHMARK("Parallel")
                 {
-                    model.start();
+                    chronometer.start();
                     std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<float>(tree, ds, range).size(); });
-                    model.finish();
-                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0; // ms to s
+                    chronometer.finish();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(chronometer.elapsed()).count() / 1000.0; // ms to s
                     auto gpops = totalOps / elapsed;
                     calc.Add(gpops);
                 };
@@ -87,10 +87,10 @@ namespace Test {
                 calc.Reset();
                 BENCHMARK("Parallel")
                 {
-                    model.start();
+                    chronometer.start();
                     std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<double>(tree, ds, range).size(); });
-                    model.finish();
-                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0; // ms to s
+                    chronometer.finish();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(chronometer.elapsed()).count() / 1000.0; // ms to s
                     auto gpops = totalOps / elapsed;
                     calc.Add(gpops);
                 };
@@ -106,14 +106,15 @@ namespace Test {
         size_t maxDepth = 1000;
 
         auto rd = Operon::Random();
-        auto ds = Dataset("../data/Poly-10.csv", true);
+        auto ds = Dataset("../data/Friedman-I.csv", true);
 
         auto target = "Y";
         auto variables = ds.Variables();
         std::vector<Variable> inputs;
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
-        Range range = { 0, ds.Rows() };
+        //Range range = { 0, ds.Rows() };
+        Range range = { 0, 5000 };
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
@@ -126,11 +127,10 @@ namespace Test {
             return estimated.size();
         };
 
-        Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
+        Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> chronometer;
 
         Grammar grammar;
         MeanVarianceCalculator calc;
-
 
         auto measurePerformance = [&]()
         {
@@ -140,10 +140,10 @@ namespace Test {
             // [+, -, *, /]
             BENCHMARK("Sequential")
             {
-                model.start();
+                chronometer.start();
                 std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
-                model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0;
+                chronometer.finish();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(chronometer.elapsed()).count() / 1000.0;
                 auto gpops = totalOps / elapsed;
                 calc.Add(gpops);
             };
@@ -152,10 +152,10 @@ namespace Test {
             calc.Reset();
             BENCHMARK("Parallel")
             {
-                model.start();
+                chronometer.start();
                 std::transform(std::execution::par_unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
-                model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0;
+                chronometer.finish();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(chronometer.elapsed()).count() / 1000.0;
                 auto gpops = totalOps / elapsed;
                 calc.Add(gpops);
             };
