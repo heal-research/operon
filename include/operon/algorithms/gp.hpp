@@ -66,7 +66,7 @@ public:
     const GeneticAlgorithmConfig& GetConfig() const { return config_.get(); }
 
     const TCreator& GetCreator() const { return creator_.get(); }
-    const TGenerator& GetRecombinator() const { return generator_.get(); }
+    const TGenerator& GetGenerator() const { return generator_.get(); }
     const TReinserter& GetReinserter() const { return reinserter_.get(); }
 
     size_t Generation() const { return generation; }
@@ -80,7 +80,7 @@ public:
     {
         auto& config       = GetConfig();
         auto& creator      = GetCreator();
-        auto& generator = GetRecombinator();
+        auto& generator    = GetGenerator();
         auto& reinserter   = GetReinserter();
         auto& problem      = GetProblem();
         auto& grammar      = problem.GetGrammar();

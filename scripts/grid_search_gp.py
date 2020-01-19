@@ -32,11 +32,11 @@ prefix = args.prefix
 results_path = args.out
 
 population_size = [ 1000 ]
-pool_size = [ 1000 ]
+pool_size = [ 100 ]
 iteration_count = [ 0 ]
 evaluation_budget = [ 1000000 ]
-generators = ['brood:10' ]
-selectors =[ ('random', 'tournament:5'), ('random', 'random') ] 
+generators = ['os:100' ]
+selectors =[ ('proportional', 'random') ] 
 reinserters = ['replace-worst']
 
 meta_header = ['Problem', 

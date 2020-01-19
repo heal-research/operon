@@ -75,15 +75,15 @@ template <typename T>
 void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result) noexcept
 {
     auto& nodes = tree.Nodes();
-    Eigen::Matrix<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
-    Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1); 
+    Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
+    Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1); 
 
     auto indices = std::vector<gsl::index>(nodes.size());
     gsl::index idx = 0;
     for (size_t i = 0; i < nodes.size(); ++i) {
         if (nodes[i].IsConstant()) {
             auto v = parameters == nullptr ? T(nodes[i].Value) : parameters[idx];
-            m.col(i).array().setConstant(v);
+            m.col(i).setConstant(v);
             idx++;
         } else if (nodes[i].IsVariable()) {
             indices[i] = dataset.GetIndex(nodes[i].HashValue);
@@ -91,95 +91,97 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
         }
     }
 
+    auto lastCol = m.col(nodes.size()-1);
+
     gsl::index numRows = range.Size();
     for (gsl::index row = 0; row < numRows; row += BATCHSIZE) {
         idx = 0;
         auto remainingRows = std::min(BATCHSIZE, numRows - row);
         for (size_t i = 0; i < nodes.size(); ++i) {
-            auto r = m.col(i).array();
+            auto r = m.col(i);
 
             switch (auto const& s = nodes[i]; s.Type) {
             case NodeType::Add: {
-                //r = m.col(c).array();
+                //r = m.col(c);
                 //for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                //    r += m.col(j).array();
+                //    r += m.col(j);
                 //}
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
-                r = m.col(c1).array() + m.col(c2).array();
+                r = m.col(c1) + m.col(c2);
                 break;
             }
             case NodeType::Mul: {
                 //auto c = i - 1; // first child index
-                //r = m.col(c).array();
+                //r = m.col(c);
                 //for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                //    r *= m.col(j).array();
+                //    r *= m.col(j);
                 //}
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
-                r = m.col(c1).array() * m.col(c2).array();
+                r = m.col(c1) * m.col(c2);
                 break;
             }
             case NodeType::Sub: {
                 //auto c = i - 1; // first child index
                 //if (s.Arity == 1) {
-                //    r = -m.col(c).array();
+                //    r = -m.col(c);
                 //} else {
-                //    r = m.col(c).array();
+                //    r = m.col(c);
                 //    for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                //        r -= m.col(j).array();
+                //        r -= m.col(j);
                 //    }
                 //}
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
-                r = m.col(c1).array() - m.col(c2).array();
+                r = m.col(c1) - m.col(c2);
                 break;
             }
             case NodeType::Div: {
                 //auto c = i - 1; // first child index
                 //if (s.Arity == 1) {
-                //    r = m.col(c).array().inverse();
+                //    r = m.col(c).inverse();
                 //} else {
-                //    r = m.col(c).array();
+                //    r = m.col(c);
                 //    for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                //        r /= m.col(j).array();
+                //        r /= m.col(j);
                 //    }
                 //}
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
-                r = m.col(c1).array() / m.col(c2).array();
+                r = m.col(c1) / m.col(c2);
                 break;
             }
             case NodeType::Log: {
-                r = m.col(i - 1).array().log();
+                r = m.col(i - 1).log();
                 break;
             }
             case NodeType::Exp: {
-                r = m.col(i - 1).array().exp();
+                r = m.col(i - 1).exp();
                 break;
             }
             case NodeType::Sin: {
-                r = m.col(i - 1).array().sin();
+                r = m.col(i - 1).sin();
                 break;
             }
             case NodeType::Cos: {
-                r = m.col(i - 1).array().cos();
+                r = m.col(i - 1).cos();
                 break;
             }
             case NodeType::Tan: {
-                r = m.col(i - 1).array().tan();
+                r = m.col(i - 1).tan();
                 break;
             }
             case NodeType::Sqrt: {
-                r = m.col(i - 1).array().sqrt();
+                r = m.col(i - 1).sqrt();
                 break;
             }
             case NodeType::Cbrt: {
-                r = m.col(i - 1).array().unaryExpr([](T v) { return T(ceres::cbrt(v)); });
+                r = m.col(i - 1).unaryExpr([](T v) { return T(ceres::cbrt(v)); });
                 break;
             }
             case NodeType::Square: {
-                r = m.col(i - 1).array().square();
+                r = m.col(i - 1).square();
                 break;
             }
             case NodeType::Constant: {
@@ -188,7 +190,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
             case NodeType::Variable: {
                 auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                r.segment(0, remainingRows) = dataset.Values().col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>() * w;
+                r.segment(0, remainingRows) = w * dataset.Values().col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
                 break;
             }
             default: {
@@ -198,7 +200,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
         }
         // the final result is found in the last section of the buffer corresponding to the root node
-        res.segment(row, remainingRows) = m.rightCols(1);
+        res.segment(row, remainingRows) = lastCol.segment(0, remainingRows);
     }
     // replace nan and inf values
     auto [min, max] = MinMax(result);

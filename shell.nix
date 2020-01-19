@@ -17,25 +17,6 @@ let
       arch = "znver2"; 
       tune = "znver2"; 
     };
-#    _python37 = (let
-#      packageOverrides = self: super: {
-#        numexpr = super.numexpr.overridePythonAttrs({
-#          src = super.fetchPypi { 
-#            pname = "numexpr";
-#            version = "2.7.1";
-#            sha256 = "1c82z0zx0542j9df6ckjz6pn1g13b21hbza4hghcw6vyhbckklmh";
-#          };
-#        });
-#        numpy = super.numpy.overridePythonAttrs({
-#          src = super.fetchPypi { 
-#            pname = "numpy";
-#            version = "1.17.5";
-#            extension = "zip";
-#            sha256 = "0hn38q24fnkd7yw6k8yrshji0cshypk5lwmid8yawqkzc6k7nl0n";
-#          };
-#        });
-#      };
-#    in pkgs.python37.override { inherit packageOverrides; }).withPackages (ps: with ps; [ pip numpy pandas cython scikitlearn pybind11 colorama coloredlogs ]);
 in
 pkgs.gcc9Stdenv.mkDerivation {
     name = "operon-env";
@@ -46,6 +27,8 @@ pkgs.gcc9Stdenv.mkDerivation {
         (pkgs.python37.withPackages (ps: with ps; [ pip numpy pandas cython scikitlearn pybind11 colorama coloredlogs ]))
         # Project dependencies
         bear # generate compilation database
+        gdb
+        valgrind
         git
         cmake
         cxxopts

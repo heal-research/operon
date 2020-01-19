@@ -55,10 +55,11 @@ TEST_CASE("Tree distance performance", "[performance]")
     std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
     Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
 
+    size_t reps = 100;
+
     SECTION("Strict diversity") {
         std::vector<Operon::Distance::HashVector> hashes(trees.size());
         std::transform(trees.begin(), trees.end(), hashes.begin(), [](Tree tree) { return MakeHashes(tree, Operon::HashMode::Strict); });
-        size_t reps = 50;
         
         // measure speed of vectorized intersection
         auto totalOps = n * (n-1) / 2;
@@ -88,43 +89,43 @@ TEST_CASE("Tree distance performance", "[performance]")
         fmt::print("strict diversity (vector): {:.6f}, elapsed ms: {:.3f} ± {:.3f}, speed: {:.3e} operations/s\n", diversity, tMean, tStddev, opsPerSecond);
 
         // measured speed of vectorized intersection - multi-threaded
-        elapsedCalc.Reset();
-        std::vector<std::pair<size_t, size_t>> pairs(n);
-        std::vector<size_t> indices(n);
-        std::iota(indices.begin(), indices.end(), 0);
-        std::vector<double> distances(n);
-        for(size_t k = 0; k < reps; ++k) {
-            MeanVarianceCalculator calc;
-            model.start();
-            size_t idx = 0;
-            size_t total = totalOps;
-            for (size_t i = 0; i < hashes.size() - 1; ++i) {
-                for (size_t j = i+1; j < hashes.size(); ++j) {
-                    pairs[idx++] = { i, j };
+        //elapsedCalc.Reset();
+        //std::vector<std::pair<size_t, size_t>> pairs(n);
+        //std::vector<size_t> indices(n);
+        //std::iota(indices.begin(), indices.end(), 0);
+        //std::vector<double> distances(n);
+        //for(size_t k = 0; k < reps; ++k) {
+        //    MeanVarianceCalculator calc;
+        //    model.start();
+        //    size_t idx = 0;
+        //    size_t total = totalOps;
+        //    for (size_t i = 0; i < hashes.size() - 1; ++i) {
+        //        for (size_t j = i+1; j < hashes.size(); ++j) {
+        //            pairs[idx++] = { i, j };
 
-                    if (idx == std::min(n, total)) {
-                        idx = 0;
-                        total -= n;
+        //            if (idx == std::min(n, total)) {
+        //                idx = 0;
+        //                total -= n;
 
-                        std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](auto m) { 
-                                auto&& [a, b] = pairs[m];
-                                size_t c = Operon::Distance::CountIntersectSIMD(hashes[a], hashes[b]);
-                                double s = hashes[a].size() + hashes[b].size() - c;
-                                distances[m] = (s - c) / s;
-                        }); 
-                        calc.Add(distances);
-                    }
-                }
-            }
-            model.finish();
-            diversity = calc.Mean();
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count();
-            elapsedCalc.Add(ms);
-        };
-        tMean        = elapsedCalc.Mean();
-        tStddev      = elapsedCalc.StandardDeviation();
-        opsPerSecond = 1000 * totalOps / tMean; // from ms to second
-        fmt::print("strict diversity (vector): {:.6f}, elapsed ms: {:.3f} ± {:.3f}, speed: {:.3e} operations/s\n", diversity, tMean, tStddev, opsPerSecond);
+        //                std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](auto m) { 
+        //                        auto&& [a, b] = pairs[m];
+        //                        size_t c = Operon::Distance::CountIntersectSIMD(hashes[a], hashes[b]);
+        //                        double s = hashes[a].size() + hashes[b].size() - c;
+        //                        distances[m] = (s - c) / s;
+        //                }); 
+        //                calc.Add(distances);
+        //            }
+        //        }
+        //    }
+        //    model.finish();
+        //    diversity = calc.Mean();
+        //    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count();
+        //    elapsedCalc.Add(ms);
+        //};
+        //tMean        = elapsedCalc.Mean();
+        //tStddev      = elapsedCalc.StandardDeviation();
+        //opsPerSecond = 1000 * totalOps / tMean; // from ms to second
+        //fmt::print("strict diversity (vector): {:.6f}, elapsed ms: {:.3f} ± {:.3f}, speed: {:.3e} operations/s\n", diversity, tMean, tStddev, opsPerSecond);
 
         // measured speed of scalar intersection
         elapsedCalc.Reset();
@@ -152,7 +153,6 @@ TEST_CASE("Tree distance performance", "[performance]")
     SECTION("Relaxed diversity") {
         std::vector<Operon::Distance::HashVector> hashes(trees.size());
         std::transform(trees.begin(), trees.end(), hashes.begin(), [](Tree tree) { return MakeHashes(tree, Operon::HashMode::Relaxed); });
-        size_t reps = 50;
         
         // measure speed of vectorized intersection
         auto totalOps = n * (n-1) / 2;
