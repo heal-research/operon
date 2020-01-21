@@ -209,7 +209,7 @@ TEST_CASE("Constant optimization (autodiff)", "[implementation]")
     poly10.UpdateNodes();
     fmt::print("{}\n", InfixFormatter::Format(poly10, ds, 6));
 
-    auto coef = OptimizeAutodiff(poly10, ds, targetValues, range, 100, true);
+    auto coef = OptimizeAutodiff(poly10, ds, targetValues, range, 100, true, true);
     fmt::print("{}\n", InfixFormatter::Format(poly10, ds, 6));
 }
 
@@ -282,7 +282,7 @@ TEST_CASE("Constant optimization (numeric)", "[implementation]")
     poly10.UpdateNodes();
     fmt::print("{}\n", InfixFormatter::Format(poly10, ds, 6));
 
-    auto coef = OptimizeNumeric(poly10, ds, targetValues, range, 100, true);
+    auto coef = OptimizeNumeric(poly10, ds, targetValues, range, 100, true, true);
     fmt::print("{}\n", InfixFormatter::Format(poly10, ds, 6));
 }
 
