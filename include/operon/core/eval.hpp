@@ -221,11 +221,9 @@ struct ParameterizedEvaluation {
     {
         auto res = gsl::span<T>(residuals, range.Size());
         Evaluate(tree_ref, dataset_ref, range, parameters[0], res);
-        if constexpr (std::is_same_v<float, decltype(target_ref)::value_type>) {
-            std::transform(std::execution::unseq, res.cbegin(), res.cend(), target_ref.begin(), res.begin(), [](const T& a, const Operon::Scalar b) { return a - double{b}; });
-        } else {
-            std::transform(std::execution::unseq, res.cbegin(), res.cend(), target_ref.begin(), res.begin(), [](const T& a, const Operon::Scalar b) { return a - b; });
-        }
+        Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> resMap(residuals, range.Size());
+        Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> targetMap(target_ref.data(), range.Size());
+        resMap -= targetMap;
         return true;
     }
 
