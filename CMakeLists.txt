@@ -43,12 +43,23 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(xxhash gsl csv)
 
 set(THIRDPARTY_INCLUDE_DIRS
-    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
-    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
-    PRIVATE ${PROJECT_SOURCE_DIR}/thirdparty/
+    ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
+    ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
+    ${PROJECT_SOURCE_DIR}/thirdparty/
 )
 
 #set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-checks=bugprone-*,cppcoreguidelines-*,modernize-*,performance-*,readability-*")
+
+find_library(OPENLIBM openlibm)
+find_library(JEMALLOC jemalloc)
+
+if(NOT OPENLIBM)
+    set(OPENLIBM "")
+endif()
+
+if(NOT JEMALLOC)
+    set(JEMALLOC "")
+endif()
 
 add_library(
     operon
@@ -61,7 +72,7 @@ add_library(
     src/operators/mutation.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
-target_link_libraries(operon PRIVATE fmt::fmt ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
+target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${JEMALLOC} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
 target_include_directories(
     operon
     PRIVATE 
@@ -78,7 +89,7 @@ add_library(
     python/operon.cpp
 )
 target_compile_features(pyoperon PRIVATE cxx_std_17)
-target_link_libraries(pyoperon PRIVATE operon TBB::tbb) # figure out if tbb is necessary for linkage here
+target_link_libraries(pyoperon PRIVATE operon ${OPENLIBM} ${JEMALLOC} TBB::tbb) # figure out if tbb is necessary for linkage here
 target_include_directories(
     pyoperon 
     PRIVATE 
@@ -95,7 +106,7 @@ add_executable(
     src/cli/operon_gp.cpp
 )
 target_compile_features(operon-gp PRIVATE cxx_std_17)
-target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${CERES_LIBRARIES} TBB::tbb)
+target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${JEMALLOC} ${CERES_LIBRARIES} TBB::tbb)
 target_include_directories(
     operon-gp 
     PRIVATE
@@ -120,7 +131,7 @@ add_executable(
     test/implementation/selection.cpp
 )
 target_compile_features(operon-test PRIVATE cxx_std_17)
-target_link_libraries(operon-test PRIVATE operon fmt::fmt Catch2::Catch2 ${CERES_LIBRARIES} TBB::tbb)
+target_link_libraries(operon-test PRIVATE operon fmt::fmt Catch2::Catch2 ${OPENLIBM} ${JEMALLOC} ${CERES_LIBRARIES} TBB::tbb)
 target_include_directories(
     operon-test
     PRIVATE 
@@ -136,7 +147,7 @@ add_executable(
     examples/gp.cpp
     )
 target_compile_features(operon-example-gp PRIVATE cxx_std_17)
-target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${CERES_LIBRARIES} TBB::tbb)
+target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${JEMALLOC} ${CERES_LIBRARIES} TBB::tbb)
 target_include_directories(
     operon-example-gp 
     PRIVATE 
@@ -155,13 +166,13 @@ if(MSVC)
     include_directories(${FMT_INCLUDE_DIR})
 else()
     set(MYFLAGS -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy)
-    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
     target_link_libraries(operon PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
     target_link_libraries(operon-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
-    target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC;--coverage>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
-    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
+    target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC;--coverage>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=znver2>")
+    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
 endif(MSVC)
 
 include(CTest)
