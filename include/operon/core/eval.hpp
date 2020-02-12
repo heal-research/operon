@@ -223,7 +223,7 @@ struct ParameterizedEvaluation {
         Evaluate(tree_ref, dataset_ref, range, parameters[0], res);
         Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> resMap(residuals, range.Size());
         Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> targetMap(target_ref.data(), range.Size());
-        resMap -= targetMap;
+        resMap -= targetMap.cast<T>();
         return true;
     }
 
