@@ -23,8 +23,10 @@
 #include "operators/selection.hpp"
 #include "operators/reinserter/replaceworst.hpp"
 
-int main(int argc, char** argv) {
-    Operon::GeneticAlgorithmConfig config;
+using namespace Operon;
+
+int main(int, char**) {
+    GeneticAlgorithmConfig config;
     config.Generations          = 100;
     config.PopulationSize       = 1000;
     config.PoolSize             = 1000;
@@ -34,34 +36,35 @@ int main(int argc, char** argv) {
     config.MutationProbability  = 0.25;
     config.Seed                 = 42;
 
-    Operon::Dataset ds("../data/Poly-10.csv", /* csv has header */ true);
+    Dataset ds("../data/Poly-10.csv", /* csv has header */ true);
     const std::string target = "Y";
 
-    Operon::Range trainingRange { 0, ds.Rows() / 2 };
-    Operon::Range testRange     { ds.Rows() / 2, ds.Rows() };
-    Operon::Problem problem(ds, ds.Variables(), target, trainingRange, testRange);
-    problem.GetGrammar().SetConfig(Operon::Grammar::Arithmetic);
+    Range trainingRange { 0, ds.Rows() / 2 };
+    Range testRange     { ds.Rows() / 2, ds.Rows() };
+    Problem problem(ds, ds.Variables(), target, trainingRange, testRange);
+    problem.GetGrammar().SetConfig(Grammar::Arithmetic);
 
-    using Ind        = Operon::Individual<1>; // an individual holding one fitness value
-    using Evaluator  = Operon::RSquaredEvaluator<Ind>;
-    using Selector   = Operon::TournamentSelector<Ind, 0>;
-    using Reinserter = Operon::ReplaceWorstReinserter<Ind, 0>;
-    using Crossover  = Operon::SubtreeCrossover;
-    using Mutation   = Operon::MultiMutation;
-    using Generator  = Operon::BasicOffspringGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
+    using Ind        = Individual<1>; // an individual holding one fitness value
+    using Evaluator  = RSquaredEvaluator<Ind>;
+    using Selector   = TournamentSelector<Ind, 0>;
+    using Reinserter = ReplaceWorstReinserter<Ind, 0>;
+    using Crossover  = SubtreeCrossover;
+    using Mutation   = MultiMutation;
+    using Generator  = BasicOffspringGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
 
     // set up the solution creator 
     size_t maxTreeDepth  = 10;
     size_t maxTreeLength = 50;
     std::uniform_int_distribution<size_t> treeSizeDistribution(1, maxTreeLength);
-    Operon::BalancedTreeCreator creator { treeSizeDistribution, maxTreeDepth, maxTreeLength };
+    BalancedTreeCreator creator { treeSizeDistribution, maxTreeDepth, maxTreeLength };
 
     // set up crossover and mutation
-    Operon::SubtreeCrossover crossover { /* internal node bias */ 0.9, maxTreeDepth, maxTreeLength };
-    Operon::MultiMutation mutation;
-    Operon::OnePointMutation onePoint;
-    Operon::ChangeVariableMutation changeVar { problem.InputVariables() };
-    Operon::ChangeFunctionMutation changeFunc { problem.GetGrammar() };
+    double internalNodeBias = 0.9;
+    SubtreeCrossover crossover { internalNodeBias, maxTreeDepth, maxTreeLength };
+    MultiMutation mutation;
+    OnePointMutation onePoint;
+    ChangeVariableMutation changeVar { problem.InputVariables() };
+    ChangeFunctionMutation changeFunc { problem.GetGrammar() };
     mutation.Add(onePoint, 1.0);
     mutation.Add(changeVar, 1.0);
     mutation.Add(changeFunc, 1.0);
@@ -76,8 +79,8 @@ int main(int argc, char** argv) {
     Generator generator(evaluator, crossover, mutation, selector, selector);
 
     // set up a genetic programming algorithm
-    Operon::GeneticProgrammingAlgorithm gp(problem, config, creator, generator, reinserter); 
-    Operon::Random random(config.Seed);
+    GeneticProgrammingAlgorithm gp(problem, config, creator, generator, reinserter); 
+    Random random(config.Seed);
 
     int generation = 0;
     auto report = [&] { fmt::print("{}\n", ++generation); };
