@@ -32,11 +32,11 @@ prefix = args.prefix
 results_path = args.out
 
 population_size = [ 1000 ]
-pool_size = [ 100 ]
+pool_size = [ 1000 ]
 iteration_count = [ 0 ]
 evaluation_budget = [ 1000000 ]
-generators = ['os:100' ]
-selectors =[ ('proportional', 'random') ] 
+generators = ['basic']
+selectors =[ ('tournament:5', 'tournament:5') ]
 reinserters = ['replace-worst']
 
 meta_header = ['Problem', 
@@ -50,6 +50,7 @@ meta_header = ['Problem',
 
 output_header = ['Elapsed',
         'Generation', 
+        'Quality',
         'R2 (train)',
         'R2 (test)',
         'RMSE (train)',
@@ -61,7 +62,9 @@ output_header = ['Elapsed',
         'Fitness eval',
         'Local eval',
         'Total eval',
-        'Total memory']
+        'Total memory',
+        'Seed'
+        ]
 
 header = meta_header + output_header
 
@@ -84,7 +87,7 @@ problem_results = []
 for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter in parameter_space:
     idx = idx+1
 
-    gen_count = eval_count // pop_size + 1 
+    gen_count = eval_count // pop_size 
     
     for i,f in enumerate(data_files):
         with open(os.path.join(base_path, f), 'r') as h:
@@ -104,12 +107,14 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter 
             logger.info(fg.MAGENTA + config_str)
             logger.info(fg.MAGENTA + problem_str)
 
-            results_file   = os.path.join(results_path, '{}_{}_{}_{}_{}_{}_{}_{}_{}.xlsx'.format(prefix, problem_name, pop_size, pol_size, iter_count, eval_count, selector, generator, reinserter))
+            results_file   = os.path.join(results_path, '{}_{}_{}_{}_{}_{}_{}_{}_{}.csv.xz'.format(prefix, problem_name, pop_size, pol_size, iter_count, eval_count, selector, generator, reinserter))
 
             if os.path.exists(results_file):
                 continue
 
             problem_result = {}
+
+            devnull = open(os.devnull, 'w')
 
             for j in reps_range:
                 output = subprocess.check_output([bin_path, 
@@ -126,7 +131,10 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter 
                     "--male-selector", str(selector[1]),
                     "--offspring-generator", str(generator),
                     "--reinserter", str(reinserter),
-                    "--enable-symbols", "exp,log,sin,cos"]);
+                    "--maxlength", str(50),
+                    "--maxdepth", str(1000),
+                    "--enable-symbols", "exp,log,sin,cos",
+                    ], stderr=devnull);
 
                 lines = list(filter(lambda x: x, output.split(b'\n')))
                 result = '\t'.join([v.decode('ascii') for v in lines[-1].split(b'\t') ])
@@ -136,7 +144,10 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter 
                 problem_result[j] = meta  + [ np.nan if v == 'nan' else float(v) for v in lines[-1].split(b'\t') ]
 
                 for i,line in enumerate(lines):
-                    vals = [ np.nan if v == 'nan' else float(v) for v in line.split(b'\t') ]
+                    try:
+                        vals = [ np.nan if v == 'nan' else float(v) for v in line.split(b'\t') ]
+                    except:
+                        print(line)
 
             logger.info(fg.GREEN + config_str)
             logger.info(fg.GREEN + problem_str)
@@ -164,7 +175,7 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter 
             for l in df.describe().to_string().split('\n'):
                 logger.info(fg.CYAN + l)
 
-            df.to_excel(results_file)
+            df.to_csv(results_file, compression='infer')
             problem_results.append(df)
                         
 df_all = pd.concat(problem_results, axis=0)
@@ -180,6 +191,6 @@ median_all['NMSE (train) IQR'] = q75['NMSE (train)'] - q25['NMSE (train)']
 median_all['NMSE (test) IQR']  = q75['NMSE (test)'] - q25['NMSE (test)']
 for l in median_all.to_string().split('\n'):
     logger.info(fg.YELLOW + l)
-df_all.to_excel(os.path.join(results_path, '{}.xlsx'.format(prefix)))
-median_all.to_excel(os.path.join(results_path, '{}_median.xlsx'.format(prefix)))
+df_all.to_csv(os.path.join(results_path, '{}.csv.xz'.format(prefix)), compression='infer')
+median_all.to_csv(os.path.join(results_path, '{}_median.csv.xz'.format(prefix)), compression='infer')
 

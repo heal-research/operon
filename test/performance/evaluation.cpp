@@ -27,6 +27,8 @@
 
 #include "operators/creator.hpp"
 
+#include <tbb/task_scheduler_init.h>
+
 namespace Operon {
 namespace Test {
 
@@ -101,7 +103,7 @@ namespace Test {
 
     TEST_CASE("Evaluation performance", "[performance]")
     {
-        size_t n = 10'000;
+        size_t n = 1'000;
         size_t maxLength = 50;
         size_t maxDepth = 1000;
 
@@ -136,6 +138,7 @@ namespace Test {
         {
             std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
             auto totalNodes = TotalNodes(trees);
+            fmt::print("total nodes: {}\n", totalNodes);
             auto totalOps = totalNodes * range.Size();
             // [+, -, *, /]
             BENCHMARK("Sequential")
@@ -149,6 +152,8 @@ namespace Test {
             };
             fmt::print("\nGPops/second: {:.3e} ± {:.3e}\n", calc.Mean(), calc.StandardDeviation());
 
+            auto singlePerf = calc.Mean();
+
             calc.Reset();
             BENCHMARK("Parallel")
             {
@@ -159,7 +164,7 @@ namespace Test {
                 auto gpops = totalOps / elapsed;
                 calc.Add(gpops);
             };
-            fmt::print("\nGPops/second: {:.3e} ± {:.3e}\n", calc.Mean(), calc.StandardDeviation());
+            fmt::print("\nGPops/second: {:.3e} ± {:.3e} (MP ratio {:.2f})\n", calc.Mean(), calc.StandardDeviation(), calc.Mean() / singlePerf);
         };
 
         SECTION("Arithmetic")

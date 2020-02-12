@@ -251,6 +251,7 @@ int main(int argc, char* argv[])
                     return new RandomSelector<Ind, 0> {};
                 }
             }
+            return new TournamentSelector<Individual<1>, idx> { 5u };
         };
 
         std::unique_ptr<Selector> femaleSelector;
@@ -336,54 +337,45 @@ int main(int argc, char* argv[])
         auto report = [&]() {
             auto pop = gp.Parents();
             best = getBest(pop);
-            if (best.Genotype.Nodes().empty()) {
-                fmt::print(stderr, "Empty individual encountered\n");
-                for (auto i = 0; i < pop.size(); ++i) {
-                    auto& p = pop[i];
-                    fmt::print("{} {} {}\n", i, p.Genotype.Nodes().size(), p[idx]);
-                }
-                exit(EXIT_FAILURE);
-            }
+
+            auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
+            auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);
+
+            // scale values
+            auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
+            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
+            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
+
+            auto r2Train = RSquared(estimatedTrain, targetTrain);
+            auto r2Test = RSquared(estimatedTest, targetTest);
+
+            auto nmseTrain = NormalizedMeanSquaredError(estimatedTrain, targetTrain);
+            auto nmseTest = NormalizedMeanSquaredError(estimatedTest, targetTest);
+
+            auto rmseTrain = RootMeanSquaredError(estimatedTrain, targetTrain);
+            auto rmseTest = RootMeanSquaredError(estimatedTest, targetTest);
+
+            auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
+            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
+
+            auto t1 = std::chrono::high_resolution_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
+
+            auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
+
+            // calculate memory consumption
+            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
+            auto off = gp.Offspring();
+            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
+
+            fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
+            fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", best[idx], r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
+            fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
+            fmt::print("{}\t{}\n", totalMemory, config.Seed); 
         };
 
-        gp.Run(random, report);
-        auto pop = gp.Parents();
-        best = getBest(pop);
-
-        auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
-        auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);
-
-        // scale values
-        auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-        std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
-        std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
-
-        auto r2Train = RSquared(estimatedTrain, targetTrain);
-        auto r2Test = RSquared(estimatedTest, targetTest);
-
-        auto nmseTrain = NormalizedMeanSquaredError(estimatedTrain, targetTrain);
-        auto nmseTest = NormalizedMeanSquaredError(estimatedTest, targetTest);
-
-        auto rmseTrain = RootMeanSquaredError(estimatedTrain, targetTrain);
-        auto rmseTest = RootMeanSquaredError(estimatedTest, targetTest);
-
-        auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
-        auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
-
-        auto t1 = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
-
-        auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
-
-        // calculate memory consumption
-        size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
-        auto off = gp.Offspring();
-        totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
-
-        fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
-        fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
-        fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
-        fmt::print("{}\n", totalMemory); 
+        gp.Run(random, nullptr);
+        report();
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);

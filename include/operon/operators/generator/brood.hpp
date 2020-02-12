@@ -38,7 +38,6 @@ public:
         std::uniform_real_distribution<double> uniformReal;
 
         constexpr gsl::index Idx = TFemaleSelector::SelectableIndex;
-
         auto population = this->FemaleSelector().Population();
 
         // assuming the basic generator never fails
@@ -46,7 +45,7 @@ public:
 
         for (size_t i = 1; i < broodSize; ++i) {
             auto other = basicGenerator(random, pCrossover, pMutation).value();
-            if (other[0] < best[0]) {
+            if (other[Idx] < best[Idx]) {
                 std::swap(best, other);
             }
         }
