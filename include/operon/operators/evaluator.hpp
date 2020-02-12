@@ -52,6 +52,9 @@ public:
         }
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
+        // scale values
+        auto [a, b] = LinearScalingCalculator::Calculate(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
+        std::transform(estimatedValues.begin(), estimatedValues.end(), estimatedValues.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
         auto nmse = NormalizedMeanSquaredError(estimatedValues, targetValues);
         if (!std::isfinite(nmse)) {
             nmse = Operon::Numeric::Max<Operon::Scalar>();
@@ -97,7 +100,7 @@ public:
         if (!std::isfinite(r2)) {
             r2 = 0;
         }
-        std::clamp(r2, LowerBound, UpperBound);
+        r2 = std::clamp(r2, LowerBound, UpperBound);
         return UpperBound - r2 + LowerBound;
     }
 
@@ -107,5 +110,5 @@ public:
     }
 };
 }
-
 #endif
+
