@@ -56,12 +56,12 @@ public:
             return;
         }
         // Delta to previous mean
-        Operon::Scalar deltaX = x * sumWe - sumX;
-        Operon::Scalar deltaY = y * sumWe - sumY;
-        Operon::Scalar oldWe = sumWe;
+        double deltaX = x * sumWe - sumX;
+        double deltaY = y * sumWe - sumY;
+        double oldWe = sumWe;
         // Incremental update
         sumWe += 1;
-        Operon::Scalar f = 1. / (sumWe * oldWe);
+        double f = 1. / (sumWe * oldWe);
         // Update
         sumXX += f * deltaX * deltaX;
         sumYY += f * deltaY * deltaY;
@@ -84,12 +84,12 @@ public:
             return;
         }
         // Delta to previous mean
-        Operon::Scalar deltaX = x * sumWe - sumX;
-        Operon::Scalar deltaY = y * sumWe - sumY;
-        Operon::Scalar oldWe = sumWe;
+        double deltaX = x * sumWe - sumX;
+        double deltaY = y * sumWe - sumY;
+        double oldWe = sumWe;
         // Incremental update
         sumWe += w;
-        Operon::Scalar f = w / (sumWe * oldWe);
+        double f = w / (sumWe * oldWe);
         // Update
         sumXX += f * deltaX * deltaX;
         sumYY += f * deltaY * deltaY;
@@ -184,18 +184,18 @@ public:
         Expects(xdim > 0);
         // Inlined computation of Pearson correlation, to avoid allocating objects!
         // This is a numerically stabilized version, avoiding sum-of-squares.
-        Operon::Scalar sumXX = 0., sumYY = 0., sumXY = 0.;
-        Operon::Scalar sumX = x[0], sumY = y[0];
+        double sumXX = 0., sumYY = 0., sumXY = 0.;
+        double sumX = x[0], sumY = y[0];
         int i = 1;
         while(i < xdim) {
-            Operon::Scalar xv = x[i], yv = y[i];
+            double xv = x[i], yv = y[i];
             // Delta to previous mean
-            Operon::Scalar deltaX = xv * i - sumX;
-            Operon::Scalar deltaY = yv * i - sumY;
+            double deltaX = xv * i - sumX;
+            double deltaY = yv * i - sumY;
             // Increment count first
-            Operon::Scalar oldi = i;
+            double oldi = i;
             ++i;
-            Operon::Scalar f = 1. / (i * oldi);
+            double f = 1. / (i * oldi);
             // Update
             sumXX += f * deltaX * deltaX;
             sumYY += f * deltaY * deltaY;
@@ -221,17 +221,17 @@ public:
         Expects(xdim == weights.size());
         // Inlined computation of Pearson correlation, to avoid allocating objects!
         // This is a numerically stabilized version, avoiding sum-of-squares.
-        Operon::Scalar sumXX = 0., sumYY = 0., sumXY = 0., sumWe = weights[0];
-        Operon::Scalar sumX = x[0] * sumWe, sumY = y[0] * sumWe;
+        double sumXX = 0., sumYY = 0., sumXY = 0., sumWe = weights[0];
+        double sumX = x[0] * sumWe, sumY = y[0] * sumWe;
         for(int i = 1; i < xdim; ++i) {
-            Operon::Scalar xv = x[i], yv = y[i], w = weights[i];
+            double xv = x[i], yv = y[i], w = weights[i];
             // Delta to previous mean
-            Operon::Scalar deltaX = xv * sumWe - sumX;
-            Operon::Scalar deltaY = yv * sumWe - sumY;
+            double deltaX = xv * sumWe - sumX;
+            double deltaY = yv * sumWe - sumY;
             // Increment count first
-            Operon::Scalar oldWe = sumWe; // Convert to Operon::Scalar!
+            double oldWe = sumWe; // Convert to double!
             sumWe += w;
-            Operon::Scalar f = w / (sumWe * oldWe);
+            double f = w / (sumWe * oldWe);
             // Update
             sumXX += f * deltaX * deltaX;
             sumYY += f * deltaY * deltaY;
@@ -250,16 +250,16 @@ public:
 
 private:
     // Aggregation for squared residuals - we are not using sum-of-squares!
-    Operon::Scalar sumXX;
-    Operon::Scalar sumXY;
-    Operon::Scalar sumYY;
+    double sumXX;
+    double sumXY;
+    double sumYY;
 
     // Current mean for X and Y.
-    Operon::Scalar sumX;
-    Operon::Scalar sumY;
+    double sumX;
+    double sumY;
 
     // Weight sum
-    Operon::Scalar sumWe;
+    double sumWe;
 };
 
 } // namespace
