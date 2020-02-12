@@ -55,10 +55,14 @@ find_library(JEMALLOC jemalloc)
 
 if(NOT OPENLIBM)
     set(OPENLIBM "")
+else ()
+    message(STATUS "Found openlibm. Operon will link against ${OPENLIBM}.")
 endif()
 
 if(NOT JEMALLOC)
     set(JEMALLOC "")
+else ()
+    message(STATUS "Found jemalloc. Operon will link against ${JEMALLOC}.")
 endif()
 
 add_library(
