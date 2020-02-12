@@ -22,6 +22,8 @@
 
 #include "algorithms/config.hpp"
 #include "core/eval.hpp"
+#include "core/format.hpp"
+#include "core/metrics.hpp"
 #include "operators/crossover.hpp"
 #include "operators/creator.hpp"
 #include "operators/mutation.hpp"
@@ -135,21 +137,15 @@ public:
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; });
 
             auto best = minElem;
-
-            // this assumes fitness is in [0, 1]
-            if (std::abs(best->Fitness[Idx]) < 1e-6) {
-                terminate = true;
-            }
-
-            if (report) {
-                std::invoke(report);
-            }
-
-            if (terminate) {
-                return;
-            }
-
             offspring[0] = *best;
+
+            // this assumes fitness is always > 0
+            terminate = best->Fitness[Idx] < 1e-6;
+
+            if (report) { std::invoke(report); }
+
+            if (terminate) { return; }
+
             generator.Prepare(parents);
             // we always allow one elite (maybe this should be more configurable?)
             std::for_each(executionPolicy, indices.cbegin() + 1, indices.cbegin() + config.PoolSize, iterate);
