@@ -49,8 +49,8 @@ public:
             m2 = 0;
             return;
         }
-        Operon::Scalar tmp = n * val - sum;
-        Operon::Scalar oldn = n; // tmp copy
+        double tmp = n * val - sum;
+        double oldn = n; // tmp copy
         n += 1.0;
         sum += val;
         m2 += tmp * tmp / (n * oldn);
@@ -67,8 +67,8 @@ public:
             return;
         }
         val *= weight;
-        Operon::Scalar tmp = n * val - sum * weight;
-        Operon::Scalar oldn = n; // tmp copy
+        double tmp = n * val - sum * weight;
+        double oldn = n; // tmp copy
         n += weight;
         sum += val;
         m2 += tmp * tmp / (weight * n * oldn);
@@ -84,15 +84,15 @@ public:
             return;
         }
         // First pass:
-        Operon::Scalar s1 = 0.;
+        double s1 = 0.;
         for (int i = 0; i < l; i++) {
             s1 += vals[i];
         }
-        Operon::Scalar om1 = s1 / l;
+        double om1 = s1 / l;
         // Second pass:
-        Operon::Scalar om2 = 0., err = 0.;
+        double om2 = 0., err = 0.;
         for (int i = 0; i < l; i++) {
-            Operon::Scalar v = vals[i] - om1;
+            double v = vals[i] - om1;
             om2 += v * v;
             err += v;
         }
@@ -104,8 +104,8 @@ public:
             m2 = om2;
             return;
         }
-        Operon::Scalar tmp = n * s1 - sum * l;
-        Operon::Scalar oldn = n; // tmp copy
+        double tmp = n * s1 - sum * l;
+        double oldn = n; // tmp copy
         n += l;
         sum += s1 + err;
         m2 += om2 + tmp * tmp / (l * n * oldn);
@@ -123,9 +123,9 @@ public:
     // combine data from another MeanVarianceCalculator instance
     void Combine(MeanVarianceCalculator other)
     {
-        Operon::Scalar on = other.n, osum = other.sum;
-        Operon::Scalar tmp = n * osum - sum * on;
-        Operon::Scalar oldn = n; // tmp copy
+        double on = other.n, osum = other.sum;
+        double tmp = n * osum - sum * on;
+        double oldn = n; // tmp copy
         n += on;
         sum += osum;
         m2 += other.m2 + tmp * tmp / (on * n * oldn);
@@ -151,9 +151,9 @@ public:
     Operon::Scalar Mean() const { return sum / n; }
 
 private:
-    Operon::Scalar m2;
-    Operon::Scalar sum;
-    Operon::Scalar n;
+    double m2;
+    double sum;
+    double n;
 };
 } // namespace Operon
 #endif

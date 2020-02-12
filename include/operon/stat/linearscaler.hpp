@@ -64,8 +64,8 @@ namespace Operon {
                 }
 
         private:
-            Operon::Scalar alpha; // additive constant
-            Operon::Scalar beta; // multiplicative factor
+            double alpha; // additive constant
+            double beta; // multiplicative factor
 
             MeanVarianceCalculator tCalculator; // target values
             MeanVarianceCalculator ovCalculator; // original values
