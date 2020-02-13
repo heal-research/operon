@@ -12,7 +12,11 @@ namespace Operon {
     constexpr uint8_t HashBits = 64; // can be 32 or 64
     using Hash                 = xxh::hash_t<HashBits>;
     using Random               = RandomGenerator::Sfc64;
+#ifdef USE_SINGLE_PRECISION
+    using Scalar               = float;
+#else 
     using Scalar               = double;
+#endif
 
     // Operon::Vector is just an aligned std::vector 
     // alignment can be controlled with the EIGEN_MAX_ALIGN_BYTES macro
