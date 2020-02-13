@@ -95,6 +95,7 @@ public:
         }
         auto nodes = BreadthToPostfix(tuples);
         auto tree = Tree(nodes).UpdateNodes();
+        Expects(targetLen+1 == tree.Length()); // +1 because of the decrement at line 69
         return tree;
     }
 
