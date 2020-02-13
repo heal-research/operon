@@ -31,6 +31,7 @@ namespace Operon {
 
 // this tree creator expands bread-wise using a "horizon" of open expansion slots
 // at the end the breadth sequence of nodes is converted to a postfix sequence
+// if the depth is not limiting, the target length is guaranteed to be reached
 template <typename T>
 class BalancedTreeCreator : public CreatorBase {
 public:
@@ -95,7 +96,6 @@ public:
         }
         auto nodes = BreadthToPostfix(tuples);
         auto tree = Tree(nodes).UpdateNodes();
-        Expects(targetLen+1 == tree.Length()); // +1 because of the decrement at line 69
         return tree;
     }
 
