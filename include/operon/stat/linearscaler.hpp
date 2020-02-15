@@ -53,15 +53,15 @@ namespace Operon {
             Operon::Scalar Alpha() const { return alpha; }
 
             template <typename InputIt1, typename InputIt2, typename U = typename InputIt1::value_type>
-                static std::pair<Operon::Scalar, Operon::Scalar> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
-                {
-                    static_assert(std::is_floating_point_v<U>);
-                    LinearScalingCalculator calc;
-                    for (; xBegin != xEnd; ++xBegin, ++yBegin) {
-                        calc.Add(*xBegin, *yBegin);
-                    }
-                    return { calc.Alpha(), calc.Beta() };
+            static std::pair<double, double> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
+            {
+                static_assert(std::is_floating_point_v<U>);
+                LinearScalingCalculator calc;
+                for (; xBegin != xEnd; ++xBegin, ++yBegin) {
+                    calc.Add(*xBegin, *yBegin);
                 }
+                return { calc.Alpha(), calc.Beta() };
+            }
 
         private:
             double alpha; // additive constant
