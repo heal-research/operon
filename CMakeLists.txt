@@ -101,6 +101,8 @@ add_library(
     src/core/dataset.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
+    src/stat/meanvariance.cpp
+    src/stat/pearson.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)

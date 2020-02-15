@@ -205,7 +205,7 @@ int main(int argc, char* argv[])
         using OffspringGenerator = OffspringGeneratorBase<Evaluator, SubtreeCrossover, MultiMutation, Selector, Selector>;
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        auto creator             = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+        auto creator             = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength, /* irregularity bias */ 1.0 };
         auto crossover           = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator             = MultiMutation {};
         auto onePoint            = OnePointMutation {};

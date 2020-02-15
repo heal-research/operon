@@ -10,6 +10,7 @@ import logging
 import math
 import os
 import pandas as pd
+import numpy as np
 import subprocess
 import sys
 
@@ -33,7 +34,7 @@ results_path = args.out
 
 population_size = [ 1000 ]
 pool_size = [ 1000 ]
-iteration_count = [ 0 ]
+iteration_count = [ 3 ]
 evaluation_budget = [ 1000000 ]
 generators = ['basic']
 selectors =[ ('tournament:5', 'tournament:5') ]
@@ -83,6 +84,13 @@ idx = 0
 total_idx = reps * len(parameter_space) * data_count
 
 problem_results = []
+
+def is_float(v):
+    try:
+        float(v)
+        return True
+    except ValueError:
+        return False
 
 for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter in parameter_space:
     idx = idx+1
@@ -141,11 +149,11 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter 
                 logger.info('[{:#2d}/{}]\t{}\t{}'.format(j+1, reps, problem_name, result))
 
                 meta = [ problem_name, pop_size, pol_size, iter_count, eval_count, selector, generator, reinserter ]
-                problem_result[j] = meta  + [ np.nan if v == 'nan' else float(v) for v in lines[-1].split(b'\t') ]
+                problem_result[j] = meta  + [ float(v) if is_float(v) else np.nan for v in lines[-1].split(b'\t') ]
 
                 for i,line in enumerate(lines):
                     try:
-                        vals = [ np.nan if v == 'nan' else float(v) for v in line.split(b'\t') ]
+                        vals = [ float(v) if is_float(v) else np.nan for v in line.split(b'\t') ]
                     except:
                         print(line)
 

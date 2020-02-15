@@ -97,7 +97,7 @@ public:
         return names;
     }
 
-    const gsl::span<const Operon::Scalar> GetValues(const std::string& name) const
+    const gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept
     {
         auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
         return gsl::span<const Operon::Scalar>(values.col(it->Index).data(), values.rows());

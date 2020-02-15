@@ -20,7 +20,7 @@ let
         patches = [ ./include-dir.patch ];
     });
     ceres-solver = pkgs.ceres-solver.overrideAttrs (old: rec {
-        cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DBUILD_SHARED_LIBS=ON" ];
+        cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON" ];
     });
     fmt = pkgs.fmt.overrideAttrs(old: { outputs = [ "out" ]; });
     gcc = { 

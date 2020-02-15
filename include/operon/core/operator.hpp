@@ -100,7 +100,7 @@ class ReinserterBase : public OperatorBase<void, std::vector<T>&, std::vector<T>
 };
 
 template <typename T>
-class EvaluatorBase : public OperatorBase<Operon::Scalar, T&> {
+class EvaluatorBase : public OperatorBase<double, T&> {
     // some fitness measures are relative to the whole population (eg. diversity)
     // and the evaluator needs to do some preparation work using the entire pop
 public:

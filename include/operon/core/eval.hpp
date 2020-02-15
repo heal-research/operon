@@ -37,8 +37,9 @@ template <typename T>
 inline std::pair<T, T> MinMax(gsl::span<T> values) noexcept
 {
     // get first finite (not NaN, not infinity) value
-    auto min = T(Operon::Numeric::Max<T>());
-    auto max = T(Operon::Numeric::Min<T>());
+    auto min = Operon::Numeric::Max<T>();
+    auto max = Operon::Numeric::Min<T>();
+
     for (auto const& v : values) {
         if (!ceres::IsFinite(v))
             continue;
