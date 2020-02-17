@@ -62,6 +62,7 @@ public:
     }
 
     const gsl::span<const T> Parents() const { return gsl::span<const T>(parents); }
+    const gsl::span<T> Parents() { return gsl::span<T>(parents); }
     const gsl::span<const T> Offspring() const { return gsl::span<const T>(offspring); }
 
     const Problem& GetProblem() const { return problem_.get(); }
@@ -110,10 +111,13 @@ public:
             ind[Idx] = f;
         };
 
+        // generate the initial population and perform evaluation
         ExecutionPolicy executionPolicy;
-
         std::for_each(executionPolicy, indices.begin(), indices.begin() + config.PopulationSize, create);
         std::for_each(executionPolicy, parents.begin(), parents.end(), evaluate);
+
+        // run report callback
+        if (report) { std::invoke(report); }
 
         // flag to signal algorithm termination
         std::atomic_bool terminate = false;
@@ -132,25 +136,25 @@ public:
         for (generation = 0; generation < config.Generations; ++generation) {
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
-
             // preserve one elite
             auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; });
-
             auto best = minElem;
             offspring[0] = *best;
 
             // this assumes fitness is always > 0
             terminate = best->Fitness[Idx] < 1e-6;
 
-            if (report) { std::invoke(report); }
-
-            if (terminate) { return; }
-
             generator.Prepare(parents);
             // we always allow one elite (maybe this should be more configurable?)
             std::for_each(executionPolicy, indices.cbegin() + 1, indices.cbegin() + config.PoolSize, iterate);
             // merge pool back into pop
             reinserter(random, parents, offspring);
+
+            // report progress and stats
+            if (report) { std::invoke(report); }
+
+            // stop if termination requested
+            if (terminate) { return; }
         }
     }
 };

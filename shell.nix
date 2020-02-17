@@ -54,5 +54,6 @@ pkgs.gcc9Stdenv.mkDerivation {
         # visualize profile results
         qcachegrind
         massif-visualizer
+        graphviz
     ];
 }

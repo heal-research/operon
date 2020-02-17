@@ -95,8 +95,7 @@ struct Node {
 
     bool IsEnabled;
 
-    Node() : Node(NodeType::Constant) {} 
-
+    Node() = default; 
     Node(Node const&) = default;
 
     explicit Node(NodeType type) noexcept

@@ -30,6 +30,21 @@ TEST_CASE("Node is trivial", "[detail]")
     REQUIRE(std::is_trivial_v<Operon::Node>);
 }
 
+TEST_CASE("Node is trivially copyable", "[detail]")
+{
+    REQUIRE(std::is_trivially_copyable_v<Operon::Node>);
+}
+
+TEST_CASE("Node is standard layout", "[detail]")
+{
+    REQUIRE(std::is_standard_layout_v<Operon::Node>);
+}
+
+TEST_CASE("Node is pod", "[detail]")
+{
+    REQUIRE(std::is_pod_v<Operon::Node>);
+}
+
 TEST_CASE("Node is small", "[detail]")
 {
     // this test case basically wants to ensure that, 

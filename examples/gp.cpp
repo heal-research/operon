@@ -85,4 +85,6 @@ int main(int, char**) {
     int generation = 0;
     auto report = [&] { fmt::print("{}\n", ++generation); };
     gp.Run(random, report);
+
+    return 0;
 }
