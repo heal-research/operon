@@ -39,6 +39,7 @@ pkgs.gcc9Stdenv.mkDerivation {
         bear # generate compilation database
         gdb
         valgrind
+        heaptrack
         git
         cmake
         cxxopts

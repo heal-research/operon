@@ -36,7 +36,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     xxhash 
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/xxhash
-    URL https://raw.githubusercontent.com/RedSpah/xxhash_cpp/master/xxhash/xxhash.hpp 
+    URL https://raw.githubusercontent.com/RedSpah/xxhash_cpp/master/include/xxhash.hpp 
     DOWNLOAD_NO_EXTRACT 1
 )
 
