@@ -21,6 +21,7 @@
 #define EVALUATE_HPP
 
 #include "dataset.hpp"
+#include "grammar.hpp"
 #include "gsl/gsl"
 #include "tree.hpp"
 #include <ceres/ceres.h>
@@ -68,7 +69,7 @@ template <typename T>
 Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
 {
     Operon::Vector<T> result(range.Size());
-    Evaluate(tree, dataset, range, parameters, gsl::span<T>(result));
+    Evaluate<T>(tree, dataset, range, parameters, gsl::span<T>(result));
     return result;
 }
 
@@ -81,6 +82,9 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 
     auto indices = std::vector<gsl::index>(nodes.size());
     gsl::index idx = 0;
+
+    bool treeContainsNonlinearSymbols = false;
+
     for (size_t i = 0; i < nodes.size(); ++i) {
         if (nodes[i].IsConstant()) {
             auto v = parameters == nullptr ? T(nodes[i].Value) : parameters[idx];
@@ -89,7 +93,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
         } else if (nodes[i].IsVariable()) {
             indices[i] = dataset.GetIndex(nodes[i].HashValue);
             idx++;
-        }
+        } 
+        treeContainsNonlinearSymbols = static_cast<bool>(nodes[i].Type & (Grammar::Full & ~Grammar::Arithmetic));
     }
 
     auto lastCol = m.col(nodes.size()-1);
@@ -153,38 +158,6 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 r = m.col(c1) / m.col(c2);
                 break;
             }
-            case NodeType::Log: {
-                r = m.col(i - 1).log();
-                break;
-            }
-            case NodeType::Exp: {
-                r = m.col(i - 1).exp();
-                break;
-            }
-            case NodeType::Sin: {
-                r = m.col(i - 1).sin();
-                break;
-            }
-            case NodeType::Cos: {
-                r = m.col(i - 1).cos();
-                break;
-            }
-            case NodeType::Tan: {
-                r = m.col(i - 1).tan();
-                break;
-            }
-            case NodeType::Sqrt: {
-                r = m.col(i - 1).sqrt();
-                break;
-            }
-            case NodeType::Cbrt: {
-                r = m.col(i - 1).unaryExpr([](T v) { return T(ceres::cbrt(v)); });
-                break;
-            }
-            case NodeType::Square: {
-                r = m.col(i - 1).square();
-                break;
-            }
             case NodeType::Constant: {
                 idx++;
                 break;
@@ -195,8 +168,47 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 break;
             }
             default: {
-                fmt::print(stderr, "Unknown node type {}\n", nodes[i].Name());
-                std::terminate();
+                if (treeContainsNonlinearSymbols) {
+                    switch (auto const& q = nodes[i]; q.Type) {
+                    case NodeType::Log: {
+                        r = m.col(i - 1).log();
+                        break;
+                    }
+                    case NodeType::Exp: {
+                        r = m.col(i - 1).exp();
+                        break;
+                    }
+                    case NodeType::Sin: {
+                        r = m.col(i - 1).sin();
+                        break;
+                    }
+                    case NodeType::Cos: {
+                        r = m.col(i - 1).cos();
+                        break;
+                    }
+                    case NodeType::Tan: {
+                        r = m.col(i - 1).tan();
+                        break;
+                    }
+                    case NodeType::Sqrt: {
+                        r = m.col(i - 1).sqrt();
+                        break;
+                    }
+                    case NodeType::Cbrt: {
+                        r = m.col(i - 1).unaryExpr([](T v) { return T(ceres::cbrt(v)); });
+                        break;
+                    }
+                    case NodeType::Square: {
+                        r = m.col(i - 1).square();
+                        break;
+                    }
+                    default: {
+                        fmt::print(stderr, "Unknown node type {}\n", nodes[i].Name());
+                        std::terminate();
+                    }
+                    }
+                }
+                break;
             }
             }
         }
@@ -204,8 +216,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
         res.segment(row, remainingRows) = lastCol.segment(0, remainingRows);
     }
     // replace nan and inf values
-    auto [min, max] = MinMax(result);
-    LimitToRange(result, min, max);
+    //auto [min, max] = MinMax(result);
+    //LimitToRange(result, min, max);
 }
 
 struct ParameterizedEvaluation {
@@ -307,3 +319,4 @@ auto OptimizeNumeric(Args&&... args)
 }
 }
 #endif
+
