@@ -37,6 +37,7 @@ Dataset::Dataset(const std::string& file, bool hasHeader)
     variables.resize(ncols);
 
     if (hasHeader) {
+        nrows += 1;
         for (auto i = 0; i < ncols; ++i) {
             variables[i].Name = info.col_names[i];
             variables[i].Index = i;
