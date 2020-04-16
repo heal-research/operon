@@ -94,7 +94,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             indices[i] = dataset.GetIndex(nodes[i].HashValue);
             idx++;
         } 
-        treeContainsNonlinearSymbols = static_cast<bool>(nodes[i].Type & (Grammar::Full & ~Grammar::Arithmetic));
+        treeContainsNonlinearSymbols |= static_cast<bool>(nodes[i].Type & (Grammar::Full & ~Grammar::Arithmetic));
     }
 
     auto lastCol = m.col(nodes.size()-1);
@@ -169,7 +169,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
             default: {
                 if (treeContainsNonlinearSymbols) {
-                    switch (auto const& q = nodes[i]; q.Type) {
+                    switch (s.Type) {
                     case NodeType::Log: {
                         r = m.col(i - 1).log();
                         break;
@@ -216,8 +216,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
         res.segment(row, remainingRows) = lastCol.segment(0, remainingRows);
     }
     // replace nan and inf values
-    //auto [min, max] = MinMax(result);
-    //LimitToRange(result, min, max);
+    auto [min, max] = MinMax(result);
+    LimitToRange(result, min, max);
 }
 
 struct ParameterizedEvaluation {
