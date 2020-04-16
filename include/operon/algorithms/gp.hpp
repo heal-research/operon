@@ -141,9 +141,6 @@ public:
             auto best = minElem;
             offspring[0] = *best;
 
-            // this assumes fitness is always > 0
-            terminate = best->Fitness[Idx] < 1e-6;
-
             generator.Prepare(parents);
             // we always allow one elite (maybe this should be more configurable?)
             std::for_each(executionPolicy, indices.cbegin() + 1, indices.cbegin() + config.PoolSize, iterate);
@@ -154,7 +151,7 @@ public:
             if (report) { std::invoke(report); }
 
             // stop if termination requested
-            if (terminate) { return; }
+            if (terminate || best->Fitness[Idx] < 1e-6) { return; }
         }
     }
 };
