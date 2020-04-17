@@ -104,7 +104,7 @@ namespace Test {
     TEST_CASE("Evaluation performance", "[performance]")
     {
         size_t n = 1'000;
-        size_t maxLength = 50;
+        size_t maxLength = 100;
         size_t maxDepth = 1000;
 
         auto rd = Operon::Random();
@@ -133,6 +133,8 @@ namespace Test {
 
         Grammar grammar;
         MeanVarianceCalculator calc;
+
+        //tbb::task_scheduler_init init(20);
 
         auto measurePerformance = [&]()
         {

@@ -34,7 +34,7 @@ results_path = args.out
 
 population_size = [ 1000 ]
 pool_size = [ 1000 ]
-iteration_count = [ 3 ]
+iteration_count = [ 0 ]
 evaluation_budget = [ 1000000 ]
 generators = ['basic']
 selectors =[ ('tournament:5', 'tournament:5') ]
@@ -140,7 +140,7 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter 
                     "--offspring-generator", str(generator),
                     "--reinserter", str(reinserter),
                     "--maxlength", str(50),
-                    "--maxdepth", str(1000),
+                    "--maxdepth", str(10),
                     "--enable-symbols", "exp,log,sin,cos",
                     ], stderr=devnull);
 
