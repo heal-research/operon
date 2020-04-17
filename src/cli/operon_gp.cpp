@@ -205,7 +205,7 @@ int main(int argc, char* argv[])
         using OffspringGenerator = OffspringGeneratorBase<Evaluator, SubtreeCrossover, MultiMutation, Selector, Selector>;
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        auto creator             = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength, /* irregularity bias */ 1.0 };
+        auto creator             = BalancedTreeCreator { sizeDistribution, 1000, maxLength, /* irregularity bias */ 1.0 };
         auto crossover           = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator             = MultiMutation {};
         auto onePoint            = OnePointMutation {};
@@ -337,6 +337,8 @@ int main(int argc, char* argv[])
         auto report = [&]() {
             auto pop = gp.Parents();
             best = getBest(pop);
+
+            //fmt::print("best: {}\n", InfixFormatter::Format(best.Genotype, *dataset));
 
             auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
             auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);

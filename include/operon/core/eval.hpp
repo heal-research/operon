@@ -69,7 +69,7 @@ template <typename T>
 Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
 {
     Operon::Vector<T> result(range.Size());
-    Evaluate<T>(tree, dataset, range, parameters, gsl::span<T>(result));
+    Evaluate(tree, dataset, range, parameters, gsl::span<T>(result));
     return result;
 }
 
@@ -84,7 +84,6 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
     gsl::index idx = 0;
 
     bool treeContainsNonlinearSymbols = false;
-
     for (size_t i = 0; i < nodes.size(); ++i) {
         if (nodes[i].IsConstant()) {
             auto v = parameters == nullptr ? T(nodes[i].Value) : parameters[idx];
@@ -93,8 +92,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
         } else if (nodes[i].IsVariable()) {
             indices[i] = dataset.GetIndex(nodes[i].HashValue);
             idx++;
-        } 
-        treeContainsNonlinearSymbols |= static_cast<bool>(nodes[i].Type & (Grammar::Full & ~Grammar::Arithmetic));
+        }
+        treeContainsNonlinearSymbols |= static_cast<bool>(nodes[i].Type & ~Grammar::Arithmetic);
     }
 
     auto lastCol = m.col(nodes.size()-1);
@@ -170,45 +169,46 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             default: {
                 if (treeContainsNonlinearSymbols) {
                     switch (s.Type) {
-                    case NodeType::Log: {
-                        r = m.col(i - 1).log();
-                        break;
-                    }
-                    case NodeType::Exp: {
-                        r = m.col(i - 1).exp();
-                        break;
-                    }
-                    case NodeType::Sin: {
-                        r = m.col(i - 1).sin();
-                        break;
-                    }
-                    case NodeType::Cos: {
-                        r = m.col(i - 1).cos();
-                        break;
-                    }
-                    case NodeType::Tan: {
-                        r = m.col(i - 1).tan();
-                        break;
-                    }
-                    case NodeType::Sqrt: {
-                        r = m.col(i - 1).sqrt();
-                        break;
-                    }
-                    case NodeType::Cbrt: {
-                        r = m.col(i - 1).unaryExpr([](T v) { return T(ceres::cbrt(v)); });
-                        break;
-                    }
-                    case NodeType::Square: {
-                        r = m.col(i - 1).square();
-                        break;
-                    }
-                    default: {
-                        fmt::print(stderr, "Unknown node type {}\n", nodes[i].Name());
-                        std::terminate();
-                    }
+                        case NodeType::Log: {
+                            r = m.col(i - 1).log();
+                            break;
+                        }
+                        case NodeType::Exp: {
+                            r = m.col(i - 1).exp();
+                            break;
+                        }
+                        case NodeType::Sin: {
+                            r = m.col(i - 1).sin();
+                            break;
+                        }
+                        case NodeType::Cos: {
+                            r = m.col(i - 1).cos();
+                            break;
+                        }
+                        case NodeType::Tan: {
+                            r = m.col(i - 1).tan();
+                            break;
+                        }
+                        case NodeType::Sqrt: {
+                            r = m.col(i - 1).sqrt();
+                            break;
+                        }
+                        case NodeType::Cbrt: {
+                            r = m.col(i - 1).unaryExpr([](T v) { return T(ceres::cbrt(v)); });
+                            break;
+                        }
+                        case NodeType::Square: {
+                            r = m.col(i - 1).square();
+                            break;
+                        }
+                        default: {
+                            break;
+                        }
                     }
                 }
                 break;
+                //fmt::print(stderr, "Unknown node type {}\n", nodes[i].Name());
+                //std::terminate();
             }
             }
         }

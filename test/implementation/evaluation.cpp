@@ -72,7 +72,7 @@ TEST_CASE("Evaluation correctness", "[implementation]")
         auto r2 = RSquared(estimatedValues, targetValues);
         fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
-        for (long i = 0; i < targetValues.size(); ++i) {
+        for (size_t i = 0; i < targetValues.size(); ++i) {
             fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], targetValues[i]);
         }
     }

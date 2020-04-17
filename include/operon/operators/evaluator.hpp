@@ -96,11 +96,19 @@ public:
         }
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
-        auto r2 = RSquared(estimatedValues, targetValues);
-        if (!std::isfinite(r2)) {
-            r2 = 0;
+
+        MeanVarianceCalculator mv;
+        mv.Add(estimatedValues);
+
+        auto variance = mv.NaiveVariance();
+        
+        double r2 = 0;
+        if (variance > 1e-12) {
+            r2 = RSquared(estimatedValues, targetValues);
+            if (!std::isfinite(r2) || r2 > UpperBound || r2 < LowerBound) { 
+                r2 = 0; 
+            }
         }
-        r2 = std::clamp(r2, LowerBound, UpperBound);
         return UpperBound - r2 + LowerBound;
     }
 

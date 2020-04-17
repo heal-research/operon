@@ -51,7 +51,7 @@ private:
         fitness.reserve(this->population.size());
 
         Operon::Scalar vmin = this->population[0][Idx], vmax = vmin;
-        for (gsl::index i = 0; i < this->population.size(); ++i) {
+        for (size_t i = 0; i < this->population.size(); ++i) {
             auto f = this->population[i][Idx];
             fitness.push_back({ f, i });
             vmin = std::min(vmin, f);
