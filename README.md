@@ -46,12 +46,26 @@ The following dependencies need to be satisfied:
 * [Cxxopts](https://github.com/jarro2783/cxxopts)
 * [{fmt}](https://fmt.dev/latest/index.html)
 * [Catch2](https://github.com/catchorg/Catch2)
+* [microsoft-gsl](https://github.com/microsoft/GSL)
 
 These libraries are well-known and should be available in your distribution's package repository. On Windows they can be easily managed using [vcpkg](https://github.com/Microsoft/vcpkg).
 
 ## Build instructions
 
 Building requires a recent version of [cmake](https://cmake.org/) and the latest gcc compiler (currently only gcc-9.1 supports the parallel STL algorithms backed up by Intel-tbb).
+
+The following options can be passed to CMake:
+- `-DUSE_JEMALLOC=ON`
+
+[jemalloc](http://jemalloc.net/) is a general purpose `malloc(3)` implementation that emphasizes fragmentation avoidance and scalable concurrency support. Typically improves performance.
+
+- `-DUSE_TCMALLOC=ON`
+
+[TCMalloc](https://google.github.io/tcmalloc/) is a fast, multi-threaded `malloc(3)` implementation from Google. Typically improves performance.
+
+- `-DUSE_SINGLE_PRECISION=ON`
+
+Enable single-precision model evaluation in Operon. Typically results in 2x performance. Empirical testing did not reveal any downside to enabling this option.
 
 ### Windows / VCPKG
 
