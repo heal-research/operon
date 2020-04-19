@@ -18,8 +18,8 @@
 # -- Project information -----------------------------------------------------
 
 project = 'operon'
-copyright = '2020, Bogdan Burlacu'
-author = 'Bogdan Burlacu'
+copyright = '2020'
+author = ''
 
 
 # -- General configuration ---------------------------------------------------
