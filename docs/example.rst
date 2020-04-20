@@ -15,8 +15,6 @@ We solve a synthetic benchmark problem, namely the :math:`\text{Poly-10}`:
 
 This problem consists of 500 datapoints which we'll split eqully between our *training* and *test* data. 
 
-
-
 First, let's load the data from csv into a `Dataset` and set the data partitions:
 
 .. code-block:: cpp
@@ -46,41 +44,16 @@ Crossover and mutation
 
     - The *mutation* operator can apply different kind of perturbations to a tree individual: *point mutation* changes a leaf node's coefficient (eg., a variable node's *weight* or a constant node's *value*), *change variable* mutation changes a variable with another one from the dataset (eg., :math:`x_1 \to x_2`) and the *change function* mutation does the same thing to function symbols.
 
-Selector
-    The selection operator samples the distribution of fitness values in the population and picks parent individuals for taking part in recombination. *Operon* supports specifying different selection methods for the two parents (typically called *male* and *female* or *root* and *non-root* parents).
-
-Evaluator
-    This operator is responsible for calculating fitness and is alloted a fixed evaluation budget at the beginning of the run. The *evaluator* is also capable of performing nonlinear least-squares fitting of model parameters if the *local optimization iterations* parameter is set to a value greater than zero. 
-
-Reinserter
-    The reinsertion operator merges the pool of *recombinants* (new offspring) back into the population. This can be a simple replacement or a more sophisticated strategy (eg., keep the best individuals among the parents and offspring). 
-
-Offspring generator 
-    Implements a strategy for producing new offspring. This can be plain recombination (eg., crossover + mutation) or more elaborate logic like acceptance criteria for offspring or brood selection. In general, this operation may *fail* (returning a *maybe* type) and should be handled by the algorithm designer.
-
-Tree creator
-    The tree creator initializes random trees of any target length. The length is sampled from a uniform distribution :math:`U[1, \text{maxTreeLength}]`. Maximum depth is fixed by the :math:`\text{maxTreeDepth}` parameter. 
-
-.. code-block:: cpp
-
-    using Ind        = Individual<1>; // an individual holding one fitness value (one objective)
-    using Evaluator  = RSquaredEvaluator<Ind>; // use the R-Squared coefficient of determination
-    using Selector   = TournamentSelector<Ind, 0>; // tournament selection using the first objective (0)
-    using Reinserter = ReplaceWorstReinserter<Ind, 0>; // reinsert considering first objective (0)
-    using Crossover  = SubtreeCrossover;
-    using Mutation   = MultiMutation;
-    using Generator  = BasicOffspringGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
-
-    // set up the solution creator 
-    size_t maxTreeDepth  = 10;
-    size_t maxTreeLength = 50;
-    std::uniform_int_distribution<size_t> treeSizeDistribution(1, maxTreeLength);
-    BalancedTreeCreator creator { treeSizeDistribution, maxTreeDepth, maxTreeLength };
+.. code:: cpp
 
     // set up crossover and mutation
+    using Crossover  = SubtreeCrossover;
+    using Mutation   = MultiMutation;
     double internalNodeBias = 0.9;
+    size_t maxTreeDepth  = 10;
+    size_t maxTreeLength = 50;
     SubtreeCrossover crossover { internalNodeBias, maxTreeDepth, maxTreeLength };
-    MultiMutation mutation;
+    Mutation mutation;
     OnePointMutation onePoint;
     ChangeVariableMutation changeVar { problem.InputVariables() };
     ChangeFunctionMutation changeFunc { problem.GetGrammar() };
@@ -88,21 +61,57 @@ Tree creator
     mutation.Add(changeVar, 1.0);
     mutation.Add(changeFunc, 1.0);
 
-    // set up remaining operators
+
+Selector
+    The selection operator samples the distribution of fitness values in the population and picks parent individuals for taking part in recombination. *Operon* supports specifying different selection methods for the two parents (typically called *male* and *female* or *root* and *non-root* parents).
+
+.. code-block:: cpp
+
+    // set up the selector
+    using Ind        = Individual<1>; // an individual holding one fitness value (one objective)
+    using Selector   = TournamentSelector<Ind, 0>; // tournament selection using the first objective (0)
+    Selector selector(/* tournament size */ 5);
+
+Evaluator
+    This operator is responsible for calculating fitness and is alloted a fixed evaluation budget at the beginning of the run. The *evaluator* is also capable of performing nonlinear least-squares fitting of model parameters if the *local optimization iterations* parameter is set to a value greater than zero. 
+
+.. code-block:: cpp
+
+    // set up the evaluator 
+    using Evaluator  = RSquaredEvaluator<Ind>; // use the R-Squared coefficient of determination
     Evaluator evaluator(problem);
     evaluator.LocalOptimizationIterations(config.Iterations);
     evaluator.Budget(config.Evaluations);
 
-    Selector selector(/* tournament size */ 5);
+Reinserter
+    The reinsertion operator merges the pool of *recombinants* (new offspring) back into the population. This can be a simple replacement or a more sophisticated strategy (eg., keep the best individuals among the parents and offspring). 
 
+.. code-block:: cpp
+
+    using Reinserter = ReplaceWorstReinserter<Ind, 0>; // reinsert considering first objective (0)
+    Reinserter reinserter;
+
+
+Offspring generator 
+    Implements a strategy for producing new offspring. This can be plain recombination (eg., crossover + mutation) or more elaborate logic like acceptance criteria for offspring or brood selection. In general, this operation may *fail* (returning a *maybe* type) and should be handled by the algorithm designer.
+
+.. code-block:: cpp
+
+    using Generator  = BasicOffspringGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
     // the generator makes use of the other operators to generate offspring and assign fitness
     // the selector is passed twice, once for the male parent, once for the female parent.
     Generator generator(evaluator, crossover, mutation, selector, selector);
 
-    // reinserter
-    Reinserter reinserter;
+Tree creator
+    The tree creator initializes random trees of any target length. The length is sampled from a uniform distribution :math:`U[1, \text{maxTreeLength}]`. Maximum depth is fixed by the :math:`\text{maxTreeDepth}` parameter. 
 
-Finally, we can configure the genetic algorithm:
+.. code-block:: cpp
+
+    // set up the solution creator 
+    std::uniform_int_distribution<size_t> treeSizeDistribution(1, maxTreeLength);
+    BalancedTreeCreator creator { treeSizeDistribution, maxTreeDepth, maxTreeLength };
+
+Finally, we can configure the genetic algorithm and run it. A callback function can be provided to the algorithm in order to report progress at the end of each generation.
 
 .. code:: cpp
 
