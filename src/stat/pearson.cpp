@@ -85,7 +85,7 @@ namespace Operon {
         // This is a numerically stabilized version, avoiding sum-of-squares.
         double sumXX = 0., sumYY = 0., sumXY = 0.;
         double sumX = x[0], sumY = y[0];
-        int i = 1;
+        size_t i = 1;
         while(i < xdim) {
             double xv = x[i], yv = y[i];
             // Delta to previous mean
@@ -122,7 +122,7 @@ namespace Operon {
         // This is a numerically stabilized version, avoiding sum-of-squares.
         double sumXX = 0., sumYY = 0., sumXY = 0., sumWe = weights[0];
         double sumX = x[0] * sumWe, sumY = y[0] * sumWe;
-        for(int i = 1; i < xdim; ++i) {
+        for(size_t i = 1; i < xdim; ++i) {
             double xv = x[i], yv = y[i], w = weights[i];
             // Delta to previous mean
             double deltaX = xv * sumWe - sumX;

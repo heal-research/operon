@@ -2,7 +2,7 @@
 #include <pybind11/operators.h>
 
 #include "core/common.hpp"
-#include "core/constants.h"
+#include "core/constants.hpp"
 #include "core/eval.hpp"
 #include "core/grammar.hpp"
 #include "algorithms/config.hpp"

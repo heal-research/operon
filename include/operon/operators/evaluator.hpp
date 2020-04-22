@@ -21,6 +21,8 @@
 #define EVALUATOR_HPP
 
 #include "core/eval.hpp"
+#include "core/nnls.hpp"
+#include "core/nnls_tiny.hpp"
 #include "core/metrics.hpp"
 #include "core/operator.hpp"
 #include "stat/meanvariance.hpp"
@@ -93,6 +95,25 @@ public:
         if (this->iterations > 0) {
             auto summary = OptimizeAutodiff(genotype, dataset, targetValues, trainingRange, this->iterations);
             this->localEvaluations += summary.iterations.size();
+            //auto coeff = genotype.GetCoefficients();
+            //Eigen::Matrix<double, Eigen::Dynamic, 1> param(coeff.size());
+
+            //// use the tree coefficients as a starting point
+            //for (size_t i = 0; i < coeff.size(); ++i) {
+            //    param(i) = coeff[i];
+            //}
+
+            //TinyCostFunction func(genotype, dataset, targetValues, trainingRange);
+            //ceres::TinySolver<TinyCostFunction> solver;
+            //solver.options.max_num_iterations = this->iterations;
+            //auto summary = solver.Solve(func, &param);
+
+            //for (size_t i = 0; i < coeff.size(); ++i) {
+            //   coeff[i] =  param(i);
+            //}
+            //genotype.SetCoefficients(coeff);
+
+            //this->localEvaluations += summary.iterations;
         }
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);

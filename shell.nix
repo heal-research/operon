@@ -1,8 +1,9 @@
 let
     pkgs = import <nixpkgs> {};
+    unstable = import <nixos-unstable> {};
     cxxopts = import ./cxxopts.nix; 
-    qcachegrind = pkgs.libsForQt5.callPackage ./qcachegrind.nix {};
-    tbb = pkgs.tbb.overrideAttrs (old: rec {
+    qcachegrind = unstable.libsForQt5.callPackage ./qcachegrind.nix {};
+    tbb = unstable.tbb.overrideAttrs (old: rec {
         installPhase = old.installPhase + ''
         ${pkgs.cmake}/bin/cmake \
             -DINSTALL_DIR="$out"/lib/cmake/TBB \
@@ -11,11 +12,11 @@ let
     '';
     });
     eigen = pkgs.eigen.overrideAttrs (old: rec {
-        src = pkgs.fetchgit {
-          url             = "https://gitlab.com/libeigen/eigen.git";
-          rev             = "776960024585b907acc4abc3c59aef605941bb75";
-          sha256          = "119h38g9j02jhgf68xm8zzvbswi95amq4nqjqi3nvi6ds6b0k2yk";
-          fetchSubmodules = false;
+      src = pkgs.fetchgit {
+        url             = "https://gitlab.com/libeigen/eigen.git";
+        rev             = "e8f40e4670865b6eda3a4ba7eba2b4cb429e5f9c";
+        sha256          = "0gbhmck6ig923qjfwhziphb24j1mqhxlsh9apckljzk9ff92598y";
+        fetchSubmodules = false;
         };
         patches = [ ./include-dir.patch ];
     });
@@ -28,13 +29,14 @@ let
       tune = "znver2"; 
     };
 in
-pkgs.gcc9Stdenv.mkDerivation {
+#pkgs.llvmPackages_9.stdenv.mkDerivation {
+unstable.gcc9Stdenv.mkDerivation {
     name = "operon-env";
     hardeningDisable = [ "all" ]; 
 
-    buildInputs = with pkgs; [
+    buildInputs = with unstable; [
         # python environment for bindings and scripting
-        (pkgs.python37.withPackages (ps: with ps; [ pip numpy pandas cython scikitlearn pybind11 colorama coloredlogs seaborn ]))
+        (pkgs.python38.withPackages (ps: with ps; [ pip numpy pandas pybind11 colorama coloredlogs seaborn sphinx recommonmark sphinx_rtd_theme ]))
         # Project dependencies
         bear # generate compilation database
         gdb
@@ -42,7 +44,6 @@ pkgs.gcc9Stdenv.mkDerivation {
         heaptrack
         git
         cmake
-        cxxopts
         eigen
         openlibm
         gperftools
@@ -56,5 +57,6 @@ pkgs.gcc9Stdenv.mkDerivation {
         qcachegrind
         massif-visualizer
         graphviz
+        cxxopts
     ];
 }
