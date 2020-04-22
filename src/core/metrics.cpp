@@ -26,7 +26,7 @@ Operon::Scalar NormalizedMeanSquaredError(gsl::span<const Operon::Scalar> x, gsl
     Expects(x.size() > 0);
     MeanVarianceCalculator ycalc;
     MeanVarianceCalculator errcalc;
-    for(int i = 0; i < x.size(); ++i) {
+    for(size_t i = 0; i < x.size(); ++i) {
         if (!std::isnan(y[i])) {
             ycalc.Add(y[i]);
         }
@@ -43,7 +43,7 @@ Operon::Scalar MeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<con
     Expects(x.size() == y.size());
     Expects(x.size() > 0);
     MeanVarianceCalculator mcalc;
-    for(int i = 0; i < x.size(); ++i) {
+    for(size_t i = 0; i < x.size(); ++i) {
         mcalc.Add((x[i] - y[i]) * (x[i] - y[i]));
     }
     return mcalc.Mean();

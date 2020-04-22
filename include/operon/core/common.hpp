@@ -20,7 +20,7 @@
 #ifndef OPERON_COMMON_HPP
 #define OPERON_COMMON_HPP
 
-#include "constants.h"
+#include "constants.hpp"
 #include "gsl/gsl"
 #include "random/jsf.hpp"
 #include "random/sfc64.hpp"

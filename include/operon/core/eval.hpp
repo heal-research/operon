@@ -24,12 +24,13 @@
 #include "grammar.hpp"
 #include "gsl/gsl"
 #include "tree.hpp"
-#include <ceres/ceres.h>
 #include <execution>
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Eigen>
+
+#include <ceres/ceres.h>
 
 namespace Operon {
 constexpr gsl::index BATCHSIZE = 64;
@@ -220,11 +221,10 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
     LimitToRange(result, min, max);
 }
 
-struct ParameterizedEvaluation {
-    ParameterizedEvaluation(const Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range)
+struct TreeEvaluator {
+    TreeEvaluator(const Tree& tree, const Dataset& dataset, const Range range)
         : tree_ref(tree)
         , dataset_ref(dataset)
-        , target_ref(targetValues)
         , range(range)
     {
     }
@@ -234,89 +234,36 @@ struct ParameterizedEvaluation {
     {
         auto res = gsl::span<T>(residuals, range.Size());
         Evaluate(tree_ref, dataset_ref, range, parameters[0], res);
-        Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> resMap(residuals, range.Size());
-        Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> targetMap(target_ref.data(), range.Size());
-        resMap -= targetMap.cast<T>();
         return true;
     }
 
 private:
     std::reference_wrapper<const Tree> tree_ref;
     std::reference_wrapper<const Dataset> dataset_ref;
-    gsl::span<const Operon::Scalar> target_ref;
     Range range;
 };
 
-// returns an array of optimized parameters
-template <bool autodiff = true>
-ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range, size_t iterations = 50, bool writeCoefficients = true, bool report = false)
-{
-    using ceres::CauchyLoss;
-    using ceres::DynamicAutoDiffCostFunction;
-    using ceres::DynamicCostFunction;
-    using ceres::DynamicNumericDiffCostFunction;
-    using ceres::Problem;
-    using ceres::Solve;
-    using ceres::Solver;
-
-    Solver::Summary summary;
-    auto coef = tree.GetCoefficients();
-    if (coef.empty()) {
-        return summary;
-    }
-    if (report) {
-        fmt::print("x_0: ");
-        for (auto c : coef)
-            fmt::print("{} ", c);
-        fmt::print("\n");
+struct ResidualEvaluator {
+    ResidualEvaluator(const Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range)
+        : treeEvaluator(tree, dataset, range)
+        , target_ref(targetValues)
+    {
     }
 
-    auto eval = new ParameterizedEvaluation(tree, dataset, targetValues, range);
-    DynamicCostFunction* costFunction;
-    if constexpr (autodiff) {
-        costFunction = new DynamicAutoDiffCostFunction<ParameterizedEvaluation>(eval);
-    } else {
-        costFunction = new DynamicNumericDiffCostFunction(eval);
+    template <typename T>
+    bool operator()(T const* const* parameters, T* residuals) const
+    {
+        treeEvaluator(parameters, residuals);
+        Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> resMap(residuals, target_ref.size());
+        Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> targetMap(target_ref.data(), target_ref.size());
+        resMap -= targetMap.cast<T>();
+        return true;
     }
-    costFunction->AddParameterBlock(coef.size());
-    costFunction->SetNumResiduals(range.Size());
-    //auto lossFunction = new CauchyLoss(0.5); // see http://ceres-solver.org/nnls_tutorial.html#robust-curve-fitting
 
-    Problem problem;
-    problem.AddResidualBlock(costFunction, nullptr, coef.data());
-
-    Solver::Options options;
-    options.max_num_iterations = iterations - 1; // workaround since for some reason ceres sometimes does 1 more iteration
-    options.linear_solver_type = ceres::DENSE_QR;
-    options.minimizer_progress_to_stdout = report;
-    options.num_threads = 1;
-    Solve(options, &problem, &summary);
-
-    if (report) {
-        fmt::print("{}\n", summary.BriefReport());
-        fmt::print("x_final: ");
-        for (auto c : coef)
-            fmt::print("{} ", c);
-        fmt::print("\n");
-    }
-    if (writeCoefficients) {
-        tree.SetCoefficients(coef);
-    }
-    return summary;
-}
-
-// set up some convenience methods using perfect forwarding
-template <typename... Args>
-auto OptimizeAutodiff(Args&&... args)
-{
-    return Optimize<true>(std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-auto OptimizeNumeric(Args&&... args)
-{
-    return Optimize<false>(std::forward<Args>(args)...);
-}
+private:
+    TreeEvaluator treeEvaluator;
+    gsl::span<const Operon::Scalar> target_ref;
+};
 }
 #endif
 

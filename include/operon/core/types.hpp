@@ -8,6 +8,8 @@
 
 #include <Eigen/Core>
 
+#include <tbb/scalable_allocator.h>
+
 namespace Operon {
     constexpr uint8_t HashBits = 64; // can be 32 or 64
     using Hash                 = xxh::hash_t<HashBits>;

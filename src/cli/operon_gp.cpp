@@ -374,6 +374,8 @@ int main(int argc, char* argv[])
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", best[idx], r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
             fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
             fmt::print("{}\t{}\n", totalMemory, config.Seed); 
+
+            //fmt::print("best: {}\n", InfixFormatter::Format(best.Genotype, *dataset, 6));
         };
 
         gp.Run(random, nullptr);
