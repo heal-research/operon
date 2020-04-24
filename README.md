@@ -47,6 +47,7 @@ The following dependencies need to be satisfied:
 * [{fmt}](https://fmt.dev/latest/index.html)
 * [Catch2](https://github.com/catchorg/Catch2)
 * [microsoft-gsl](https://github.com/microsoft/GSL)
+* [pybind11](https://pybind11.readthedocs.io)
 
 These libraries are well-known and should be available in your distribution's package repository. On Windows they can be easily managed using [vcpkg](https://github.com/Microsoft/vcpkg).
 

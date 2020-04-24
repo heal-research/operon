@@ -17,6 +17,7 @@ find_package(Ceres REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Python3 COMPONENTS Development REQUIRED)
+find_package(pybind11 REQUIRED)
 
 FetchContent_Declare(
     gsl
@@ -123,7 +124,17 @@ add_library(
     python/operon.cpp
 )
 target_compile_features(pyoperon PRIVATE cxx_std_17)
-target_link_libraries(pyoperon PRIVATE operon ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${TCMALLOC} TBB::tbb) # figure out if tbb is necessary for linkage here
+target_link_libraries(
+    pyoperon
+    PRIVATE
+    operon
+    ${OPENLIBM}
+    ${JEMALLOC}
+    ${TCMALLOC}
+    ${TCMALLOC}
+    TBB::tbb # figure out if tbb is necessary for linkage here
+    ${PYBIND11}
+)
 target_include_directories(
     pyoperon
     PRIVATE
