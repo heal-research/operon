@@ -66,6 +66,7 @@ ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::s
     options.linear_solver_type = ceres::DENSE_QR;
     options.minimizer_progress_to_stdout = report;
     options.num_threads = 1;
+    options.logging_type = ceres::LoggingType::SILENT;
     Solve(options, &problem, &summary);
 
     if (report) {

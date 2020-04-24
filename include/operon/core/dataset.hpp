@@ -132,6 +132,7 @@ public:
         auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
         return it->Index;
     }
+
     const gsl::span<const Variable> Variables() const { return gsl::span<const Variable>(variables); }
 
     void Shuffle(Operon::Random& random) 
