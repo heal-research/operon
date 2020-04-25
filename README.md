@@ -1,10 +1,10 @@
-# Introduction 
+# Introduction
 
 *Operon* is a [Genetic Programming](https://en.wikipedia.org/wiki/Genetic_programming) (GP) system written in modern C++ with an emphasis on usability and performance.
 
-## Why yet another GP framework? 
+## Why yet another GP framework?
 
-*Operon*'s main purpose is to help us test new concepts mainly in the area of [symbolic regression](https://en.wikipedia.org/wiki/Symbolic_regression). That is, we evolve populations of expression trees with the aim of producing accurate *and* interpretable white-box models for solving [system identification](https://en.wikipedia.org/wiki/System_identification) tasks. 
+*Operon*'s main purpose is to help us test new concepts mainly in the area of [symbolic regression](https://en.wikipedia.org/wiki/Symbolic_regression). That is, we evolve populations of expression trees with the aim of producing accurate *and* interpretable white-box models for solving [system identification](https://en.wikipedia.org/wiki/System_identification) tasks.
 
 At the same time, we wanted an efficient implementation using modern concepts and idioms like those outlined in the [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#c-core-guidelines). Our design goals in developing *Operon* are:
 * Modern build system (we use [Cmake](https://cmake.org/))
@@ -13,7 +13,7 @@ At the same time, we wanted an efficient implementation using modern concepts an
 * Easily to extend
 * Unit test coverage
 
-# Features 
+# Features
 
 ## Encoding
 *Operon* uses a linear postfix representation for GP trees. All operators manipulate the representation directly, with no intermediate step. This allows us to leverage a more modern design (no pointers to parent or child nodes) and achieve superior runtime performance.
@@ -30,7 +30,7 @@ At the same time, we wanted an efficient implementation using modern concepts an
 * Efficient parallelization using Intel's [thread building blocks](https://github.com/intel/tbb) library
 * Support numerical and automatic differentiation of expression trees
 * Hybridization with local search
-    - Uses a best in class non-linear least squares solver from [Ceres](http://ceres-solver.org/) 
+    - Uses a best in class non-linear least squares solver from [Ceres](http://ceres-solver.org/)
     - Support both *Baldwinian* and *Lamarckian* learning models
 
 ## Other algorithmic improvements
@@ -75,7 +75,7 @@ Enable single-precision model evaluation in Operon. Typically results in 2x perf
 - `mkdir build && cd build`
 - `cmake .. -G"Visual Studio 15 2017 Win64" -DCMAKE_TOOLCHAIN_FILE=[vcpkg root]\scripts\buildsystems\vcpkg.cmake`
 - `cmake --build . --config Release`
- 
+
 ### GNU/Linux
 
 - Install the required dependencies
