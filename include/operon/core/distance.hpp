@@ -37,6 +37,7 @@ namespace Distance {
             size_t ls = lhs.size();
             size_t rs = rhs.size();
 
+#ifdef __AVX2__
             Operon::Hash const* p = lhs.data();
             Operon::Hash const* q = rhs.data();
 
@@ -53,6 +54,7 @@ namespace Distance {
                     break;
                 }
             }
+#endif
 
             auto lm = lhs.back();
             auto rm = rhs.back();

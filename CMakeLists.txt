@@ -16,7 +16,12 @@ find_package(Eigen3 REQUIRED)
 find_package(Ceres REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
+
+# python binding
 find_package(Python3 COMPONENTS Development REQUIRED)
+
+# llvm IR code generation
+find_package(LLVM REQUIRED CONFIG)
 
 FetchContent_Declare(
     gsl
@@ -208,8 +213,10 @@ else()
     target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_link_libraries(operon-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
     target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_link_libraries(operon-test PRIVATE "$<$<CONFIG:Debug>:gcov>")
     target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC;--coverage>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
     target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_link_libraries(operon-example-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
 endif(MSVC)
 
 include(CTest)
