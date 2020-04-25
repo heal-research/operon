@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.11)
 
 include(FetchContent)
+include(FeatureSummary)
 
 project(
     Operon
@@ -9,19 +10,30 @@ project(
     LANGUAGES CXX
 )
 
-find_package(Git REQUIRED)
-find_package(cxxopts REQUIRED)
-find_package(fmt REQUIRED)
-find_package(Eigen3 REQUIRED)
-find_package(Ceres REQUIRED)
-find_package(TBB REQUIRED)
-find_package(Threads REQUIRED)
+find_package(Git)
+find_package(cxxopts)
+find_package(fmt)
+find_package(Eigen3)
+find_package(Ceres)
+find_package(TBB)
+find_package(Python3 COMPONENTS Development)
+find_package(pybind11)
+find_package(Catch2)
+
+# operon library
+set_package_properties(Git     PROPERTIES TYPE REQUIRED)
+set_package_properties(cxxopts PROPERTIES TYPE REQUIRED)
+set_package_properties(fmt     PROPERTIES TYPE REQUIRED)
+set_package_properties(Eigen3  PROPERTIES TYPE REQUIRED)
+set_package_properties(Ceres   PROPERTIES TYPE REQUIRED)
+set_package_properties(Tbb     PROPERTIES TYPE REQUIRED)
+
+# unit tests
+set_package_properties(catch2 PROPERTIES TYPE OPTIONAL)
 
 # python binding
-find_package(Python3 COMPONENTS Development REQUIRED)
-
-# llvm IR code generation
-find_package(LLVM REQUIRED CONFIG)
+set_package_properties(Python3 PROPERTIES TYPE OPTIONAL)
+set_package_properties(pybind11 PROPERTIES TYPE OPTIONAL)
 
 FetchContent_Declare(
     gsl
@@ -54,10 +66,27 @@ set(THIRDPARTY_INCLUDE_DIRS
 )
 
 # compile and link-time options
-option(USE_OPENLIBM         "Link against Julia's openlibm, a high performance mathematical library."                                                                             OFF)
-option(USE_JEMALLOC         "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support."         OFF)
-option(USE_TCMALLOC         "Link against tcmalloc (thread-caching malloc), a malloc(3) implementation that reduces lock contention for multi-threaded programs."                 OFF)
-option(USE_SINGLE_PRECISION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes." OFF)
+set(BUILD_TESTS_DESCRIPTION          "Build unit tests.")
+set(BUILD_PYBIND_DESCRIPTION         "Build python bindings.")
+set(OPENLIBM_DESCRIPTION             "Link against Julia's openlibm, a high performance mathematical library.")
+set(JEMALLOC_DESCRIPTION             "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support.")
+set(TCMALLOC_DESCRIPTION             "Link against tcmalloc (thread-caching malloc), a malloc(3) implementation that reduces lock contention for multi-threaded programs.")
+set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes.")
+
+# option descriptions
+option(BUILD_TESTS          ${BUILD_TESTS_DESCRIPTION}          OFF)
+option(BUILD_PYBIND         ${BUILD_PYBIND_DESCRIPTION}         OFF)
+option(USE_OPENLIBM         ${OPENLIBM_DESCRIPTION}             OFF)
+option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
+option(USE_TCMALLOC         ${TCMALLOC_DESCRIPTION}             OFF)
+option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION} OFF)
+
+add_feature_info(BUILD_TESTS          BUILD_TESTS          ${BUILD_TESTS_DESCRIPTION})
+add_feature_info(BUILD_PYBIND         BUILD_PYBIND         ${BUILD_PYBIND_DESCRIPTION})
+add_feature_info(USE_OPENLIBM         USE_OPENLIBM         ${OPENLIBM_DESCRIPTION})
+add_feature_info(USE_JEMALLOC         USE_JEMALLOC         ${JEMALLOC_DESCRIPTION})
+add_feature_info(USE_TCMALLOC         USE_TCMALLOC         ${TCMALLOC_DESCRIPTION})
+add_feature_info(USE_SINGLE_PRECISION USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION})
 
 if(USE_JEMALLOC AND USE_TCMALLOC)
     message(FATAL_ERROR "Options USE_JEMALLOC and USE_TCMALLOC are mutually exclusive. Please specify only one.")
@@ -97,6 +126,10 @@ if(USE_SINGLE_PRECISION)
     message(STATUS "Option USE_SINGLE_PRECISION was specified, single-precision model evaluation will be used.")
 endif()
 
+# print a status of what we found
+feature_summary(WHAT ENABLED_FEATURES DESCRIPTION "Enabled features:" QUIET_ON_EMPTY)
+feature_summary(WHAT DISABLED_FEATURES DESCRIPTION "Disabled features:" QUIET_ON_EMPTY)
+
 add_library(
     operon
     SHARED
@@ -110,7 +143,7 @@ add_library(
     src/stat/pearson.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
-target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
+target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb)
 target_include_directories(
     operon
     PRIVATE
@@ -121,23 +154,6 @@ target_include_directories(
 # necessary to prevent -isystem introduced by intel-tbb
 set_target_properties(operon PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 target_compile_definitions(operon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
-
-add_library(
-    pyoperon
-    SHARED
-    python/operon.cpp
-)
-target_compile_features(pyoperon PRIVATE cxx_std_17)
-target_link_libraries(pyoperon PRIVATE operon ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${TCMALLOC} TBB::tbb) # figure out if tbb is necessary for linkage here
-target_include_directories(
-    pyoperon
-    PRIVATE
-    ${PROJECT_SOURCE_DIR}/include/operon
-    ${PROJECT_SOURCE_DIR}/python
-    ${THIRDPARTY_INCLUDE_DIRS}
-    ${Python3_INCLUDE_DIRS}
-    ${CERES_INCLUDE_DIRS}
-)
 
 #binary for GP algorithm cli version
 add_executable(
@@ -155,33 +171,6 @@ target_include_directories(
 )
 set_target_properties(operon-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 target_compile_definitions(operon-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
-
-find_package(Catch2 REQUIRED)
-add_executable(
-    operon-test
-    test/test.cpp
-    test/performance/evaluation.cpp
-    test/performance/initialization.cpp
-    test/performance/hashing.cpp
-    test/performance/distance.cpp
-    test/implementation/evaluation.cpp
-    test/implementation/details.cpp
-    test/implementation/hashing.cpp
-    test/implementation/initialization.cpp
-    test/implementation/selection.cpp
-)
-target_compile_features(operon-test PRIVATE cxx_std_17)
-target_link_libraries(operon-test PRIVATE operon fmt::fmt Catch2::Catch2 ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb)
-target_include_directories(
-    operon-test
-    PRIVATE
-    ${PROJECT_SOURCE_DIR}/include/operon
-    ${THIRDPARTY_INCLUDE_DIRS}
-    ${CERES_INCLUDE_DIRS}
-)
-target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
-set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
-target_compile_definitions(operon-test PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 add_executable(
     operon-example-gp
@@ -212,13 +201,61 @@ else()
     target_link_libraries(operon PRIVATE "$<$<CONFIG:Debug>:gcov>")
     target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_link_libraries(operon-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
-    target_link_libraries(operon-test PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC;--coverage>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
     target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_link_libraries(operon-example-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
 endif(MSVC)
 
-include(CTest)
-include(Catch)
-catch_discover_tests(operon-test)
+if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
+    add_library(
+        pyoperon
+        SHARED
+        python/operon.cpp
+        )
+    target_compile_features(pyoperon PRIVATE cxx_std_17)
+    target_link_libraries(pyoperon PRIVATE operon ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${TCMALLOC} TBB::tbb) # figure out if tbb is necessary for linkage here
+    target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC;--coverage>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
+    target_include_directories(
+        pyoperon
+        PRIVATE
+        ${PROJECT_SOURCE_DIR}/include/operon
+        ${PROJECT_SOURCE_DIR}/python
+        ${THIRDPARTY_INCLUDE_DIRS}
+        ${Python3_INCLUDE_DIRS}
+        ${CERES_INCLUDE_DIRS}
+        )
+endif()
+
+if(Catch2_FOUND AND BUILD_TESTS)
+    add_executable(
+        operon-test
+        test/test.cpp
+        test/performance/evaluation.cpp
+        test/performance/initialization.cpp
+        test/performance/hashing.cpp
+        test/performance/distance.cpp
+        test/implementation/evaluation.cpp
+        test/implementation/details.cpp
+        test/implementation/hashing.cpp
+        test/implementation/initialization.cpp
+        test/implementation/selection.cpp
+        )
+    target_compile_features(operon-test PRIVATE cxx_std_17)
+    target_link_libraries(operon-test PRIVATE operon fmt::fmt Catch2::Catch2 ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb)
+    target_include_directories(
+        operon-test
+        PRIVATE
+        ${PROJECT_SOURCE_DIR}/include/operon
+        ${THIRDPARTY_INCLUDE_DIRS}
+        ${CERES_INCLUDE_DIRS}
+        )
+    target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
+    set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+    target_compile_definitions(operon-test PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+    target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_link_libraries(operon-test PRIVATE "$<$<CONFIG:Debug>:gcov>")
+
+    include(CTest)
+    include(Catch)
+    catch_discover_tests(operon-test)
+endif()
+
