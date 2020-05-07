@@ -53,7 +53,17 @@ Tree MultiPointMutation::operator()(Operon::Random& random, Tree tree) const
 
 Tree MultiMutation::operator()(Operon::Random& random, Tree tree) const
 {
-    auto i = std::discrete_distribution<gsl::index>(probabilities.begin(), probabilities.end())(random);
+    //auto i = std::discrete_distribution<gsl::index>(probabilities.begin(), probabilities.end())(random);
+    auto sum = std::reduce(std::execution::unseq, probabilities.begin(), probabilities.end());
+    auto r = std::uniform_real_distribution<double>(0, sum)(random);
+    auto c = 0.0;
+    auto i = 0u; 
+    for (; i < probabilities.size(); ++i) {
+        c += probabilities[i];
+        if (c > r) {
+            break;
+        }
+    }
     auto op = operators[i];
     return op(random, std::move(tree));
 }

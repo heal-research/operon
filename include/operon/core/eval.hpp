@@ -42,13 +42,10 @@ inline std::pair<T, T> MinMax(gsl::span<T> values) noexcept
     auto min = Operon::Numeric::Max<T>();
     auto max = Operon::Numeric::Min<T>();
 
-    for (auto const& v : values) {
-        if (!ceres::IsFinite(v))
-            continue;
-        if (min > v)
-            min = v;
-        if (max < v)
-            max = v;
+    for (auto v : values) {
+        if (!ceres::IsFinite(v)) { continue; }
+        if (min > v) { min = v; }
+        if (max < v) { max = v; }
     }
     return { min, max };
 }
@@ -57,12 +54,9 @@ template <typename T>
 inline void LimitToRange(gsl::span<T> values, T min, T max) noexcept
 {
     auto mid = (min + max) / 2.0;
-    for (auto& v : values) {
-        if (ceres::IsFinite(v)) {
-            v = std::clamp(v, min, max);
-        } else {
-            v = mid;
-        }
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        auto v = values[i];
+        values[i] = ceres::IsFinite(v) ? std::clamp(v, min, max) : mid;
     }
 }
 
@@ -99,6 +93,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 
     auto lastCol = m.col(nodes.size()-1);
 
+    auto const& values = dataset.Values();
+
     gsl::index numRows = range.Size();
     for (gsl::index row = 0; row < numRows; row += BATCHSIZE) {
         idx = 0;
@@ -108,51 +104,24 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 
             switch (auto const& s = nodes[i]; s.Type) {
             case NodeType::Add: {
-                //r = m.col(c);
-                //for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                //    r += m.col(j);
-                //}
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
                 r = m.col(c1) + m.col(c2);
                 break;
             }
             case NodeType::Mul: {
-                //auto c = i - 1; // first child index
-                //r = m.col(c);
-                //for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                //    r *= m.col(j);
-                //}
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
                 r = m.col(c1) * m.col(c2);
                 break;
             }
             case NodeType::Sub: {
-                //auto c = i - 1; // first child index
-                //if (s.Arity == 1) {
-                //    r = -m.col(c);
-                //} else {
-                //    r = m.col(c);
-                //    for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                //        r -= m.col(j);
-                //    }
-                //}
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
                 r = m.col(c1) - m.col(c2);
                 break;
             }
             case NodeType::Div: {
-                //auto c = i - 1; // first child index
-                //if (s.Arity == 1) {
-                //    r = m.col(c).inverse();
-                //} else {
-                //    r = m.col(c);
-                //    for (gsl::index k = 1, j = c - 1 - nodes[c].Length; k < s.Arity; ++k, j -= 1 + nodes[j].Length) {
-                //        r /= m.col(j);
-                //    }
-                //}
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
                 r = m.col(c1) / m.col(c2);
@@ -164,7 +133,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
             case NodeType::Variable: {
                 auto w = parameters == nullptr ? T{s.Value} : parameters[idx++];
-                r.segment(0, remainingRows) = w * dataset.Values().col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
+                r.segment(0, remainingRows) = w * values.col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
                 break;
             }
             default: {
@@ -214,11 +183,12 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
         }
         // the final result is found in the last section of the buffer corresponding to the root node
-        res.segment(row, remainingRows) = lastCol.segment(0, remainingRows);
+        res.segment(row, remainingRows) = lastCol.segment(0, remainingRows).unaryExpr([](T v) { return ceres::IsFinite(v) ? v : Operon::Numeric::Max<T>(); });
     }
     // replace nan and inf values
-    auto [min, max] = MinMax(result);
-    LimitToRange(result, min, max);
+    //auto [min, max] = MinMax(result);
+    //const auto [min, max] = std::minmax_element(result.begin(), result.end(), Compare<T>{});
+    //LimitToRange(result, *min, *max);
 }
 
 struct TreeEvaluator {
