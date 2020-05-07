@@ -6,9 +6,8 @@
 #include "random/sfc64.hpp"
 #include "random/jsf.hpp"
 
+#include <ceres/jet.h>
 #include <Eigen/Core>
-
-#include <tbb/scalable_allocator.h>
 
 namespace Operon {
     constexpr uint8_t HashBits = 64; // can be 32 or 64
@@ -19,6 +18,7 @@ namespace Operon {
 #else 
     using Scalar               = double;
 #endif
+    using Dual                 = ceres::Jet<Scalar, 4>;
 
     // Operon::Vector is just an aligned std::vector 
     // alignment can be controlled with the EIGEN_MAX_ALIGN_BYTES macro
@@ -36,6 +36,7 @@ namespace Operon {
         static inline T Min() 
         {
             if constexpr (std::is_floating_point_v<T>) return std::numeric_limits<T>::lowest(); 
+            else if constexpr(std::is_same_v<T, Dual>) return T{std::numeric_limits<Scalar>::lowest()};
             else return std::numeric_limits<T>::min(); 
         }
     }
