@@ -133,9 +133,23 @@ public:
             }
             return SampleRandomSymbol(random, minArity - 1, maxArity);
         }
-        auto d = std::distance(frequencies.begin(), head);
-        auto i = std::discrete_distribution<size_t>(head, tail)(random) + d;
-        auto node = Node(static_cast<NodeType>(1u << i));
+        //auto d = std::distance(frequencies.begin(), head);
+        auto sum = std::reduce(std::execution::unseq, head, tail);  
+        auto r = std::uniform_real_distribution<double>(0., sum)(random);
+        auto c = 0.0;
+
+        gsl::index idx = 0;
+        
+        for(auto it = head; it != tail; ++it) {
+            c += *it;
+            if (c > r) {
+                idx = std::distance(frequencies.begin(), it); 
+                break;
+            }
+        }
+        
+        //auto i = std::discrete_distribution<size_t>(head, tail)(random) + d;
+        auto node = Node(static_cast<NodeType>(1u << idx));
         Ensures(IsEnabled(node.Type));
 
         return node;

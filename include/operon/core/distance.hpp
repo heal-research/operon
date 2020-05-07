@@ -8,7 +8,7 @@
 namespace Operon {
 namespace Distance {
 
-    using HashVector = std::vector<Operon::Hash, Eigen::aligned_allocator<Operon::Hash>>;
+    using HashVector = Operon::Vector<Operon::Hash>;
 
     namespace {
         static inline bool _mm256_is_zero(__m256i m) noexcept { return _mm256_testz_si256(m, m); }
