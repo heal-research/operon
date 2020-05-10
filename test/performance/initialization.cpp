@@ -61,7 +61,7 @@ namespace Test {
                 model.start();
                 std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
                 model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0; // ms to s
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
                 calc.Add(trees.size() / elapsed);
             };
             fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
@@ -72,7 +72,7 @@ namespace Test {
                 model.start();
                 std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
                 model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0; // ms to s
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
                 calc.Add(trees.size() / elapsed);
             };
             fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
@@ -87,7 +87,7 @@ namespace Test {
                 model.start();
                 std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return utc(rd, grammar, inputs); });
                 model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0; // ms to s
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
                 calc.Add(trees.size() / elapsed);
             };
             fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
@@ -98,7 +98,7 @@ namespace Test {
                 model.start();
                 std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return utc(rd, grammar, inputs); });
                 model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0; // ms to s
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
                 calc.Add(trees.size() / elapsed);
             };
             fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
