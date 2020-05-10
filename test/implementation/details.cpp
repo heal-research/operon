@@ -23,6 +23,8 @@
 #include "core/common.hpp"
 #include "core/operator.hpp"
 
+#include <ceres/ceres.h>
+
 namespace Operon {
 namespace Test {
 TEST_CASE("Node is trivial", "[detail]")
@@ -105,6 +107,13 @@ TEST_CASE("Sfc64 is copyable", "[detail]")
     auto tmp = sfc;
 
     REQUIRE(tmp() == sfc());
+}
+
+TEST_CASE("Jet is floating-point", "[detail]") 
+{
+    std::cout << Operon::Numeric::Min<double>() << "\n";
+    std::cout << Operon::Numeric::Min<Operon::Dual>() << "\n";
+    std::cout << std::numeric_limits<ceres::Jet<double, 4>>::lowest() << "\n";
 }
 } // namespace Test
 } // namespace Operon

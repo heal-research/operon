@@ -68,31 +68,31 @@ TEST_CASE("Evaluation correctness", "[implementation]")
 
     SECTION("Addition")
     {
-        auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start(), range.Size());
-        auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
+        auto x1Values = ds.Values().col(x1Var.Index).segment(range.Start(), range.Size());
+        auto x2Values = ds.Values().col(x2Var.Index).segment(range.Start(), range.Size());
+
+        auto res = x1Values.array() + x2Values.array();
 
         tree = Tree({ x1, x2, add });
         auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
-        auto r2 = RSquared(estimatedValues, targetValues);
-        fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
         for (size_t i = 0; i < targetValues.size(); ++i) {
-            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], targetValues[i]);
+            fmt::print("{}\t{}\t{}\t{}\n", x1Values[i], x2Values[i], res(i), estimatedValues[i]);
         }
     }
 
     SECTION("Subtraction")
     {
-        auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start(), range.Size());
-        auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
+        auto x1Values = ds.Values().col(x1Var.Index).segment(range.Start(), range.Size());
+        auto x2Values = ds.Values().col(x2Var.Index).segment(range.Start(), range.Size());
 
-        tree = Tree({ x1, x2, sub }); // this is actually x2 - x1 due to how postfix works
+        auto res = x2Values.array() - x1Values.array();
+
+        tree = Tree({ x1, x2, sub });
         auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
-        auto r2 = RSquared(estimatedValues, targetValues);
-        fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
-        for (size_t i = 0; i < estimatedValues.size(); ++i) {
-            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], estimatedValues[i]);
+        for (size_t i = 0; i < targetValues.size(); ++i) {
+            fmt::print("{}\t{}\t{}\t{}\n", x1Values[i], x2Values[i], res(i), estimatedValues[i]);
         }
     }
 

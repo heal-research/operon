@@ -27,7 +27,7 @@
 
 #include "operators/creator.hpp"
 
-#include <tbb/task_scheduler_init.h>
+#include <tbb/global_control.h>
 
 namespace Operon {
 namespace Test {
@@ -103,7 +103,7 @@ namespace Test {
 
     TEST_CASE("Evaluation performance", "[performance]")
     {
-        size_t n = 1'000;
+        size_t n = 1000;
         size_t maxLength = 100;
         size_t maxDepth = 1000;
 
@@ -124,7 +124,7 @@ namespace Test {
         std::vector<Tree> trees(n);
         std::vector<Operon::Scalar> fit(n);
 
-        auto evaluate = [&](auto& tree) -> size_t {
+        auto evaluate = [&](auto& tree) {
             auto estimated = Evaluate<Operon::Scalar>(tree, ds, range);
             return estimated.size();
         };
@@ -134,7 +134,7 @@ namespace Test {
         Grammar grammar;
         MeanVarianceCalculator calc;
 
-        //tbb::task_scheduler_init init(20);
+        //tbb::global_control c(tbb::global_control::max_allowed_parallelism, 20);
 
         auto measurePerformance = [&]()
         {
@@ -148,7 +148,7 @@ namespace Test {
                 chronometer.start();
                 std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
                 chronometer.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(chronometer.elapsed()).count() / 1000.0;
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(chronometer.elapsed()).count() / 1e6;
                 auto gpops = totalOps / elapsed;
                 calc.Add(gpops);
             };
@@ -162,7 +162,7 @@ namespace Test {
                 chronometer.start();
                 std::transform(std::execution::par_unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
                 chronometer.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(chronometer.elapsed()).count() / 1000.0;
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(chronometer.elapsed()).count() / 1e6;
                 auto gpops = totalOps / elapsed;
                 calc.Add(gpops);
             };

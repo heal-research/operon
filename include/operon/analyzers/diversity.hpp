@@ -65,7 +65,7 @@ public:
         });
 
         std::vector<std::pair<size_t, size_t>> pairs(hashes.size());
-        std::vector<double> distances(hashes.size());
+        std::vector<Operon::Scalar> distances(hashes.size());
         size_t k = 0;
         size_t c = 0;
         size_t n = (hashes.size()-1) * hashes.size() / 2;
