@@ -62,6 +62,7 @@ struct OperatorBase {
     using ArgumentType = std::tuple<Args...>;
     // all operators take a random device (source of randomness) as the first parameter
     virtual Ret operator()(Operon::Random& random, Args... args) const = 0;
+    virtual ~OperatorBase() {}
 };
 
 // the creator builds a new tree using the existing grammar and allowed inputs
