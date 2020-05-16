@@ -23,6 +23,7 @@
 #include <fmt/core.h>
 
 #include <tbb/task_scheduler_init.h>
+#include <tbb/global_control.h>
 
 #include "algorithms/gp.hpp"
 
@@ -314,7 +315,7 @@ int main(int argc, char* argv[])
             problem.StandardizeData(problem.TrainingRange());
         }
 
-        tbb::task_scheduler_init init(threads);
+        tbb::global_control c(tbb::global_control::max_allowed_parallelism, threads);
 
         auto t0 = std::chrono::high_resolution_clock::now();
 
@@ -378,8 +379,8 @@ int main(int argc, char* argv[])
             //fmt::print("best: {}\n", InfixFormatter::Format(best.Genotype, *dataset, 6));
         };
 
-        gp.Run(random, nullptr);
-        report();
+        gp.Run(random, report);
+        //report();
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);
