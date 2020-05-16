@@ -28,7 +28,6 @@ class BroodOffspringGenerator : public OffspringGeneratorBase<TEvaluator, TCross
 public:
     explicit BroodOffspringGenerator(TEvaluator& eval, TCrossover& cx, TMutator& mut, TFemaleSelector& femSel, TMaleSelector& maleSel)
         : OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>(eval, cx, mut, femSel, maleSel)
-          , basicGenerator(eval, cx, mut, femSel, maleSel)
     {
     }
 
@@ -40,11 +39,40 @@ public:
         constexpr gsl::index Idx = TFemaleSelector::SelectableIndex;
         auto population = this->FemaleSelector().Population();
 
+        using T = typename TFemaleSelector::SelectableType;
+        using U = typename TMaleSelector::SelectableType;
+        static_assert(std::is_same_v<T, U>);
+
+        auto first = this->femaleSelector(random);
+        auto second = this->maleSelector(random);
+
         // assuming the basic generator never fails
-        auto best = basicGenerator(random, pCrossover, pMutation).value();
+        auto makeOffspring = [&]() {
+            T child;
+
+            bool doCrossover = std::bernoulli_distribution(pCrossover)(random);
+            bool doMutation = std::bernoulli_distribution(pMutation)(random);
+
+            if (doCrossover) {
+                child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
+            }
+
+            if (doMutation) {
+                child.Genotype = doCrossover
+                    ? this->mutator(random, std::move(child.Genotype))
+                    : this->mutator(random, population[first].Genotype);
+            }
+
+            auto f = this->evaluator(random, child);
+            if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
+            child[Idx] = f;
+            return child;
+        };
+
+        auto best = makeOffspring();
 
         for (size_t i = 1; i < broodSize; ++i) {
-            auto other = basicGenerator(random, pCrossover, pMutation).value();
+            auto other = makeOffspring();
             if (other[Idx] < best[Idx]) {
                 std::swap(best, other);
             }
@@ -57,7 +85,6 @@ public:
     size_t BroodSize() const { return broodSize; }
 
 private:
-    BasicOffspringGenerator<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector> basicGenerator;
     size_t broodSize;
 };
 } // namespace Operon
