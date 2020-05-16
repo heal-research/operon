@@ -132,7 +132,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 break;
             }
             case NodeType::Variable: {
-                auto w = parameters == nullptr ? T{s.Value} : parameters[idx++];
+                auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
                 r.segment(0, remainingRows) = w * values.col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
                 break;
             }
