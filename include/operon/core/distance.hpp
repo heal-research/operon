@@ -100,14 +100,14 @@ namespace Distance {
             return count;
         }
 
-        static double Jaccard(HashVector const& lhs, HashVector const& rhs) noexcept
+        static inline double Jaccard(HashVector const& lhs, HashVector const& rhs) noexcept
         {
             size_t c = CountIntersectSIMD(lhs, rhs);
             double n = lhs.size() + rhs.size() - c;
             return (n - c) / n;
         }
 
-        static double SorensenDice(HashVector const& lhs, HashVector const& rhs) noexcept
+        static inline double SorensenDice(HashVector const& lhs, HashVector const& rhs) noexcept
         {
             double n = lhs.size() + rhs.size();
             size_t c = CountIntersectSIMD(lhs, rhs);
