@@ -1,36 +1,39 @@
 let
-    pkgs = import <nixpkgs> {};
-    unstable = import <nixos-unstable> {};
-    cxxopts = import ./cxxopts.nix; 
-    qcachegrind = unstable.libsForQt5.callPackage ./qcachegrind.nix {};
-    tbb = unstable.tbb.overrideAttrs (old: rec {
-        installPhase = old.installPhase + ''
+  pkgs = import <nixpkgs> {};
+  unstable = import <nixos-unstable> {};
+  cxxopts = import ./cxxopts.nix; 
+  qcachegrind = unstable.libsForQt5.callPackage ./qcachegrind.nix {};
+  tbb = unstable.tbb.overrideAttrs (old: rec {
+    installPhase = old.installPhase + ''
         ${pkgs.cmake}/bin/cmake \
             -DINSTALL_DIR="$out"/lib/cmake/TBB \
             -DSYSTEM_NAME=Linux -DTBB_VERSION_FILE="$out"/include/tbb/tbb_stddef.h \
             -P cmake/tbb_config_installer.cmake
     '';
-    });
-    eigen = pkgs.eigen.overrideAttrs (old: rec {
-      src = pkgs.fetchgit {
-        url             = "https://gitlab.com/libeigen/eigen.git";
-        rev             = "e8f40e4670865b6eda3a4ba7eba2b4cb429e5f9c";
-        sha256          = "0gbhmck6ig923qjfwhziphb24j1mqhxlsh9apckljzk9ff92598y";
-        fetchSubmodules = false;
-        };
-        patches = [ ./include-dir.patch ];
-    });
-    ceres-solver = pkgs.ceres-solver.overrideAttrs (old: rec {
-        cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON" ];
-    });
-    fmt = pkgs.fmt.overrideAttrs(old: { outputs = [ "out" ]; });
-    gcc = { 
-      arch = "znver2"; 
-      tune = "znver2"; 
+  });
+#  eigen_trunk = unstable.eigen.overrideAttrs (old: rec {
+#    src = unstable.fetchgit {
+#      url             = "https://gitlab.com/libeigen/eigen.git";
+#      rev             = "2fd8a5a08fece826d211a6f34d777bb65f6b4562";
+#      sha256          = "045ir8vc41cd8qf6www9pblz6hl41zfbbx4mi21b55y1kr5fcxla";
+#      fetchSubmodules = false;
+#    };
+#    patches = [ ./include-dir.patch ];
+#  });
+  ceres_trunk = unstable.ceres-solver.overrideAttrs (old: rec {
+    #buildInputs = [ eigen_trunk unstable.glog ];
+    src = unstable.fetchgit {
+      url             = "https://github.com/ceres-solver/ceres-solver.git";
+      rev             = "323cc55bb92a513924e566f487b54556052a716f";
+      sha256          = "18m6kr3mzhgb72zvxvzv2d3hbl6zzhgviqgikwhx3vdfk9cx7qlx";
+      fetchSubmodules = false;
     };
+    cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON" ];
+  });
+  fmt = unstable.fmt.overrideAttrs(old: { outputs = [ "out" ]; });
 in
-#pkgs.llvmPackages_9.stdenv.mkDerivation {
-unstable.gcc9Stdenv.mkDerivation {
+#unstable.llvmPackages_10.stdenv.mkDerivation {
+unstable.gcc10Stdenv.mkDerivation {
     name = "operon-env";
     hardeningDisable = [ "all" ]; 
 
@@ -41,22 +44,28 @@ unstable.gcc9Stdenv.mkDerivation {
         bear # generate compilation database
         gdb
         valgrind
-        heaptrack
+        linuxPackages.perf
+        bloaty
+        #heaptrack
+        #hotspot
         git
         cmake
+        tbb
         eigen
+        #eigen_trunk
+        ceres_trunk
         openlibm
         gperftools
         jemalloc
         fmt
         glog
-        ceres-solver
-        tbb
         catch2
+        llvm_10 # code generation
+        clang_10
         # visualize profile results
-        qcachegrind
-        massif-visualizer
+        #qcachegrind
+        #massif-visualizer
         graphviz
         cxxopts
-    ];
-}
+      ];
+    }
