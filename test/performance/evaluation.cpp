@@ -62,9 +62,9 @@ namespace Test {
         for (auto len : avgLen) {
             // generate trees of a fixed length 
             std::uniform_int_distribution<size_t> sizeDistribution(len, len);
-            auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, len };
+            auto creator = BalancedTreeCreator { grammar, inputs };
             std::vector<Tree> trees(n);
-            std::generate(trees.begin(), trees.end(), [&]() { return creator(random, grammar, inputs); });
+            std::generate(trees.begin(), trees.end(), [&]() { return creator(random, sizeDistribution(random), maxDepth); });
 
             auto totalNodes = TotalNodes(trees);
 
@@ -118,8 +118,10 @@ namespace Test {
         //Range range = { 0, ds.Rows() };
         Range range = { 0, 5000 };
 
+        Grammar grammar;
+
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+        auto creator = BalancedTreeCreator { grammar, inputs };
 
         std::vector<Tree> trees(n);
         std::vector<Operon::Scalar> fit(n);
@@ -131,14 +133,13 @@ namespace Test {
 
         Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> chronometer;
 
-        Grammar grammar;
         MeanVarianceCalculator calc;
 
         //tbb::global_control c(tbb::global_control::max_allowed_parallelism, 20);
 
         auto measurePerformance = [&]()
         {
-            std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, grammar, inputs); });
+            std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), maxDepth); });
             auto totalNodes = TotalNodes(trees);
             fmt::print("total nodes: {}\n", totalNodes);
             auto totalOps = totalNodes * range.Size();

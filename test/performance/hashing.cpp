@@ -48,13 +48,13 @@ TEST_CASE("Tree hashing performance") {
     grammar.SetConfig(Grammar::Arithmetic);
 
     std::vector<Tree> trees(n);
-    auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+    auto btc = BalancedTreeCreator { grammar, inputs };
 
     Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
     MeanVarianceCalculator calc;
 
     BENCHMARK("Tree sort/hash") {
-        std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
+        std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); });
         auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
 
         model.start();

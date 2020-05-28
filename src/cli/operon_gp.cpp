@@ -30,6 +30,7 @@
 #include "core/common.hpp"
 #include "core/format.hpp"
 #include "core/metrics.hpp"
+#include "operators/initializer.hpp"
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
 #include "operators/evaluator.hpp"
@@ -66,6 +67,7 @@ int main(int argc, char* argv[])
         ("maxdepth", "Maximum depth", cxxopts::value<size_t>()->default_value("10"))
         ("crossover-probability", "The probability to apply crossover", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
         ("mutation-probability", "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))
+        ("tree-creator", "Tree creator operator to initialize the population with.", cxxopts::value<std::string>())
         ("female-selector", "Female selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
         ("male-selector", "Male selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
         ("offspring-generator", "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)", cxxopts::value<std::string>())
@@ -196,7 +198,6 @@ int main(int argc, char* argv[])
         auto variables = dataset->Variables();
         auto problem = Problem(*dataset, variables, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
-        auto inputs = problem.InputVariables();
 
         const gsl::index idx { 0 };
         using Ind                = Individual<1>;
@@ -205,12 +206,37 @@ int main(int argc, char* argv[])
         using Reinserter         = ReinserterBase<Ind, idx>;
         using OffspringGenerator = OffspringGeneratorBase<Evaluator, SubtreeCrossover, MultiMutation, Selector, Selector>;
 
+        std::unique_ptr<CreatorBase> creator;
+
+        if (result.count("tree-creator") == 0) {
+            creator.reset(new BalancedTreeCreator(problem.GetGrammar(), problem.InputVariables(), 0.0));
+        } else {
+            auto value = result["tree-creator"].as<std::string>();
+
+            if (value == "ptc2") {
+                creator.reset(new ProbabilisticTreeCreator(problem.GetGrammar(), problem.InputVariables()));
+            } else {
+                auto tokens = Split(value, ':');
+                double irregularityBias = 0.0;
+                if (tokens.size() > 1) {
+                    if (auto [val, ok] = ParseDouble(tokens[1]); ok) {
+                        irregularityBias = val;
+                    } else {
+                        fmt::print(stderr, "{}\n{}\n", "Error: could not parse BTC bias argument.", opts.help());
+                        exit(EXIT_FAILURE);
+                    }
+                }
+                creator.reset(new BalancedTreeCreator(problem.GetGrammar(), problem.InputVariables(), irregularityBias));
+            }
+        }
+
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        auto creator             = BalancedTreeCreator { sizeDistribution, 1000, maxLength, /* irregularity bias */ 1.0 };
+        //auto creator             = BalancedTreeCreator { problem.GetGrammar(), problem.InputVariables() };
+        auto initializer         = Initializer { *creator, sizeDistribution };
         auto crossover           = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator             = MultiMutation {};
         auto onePoint            = OnePointMutation {};
-        auto changeVar           = ChangeVariableMutation { inputs };
+        auto changeVar           = ChangeVariableMutation { problem.InputVariables() };
         auto changeFunc          = ChangeFunctionMutation { problem.GetGrammar() };
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
@@ -319,7 +345,7 @@ int main(int argc, char* argv[])
 
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        GeneticProgrammingAlgorithm gp { problem, config, creator, *generator, *reinserter };
+        GeneticProgrammingAlgorithm gp { problem, config, initializer, *generator, *reinserter };
 
         auto targetValues = problem.TargetValues();
         auto trainingRange = problem.TrainingRange();

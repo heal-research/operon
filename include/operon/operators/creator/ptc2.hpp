@@ -17,12 +17,29 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef CREATOR_HPP
-#define CREATOR_HPP
+#ifndef PROBABILISTIC_TREE_CREATOR_HPP
+#define PROBABILISTIC_TREE_CREATOR_HPP
 
-#include "creator/balanced.hpp"
-#include "creator/uniform.hpp"
-#include "creator/ptc2.hpp"
+#include <map>
+#include <unordered_map>
+#include <vector>
+#include <queue>
+#include <deque>
+
+#include "core/grammar.hpp"
+#include "core/operator.hpp"
+
+namespace Operon {
+
+class ProbabilisticTreeCreator : public CreatorBase {
+public:
+
+    ProbabilisticTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables)
+        : CreatorBase(grammar, variables)
+    {
+    }
+    Tree operator()(Operon::Random& random, size_t targetLen, size_t maxDepth) const override;
+};
+}
 
 #endif
-
