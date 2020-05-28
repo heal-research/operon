@@ -2,7 +2,7 @@
  * Operon - Large Scale Genetic Programming Framework
  *
  * Licensed under the ISC License <https://opensource.org/licenses/ISC> 
- * Copyright (C) 2019 Bogdan Burlacu 
+ * Copyright (C) 2020 Bogdan Burlacu 
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -26,11 +26,13 @@
 #include "core/metrics.hpp"
 #include "operators/crossover.hpp"
 #include "operators/creator.hpp"
+#include "operators/initializer.hpp"
 #include "operators/mutation.hpp"
 #include "operators/generator.hpp"
 
 namespace Operon {
-template <typename TCreator, typename TGenerator, typename TReinserter, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+
+template <typename TInitializer, typename TGenerator, typename TReinserter, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class GeneticProgrammingAlgorithm {
     using T = typename TGenerator::FemaleSelectorType::SelectableType;
     static constexpr bool Idx = TGenerator::FemaleSelectorType::SelectableIndex;
@@ -39,7 +41,7 @@ private:
     std::reference_wrapper<const Problem> problem_;
     std::reference_wrapper<const GeneticAlgorithmConfig> config_;
 
-    std::reference_wrapper<const TCreator> creator_;
+    std::reference_wrapper<const TInitializer> initializer_;
     std::reference_wrapper<const TGenerator> generator_;
     std::reference_wrapper<const TReinserter> reinserter_;
 
@@ -49,10 +51,10 @@ private:
     size_t generation;
 
 public:
-    explicit GeneticProgrammingAlgorithm(const Problem& problem, const GeneticAlgorithmConfig& config, const TCreator& creator, const TGenerator& generator, const TReinserter& reinserter)
+    explicit GeneticProgrammingAlgorithm(const Problem& problem, const GeneticAlgorithmConfig& config, const TInitializer& initializer, const TGenerator& generator, const TReinserter& reinserter)
         : problem_(problem)
         , config_(config)
-        , creator_(creator)
+        , initializer_(initializer)
         , generator_(generator)
         , reinserter_(reinserter)
         , parents(config.PopulationSize)
@@ -68,7 +70,7 @@ public:
     const Problem& GetProblem() const { return problem_.get(); }
     const GeneticAlgorithmConfig& GetConfig() const { return config_.get(); }
 
-    const TCreator& GetCreator() const { return creator_.get(); }
+    const TInitializer& GetInitializer() const { return initializer_.get(); }
     const TGenerator& GetGenerator() const { return generator_.get(); }
     const TReinserter& GetReinserter() const { return reinserter_.get(); }
 
@@ -82,7 +84,7 @@ public:
     void Run(Operon::Random& random, std::function<void()> report = nullptr)
     {
         auto& config       = GetConfig();
-        auto& creator      = GetCreator();
+        auto& initializer  = GetInitializer();
         auto& generator    = GetGenerator();
         auto& reinserter   = GetReinserter();
         auto& problem      = GetProblem();
@@ -95,13 +97,15 @@ public:
         std::vector<Operon::Random::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
 
-
         const auto& inputs = problem.InputVariables();
+
+        std::vector<size_t> treeLengths(config.PopulationSize);
+        std::uniform_int_distribution<size_t> treeLengthDistribution(1, 50);
 
         auto create = [&](gsl::index i) {
             // create one random generator per thread
             Operon::Random rndlocal{seeds[i]};
-            parents[i].Genotype = creator(rndlocal, grammar, inputs);
+            parents[i].Genotype = initializer(rndlocal);
             parents[i][Idx] = Operon::Numeric::Max<Operon::Scalar>();
         };
         const auto& evaluator = generator.Evaluator();

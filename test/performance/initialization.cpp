@@ -51,7 +51,7 @@ namespace Test {
 
         Grammar grammar;
         grammar.SetConfig(Grammar::Arithmetic);
-        auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+        auto btc = BalancedTreeCreator { grammar, inputs };
         MeanVarianceCalculator calc;
         SECTION("Balanced tree creator")
         {
@@ -59,7 +59,7 @@ namespace Test {
             BENCHMARK("Sequential")
             {
                 model.start();
-                std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
+                std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); });
                 model.finish();
                 auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
                 calc.Add(trees.size() / elapsed);
@@ -70,7 +70,7 @@ namespace Test {
             BENCHMARK("Parallel")
             {
                 model.start();
-                std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, grammar, inputs); });
+                std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); });
                 model.finish();
                 auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
                 calc.Add(trees.size() / elapsed);
@@ -78,14 +78,14 @@ namespace Test {
             fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
         }
 
-        auto utc = UniformTreeCreator{ sizeDistribution, maxDepth, maxLength };
+        auto utc = UniformTreeCreator{ grammar, inputs };
         SECTION("Uniform tree creator")
         {
             calc.Reset();
             BENCHMARK("Sequential")
             {
                 model.start();
-                std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return utc(rd, grammar, inputs); });
+                std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return utc(rd, sizeDistribution(rd), maxDepth); });
                 model.finish();
                 auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
                 calc.Add(trees.size() / elapsed);
@@ -96,7 +96,33 @@ namespace Test {
             BENCHMARK("Parallel")
             {
                 model.start();
-                std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return utc(rd, grammar, inputs); });
+                std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return utc(rd, sizeDistribution(rd), maxDepth); });
+                model.finish();
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
+                calc.Add(trees.size() / elapsed);
+            };
+            fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
+        }
+
+        auto ptc = ProbabilisticTreeCreator{ grammar, inputs };
+        SECTION("Probabilistic tree creator")
+        {
+            calc.Reset();
+            BENCHMARK("Sequential")
+            {
+                model.start();
+                std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); });
+                model.finish();
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
+                calc.Add(trees.size() / elapsed);
+            };
+            fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
+
+            calc.Reset();
+            BENCHMARK("Parallel")
+            {
+                model.start();
+                std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); });
                 model.finish();
                 auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
                 calc.Add(trees.size() / elapsed);
