@@ -17,22 +17,38 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef CONFIG_HPP
-#define CONFIG_HPP
+#ifndef INITIALIZER_HPP
+#define INITIALIZER_HPP
 
-#include <cstddef>
+#include "core/operator.hpp"
 
 namespace Operon {
-struct GeneticAlgorithmConfig {
-    size_t Generations;
-    size_t Evaluations;
-    size_t Iterations;
-    size_t PopulationSize;
-    size_t PoolSize;
-    double CrossoverProbability;
-    double MutationProbability;
-    size_t Seed;
-};
-} // namespace Operon
+// wraps a creator and generates trees from a given size distribution
+template <typename TCreator, typename TDistribution>
+struct Initializer : public OperatorBase<Tree> {
+public:
+    Initializer(const TCreator& creator, TDistribution& dist)
+        : creator_(creator)
+        , dist_(dist)
+        , maxDepth_(1000)
+    {
+    }
 
+    Tree operator()(Operon::Random& random) const override
+    {
+        auto targetLen = std::max(1ul, static_cast<size_t>(std::round(dist_(random))));
+        return creator_(random, targetLen, maxDepth_);
+    }
+
+    void MaxDepth(size_t maxDepth) { maxDepth_ = maxDepth; }
+    size_t MaxDepth() const { return maxDepth_; }
+
+    const TCreator& GetCreator() const { return creator_; }
+
+private:
+    const TCreator& creator_;
+    TDistribution& dist_;
+    size_t maxDepth_;
+};
+}
 #endif

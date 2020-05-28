@@ -50,16 +50,16 @@ TEST_CASE("Hash collisions") {
     std::vector<Operon::Hash> seeds(n);
     std::vector<Tree> trees(n);
 
-    auto btc = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
+    auto btc = BalancedTreeCreator { grammar, inputs };
 
     std::iota(indices.begin(), indices.end(), 0);
     std::generate(std::execution::unseq, seeds.begin(), seeds.end(), [&](){ return rd(); });
     std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::Random rand(seeds[i]);
-        auto tree = btc(rand, grammar, inputs);
+        auto tree = btc(rand, sizeDistribution(rand), maxDepth);
         tree.Sort(Operon::HashMode::Strict);
         return tree;
-            });
+    });
 
     std::unordered_set<uint64_t> set64; 
     std::unordered_set<uint32_t> set32; 

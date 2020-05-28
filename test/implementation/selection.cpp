@@ -44,12 +44,12 @@ TEST_CASE("Selection Distribution")
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    auto creator = BalancedTreeCreator { sizeDistribution, maxDepth, maxLength };
 
     std::vector<Individual<1>> individuals(nTrees);
     Grammar grammar;
+    auto creator = BalancedTreeCreator { grammar, inputs };
     for (size_t i = 0; i < nTrees; ++i) {
-        individuals[i].Genotype = creator(random, grammar, inputs);
+        individuals[i].Genotype = creator(random, sizeDistribution(random), maxDepth);
         individuals[i][0] = std::uniform_real_distribution(0.0, 1.0)(random);
     }
 

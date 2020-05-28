@@ -56,7 +56,9 @@ int main(int, char**) {
     size_t maxTreeDepth  = 10;
     size_t maxTreeLength = 50;
     std::uniform_int_distribution<size_t> treeSizeDistribution(1, maxTreeLength);
-    BalancedTreeCreator creator { treeSizeDistribution, maxTreeDepth, maxTreeLength };
+    BalancedTreeCreator creator { problem.GetGrammar(), problem.InputVariables() };
+
+    Initializer initializer { creator, treeSizeDistribution };
 
     // set up crossover and mutation
     double internalNodeBias = 0.9;
@@ -79,7 +81,7 @@ int main(int, char**) {
     Generator generator(evaluator, crossover, mutation, selector, selector);
 
     // set up a genetic programming algorithm
-    GeneticProgrammingAlgorithm gp(problem, config, creator, generator, reinserter); 
+    GeneticProgrammingAlgorithm gp(problem, config, initializer, generator, reinserter); 
     Random random(config.Seed);
 
     int generation = 0;

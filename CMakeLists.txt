@@ -14,7 +14,7 @@ find_package(Git)
 find_package(cxxopts)
 find_package(fmt)
 find_package(Eigen3)
-find_package(Ceres)
+find_package(Ceres QUIET)
 find_package(TBB)
 find_package(Python3 COMPONENTS Development)
 find_package(pybind11)
@@ -139,6 +139,8 @@ add_library(
     src/core/dataset.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
+    src/operators/creator/balanced.cpp
+    src/operators/creator/ptc2.cpp
     src/stat/meanvariance.cpp
     src/stat/pearson.cpp
 )
@@ -152,7 +154,7 @@ target_include_directories(
     ${CERES_INCLUDE_DIRS}
 )
 # necessary to prevent -isystem introduced by intel-tbb
-set_target_properties(operon PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+# set_target_properties(operon PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 target_compile_definitions(operon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 #binary for GP algorithm cli version
@@ -169,7 +171,7 @@ target_include_directories(
     ${THIRDPARTY_INCLUDE_DIRS}
     ${CERES_INCLUDE_DIRS}
 )
-set_target_properties(operon-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+#set_target_properties(operon-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 target_compile_definitions(operon-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 add_executable(
@@ -185,7 +187,7 @@ target_include_directories(
     ${THIRDPARTY_INCLUDE_DIRS}
     ${CERES_INCLUDE_DIRS}
 )
-set_target_properties(operon-example-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+#set_target_properties(operon-example-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 if(MSVC)
@@ -238,6 +240,7 @@ if(Catch2_FOUND AND BUILD_TESTS)
         test/implementation/hashing.cpp
         test/implementation/initialization.cpp
         test/implementation/selection.cpp
+        #        test/codegen/irbuilder.cpp
         )
     target_compile_features(operon-test PRIVATE cxx_std_17)
     target_link_libraries(operon-test PRIVATE operon fmt::fmt Catch2::Catch2 ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb)
@@ -249,7 +252,7 @@ if(Catch2_FOUND AND BUILD_TESTS)
         ${CERES_INCLUDE_DIRS}
         )
     target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
-    set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
+    #set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
     target_compile_definitions(operon-test PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
     target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_link_libraries(operon-test PRIVATE "$<$<CONFIG:Debug>:gcov>")

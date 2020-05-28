@@ -31,26 +31,23 @@ namespace Operon {
 // this tree creator follows a user-defined tree length distribution
 // and produces symbol frequencies according to the grammar
 // this comes at the cost of left-leaning trees (heavily unbalanced)
-template <typename T>
 class UniformTreeCreator : public CreatorBase {
 public:
-    UniformTreeCreator(T distribution, size_t depth, size_t length)
-        : dist(distribution.param())
-        , maxDepth(depth)
-        , maxLength(length)
+    UniformTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables)
+        : CreatorBase(grammar, variables) 
     {
     }
-    Tree operator()(Operon::Random& random, const Grammar& grammar, const gsl::span<const Variable> variables) const override
+    Tree operator()(Operon::Random& random, size_t targetLen, size_t maxDepth) const override
     {
         std::vector<Node> nodes;
         std::stack<std::tuple<Node, size_t, size_t>> stk;
 
-        std::uniform_int_distribution<size_t> uniformInt(0, variables.size() - 1);
+        std::uniform_int_distribution<size_t> uniformInt(0, variables_.size() - 1);
         std::normal_distribution<double> normalReal(0, 1);
 
-        size_t minLength = 1u; // a leaf as root node
-        size_t targetLen = std::clamp(SampleFromDistribution(random), minLength, maxLength);
-        Expects(targetLen > 0);
+        assert(targetLen > 0);
+
+        const auto& grammar = grammar_.get();
 
         auto [grammarMinArity, grammarMaxArity] = grammar.FunctionArityLimits();
 
@@ -59,7 +56,7 @@ public:
 
         auto init = [&](Node& node) {
             if (node.IsVariable()) {
-                node.HashValue = node.CalculatedHashValue = variables[uniformInt(random)].Hash;
+                node.HashValue = node.CalculatedHashValue = variables_[uniformInt(random)].Hash;
             }
             node.Value = normalReal(random);
         };
@@ -96,18 +93,8 @@ public:
     }
 
 private:
-    mutable T dist;
     size_t maxDepth;
     size_t maxLength;
-
-    inline size_t SampleFromDistribution(Operon::Random& random) const
-    {
-        auto val = dist(random);
-        if constexpr (std::is_floating_point_v<typename T::result_type>) {
-            val = static_cast<size_t>(std::round(val));
-        }
-        return val;
-    }
 };
 }
 #endif
