@@ -233,6 +233,7 @@ int main(int argc, char* argv[])
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         //auto creator             = BalancedTreeCreator { problem.GetGrammar(), problem.InputVariables() };
         auto initializer         = Initializer { *creator, sizeDistribution };
+        initializer.MaxDepth(maxDepth);
         auto crossover           = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator             = MultiMutation {};
         auto onePoint            = OnePointMutation {};
