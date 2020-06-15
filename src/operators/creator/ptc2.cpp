@@ -44,7 +44,7 @@ namespace Operon {
 
         // the PTC2 returns the targetLen + at most maxFunctionArity extra leafs
         std::vector<Node> nodes;
-        nodes.reserve(targetLen + maxFunctionArity);
+        nodes.reserve(targetLen);
 
         auto maxArity = std::min(maxFunctionArity, targetLen - 1);
         auto minArity = std::min(minFunctionArity, maxArity);
@@ -61,19 +61,17 @@ namespace Operon {
             return tree;
         }
 
-        // Tuple U: 1. parent index 2. argPos 3. depth
-        using U = std::tuple<size_t, size_t, size_t>; // 
-        std::deque<U> q;
+        std::deque<size_t> q;
 
         for (size_t i = 0; i < root.Arity; ++i) {
             auto d = root.Depth + 1;
-            q.emplace_back(0, i, d); 
+            q.emplace_back(d); 
         }
 
         std::unordered_map<int, std::vector<int>> pos;
 
         // emulate a random dequeue operation 
-        auto random_dequeue = [&]() -> U {
+        auto random_dequeue = [&]() {
             auto j = std::uniform_int_distribution<size_t>(0, q.size()-1)(random);
             std::swap(q[j], q.front());
             auto t = q.front();
@@ -81,8 +79,10 @@ namespace Operon {
             return t;
         };
 
+        root.Parent = 0;
+
         while (q.size() > 0 && q.size() + nodes.size() < targetLen) {
-            auto [parentIndex, childIndex, childDepth] = random_dequeue();
+            auto childDepth = random_dequeue();
 
             maxArity = std::min(maxFunctionArity, targetLen - q.size() - nodes.size() - 1);
             minArity = std::min(minFunctionArity, maxArity);
@@ -94,52 +94,60 @@ namespace Operon {
             init(node);
             node.Depth = childDepth;
 
-            auto it = pos.find(parentIndex);
-            if (it == pos.end()) {
-                pos[parentIndex] = std::vector<int>(nodes[parentIndex].Arity);
-            }
-            pos[parentIndex][childIndex] = nodes.size();
-
             for (size_t i = 0; i < node.Arity; ++i) {
-                q.emplace_back(nodes.size(), i, childDepth+1);
+                q.emplace_back(childDepth+1);
             }
 
             nodes.push_back(node);
         }
 
         while (q.size() > 0) {
-            auto [parentIndex, childIndex, childDepth] = random_dequeue();
+            auto childDepth = random_dequeue();
             auto node = grammar.SampleRandomSymbol(random, 0, 0);
             init(node);
             node.Depth = childDepth;
-            auto it = pos.find(parentIndex);
-            if (it == pos.end()) {
-                pos[parentIndex] = std::vector<int>(nodes[parentIndex].Arity);
-            }
-            pos[parentIndex][childIndex] = nodes.size();
             nodes.push_back(node);
         }
 
-        auto tmp = nodes;
-        int idx = nodes.size()-1;
+        std::sort(nodes.begin(), nodes.end(), [](const auto& lhs, const auto& rhs) { return lhs.Depth < rhs.Depth; });
 
-        const auto add = [&](size_t i) {
-            auto add_impl = [&](size_t i, auto& add_ref) {
-                nodes[idx--] = tmp[i];
+        std::vector<int> childIndices(nodes.size());
 
-                if (tmp[i].IsLeaf()) { 
-                    return; 
+        int c = 1;
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            auto& node = nodes[i];
+
+            if (node.IsLeaf()) continue;
+
+            childIndices[i] = c;
+            c += nodes[i].Arity;
+        }
+
+        std::vector<Node> postfix = nodes;
+        size_t i = nodes.size();
+
+        const auto add = [&](size_t pi) {
+            auto add_impl = [&](size_t pi, auto& add_ref) {
+                auto& node = nodes[pi];
+
+                postfix[--i] = node;
+
+                if (node.IsLeaf()) {
+                    return;
                 }
 
-                for (auto j : pos[i]) {
-                    add_ref(j, add_ref);
+                auto ci = childIndices[pi];
+
+                for (size_t j = 0; j < node.Arity; ++j) {
+                    add_ref(ci + j, add_ref);
                 }
             };
-            add_impl(i, add_impl);
+            add_impl(pi, add_impl);
         };
+
         add(0);
 
-        auto tree = Tree(nodes).UpdateNodes();
+        auto tree = Tree(postfix).UpdateNodes();
         return tree;
     }
 }
