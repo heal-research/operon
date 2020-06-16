@@ -42,7 +42,6 @@ namespace Operon {
             }
         };
 
-        // the PTC2 returns the targetLen + at most maxFunctionArity extra leafs
         std::vector<Node> nodes;
         nodes.reserve(targetLen);
 
@@ -65,7 +64,7 @@ namespace Operon {
 
         for (size_t i = 0; i < root.Arity; ++i) {
             auto d = root.Depth + 1;
-            q.emplace_back(d); 
+            q.push_back(d); 
         }
 
         std::unordered_map<int, std::vector<int>> pos;
@@ -81,68 +80,57 @@ namespace Operon {
 
         root.Parent = 0;
 
-        while (q.size() > 0 && q.size() + nodes.size() < targetLen) {
+        while (nodes.size() < targetLen) {
             auto childDepth = random_dequeue();
 
-            maxArity = std::min(maxFunctionArity, targetLen - q.size() - nodes.size() - 1);
+            maxArity = childDepth == maxDepth ? 0 : std::min(maxFunctionArity, targetLen - q.size() - nodes.size() - 1);
             minArity = std::min(minFunctionArity, maxArity);
 
-            auto node = childDepth == maxDepth
-                ? grammar.SampleRandomSymbol(random, 0, 0) 
-                : grammar.SampleRandomSymbol(random, minArity, maxArity);
+            auto node = grammar.SampleRandomSymbol(random, minArity, maxArity);
 
             init(node);
             node.Depth = childDepth;
 
             for (size_t i = 0; i < node.Arity; ++i) {
-                q.emplace_back(childDepth+1);
+                q.push_back(childDepth+1);
             }
 
             nodes.push_back(node);
         }
 
-        while (q.size() > 0) {
-            auto childDepth = random_dequeue();
-            auto node = grammar.SampleRandomSymbol(random, 0, 0);
-            init(node);
-            node.Depth = childDepth;
-            nodes.push_back(node);
-        }
-
         std::sort(nodes.begin(), nodes.end(), [](const auto& lhs, const auto& rhs) { return lhs.Depth < rhs.Depth; });
-
         std::vector<int> childIndices(nodes.size());
 
-        int c = 1;
+        size_t c = 1;
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto& node = nodes[i];
 
-            if (node.IsLeaf()) continue;
+            if (node.IsLeaf()) { 
+                continue; 
+            }
 
             childIndices[i] = c;
             c += nodes[i].Arity;
         }
 
-        std::vector<Node> postfix = nodes;
-        size_t i = nodes.size();
+        std::vector<Node> postfix(nodes.size());
+        size_t idx = nodes.size();
 
-        const auto add = [&](size_t pi) {
-            auto add_impl = [&](size_t pi, auto& add_ref) {
-                auto& node = nodes[pi];
+        const auto add = [&](size_t i) {
+            auto add_impl = [&](size_t i, const auto& add_ref) {
+                const auto& node = nodes[i];
 
-                postfix[--i] = node;
+                postfix[--idx] = node;
 
                 if (node.IsLeaf()) {
                     return;
                 }
 
-                auto ci = childIndices[pi];
-
                 for (size_t j = 0; j < node.Arity; ++j) {
-                    add_ref(ci + j, add_ref);
+                    add_ref(childIndices[i] + j, add_ref);
                 }
             };
-            add_impl(pi, add_impl);
+            add_impl(i, add_impl);
         };
 
         add(0);
