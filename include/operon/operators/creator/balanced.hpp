@@ -41,28 +41,6 @@ public:
 
 private:
     double irregularityBias;
-
-    std::vector<Node> BreadthToPostfix(const std::vector<U>& tuples) const noexcept
-    {
-        int j = tuples.size();
-        std::vector<Node> postfix(j);
-
-        const auto add = [&](const U& t) {
-            auto add_impl = [&](const U& t, auto& add_ref) {
-                auto [node, _, nodeChildIndex] = t;
-                postfix[--j] = node;
-                if (node.IsLeaf())
-                    return;
-                for (size_t i = nodeChildIndex; i < nodeChildIndex + node.Arity; ++i) {
-                    add_ref(tuples[i], add_ref);
-                }
-            };
-            add_impl(t, add_impl);
-        };
-
-        add(tuples.front());
-        return postfix;
-    }
 };
 }
 #endif

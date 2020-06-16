@@ -73,10 +73,26 @@ namespace Operon {
                 openSlots += child.Arity;
             }
         }
-        auto nodes = BreadthToPostfix(tuples);
-        auto tree = Tree(nodes).UpdateNodes();
+
+        std::vector<Node> postfix(tuples.size());
+        auto idx = tuples.size();
+
+        const auto add = [&](const U& t) {
+            auto add_impl = [&](const U& t, auto& add_ref) {
+                auto [node, _, nodeChildIndex] = t;
+                postfix[--idx] = node;
+                if (node.IsLeaf()) {
+                    return;
+                }
+                for (size_t i = nodeChildIndex; i < nodeChildIndex + node.Arity; ++i) {
+                    add_ref(tuples[i], add_ref);
+                }
+            };
+            add_impl(t, add_impl);
+        };
+        add(tuples.front());
+        auto tree = Tree(postfix).UpdateNodes();
         return tree;
     }
-
-
 }
+
