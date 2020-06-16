@@ -46,8 +46,8 @@ public:
     const TCreator& GetCreator() const { return creator_; }
 
 private:
-    const TCreator& creator_;
-    TDistribution& dist_;
+    std::reference_wrapper<const TCreator> creator_;
+    mutable TDistribution dist_;
     size_t maxDepth_;
 };
 }
