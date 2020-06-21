@@ -120,9 +120,6 @@ public:
         std::for_each(executionPolicy, indices.begin(), indices.begin() + config.PopulationSize, create);
         std::for_each(executionPolicy, parents.begin(), parents.end(), evaluate);
 
-        // run report callback
-        if (report) { std::invoke(report); }
-
         // flag to signal algorithm termination
         std::atomic_bool terminate = false;
         // produce some offspring
@@ -141,8 +138,7 @@ public:
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
             // preserve one elite
-            auto [minElem, maxElem] = std::minmax_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; });
-            auto best = minElem;
+            auto [best, worst] = std::minmax_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; });
             offspring[0] = *best;
 
             generator.Prepare(parents);
