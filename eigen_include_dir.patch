@@ -1,15 +1,7 @@
-diff -ur eigen/CMakeLists.txt eigen-patch/CMakeLists.txt
---- eigen/CMakeLists.txt	2020-02-10 21:32:27.818119704 +0100
-+++ eigen-patch/CMakeLists.txt	2020-02-10 21:34:22.196171509 +0100
-@@ -1,6 +1,6 @@
- project(Eigen3)
- 
--cmake_minimum_required(VERSION 2.8.11)
-+cmake_minimum_required(VERSION 3.7)
- 
- # guard against in-source builds
- 
-@@ -447,13 +447,6 @@
+diff -ur eigen/CMakeLists.txt eigen-patched/CMakeLists.txt
+--- eigen/CMakeLists.txt	2020-06-21 22:14:04.625979308 +0200
++++ eigen-patched/CMakeLists.txt	2020-06-21 22:13:57.728719594 +0200
+@@ -449,13 +449,6 @@
    DESTINATION ${INCLUDE_INSTALL_DIR} COMPONENT Devel
    )
  
@@ -23,12 +15,13 @@ diff -ur eigen/CMakeLists.txt eigen-patch/CMakeLists.txt
  install(DIRECTORY Eigen DESTINATION ${INCLUDE_INSTALL_DIR} COMPONENT Devel)
  
  add_subdirectory(doc EXCLUDE_FROM_ALL)
-@@ -570,8 +563,15 @@
+@@ -570,9 +563,17 @@
  set ( EIGEN_VERSION_MINOR  ${EIGEN_MAJOR_VERSION} )
  set ( EIGEN_VERSION_PATCH  ${EIGEN_MINOR_VERSION} )
  set ( EIGEN_DEFINITIONS "")
 -set ( EIGEN_INCLUDE_DIR "${CMAKE_INSTALL_PREFIX}/${INCLUDE_INSTALL_DIR}" )
  set ( EIGEN_ROOT_DIR ${CMAKE_INSTALL_PREFIX} )
+ 
 +GNUInstallDirs_get_absolute_install_dir(EIGEN_INCLUDE_DIR INCLUDE_INSTALL_DIR)
 +
 +if(EIGEN_BUILD_PKGCONFIG)
@@ -37,15 +30,17 @@ diff -ur eigen/CMakeLists.txt eigen-patch/CMakeLists.txt
 +        DESTINATION ${PKGCONFIG_INSTALL_DIR}
 +        )
 +endif()
- 
++
  # Interface libraries require at least CMake 3.0
  if (NOT CMAKE_VERSION VERSION_LESS 3.0)
-diff -ur eigen/eigen3.pc.in eigen-patch/eigen3.pc.in
---- eigen/eigen3.pc.in	2020-02-10 21:32:27.968125020 +0100
-+++ eigen-patch/eigen3.pc.in	2020-02-10 21:34:53.363275216 +0100
+   include (CMakePackageConfigHelpers)
+diff -ur eigen/eigen3.pc.in eigen-patched/eigen3.pc.in
+--- eigen/eigen3.pc.in	2020-06-21 22:14:04.646980099 +0200
++++ eigen-patched/eigen3.pc.in	2020-06-21 22:13:57.744720197 +0200
 @@ -6,4 +6,4 @@
  Requires:
  Version: @EIGEN_VERSION_NUMBER@
  Libs:
 -Cflags: -I${prefix}/@INCLUDE_INSTALL_DIR@
 +Cflags: -I@EIGEN_INCLUDE_DIR@
+Binary files eigen/.git/index and eigen-patched/.git/index differ
