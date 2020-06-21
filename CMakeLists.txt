@@ -18,7 +18,7 @@ find_package(Ceres QUIET)
 find_package(TBB)
 find_package(Python3 COMPONENTS Development)
 find_package(pybind11)
-find_package(Catch2)
+find_package(doctest)
 
 # operon library
 set_package_properties(Git     PROPERTIES TYPE REQUIRED)
@@ -29,7 +29,7 @@ set_package_properties(Ceres   PROPERTIES TYPE REQUIRED)
 set_package_properties(Tbb     PROPERTIES TYPE REQUIRED)
 
 # unit tests
-set_package_properties(catch2 PROPERTIES TYPE OPTIONAL)
+set_package_properties(doctest PROPERTIES TYPE OPTIONAL)
 
 # python binding
 set_package_properties(Python3 PROPERTIES TYPE OPTIONAL)
@@ -51,17 +51,25 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
+    nanobench 
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/nanobench/include
+    URL https://raw.githubusercontent.com/martinus/nanobench/master/src/include/nanobench.h
+    DOWNLOAD_NO_EXTRACT 1
+)
+
+FetchContent_Declare(
     xxhash
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/xxhash
     URL https://raw.githubusercontent.com/RedSpah/xxhash_cpp/master/include/xxhash.hpp
     DOWNLOAD_NO_EXTRACT 1
 )
 
-FetchContent_MakeAvailable(xxhash gsl csv)
+FetchContent_MakeAvailable(xxhash gsl csv nanobench)
 
 set(THIRDPARTY_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
     ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
+    ${PROJECT_SOURCE_DIR}/thirdparty/nanobench/include
     ${PROJECT_SOURCE_DIR}/thirdparty/
 )
 
@@ -227,23 +235,25 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         )
 endif()
 
-if(Catch2_FOUND AND BUILD_TESTS)
+if(doctest_FOUND AND BUILD_TESTS)
     add_executable(
         operon-test
         test/test.cpp
+        test/nanobench.cpp
         test/performance/evaluation.cpp
         test/performance/initialization.cpp
+        test/performance/evolution.cpp
         test/performance/hashing.cpp
         test/performance/distance.cpp
-        test/implementation/evaluation.cpp
-        test/implementation/details.cpp
-        test/implementation/hashing.cpp
+        #test/implementation/evaluation.cpp
+        #test/implementation/details.cpp
+        #test/implementation/hashing.cpp
         test/implementation/initialization.cpp
-        test/implementation/selection.cpp
+        #test/implementation/selection.cpp
         #        test/codegen/irbuilder.cpp
         )
     target_compile_features(operon-test PRIVATE cxx_std_17)
-    target_link_libraries(operon-test PRIVATE operon fmt::fmt Catch2::Catch2 ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb)
+    target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb doctest::doctest)
     target_include_directories(
         operon-test
         PRIVATE
@@ -251,14 +261,10 @@ if(Catch2_FOUND AND BUILD_TESTS)
         ${THIRDPARTY_INCLUDE_DIRS}
         ${CERES_INCLUDE_DIRS}
         )
-    target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
+    #target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
     #set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
     target_compile_definitions(operon-test PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
     target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_link_libraries(operon-test PRIVATE "$<$<CONFIG:Debug>:gcov>")
-
-    include(CTest)
-    include(Catch)
-    catch_discover_tests(operon-test)
 endif()
 

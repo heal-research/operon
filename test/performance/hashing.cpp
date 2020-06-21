@@ -17,7 +17,7 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include <catch2/catch.hpp>
+#include <doctest/doctest.h>
 #include <execution>
 
 #include "core/common.hpp"
@@ -25,14 +25,17 @@
 #include "core/eval.hpp"
 #include "core/grammar.hpp"
 #include "operators/creator.hpp"
+#include "analyzers/diversity.hpp"
+
+#include "nanobench.h"
 
 namespace Operon {
 namespace Test {
 
-TEST_CASE("Tree hashing performance") {
-    size_t n = 100000;
-    size_t maxLength = 200;
-    size_t maxDepth = 100;
+TEST_CASE("Hashing performance") {
+    size_t n = 1000;
+    size_t maxLength = 100;
+    size_t maxDepth = 1000;
 
     auto rd = Operon::Random();
     auto ds = Dataset("../data/Poly-10.csv", true);
@@ -43,6 +46,7 @@ TEST_CASE("Tree hashing performance") {
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+    std::uniform_int_distribution<size_t> dist(0, n-1);
 
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic);
@@ -50,20 +54,51 @@ TEST_CASE("Tree hashing performance") {
     std::vector<Tree> trees(n);
     auto btc = BalancedTreeCreator { grammar, inputs };
 
-    Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
-    MeanVarianceCalculator calc;
+    ankerl::nanobench::Bench b;
+    b.relative(true).performanceCounters(true);
+    std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); });
 
-    BENCHMARK("Tree sort/hash") {
-        std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); });
-        auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+    auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
 
-        model.start();
-        std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [](auto& t) {t.Sort(Operon::HashMode::Strict); });
-        model.finish();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(model.elapsed()).count() / 1000.0;
-        calc.Add(totalNodes / elapsed);
-    };
-    fmt::print("\nNodes/second: {:.3e} ± {:.3e}\n", calc.Mean(), calc.StandardDeviation());
+    SUBCASE("hashing performance") {
+        b.batch(totalNodes).run("strict hashing", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Strict); });
+        });
+
+        b.batch(totalNodes).run("relaxed hashing", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Relaxed); });
+        });
+    }
+
+    SUBCASE("strict hashing complexity") {
+        ankerl::nanobench::Bench b;
+        b.relative(true).performanceCounters(true);
+
+        for (size_t i = 1; i <= maxLength; ++i) {
+            std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, maxDepth); });
+            totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+            b.complexityN(i).batch(totalNodes).run("strict", [&]() { 
+                ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Strict); }));
+            });
+        }
+
+        std::cout << b.complexityBigO() << "\n";
+    }
+
+    SUBCASE("relaxed hashing complexity") {
+        ankerl::nanobench::Bench b;
+        b.relative(true).performanceCounters(true);
+
+        for (size_t i = 1; i <= maxLength; ++i) {
+            std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, maxDepth); });
+            totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+            b.complexityN(i).batch(totalNodes).run("relaxed", [&]() { 
+                ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Relaxed); }));
+            });
+        }
+
+        std::cout << b.complexityBigO() << "\n";
+    }
 }
 
 } // namespace Test 
