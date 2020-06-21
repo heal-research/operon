@@ -128,13 +128,9 @@ public:
         }
 
         if (std::all_of(head, tail, [](size_t v) { return v == 0; })) {
-            if (minArity == 0 && maxArity == 2) {
-                throw new std::runtime_error(fmt::format("Could not sample any symbol as all frequencies are set to zero"));
-            }
-            return SampleRandomSymbol(random, minArity - 1, maxArity);
+            throw new std::runtime_error(fmt::format("Could not sample any symbol as all frequencies are set to zero"));
         }
-        //auto d = std::distance(frequencies.begin(), head);
-        auto sum = std::reduce(std::execution::unseq, head, tail);  
+        auto sum = std::reduce(head, tail);  
         auto r = std::uniform_real_distribution<double>(0., sum)(random);
         auto c = 0.0;
 
@@ -148,7 +144,6 @@ public:
             }
         }
         
-        //auto i = std::discrete_distribution<size_t>(head, tail)(random) + d;
         auto node = Node(static_cast<NodeType>(1u << idx));
         Ensures(IsEnabled(node.Type));
 
