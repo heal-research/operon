@@ -17,8 +17,8 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include <catch2/catch.hpp>
 #include <execution>
+#include <doctest/doctest.h>
 
 #include "core/common.hpp"
 #include "core/dataset.hpp"
@@ -26,6 +26,7 @@
 #include "core/grammar.hpp"
 
 #include "operators/creator.hpp"
+#include "nanobench.h"
 
 namespace Operon {
 namespace Test {
@@ -33,7 +34,7 @@ namespace Test {
     {
         size_t n = 5000;
         size_t maxLength = 100;
-        size_t maxDepth = 100;
+        size_t maxDepth = 1000;
 
         thread_local Operon::Random rd; 
         auto ds = Dataset("../data/Poly-10.csv", true);
@@ -47,90 +48,37 @@ namespace Test {
 
         std::vector<Tree> trees(n);
 
-        Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> model;
-
         Grammar grammar;
         grammar.SetConfig(Grammar::Arithmetic);
+
         auto btc = BalancedTreeCreator { grammar, inputs };
-        MeanVarianceCalculator calc;
-        SECTION("Balanced tree creator")
-        {
-            calc.Reset();
-            BENCHMARK("Sequential")
-            {
-                model.start();
-                std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); });
-                model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
-                calc.Add(trees.size() / elapsed);
-            };
-            fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
-
-            calc.Reset();
-            BENCHMARK("Parallel")
-            {
-                model.start();
-                std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); });
-                model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
-                calc.Add(trees.size() / elapsed);
-            };
-            fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
-        }
-
         auto utc = UniformTreeCreator{ grammar, inputs };
-        SECTION("Uniform tree creator")
-        {
-            calc.Reset();
-            BENCHMARK("Sequential")
-            {
-                model.start();
-                std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return utc(rd, sizeDistribution(rd), maxDepth); });
-                model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
-                calc.Add(trees.size() / elapsed);
-            };
-            fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
+        auto ptc = ProbabilisticTreeCreator{ grammar, inputs };
 
-            calc.Reset();
-            BENCHMARK("Parallel")
-            {
-                model.start();
-                std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return utc(rd, sizeDistribution(rd), maxDepth); });
-                model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
-                calc.Add(trees.size() / elapsed);
-            };
-            fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
+        ankerl::nanobench::Bench b;
+        b.performanceCounters(true);
+
+        SUBCASE("BTC vs PTC") 
+        {
+            b.batch(n).run("BTC", [&]() { std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); }); });
+            b.batch(n).run("PTC", [&]() { std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); }); });
+            b.minEpochIterations(1000).batch(n).run("BTC (parallel)", [&]() { std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); }); });
+            b.minEpochIterations(1000).batch(n).run("PTC (parallel)", [&]() { std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); }); });
+        }
+        SUBCASE("BTC") {
+            for (size_t i = 1; i <= maxLength; ++i) {
+                b.complexityN(i).run("BTC", [&]() { std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, maxDepth); }); });
+            }
+            std::cout << "BTC complexity: " << b.complexityBigO() << std::endl;
         }
 
-        auto ptc = ProbabilisticTreeCreator{ grammar, inputs };
-        SECTION("Probabilistic tree creator")
-        {
-            calc.Reset();
-            BENCHMARK("Sequential")
-            {
-                model.start();
-                std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); });
-                model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
-                calc.Add(trees.size() / elapsed);
-            };
-            fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
-
-            calc.Reset();
-            BENCHMARK("Parallel")
-            {
-                model.start();
-                std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); });
-                model.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(model.elapsed()).count() / 1e6; // ms to s
-                calc.Add(trees.size() / elapsed);
-            };
-            fmt::print("\nTrees/second: {:.1f} ± {:.1f}\n", calc.Mean(), calc.StandardDeviation());
+        SUBCASE("PTC") {
+            for (size_t i = 1; i <= maxLength; ++i) {
+                b.complexityN(i).run("PTC", [&]() { std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, i, maxDepth); }); });
+            }
+            std::cout << "PTC complexity: " << b.complexityBigO() << std::endl;
         }
     }
-
 } // namespace Test
 } // namespace Operon
 
