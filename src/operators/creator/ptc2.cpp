@@ -67,8 +67,6 @@ namespace Operon {
             q.push_back(d); 
         }
 
-        std::unordered_map<int, std::vector<int>> pos;
-
         // emulate a random dequeue operation 
         auto random_dequeue = [&]() {
             auto j = std::uniform_int_distribution<size_t>(0, q.size()-1)(random);
