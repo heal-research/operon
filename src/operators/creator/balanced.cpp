@@ -60,15 +60,18 @@ namespace Operon {
         for (size_t i = 0; i < tuples.size(); ++i) {
             auto [node, nodeDepth, childIndex] = tuples[i];
             auto childDepth = nodeDepth + 1;
-
+            std::get<2>(tuples[i]) = tuples.size();
             for (int j = 0; j < node.Arity; ++j) {
-                maxArity = childDepth == maxDepth ? 0 : std::min(maxFunctionArity, targetLen - openSlots);
-                minArity = std::min((openSlots - tuples.size() > 1 && sampleIrregular(random)) ? 0 : minFunctionArity, maxArity);
+                if (openSlots - tuples.size() > 1 && sampleIrregular(random)) {
+                    minArity = 0;
+                    maxArity = 0;
+                } else {
+                    maxArity = childDepth == maxDepth ? 0 : std::min(maxFunctionArity, targetLen - openSlots);
+                    minArity = std::min(minFunctionArity, maxArity);
+                }
+
                 auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
                 init(child);
-                if (j == 0) {
-                    std::get<2>(tuples[i]) = tuples.size();
-                }
                 tuples.emplace_back(child, childDepth, 0);
                 openSlots += child.Arity;
             }
