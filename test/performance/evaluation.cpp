@@ -17,7 +17,7 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include <catch2/catch.hpp>
+#include <doctest/doctest.h>
 #include <execution>
 
 #include "core/common.hpp"
@@ -26,6 +26,7 @@
 #include "core/grammar.hpp"
 
 #include "operators/creator.hpp"
+#include "nanobench.h"
 
 #include <tbb/global_control.h>
 
@@ -41,67 +42,15 @@ namespace Test {
         return totalNodes;
     }
 
+    enum ExecutionPolicy {
+        Sequenced,
+        Unsequenced,
+        ParallelSequenced,
+        ParallelUnsequenced
+    };
+
     // used by some Langdon & Banzhaf papers as benchmark for measuring GPops/s
-    TEST_CASE("Sextic GPops", "[performance]")
-    {
-        Operon::Random random(1234);
-        auto ds = Dataset("../data/Sextic.csv", true);
-        auto target = "Y";
-        auto variables = ds.Variables();
-        std::vector<Variable> inputs;
-        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
-
-        size_t n = 10'000;
-        std::vector<size_t> numRows { 1000, 5000 };
-        std::vector<size_t> avgLen { 50, 100 };
-        std::vector<Operon::Scalar> results;
-
-        size_t maxDepth = 10000;
-        Grammar grammar;
-
-        for (auto len : avgLen) {
-            // generate trees of a fixed length 
-            std::uniform_int_distribution<size_t> sizeDistribution(len, len);
-            auto creator = BalancedTreeCreator { grammar, inputs };
-            std::vector<Tree> trees(n);
-            std::generate(trees.begin(), trees.end(), [&]() { return creator(random, sizeDistribution(random), maxDepth); });
-
-            auto totalNodes = TotalNodes(trees);
-
-            // test different number of rows
-            for (auto nRows : numRows) {
-                Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> chronometer;
-                Range range { 0, nRows };
-                auto totalOps = totalNodes * range.Size();
-
-                MeanVarianceCalculator calc;
-                BENCHMARK("Parallel")
-                {
-                    chronometer.start();
-                    std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<float>(tree, ds, range).size(); });
-                    chronometer.finish();
-                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(chronometer.elapsed()).count() / 1000.0; // ms to s
-                    auto gpops = totalOps / elapsed;
-                    calc.Add(gpops);
-                };
-                fmt::print("\nfloat,{},{},{:.3e} ± {:.3e}\n", len, nRows, calc.Mean(), calc.StandardDeviation());
-
-                calc.Reset();
-                BENCHMARK("Parallel")
-                {
-                    chronometer.start();
-                    std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](const auto& tree) { return Evaluate<double>(tree, ds, range).size(); });
-                    chronometer.finish();
-                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(chronometer.elapsed()).count() / 1000.0; // ms to s
-                    auto gpops = totalOps / elapsed;
-                    calc.Add(gpops);
-                };
-                fmt::print("\ndouble,{},{},{:.3e} ± {:.3e}\n", len, nRows, calc.Mean(), calc.StandardDeviation());
-            }
-        }
-    }
-
-    TEST_CASE("Evaluation performance", "[performance]")
+    TEST_CASE("Evaluation performance")
     {
         size_t n = 1000;
         size_t maxLength = 100;
@@ -128,87 +77,59 @@ namespace Test {
 
         auto evaluate = [&](auto& tree) {
             auto estimated = Evaluate<Operon::Scalar>(tree, ds, range);
-            return estimated.size();
+            ankerl::nanobench::doNotOptimizeAway(estimated.size());
         };
 
-        Catch::Benchmark::Detail::ChronometerModel<std::chrono::steady_clock> chronometer;
+        ankerl::nanobench::Bench b;
+        b.title("Evaluation speed").relative(true).performanceCounters(true).minEpochIterations(10);
 
-        MeanVarianceCalculator calc;
-
-        //tbb::global_control c(tbb::global_control::max_allowed_parallelism, 20);
-
-        auto measurePerformance = [&]()
-        {
+        auto test = [&](GrammarConfig cfg, ExecutionPolicy pol, const std::string& name) {  
+            grammar.SetConfig(cfg);
             std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), maxDepth); });
-            auto totalNodes = TotalNodes(trees);
-            fmt::print("total nodes: {}\n", totalNodes);
-            auto totalOps = totalNodes * range.Size();
-            // [+, -, *, /]
-            BENCHMARK("Sequential")
-            {
-                chronometer.start();
-                std::transform(std::execution::seq, trees.begin(), trees.end(), fit.begin(), evaluate);
-                chronometer.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(chronometer.elapsed()).count() / 1e6;
-                auto gpops = totalOps / elapsed;
-                calc.Add(gpops);
-            };
-            fmt::print("\nGPops/second: {:.3e} ± {:.3e}\n", calc.Mean(), calc.StandardDeviation());
+            auto totalOps = TotalNodes(trees) * range.Size();
 
-            auto singlePerf = calc.Mean();
+            b.batch(totalOps);
 
-            calc.Reset();
-            BENCHMARK("Parallel")
-            {
-                chronometer.start();
-                std::transform(std::execution::par_unseq, trees.begin(), trees.end(), fit.begin(), evaluate);
-                chronometer.finish();
-                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(chronometer.elapsed()).count() / 1e6;
-                auto gpops = totalOps / elapsed;
-                calc.Add(gpops);
-            };
-            fmt::print("\nGPops/second: {:.3e} ± {:.3e} (MP ratio {:.2f})\n", calc.Mean(), calc.StandardDeviation(), calc.Mean() / singlePerf);
+            switch(pol) {
+                case ExecutionPolicy::Sequenced:
+                    b.run(name, [&]() { std::for_each(std::execution::seq, trees.begin(), trees.end(), evaluate); });
+                    break;
+                case ExecutionPolicy::Unsequenced:
+                    b.run(name, [&]() { std::for_each(std::execution::unseq, trees.begin(), trees.end(), evaluate); });
+                    break;
+                case ExecutionPolicy::ParallelSequenced:
+                    b.run(name, [&]() { std::for_each(std::execution::par, trees.begin(), trees.end(), evaluate); });
+                    break;
+                case ExecutionPolicy::ParallelUnsequenced:
+                    b.run(name, [&]() { std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), evaluate); });
+                    break;
+            }
+
         };
 
-        SECTION("Arithmetic")
-        {
-            grammar.SetConfig(Grammar::Arithmetic);
-            measurePerformance();
-        }
+        // single-thread
+        test(Grammar::Arithmetic, ExecutionPolicy::Unsequenced, "unseq : arithmetic");
+        //test(Grammar::Arithmetic | NodeType::Exp, ExecutionPolicy::Unsequenced, "unseq : arithmetic + exp");
+        //test(Grammar::Arithmetic | NodeType::Log, ExecutionPolicy::Unsequenced, "unseq : arithmetic + log");
+        //test(Grammar::Arithmetic | NodeType::Sin, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sin");
+        //test(Grammar::Arithmetic | NodeType::Cos, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cos");
+        //test(Grammar::Arithmetic | NodeType::Tan, ExecutionPolicy::Unsequenced, "unseq : arithmetic + tan");
+        //test(Grammar::Arithmetic | NodeType::Sqrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sqrt");
+        //test(Grammar::Arithmetic | NodeType::Cbrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cbrt");
+        //test(Grammar::Arithmetic | NodeType::Exp | NodeType::Log, ExecutionPolicy::Unsequenced, "unseq : arithmetic + exp + log");
+        //test(Grammar::Arithmetic | NodeType::Sin | NodeType::Cos, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sin + cos");
 
-        SECTION("Arithmetic + Exp + Log")
-        {
-            // [+, -, *, /, exp, log]
-            grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log);
-            measurePerformance();
-        }
-
-        SECTION("Arithmetic + Sin + Cos")
-        {
-            // [+, -, *, /, exp, log]
-            grammar.SetConfig(Grammar::Arithmetic | NodeType::Sin | NodeType::Cos);
-            measurePerformance();
-        }
-
-        SECTION("Arithmetic + Exp + Log + Sin + Cos")
-        {
-            grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos);
-            measurePerformance();
-        }
-
-        SECTION("Arithmetic + Sqrt + Cbrt + Square")
-        {
-            // [+, -, *, /, exp, log]
-            grammar.SetConfig(Grammar::Arithmetic | NodeType::Sqrt | NodeType::Cbrt | NodeType::Square);
-            measurePerformance();
-        }
-
-        SECTION("Arithmetic + Exp + Log + Sin + Cos + Tan + Sqrt + Cbrt + Square")
-        {
-            // [+, -, *, /, exp, log]
-            grammar.SetConfig(Grammar::Full);
-            measurePerformance();
-        }
+        //// multi-thread
+        //test(Grammar::Arithmetic, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic");
+        //test(Grammar::Arithmetic | NodeType::Exp, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + exp");
+        //test(Grammar::Arithmetic | NodeType::Log, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + log");
+        //test(Grammar::Arithmetic | NodeType::Sin, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + sin");
+        //test(Grammar::Arithmetic | NodeType::Cos, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + cos");
+        //test(Grammar::Arithmetic | NodeType::Tan, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + tan");
+        //test(Grammar::Arithmetic | NodeType::Sqrt, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + sqrt");
+        //test(Grammar::Arithmetic | NodeType::Cbrt, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + cbrt");
+        //test(Grammar::Arithmetic | NodeType::Exp | NodeType::Log, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + exp + log");
+        //test(Grammar::Arithmetic | NodeType::Sin | NodeType::Cos, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + sin + cos");
     }
 } // namespace Test
 } // namespace Operon

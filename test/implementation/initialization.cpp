@@ -17,6 +17,10 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
+#include <algorithm>
+#include <doctest/doctest.h>
+#include <execution>
+
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "core/format.hpp"
@@ -24,12 +28,10 @@
 #include "core/stats.hpp"
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
-#include <algorithm>
-#include <catch2/catch.hpp>
-#include <execution>
+
 
 namespace Operon::Test {
-TEST_CASE("Sample nodes from grammar", "[implementation]")
+TEST_CASE("Sample nodes from grammar")
 {
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
@@ -106,7 +108,7 @@ std::vector<size_t> CalculateHistogram(const std::vector<size_t>& values)
     return counts;
 }
 
-TEST_CASE("BTC", "[implementation]")
+TEST_CASE("BTC")
 {
     auto target = "Y";
     auto ds = Dataset("../data/Poly-10.csv", true);
@@ -116,7 +118,7 @@ TEST_CASE("BTC", "[implementation]")
     size_t maxDepth = 1000,
            maxLength = 100;
 
-    size_t n = 100000;
+    size_t n = 10000;
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
     Grammar grammar;
@@ -126,14 +128,14 @@ TEST_CASE("BTC", "[implementation]")
     grammar.Enable(NodeType::Sub, 1);
     grammar.Enable(NodeType::Div, 1);
 
-    BalancedTreeCreator btc{ grammar, inputs, /* bias= */ 1.0 };
+    BalancedTreeCreator btc{ grammar, inputs, /* bias= */ 1.0};
 
     Operon::Random random(std::random_device {}());
 
     std::vector<size_t> lengths(n);
 
 
-    SECTION("Symbol frequencies")
+    SUBCASE("Symbol frequencies")
     {
         std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, btc, lengths);
@@ -149,9 +151,9 @@ TEST_CASE("BTC", "[implementation]")
         }
     }
 
-    SECTION("Length histogram") 
+    SUBCASE("Length histogram") 
     {
-        int reps = 10;
+        int reps = 50;
         std::vector<double> counts(maxLength+1, 0);
 
         for (int i = 0; i < reps; ++i) {
@@ -172,22 +174,28 @@ TEST_CASE("BTC", "[implementation]")
         }
     }
 
-    SECTION("Shape histogram") 
+    SUBCASE("Shape histogram") 
     {
         int reps = 50;
         std::vector<double> counts;
 
+        double avgShape = 0.0;
         for (int i = 0; i < reps; ++i) {
             std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
             auto trees = GenerateTrees(random, btc, lengths);
             std::vector<size_t> shapes(trees.size());
             std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t>{}, [](const auto& node) { return node.Length+1; }); });
+
+            avgShape +=  std::reduce(shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
             auto cnt = CalculateHistogram(shapes);
             if (counts.size() < cnt.size()) { counts.resize(cnt.size()); }
             for (size_t j = 0; j < cnt.size(); ++j) {
                 counts[j] += cnt[j];
             }
         }
+
+        avgShape /= reps; 
+        fmt::print("Average shape: {}\n", avgShape);
 
         fmt::print("Shape histogram: \n");
         for (size_t i = 1; i < counts.size(); ++i) {
@@ -197,7 +205,7 @@ TEST_CASE("BTC", "[implementation]")
     }
 }
 
-TEST_CASE("PTC2", "[implementation]")
+TEST_CASE("PTC2")
 {
     auto target = "Y";
     auto ds = Dataset("../data/Poly-10.csv", true);
@@ -207,7 +215,7 @@ TEST_CASE("PTC2", "[implementation]")
     size_t maxDepth = 1000,
            maxLength = 100;
 
-    size_t n = 100000;
+    size_t n = 10000;
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
     Grammar grammar;
@@ -223,7 +231,13 @@ TEST_CASE("PTC2", "[implementation]")
 
     std::vector<size_t> lengths(n);
 
-    SECTION("Symbol frequencies")
+    SUBCASE("Simple tree") 
+    {
+        auto tree = ptc(random, 9, maxDepth);
+        fmt::print("{}\n", TreeFormatter::Format(tree, ds));
+    }
+
+    SUBCASE("Symbol frequencies")
     {
         std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, ptc, lengths);
@@ -239,9 +253,9 @@ TEST_CASE("PTC2", "[implementation]")
         }
     }
 
-    SECTION("Length histogram") 
+    SUBCASE("Length histogram") 
     {
-        int reps = 10;
+        int reps = 50;
         std::vector<double> counts(maxLength+1, 0);
 
         for (int i = 0; i < reps; ++i) {
@@ -262,22 +276,27 @@ TEST_CASE("PTC2", "[implementation]")
         }
     }
 
-    SECTION("Shape histogram") 
+    SUBCASE("Shape histogram") 
     {
         int reps = 50;
         std::vector<double> counts;
 
+        double avgShape = 0.0;
         for (int i = 0; i < reps; ++i) {
             std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
             auto trees = GenerateTrees(random, ptc, lengths);
             std::vector<size_t> shapes(trees.size());
             std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t>{}, [](const auto& node) { return node.Length+1; }); });
+            avgShape +=  std::reduce(shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
             auto cnt = CalculateHistogram(shapes);
             if (counts.size() < cnt.size()) { counts.resize(cnt.size()); }
             for (size_t j = 0; j < cnt.size(); ++j) {
                 counts[j] += cnt[j];
             }
         }
+
+        avgShape /= reps; 
+        fmt::print("Average shape: {}\n", avgShape);
 
         fmt::print("Shape histogram: \n");
         for (size_t i = 1; i < counts.size(); ++i) {
