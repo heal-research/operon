@@ -46,10 +46,8 @@ namespace RandomGenerator {
         static inline constexpr uint64_t(min)() { return result_type { 0 }; }
         static inline constexpr uint64_t(max)() { return std::numeric_limits<result_type>::max(); }
 
-        Sfc64()
-            : Sfc64(UINT64_C(0xd3b45fd780a1b6a3))
-        {
-        }
+        Sfc64(Sfc64 const&) = delete;
+        Sfc64& operator=(Sfc64 const&) = delete;
 
         explicit Sfc64(uint64_t seed) noexcept
             : mA(seed)

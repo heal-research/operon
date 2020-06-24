@@ -17,16 +17,16 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include <execution>
 #include <doctest/doctest.h>
+#include <execution>
 
 #include "core/common.hpp"
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "core/grammar.hpp"
 
-#include "operators/creator.hpp"
 #include "nanobench.h"
+#include "operators/creator.hpp"
 
 namespace Operon {
 namespace Test {
@@ -36,7 +36,7 @@ namespace Test {
         size_t maxLength = 100;
         size_t maxDepth = 1000;
 
-        thread_local Operon::Random rd; 
+        Operon::Random rd(std::random_device {}());
         auto ds = Dataset("../data/Poly-10.csv", true);
 
         auto target = "Y";
@@ -52,27 +52,29 @@ namespace Test {
         grammar.SetConfig(Grammar::Arithmetic);
 
         auto btc = BalancedTreeCreator { grammar, inputs };
-        auto utc = UniformTreeCreator{ grammar, inputs };
-        auto ptc = ProbabilisticTreeCreator{ grammar, inputs };
+        auto utc = UniformTreeCreator { grammar, inputs };
+        auto ptc = ProbabilisticTreeCreator { grammar, inputs };
 
         ankerl::nanobench::Bench b;
         b.performanceCounters(true);
 
-        SUBCASE("BTC vs PTC") 
+        SUBCASE("BTC vs PTC")
         {
             b.batch(n).run("BTC", [&]() { std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); }); });
             b.batch(n).run("PTC", [&]() { std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); }); });
-            b.minEpochIterations(1000).batch(n).run("BTC (parallel)", [&]() { std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); }); });
-            b.minEpochIterations(1000).batch(n).run("PTC (parallel)", [&]() { std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); }); });
+            //b.minEpochIterations(1000).batch(n).run("BTC (parallel)", [&]() { std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); }); });
+            //b.minEpochIterations(1000).batch(n).run("PTC (parallel)", [&]() { std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); }); });
         }
-        SUBCASE("BTC") {
+        SUBCASE("BTC")
+        {
             for (size_t i = 1; i <= maxLength; ++i) {
                 b.complexityN(i).run("BTC", [&]() { std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, maxDepth); }); });
             }
             std::cout << "BTC complexity: " << b.complexityBigO() << std::endl;
         }
 
-        SUBCASE("PTC") {
+        SUBCASE("PTC")
+        {
             for (size_t i = 1; i <= maxLength; ++i) {
                 b.complexityN(i).run("PTC", [&]() { std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, i, maxDepth); }); });
             }
@@ -81,4 +83,3 @@ namespace Test {
     }
 } // namespace Test
 } // namespace Operon
-
