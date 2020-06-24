@@ -37,7 +37,7 @@ TEST_CASE("Hashing performance") {
     size_t maxLength = 100;
     size_t maxDepth = 1000;
 
-    auto rd = Operon::Random();
+    Operon::Random rd(std::random_device{}()); 
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";

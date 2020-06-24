@@ -5,7 +5,7 @@
  * Operon - Large Scale Genetic Programming Framework
  *
  * Licensed under the ISC License <https://opensource.org/licenses/ISC> 
- * Copyright (C) 2019 Bogdan Burlacu 
+ * Copyright (C) 2020 Bogdan Burlacu 
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -103,6 +103,9 @@ namespace RandomGenerator {
                 (*this)();
             }
         }
+
+        JsfRand(JsfRand const&) = delete;
+        JsfRand& operator=(JsfRand const&) = delete;
 
         inline rand_t<N> operator()() noexcept
         {

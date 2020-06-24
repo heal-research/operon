@@ -49,6 +49,8 @@ namespace Test {
         ParallelUnsequenced
     };
 
+    namespace nb = ankerl::nanobench;
+
     // used by some Langdon & Banzhaf papers as benchmark for measuring GPops/s
     TEST_CASE("Evaluation performance")
     {
@@ -56,7 +58,7 @@ namespace Test {
         size_t maxLength = 100;
         size_t maxDepth = 1000;
 
-        auto rd = Operon::Random();
+        Operon::Random rd(std::random_device{}()); 
         auto ds = Dataset("../data/Friedman-I.csv", true);
 
         auto target = "Y";
@@ -77,11 +79,11 @@ namespace Test {
 
         auto evaluate = [&](auto& tree) {
             auto estimated = Evaluate<Operon::Scalar>(tree, ds, range);
-            ankerl::nanobench::doNotOptimizeAway(estimated.size());
+            nb::doNotOptimizeAway(estimated.size());
         };
 
-        ankerl::nanobench::Bench b;
-        b.title("Evaluation speed").relative(true).performanceCounters(true).minEpochIterations(10);
+        nb::Bench b;
+        b.title("evaluation | grammar").relative(true).performanceCounters(false).minEpochIterations(10);
 
         auto test = [&](GrammarConfig cfg, ExecutionPolicy pol, const std::string& name) {  
             grammar.SetConfig(cfg);
@@ -109,15 +111,15 @@ namespace Test {
 
         // single-thread
         test(Grammar::Arithmetic, ExecutionPolicy::Unsequenced, "unseq : arithmetic");
-        //test(Grammar::Arithmetic | NodeType::Exp, ExecutionPolicy::Unsequenced, "unseq : arithmetic + exp");
-        //test(Grammar::Arithmetic | NodeType::Log, ExecutionPolicy::Unsequenced, "unseq : arithmetic + log");
-        //test(Grammar::Arithmetic | NodeType::Sin, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sin");
-        //test(Grammar::Arithmetic | NodeType::Cos, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cos");
-        //test(Grammar::Arithmetic | NodeType::Tan, ExecutionPolicy::Unsequenced, "unseq : arithmetic + tan");
-        //test(Grammar::Arithmetic | NodeType::Sqrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sqrt");
-        //test(Grammar::Arithmetic | NodeType::Cbrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cbrt");
-        //test(Grammar::Arithmetic | NodeType::Exp | NodeType::Log, ExecutionPolicy::Unsequenced, "unseq : arithmetic + exp + log");
-        //test(Grammar::Arithmetic | NodeType::Sin | NodeType::Cos, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sin + cos");
+        test(Grammar::Arithmetic | NodeType::Exp, ExecutionPolicy::Unsequenced, "unseq : arithmetic + exp");
+        test(Grammar::Arithmetic | NodeType::Log, ExecutionPolicy::Unsequenced, "unseq : arithmetic + log");
+        test(Grammar::Arithmetic | NodeType::Sin, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sin");
+        test(Grammar::Arithmetic | NodeType::Cos, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cos");
+        test(Grammar::Arithmetic | NodeType::Tan, ExecutionPolicy::Unsequenced, "unseq : arithmetic + tan");
+        test(Grammar::Arithmetic | NodeType::Sqrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sqrt");
+        test(Grammar::Arithmetic | NodeType::Cbrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cbrt");
+        test(Grammar::Arithmetic | NodeType::Exp | NodeType::Log, ExecutionPolicy::Unsequenced, "unseq : arithmetic + exp + log");
+        test(Grammar::Arithmetic | NodeType::Sin | NodeType::Cos, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sin + cos");
 
         //// multi-thread
         //test(Grammar::Arithmetic, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic");
