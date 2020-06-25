@@ -66,7 +66,7 @@ struct OperatorBase {
 };
 
 // the creator builds a new tree using the existing grammar and allowed inputs
-struct CreatorBase : public OperatorBase<Tree, size_t, size_t> {
+struct CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
     public:
         CreatorBase(const Grammar& grammar, const gsl::span<const Variable> variables)
         : grammar_(grammar)

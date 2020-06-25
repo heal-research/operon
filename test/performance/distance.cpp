@@ -54,7 +54,7 @@ TEST_CASE("Intersection performance")
 
     std::vector<Tree> trees(n);
     auto btc = BalancedTreeCreator { grammar, inputs };
-    std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); });
+    std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), 0, maxDepth); });
 
     std::vector<Operon::Distance::HashVector> hashesStrict(trees.size());
     std::vector<Operon::Distance::HashVector> hashesStruct(trees.size());

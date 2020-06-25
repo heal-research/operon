@@ -30,6 +30,7 @@ public:
     Initializer(const TCreator& creator, TDistribution& dist)
         : creator_(creator)
         , dist_(dist)
+        , minDepth_(0)
         , maxDepth_(1000)
     {
     }
@@ -37,8 +38,11 @@ public:
     Tree operator()(Operon::Random& random) const override
     {
         auto targetLen = std::max(1ul, static_cast<size_t>(std::round(dist_(random))));
-        return creator_(random, targetLen, maxDepth_);
+        return creator_(random, targetLen, minDepth_, maxDepth_);
     }
+
+    void MinDepth(size_t minDepth) { minDepth_ = minDepth; }
+    size_t MinDepth() const { return minDepth_; }
 
     void MaxDepth(size_t maxDepth) { maxDepth_ = maxDepth; }
     size_t MaxDepth() const { return maxDepth_; }
@@ -48,6 +52,7 @@ public:
 private:
     std::reference_wrapper<const TCreator> creator_;
     mutable TDistribution dist_;
+    size_t minDepth_;
     size_t maxDepth_;
 };
 }
