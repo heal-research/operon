@@ -88,7 +88,6 @@ public:
         auto& generator    = GetGenerator();
         auto& reinserter   = GetReinserter();
         auto& problem      = GetProblem();
-        auto& grammar      = problem.GetGrammar();
         auto targetValues  = problem.TargetValues();
         // easier to work with indices
         std::vector<gsl::index> indices(std::max(config.PopulationSize, config.PoolSize));
@@ -96,8 +95,6 @@ public:
         // random seeds for each thread
         std::vector<Operon::Random::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
-
-        const auto& inputs = problem.InputVariables();
 
         std::vector<size_t> treeLengths(config.PopulationSize);
         std::uniform_int_distribution<size_t> treeLengthDistribution(1, 50);
