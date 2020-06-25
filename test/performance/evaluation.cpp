@@ -87,7 +87,7 @@ namespace Test {
 
         auto test = [&](GrammarConfig cfg, ExecutionPolicy pol, const std::string& name) {  
             grammar.SetConfig(cfg);
-            std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), maxDepth); });
+            std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
             auto totalOps = TotalNodes(trees) * range.Size();
 
             b.batch(totalOps);

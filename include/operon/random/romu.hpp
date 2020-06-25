@@ -29,12 +29,12 @@
 namespace Operon {
 namespace RandomGenerator {
     namespace detail {
-        static constexpr uint64_t rotl(uint64_t x, unsigned k) noexcept
+        static inline constexpr uint64_t rotl(uint64_t x, unsigned k) noexcept
         {
             return (x << k) | (x >> (64U - k));
         }
 
-        static constexpr uint64_t splitMix64(uint64_t& state) noexcept
+        static inline constexpr uint64_t splitMix64(uint64_t& state) noexcept
         {
             uint64_t z = (state += UINT64_C(0x9e3779b97f4a7c15));
             z = (z ^ (z >> 30U)) * UINT64_C(0xbf58476d1ce4e5b9);

@@ -76,7 +76,7 @@ std::vector<Tree> GenerateTrees(Random& random, CreatorBase& creator, std::vecto
     std::vector<Tree> trees;
     trees.reserve(lengths.size());
 
-    std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t len) { return creator(random, len, maxDepth); }); 
+    std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t len) { return creator(random, len, 0, maxDepth); }); 
     return trees;
 }
 
@@ -106,6 +106,82 @@ std::vector<size_t> CalculateHistogram(const std::vector<size_t>& values)
     }
     
     return counts;
+}
+
+TEST_CASE("GROW") 
+{
+    auto target = "Y";
+    auto ds = Dataset("../data/Poly-10.csv", true);
+    auto variables = ds.Variables();
+    std::vector<Variable> inputs;
+    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
+    size_t minDepth = 1,
+           maxDepth = 10;
+
+    size_t n = 10000;
+
+    Grammar grammar;
+    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    grammar.Enable(NodeType::Add, 1);
+    grammar.Enable(NodeType::Mul, 1);
+    grammar.Enable(NodeType::Sub, 1);
+    grammar.Enable(NodeType::Div, 1);
+    grammar.Enable(NodeType::Exp, 1);
+    grammar.Enable(NodeType::Log, 1);
+
+    GrowTreeCreator grow{ grammar, inputs };
+
+    Operon::Random random(std::random_device {}());
+
+    SUBCASE("Symbol frequencies")
+    {
+        std::vector<Tree> trees(n);
+        std::generate(trees.begin(), trees.end(), [&]() { return grow(random, 0, minDepth, maxDepth); });
+        auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.Length(); });
+        fmt::print("Symbol frequencies: \n");
+        auto symbolFrequencies = CalculateSymbolFrequencies(trees);
+
+        for (size_t i = 0; i < symbolFrequencies.size(); ++i) {
+            auto node = Node(static_cast<NodeType>(1u << i));
+            if (!grammar.IsEnabled(node.Type))
+                continue;
+            fmt::print("{}\t{:.3f} %\n", node.Name(), symbolFrequencies[i] / totalLength);
+        }
+    }
+
+    SUBCASE("Simple tree") 
+    {
+        auto tree = grow(random, 0, minDepth, maxDepth);
+        fmt::print("{}\n", TreeFormatter::Format(tree, ds));
+    }
+
+    SUBCASE("Length vs depth") 
+    {
+        int reps = 50;
+        std::vector<size_t> counts(maxDepth+1, 0);
+        std::vector<double> lengths(maxDepth+1, 0); 
+
+        for (int i = 0; i < reps; ++i) {
+            std::vector<Tree> trees(n);
+            std::generate(trees.begin(), trees.end(), [&]() { return grow(random, 0, minDepth, maxDepth); });
+
+            for(const auto& tree : trees) {
+                counts[tree.Depth()] += 1;
+                lengths[tree.Depth()] += tree.Length();
+            }
+        }
+
+        for (size_t i = 0; i < counts.size(); ++i) {
+            if (counts[i] > 0) {
+                lengths[i] /= counts[i];
+            }
+        }
+
+        fmt::print("Length vs depth: \n");
+        for (size_t i = 1; i < counts.size(); ++i) {
+            fmt::print("{}\t{}\n", i, lengths[i]);
+        }
+    }
 }
 
 TEST_CASE("BTC")
@@ -233,7 +309,7 @@ TEST_CASE("PTC2")
 
     SUBCASE("Simple tree") 
     {
-        auto tree = ptc(random, 9, maxDepth);
+        auto tree = ptc(random, 9, 0, maxDepth);
         fmt::print("{}\n", TreeFormatter::Format(tree, ds));
     }
 

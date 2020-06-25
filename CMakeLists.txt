@@ -148,6 +148,7 @@ add_library(
     src/operators/crossover.cpp
     src/operators/mutation.cpp
     src/operators/creator/balanced.cpp
+    src/operators/creator/koza.cpp
     src/operators/creator/ptc2.cpp
     src/stat/meanvariance.cpp
     src/stat/pearson.cpp
@@ -245,6 +246,8 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/performance/evolution.cpp
         test/performance/hashing.cpp
         test/performance/distance.cpp
+        test/performance/math.cpp
+        test/performance/random.cpp
         #test/implementation/evaluation.cpp
         #test/implementation/details.cpp
         #test/implementation/hashing.cpp
