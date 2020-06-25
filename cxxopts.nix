@@ -1,21 +1,23 @@
-with import <nixpkgs> {};
+with import <nixos-unstable> {};
 
-stdenv.mkDerivation rec {
-    pname = "cxxopts";
-    version = "2.2.0";
+gcc10Stdenv.mkDerivation rec {
+  pname = "cxxopts";
+  version = "2.2.0";
 
-    src = fetchurl {
-        url = "https://github.com/jarro2783/cxxopts/archive/v2.2.0.tar.gz";
-        sha256 = "447dbfc2361fce9742c5d1c9cfb25731c977b405f9085a738fbd608626da8a4d";
-    };
+  src = fetchFromGitHub {
+    owner = "jarro2783";
+    repo = "cxxopts";
+    rev = "v${version}";
+    sha256 = "1lz4v7jwp870ddrrks6kwh62c8hqc2pfdcpwshlmcf758li8ajz6";
+  };
 
-    buildinputs = [ stdenv ];
-    nativeBuildInputs = [ cmake ];
+  buildinputs = [ gcc10Stdenv ];
+  nativeBuildInputs = [ cmake ];
 
-    meta = with stdenv.lib; {
-        description = "Lightweight C++ command line option parser";
-        homepage = https://github.com/jarro2783/cxxopts;
-        changelog = "";
-        license = licenses.mit;
-    };
+  meta = with gcc10Stdenv.lib; {
+    description = "Lightweight C++ command line option parser";
+    homepage = https://github.com/jarro2783/cxxopts;
+    changelog = "";
+    license = licenses.mit;
+  };
 }
