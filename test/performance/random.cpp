@@ -21,7 +21,7 @@ void bench(ankerl::nanobench::Bench* bench, char const* name)
 
 TEST_CASE("Random number generators") {
     ankerl::nanobench::Bench b;
-    b.title("Random Number Generators")
+    b.title("rng name")
         .unit("uint64_t")
         .warmup(100)
         .relative(true);

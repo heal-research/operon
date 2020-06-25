@@ -56,7 +56,7 @@ TEST_CASE("Hashing performance") {
 
     ankerl::nanobench::Bench b;
     b.relative(true).performanceCounters(true);
-    std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); });
+    std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), 0, maxDepth); });
 
     auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
 
@@ -75,7 +75,7 @@ TEST_CASE("Hashing performance") {
         b.relative(true).performanceCounters(true);
 
         for (size_t i = 1; i <= maxLength; ++i) {
-            std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, maxDepth); });
+            std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); });
             totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
             b.complexityN(i).batch(totalNodes).run("strict", [&]() { 
                 ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Strict); }));
@@ -90,7 +90,7 @@ TEST_CASE("Hashing performance") {
         b.relative(true).performanceCounters(true);
 
         for (size_t i = 1; i <= maxLength; ++i) {
-            std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, maxDepth); });
+            std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); });
             totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
             b.complexityN(i).batch(totalNodes).run("relaxed", [&]() { 
                 ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Relaxed); }));

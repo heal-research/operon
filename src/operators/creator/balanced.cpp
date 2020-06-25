@@ -20,7 +20,7 @@
 #include "operators/creator/balanced.hpp"
 
 namespace Operon {
-    Tree BalancedTreeCreator::operator()(Operon::Random& random, size_t targetLen, size_t maxDepth) const 
+    Tree BalancedTreeCreator::operator()(Operon::Random& random, size_t targetLen, size_t, size_t maxDepth) const 
     {
         assert(targetLen > 0);
         const auto& grammar = grammar_.get();

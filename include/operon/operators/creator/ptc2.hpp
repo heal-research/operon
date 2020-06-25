@@ -31,14 +31,14 @@
 
 namespace Operon {
 
-class ProbabilisticTreeCreator : public CreatorBase {
+class ProbabilisticTreeCreator final : public CreatorBase {
 public:
 
     ProbabilisticTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables)
         : CreatorBase(grammar, variables)
     {
     }
-    Tree operator()(Operon::Random& random, size_t targetLen, size_t maxDepth) const override;
+    Tree operator()(Operon::Random& random, size_t targetLen, size_t minDepth, size_t maxDepth) const override; 
 };
 }
 

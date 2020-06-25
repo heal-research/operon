@@ -17,30 +17,24 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef BALANCED_TREE_CREATOR_HPP
-#define BALANCED_TREE_CREATOR_HPP
+#ifndef OPERON_KOZA_CREATOR_HPP
+#define OPERON_KOZA_CREATOR_HPP
 
 #include "core/grammar.hpp"
 #include "core/operator.hpp"
 
 namespace Operon {
 
-// this tree creator expands bread-wise using a "horizon" of open expansion slots
-// at the end the breadth sequence of nodes is converted to a postfix sequence
-// if the depth is not limiting, the target length is guaranteed to be reached
-class BalancedTreeCreator final : public CreatorBase {
-public:
-    using U = std::tuple<Node, size_t, size_t>;
+class GrowTreeCreator final : public CreatorBase {
+    public:
+        GrowTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables)
+            : CreatorBase(grammar, variables) {
 
-    BalancedTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables, double bias = 0.0) 
-        : CreatorBase(grammar, variables)
-        , irregularityBias(bias)
-    {
-    }
+        }
+
     Tree operator()(Operon::Random& random, size_t targetLen, size_t minDepth, size_t maxDepth) const override; 
-
-private:
-    double irregularityBias;
 };
+
 }
+
 #endif
