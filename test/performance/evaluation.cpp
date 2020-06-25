@@ -29,6 +29,7 @@
 #include "nanobench.h"
 
 #include <tbb/global_control.h>
+#include <thread>
 
 namespace Operon {
 namespace Test {
@@ -82,10 +83,8 @@ namespace Test {
             nb::doNotOptimizeAway(estimated.size());
         };
 
-        nb::Bench b;
-        b.title("evaluation | grammar").relative(true).performanceCounters(false).minEpochIterations(10);
 
-        auto test = [&](GrammarConfig cfg, ExecutionPolicy pol, const std::string& name) {  
+        auto test = [&](nb::Bench& b, GrammarConfig cfg, ExecutionPolicy pol, const std::string& name) {  
             grammar.SetConfig(cfg);
             std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
             auto totalOps = TotalNodes(trees) * range.Size();
@@ -109,29 +108,80 @@ namespace Test {
 
         };
 
-        // single-thread
-        test(Grammar::Arithmetic, ExecutionPolicy::Unsequenced, "unseq : arithmetic");
-        test(Grammar::Arithmetic | NodeType::Exp, ExecutionPolicy::Unsequenced, "unseq : arithmetic + exp");
-        test(Grammar::Arithmetic | NodeType::Log, ExecutionPolicy::Unsequenced, "unseq : arithmetic + log");
-        test(Grammar::Arithmetic | NodeType::Sin, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sin");
-        test(Grammar::Arithmetic | NodeType::Cos, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cos");
-        test(Grammar::Arithmetic | NodeType::Tan, ExecutionPolicy::Unsequenced, "unseq : arithmetic + tan");
-        test(Grammar::Arithmetic | NodeType::Sqrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sqrt");
-        test(Grammar::Arithmetic | NodeType::Cbrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cbrt");
-        test(Grammar::Arithmetic | NodeType::Exp | NodeType::Log, ExecutionPolicy::Unsequenced, "unseq : arithmetic + exp + log");
-        test(Grammar::Arithmetic | NodeType::Sin | NodeType::Cos, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sin + cos");
+        SUBCASE("arithmetic") {
+            // single-thread
+            nb::Bench b;
+            b.title("arithmetic").relative(true).performanceCounters(true).minEpochIterations(5);
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
+                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
+                test(b, Grammar::Arithmetic, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            }
+//            test(Grammar::Arithmetic | NodeType::Sqrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sqrt");
+//            test(Grammar::Arithmetic | NodeType::Cbrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cbrt");
+        }
 
-        //// multi-thread
-        //test(Grammar::Arithmetic, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic");
-        //test(Grammar::Arithmetic | NodeType::Exp, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + exp");
-        //test(Grammar::Arithmetic | NodeType::Log, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + log");
-        //test(Grammar::Arithmetic | NodeType::Sin, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + sin");
-        //test(Grammar::Arithmetic | NodeType::Cos, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + cos");
-        //test(Grammar::Arithmetic | NodeType::Tan, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + tan");
-        //test(Grammar::Arithmetic | NodeType::Sqrt, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + sqrt");
-        //test(Grammar::Arithmetic | NodeType::Cbrt, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + cbrt");
-        //test(Grammar::Arithmetic | NodeType::Exp | NodeType::Log, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + exp + log");
-        //test(Grammar::Arithmetic | NodeType::Sin | NodeType::Cos, ExecutionPolicy::ParallelUnsequenced, "par_unseq : arithmetic + sin + cos");
+        SUBCASE("arithmetic + exp") {
+            nb::Bench b;
+            b.title("arithmetic + exp").relative(true).performanceCounters(true).minEpochIterations(5);
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
+                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
+                test(b, Grammar::Arithmetic | NodeType::Exp, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            }
+        }
+
+        SUBCASE("arithmetic + log") {
+            nb::Bench b;
+            b.title("arithmetic + log").relative(true).performanceCounters(true).minEpochIterations(5);
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
+                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
+                test(b, Grammar::Arithmetic | NodeType::Log, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            }
+        }
+
+        SUBCASE("arithmetic + sin") {
+            nb::Bench b;
+            b.title("arithmetic + sin").relative(true).performanceCounters(true).minEpochIterations(5);
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
+                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
+                test(b, Grammar::Arithmetic | NodeType::Sin, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            }
+        }
+
+        SUBCASE("arithmetic + cos") {
+            nb::Bench b;
+            b.title("arithmetic + cos").relative(true).performanceCounters(true).minEpochIterations(5);
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
+                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
+                test(b, Grammar::Arithmetic | NodeType::Cos, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            }
+        }
+
+        SUBCASE("arithmetic + tan") {
+            nb::Bench b;
+            b.title("arithmetic + tan").relative(true).performanceCounters(true).minEpochIterations(5);
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
+                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
+                test(b, Grammar::Arithmetic | NodeType::Tan, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            }
+        }
+
+        SUBCASE("arithmetic + sqrt") {
+            nb::Bench b;
+            b.title("arithmetic + sqrt").relative(true).performanceCounters(true).minEpochIterations(5);
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
+                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
+                test(b, Grammar::Arithmetic | NodeType::Sqrt, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            }
+        }
+
+        SUBCASE("arithmetic + cbrt") {
+            nb::Bench b;
+            b.title("arithmetic + cbrt").relative(true).performanceCounters(true).minEpochIterations(5);
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
+                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
+                test(b, Grammar::Arithmetic | NodeType::Cbrt, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            }
+        }
     }
 } // namespace Test
 } // namespace Operon
