@@ -215,6 +215,8 @@ int main(int argc, char* argv[])
 
             if (value == "ptc2") {
                 creator.reset(new ProbabilisticTreeCreator(problem.GetGrammar(), problem.InputVariables()));
+            } else if (value == "grow") {
+                creator.reset(new GrowTreeCreator(problem.GetGrammar(), problem.InputVariables()));
             } else {
                 auto tokens = Split(value, ':');
                 double irregularityBias = 0.0;
@@ -233,7 +235,8 @@ int main(int argc, char* argv[])
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         //auto creator             = BalancedTreeCreator { problem.GetGrammar(), problem.InputVariables() };
         auto initializer         = Initializer { *creator, sizeDistribution };
-        initializer.MaxDepth(maxDepth);
+        initializer.MinDepth(2);
+        initializer.MaxDepth(6);
         auto crossover           = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator             = MultiMutation {};
         auto onePoint            = OnePointMutation {};
@@ -400,7 +403,7 @@ int main(int argc, char* argv[])
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", best[idx], r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
-            fmt::print("{:.4f}\t{:.1f}\t{}\t{}\t{}\t", avgQuality, avgLength, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
+            fmt::print("{:.4f}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, 0.0, 0.0, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
             fmt::print("{}\t{}\n", totalMemory, config.Seed); 
 
             //fmt::print("best: {}\n", InfixFormatter::Format(best.Genotype, *dataset, 6));
