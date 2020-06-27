@@ -7,9 +7,12 @@
 #include "core/grammar.hpp"
 #include "algorithms/config.hpp"
 
+#include "operators/creator.hpp"
+#include "operators/generator.hpp"
+
 namespace py = pybind11;
 
-PYBIND11_MODULE(example, m) {
+PYBIND11_MODULE(operon, m) {
     m.doc() = "Operon Python Module";
     m.attr("__version__") = 0.1;
 
@@ -25,6 +28,7 @@ PYBIND11_MODULE(example, m) {
         .def_readwrite("Seed",                 &Operon::GeneticAlgorithmConfig::Seed)
         ;
 
+    // node type
     py::enum_<Operon::NodeType>(m, "NodeType")
         .value("Add", Operon::NodeType::Add)
         .value("Mul", Operon::NodeType::Mul)
@@ -50,6 +54,7 @@ PYBIND11_MODULE(example, m) {
         .def(~py::self)
         ;
 
+    // node
     py::class_<Operon::Node>(m, "Node")
         .def(py::init<Operon::NodeType>())
         .def(py::init<Operon::NodeType, Operon::Hash>())
@@ -73,6 +78,7 @@ PYBIND11_MODULE(example, m) {
         .def(py::self >= py::self)
         ;
 
+    // tree
     py::class_<Operon::Tree>(m, "Tree") 
         .def(py::init<std::initializer_list<Operon::Node>>())
         .def(py::init<std::vector<Operon::Node>>())
@@ -98,6 +104,7 @@ PYBIND11_MODULE(example, m) {
         .def("HashValue", &Operon::Tree::HashValue)
         ;
 
+    // grammar
     py::class_<Operon::Grammar>(m, "Grammar")
         .def("IsEnabled", &Operon::Grammar::IsEnabled)
         .def("Enable", &Operon::Grammar::Enable)
@@ -110,6 +117,7 @@ PYBIND11_MODULE(example, m) {
         .def("SampleRandomSymbol", &Operon::Grammar::SampleRandomSymbol)
         ;
 
+    // dataset
     py::class_<Operon::Dataset>(m, "Dataset")
         .def(py::init<const std::string&, bool>())
         .def(py::init<const Operon::Dataset&>())
@@ -118,9 +126,9 @@ PYBIND11_MODULE(example, m) {
         .def("Cols", &Operon::Dataset::Cols)
         .def("Values", &Operon::Dataset::Values)
         .def("VariableNames", &Operon::Dataset::VariableNames)
-        .def("GetValuesFromString", py::overload_cast<const std::string&>(&Operon::Dataset::GetValues, py::const_))
-        .def("GetValuesFromHash", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetValues, py::const_))
-        .def("GetValuesFromIndex", py::overload_cast<gsl::index>(&Operon::Dataset::GetValues, py::const_))
+        .def("GetValues", py::overload_cast<const std::string&>(&Operon::Dataset::GetValues, py::const_))
+        .def("GetValues", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetValues, py::const_))
+        .def("GetValues", py::overload_cast<gsl::index>(&Operon::Dataset::GetValues, py::const_))
         .def("GetName", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetName, py::const_))
         .def("GetName", py::overload_cast<gsl::index>(&Operon::Dataset::GetName, py::const_))
         .def("GetHashValue", &Operon::Dataset::GetHashValue)
@@ -128,5 +136,21 @@ PYBIND11_MODULE(example, m) {
         .def("Shuffle", &Operon::Dataset::Shuffle)
         .def("Normalize", &Operon::Dataset::Normalize)
         .def("Standardize", &Operon::Dataset::Standardize)
+        ;
+
+    // tree creator 
+    py::class_<Operon::BalancedTreeCreator>(m, "BalancedTreeCreator")
+        .def(py::init<const Operon::Grammar&, const gsl::span<const Operon::Variable>, double>())
+        .def("__call__", &Operon::BalancedTreeCreator::operator())
+        ;
+
+    py::class_<Operon::ProbabilisticTreeCreator>(m, "ProbabilisticTreeCreator")
+        .def(py::init<const Operon::Grammar&, const gsl::span<const Operon::Variable>>())
+        .def("__call__", &Operon::ProbabilisticTreeCreator::operator())
+        ;
+
+    py::class_<Operon::GrowTreeCreator>(m, "GrowTreeCreator")
+        .def(py::init<const Operon::Grammar&, const gsl::span<const Operon::Variable>>())
+        .def("__call__", &Operon::GrowTreeCreator::operator())
         ;
 }
