@@ -116,8 +116,6 @@ namespace Test {
                 tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
                 test(b, Grammar::Arithmetic, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
-//            test(Grammar::Arithmetic | NodeType::Sqrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + sqrt");
-//            test(Grammar::Arithmetic | NodeType::Cbrt, ExecutionPolicy::Unsequenced, "unseq : arithmetic + cbrt");
         }
 
         SUBCASE("arithmetic + exp") {
