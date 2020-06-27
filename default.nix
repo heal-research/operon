@@ -23,6 +23,8 @@ let
     patches = [ ./eigen_include_dir_oldest.patch ];
   });
   ceres_trunk = pkgs.ceres-solver.overrideAttrs (old: rec {
+    CFLAGS = (old.CFLAGS or "") + "-march=znver2 -O3";
+    stdenv = pkgs.gcc10Stdenv;
     buildInputs = [ eigen_trunk pkgs.glog ];
     src = pkgs.fetchgit {
       url             = "https://github.com/ceres-solver/ceres-solver.git";
@@ -49,7 +51,7 @@ pkgs.gcc10Stdenv.mkDerivation {
         gdb
         valgrind
         linuxPackages.perf
-        tracy
+        #tracy
         #bloaty
         #heaptrack
         #hotspot

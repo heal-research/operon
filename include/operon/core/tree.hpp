@@ -149,10 +149,10 @@ public:
     const std::vector<Node>& Nodes() const { return nodes; }
     inline size_t CoefficientsCount() const
     {
-        return std::count_if(nodes.begin(), nodes.end(), [](const Node& s) { return s.IsConstant() || s.IsVariable(); });
+        return std::count_if(nodes.begin(), nodes.end(), [](const Node& s) { return s.IsLeaf(); });
     }
 
-    void SetCoefficients(const std::vector<double>& coefficients);
+    void SetCoefficients(const gsl::span<const double> coefficients);
     std::vector<double> GetCoefficients() const;
 
     inline Node& operator[](gsl::index i) noexcept { return nodes[i]; }
