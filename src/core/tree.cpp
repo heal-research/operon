@@ -160,7 +160,7 @@ std::vector<double> Tree::GetCoefficients() const
     return coefficients;
 }
 
-void Tree::SetCoefficients(const std::vector<double>& coefficients)
+void Tree::SetCoefficients(const gsl::span<const double> coefficients)
 {
     size_t idx = 0;
     for (auto& s : nodes) {
