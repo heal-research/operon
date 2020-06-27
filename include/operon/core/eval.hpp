@@ -36,31 +36,6 @@ namespace Operon {
 constexpr gsl::index BATCHSIZE = 64;
 
 template <typename T>
-inline std::pair<T, T> MinMax(gsl::span<T> values) noexcept
-{
-    // get first finite (not NaN, not infinity) value
-    auto min = Operon::Numeric::Max<T>();
-    auto max = Operon::Numeric::Min<T>();
-
-    for (auto v : values) {
-        if (!ceres::IsFinite(v)) { continue; }
-        if (min > v) { min = v; }
-        if (max < v) { max = v; }
-    }
-    return { min, max };
-}
-
-template <typename T>
-inline void LimitToRange(gsl::span<T> values, T min, T max) noexcept
-{
-    auto mid = (min + max) / 2.0;
-    for (std::size_t i = 0; i < values.size(); ++i) {
-        auto v = values[i];
-        values[i] = ceres::IsFinite(v) ? std::clamp(v, min, max) : mid;
-    }
-}
-
-template <typename T>
 Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
 {
     Operon::Vector<T> result(range.Size());
@@ -71,21 +46,25 @@ Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range
 template <typename T>
 void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result) noexcept
 {
-    auto& nodes = tree.Nodes();
+    const auto& nodes = tree.Nodes();
     Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
     Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1); 
 
-    auto indices = std::vector<gsl::index>(nodes.size());
+    Operon::Vector<gsl::index> indices(nodes.size());
+    Operon::Vector<T> params(nodes.size());
     gsl::index idx = 0;
+
+    bool p = parameters == nullptr;
 
     bool treeContainsNonlinearSymbols = false;
     for (size_t i = 0; i < nodes.size(); ++i) {
         if (nodes[i].IsConstant()) {
-            auto v = parameters == nullptr ? T(nodes[i].Value) : parameters[idx];
+            auto v = p ? T(nodes[i].Value) : parameters[idx];
             m.col(i).setConstant(v);
             idx++;
         } else if (nodes[i].IsVariable()) {
             indices[i] = dataset.GetIndex(nodes[i].HashValue);
+            params[i] = p ? T(nodes[i].Value) : parameters[idx]; 
             idx++;
         }
         treeContainsNonlinearSymbols |= static_cast<bool>(nodes[i].Type & ~Grammar::Arithmetic);
@@ -97,12 +76,13 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 
     gsl::index numRows = range.Size();
     for (gsl::index row = 0; row < numRows; row += BATCHSIZE) {
-        idx = 0;
         auto remainingRows = std::min(BATCHSIZE, numRows - row);
+
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto r = m.col(i);
+            auto const& s = nodes[i]; 
 
-            switch (auto const& s = nodes[i]; s.Type) {
+            switch (s.Type) {
             case NodeType::Add: {
                 auto c1 = i - 1; // first child index
                 auto c2 = c1 - 1 - nodes[c1].Length;
@@ -128,12 +108,10 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                 break;
             }
             case NodeType::Constant: {
-                idx++;
                 break;
             }
             case NodeType::Variable: {
-                auto w = parameters == nullptr ? T(s.Value) : parameters[idx++];
-                r.segment(0, remainingRows) = w * values.col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
+                r.segment(0, remainingRows) = params[i] * values.col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
                 break;
             }
             default: {
