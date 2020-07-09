@@ -34,7 +34,7 @@ namespace Test {
 
 TEST_CASE("Hashing performance") {
     size_t n = 1000;
-    size_t maxLength = 100;
+    size_t maxLength = 200;
     size_t maxDepth = 1000;
 
     Operon::Random rd(std::random_device{}()); 
@@ -55,17 +55,17 @@ TEST_CASE("Hashing performance") {
     auto btc = BalancedTreeCreator { grammar, inputs };
 
     ankerl::nanobench::Bench b;
-    b.relative(true).performanceCounters(true);
+    b.relative(true).performanceCounters(true).minEpochIterations(10);
     std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), 0, maxDepth); });
 
     auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
 
     SUBCASE("hashing performance") {
-        b.batch(totalNodes).run("strict hashing", [&]() { 
+        b.batch(totalNodes).run("xxh strict", [&]() { 
             std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Strict); });
         });
 
-        b.batch(totalNodes).run("relaxed hashing", [&]() { 
+        b.batch(totalNodes).run("xxh relaxed", [&]() { 
             std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Relaxed); });
         });
     }

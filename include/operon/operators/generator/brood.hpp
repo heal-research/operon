@@ -23,32 +23,25 @@
 #include "core/operator.hpp"
 
 namespace Operon {
-template <typename TEvaluator, typename TCrossover, typename TMutator, typename TFemaleSelector, typename TMaleSelector = TFemaleSelector>
-class BroodOffspringGenerator : public OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector> {
+class BroodOffspringGenerator : public OffspringGeneratorBase {
 public:
-    explicit BroodOffspringGenerator(TEvaluator& eval, TCrossover& cx, TMutator& mut, TFemaleSelector& femSel, TMaleSelector& maleSel)
-        : OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>(eval, cx, mut, femSel, maleSel)
+    explicit BroodOffspringGenerator(EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel)
+        : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel)
     {
     }
 
-    using T = typename TFemaleSelector::SelectableType;
-    std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
+    std::optional<Individual> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
         std::uniform_real_distribution<double> uniformReal;
 
-        constexpr gsl::index Idx = TFemaleSelector::SelectableIndex;
         auto population = this->FemaleSelector().Population();
-
-        using T = typename TFemaleSelector::SelectableType;
-        using U = typename TMaleSelector::SelectableType;
-        static_assert(std::is_same_v<T, U>);
 
         auto first = this->femaleSelector(random);
         auto second = this->maleSelector(random);
 
         // assuming the basic generator never fails
         auto makeOffspring = [&]() {
-            T child;
+            Individual child(1);
 
             bool doCrossover = std::bernoulli_distribution(pCrossover)(random);
             bool doMutation = std::bernoulli_distribution(pMutation)(random);
@@ -65,7 +58,7 @@ public:
 
             auto f = this->evaluator(random, child);
             if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
-            child[Idx] = f;
+            child[0] = f;
             return child;
         };
 
@@ -73,7 +66,7 @@ public:
 
         for (size_t i = 1; i < broodSize; ++i) {
             auto other = makeOffspring();
-            if (other[Idx] < best[Idx]) {
+            if (other[0] < best[0]) {
                 std::swap(best, other);
             }
         }

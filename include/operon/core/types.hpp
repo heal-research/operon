@@ -9,8 +9,7 @@
 #include <Eigen/Core>
 
 namespace Operon {
-    constexpr std::uint8_t HashBits = 64; // can be 32 or 64
-    using Hash                 = xxh::hash_t<HashBits>;
+    using Hash                 = uint64_t;
     using Random               = RandomGenerator::RomuTrio;
     //using Random               = RandomGenerator::Sfc64;
 #ifdef USE_SINGLE_PRECISION

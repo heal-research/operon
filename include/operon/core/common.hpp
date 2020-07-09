@@ -25,6 +25,7 @@
 #include "random/jsf.hpp"
 #include "random/sfc64.hpp"
 #include "xxhash/xxhash.hpp"
+#include "aquahash/aquahash.h"
 #include "types.hpp"
 #include <random>
 

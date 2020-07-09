@@ -23,16 +23,14 @@
 #include "core/operator.hpp"
 
 namespace Operon {
-template <typename TEvaluator, typename TCrossover, typename TMutator, typename TFemaleSelector, typename TMaleSelector = TFemaleSelector>
-class OffspringSelectionGenerator : public OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector> {
+class OffspringSelectionGenerator : public OffspringGeneratorBase {
 public:
-    explicit OffspringSelectionGenerator(TEvaluator& eval, TCrossover& cx, TMutator& mut, TFemaleSelector& femSel, TMaleSelector &maleSel)
-        : OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>(eval, cx, mut, femSel, maleSel)
+    explicit OffspringSelectionGenerator(EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel)
+        : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel)
     {
     }
 
-    using T = typename TFemaleSelector::SelectableType;
-    std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
+    std::optional<Individual> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
         std::uniform_real_distribution<double> uniformReal;
         bool doCrossover = uniformReal(random) < pCrossover;
@@ -41,19 +39,18 @@ public:
         if (!(doCrossover || doMutation))
             return std::nullopt;
 
-        constexpr gsl::index Idx = TFemaleSelector::SelectableIndex;
         auto population = this->FemaleSelector().Population();
 
         auto first = this->femaleSelector(random);
-        auto fit = population[first][Idx];
+        auto fit = population[first][0];
 
-        typename TFemaleSelector::SelectableType child;
+        Individual child(1);
 
         if (doCrossover) {
             auto second = this->maleSelector(random);
             child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
 
-            fit = std::min(fit, population[second][Idx]);
+            fit = std::min(fit, population[second][0]);
         }
 
         if (doMutation) {
@@ -65,7 +62,7 @@ public:
         auto f = this->evaluator(random, child);
 
         if (std::isfinite(f) && f < fit) {
-            child[Idx] = this->evaluator(random, child);
+            child[0] = this->evaluator(random, child);
             return std::make_optional(child);
         }
         return std::nullopt;
@@ -74,9 +71,9 @@ public:
     void MaxSelectionPressure(size_t value) { maxSelectionPressure = value; }
     size_t MaxSelectionPressure() const { return maxSelectionPressure; }
 
-    void Prepare(const gsl::span<const T> pop) const override
+    void Prepare(const gsl::span<const Individual> pop) const override
     {
-        OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>::Prepare(pop);
+        OffspringGeneratorBase::Prepare(pop);
         lastEvaluations = this->evaluator.get().FitnessEvaluations();
     }
 
@@ -90,7 +87,7 @@ public:
 
     bool Terminate() const override
     {
-        return OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>::Terminate() || SelectionPressure() > maxSelectionPressure;
+        return OffspringGeneratorBase::Terminate() || SelectionPressure() > maxSelectionPressure;
     };
 
 private:

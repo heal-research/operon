@@ -29,16 +29,15 @@
 #include "stat/pearson.hpp"
 
 namespace Operon {
-template <typename T>
-class NormalizedMeanSquaredErrorEvaluator : public EvaluatorBase<T> {
+class NormalizedMeanSquaredErrorEvaluator : public EvaluatorBase {
 public:
     NormalizedMeanSquaredErrorEvaluator(Problem& problem)
-        : EvaluatorBase<T>(problem)
+        : EvaluatorBase(problem)
     {
     }
 
     typename NormalizedMeanSquaredErrorEvaluator::ReturnType
-    operator()(Operon::Random&, T& ind) const override
+    operator()(Operon::Random&, Individual& ind) const override
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();
@@ -63,26 +62,20 @@ public:
         }
         return nmse;
     }
-
-    void Prepare(const gsl::span<const T> pop)
-    {
-        this->population = pop;
-    }
 };
 
-template <typename T>
-class RSquaredEvaluator : public EvaluatorBase<T> {
+class RSquaredEvaluator : public EvaluatorBase {
 public:
     static constexpr Operon::Scalar LowerBound = 0.0;
     static constexpr Operon::Scalar UpperBound = 1.0;
 
     RSquaredEvaluator(Problem& problem)
-        : EvaluatorBase<T>(problem)
+        : EvaluatorBase(problem)
     {
     }
 
     typename RSquaredEvaluator::ReturnType
-    operator()(Operon::Random&, T& ind) const
+    operator()(Operon::Random&, Individual& ind) const
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();
@@ -131,11 +124,6 @@ public:
             }
         }
         return UpperBound - r2 + LowerBound;
-    }
-
-    void Prepare(const gsl::span<const T> pop)
-    {
-        this->population = pop;
     }
 };
 }

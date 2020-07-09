@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
         ("seed", "Random number seed", cxxopts::value<Operon::Random::result_type>()->default_value("0"))
         ("generations", "Number of generations", cxxopts::value<size_t>()->default_value("1000"))
         ("evaluations", "Evaluation budget", cxxopts::value<size_t>()->default_value("1000000"))
-        ("iterations", "Local optimization iterations", cxxopts::value<size_t>()->default_value("50"))
+        ("iterations", "Local optimization iterations", cxxopts::value<size_t>()->default_value("0"))
         ("selection-pressure", "Selection pressure", cxxopts::value<size_t>()->default_value("100"))
         ("maxlength", "Maximum length", cxxopts::value<size_t>()->default_value("50"))
         ("maxdepth", "Maximum depth", cxxopts::value<size_t>()->default_value("10"))
@@ -200,11 +200,9 @@ int main(int argc, char* argv[])
         problem.GetGrammar().SetConfig(grammarConfig);
 
         const gsl::index idx { 0 };
-        using Ind                = Individual<1>;
-        using Evaluator          = RSquaredEvaluator<Ind>;
-        using Selector           = SelectorBase<Ind, idx>;
-        using Reinserter         = ReinserterBase<Ind, idx>;
-        using OffspringGenerator = OffspringGeneratorBase<Evaluator, SubtreeCrossover, MultiMutation, Selector, Selector>;
+        using Ind                = Individual;
+        using Reinserter         = ReinserterBase;
+        using OffspringGenerator = OffspringGeneratorBase;
 
         std::unique_ptr<CreatorBase> creator;
 
@@ -236,7 +234,7 @@ int main(int argc, char* argv[])
         //auto creator             = BalancedTreeCreator { problem.GetGrammar(), problem.InputVariables() };
         auto initializer         = Initializer { *creator, sizeDistribution };
         initializer.MinDepth(2);
-        initializer.MaxDepth(6);
+        initializer.MaxDepth(1000);
         auto crossover           = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator             = MultiMutation {};
         auto onePoint            = OnePointMutation {};
@@ -246,15 +244,19 @@ int main(int argc, char* argv[])
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
 
-        Evaluator evaluator(problem);
+        RSquaredEvaluator evaluator(problem);
         evaluator.LocalOptimizationIterations(config.Iterations);
         evaluator.Budget(config.Evaluations);
 
         Expects(problem.TrainingRange().Size() > 0);
 
-        auto parseSelector = [&](const std::string& name) -> Selector* {
+        auto comp = [](gsl::span<const Individual> pop, gsl::index i, gsl::index j) { return pop[i][0] < pop[j][0]; };
+
+        auto parseSelector = [&](const std::string& name) -> SelectorBase* {
             if (result.count(name) == 0) {
-                return new TournamentSelector<Individual<1>, idx> { 5u };
+                auto sel = new TournamentSelector(comp);
+                sel->TournamentSize(5);
+                return sel;
             } else {
                 auto value = result[name].as<std::string>();
                 auto tokens = Split(value, ':');
@@ -266,9 +268,13 @@ int main(int argc, char* argv[])
                             exit(EXIT_FAILURE);
                         }
                     }
-                    return new TournamentSelector<Ind, 0> { tSize };
+                    auto sel = new TournamentSelector(comp);
+                    sel->TournamentSize(tSize);
+                    return sel;
                 } else if (tokens[0] == "proportional") {
-                    return new ProportionalSelector<Ind, 0> {};
+                    auto sel = new ProportionalSelector(comp);
+                    sel->SetObjIndex(0);
+                    return sel;
                 } else if (tokens[0] == "rank") {
                     size_t tSize = 5;
                     if (tokens.size() > 1) {
@@ -277,16 +283,20 @@ int main(int argc, char* argv[])
                             exit(EXIT_FAILURE);
                         }
                     }
-                    return new RankTournamentSelector<Ind, 0> { tSize };
+                    auto sel = new RankTournamentSelector(comp);
+                    sel->TournamentSize(tSize);
+                    return sel;
                 } else if (tokens[0] == "random") {
-                    return new RandomSelector<Ind, 0> {};
+                    return new RandomSelector();
                 }
             }
-            return new TournamentSelector<Individual<1>, idx> { 5u };
+            auto sel = new TournamentSelector(comp);
+            sel->TournamentSize(5);
+            return sel;
         };
 
-        std::unique_ptr<Selector> femaleSelector;
-        std::unique_ptr<Selector> maleSelector;
+        std::unique_ptr<SelectorBase> femaleSelector;
+        std::unique_ptr<SelectorBase> maleSelector;
 
         femaleSelector.reset(parseSelector("female-selector"));
         maleSelector.reset(parseSelector("male-selector"));
@@ -325,13 +335,13 @@ int main(int argc, char* argv[])
         }
         std::unique_ptr<Reinserter> reinserter;
         if (result.count("reinserter") == 0) {
-            reinserter.reset(new ReplaceWorstReinserter<Ind, idx>());
+            reinserter.reset(new ReplaceWorstReinserter());
         } else {
             auto value = result["reinserter"].as<std::string>();
             if (value == "keep-best") {
-                reinserter.reset(new KeepBestReinserter<Ind, idx>());
+                reinserter.reset(new KeepBestReinserter());
             } else if (value == "replace-worst") {
-                reinserter.reset(new ReplaceWorstReinserter<Ind, idx>());
+                reinserter.reset(new ReplaceWorstReinserter());
             }
         }
 
@@ -359,11 +369,11 @@ int main(int argc, char* argv[])
 
         // some boilerplate for reporting results
         auto getBest = [&](const gsl::span<const Ind> pop) -> Ind {
-            auto [minElem, maxElem] = std::minmax_element(pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return lhs.Fitness[idx] < rhs.Fitness[idx]; });
+            auto minElem = std::min_element(pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return lhs.Fitness[idx] < rhs.Fitness[idx]; });
             return *minElem;
         };
 
-        Ind best;
+        Ind best(1);
 
         auto report = [&]() {
             auto pop = gp.Parents();
