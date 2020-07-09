@@ -44,14 +44,6 @@ int main(int, char**) {
     Problem problem(ds, ds.Variables(), target, trainingRange, testRange);
     problem.GetGrammar().SetConfig(Grammar::Arithmetic);
 
-    using Ind        = Individual<1>; // an individual holding one fitness value
-    using Evaluator  = RSquaredEvaluator<Ind>;
-    using Selector   = TournamentSelector<Ind, 0>;
-    using Reinserter = ReplaceWorstReinserter<Ind, 0>;
-    using Crossover  = SubtreeCrossover;
-    using Mutation   = MultiMutation;
-    using Generator  = BasicOffspringGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
-
     // set up the solution creator 
     size_t maxTreeDepth  = 10;
     size_t maxTreeLength = 50;
@@ -72,13 +64,18 @@ int main(int, char**) {
     mutation.Add(changeFunc, 1.0);
 
     // set up remaining operators
-    Evaluator evaluator(problem);
+    RSquaredEvaluator evaluator(problem);
     evaluator.LocalOptimizationIterations(config.Iterations);
     evaluator.Budget(config.Evaluations);
 
-    Selector selector(/* tournament size */ 5);
-    Reinserter reinserter;
-    Generator generator(evaluator, crossover, mutation, selector, selector);
+    auto comp = [](gsl::span<const Individual> pop, gsl::index i, gsl::index j) { 
+        return pop[i][0] < pop[j][0]; 
+    };
+    TournamentSelector selector(comp);
+    selector.TournamentSize(5); 
+
+    ReplaceWorstReinserter reinserter;
+    BasicOffspringGenerator generator(evaluator, crossover, mutation, selector, selector);
 
     // set up a genetic programming algorithm
     GeneticProgrammingAlgorithm gp(problem, config, initializer, generator, reinserter); 
