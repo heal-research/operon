@@ -29,7 +29,7 @@ namespace Distance {
             return _mm256_is_zero(_mm256_or_si256(_mm256_or_si256(r0, r1), _mm256_or_si256(r2, r3)));
         }
 
-        static size_t CountIntersectSIMD(HashVector const& lhs, HashVector const& rhs) noexcept
+        static size_t CountIntersect(HashVector const& lhs, HashVector const& rhs) noexcept
         {
             size_t count = 0;
             size_t i = 0;
@@ -74,35 +74,9 @@ namespace Distance {
             return count;
         }
 
-        static size_t CountIntersect(HashVector const& lhs, HashVector const& rhs) noexcept
-        {
-            size_t count = 0;
-            size_t i = 0;
-            size_t j = 0;
-            size_t ls = lhs.size();
-            size_t rs = rhs.size();
-
-            auto lm = lhs.back();
-            auto rm = rhs.back();
-
-            while (i != ls && j != rs) {
-                auto a = lhs[i];
-                auto b = rhs[j];
-
-                count += a == b;
-                i += a <= b;
-                j += b <= a;
-
-                if (a > rm || b > lm) {
-                    break;
-                }
-            }
-            return count;
-        }
-
         static inline double Jaccard(HashVector const& lhs, HashVector const& rhs) noexcept
         {
-            size_t c = CountIntersectSIMD(lhs, rhs);
+            size_t c = CountIntersect(lhs, rhs);
             double n = lhs.size() + rhs.size() - c;
             return (n - c) / n;
         }
@@ -110,7 +84,7 @@ namespace Distance {
         static inline double SorensenDice(HashVector const& lhs, HashVector const& rhs) noexcept
         {
             double n = lhs.size() + rhs.size();
-            size_t c = CountIntersectSIMD(lhs, rhs);
+            size_t c = CountIntersect(lhs, rhs);
             return 1 - 2 * c / n;
         }
     }

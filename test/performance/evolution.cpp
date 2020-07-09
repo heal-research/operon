@@ -32,14 +32,15 @@ TEST_CASE("Evolution speed") {
     Problem problem(ds, ds.Variables(), target, trainingRange, testRange);
     problem.GetGrammar().SetConfig(Grammar::Arithmetic);
 
-    using Ind        = Individual<1>; // an individual holding one fitness value
-    using Evaluator  = RSquaredEvaluator<Ind>;
-    using Selector   = TournamentSelector<Ind, 0>;
-    using Reinserter = ReplaceWorstReinserter<Ind, 0>;
+
+    using Ind        = Individual; // an individual holding one fitness value
+    using Evaluator  = RSquaredEvaluator;
+    using Selector   = TournamentSelector;
+    using Reinserter = ReplaceWorstReinserter<>;
     using Crossover  = SubtreeCrossover;
     using Mutation   = MultiMutation;
     //using Generator  = BasicOffspringGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
-    using Generator  = OffspringSelectionGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
+    using Generator  = OffspringSelectionGenerator;
 
     // set up the solution creator 
     size_t maxTreeDepth  = 10;
@@ -62,7 +63,8 @@ TEST_CASE("Evolution speed") {
 
     // set up remaining operators
 
-    Selector selector(/* tournament size */ 5);
+    auto comparison = [](gsl::span<const Individual> pop, gsl::index i, gsl::index j) { return pop[i][0] < pop[j][0]; };
+    Selector selector(comparison);
     Reinserter reinserter;
 
     // set up a genetic programming algorithm

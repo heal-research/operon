@@ -15,6 +15,7 @@ find_package(cxxopts)
 find_package(fmt)
 find_package(Eigen3)
 find_package(Ceres QUIET)
+find_package(Threads)
 find_package(TBB)
 find_package(Python3 COMPONENTS Development)
 find_package(pybind11)
@@ -27,6 +28,7 @@ set_package_properties(fmt     PROPERTIES TYPE REQUIRED)
 set_package_properties(Eigen3  PROPERTIES TYPE REQUIRED)
 set_package_properties(Ceres   PROPERTIES TYPE REQUIRED)
 set_package_properties(Tbb     PROPERTIES TYPE REQUIRED)
+set_package_properties(Threads PROPERTIES TYPE REQUIRED)
 
 # unit tests
 set_package_properties(doctest PROPERTIES TYPE OPTIONAL)
@@ -64,7 +66,14 @@ FetchContent_Declare(
     DOWNLOAD_NO_EXTRACT 1
 )
 
-FetchContent_MakeAvailable(xxhash gsl csv nanobench)
+FetchContent_Declare(
+    aquahash
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/aquahash
+    URL https://raw.githubusercontent.com/jandrewrogers/AquaHash/master/aquahash.h
+    DOWNLOAD_NO_EXTRACT 1
+)
+
+FetchContent_MakeAvailable(aquahash xxhash gsl csv nanobench)
 
 set(THIRDPARTY_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
@@ -150,11 +159,13 @@ add_library(
     src/operators/creator/balanced.cpp
     src/operators/creator/koza.cpp
     src/operators/creator/ptc2.cpp
+    src/operators/selector/proportional.cpp
+    src/operators/selector/tournament.cpp
     src/stat/meanvariance.cpp
     src/stat/pearson.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
-target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb)
+target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
 target_include_directories(
     operon
     PRIVATE
@@ -162,8 +173,6 @@ target_include_directories(
     ${THIRDPARTY_INCLUDE_DIRS}
     ${CERES_INCLUDE_DIRS}
 )
-# necessary to prevent -isystem introduced by intel-tbb
-# set_target_properties(operon PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 target_compile_definitions(operon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 #binary for GP algorithm cli version
@@ -180,7 +189,6 @@ target_include_directories(
     ${THIRDPARTY_INCLUDE_DIRS}
     ${CERES_INCLUDE_DIRS}
 )
-#set_target_properties(operon-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 target_compile_definitions(operon-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 add_executable(
@@ -196,7 +204,6 @@ target_include_directories(
     ${THIRDPARTY_INCLUDE_DIRS}
     ${CERES_INCLUDE_DIRS}
 )
-#set_target_properties(operon-example-gp PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
 target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 if(MSVC)
@@ -250,7 +257,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/performance/random.cpp
         #test/implementation/evaluation.cpp
         #test/implementation/details.cpp
-        #test/implementation/hashing.cpp
+        test/implementation/hashing.cpp
         test/implementation/initialization.cpp
         #test/implementation/selection.cpp
         #        test/codegen/irbuilder.cpp
@@ -264,8 +271,6 @@ if(doctest_FOUND AND BUILD_TESTS)
         ${THIRDPARTY_INCLUDE_DIRS}
         ${CERES_INCLUDE_DIRS}
         )
-    #target_compile_definitions(operon-test PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING)
-    #set_target_properties(operon-test PROPERTIES NO_SYSTEM_FROM_IMPORTED TRUE)
     target_compile_definitions(operon-test PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
     target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_link_libraries(operon-test PRIVATE "$<$<CONFIG:Debug>:gcov>")

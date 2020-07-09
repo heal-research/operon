@@ -24,10 +24,10 @@
 
 namespace Operon {
 // wraps a creator and generates trees from a given size distribution
-template <typename TCreator, typename TDistribution>
+template <typename TDistribution>
 struct Initializer : public OperatorBase<Tree> {
 public:
-    Initializer(const TCreator& creator, TDistribution& dist)
+    Initializer(const CreatorBase& creator, TDistribution& dist)
         : creator_(creator)
         , dist_(dist)
         , minDepth_(0)
@@ -47,10 +47,10 @@ public:
     void MaxDepth(size_t maxDepth) { maxDepth_ = maxDepth; }
     size_t MaxDepth() const { return maxDepth_; }
 
-    const TCreator& GetCreator() const { return creator_; }
+    const CreatorBase& GetCreator() const { return creator_; }
 
 private:
-    std::reference_wrapper<const TCreator> creator_;
+    std::reference_wrapper<const CreatorBase> creator_;
     mutable TDistribution dist_;
     size_t minDepth_;
     size_t maxDepth_;

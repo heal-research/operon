@@ -25,21 +25,21 @@ parser.add_argument('--out', help='Location where the produced result files shou
 
 args = parser.parse_args()
 
-bin_path=args.bin
-data_path=args.data
-base_path = os.path.dirname(data_path)
-reps = args.reps
-prefix = args.prefix
+bin_path     = args.bin
+data_path    = args.data
+base_path    = os.path.dirname(data_path)
+reps         = args.reps
+prefix       = args.prefix
 results_path = args.out
 
-population_size = [ 1000 ]
-pool_size = [ 1000 ]
-iteration_count = [ 0 ]
+population_size   = [ 1000 ]
+pool_size         = [ 1000 ]
+iteration_count   = [ 0 ]
 evaluation_budget = [ 1000000 ]
-generators = ['basic' ]
-selectors = [ ('tournament:5', 'tournament:5') ]
-reinserters = ['replace-worst']
-creators = ['grow']
+generators        = ['basic' ]
+selectors         = [ ('tournament:5', 'tournament:5') ]
+reinserters       = ['replace-worst']
+creators          = ['btc', 'ptc2']
 
 meta_header = ['Problem', 
         'Pop size',

@@ -20,22 +20,25 @@
 #ifndef OPERON_REINSERTER_KEEP_BEST
 #define OPERON_REINSERTER_KEEP_BEST
 
+#include <execution>
+
 #include "core/operator.hpp"
 
 namespace Operon {
-template <typename T, gsl::index Idx, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
-class KeepBestReinserter : public ReinserterBase<T, Idx> {
+template <typename ExecutionPolicy = std::execution::unsequenced_policy>
+class KeepBestReinserter : public ReinserterBase {
     public:
         // keep the best |pop| individuals from pop+pool
-        virtual void operator()(Operon::Random&, std::vector<T>& pop, std::vector<T>& pool) const override {
+        virtual void operator()(Operon::Random&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
             ExecutionPolicy ep;
-            auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; };
+            auto idx = 0;
+            auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; };
             // sort the population and the recombination pool
             std::sort(ep, pop.begin(), pop.end(), comp);
             std::sort(ep, pool.begin(), pool.end(), comp);
 
             for (size_t i = 0, j = 0; i < pool.size() && j < pop.size();) {
-                if (pop[j][Idx] > pool[i][Idx]) {
+                if (pop[j][idx] > pool[i][idx]) {
                     pop[j++] = std::move(pool[i]);
                 }
                 ++i;

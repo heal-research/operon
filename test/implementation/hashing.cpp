@@ -17,20 +17,80 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include <catch2/catch.hpp>
+#include <doctest/doctest.h>
 #include <unordered_set>
 
 #include "core/tree.hpp"
 #include "core/common.hpp"
+#include "core/distance.hpp"
 #include "core/operator.hpp"
 #include "operators/creator.hpp"
 
 namespace Operon {
 namespace Test {
 
+TEST_CASE("Hash-based distance") {
+    size_t n = 1000;
+
+    size_t maxLength = 100;
+    size_t minDepth  = 1;
+    size_t maxDepth = 1000;
+
+    auto rd = Operon::Random(1234);
+    auto ds = Dataset("../data/Poly-10.csv", true);
+
+    auto target = "Y";
+    auto variables = ds.Variables();
+    std::vector<Variable> inputs;
+    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+
+    std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+
+    Grammar grammar;
+    grammar.SetConfig(Grammar::Arithmetic);
+
+    std::vector<size_t> indices(n);
+    std::vector<Operon::Hash> seeds(n);
+    std::vector<Tree> trees(n);
+    std::vector<Operon::Distance::HashVector> treeHashes(n);
+
+    auto btc = BalancedTreeCreator { grammar, inputs };
+
+    std::iota(indices.begin(), indices.end(), 0);
+    std::generate(std::execution::unseq, seeds.begin(), seeds.end(), [&](){ return rd(); });
+    std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
+        Operon::Random rand(seeds[i]);
+        auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
+        tree.Sort(Operon::HashMode::Strict);
+        return tree;
+    });
+
+
+    auto hashXXH = [](Tree tree, Operon::HashMode mode) {
+        Operon::Distance::HashVector hashes(tree.Length());
+        tree.Sort(mode);
+        std::transform(std::execution::unseq, tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
+        std::sort(std::execution::unseq, hashes.begin(), hashes.end());
+        return hashes;
+    };
+
+    MeanVarianceCalculator calc;
+
+    std::transform(std::execution::seq, trees.begin(), trees.end(), treeHashes.begin(), [&](const auto& tree) { return hashXXH(tree, Operon::HashMode::Strict); });
+    for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
+        for (size_t j = i + 1; j < treeHashes.size(); ++j) {
+            auto d = Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]);
+            calc.Add(d);
+        }
+    }
+
+    fmt::print("Average distance: {}\n", calc.Mean());
+}
+
 TEST_CASE("Hash collisions") {
     size_t n = 1000000;
     size_t maxLength = 200;
+    size_t minDepth = 0;
     size_t maxDepth = 100;
 
     auto rd = Operon::Random(1234);
@@ -56,7 +116,7 @@ TEST_CASE("Hash collisions") {
     std::generate(std::execution::unseq, seeds.begin(), seeds.end(), [&](){ return rd(); });
     std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::Random rand(seeds[i]);
-        auto tree = btc(rand, sizeDistribution(rand), maxDepth);
+        auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
         tree.Sort(Operon::HashMode::Strict);
         return tree;
     });

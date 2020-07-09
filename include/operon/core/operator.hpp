@@ -23,6 +23,7 @@
 #include "gsl/gsl"
 #include <atomic>
 #include <random>
+#include <type_traits>
 
 #include "common.hpp"
 #include "dataset.hpp"
@@ -33,27 +34,19 @@
 namespace Operon {
 // it's useful to have a data structure holding additional attributes for a solution candidate
 // maybe we should have an array of trees here?
-template <size_t D = 1UL>
 struct Individual {
     Tree Genotype;
-    std::array<Operon::Scalar, D> Fitness;
-    static constexpr size_t Dimension = D;
+    std::vector<Operon::Scalar> Fitness;
 
     Operon::Scalar& operator[](gsl::index i) noexcept { return Fitness[i]; }
     Operon::Scalar operator[](gsl::index i) const noexcept { return Fitness[i]; }
 
-    // returns true if this dominates rhs
-    inline bool operator<(const Individual& rhs) const noexcept
-    {
-        for (size_t i = 0; i < D; ++i) {
-            if (Fitness[i] < rhs.Fitness[i]) {
-                continue;
-            }
-            return false;
-        }
-        return true;
-    }
+    Individual() : Individual(1) {}
+    Individual(size_t fitDim) : Fitness(fitDim) {} 
 };
+
+//using ComparisonCallback = std::add_pointer<bool(Individual const&, Individual const&)>::type;
+using ComparisonCallback = std::add_pointer_t<bool(gsl::span<const Individual>, gsl::index, gsl::index)>;
 
 // operator base classes for two types of operators: stateless and stateful
 template <typename Ret, typename... Args>
@@ -88,29 +81,28 @@ struct MutatorBase : public OperatorBase<Tree, Tree> {
 
 // the selector a vector of individuals and returns the index of a selected individual per each call of operator()
 // this operator is meant to be a lightweight object that is initialized with a population and some other parameters on-the-fly
-template <typename T, gsl::index Idx>
 class SelectorBase : public OperatorBase<gsl::index> {
 public:
-    using SelectableType = T;
-    static constexpr gsl::index SelectableIndex = Idx;
+    using SelectableType = Individual;
 
-    virtual void Prepare(const gsl::span<const T> pop) const
+    explicit SelectorBase(ComparisonCallback cb) : comp(cb) { }
+
+    virtual void Prepare(const gsl::span<const Individual> pop) const
     {
-        this->population = gsl::span<const T>(pop);
+        this->population = gsl::span<const Individual>(pop);
     };
 
-    gsl::span<const T> Population() const { return population; }
+    gsl::span<const Individual> Population() const { return population; }
 
 protected:
-    mutable gsl::span<const T> population;
+    mutable gsl::span<const Individual> population;
+    ComparisonCallback comp;
 };
 
-template <typename T, gsl::index Idx>
-class ReinserterBase : public OperatorBase<void, std::vector<T>&, std::vector<T>&> {
+class ReinserterBase : public OperatorBase<void, std::vector<Individual>&, std::vector<Individual>&> {
 };
 
-template <typename T>
-class EvaluatorBase : public OperatorBase<double, T&> {
+class EvaluatorBase : public OperatorBase<double, Individual&> {
     // some fitness measures are relative to the whole population (eg. diversity)
     // and the evaluator needs to do some preparation work using the entire pop
 public:
@@ -122,8 +114,11 @@ public:
     {
     }
 
-    virtual void Prepare(const gsl::span<const T> pop) = 0;
-
+    virtual void Prepare(const gsl::span<const Individual> pop, gsl::index idx = 0) 
+    {
+        population = pop;
+        objIndex = idx;
+    }
     size_t TotalEvaluations() const { return fitnessEvaluations + localEvaluations; }
     size_t FitnessEvaluations() const { return fitnessEvaluations; }
     size_t LocalEvaluations() const { return localEvaluations; }
@@ -142,28 +137,20 @@ public:
     }
 
 protected:
-    gsl::span<const T> population;
+    gsl::span<const Individual> population;
     std::reference_wrapper<const Problem> problem;
     mutable std::atomic_ulong fitnessEvaluations = 0;
     mutable std::atomic_ulong localEvaluations = 0;
     size_t iterations = DefaultLocalOptimizationIterations;
     size_t budget = DefaultEvaluationBudget;
+    mutable gsl::index objIndex;
 };
 
 // TODO: Maybe remove all the template parameters and go for accepting references to operator bases
-template <typename TEvaluator, typename TCrossover, typename TMutator, typename TFemaleSelector, typename TMaleSelector = TFemaleSelector>
-class OffspringGeneratorBase : public OperatorBase<std::optional<typename TFemaleSelector::SelectableType>, /* crossover prob. */ double, /* mutation prob. */ double> {
+class OffspringGeneratorBase : public OperatorBase<std::optional<Individual>, /* crossover prob. */ double, /* mutation prob. */ double> {
 public:
-    using EvaluatorType = TEvaluator;
-    using CrossoverType = TCrossover;
-    using MutatorType = TMutator;
-    using FemaleSelectorType = TFemaleSelector;
-    using MaleSelectorType = TMaleSelector;
 
-    using T = typename TFemaleSelector::SelectableType;
-    using U = typename TMaleSelector::SelectableType;
-
-    OffspringGeneratorBase(TEvaluator& eval, TCrossover& cx, TMutator& mut, TFemaleSelector& femSel, TMaleSelector& maleSel)
+    OffspringGeneratorBase(EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel)
         : evaluator(eval)
         , crossover(cx)
         , mutator(mut)
@@ -172,26 +159,25 @@ public:
     {
     }
 
-    TFemaleSelector& FemaleSelector() const { return femaleSelector.get(); }
-    TMaleSelector& MaleSelector() const { return maleSelector.get(); }
-    TCrossover& Crossover() const { return crossover.get(); }
-    TMutator& Mutator() const { return mutator.get(); }
-    TEvaluator& Evaluator() const { return evaluator.get(); }
+    SelectorBase& FemaleSelector() const { return femaleSelector.get(); }
+    SelectorBase& MaleSelector() const { return maleSelector.get(); }
+    CrossoverBase& Crossover() const { return crossover.get(); }
+    MutatorBase& Mutator() const { return mutator.get(); }
+    EvaluatorBase& Evaluator() const { return evaluator.get(); }
 
-    virtual void Prepare(gsl::span<const T> pop) const
+    virtual void Prepare(gsl::span<const Individual> pop) const
     {
-        static_assert(std::is_same_v<T, U>);
         this->FemaleSelector().Prepare(pop);
         this->MaleSelector().Prepare(pop);
     }
     virtual bool Terminate() const { return evaluator.get().BudgetExhausted(); }
 
 protected:
-    std::reference_wrapper<TEvaluator> evaluator;
-    std::reference_wrapper<TCrossover> crossover;
-    std::reference_wrapper<TMutator> mutator;
-    std::reference_wrapper<TFemaleSelector> femaleSelector;
-    std::reference_wrapper<TFemaleSelector> maleSelector;
+    std::reference_wrapper<EvaluatorBase> evaluator;
+    std::reference_wrapper<CrossoverBase> crossover;
+    std::reference_wrapper<MutatorBase> mutator;
+    std::reference_wrapper<SelectorBase> femaleSelector;
+    std::reference_wrapper<SelectorBase> maleSelector;
 };
 
 template <typename T>
