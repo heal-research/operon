@@ -32,26 +32,24 @@
 
 namespace Operon {
 
-template <typename TInitializer, typename TGenerator, typename TReinserter, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+template <typename TInitializer, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class GeneticProgrammingAlgorithm {
-    using T = typename TGenerator::FemaleSelectorType::SelectableType;
-    static constexpr bool Idx = TGenerator::FemaleSelectorType::SelectableIndex;
 
 private:
     std::reference_wrapper<const Problem> problem_;
     std::reference_wrapper<const GeneticAlgorithmConfig> config_;
 
     std::reference_wrapper<const TInitializer> initializer_;
-    std::reference_wrapper<const TGenerator> generator_;
-    std::reference_wrapper<const TReinserter> reinserter_;
+    std::reference_wrapper<const OffspringGeneratorBase> generator_;
+    std::reference_wrapper<const ReinserterBase> reinserter_;
 
-    std::vector<T> parents;
-    std::vector<T> offspring;
+    std::vector<Individual> parents;
+    std::vector<Individual> offspring;
 
     size_t generation;
 
 public:
-    explicit GeneticProgrammingAlgorithm(const Problem& problem, const GeneticAlgorithmConfig& config, const TInitializer& initializer, const TGenerator& generator, const TReinserter& reinserter)
+    explicit GeneticProgrammingAlgorithm(const Problem& problem, const GeneticAlgorithmConfig& config, const TInitializer& initializer, const OffspringGeneratorBase& generator, const ReinserterBase& reinserter)
         : problem_(problem)
         , config_(config)
         , initializer_(initializer)
@@ -63,16 +61,16 @@ public:
     {
     }
 
-    const gsl::span<const T> Parents() const { return gsl::span<const T>(parents); }
-    const gsl::span<T> Parents() { return gsl::span<T>(parents); }
-    const gsl::span<const T> Offspring() const { return gsl::span<const T>(offspring); }
+    const gsl::span<const Individual> Parents() const { return gsl::span<const Individual>(parents); }
+    const gsl::span<Individual> Parents() { return gsl::span<Individual>(parents); }
+    const gsl::span<const Individual> Offspring() const { return gsl::span<const Individual>(offspring); }
 
     const Problem& GetProblem() const { return problem_.get(); }
     const GeneticAlgorithmConfig& GetConfig() const { return config_.get(); }
 
     const TInitializer& GetInitializer() const { return initializer_.get(); }
-    const TGenerator& GetGenerator() const { return generator_.get(); }
-    const TReinserter& GetReinserter() const { return reinserter_.get(); }
+    const OffspringGeneratorBase& GetGenerator() const { return generator_.get(); }
+    const ReinserterBase& GetReinserter() const { return reinserter_.get(); }
 
     size_t Generation() const { return generation; }
 
@@ -88,7 +86,6 @@ public:
         auto& generator    = GetGenerator();
         auto& reinserter   = GetReinserter();
         auto& problem      = GetProblem();
-        auto targetValues  = problem.TargetValues();
         // easier to work with indices
         std::vector<gsl::index> indices(std::max(config.PopulationSize, config.PoolSize));
         std::iota(indices.begin(), indices.end(), 0L);
@@ -99,17 +96,19 @@ public:
         std::vector<size_t> treeLengths(config.PopulationSize);
         std::uniform_int_distribution<size_t> treeLengthDistribution(1, 50);
 
+        auto idx = 0;
+
         auto create = [&](gsl::index i) {
             // create one random generator per thread
             Operon::Random rndlocal{seeds[i]};
             parents[i].Genotype = initializer(rndlocal);
-            parents[i][Idx] = Operon::Numeric::Max<Operon::Scalar>();
+            parents[i][idx] = Operon::Numeric::Max<Operon::Scalar>();
         };
         const auto& evaluator = generator.Evaluator();
-        auto evaluate = [&](T& ind) {
+        auto evaluate = [&](Individual& ind) {
             auto f = evaluator(random, ind);
             if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
-            ind[Idx] = f;
+            ind[idx] = f;
         };
 
         // generate the initial population and perform evaluation
@@ -135,7 +134,7 @@ public:
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
             // preserve one elite
-            auto [best, worst] = std::minmax_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; });
+            auto best = std::min_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; });
             offspring[0] = *best;
 
             generator.Prepare(parents);
@@ -148,7 +147,8 @@ public:
             if (report) { std::invoke(report); }
 
             // stop if termination requested
-            if (terminate || best->Fitness[Idx] < 1e-6) { return; }
+            //if (terminate || best->Fitness[idx] < 1e-6) { return; }
+            if (terminate) return;
         }
     }
 };

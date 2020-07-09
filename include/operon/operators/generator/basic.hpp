@@ -24,20 +24,15 @@
 
 namespace Operon {
 // TODO: think of a way to eliminate duplicated code between the different recombinators
-template <typename TEvaluator, typename TCrossover, typename TMutator, typename TFemaleSelector, typename TMaleSelector = TFemaleSelector>
-class BasicOffspringGenerator : public OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector> {
+class BasicOffspringGenerator : public OffspringGeneratorBase {
 public:
-    explicit BasicOffspringGenerator(TEvaluator& eval, TCrossover& cx, TMutator& mut, TFemaleSelector& femSel, TMaleSelector& maleSel)
-        : OffspringGeneratorBase<TEvaluator, TCrossover, TMutator, TFemaleSelector, TMaleSelector>(eval, cx, mut, femSel, maleSel)
+    explicit BasicOffspringGenerator(EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel)
+        : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel)
     {
     }
 
-    using T = typename TFemaleSelector::SelectableType;
-    using U = typename TMaleSelector::SelectableType;
-    constexpr static int Idx = TFemaleSelector::SelectableIndex;
-    std::optional<T> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
+    std::optional<Individual> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
     {
-        static_assert(std::is_same_v<T, U>);
         std::uniform_real_distribution<double> uniformReal;
         bool doCrossover = std::bernoulli_distribution(pCrossover)(random);
         bool doMutation = std::bernoulli_distribution(pMutation)(random);
@@ -48,7 +43,7 @@ public:
         auto population = this->FemaleSelector().Population();
 
         auto first = this->femaleSelector(random);
-        T child;
+        Individual child(1);
 
         if (doCrossover) {
             auto second = this->maleSelector(random);
@@ -63,7 +58,7 @@ public:
 
         auto f = this->evaluator(random, child);
         if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
-        child[Idx] = f;
+        child[0] = f;
         return std::make_optional(child);
     }
 };

@@ -20,8 +20,68 @@
 #ifndef SELECTION_HPP
 #define SELECTION_HPP
 
-#include "selector/proportional.hpp"
-#include "selector/random.hpp"
-#include "selector/tournament.hpp"
+#include "core/operator.hpp"
+
+namespace Operon {
+
+class TournamentSelector : public SelectorBase {
+public:
+    explicit TournamentSelector(ComparisonCallback cb) : SelectorBase(cb){ } 
+
+    gsl::index operator()(Operon::Random& random) const override;
+    void TournamentSize(size_t size) { tournamentSize = size; }
+    size_t TournamentSize() const { return tournamentSize; }
+
+private:
+    size_t tournamentSize;
+};
+
+class RankTournamentSelector : public SelectorBase {
+public:
+    explicit RankTournamentSelector(ComparisonCallback cb) : SelectorBase(cb){ } 
+
+    gsl::index operator()(Operon::Random& random) const override;
+
+    void Prepare(const gsl::span<const Individual> pop) const override;
+
+    void TournamentSize(size_t size) { tournamentSize = size; }
+
+    size_t TournamentSize() const { return tournamentSize; }
+
+private:
+    size_t tournamentSize;
+    mutable std::vector<size_t> indices;
+};
+
+class ProportionalSelector : public SelectorBase {
+public:
+    explicit ProportionalSelector(ComparisonCallback cb) : SelectorBase(cb), idx(0) { } 
+
+    gsl::index operator()(Operon::Random& random) const override;
+    
+    void Prepare(const gsl::span<const Individual> pop) const override;
+
+    void SetObjIndex(gsl::index objIndex) { idx = objIndex; } 
+
+private:
+    void Prepare() const; 
+
+    // discrete CDF of the population fitness values
+    mutable std::vector<std::pair<Operon::Scalar, gsl::index>> fitness;
+    gsl::index idx = 0;
+};
+
+class RandomSelector : public SelectorBase {
+public:
+    RandomSelector() : SelectorBase(nullptr) { }
+
+    gsl::index operator()(Operon::Random& random) const override
+    {
+        std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
+        return uniformInt(random);
+    }
+};
+
+} //namespace
 
 #endif

@@ -17,6 +17,10 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
+#include <vector>
+#include <queue>
+#include <deque>
+
 #include "operators/creator/ptc2.hpp"
 
 namespace Operon {

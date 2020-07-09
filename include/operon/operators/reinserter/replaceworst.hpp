@@ -23,13 +23,20 @@
 #include "core/operator.hpp"
 
 namespace Operon {
-template <typename T, gsl::index Idx, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
-class ReplaceWorstReinserter : public ReinserterBase<T, Idx> {
+template <typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+class ReplaceWorstReinserter : public ReinserterBase {
     public:
         // replace the worst individuals in pop with the best individuals from pool
-        virtual void operator()(Operon::Random&, std::vector<T>& pop, std::vector<T>& pool) const override {
+        virtual void operator()(Operon::Random&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
+            // typically the pool and the population are the same size
+            if (pop.size() == pool.size()) {
+                pop.swap(pool);
+                return;
+            }
+
             ExecutionPolicy ep;
-            auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[Idx] < rhs[Idx]; };
+            auto idx = 0;
+            auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; };
             if (pop.size() > pool.size()) {
                 std::sort(ep, pop.begin(), pop.end(), comp);
             } else if (pop.size() < pool.size()) {
