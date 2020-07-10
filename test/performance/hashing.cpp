@@ -87,7 +87,7 @@ TEST_CASE("Hashing performance") {
             std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); });
             totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
             b.complexityN(i).batch(totalNodes).run("strict", [&]() { 
-                ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Strict); }));
+                ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(); }));
             });
         }
 
@@ -102,7 +102,7 @@ TEST_CASE("Hashing performance") {
             std::generate(std::execution::unseq, trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); });
             totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
             b.complexityN(i).batch(totalNodes).run("relaxed", [&]() { 
-                ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Relaxed); }));
+                ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(); }));
             });
         }
 
