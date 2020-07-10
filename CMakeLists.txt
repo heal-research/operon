@@ -154,6 +154,7 @@ add_library(
     src/core/tree.cpp
     src/core/problem.cpp
     src/core/dataset.cpp
+    src/hash/metrohash64.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
     src/operators/creator/balanced.cpp
