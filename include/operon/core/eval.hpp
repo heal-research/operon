@@ -2,7 +2,7 @@
  * Operon - Large Scale Genetic Programming Framework
  *
  * Licensed under the ISC License <https://opensource.org/licenses/ISC> 
- * Copyright (C) 2019 Bogdan Burlacu 
+ * Copyright (C) 2020 Bogdan Burlacu 
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -84,27 +84,47 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 
             switch (s.Type) {
             case NodeType::Add: {
-                auto c1 = i - 1; // first child index
-                auto c2 = c1 - 1 - nodes[c1].Length;
-                r = m.col(c1) + m.col(c2);
+                auto j = i-1;
+                r = m.col(j);
+                for (int k = 1; k < s.Arity; ++k) {
+                    j -= nodes[j].Length+1;
+                    r += m.col(j);
+                }
                 break;
             }
             case NodeType::Mul: {
-                auto c1 = i - 1; // first child index
-                auto c2 = c1 - 1 - nodes[c1].Length;
-                r = m.col(c1) * m.col(c2);
+                auto j = i-1;
+                r = m.col(j);
+                for (int k = 1; k < s.Arity; ++k) {
+                    j -= nodes[j].Length+1;
+                    r *= m.col(j);
+                }
                 break;
             }
             case NodeType::Sub: {
-                auto c1 = i - 1; // first child index
-                auto c2 = c1 - 1 - nodes[c1].Length;
-                r = m.col(c1) - m.col(c2);
+                auto j = i-1;
+                if (s.Arity == 1) {
+                    r = -m.col(j);
+                } else {
+                    r = m.col(j);
+                    for (int k = 1; k < s.Arity; ++k) {
+                        j -= nodes[j].Length+1;
+                        r -= m.col(j);
+                    }
+                }
                 break;
             }
             case NodeType::Div: {
-                auto c1 = i - 1; // first child index
-                auto c2 = c1 - 1 - nodes[c1].Length;
-                r = m.col(c1) / m.col(c2);
+                auto j = i-1;
+                if (s.Arity == 1) {
+                    r = m.col(j).inverse();
+                } else {
+                    r = m.col(j);
+                    for (int k = 1; k < s.Arity; ++k) {
+                        j -= nodes[j].Length+1;
+                        r /= m.col(j);
+                    }
+                }
                 break;
             }
             case NodeType::Constant: {
