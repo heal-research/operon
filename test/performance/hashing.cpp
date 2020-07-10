@@ -23,6 +23,7 @@
 #include "core/common.hpp"
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
+#include "hash/hash.hpp"
 #include "core/grammar.hpp"
 #include "operators/creator.hpp"
 #include "analyzers/diversity.hpp"
@@ -62,11 +63,19 @@ TEST_CASE("Hashing performance") {
 
     SUBCASE("hashing performance") {
         b.batch(totalNodes).run("xxh strict", [&]() { 
-            std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Strict); });
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::XXHash>(Operon::HashMode::Strict); });
         });
 
-        b.batch(totalNodes).run("xxh relaxed", [&]() { 
-            std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(Operon::HashMode::Relaxed); });
+        b.batch(totalNodes).run("metro strict", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::MetroHash>(Operon::HashMode::Strict); });
+        });
+
+        b.batch(totalNodes).run("aqua strict", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::AquaHash>(Operon::HashMode::Strict); });
+        });
+
+        b.batch(totalNodes).run("fnv1 strict", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::FNV1>(Operon::HashMode::Strict); });
         });
     }
 
