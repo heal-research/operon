@@ -8,6 +8,7 @@
 
 #include "nanobench.h"
 
+#include <execution>
 #include <tbb/task_scheduler_init.h>
 #include <tbb/global_control.h>
 
@@ -33,12 +34,9 @@ TEST_CASE("Evolution speed") {
     problem.GetGrammar().SetConfig(Grammar::Arithmetic);
 
 
-    using Ind        = Individual; // an individual holding one fitness value
     using Evaluator  = RSquaredEvaluator;
     using Selector   = TournamentSelector;
-    using Reinserter = ReplaceWorstReinserter<>;
-    using Crossover  = SubtreeCrossover;
-    using Mutation   = MultiMutation;
+    using Reinserter = ReplaceWorstReinserter<std::execution::parallel_unsequenced_policy>;
     //using Generator  = BasicOffspringGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
     using Generator  = OffspringSelectionGenerator;
 

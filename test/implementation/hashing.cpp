@@ -24,10 +24,63 @@
 #include "core/common.hpp"
 #include "core/distance.hpp"
 #include "core/operator.hpp"
+#include "core/format.hpp"
+#include "hash/hash.hpp"
 #include "operators/creator.hpp"
 
 namespace Operon {
 namespace Test {
+
+template<Operon::HashFunction F>
+void calculateDistance(std::vector<Tree> trees, const char* name) {
+    std::vector<Operon::Distance::HashVector> treeHashes;
+    treeHashes.reserve(trees.size());
+
+    for (auto& t : trees) {
+        Operon::Distance::HashVector hh(t.Length()); 
+        t.Hash<F>(Operon::HashMode::Relaxed);
+        std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
+        std::sort(hh.begin(), hh.end());
+        treeHashes.push_back(hh);
+    }
+
+    MeanVarianceCalculator calc;
+    calc.Reset();
+
+    for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
+        for (size_t j = i + 1; j < treeHashes.size(); ++j) {
+            auto d = Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]);
+            calc.Add(d);
+        }
+    }
+
+    fmt::print("Average distance ({}): {}\n", name, calc.Mean());
+}
+
+void calculateDistanceWithSort(std::vector<Tree> trees, const char* name) {
+    std::vector<Operon::Distance::HashVector> treeHashes;
+    treeHashes.reserve(trees.size());
+
+    for (auto& t : trees) {
+        Operon::Distance::HashVector hh(t.Length()); 
+        t.Sort(Operon::HashMode::Relaxed);
+        std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
+        std::sort(hh.begin(), hh.end());
+        treeHashes.push_back(hh);
+    }
+
+    MeanVarianceCalculator calc;
+    calc.Reset();
+
+    for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
+        for (size_t j = i + 1; j < treeHashes.size(); ++j) {
+            auto d = Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]);
+            calc.Add(d);
+        }
+    }
+
+    fmt::print("Average distance (sort) ({}): {}\n", name, calc.Mean());
+}
 
 TEST_CASE("Hash-based distance") {
     size_t n = 1000;
@@ -57,38 +110,22 @@ TEST_CASE("Hash-based distance") {
     auto btc = BalancedTreeCreator { grammar, inputs };
 
     std::iota(indices.begin(), indices.end(), 0);
-    std::generate(std::execution::unseq, seeds.begin(), seeds.end(), [&](){ return rd(); });
-    std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
+    std::generate(std::execution::seq, seeds.begin(), seeds.end(), [&](){ return rd(); });
+    std::transform(std::execution::seq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::Random rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
-        tree.Sort(Operon::HashMode::Strict);
         return tree;
     });
 
-
-    auto hashXXH = [](Tree tree, Operon::HashMode mode) {
-        Operon::Distance::HashVector hashes(tree.Length());
-        tree.Sort(mode);
-        std::transform(std::execution::unseq, tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
-        std::sort(std::execution::unseq, hashes.begin(), hashes.end());
-        return hashes;
-    };
-
-    MeanVarianceCalculator calc;
-
-    std::transform(std::execution::seq, trees.begin(), trees.end(), treeHashes.begin(), [&](const auto& tree) { return hashXXH(tree, Operon::HashMode::Strict); });
-    for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
-        for (size_t j = i + 1; j < treeHashes.size(); ++j) {
-            auto d = Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]);
-            calc.Add(d);
-        }
-    }
-
-    fmt::print("Average distance: {}\n", calc.Mean());
+    calculateDistance<Operon::HashFunction::XXHash>(trees, "xxhash");
+    calculateDistance<Operon::HashFunction::AquaHash>(trees, "aquahash");
+    calculateDistance<Operon::HashFunction::MetroHash>(trees, "metrohash");
+    calculateDistance<Operon::HashFunction::FNV1>(trees, "fnv1hash");
+    calculateDistanceWithSort(trees, "xxhash sort");
 }
 
 TEST_CASE("Hash collisions") {
-    size_t n = 1000000;
+    size_t n = 100000;
     size_t maxLength = 200;
     size_t minDepth = 0;
     size_t maxDepth = 100;
@@ -117,7 +154,7 @@ TEST_CASE("Hash collisions") {
     std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::Random rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
-        tree.Sort(Operon::HashMode::Strict);
+        tree.Hash<Operon::HashFunction::AquaHash>(Operon::HashMode::Strict);
         return tree;
     });
 
