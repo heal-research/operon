@@ -28,6 +28,12 @@ namespace Operon {
         Strict  = 0x1,
         Relaxed = 0x2
     };
+
+    enum HashFunction { XXHash,
+        MetroHash,
+        AquaHash,
+        FNV1 };
+
 }
 
 #endif

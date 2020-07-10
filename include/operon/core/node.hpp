@@ -177,18 +177,5 @@ struct Node {
     inline bool IsSquare() const { return Is<NodeType::Square>(); }
 };
 }
-
-namespace fmt {
-template <>
-struct formatter<Operon::Node> {
-    template <typename ParseContext>
-    constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
-
-    template <typename FormatContext>
-    auto format(const Operon::Node& s, FormatContext& ctx)
-    {
-        return format_to(ctx.begin(), "Name: {}, Hash: {}, Value: {}, Arity: {}, Length: {}, Parent: {}", Operon::nodeNames[Operon::NodeTypes::GetIndex(s.Type)], s.CalculatedHashValue, s.Value, s.Arity, s.Length, s.Parent);
-    }
-};
-}
 #endif // NODE_H
+
