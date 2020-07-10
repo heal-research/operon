@@ -69,8 +69,6 @@ TEST_CASE("Intersection performance")
         b.performanceCounters(true).relative(true).minEpochIterations(1000);
         b.run("intersect strict",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
         b.run("intersect struct",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
-        b.run("intersect strict (simd)", [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
-        b.run("intersect struct (simd)", [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
         b.run("jaccard distance",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::Jaccard(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
         b.run("jaccard distance",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::Jaccard(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
         b.run("sorensen-dice distance",  [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::SorensenDice(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
