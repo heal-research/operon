@@ -133,7 +133,7 @@ public:
 
     Tree& UpdateNodes();
     Tree& UpdateNodeDepth();
-    Tree& Sort(Operon::HashMode);
+    Tree& Sort();
     Tree& Reduce();
     Tree& Simplify();
 
