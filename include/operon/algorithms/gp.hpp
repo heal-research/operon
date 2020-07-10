@@ -85,7 +85,6 @@ public:
         auto& initializer  = GetInitializer();
         auto& generator    = GetGenerator();
         auto& reinserter   = GetReinserter();
-        auto& problem      = GetProblem();
         // easier to work with indices
         std::vector<gsl::index> indices(std::max(config.PopulationSize, config.PoolSize));
         std::iota(indices.begin(), indices.end(), 0L);

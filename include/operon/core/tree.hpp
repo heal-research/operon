@@ -28,6 +28,7 @@
 
 #include "common.hpp"
 #include "gsl/gsl"
+#include "hash/hash.hpp"
 #include "node.hpp"
 
 namespace Operon {
@@ -96,7 +97,6 @@ namespace detail {
     };
 }
 
-
 class Tree {
 public:
     using ChildIterator = detail::ChildIteratorImpl<false>;
@@ -137,6 +137,56 @@ public:
     Tree& Reduce();
     Tree& Simplify();
 
+    // performs hashing in a manner similar to Merkle trees
+    // aggregating hash values from the leafs towards the root node
+    template <Operon::HashFunction H>
+    Tree& Hash(Operon::HashMode mode) noexcept
+    {
+        std::vector<gsl::index> childIndices;
+        childIndices.reserve(nodes.size());
+
+        std::vector<Operon::Hash> hashes;
+        hashes.reserve(nodes.size());
+
+        Operon::Hasher<H> hasher;
+
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            auto& n = nodes[i];
+
+            if (n.IsLeaf()) {
+                n.CalculatedHashValue = n.HashValue;
+                if (mode == Operon::HashMode::Strict) {
+                    const size_t s1 = sizeof(Operon::Hash);
+                    const size_t s2 = sizeof(Operon::Scalar);
+                    uint8_t key[s1 + s2];
+                    std::memcpy(key, &n.HashValue, s1);
+                    std::memcpy(key + s1, &n.Value, s2);
+                    n.CalculatedHashValue = hasher(key, sizeof(key)); 
+                } else {
+                    n.CalculatedHashValue = n.HashValue;
+                }
+                continue;
+            }
+
+            for (auto it = Children(i); it.HasNext(); ++it) {
+                childIndices.push_back(it.Index());
+            }
+
+            if (n.IsCommutative()) {
+                std::sort(childIndices.begin(), childIndices.end(), [&](auto a, auto b) { return nodes[a] < nodes[b]; });
+            }
+
+            std::transform(childIndices.begin(), childIndices.end(), std::back_inserter(hashes), [&](auto j) { return nodes[j].CalculatedHashValue; });
+            hashes.push_back(n.HashValue);
+
+            n.CalculatedHashValue = hasher(reinterpret_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); 
+            childIndices.clear();
+            hashes.clear();
+        }
+
+        return *this;
+    }
+
     std::vector<gsl::index> ChildIndices(gsl::index i) const;
     inline void SetEnabled(gsl::index i, bool enabled)
     {
@@ -175,4 +225,3 @@ private:
 };
 }
 #endif // TREE_H
-
