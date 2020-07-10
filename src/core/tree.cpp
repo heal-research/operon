@@ -80,7 +80,10 @@ Tree& Tree::Reduce()
     return this->UpdateNodes();
 }
 
-Tree& Tree::Sort(Operon::HashMode mode)
+// Sort each function node's children according to node type and hash value
+// - note that entire child subtrees / subarrays are reordered inside the nodes array
+// - this method assumes node hashes are computed, usually it is preceded by a call to tree.Hash() 
+Tree& Tree::Sort()
 {
     // preallocate memory to reduce fragmentation
     std::vector<Node> sorted;
@@ -89,20 +92,11 @@ Tree& Tree::Sort(Operon::HashMode mode)
     std::vector<int> children;
     children.reserve(nodes.size());
 
-    std::vector<Operon::Hash> hashes;
-    hashes.reserve(nodes.size());
-
     auto start = nodes.begin();
     for (size_t i = 0; i < nodes.size(); ++i) {
         auto& s = nodes[i];
 
         if (s.IsLeaf()) {
-            if (mode == Operon::HashMode::Strict) {
-                auto valueHash = xxh::xxhash3<64>({ s.Value });
-                s.CalculatedHashValue = xxh::xxhash3<64>({ s.HashValue, valueHash });
-            } else if (mode == Operon::HashMode::Relaxed) {
-                s.CalculatedHashValue = s.HashValue;
-            }
             continue;
         }
 
@@ -129,10 +123,6 @@ Tree& Tree::Sort(Operon::HashMode mode)
                 children.clear();
             }
         }
-        std::transform(sBegin, sEnd, std::back_inserter(hashes), [](const Node& x) { return x.CalculatedHashValue; });
-        hashes.push_back(s.HashValue);
-        s.CalculatedHashValue = xxh::xxhash3<64>(hashes);
-        hashes.clear();
     }
     return this->UpdateNodes();
 }
@@ -164,7 +154,7 @@ void Tree::SetCoefficients(const gsl::span<const double> coefficients)
 {
     size_t idx = 0;
     for (auto& s : nodes) {
-        if (s.IsConstant() || s.IsVariable()) {
+        if (s.IsLeaf()) {
             s.Value = coefficients[idx++];
         }
     }

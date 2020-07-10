@@ -31,16 +31,17 @@
 
 namespace Operon {
 namespace {
+    template<Operon::HashFunction F>
     static inline Operon::Distance::HashVector MakeHashes(Tree& tree, Operon::HashMode mode) {
         Operon::Distance::HashVector hashes(tree.Length());
-        tree.Sort(mode);
+        tree.Hash<F>(mode);
         std::transform(std::execution::unseq, tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
         std::sort(std::execution::unseq, hashes.begin(), hashes.end());
         return hashes;
     }
 }
 
-template <typename T, Operon::HashMode H = Operon::HashMode::Strict, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+template <typename T, Operon::HashFunction F = Operon::HashFunction::AquaHash, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class PopulationDiversityAnalyzer final : PopulationAnalyzerBase<T> {
 public:
     double operator()(Operon::Random&) const
@@ -48,7 +49,7 @@ public:
         return diversity;
     }
 
-    void Prepare(gsl::span<const T> pop)
+    void Prepare(gsl::span<const T> pop, Operon::HashMode mode = Operon::HashMode::Strict)
     {
         hashes.clear();
         hashes.resize(pop.size());
@@ -61,7 +62,7 @@ public:
         // hybrid (strict) hashing
         std::for_each(ep, indices.begin(), indices.end(), [&](gsl::index i) {
             auto tree = pop[i].Genotype; // make a copy because the tree will be sorted
-            hashes[i] = MakeHashes(tree, H);
+            hashes[i] = MakeHashes<F>(tree, mode);
         });
 
         std::vector<std::pair<size_t, size_t>> pairs(hashes.size());
