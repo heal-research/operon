@@ -32,7 +32,7 @@ namespace Operon {
 namespace Test {
 
 template<Operon::HashFunction F>
-void calculateDistance(std::vector<Tree> trees, const char* name) {
+void calculateDistance(std::vector<Tree>& trees, const char* name) {
     std::vector<Operon::Distance::HashVector> treeHashes;
     treeHashes.reserve(trees.size());
 
@@ -57,13 +57,13 @@ void calculateDistance(std::vector<Tree> trees, const char* name) {
     fmt::print("Average distance ({}): {}\n", name, calc.Mean());
 }
 
-void calculateDistanceWithSort(std::vector<Tree> trees, const char* name) {
+void calculateDistanceWithSort(std::vector<Tree>& trees, const char* name) {
     std::vector<Operon::Distance::HashVector> treeHashes;
     treeHashes.reserve(trees.size());
 
     for (auto& t : trees) {
         Operon::Distance::HashVector hh(t.Length()); 
-        t.Sort(Operon::HashMode::Relaxed);
+        t.Sort();
         std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
         std::sort(hh.begin(), hh.end());
         treeHashes.push_back(hh);
@@ -83,7 +83,7 @@ void calculateDistanceWithSort(std::vector<Tree> trees, const char* name) {
 }
 
 TEST_CASE("Hash-based distance") {
-    size_t n = 1000;
+    size_t n = 5000;
 
     size_t maxLength = 100;
     size_t minDepth  = 1;
