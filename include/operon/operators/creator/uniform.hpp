@@ -39,7 +39,7 @@ public:
     }
     Tree operator()(Operon::Random& random, size_t targetLen, size_t, size_t maxDepth) const override
     {
-        std::vector<Node> nodes;
+        Operon::Vector<Node> nodes;
         std::stack<std::tuple<Node, size_t, size_t>> stk;
 
         std::uniform_int_distribution<size_t> uniformInt(0, variables_.size() - 1);

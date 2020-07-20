@@ -77,7 +77,7 @@ namespace Operon {
             }
         }
 
-        std::vector<Node> postfix(tuples.size());
+        Operon::Vector<Node> postfix(tuples.size());
         auto idx = tuples.size();
 
         const auto add = [&](const U& t) {

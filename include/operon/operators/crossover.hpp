@@ -40,7 +40,7 @@ public:
     {
         auto& left = lhs.Nodes();
         auto& right = rhs.Nodes();
-        std::vector<Node> nodes;
+        Operon::Vector<Node> nodes;
         nodes.reserve(right[j].Length - left[i].Length + left.size());
         copy_n(left.begin(), i - left[i].Length, back_inserter(nodes));
         copy_n(right.begin() + j - right[j].Length, right[j].Length + 1, back_inserter(nodes));

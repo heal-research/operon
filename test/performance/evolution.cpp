@@ -61,9 +61,9 @@ TEST_CASE("Evolution speed") {
 
     // set up remaining operators
 
-    auto comparison = [](gsl::span<const Individual> pop, gsl::index i, gsl::index j) { return pop[i][0] < pop[j][0]; };
+    auto comparison = [](Individual const& lhs, Individual const& rhs) { return lhs[0] < rhs[0]; };
     Selector selector(comparison);
-    Reinserter reinserter;
+    Reinserter reinserter(comparison);
 
     // set up a genetic programming algorithm
     Random random(config.Seed);
@@ -80,8 +80,8 @@ TEST_CASE("Evolution speed") {
         config.Seed = random();
 
         Evaluator evaluator(problem);
-        evaluator.LocalOptimizationIterations(config.Iterations);
-        evaluator.Budget(config.Evaluations);
+        evaluator.SetLocalOptimizationIterations(config.Iterations);
+        evaluator.SetBudget(config.Evaluations);
         Generator generator(evaluator, crossover, mutation, selector, selector);
 
         GeneticProgrammingAlgorithm gp(problem, config, initializer, generator, reinserter); 

@@ -46,7 +46,7 @@ namespace Operon {
             }
         };
 
-        std::vector<Node> nodes;
+        Operon::Vector<Node> nodes;
         nodes.reserve(targetLen);
 
         auto maxArity = std::min(maxFunctionArity, targetLen - 1);
@@ -115,7 +115,7 @@ namespace Operon {
             c += nodes[i].Arity;
         }
 
-        std::vector<Node> postfix(nodes.size());
+        Operon::Vector<Node> postfix(nodes.size());
         size_t idx = nodes.size();
 
         const auto add = [&](size_t i) {

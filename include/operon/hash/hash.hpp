@@ -52,7 +52,7 @@ struct Hasher<HashFunction::AquaHash> {
     uint64_t operator()(const uint8_t* key, size_t len) noexcept
     {
         __m128i h = AquaHash::SmallKeyAlgorithm(key, len);
-        return _mm_extract_epi64(h, 0);
+        return _mm_extract_epi64(h, 0) ^ _mm_extract_epi64(h, 1);
     }
 };
 

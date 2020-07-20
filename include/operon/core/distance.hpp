@@ -15,16 +15,16 @@ namespace Distance {
 
         static inline bool NullIntersectProbe(Operon::Hash const* lhs, Operon::Hash const* rhs) noexcept
         {
-            __m256i a{_mm256_load_si256((__m256i*)lhs)};
-            __m256i b0{_mm256_set1_epi64x(rhs[0])};
-            __m256i b1{_mm256_set1_epi64x(rhs[1])};
-            __m256i b2{_mm256_set1_epi64x(rhs[2])};
-            __m256i b3{_mm256_set1_epi64x(rhs[3])};
+            __m256i a { _mm256_load_si256((__m256i*)lhs) };
+            __m256i b0 { _mm256_set1_epi64x(rhs[0]) };
+            __m256i b1 { _mm256_set1_epi64x(rhs[1]) };
+            __m256i b2 { _mm256_set1_epi64x(rhs[2]) };
+            __m256i b3 { _mm256_set1_epi64x(rhs[3]) };
 
-            __m256i r0{_mm256_cmpeq_epi64(a, b0)};
-            __m256i r1{_mm256_cmpeq_epi64(a, b1)};
-            __m256i r2{_mm256_cmpeq_epi64(a, b2)};
-            __m256i r3{_mm256_cmpeq_epi64(a, b3)};
+            __m256i r0 { _mm256_cmpeq_epi64(a, b0) };
+            __m256i r1 { _mm256_cmpeq_epi64(a, b1) };
+            __m256i r2 { _mm256_cmpeq_epi64(a, b2) };
+            __m256i r3 { _mm256_cmpeq_epi64(a, b3) };
 
             return _mm256_is_zero(_mm256_or_si256(_mm256_or_si256(r0, r1), _mm256_or_si256(r2, r3)));
         }

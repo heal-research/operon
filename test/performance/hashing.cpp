@@ -61,7 +61,7 @@ TEST_CASE("Hashing performance") {
 
     auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
 
-    SUBCASE("hashing performance") {
+    SUBCASE("strict hashing") {
         b.batch(totalNodes).run("xxh strict", [&]() { 
             std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::XXHash>(Operon::HashMode::Strict); });
         });
@@ -76,6 +76,60 @@ TEST_CASE("Hashing performance") {
 
         b.batch(totalNodes).run("fnv1 strict", [&]() { 
             std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::FNV1>(Operon::HashMode::Strict); });
+        });
+    }
+
+    SUBCASE("strict hashing + sort") {
+        b.batch(totalNodes).run("xxh strict", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::XXHash>(Operon::HashMode::Strict).Sort(); });
+        });
+
+        b.batch(totalNodes).run("metro strict", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::MetroHash>(Operon::HashMode::Strict).Sort(); });
+        });
+
+        b.batch(totalNodes).run("aqua strict", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::AquaHash>(Operon::HashMode::Strict).Sort(); });
+        });
+
+        b.batch(totalNodes).run("fnv1 strict", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::FNV1>(Operon::HashMode::Strict).Sort(); });
+        });
+    }
+
+    SUBCASE("struct hashing") {
+        b.batch(totalNodes).run("xxh struct", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::XXHash>(Operon::HashMode::Relaxed); });
+        });
+
+        b.batch(totalNodes).run("metro struct", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::MetroHash>(Operon::HashMode::Relaxed); });
+        });
+
+        b.batch(totalNodes).run("aqua struct", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::AquaHash>(Operon::HashMode::Relaxed); });
+        });
+
+        b.batch(totalNodes).run("fnv1 struct", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::FNV1>(Operon::HashMode::Relaxed); });
+        });
+    }
+
+    SUBCASE("struct hashing + sort") {
+        b.batch(totalNodes).run("xxh struct", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::XXHash>(Operon::HashMode::Relaxed).Sort(); });
+        });
+
+        b.batch(totalNodes).run("metro struct", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::MetroHash>(Operon::HashMode::Relaxed).Sort(); });
+        });
+
+        b.batch(totalNodes).run("aqua struct", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::AquaHash>(Operon::HashMode::Relaxed).Sort(); });
+        });
+
+        b.batch(totalNodes).run("fnv1 struct", [&]() { 
+            std::for_each(trees.begin(), trees.end(), [](Tree& t) { t.Hash<Operon::HashFunction::FNV1>(Operon::HashMode::Relaxed).Sort(); });
         });
     }
 

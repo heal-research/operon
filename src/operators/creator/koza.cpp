@@ -43,7 +43,7 @@ namespace Operon {
             }
         };
 
-        std::vector<Node> nodes;
+        Operon::Vector<Node> nodes;
         size_t minArity = minFunctionArity;
         size_t maxArity = maxFunctionArity;
 
