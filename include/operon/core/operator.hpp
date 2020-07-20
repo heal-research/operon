@@ -41,12 +41,18 @@ struct Individual {
     Operon::Scalar& operator[](gsl::index i) noexcept { return Fitness[i]; }
     Operon::Scalar operator[](gsl::index i) const noexcept { return Fitness[i]; }
 
-    Individual() : Individual(1) {}
-    Individual(size_t fitDim) : Fitness(fitDim) {} 
+    Individual()
+        : Individual(1)
+    {
+    }
+    Individual(size_t fitDim)
+        : Fitness(fitDim)
+    {
+    }
 };
 
 //using ComparisonCallback = std::add_pointer<bool(Individual const&, Individual const&)>::type;
-using ComparisonCallback = std::add_pointer_t<bool(gsl::span<const Individual>, gsl::index, gsl::index)>;
+using ComparisonCallback = std::add_pointer_t<bool(Individual const&, Individual const&)>;
 
 // operator base classes for two types of operators: stateless and stateful
 template <typename Ret, typename... Args>
@@ -60,15 +66,16 @@ struct OperatorBase {
 
 // the creator builds a new tree using the existing grammar and allowed inputs
 struct CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
-    public:
-        CreatorBase(const Grammar& grammar, const gsl::span<const Variable> variables)
+public:
+    CreatorBase(const Grammar& grammar, const gsl::span<const Variable> variables)
         : grammar_(grammar)
         , variables_(variables)
-        { }
+    {
+    }
 
-    protected:
-        std::reference_wrapper<const Grammar> grammar_;
-        const gsl::span<const Variable> variables_;
+protected:
+    std::reference_wrapper<const Grammar> grammar_;
+    const gsl::span<const Variable> variables_;
 };
 
 // crossover takes two parent trees and returns a child
@@ -85,7 +92,10 @@ class SelectorBase : public OperatorBase<gsl::index> {
 public:
     using SelectableType = Individual;
 
-    explicit SelectorBase(ComparisonCallback cb) : comp(cb) { }
+    explicit SelectorBase(ComparisonCallback cb)
+        : comp(cb)
+    {
+    }
 
     virtual void Prepare(const gsl::span<const Individual> pop) const
     {
@@ -100,6 +110,14 @@ protected:
 };
 
 class ReinserterBase : public OperatorBase<void, std::vector<Individual>&, std::vector<Individual>&> {
+public:
+    explicit ReinserterBase(ComparisonCallback cb)
+        : comp(cb)
+    {
+    }
+
+protected:
+    ComparisonCallback comp;
 };
 
 class EvaluatorBase : public OperatorBase<double, Individual&> {
@@ -109,12 +127,14 @@ public:
     static constexpr size_t DefaultLocalOptimizationIterations = 50;
     static constexpr size_t DefaultEvaluationBudget = 100'000;
 
+    using ReturnType = OperatorBase::ReturnType;
+
     EvaluatorBase(Problem& p)
         : problem(p)
     {
     }
 
-    virtual void Prepare(const gsl::span<const Individual> pop, gsl::index idx = 0) 
+    virtual void Prepare(const gsl::span<const Individual> pop, gsl::index idx = 0)
     {
         population = pop;
         objIndex = idx;
@@ -123,12 +143,12 @@ public:
     size_t FitnessEvaluations() const { return fitnessEvaluations; }
     size_t LocalEvaluations() const { return localEvaluations; }
 
-    void LocalOptimizationIterations(size_t value) { iterations = value; }
-    size_t LocalOptimizationIterations() const { return iterations; }
+    void SetLocalOptimizationIterations(size_t value) { iterations = value; }
+    size_t GetLocalOptimizationIterations() const { return iterations; }
 
-    void Budget(size_t value) { budget = value; }
-    size_t Budget() const { return budget; }
-    bool BudgetExhausted() const { return TotalEvaluations() > Budget(); }
+    void SetBudget(size_t value) { budget = value; }
+    size_t GetBudget() const { return budget; }
+    bool BudgetExhausted() const { return TotalEvaluations() > GetBudget(); }
 
     void Reset()
     {
@@ -149,7 +169,6 @@ protected:
 // TODO: Maybe remove all the template parameters and go for accepting references to operator bases
 class OffspringGeneratorBase : public OperatorBase<std::optional<Individual>, /* crossover prob. */ double, /* mutation prob. */ double> {
 public:
-
     OffspringGeneratorBase(EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel)
         : evaluator(eval)
         , crossover(cx)
@@ -184,7 +203,6 @@ template <typename T>
 class PopulationAnalyzerBase : public OperatorBase<double> {
 public:
     virtual void Prepare(gsl::span<const T> pop) = 0;
-
 };
 } // namespace Operon
 #endif

@@ -107,7 +107,7 @@ public:
         : nodes(list)
     {
     }
-    Tree(std::vector<Node> vec)
+    Tree(Operon::Vector<Node> vec)
         : nodes(std::move(vec))
     {
     }
@@ -132,10 +132,12 @@ public:
     }
 
     Tree& UpdateNodes();
-    Tree& UpdateNodeDepth();
     Tree& Sort();
     Tree& Reduce();
     Tree& Simplify();
+
+    // convenience method to make it easier to call from the Python side
+    Tree& Hash(Operon::HashFunction f, Operon::HashMode m);
 
     // performs hashing in a manner similar to Merkle trees
     // aggregating hash values from the leafs towards the root node
@@ -161,7 +163,7 @@ public:
                     uint8_t key[s1 + s2];
                     std::memcpy(key, &n.HashValue, s1);
                     std::memcpy(key + s1, &n.Value, s2);
-                    n.CalculatedHashValue = hasher(key, sizeof(key)); 
+                    n.CalculatedHashValue = hasher(key, sizeof(key));
                 } else {
                     n.CalculatedHashValue = n.HashValue;
                 }
@@ -172,14 +174,16 @@ public:
                 childIndices.push_back(it.Index());
             }
 
-            if (n.IsCommutative()) {
-                std::sort(childIndices.begin(), childIndices.end(), [&](auto a, auto b) { return nodes[a] < nodes[b]; });
-            }
+            auto begin = childIndices.begin();
+            auto end = begin + n.Arity;
 
-            std::transform(childIndices.begin(), childIndices.end(), std::back_inserter(hashes), [&](auto j) { return nodes[j].CalculatedHashValue; });
+            if (n.IsCommutative()) {
+                std::sort(begin, end, [&](auto a, auto b) { return nodes[a] < nodes[b]; });
+            }
+            std::transform(begin, end, std::back_inserter(hashes), [&](auto j) { return nodes[j].CalculatedHashValue; });
             hashes.push_back(n.HashValue);
 
-            n.CalculatedHashValue = hasher(reinterpret_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); 
+            n.CalculatedHashValue = hasher(reinterpret_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size());
             childIndices.clear();
             hashes.clear();
         }
@@ -195,8 +199,8 @@ public:
         }
     }
 
-    std::vector<Node>& Nodes() { return nodes; }
-    const std::vector<Node>& Nodes() const { return nodes; }
+    Operon::Vector<Node>& Nodes() { return nodes; }
+    const Operon::Vector<Node>& Nodes() const { return nodes; }
     inline size_t CoefficientsCount() const
     {
         return std::count_if(nodes.begin(), nodes.end(), [](const Node& s) { return s.IsLeaf(); });
@@ -221,7 +225,8 @@ public:
     ConstChildIterator Children(gsl::index i) const { return ConstChildIterator(*this, i); }
 
 private:
-    std::vector<Node> nodes;
+    Operon::Vector<Node> nodes;
 };
 }
 #endif // TREE_H
+

@@ -29,8 +29,8 @@ public:
     explicit TournamentSelector(ComparisonCallback cb) : SelectorBase(cb){ } 
 
     gsl::index operator()(Operon::Random& random) const override;
-    void TournamentSize(size_t size) { tournamentSize = size; }
-    size_t TournamentSize() const { return tournamentSize; }
+    void SetTournamentSize(size_t size) { tournamentSize = size; }
+    size_t GetTournamentSize() const { return tournamentSize; }
 
 private:
     size_t tournamentSize;
@@ -44,9 +44,9 @@ public:
 
     void Prepare(const gsl::span<const Individual> pop) const override;
 
-    void TournamentSize(size_t size) { tournamentSize = size; }
+    void SetTournamentSize(size_t size) { tournamentSize = size; }
 
-    size_t TournamentSize() const { return tournamentSize; }
+    size_t GetTournamentSize() const { return tournamentSize; }
 
 private:
     size_t tournamentSize;

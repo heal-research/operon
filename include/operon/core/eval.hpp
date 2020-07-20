@@ -63,7 +63,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             m.col(i).setConstant(v);
             idx++;
         } else if (nodes[i].IsVariable()) {
-            indices[i] = dataset.GetIndex(nodes[i].HashValue);
+            indices[i] = dataset.GetVariable(nodes[i].HashValue).Index;
             params[i] = p ? T(nodes[i].Value) : parameters[idx]; 
             idx++;
         }

@@ -245,17 +245,17 @@ int main(int argc, char* argv[])
         mutator.Add(changeFunc, 1.0);
 
         RSquaredEvaluator evaluator(problem);
-        evaluator.LocalOptimizationIterations(config.Iterations);
-        evaluator.Budget(config.Evaluations);
+        evaluator.SetLocalOptimizationIterations(config.Iterations);
+        evaluator.SetBudget(config.Evaluations);
 
         Expects(problem.TrainingRange().Size() > 0);
 
-        auto comp = [](gsl::span<const Individual> pop, gsl::index i, gsl::index j) { return pop[i][0] < pop[j][0]; };
+        auto comp = [](Individual const& lhs, Individual const& rhs) { return lhs[0] < rhs[0]; };
 
         auto parseSelector = [&](const std::string& name) -> SelectorBase* {
             if (result.count(name) == 0) {
                 auto sel = new TournamentSelector(comp);
-                sel->TournamentSize(5);
+                sel->SetTournamentSize(5);
                 return sel;
             } else {
                 auto value = result[name].as<std::string>();
@@ -269,7 +269,7 @@ int main(int argc, char* argv[])
                         }
                     }
                     auto sel = new TournamentSelector(comp);
-                    sel->TournamentSize(tSize);
+                    sel->SetTournamentSize(tSize);
                     return sel;
                 } else if (tokens[0] == "proportional") {
                     auto sel = new ProportionalSelector(comp);
@@ -284,14 +284,14 @@ int main(int argc, char* argv[])
                         }
                     }
                     auto sel = new RankTournamentSelector(comp);
-                    sel->TournamentSize(tSize);
+                    sel->SetTournamentSize(tSize);
                     return sel;
                 } else if (tokens[0] == "random") {
                     return new RandomSelector();
                 }
             }
             auto sel = new TournamentSelector(comp);
-            sel->TournamentSize(5);
+            sel->SetTournamentSize(5);
             return sel;
         };
 
@@ -335,13 +335,13 @@ int main(int argc, char* argv[])
         }
         std::unique_ptr<Reinserter> reinserter;
         if (result.count("reinserter") == 0) {
-            reinserter.reset(new ReplaceWorstReinserter());
+            reinserter.reset(new ReplaceWorstReinserter<>(comp));
         } else {
             auto value = result["reinserter"].as<std::string>();
             if (value == "keep-best") {
-                reinserter.reset(new KeepBestReinserter());
+                reinserter.reset(new KeepBestReinserter<>(comp));
             } else if (value == "replace-worst") {
-                reinserter.reset(new ReplaceWorstReinserter());
+                reinserter.reset(new ReplaceWorstReinserter<>(comp));
             }
         }
 

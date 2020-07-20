@@ -90,81 +90,26 @@ public:
 
     const MatrixType& Values() const { return values; }
 
-    const std::vector<std::string> VariableNames() const
-    {
-        std::vector<std::string> names;
-        std::transform(variables.begin(), variables.end(), std::back_inserter(names), [](const Variable& v) { return v.Name; });
-        return names;
-    }
+    const std::vector<std::string> VariableNames();
 
-    const gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept
-    {
-        auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
-        return gsl::span<const Operon::Scalar>(values.col(it->Index).data(), values.rows());
-    }
+    const gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
 
-    const gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept
-    {
-        auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
-        return gsl::span<const Operon::Scalar>(values.col(it->Index).data(), values.rows());
-    }
+    const gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
 
-    const gsl::span<const Operon::Scalar> GetValues(gsl::index index) const noexcept
-    {
-        return gsl::span<const Operon::Scalar>(values.col(index).data(), values.rows());
-    }
+    const gsl::span<const Operon::Scalar> GetValues(gsl::index index) const noexcept;
 
-    const std::string& GetName(Operon::Hash hashValue) const
-    {
-        auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
-        return it->Name;
-    }
-    const std::string& GetName(gsl::index index) const { return variables[index].Name; }
+    const Variable& GetVariable(const std::string& name) const noexcept;
+    const Variable& GetVariable(Operon::Hash hashValue) const noexcept;
+    const Variable& GetVariable(gsl::index variableIndex) const noexcept;
 
-    Operon::Hash GetHashValue(const std::string& name) const
-    {
-        auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
-        return it->Hash;
-    }
+    const gsl::span<const Variable> Variables() const noexcept { return gsl::span<const Variable>(variables); }
 
-    gsl::index GetIndex(Operon::Hash hashValue) const
-    {
-        auto it = std::partition_point(variables.begin(), variables.end(), [=](const auto& v) { return v.Hash < hashValue; });
-        return it->Index;
-    }
+    void Shuffle(Operon::Random& random);
 
-    const gsl::span<const Variable> Variables() const { return gsl::span<const Variable>(variables); }
-
-    void Shuffle(Operon::Random& random) 
-    {
-        Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values.rows());
-        perm.setIdentity();
-        // generate a random permutation
-        std::shuffle(perm.indices().data(), perm.indices().data() + perm.indices().size(), random);
-        values = perm * values.matrix(); // permute rows
-    }
-
-    void Normalize(gsl::index i, Range range) 
-    {
-        Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
-        auto seg = values.col(i).segment(range.Start(), range.Size());
-        auto min = seg.minCoeff();
-        auto max = seg.maxCoeff();
-        values.col(i) = (values.col(i).array() - min) / (max - min);
-    }
+    void Normalize(gsl::index i, Range range);
 
     // standardize column i using mean and stddev calculated over the specified range
-    void Standardize(gsl::index i, Range range) 
-    {
-        Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
-        auto seg = values.col(i).segment(range.Start(), range.Size());
-        MeanVarianceCalculator calc;
-        auto vals = gsl::span<Operon::Scalar>(seg.data(), seg.size());
-        calc.Reset();
-        calc.Add(vals);
-
-        values.col(i) = (values.col(i).array() - calc.Mean()) / calc.StandardDeviation();
-    }
+    void Standardize(gsl::index i, Range range); 
 };
 }
 

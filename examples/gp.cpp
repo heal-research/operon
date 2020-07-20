@@ -65,16 +65,16 @@ int main(int, char**) {
 
     // set up remaining operators
     RSquaredEvaluator evaluator(problem);
-    evaluator.LocalOptimizationIterations(config.Iterations);
-    evaluator.Budget(config.Evaluations);
+    evaluator.SetLocalOptimizationIterations(config.Iterations);
+    evaluator.SetBudget(config.Evaluations);
 
-    auto comp = [](gsl::span<const Individual> pop, gsl::index i, gsl::index j) { 
-        return pop[i][0] < pop[j][0]; 
+    auto comp = [](Individual const& lhs, Individual const& rhs) { 
+        return lhs[0] < rhs[0]; 
     };
     TournamentSelector selector(comp);
-    selector.TournamentSize(5); 
+    selector.SetTournamentSize(5); 
 
-    ReplaceWorstReinserter reinserter;
+    ReplaceWorstReinserter<> reinserter(comp);
     BasicOffspringGenerator generator(evaluator, crossover, mutation, selector, selector);
 
     // set up a genetic programming algorithm

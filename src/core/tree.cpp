@@ -82,17 +82,17 @@ Tree& Tree::Reduce()
 
 // Sort each function node's children according to node type and hash value
 // - note that entire child subtrees / subarrays are reordered inside the nodes array
-// - this method assumes node hashes are computed, usually it is preceded by a call to tree.Hash() 
+// - this method assumes node hashes are computed, usually it is preceded by a call to tree.Hash()
 Tree& Tree::Sort()
 {
     // preallocate memory to reduce fragmentation
-    std::vector<Node> sorted;
-    sorted.reserve(nodes.size());
+    Operon::Vector<Operon::Node> sorted = nodes;
 
-    std::vector<int> children;
+    Operon::Vector<int> children;
     children.reserve(nodes.size());
 
     auto start = nodes.begin();
+
     for (size_t i = 0; i < nodes.size(); ++i) {
         auto& s = nodes[i];
 
@@ -102,28 +102,27 @@ Tree& Tree::Sort()
 
         auto arity = s.Arity;
         auto size = s.Length;
-        auto sBegin = start + i - size;
-        auto sEnd = start + i;
 
         if (s.IsCommutative()) {
             if (arity == size) {
-                std::sort(sBegin, sEnd);
+                std::sort(start + i - size, start + i);
             } else {
                 for (auto it = Children(i); it.HasNext(); ++it) {
                     children.push_back(it.Index());
                 }
                 std::sort(children.begin(), children.end(), [&](int a, int b) { return nodes[a] < nodes[b]; }); // sort child indices
 
+                auto pos = sorted.begin() + i - size;
                 for (auto j : children) {
                     auto& c = nodes[j];
-                    std::copy_n(start + j - c.Length, c.Length + 1, std::back_inserter(sorted));
+                    std::copy_n(start + j - c.Length, c.Length + 1, pos);
+                    pos += c.Length + 1;
                 }
-                std::copy(sorted.begin(), sorted.end(), sBegin);
-                sorted.clear();
                 children.clear();
             }
         }
     }
+    nodes.swap(sorted);
     return this->UpdateNodes();
 }
 
@@ -183,5 +182,24 @@ size_t Tree::Level(gsl::index i) const noexcept
     }
     return level;
 }
-} // namespace Operon
 
+Tree& Tree::Hash(Operon::HashFunction f, Operon::HashMode m)
+{
+    switch (f) {
+    case Operon::HashFunction::XXHash: {
+        return Hash<Operon::HashFunction::XXHash>(m);
+    }
+    case Operon::HashFunction::MetroHash: {
+        return Hash<Operon::HashFunction::MetroHash>(m);
+    }
+    case Operon::HashFunction::FNV1: {
+        return Hash<Operon::HashFunction::FNV1>(m);
+    }
+    case Operon::HashFunction::AquaHash: {
+        return Hash<Operon::HashFunction::AquaHash>(m);
+    }
+    }
+    return *this;
+}
+
+} // namespace Operon

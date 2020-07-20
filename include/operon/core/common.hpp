@@ -2,7 +2,7 @@
  * Operon - Large Scale Genetic Programming Framework
  *
  * Licensed under the ISC License <https://opensource.org/licenses/ISC> 
- * Copyright (C) 2019 Bogdan Burlacu 
+ * Copyright (C) 2020 Bogdan Burlacu 
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,10 +22,8 @@
 
 #include "constants.hpp"
 #include "gsl/gsl"
-#include "random/jsf.hpp"
-#include "random/sfc64.hpp"
-#include "xxhash/xxhash.hpp"
-#include "aquahash/aquahash.h"
+#include "hash/hash.hpp"
+#include "random/random.hpp"
 #include "types.hpp"
 #include <random>
 
@@ -63,6 +61,6 @@ struct Variable {
     Operon::Hash Hash;
     gsl::index Index;
 };
-};
+}
 
 #endif
