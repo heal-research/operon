@@ -9,7 +9,7 @@ TournamentSelector::operator()(Operon::Random& random) const
 
     for (size_t i = 1; i < tournamentSize; ++i) {
         auto curr = uniformInt(random);
-        if (this->comp(this->population, curr, best)) {
+        if (this->comp(population[curr], population[best])) {
             best = curr;
         }
     }
@@ -35,6 +35,6 @@ void RankTournamentSelector::Prepare(const gsl::span<const Individual> pop) cons
     SelectorBase::Prepare(pop);
     indices.resize(pop.size());
     std::iota(indices.begin(), indices.end(), 0);
-    std::sort(indices.begin(), indices.end(), [&](auto i, auto j) { return this->comp(pop, i, j); });
+    std::sort(indices.begin(), indices.end(), [&](auto i, auto j) { return this->comp(pop[i], pop[j]); });
 }
 }

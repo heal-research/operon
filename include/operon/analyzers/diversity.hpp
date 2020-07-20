@@ -61,8 +61,7 @@ public:
 
         // hybrid (strict) hashing
         std::for_each(ep, indices.begin(), indices.end(), [&](gsl::index i) {
-            auto tree = pop[i].Genotype; // make a copy because the tree will be sorted
-            hashes[i] = MakeHashes<F>(tree, mode);
+            hashes[i] = MakeHashes<F>(pop[i].Genotype, mode);
         });
 
         std::vector<std::pair<size_t, size_t>> pairs(hashes.size());

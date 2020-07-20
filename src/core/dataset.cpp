@@ -17,8 +17,8 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include <fmt/core.h>
 #include "core/dataset.hpp"
+#include <fmt/core.h>
 
 #pragma GCC diagnostic ignored "-Wreorder"
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
@@ -77,4 +77,77 @@ Dataset::Dataset(const std::string& file, bool hasHeader)
         variables[i].Hash = hashes[i];
     }
 }
+
+const std::vector<std::string> Dataset::VariableNames()
+{
+    std::vector<std::string> names;
+    std::transform(variables.begin(), variables.end(), std::back_inserter(names), [](const Variable& v) { return v.Name; });
+    return names;
 }
+
+const gsl::span<const Operon::Scalar> Dataset::GetValues(const std::string& name) const noexcept
+{
+    auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
+    return gsl::span<const Operon::Scalar>(values.col(it->Index).data(), values.rows());
+}
+
+const gsl::span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue) const noexcept
+{
+    auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
+    return gsl::span<const Operon::Scalar>(values.col(it->Index).data(), values.rows());
+}
+
+const gsl::span<const Operon::Scalar> Dataset::GetValues(gsl::index index) const noexcept
+{
+    return gsl::span<const Operon::Scalar>(values.col(index).data(), values.col(index).size());
+}
+
+const Variable& Dataset::GetVariable(const std::string& name) const noexcept
+{
+    auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
+    return variables[it->Index];
+}
+
+const Variable& Dataset::GetVariable(Operon::Hash hashValue) const noexcept
+{
+    auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
+    return variables[it->Index];
+}
+
+const Variable& Dataset::GetVariable(gsl::index variableIndex) const noexcept
+{
+    return variables[variableIndex];
+}
+
+void Dataset::Shuffle(Operon::Random& random)
+{
+    Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values.rows());
+    perm.setIdentity();
+    // generate a random permutation
+    std::shuffle(perm.indices().data(), perm.indices().data() + perm.indices().size(), random);
+    values = perm * values.matrix(); // permute rows
+}
+
+void Dataset::Normalize(gsl::index i, Range range)
+{
+    Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
+    auto seg = values.col(i).segment(range.Start(), range.Size());
+    auto min = seg.minCoeff();
+    auto max = seg.maxCoeff();
+    values.col(i) = (values.col(i).array() - min) / (max - min);
+}
+
+// standardize column i using mean and stddev calculated over the specified range
+void Dataset::Standardize(gsl::index i, Range range)
+{
+    Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
+    auto seg = values.col(i).segment(range.Start(), range.Size());
+    MeanVarianceCalculator calc;
+    auto vals = gsl::span<Operon::Scalar>(seg.data(), seg.size());
+    calc.Reset();
+    calc.Add(vals);
+
+    values.col(i) = (values.col(i).array() - calc.Mean()) / calc.StandardDeviation();
+}
+} // namespace Operon
+

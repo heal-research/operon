@@ -67,7 +67,7 @@ TEST_CASE("Intersection performance")
 
     SUBCASE("Performance") {
         ankerl::nanobench::Bench b;
-        b.performanceCounters(true).relative(true).minEpochIterations(1000);
+        b.performanceCounters(true).relative(true).minEpochIterations(100000);
         b.run("intersect strict",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
         b.run("intersect struct",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
         b.run("jaccard distance",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::Jaccard(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });

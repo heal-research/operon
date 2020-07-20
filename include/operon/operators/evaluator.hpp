@@ -36,7 +36,7 @@ public:
     {
     }
 
-    typename NormalizedMeanSquaredErrorEvaluator::ReturnType
+    typename EvaluatorBase::ReturnType
     operator()(Operon::Random&, Individual& ind) const override
     {
         ++this->fitnessEvaluations;
@@ -74,7 +74,7 @@ public:
     {
     }
 
-    typename RSquaredEvaluator::ReturnType
+    typename EvaluatorBase::ReturnType
     operator()(Operon::Random&, Individual& ind) const
     {
         ++this->fitnessEvaluations;

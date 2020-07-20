@@ -28,17 +28,17 @@ namespace Operon {
 template <typename ExecutionPolicy = std::execution::unsequenced_policy>
 class KeepBestReinserter : public ReinserterBase {
     public:
+        explicit KeepBestReinserter(ComparisonCallback cb) : ReinserterBase(cb) { }
         // keep the best |pop| individuals from pop+pool
         virtual void operator()(Operon::Random&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
             ExecutionPolicy ep;
-            auto idx = 0;
-            auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; };
             // sort the population and the recombination pool
-            std::sort(ep, pop.begin(), pop.end(), comp);
-            std::sort(ep, pool.begin(), pool.end(), comp);
+            std::sort(ep, pop.begin(), pop.end(), this->comp);
+            std::sort(ep, pool.begin(), pool.end(), this->comp);
 
             for (size_t i = 0, j = 0; i < pool.size() && j < pop.size();) {
-                if (pop[j][idx] > pool[i][idx]) {
+                //if (pop[j][idx] > pool[i][idx]) {
+                if (this->comp(pop[i], pop[j])) {
                     pop[j++] = std::move(pool[i]);
                 }
                 ++i;

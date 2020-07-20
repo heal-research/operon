@@ -1,32 +1,36 @@
-#include <pybind11/pybind11.h>
 #include <pybind11/operators.h>
+#include <pybind11/pybind11.h>
 
+#include "algorithms/config.hpp"
 #include "core/common.hpp"
 #include "core/constants.hpp"
 #include "core/eval.hpp"
 #include "core/grammar.hpp"
-#include "algorithms/config.hpp"
+#include "core/operator.hpp"
 
 #include "operators/creator.hpp"
+#include "operators/crossover.hpp"
 #include "operators/generator.hpp"
+#include "operators/mutation.hpp"
+#include "operators/selection.hpp"
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(operon, m) {
+PYBIND11_MODULE(operon, m)
+{
     m.doc() = "Operon Python Module";
     m.attr("__version__") = 0.1;
 
     // algorithm configuration is being held in a struct on the C++ side
     py::class_<Operon::GeneticAlgorithmConfig>(m, "GeneticAlgorithmConfig")
-        .def_readwrite("Generations",          &Operon::GeneticAlgorithmConfig::Generations)
-        .def_readwrite("Evaluations",          &Operon::GeneticAlgorithmConfig::Evaluations)
-        .def_readwrite("Iterations",           &Operon::GeneticAlgorithmConfig::Iterations)
-        .def_readwrite("PopulationSize",       &Operon::GeneticAlgorithmConfig::PopulationSize)
-        .def_readwrite("PoolSize",             &Operon::GeneticAlgorithmConfig::PoolSize)
+        .def_readwrite("Generations", &Operon::GeneticAlgorithmConfig::Generations)
+        .def_readwrite("Evaluations", &Operon::GeneticAlgorithmConfig::Evaluations)
+        .def_readwrite("Iterations", &Operon::GeneticAlgorithmConfig::Iterations)
+        .def_readwrite("PopulationSize", &Operon::GeneticAlgorithmConfig::PopulationSize)
+        .def_readwrite("PoolSize", &Operon::GeneticAlgorithmConfig::PoolSize)
         .def_readwrite("CrossoverProbability", &Operon::GeneticAlgorithmConfig::CrossoverProbability)
-        .def_readwrite("MutationProbability",  &Operon::GeneticAlgorithmConfig::MutationProbability)
-        .def_readwrite("Seed",                 &Operon::GeneticAlgorithmConfig::Seed)
-        ;
+        .def_readwrite("MutationProbability", &Operon::GeneticAlgorithmConfig::MutationProbability)
+        .def_readwrite("Seed", &Operon::GeneticAlgorithmConfig::Seed);
 
     // node type
     py::enum_<Operon::NodeType>(m, "NodeType")
@@ -51,16 +55,15 @@ PYBIND11_MODULE(operon, m) {
         .def(py::self |= py::self)
         .def(py::self ^ py::self)
         .def(py::self ^= py::self)
-        .def(~py::self)
-        ;
+        .def(~py::self);
 
     // node
     py::class_<Operon::Node>(m, "Node")
         .def(py::init<Operon::NodeType>())
         .def(py::init<Operon::NodeType, Operon::Hash>())
-        .def("Name",  &Operon::Node::Name)
-        .def("IsLeaf",  &Operon::Node::IsLeaf)
-        .def("IsCommutative",  &Operon::Node::IsCommutative)
+        .def("Name", &Operon::Node::Name)
+        .def("IsLeaf", &Operon::Node::IsLeaf)
+        .def("IsCommutative", &Operon::Node::IsCommutative)
         .def_readwrite("Value", &Operon::Node::Value)
         .def_readwrite("HashValue", &Operon::Node::HashValue)
         .def_readwrite("CalculatedHashValue", &Operon::Node::CalculatedHashValue)
@@ -75,17 +78,16 @@ PYBIND11_MODULE(operon, m) {
         .def(py::self < py::self)
         .def(py::self <= py::self)
         .def(py::self > py::self)
-        .def(py::self >= py::self)
-        ;
+        .def(py::self >= py::self);
 
     // tree
-    py::class_<Operon::Tree>(m, "Tree") 
+    py::class_<Operon::Tree>(m, "Tree")
         .def(py::init<std::initializer_list<Operon::Node>>())
-        .def(py::init<std::vector<Operon::Node>>())
+        .def(py::init<Operon::Vector<Operon::Node>>())
         .def(py::init<const Operon::Tree&>())
         .def("UpdateNodes", &Operon::Tree::UpdateNodes)
-        .def("UpdateNodeDepth", &Operon::Tree::UpdateNodeDepth)
         .def("Sort", &Operon::Tree::Sort)
+        .def("Hash", static_cast<Operon::Tree& (Operon::Tree::*)(Operon::HashFunction, Operon::HashMode)>(&Operon::Tree::Hash))
         .def("Reduce", &Operon::Tree::Reduce)
         .def("Simplify", &Operon::Tree::Simplify)
         .def("ChildIndices", &Operon::Tree::ChildIndices)
@@ -101,8 +103,7 @@ PYBIND11_MODULE(operon, m) {
         .def("DepthIndex", py::overload_cast<gsl::index>(&Operon::Tree::Depth, py::const_))
         .def("Level", &Operon::Tree::Level)
         .def("Empty", &Operon::Tree::Empty)
-        .def("HashValue", &Operon::Tree::HashValue)
-        ;
+        .def("HashValue", &Operon::Tree::HashValue);
 
     // grammar
     py::class_<Operon::Grammar>(m, "Grammar")
@@ -114,14 +115,13 @@ PYBIND11_MODULE(operon, m) {
         .def("GetFrequency", &Operon::Grammar::GetFrequency)
         .def("EnabledSymbols", &Operon::Grammar::EnabledSymbols)
         .def("FunctionArityLimits", &Operon::Grammar::FunctionArityLimits)
-        .def("SampleRandomSymbol", &Operon::Grammar::SampleRandomSymbol)
-        ;
+        .def("SampleRandomSymbol", &Operon::Grammar::SampleRandomSymbol);
 
     // dataset
     py::class_<Operon::Dataset>(m, "Dataset")
         .def(py::init<const std::string&, bool>())
         .def(py::init<const Operon::Dataset&>())
-        .def(py::init<const std::vector<Operon::Variable>&, const std::vector<std::vector<Operon::Scalar>>&>()) 
+        .def(py::init<const std::vector<Operon::Variable>&, const std::vector<std::vector<Operon::Scalar>>&>())
         .def("Rows", &Operon::Dataset::Rows)
         .def("Cols", &Operon::Dataset::Cols)
         .def("Values", &Operon::Dataset::Values)
@@ -135,22 +135,41 @@ PYBIND11_MODULE(operon, m) {
         .def("GetIndex", &Operon::Dataset::GetIndex)
         .def("Shuffle", &Operon::Dataset::Shuffle)
         .def("Normalize", &Operon::Dataset::Normalize)
-        .def("Standardize", &Operon::Dataset::Standardize)
-        ;
+        .def("Standardize", &Operon::Dataset::Standardize);
 
-    // tree creator 
+    // tree creator
     py::class_<Operon::BalancedTreeCreator>(m, "BalancedTreeCreator")
         .def(py::init<const Operon::Grammar&, const gsl::span<const Operon::Variable>, double>())
-        .def("__call__", &Operon::BalancedTreeCreator::operator())
-        ;
+        .def("__call__", &Operon::BalancedTreeCreator::operator());
 
     py::class_<Operon::ProbabilisticTreeCreator>(m, "ProbabilisticTreeCreator")
         .def(py::init<const Operon::Grammar&, const gsl::span<const Operon::Variable>>())
-        .def("__call__", &Operon::ProbabilisticTreeCreator::operator())
-        ;
+        .def("__call__", &Operon::ProbabilisticTreeCreator::operator());
 
     py::class_<Operon::GrowTreeCreator>(m, "GrowTreeCreator")
         .def(py::init<const Operon::Grammar&, const gsl::span<const Operon::Variable>>())
-        .def("__call__", &Operon::GrowTreeCreator::operator())
-        ;
+        .def("__call__", &Operon::GrowTreeCreator::operator());
+
+    // crossover
+    py::class_<Operon::SubtreeCrossover>(m, "SubtreeCrossover")
+        .def(py::init<double, size_t, size_t>())
+        .def("__call__", &Operon::SubtreeCrossover::operator());
+
+    // mutation
+    py::class_<Operon::OnePointMutation>(m, "OnePointMutation")
+        .def("__call__", &Operon::OnePointMutation::operator());
+
+    py::class_<Operon::ChangeVariableMutation>(m, "ChangeVariableMutation")
+        .def(py::init<const gsl::span<const Operon::Variable>>())
+        .def("__call__", &Operon::ChangeVariableMutation::operator());
+
+    py::class_<Operon::ChangeFunctionMutation>(m, "ChangeFunctionMutation")
+        .def(py::init<Operon::Grammar>())
+        .def("__call__", &Operon::ChangeFunctionMutation::operator());
+
+    // selection
+    py::class_<Operon::TournamentSelector>(m, "TournamentSelector")
+        .def(py::init<Operon::ComparisonCallback>())
+        .def("__call__", &Operon::TournamentSelector::operator())
+        .def_property("TournamentSize", &Operon::TournamentSelector::GetTournamentSize, &Operon::TournamentSelector::SetTournamentSize);
 }

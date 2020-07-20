@@ -38,7 +38,7 @@ void calculateDistance(std::vector<Tree>& trees, const char* name) {
 
     for (auto& t : trees) {
         Operon::Distance::HashVector hh(t.Length()); 
-        t.Hash<F>(Operon::HashMode::Relaxed);
+        t.Hash<F>(Operon::HashMode::Strict);
         std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
         std::sort(hh.begin(), hh.end());
         treeHashes.push_back(hh);
@@ -154,7 +154,7 @@ TEST_CASE("Hash collisions") {
     std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::Random rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
-        tree.Hash<Operon::HashFunction::AquaHash>(Operon::HashMode::Strict);
+        tree.Hash<Operon::HashFunction::FNV1>(Operon::HashMode::Strict);
         return tree;
     });
 

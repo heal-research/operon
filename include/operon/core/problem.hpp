@@ -59,7 +59,7 @@ public:
     Dataset& GetDataset() { return dataset; }
 
     const gsl::span<const Variable> InputVariables() const { return inputVariables; }
-    const gsl::span<const Operon::Scalar> TargetValues() const { return dataset.GetValues(target); }
+    const gsl::span<const Operon::Scalar> TargetValues() { return dataset.GetValues(target); }
 
     Solution CreateSolution(const Tree&) const;
 

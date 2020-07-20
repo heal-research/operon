@@ -39,7 +39,7 @@ class TreeFormatter {
             fmt::format_to(std::back_inserter(current), formatString, s.Value);
         } else if (s.IsVariable()) {
             auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}\n" : "{{:.{}f}} * {{}}\n", decimalPrecision);
-            fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetName(s.CalculatedHashValue));
+            fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetVariable(s.CalculatedHashValue).Name);
         } else {
             fmt::format_to(std::back_inserter(current), "{} {} {}\n", s.Name(), s.Depth, s.Length+1);
         }
@@ -75,7 +75,7 @@ class InfixFormatter {
             fmt::format_to(std::back_inserter(current), formatString, s.Value);
         } else if (s.IsVariable()) {
             auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}", decimalPrecision);
-            fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetName(s.CalculatedHashValue));
+            fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetVariable(s.CalculatedHashValue).Name);
         } else {
             if (s.Type < NodeType::Log) // add, sub, mul, div
             {
