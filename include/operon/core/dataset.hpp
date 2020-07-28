@@ -102,7 +102,8 @@ public:
     const Variable& GetVariable(Operon::Hash hashValue) const noexcept;
     const Variable& GetVariable(gsl::index variableIndex) const noexcept;
 
-    const gsl::span<const Variable> Variables() const noexcept { return gsl::span<const Variable>(variables); }
+    //const gsl::span<const Variable> Variables() const noexcept { return gsl::span<const Variable>(variables); }
+    const std::vector<Variable>& Variables() const noexcept { return variables; }
 
     void Shuffle(Operon::Random& random);
 

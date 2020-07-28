@@ -1,10 +1,12 @@
 #include <pybind11/operators.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include "algorithms/config.hpp"
 #include "core/common.hpp"
 #include "core/constants.hpp"
 #include "core/eval.hpp"
+#include "core/format.hpp"
 #include "core/grammar.hpp"
 #include "core/operator.hpp"
 
@@ -16,10 +18,15 @@
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(operon, m)
+PYBIND11_MODULE(pyoperon, m)
 {
     m.doc() = "Operon Python Module";
     m.attr("__version__") = 0.1;
+
+    py::class_<Operon::Variable>(m, "Variable")
+        .def_readwrite("Name", &Operon::Variable::Name)
+        .def_readwrite("Hash", &Operon::Variable::Hash)
+        .def_readwrite("Index", &Operon::Variable::Index);
 
     // algorithm configuration is being held in a struct on the C++ side
     py::class_<Operon::GeneticAlgorithmConfig>(m, "GeneticAlgorithmConfig")
@@ -61,9 +68,11 @@ PYBIND11_MODULE(operon, m)
     py::class_<Operon::Node>(m, "Node")
         .def(py::init<Operon::NodeType>())
         .def(py::init<Operon::NodeType, Operon::Hash>())
-        .def("Name", &Operon::Node::Name)
-        .def("IsLeaf", &Operon::Node::IsLeaf)
-        .def("IsCommutative", &Operon::Node::IsCommutative)
+        .def_property_readonly("Name", &Operon::Node::Name)
+        .def_property_readonly("IsLeaf", &Operon::Node::IsLeaf)
+        .def_property_readonly("IsConstant", &Operon::Node::IsConstant)
+        .def_property_readonly("IsVariable", &Operon::Node::IsVariable)
+        .def_property_readonly("IsCommutative", &Operon::Node::IsCommutative)
         .def_readwrite("Value", &Operon::Node::Value)
         .def_readwrite("HashValue", &Operon::Node::HashValue)
         .def_readwrite("CalculatedHashValue", &Operon::Node::CalculatedHashValue)
@@ -85,28 +94,33 @@ PYBIND11_MODULE(operon, m)
         .def(py::init<std::initializer_list<Operon::Node>>())
         .def(py::init<Operon::Vector<Operon::Node>>())
         .def(py::init<const Operon::Tree&>())
+        //.def(py::init<Operon::Tree&&>())
         .def("UpdateNodes", &Operon::Tree::UpdateNodes)
         .def("Sort", &Operon::Tree::Sort)
         .def("Hash", static_cast<Operon::Tree& (Operon::Tree::*)(Operon::HashFunction, Operon::HashMode)>(&Operon::Tree::Hash))
         .def("Reduce", &Operon::Tree::Reduce)
-        .def("Simplify", &Operon::Tree::Simplify)
+        //.def("Simplify", &Operon::Tree::Simplify) // not yet implemented
         .def("ChildIndices", &Operon::Tree::ChildIndices)
         .def("SetEnabled", &Operon::Tree::SetEnabled)
-        .def("Nodes", py::overload_cast<>(&Operon::Tree::Nodes))
-        .def("NodesConst", py::overload_cast<>(&Operon::Tree::Nodes, py::const_))
         .def("SetCoefficients", &Operon::Tree::SetCoefficients)
         .def("GetCoefficients", &Operon::Tree::GetCoefficients)
         .def("CoefficientsCount", &Operon::Tree::CoefficientsCount)
-        .def("Length", &Operon::Tree::Length)
-        .def("VisitationLength", &Operon::Tree::VisitationLength)
-        .def("Depth", py::overload_cast<>(&Operon::Tree::Depth, py::const_))
-        .def("DepthIndex", py::overload_cast<gsl::index>(&Operon::Tree::Depth, py::const_))
-        .def("Level", &Operon::Tree::Level)
-        .def("Empty", &Operon::Tree::Empty)
-        .def("HashValue", &Operon::Tree::HashValue);
+        .def_property_readonly("Nodes", py::overload_cast<>(&Operon::Tree::Nodes))
+        .def_property_readonly("Nodes", py::overload_cast<>(&Operon::Tree::Nodes, py::const_))
+        .def_property_readonly("Length", &Operon::Tree::Length)
+        .def_property_readonly("VisitationLength", &Operon::Tree::VisitationLength)
+        .def_property_readonly("Depth", py::overload_cast<>(&Operon::Tree::Depth, py::const_))
+        .def_property_readonly("Depth", py::overload_cast<gsl::index>(&Operon::Tree::Depth, py::const_))
+        .def_property_readonly("Level", &Operon::Tree::Level)
+        .def_property_readonly("Empty", &Operon::Tree::Empty)
+        .def_property_readonly("HashValue", &Operon::Tree::HashValue)
+        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Tree::operator[]))
+        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Tree::operator[], py::const_));
 
     // grammar
     py::class_<Operon::Grammar>(m, "Grammar")
+        .def(py::init<>())
+        .def_property_readonly_static("Arithmetic", [](py::object /* self */) { return Operon::Grammar::Arithmetic; })
         .def("IsEnabled", &Operon::Grammar::IsEnabled)
         .def("Enable", &Operon::Grammar::Enable)
         .def("Disable", &Operon::Grammar::Disable)
@@ -119,7 +133,7 @@ PYBIND11_MODULE(operon, m)
 
     // dataset
     py::class_<Operon::Dataset>(m, "Dataset")
-        .def(py::init<const std::string&, bool>())
+        .def(py::init<const std::string&, bool>(), py::arg("filename"), py::arg("has_header"))
         .def(py::init<const Operon::Dataset&>())
         .def(py::init<const std::vector<Operon::Variable>&, const std::vector<std::vector<Operon::Scalar>>&>())
         .def("Rows", &Operon::Dataset::Rows)
@@ -129,25 +143,26 @@ PYBIND11_MODULE(operon, m)
         .def("GetValues", py::overload_cast<const std::string&>(&Operon::Dataset::GetValues, py::const_))
         .def("GetValues", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetValues, py::const_))
         .def("GetValues", py::overload_cast<gsl::index>(&Operon::Dataset::GetValues, py::const_))
-        .def("GetName", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetName, py::const_))
-        .def("GetName", py::overload_cast<gsl::index>(&Operon::Dataset::GetName, py::const_))
-        .def("GetHashValue", &Operon::Dataset::GetHashValue)
-        .def("GetIndex", &Operon::Dataset::GetIndex)
+        .def("GetVariable", py::overload_cast<const std::string&>(&Operon::Dataset::GetVariable, py::const_))
+        .def("GetVariable", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetVariable, py::const_))
+        .def("GetVariable", py::overload_cast<gsl::index>(&Operon::Dataset::GetVariable, py::const_))
+        .def_property_readonly("Variables", &Operon::Dataset::Variables)
         .def("Shuffle", &Operon::Dataset::Shuffle)
         .def("Normalize", &Operon::Dataset::Normalize)
         .def("Standardize", &Operon::Dataset::Standardize);
 
     // tree creator
     py::class_<Operon::BalancedTreeCreator>(m, "BalancedTreeCreator")
-        .def(py::init<const Operon::Grammar&, const gsl::span<const Operon::Variable>, double>())
-        .def("__call__", &Operon::BalancedTreeCreator::operator());
+        .def(py::init<const Operon::Grammar&, const std::vector<Operon::Variable>, double>(), py::arg("grammar"), py::arg("variables"), py::arg("bias"))
+        .def("__call__", &Operon::BalancedTreeCreator::operator())
+        .def_property("IrregularityBias", &Operon::BalancedTreeCreator::GetBias, &Operon::BalancedTreeCreator::SetBias);
 
     py::class_<Operon::ProbabilisticTreeCreator>(m, "ProbabilisticTreeCreator")
-        .def(py::init<const Operon::Grammar&, const gsl::span<const Operon::Variable>>())
+        .def(py::init<const Operon::Grammar&, const std::vector<Operon::Variable>>())
         .def("__call__", &Operon::ProbabilisticTreeCreator::operator());
 
     py::class_<Operon::GrowTreeCreator>(m, "GrowTreeCreator")
-        .def(py::init<const Operon::Grammar&, const gsl::span<const Operon::Variable>>())
+        .def(py::init<const Operon::Grammar&, const std::vector<Operon::Variable>>())
         .def("__call__", &Operon::GrowTreeCreator::operator());
 
     // crossover
@@ -172,4 +187,28 @@ PYBIND11_MODULE(operon, m)
         .def(py::init<Operon::ComparisonCallback>())
         .def("__call__", &Operon::TournamentSelector::operator())
         .def_property("TournamentSize", &Operon::TournamentSelector::GetTournamentSize, &Operon::TournamentSelector::SetTournamentSize);
+
+    py::class_<Operon::RankTournamentSelector>(m, "RankTournamentSelector")
+        .def(py::init<Operon::ComparisonCallback>())
+        .def("__call__", &Operon::RankTournamentSelector::operator())
+        .def("Prepare", &Operon::RankTournamentSelector::Prepare)
+        .def_property("TournamentSize", &Operon::RankTournamentSelector::GetTournamentSize, &Operon::RankTournamentSelector::SetTournamentSize);
+
+    py::class_<Operon::ProportionalSelector>(m, "ProportionalSelector")
+        .def(py::init<Operon::ComparisonCallback>())
+        .def("__call__", &Operon::ProportionalSelector::operator())
+        .def("Prepare", py::overload_cast<const gsl::span<const Operon::Individual>>(&Operon::ProportionalSelector::Prepare, py::const_))
+        .def("SetObjIndex", &Operon::ProportionalSelector::SetObjIndex);
+
+    // random generators
+    py::class_<Operon::RandomGenerator::RomuTrio>(m, "RomuTrio")
+        .def(py::init<uint64_t>())
+        .def("__call__", &Operon::RandomGenerator::RomuTrio::operator());
+
+    // tree format
+    py::class_<Operon::TreeFormatter>(m, "TreeFormatter")
+        .def_static("Format", &Operon::TreeFormatter::Format);
+
+    py::class_<Operon::InfixFormatter>(m, "InfixFormatter")
+        .def_static("Format", &Operon::InfixFormatter::Format);
 }

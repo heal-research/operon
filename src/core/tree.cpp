@@ -164,6 +164,11 @@ size_t Tree::Depth() const noexcept
     return nodes.back().Depth;
 }
 
+size_t Tree::Depth(gsl::index i) const noexcept
+{
+    return nodes[i].Depth;
+}
+
 size_t Tree::VisitationLength() const noexcept
 {
     return std::transform_reduce(std::execution::unseq, nodes.begin(), nodes.end(), 0UL, std::plus<> {}, [](const auto& node) { return node.Length + 1; });
