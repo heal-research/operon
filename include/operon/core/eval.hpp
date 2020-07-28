@@ -86,7 +86,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             case NodeType::Add: {
                 auto j = i-1;
                 r = m.col(j);
-                for (int k = 1; k < s.Arity; ++k) {
+                for (size_t k = 1; k < s.Arity; ++k) {
                     j -= nodes[j].Length+1;
                     r += m.col(j);
                 }
@@ -95,7 +95,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             case NodeType::Mul: {
                 auto j = i-1;
                 r = m.col(j);
-                for (int k = 1; k < s.Arity; ++k) {
+                for (size_t k = 1; k < s.Arity; ++k) {
                     j -= nodes[j].Length+1;
                     r *= m.col(j);
                 }
@@ -107,7 +107,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                     r = -m.col(j);
                 } else {
                     r = m.col(j);
-                    for (int k = 1; k < s.Arity; ++k) {
+                    for (size_t k = 1; k < s.Arity; ++k) {
                         j -= nodes[j].Length+1;
                         r -= m.col(j);
                     }
@@ -120,7 +120,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
                     r = m.col(j).inverse();
                 } else {
                     r = m.col(j);
-                    for (int k = 1; k < s.Arity; ++k) {
+                    for (size_t k = 1; k < s.Arity; ++k) {
                         j -= nodes[j].Length+1;
                         r /= m.col(j);
                     }
