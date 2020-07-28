@@ -27,6 +27,34 @@ Ease-of-use
 For an overview of *Operon* please have a look at the :doc:`features` page. The API is illustrated by an :doc:`example`.
 The main concepts are described in the :doc:`operators` section. 
 
+The software was also presented at GECCO'2020 *EvoSoft* workshop: https://dl.acm.org/doi/10.1145/3377929.3398099. If you want to reference it in your publication, please use:
+
+.. code-block:: tex
+
+    @inproceedings{Burlacu:2020:GECCOcomp,
+    author = {Bogdan Burlacu and Gabriel Kronberger and Michael Kommenda},
+    title = {Operon C++: An Efficient Genetic Programming Framework for Symbolic Regression},
+    year = {2020},
+      editor = {Richard Allmendinger and Hugo Terashima Marin and Efren Mezura Montes and Thomas Bartz-Beielstein and Bogdan Filipic and Ke Tang and David Howard and Emma Hart and Gusz Eiben and Tome Eftimov and William {La Cava} and Boris Naujoks and Pietro Oliveto and Vanessa Volz and Thomas Weise and Bilel Derbel and Ke Li and Xiaodong Li and Saul Zapotecas and Qingfu Zhang and Rui Wang and Ran Cheng and Guohua Wu and Miqing Li and Hisao Ishibuchi and Jonathan Fieldsend and Ozgur Akman and Khulood Alyahya and Juergen Branke and John R. Woodward and Daniel R. Tauritz and Marco Baioletti and Josu Ceberio Uribe and John McCall and Alfredo Milani and Stefan Wagner and Michael Affenzeller and Bradley Alexander and Alexander (Sandy) Brownlee and Saemundur O. Haraldsson and Markus Wagner and Nayat Sanchez-Pi and Luis Marti and Silvino {Fernandez Alzueta} and Pablo {Valledor Pellicer} and Thomas Stuetzle and Matthew Johns and Nick Ross and Ed Keedwell and Herman Mahmoud and David Walker and Anthony Stein and Masaya Nakata and David Paetzel and Neil Vaughan and Stephen Smith and Stefano Cagnoni and Robert M. Patton and Ivanoe {De Falco} and Antonio {Della Cioppa} and Umberto Scafuri and Ernesto Tarantino and Akira Oyama and Koji Shimoyama and Hemant Kumar Singh and Kazuhisa Chiba and Pramudita Satria Palar and Alma Rahat and Richard Everson and Handing Wang and Yaochu Jin and Erik Hemberg and Riyad Alshammari and Tokunbo Makanju and Fuijimino-shi and Ivan Zelinka and Swagatam Das and Ponnuthurai Nagaratnam and Roman Senkerik},
+      isbn13 = {9781450371278},
+    publisher = {Association for Computing Machinery},
+      publisher_address = {New York, NY, USA},
+    url = {https://doi.org/10.1145/3377929.3398099},
+    doi = {doi:10.1145/3377929.3398099},
+    booktitle = {Proceedings of the 2020 Genetic and Evolutionary Computation Conference Companion},
+    pages = {1562–1570},
+      size = {9 pages},
+      keywords = {genetic algorithms, genetic programming, C++, symbolic regression},
+      address = {internet},
+    series = {GECCO '20},
+      month = {July 8-12},
+      organisation = {SIGEVO},
+      abstract = {},
+      notes = {Also known as \cite{10.1145/3377929.3398099}
+               GECCO-2020
+               A Recombination of the 29th International Conference on Genetic Algorithms (ICGA) and the 25th Annual Genetic Programming Conference (GP)},
+    }
+
 .. .. toctree::
 ..     :maxdepth: 0
 ..     :caption: Contents:

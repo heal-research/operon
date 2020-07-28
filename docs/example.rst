@@ -7,13 +7,13 @@ Example
 
 This example shows how to do symbolic regression using GP. The impatient can go directly to the `full code example <https://github.com/foolnotion/operon/blob/master/examples/gp.cpp>`_ on github. We assume *some* familiarity with GP concepts and terminology.
 
-We solve a synthetic benchmark problem, namely the :math:`\text{Poly-10}`:
+We solve a synthetic benchmark problem, namely the :math:`\textit{Poly-10}`:
 
 .. math::
     
     F(\mathbf{x}) = x_1 x_2 + x_3 x_4 + x_5 x_6 + x_1 x_7 x_9 + x_3 x_6 x_{10}
 
-This problem consists of 500 datapoints which we'll split eqully between our *training* and *test* data. 
+This problem consists of 500 datapoints which we'll split equally between our *training* and *test* data. 
 
 First, let's load the data from csv into a `Dataset` and set the data partitions:
 
@@ -47,13 +47,11 @@ Crossover and mutation
 .. code:: cpp
 
     // set up crossover and mutation
-    using Crossover  = SubtreeCrossover;
-    using Mutation   = MultiMutation;
     double internalNodeBias = 0.9;
     size_t maxTreeDepth  = 10;
     size_t maxTreeLength = 50;
     SubtreeCrossover crossover { internalNodeBias, maxTreeDepth, maxTreeLength };
-    Mutation mutation;
+    MultiMutation mutation;
     OnePointMutation onePoint;
     ChangeVariableMutation changeVar { problem.InputVariables() };
     ChangeFunctionMutation changeFunc { problem.GetGrammar() };
@@ -64,13 +62,16 @@ Crossover and mutation
 
 Selector
     The selection operator samples the distribution of fitness values in the population and picks parent individuals for taking part in recombination. *Operon* supports specifying different selection methods for the two parents (typically called *male* and *female* or *root* and *non-root* parents).
+    We tell the selector how to compare individuals by providing a lambda function to its constructor:
 
 .. code-block:: cpp
-
+    // our lambda function simply compares the fitness of the individuals
+    auto comp = [](Individual const& lhs, Individual const& rhs) { 
+        return lhs[0] < rhs[0]; 
+    };
     // set up the selector
-    using Ind        = Individual<1>; // an individual holding one fitness value (one objective)
-    using Selector   = TournamentSelector<Ind, 0>; // tournament selection using the first objective (0)
-    Selector selector(/* tournament size */ 5);
+    TournamentSelector selector(comp);
+    selector.TournamentSize(5); 
 
 Evaluator
     This operator is responsible for calculating fitness and is alloted a fixed evaluation budget at the beginning of the run. The *evaluator* is also capable of performing nonlinear least-squares fitting of model parameters if the *local optimization iterations* parameter is set to a value greater than zero. 
@@ -78,18 +79,16 @@ Evaluator
 .. code-block:: cpp
 
     // set up the evaluator 
-    using Evaluator  = RSquaredEvaluator<Ind>; // use the R-Squared coefficient of determination
-    Evaluator evaluator(problem);
+    RSquaredEvaluator evaluator(problem);
     evaluator.LocalOptimizationIterations(config.Iterations);
     evaluator.Budget(config.Evaluations);
 
 Reinserter
-    The reinsertion operator merges the pool of *recombinants* (new offspring) back into the population. This can be a simple replacement or a more sophisticated strategy (eg., keep the best individuals among the parents and offspring). 
+    The reinsertion operator merges the pool of *recombinants* (new offspring) back into the population. This can be a simple replacement or a more sophisticated strategy (eg., keep the best individuals among the parents and offspring). Like the selector, the reinserter requires a lambda to specify how it should compare individuals. 
 
 .. code-block:: cpp
 
-    using Reinserter = ReplaceWorstReinserter<Ind, 0>; // reinsert considering first objective (0)
-    Reinserter reinserter;
+    ReplaceWorstReinserter<> reinserter(comp);
 
 
 Offspring generator 
@@ -97,13 +96,12 @@ Offspring generator
 
 .. code-block:: cpp
 
-    using Generator  = BasicOffspringGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
     // the generator makes use of the other operators to generate offspring and assign fitness
     // the selector is passed twice, once for the male parent, once for the female parent.
-    Generator generator(evaluator, crossover, mutation, selector, selector);
+    BasicOffspringGenerator generator(evaluator, crossover, mutation, selector, selector);
 
 Tree creator
-    The tree creator initializes random trees of any target length. The length is sampled from a uniform distribution :math:`U[1, \text{maxTreeLength}]`. Maximum depth is fixed by the :math:`\text{maxTreeDepth}` parameter. 
+    The tree creator initializes random trees of any target length. The length is sampled from a uniform distribution :math:`U[1, \textit{maxTreeLength}]`. Maximum depth is fixed by the :math:`\textit{maxTreeDepth}` parameter. 
 
 .. code-block:: cpp
 
