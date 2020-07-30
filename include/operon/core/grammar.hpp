@@ -130,7 +130,7 @@ public:
         if (std::all_of(head, tail, [](size_t v) { return v == 0; })) {
             throw new std::runtime_error(fmt::format("Could not sample any symbol as all frequencies are set to zero"));
         }
-        auto sum = std::reduce(head, tail);  
+        auto sum = std::reduce(std::execution::unseq, head, tail);  
         auto r = std::uniform_real_distribution<double>(0., sum)(random);
         auto c = 0.0;
 
