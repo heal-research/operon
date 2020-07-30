@@ -33,7 +33,7 @@ namespace Operon {
         XXHash,
         MetroHash,
         AquaHash,
-        FNV1,
+        FNV1Hash,
     };
 
 }

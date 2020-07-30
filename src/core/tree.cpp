@@ -197,8 +197,8 @@ Tree& Tree::Hash(Operon::HashFunction f, Operon::HashMode m)
     case Operon::HashFunction::MetroHash: {
         return Hash<Operon::HashFunction::MetroHash>(m);
     }
-    case Operon::HashFunction::FNV1: {
-        return Hash<Operon::HashFunction::FNV1>(m);
+    case Operon::HashFunction::FNV1Hash: {
+        return Hash<Operon::HashFunction::FNV1Hash>(m);
     }
     case Operon::HashFunction::AquaHash: {
         return Hash<Operon::HashFunction::AquaHash>(m);
