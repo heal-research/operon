@@ -41,7 +41,7 @@ namespace {
     }
 }
 
-template <typename T, Operon::HashFunction F = Operon::HashFunction::AquaHash, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+template <typename T, Operon::HashFunction F = Operon::HashFunction::XXHash, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class PopulationDiversityAnalyzer final : PopulationAnalyzerBase<T> {
 public:
     double operator()(Operon::Random&) const
