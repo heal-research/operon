@@ -411,7 +411,7 @@ int main(int argc, char* argv[])
             auto off = gp.Offspring();
             totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
 
-            fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation() + 1);
+            fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", best[idx], r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
             fmt::print("{:.4f}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, 0.0, 0.0, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
             fmt::print("{}\t{}\n", totalMemory, config.Seed); 
@@ -420,7 +420,7 @@ int main(int argc, char* argv[])
         };
 
         gp.Run(random, report);
-        //report();
+        //fmt::print("{}\n", InfixFormatter::Format(best.Genotype, *dataset));
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);
