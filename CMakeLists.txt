@@ -62,18 +62,11 @@ FetchContent_Declare(
 FetchContent_Declare(
     xxhash
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/xxhash
-    URL https://raw.githubusercontent.com/RedSpah/xxhash_cpp/master/include/xxhash.hpp
+    URL https://raw.githubusercontent.com/Cyan4973/xxHash/dev/xxhash.h
     DOWNLOAD_NO_EXTRACT 1
 )
 
-FetchContent_Declare(
-    aquahash
-    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/aquahash
-    URL https://raw.githubusercontent.com/jandrewrogers/AquaHash/master/aquahash.h
-    DOWNLOAD_NO_EXTRACT 1
-)
-
-FetchContent_MakeAvailable(aquahash xxhash gsl csv nanobench)
+FetchContent_MakeAvailable(xxhash gsl csv nanobench)
 
 set(THIRDPARTY_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
@@ -172,6 +165,7 @@ target_include_directories(
     PRIVATE
     ${PROJECT_SOURCE_DIR}/include/operon
     ${THIRDPARTY_INCLUDE_DIRS}
+    ${EIGEN3_INCLUDE_DIR}
     ${CERES_INCLUDE_DIRS}
 )
 target_compile_definitions(operon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
@@ -225,13 +219,13 @@ else()
 endif(MSVC)
 
 if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
-    add_library(
+    pybind11_add_module(
         pyoperon
         SHARED
         python/operon.cpp
         )
     target_compile_features(pyoperon PRIVATE cxx_std_17)
-    target_link_libraries(pyoperon PRIVATE operon ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${TCMALLOC} TBB::tbb) # figure out if tbb is necessary for linkage here
+    target_link_libraries(pyoperon PRIVATE operon)
     target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC;--coverage>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
     target_include_directories(
         pyoperon
@@ -241,7 +235,9 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         ${THIRDPARTY_INCLUDE_DIRS}
         ${Python3_INCLUDE_DIRS}
         ${CERES_INCLUDE_DIRS}
+        ${EIGEN3_INCLUDE_DIR}
         )
+    target_compile_definitions(pyoperon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 endif()
 
 if(doctest_FOUND AND BUILD_TESTS)
@@ -274,6 +270,5 @@ if(doctest_FOUND AND BUILD_TESTS)
         )
     target_compile_definitions(operon-test PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
     target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
-    target_link_libraries(operon-test PRIVATE "$<$<CONFIG:Debug>:gcov>")
 endif()
 

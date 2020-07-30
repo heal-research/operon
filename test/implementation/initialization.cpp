@@ -29,7 +29,6 @@
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
 
-
 namespace Operon::Test {
 TEST_CASE("Sample nodes from grammar")
 {
@@ -76,11 +75,11 @@ std::vector<Tree> GenerateTrees(Random& random, CreatorBase& creator, std::vecto
     std::vector<Tree> trees;
     trees.reserve(lengths.size());
 
-    std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t len) { return creator(random, len, 0, maxDepth); }); 
+    std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t len) { return creator(random, len, 0, maxDepth); });
     return trees;
 }
 
-std::array<size_t, NodeTypes::Count> CalculateSymbolFrequencies(const std::vector<Tree>& trees) 
+std::array<size_t, NodeTypes::Count> CalculateSymbolFrequencies(const std::vector<Tree>& trees)
 {
     std::array<size_t, NodeTypes::Count> symbolFrequencies;
     symbolFrequencies.fill(0u);
@@ -92,10 +91,9 @@ std::array<size_t, NodeTypes::Count> CalculateSymbolFrequencies(const std::vecto
     }
 
     return symbolFrequencies;
-
 }
 
-std::vector<size_t> CalculateHistogram(const std::vector<size_t>& values) 
+std::vector<size_t> CalculateHistogram(const std::vector<size_t>& values)
 {
     auto [min, max] = std::minmax_element(values.begin(), values.end());
 
@@ -104,11 +102,11 @@ std::vector<size_t> CalculateHistogram(const std::vector<size_t>& values)
     for (auto v : values) {
         counts[v]++;
     }
-    
+
     return counts;
 }
 
-TEST_CASE("GROW") 
+TEST_CASE("GROW")
 {
     auto target = "Y";
     auto ds = Dataset("../data/Poly-10.csv", true);
@@ -129,7 +127,7 @@ TEST_CASE("GROW")
     grammar.Enable(NodeType::Exp, 1);
     grammar.Enable(NodeType::Log, 1);
 
-    GrowTreeCreator grow{ grammar, inputs };
+    GrowTreeCreator grow { grammar, inputs };
 
     Operon::Random random(std::random_device {}());
 
@@ -149,23 +147,23 @@ TEST_CASE("GROW")
         }
     }
 
-    SUBCASE("Simple tree") 
+    SUBCASE("Simple tree")
     {
         auto tree = grow(random, 0, minDepth, maxDepth);
         fmt::print("{}\n", TreeFormatter::Format(tree, ds));
     }
 
-    SUBCASE("Length vs depth") 
+    SUBCASE("Length vs depth")
     {
         int reps = 50;
-        std::vector<size_t> counts(maxDepth+1, 0);
-        std::vector<double> lengths(maxDepth+1, 0); 
+        std::vector<size_t> counts(maxDepth + 1, 0);
+        std::vector<double> lengths(maxDepth + 1, 0);
 
         for (int i = 0; i < reps; ++i) {
             std::vector<Tree> trees(n);
             std::generate(trees.begin(), trees.end(), [&]() { return grow(random, 0, minDepth, maxDepth); });
 
-            for(const auto& tree : trees) {
+            for (const auto& tree : trees) {
                 counts[tree.Depth()] += 1;
                 lengths[tree.Depth()] += tree.Length();
             }
@@ -204,12 +202,17 @@ TEST_CASE("BTC")
     grammar.Enable(NodeType::Sub, 1);
     grammar.Enable(NodeType::Div, 1);
 
-    BalancedTreeCreator btc{ grammar, inputs, /* bias= */ 1.0};
+    BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
 
     Operon::Random random(std::random_device {}());
 
     std::vector<size_t> lengths(n);
 
+    SUBCASE("Simple tree")
+    {
+        auto tree = btc(random, 50, 1, maxDepth);
+        fmt::print("{}\n", TreeFormatter::Format(tree, ds));
+    }
 
     SUBCASE("Symbol frequencies")
     {
@@ -227,10 +230,10 @@ TEST_CASE("BTC")
         }
     }
 
-    SUBCASE("Length histogram") 
+    SUBCASE("Length histogram")
     {
         int reps = 50;
-        std::vector<double> counts(maxLength+1, 0);
+        std::vector<double> counts(maxLength + 1, 0);
 
         for (int i = 0; i < reps; ++i) {
             std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
@@ -250,7 +253,7 @@ TEST_CASE("BTC")
         }
     }
 
-    SUBCASE("Shape histogram") 
+    SUBCASE("Shape histogram")
     {
         int reps = 50;
         std::vector<double> counts;
@@ -260,17 +263,19 @@ TEST_CASE("BTC")
             std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
             auto trees = GenerateTrees(random, btc, lengths);
             std::vector<size_t> shapes(trees.size());
-            std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t>{}, [](const auto& node) { return node.Length+1; }); });
+            std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t> {}, [](const auto& node) { return node.Length + 1; }); });
 
-            avgShape +=  std::reduce(shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
+            avgShape += std::reduce(std::execution::unseq, shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
             auto cnt = CalculateHistogram(shapes);
-            if (counts.size() < cnt.size()) { counts.resize(cnt.size()); }
+            if (counts.size() < cnt.size()) {
+                counts.resize(cnt.size());
+            }
             for (size_t j = 0; j < cnt.size(); ++j) {
                 counts[j] += cnt[j];
             }
         }
 
-        avgShape /= reps; 
+        avgShape /= reps;
         fmt::print("Average shape: {}\n", avgShape);
 
         fmt::print("Shape histogram: \n");
@@ -301,13 +306,13 @@ TEST_CASE("PTC2")
     grammar.Enable(NodeType::Sub, 1);
     grammar.Enable(NodeType::Div, 1);
 
-    ProbabilisticTreeCreator ptc{ grammar, inputs };
+    ProbabilisticTreeCreator ptc { grammar, inputs };
 
     Operon::Random random(std::random_device {}());
 
     std::vector<size_t> lengths(n);
 
-    SUBCASE("Simple tree") 
+    SUBCASE("Simple tree")
     {
         auto tree = ptc(random, 9, 0, maxDepth);
         fmt::print("{}\n", TreeFormatter::Format(tree, ds));
@@ -329,10 +334,10 @@ TEST_CASE("PTC2")
         }
     }
 
-    SUBCASE("Length histogram") 
+    SUBCASE("Length histogram")
     {
         int reps = 50;
-        std::vector<double> counts(maxLength+1, 0);
+        std::vector<double> counts(maxLength + 1, 0);
 
         for (int i = 0; i < reps; ++i) {
             std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
@@ -352,7 +357,7 @@ TEST_CASE("PTC2")
         }
     }
 
-    SUBCASE("Shape histogram") 
+    SUBCASE("Shape histogram")
     {
         int reps = 50;
         std::vector<double> counts;
@@ -362,16 +367,18 @@ TEST_CASE("PTC2")
             std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
             auto trees = GenerateTrees(random, ptc, lengths);
             std::vector<size_t> shapes(trees.size());
-            std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t>{}, [](const auto& node) { return node.Length+1; }); });
-            avgShape +=  std::reduce(shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
+            std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t> {}, [](const auto& node) { return node.Length + 1; }); });
+            avgShape += std::reduce(std::execution::unseq, shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
             auto cnt = CalculateHistogram(shapes);
-            if (counts.size() < cnt.size()) { counts.resize(cnt.size()); }
+            if (counts.size() < cnt.size()) {
+                counts.resize(cnt.size());
+            }
             for (size_t j = 0; j < cnt.size(); ++j) {
                 counts[j] += cnt[j];
             }
         }
 
-        avgShape /= reps; 
+        avgShape /= reps;
         fmt::print("Average shape: {}\n", avgShape);
 
         fmt::print("Shape histogram: \n");
@@ -380,6 +387,5 @@ TEST_CASE("PTC2")
             fmt::print("{}\t{}\n", i, counts[i]);
         }
     }
-
 }
 }

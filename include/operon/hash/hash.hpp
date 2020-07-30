@@ -21,9 +21,11 @@
 #define OPERON_HASH_HPP
 
 #include "core/constants.hpp"
-#include "aquahash/aquahash.h"
+#include "aquahash.h"
 #include "metrohash64.hpp"
-#include "xxhash/xxhash.hpp"
+
+#define XXH_INLINE_ALL
+#include "xxhash/xxhash.h"
 
 #include "gsl/gsl"
 
@@ -33,7 +35,7 @@ template <HashFunction F = HashFunction::XXHash>
 struct Hasher {
     uint64_t operator()(const uint8_t* key, size_t len) noexcept
     {
-        return xxh::xxhash3<64>(key, len);
+        return XXH3_64bits(key, len);
     }
 };
 
@@ -57,7 +59,7 @@ struct Hasher<HashFunction::AquaHash> {
 };
 
 template<>
-struct Hasher<HashFunction::FNV1> {
+struct Hasher<HashFunction::FNV1Hash> {
     uint64_t operator()(const uint8_t* key, size_t len) noexcept
     {
         uint64_t h = 14695981039346656037ull;
