@@ -33,7 +33,8 @@ namespace Test {
     TEST_CASE("Tree creation performance")
     {
         size_t n = 5000;
-        size_t maxLength = 100;
+        size_t minLength = 1000;
+        size_t maxLength = 1100;
         size_t maxDepth = 1000;
 
         Operon::Random rd(std::random_device {}());
@@ -44,7 +45,7 @@ namespace Test {
         std::vector<Variable> inputs;
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
-        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+        std::uniform_int_distribution<size_t> sizeDistribution(minLength, maxLength);
 
         std::vector<Tree> trees(n);
 
