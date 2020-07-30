@@ -93,16 +93,12 @@ public:
     const std::vector<std::string> VariableNames();
 
     const gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
-
     const gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
-
     const gsl::span<const Operon::Scalar> GetValues(gsl::index index) const noexcept;
 
     const Variable& GetVariable(const std::string& name) const noexcept;
     const Variable& GetVariable(Operon::Hash hashValue) const noexcept;
-    const Variable& GetVariable(gsl::index variableIndex) const noexcept;
 
-    //const gsl::span<const Variable> Variables() const noexcept { return gsl::span<const Variable>(variables); }
     const std::vector<Variable>& Variables() const noexcept { return variables; }
 
     void Shuffle(Operon::Random& random);
