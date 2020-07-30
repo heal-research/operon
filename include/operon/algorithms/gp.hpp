@@ -129,7 +129,10 @@ public:
             }
         };
 
-        for (generation = 0; generation < config.Generations; ++generation) {
+        // report statistics for the initial population 
+        if (report) { std::invoke(report); }
+
+        for (generation = 1; generation <= config.Generations; ++generation) {
             // get some new seeds
             std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
             // preserve one elite
