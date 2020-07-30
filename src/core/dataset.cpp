@@ -99,24 +99,19 @@ const gsl::span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue)
 
 const gsl::span<const Operon::Scalar> Dataset::GetValues(gsl::index index) const noexcept
 {
-    return gsl::span<const Operon::Scalar>(values.col(index).data(), values.col(index).size());
+    return gsl::span<const Operon::Scalar>(values.col(index).data(), values.rows());
 }
 
 const Variable& Dataset::GetVariable(const std::string& name) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
-    return variables[it->Index];
+    return *it;
 }
 
 const Variable& Dataset::GetVariable(Operon::Hash hashValue) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
-    return variables[it->Index];
-}
-
-const Variable& Dataset::GetVariable(gsl::index variableIndex) const noexcept
-{
-    return variables[variableIndex];
+    return *it;
 }
 
 void Dataset::Shuffle(Operon::Random& random)
