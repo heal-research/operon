@@ -59,7 +59,7 @@ namespace Test {
         size_t maxLength = 100;
         size_t maxDepth = 1000;
 
-        Operon::Random rd(std::random_device{}()); 
+        Operon::Random rd(1234); 
         auto ds = Dataset("../data/Friedman-I.csv", true);
 
         auto target = "Y";
@@ -71,6 +71,7 @@ namespace Test {
         Range range = { 0, 5000 };
 
         Grammar grammar;
+
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         auto creator = BalancedTreeCreator { grammar, inputs };
@@ -86,9 +87,16 @@ namespace Test {
 
         auto test = [&](nb::Bench& b, GrammarConfig cfg, ExecutionPolicy pol, const std::string& name) {  
             grammar.SetConfig(cfg);
+            for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul }) {
+                grammar.SetMinimumArity(t, 2);
+                grammar.SetMaximumArity(t, 5);
+            }
             std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
-            auto totalOps = TotalNodes(trees) * range.Size();
 
+            size_t count = 0;
+            size_t arity = 0;
+
+            auto totalOps = TotalNodes(trees) * range.Size();
             b.batch(totalOps);
 
             switch(pol) {
