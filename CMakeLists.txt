@@ -147,6 +147,7 @@ add_library(
     src/core/tree.cpp
     src/core/problem.cpp
     src/core/dataset.cpp
+    src/core/grammar.cpp
     src/hash/metrohash64.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
@@ -210,12 +211,9 @@ if(MSVC)
     include_directories(${FMT_INCLUDE_DIR})
 else()
     set(MYFLAGS -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy)
-    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
-    target_link_libraries(operon PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
-    target_link_libraries(operon-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
-    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
-    target_link_libraries(operon-example-gp PRIVATE "$<$<CONFIG:Debug>:gcov>")
+    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
 endif(MSVC)
 
 if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
@@ -226,7 +224,7 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         )
     target_compile_features(pyoperon PRIVATE cxx_std_17)
     target_link_libraries(pyoperon PRIVATE operon)
-    target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC;--coverage>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
+    target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
     target_include_directories(
         pyoperon
         PRIVATE
@@ -256,6 +254,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         #test/implementation/details.cpp
         test/implementation/hashing.cpp
         test/implementation/initialization.cpp
+        test/implementation/mutation.cpp
         #test/implementation/selection.cpp
         #        test/codegen/irbuilder.cpp
         )
@@ -269,6 +268,6 @@ if(doctest_FOUND AND BUILD_TESTS)
         ${CERES_INCLUDE_DIRS}
         )
     target_compile_definitions(operon-test PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
-    target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;--coverage>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
 endif()
 
