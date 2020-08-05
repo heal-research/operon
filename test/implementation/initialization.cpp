@@ -198,9 +198,13 @@ TEST_CASE("BTC")
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
     grammar.Enable(NodeType::Add, 1);
+    grammar.SetMaximumArity(NodeType::Add, 5);
     grammar.Enable(NodeType::Mul, 1);
+    grammar.SetMaximumArity(NodeType::Mul, 5);
     grammar.Enable(NodeType::Sub, 1);
+    grammar.SetMaximumArity(NodeType::Sub, 5);
     grammar.Enable(NodeType::Div, 1);
+    grammar.SetMaximumArity(NodeType::Div, 5);
 
     BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
 
