@@ -199,6 +199,12 @@ int main(int argc, char* argv[])
         auto problem = Problem(*dataset, variables, target, trainingRange, testRange);
         problem.GetGrammar().SetConfig(grammarConfig);
 
+        for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div }) {
+            problem.GetGrammar().SetMinimumArity(t, 2);
+            problem.GetGrammar().SetMaximumArity(t, 5);
+        }
+
+
         const gsl::index idx { 0 };
         using Ind                = Individual;
         using Reinserter         = ReinserterBase;
@@ -233,16 +239,20 @@ int main(int argc, char* argv[])
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         //auto creator             = BalancedTreeCreator { problem.GetGrammar(), problem.InputVariables() };
         auto initializer         = Initializer { *creator, sizeDistribution };
-        initializer.MinDepth(2);
+        initializer.MinDepth(1);
         initializer.MaxDepth(1000);
         auto crossover           = SubtreeCrossover { 0.9, maxDepth, maxLength };
         auto mutator             = MultiMutation {};
         auto onePoint            = OnePointMutation {};
         auto changeVar           = ChangeVariableMutation { problem.InputVariables() };
         auto changeFunc          = ChangeFunctionMutation { problem.GetGrammar() };
+        auto replaceSubtree      = ReplaceSubtreeMutation { *creator, maxLength, maxDepth };
+        auto insertSubtree       = InsertSubtreeMutation { *creator, maxLength, maxDepth };
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
+        mutator.Add(replaceSubtree, 1.0);
+        mutator.Add(insertSubtree, 1.0);
 
         RSquaredEvaluator evaluator(problem);
         evaluator.SetLocalOptimizationIterations(config.Iterations);
