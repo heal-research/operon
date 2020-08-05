@@ -70,7 +70,7 @@ TEST_CASE("Hashing performance") {
 
     SUBCASE("strict hashing") {
         for (const auto& [f, n] : hashFunctions) {
-            b.batch(totalNodes).run(n, [&]() { 
+            b.batch(totalNodes).run(n, [&, f=f]() { 
                 std::for_each(trees.begin(), trees.end(), [&](Tree& t) { t.Hash(f, Operon::HashMode::Strict); });
             });
         }
@@ -78,7 +78,7 @@ TEST_CASE("Hashing performance") {
 
     SUBCASE("strict hashing + sort") {
         for (const auto& [f, n] : hashFunctions) {
-            b.batch(totalNodes).run(n, [&]() { 
+            b.batch(totalNodes).run(n, [&, f=f]() { 
                 std::for_each(trees.begin(), trees.end(), [&](Tree& t) { t.Hash(f, Operon::HashMode::Strict).Sort(); });
             });
         }
@@ -86,7 +86,7 @@ TEST_CASE("Hashing performance") {
 
     SUBCASE("struct hashing") {
         for (const auto& [f, n] : hashFunctions) {
-            b.batch(totalNodes).run(n, [&]() { 
+            b.batch(totalNodes).run(n, [&, f=f]() { 
                 std::for_each(trees.begin(), trees.end(), [&](Tree& t) { t.Hash(f, Operon::HashMode::Relaxed); });
             });
         }
@@ -94,7 +94,7 @@ TEST_CASE("Hashing performance") {
 
     SUBCASE("struct hashing + sort") {
         for (const auto& [f, n] : hashFunctions) {
-            b.batch(totalNodes).run(n, [&]() { 
+            b.batch(totalNodes).run(n, [&, f=f]() { 
                 std::for_each(trees.begin(), trees.end(), [&](Tree& t) { t.Hash(f, Operon::HashMode::Relaxed).Sort(); });
             });
         }
