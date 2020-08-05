@@ -27,7 +27,8 @@ namespace Operon {
 
         auto [minFunctionArity, maxFunctionArity] = grammar.FunctionArityLimits();
         if (minFunctionArity > 1 && targetLen % 2 == 0) {
-            targetLen = std::bernoulli_distribution(0.5)(random) ? targetLen - 1 : targetLen + 1;
+            //targetLen = std::bernoulli_distribution(0.5)(random) ? targetLen - 1 : targetLen + 1;
+            targetLen = targetLen - 1;
         }
 
         std::uniform_int_distribution<size_t> uniformInt(0, variables_.size() - 1);
@@ -48,6 +49,11 @@ namespace Operon {
         --targetLen; // we'll have at least a root symbol so we count it out
         auto minArity = std::min(minFunctionArity, targetLen);
         auto maxArity = std::min(maxFunctionArity, targetLen);
+
+        if (maxDepth == 1) {
+            minArity = 0;
+            maxArity = 0;
+        }
 
         auto root = grammar.SampleRandomSymbol(random, minArity, maxArity);
         init(root);
@@ -95,6 +101,9 @@ namespace Operon {
         };
         add(tuples.front());
         auto tree = Tree(postfix).UpdateNodes();
+        if (tree.Depth() > maxDepth) {
+            throw std::runtime_error(fmt::format("tree depth {} exceeds max depth {}\n", tree.Depth(), maxDepth));
+        }
         return tree;
     }
 }
