@@ -3,6 +3,8 @@
 
 #include "types.hpp"
 
+#include <immintrin.h>
+
 #include <Eigen/Core>
 
 namespace Operon {
@@ -37,7 +39,7 @@ namespace Distance {
             size_t ls = lhs.size();
             size_t rs = rhs.size();
 
-#ifdef __AVX2__
+#if defined(__AVX2__) && defined(NDEBUG)
             Operon::Hash const* p = lhs.data();
             Operon::Hash const* q = rhs.data();
 
