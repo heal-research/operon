@@ -27,7 +27,6 @@
 #include <Eigen/Eigen>
 #include <algorithm>
 #include <exception>
-#include <fmt/core.h>
 #include <numeric>
 #include <unordered_map>
 #include <vector>
