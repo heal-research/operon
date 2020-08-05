@@ -4,6 +4,8 @@ gcc10Stdenv.mkDerivation rec {
   pname = "cxxopts";
   version = "2.2.0";
 
+  stdenv = pkgs.gcc10Stdenv;
+
   src = fetchFromGitHub {
     owner = "jarro2783";
     repo = "cxxopts";
@@ -11,10 +13,9 @@ gcc10Stdenv.mkDerivation rec {
     sha256 = "1lz4v7jwp870ddrrks6kwh62c8hqc2pfdcpwshlmcf758li8ajz6";
   };
 
-  buildinputs = [ gcc10Stdenv ];
   nativeBuildInputs = [ cmake ];
 
-  meta = with gcc10Stdenv.lib; {
+  meta = with pkgs.gcc10Stdenv.lib; {
     description = "Lightweight C++ command line option parser";
     homepage = https://github.com/jarro2783/cxxopts;
     changelog = "";

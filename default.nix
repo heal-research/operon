@@ -12,6 +12,7 @@ let
     '';
   });
   eigen_trunk = pkgs.eigen.overrideAttrs (old: rec {
+    stdenv = pkgs.gcc10Stdenv;
     src = pkgs.fetchgit {
       url             = "https://gitlab.com/libeigen/eigen.git";
       rev             = "f566724023e1a82be7fecfe0639e908772d3cea6";
@@ -21,6 +22,17 @@ let
     #patches = [ ./eigen_include_dir.patch ];
     #patches = [ ./eigen_include_dir_old.patch ];
     patches = [ ./eigen_include_dir_oldest.patch ];
+  });
+  pybind11_trunk = pkgs.python38Packages.pybind11.overrideAttrs (old: rec {
+    stdenv = pkgs.gcc10Stdenv;
+    buildInputs = [ eigen_trunk ];
+    src = pkgs.fetchgit {
+      url           = "https://github.com/pybind/pybind11.git";
+      rev           = "3e448c0b5e3abcd179781dd718df2bd2340ddb06";
+      sha256        = "15q9761xgg1p5z0xx47l9hh0qh2bzq6l6fyjivcym1rnl25qd43k";
+      fetchSubmodules = false;
+    };
+    patches = [ ./pybind11_include.patch ./pybind11_cxx_standard.patch ];
   });
   ceres_trunk = pkgs.ceres-solver.overrideAttrs (old: rec {
     CFLAGS = (old.CFLAGS or "") + "-march=znver2 -O3";
@@ -35,6 +47,10 @@ let
     cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=FALSE" ];
   });
   fmt = pkgs.fmt.overrideAttrs(old: { outputs = [ "out" ]; });
+  python_native = pkgs.python38.overrideAttrs (old: rec {
+    CFLAGS = (old.CFLAGS or "") + "-march=znver2 -O3";
+    stdenv = pkgs.gcc10Stdenv;
+  });
 in
 #unstable.llvmPackages_10.stdenv.mkDerivation {
 pkgs.gcc10Stdenv.mkDerivation {
@@ -43,7 +59,9 @@ pkgs.gcc10Stdenv.mkDerivation {
 
     buildInputs = with pkgs; [
         # python environment for bindings and scripting
-        (pkgs.python38.withPackages (ps: with ps; [ pip numpy pandas pybind11 pyperf colorama coloredlogs seaborn sphinx recommonmark sphinx_rtd_theme ]))
+        python_native
+        pybind11_trunk
+        (python_native.withPackages (ps: with ps; [ pip numpy pandas pyperf colorama coloredlogs seaborn sphinx recommonmark sphinx_rtd_theme jupyterlab ]))
         # Project dependencies
         ccls # completion vim
         bear # generate compilation database
