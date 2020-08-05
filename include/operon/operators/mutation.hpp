@@ -69,6 +69,40 @@ private:
     Grammar grammar;
 
 };
+
+struct InsertSubtreeMutation : public MutatorBase {
+    InsertSubtreeMutation(CreatorBase& creator, size_t maxLength, size_t maxDepth) 
+        : creator_(creator)
+        , maxLength_(maxLength)
+        , maxDepth_(maxDepth)
+    {
+    }
+
+    Tree operator()(Operon::Random&, Tree) const override;
+
+private:
+    std::reference_wrapper<CreatorBase> creator_;
+    size_t maxLength_;
+    size_t maxDepth_;
+};
+
+struct ReplaceSubtreeMutation : public MutatorBase {
+    ReplaceSubtreeMutation(CreatorBase& creator, size_t maxLength, size_t maxDepth) 
+        : creator_(creator) 
+        , maxLength_(maxLength)
+        , maxDepth_(maxDepth)
+    {
+    }
+
+    Tree operator()(Operon::Random&, Tree) const override;
+
+private:
+    std::reference_wrapper<CreatorBase> creator_;
+    size_t maxLength_;
+    size_t maxDepth_;
+
+};
+
 }
 
 #endif

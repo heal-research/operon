@@ -42,16 +42,15 @@ public:
         auto& right = rhs.Nodes();
         Operon::Vector<Node> nodes;
         nodes.reserve(right[j].Length - left[i].Length + left.size());
-        copy_n(left.begin(), i - left[i].Length, back_inserter(nodes));
-        copy_n(right.begin() + j - right[j].Length, right[j].Length + 1, back_inserter(nodes));
-        copy_n(left.begin() + i + 1, left.size() - (i + 1), back_inserter(nodes));
+        std::copy_n(left.begin(), i - left[i].Length, back_inserter(nodes));
+        std::copy_n(right.begin() + j - right[j].Length, right[j].Length + 1, back_inserter(nodes));
+        std::copy_n(left.begin() + i + 1, left.size() - (i + 1), back_inserter(nodes));
 
         auto child = Tree(nodes).UpdateNodes();
         return child;
     }
 
 private:
-
     double internalProbability;
     size_t maxDepth;
     size_t maxLength;

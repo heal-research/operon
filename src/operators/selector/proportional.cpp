@@ -30,7 +30,7 @@ void ProportionalSelector::Prepare() const
     auto prepare = [=](auto p) { return std::make_pair(vmax - p.first, p.second); };
     std::transform(fitness.begin(), fitness.end(), fitness.begin(), prepare);
     std::sort(fitness.begin(), fitness.end());
-    std::inclusive_scan(std::execution::unseq, fitness.begin(), fitness.end(), fitness.begin(), [](auto lhs, auto rhs) { return std::make_pair(lhs.first + rhs.first, rhs.second); });
+    std::inclusive_scan(fitness.begin(), fitness.end(), fitness.begin(), [](auto lhs, auto rhs) { return std::make_pair(lhs.first + rhs.first, rhs.second); });
 }
 }
 

@@ -68,6 +68,10 @@ std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(
 Tree SubtreeCrossover::operator()(Operon::Random& random, const Tree& lhs, const Tree& rhs) const
 {
     auto [i, j] = FindCompatibleSwapLocations(random, lhs, rhs);
-    return Cross(lhs, rhs, i, j);
+    auto child = Cross(lhs, rhs, i, j);
+    if (child.Depth() > maxDepth) {
+        std::runtime_error(fmt::format("child depth {} exceeds max depth {}\n", child.Depth(), maxDepth));
+    }
+    return child;
 }
 }
