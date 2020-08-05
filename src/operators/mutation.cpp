@@ -54,7 +54,7 @@ Tree MultiPointMutation::operator()(Operon::Random& random, Tree tree) const
 Tree MultiMutation::operator()(Operon::Random& random, Tree tree) const
 {
     //auto i = std::discrete_distribution<gsl::index>(probabilities.begin(), probabilities.end())(random);
-    auto sum = std::reduce(std::execution::unseq, probabilities.begin(), probabilities.end());
+    auto sum = std::reduce(probabilities.begin(), probabilities.end());
     auto r = std::uniform_real_distribution<double>(0, sum)(random);
     auto c = 0.0;
     auto i = 0u; 
@@ -104,8 +104,83 @@ Tree ChangeFunctionMutation::operator()(Operon::Random& random, Tree tree) const
         if (!nodes[i].IsLeaf() && --index == 0)
             break;
     }
-    nodes[i].Type = grammar.SampleRandomSymbol(random, nodes[i].Arity, nodes[i].Arity).Type;
+    auto minArity = std::min(static_cast<size_t>(nodes[i].Arity), grammar.GetMinimumArity(nodes[i].Type));
+    auto maxArity = std::max(static_cast<size_t>(nodes[i].Arity), grammar.GetMaximumArity(nodes[i].Type));
+    nodes[i].Type = grammar.SampleRandomSymbol(random, minArity, maxArity).Type;
     return tree;
 }
 
+Tree ReplaceSubtreeMutation::operator()(Operon::Random& random, Tree tree) const {
+    auto& nodes = tree.Nodes();
+
+    auto i = std::uniform_int_distribution<size_t>(0, nodes.size()-1)(random);
+
+    size_t oldLen = nodes[i].Length + 1;
+    size_t oldLevel = tree.Level(i);
+
+    size_t maxLength = maxLength_ - nodes.size() + oldLen;
+    auto maxDepth = std::max(tree.Depth(), maxDepth_) - oldLevel + 1; 
+
+    auto newLen = std::uniform_int_distribution<size_t>(1, maxLength)(random);
+    auto subtree = creator_(random, newLen, 1, maxDepth).Nodes();
+
+    Operon::Vector<Node> mutated;
+    mutated.reserve(nodes.size() - oldLen + newLen);
+
+    std::copy(nodes.begin(),         nodes.begin() + (i - nodes[i].Length), std::back_inserter(mutated));
+    std::copy(subtree.begin(),       subtree.end(),                         std::back_inserter(mutated));
+    std::copy(nodes.begin() + i + 1, nodes.end(),                           std::back_inserter(mutated));
+    
+    return Tree(mutated).UpdateNodes();
+}
+
+Tree InsertSubtreeMutation::operator()(Operon::Random& random, Tree tree) const {
+    Expects(tree.Length() <= maxLength_);
+
+    if (tree.Length() == maxLength_) {
+        // we can't insert anything because the tree length is at the limit
+        return tree;
+    }
+
+    auto& nodes = tree.Nodes();
+
+    auto test = [](auto const& node) { return node.Type < NodeType::Log && node.Arity < 5; };
+
+    auto n = std::count_if(nodes.begin(), nodes.end(), test);
+
+    if (n == 0) {
+        return tree;
+    }
+
+    auto index = std::uniform_int_distribution<size_t>(1, n)(random);
+    size_t i = 0;
+    for (; i < nodes.size(); ++i) {
+        if (test(nodes[i]) && --index == 0) 
+            break;
+    }
+
+    auto availableLength = maxLength_ - nodes.size();
+    EXPECT(availableLength > 0);
+
+    auto availableDepth = std::max(tree.Depth(), maxDepth_) - tree.Level(i); 
+    EXPECT(availableDepth > 0);
+
+    auto newLen = std::uniform_int_distribution<size_t>(1, availableLength)(random);
+
+    auto subtree = creator_(random, newLen, 1, availableDepth).Nodes();
+
+    Operon::Vector<Node> mutated;
+    mutated.reserve(nodes.size() + newLen);
+
+    // increase parent arity
+    nodes[i].Arity++;
+
+    // copy nodes
+    std::copy(nodes.begin(),                         nodes.begin() + (i - nodes[i].Length), std::back_inserter(mutated));
+    std::copy(subtree.begin(),                       subtree.end(),                         std::back_inserter(mutated));
+    std::copy(nodes.begin() + (i - nodes[i].Length), nodes.end(),                           std::back_inserter(mutated));
+
+    return Tree(mutated).UpdateNodes();
+}
 } // namespace Operon
+
