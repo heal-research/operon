@@ -21,19 +21,15 @@
 #define EVALUATE_HPP
 
 #include "dataset.hpp"
+#include "eval_detail.hpp"
 #include "grammar.hpp"
 #include "gsl/gsl"
 #include "tree.hpp"
 #include <execution>
 
-#include <Eigen/Core>
-#include <Eigen/Dense>
-#include <Eigen/Eigen>
-
 #include <ceres/ceres.h>
 
 namespace Operon {
-constexpr gsl::index BATCHSIZE = 64;
 
 template <typename T>
 Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
@@ -48,7 +44,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 {
     const auto& nodes = tree.Nodes();
     Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
-    Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1); 
+    Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1);
 
     Operon::Vector<gsl::index> indices(nodes.size());
     Operon::Vector<T> params(nodes.size());
@@ -64,67 +60,39 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             idx++;
         } else if (nodes[i].IsVariable()) {
             indices[i] = dataset.GetVariable(nodes[i].HashValue).Index;
-            params[i] = p ? T(nodes[i].Value) : parameters[idx]; 
+            params[i] = p ? T(nodes[i].Value) : parameters[idx];
             idx++;
         }
         treeContainsNonlinearSymbols |= static_cast<bool>(nodes[i].Type & ~Grammar::Arithmetic);
     }
 
-    auto lastCol = m.col(nodes.size()-1);
+    auto lastCol = m.col(nodes.size() - 1);
 
     auto const& values = dataset.Values();
 
-    gsl::index numRows = range.Size();
-    for (gsl::index row = 0; row < numRows; row += BATCHSIZE) {
+    size_t numRows = range.Size();
+    for (size_t row = 0; row < numRows; row += BATCHSIZE) {
         auto remainingRows = std::min(BATCHSIZE, numRows - row);
 
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto r = m.col(i);
-            auto const& s = nodes[i]; 
+            auto const& s = nodes[i];
 
             switch (s.Type) {
             case NodeType::Add: {
-                auto j = i-1;
-                r = m.col(j);
-                for (size_t k = 1; k < s.Arity; ++k) {
-                    j -= nodes[j].Length+1;
-                    r += m.col(j);
-                }
-                break;
-            }
-            case NodeType::Mul: {
-                auto j = i-1;
-                r = m.col(j);
-                for (size_t k = 1; k < s.Arity; ++k) {
-                    j -= nodes[j].Length+1;
-                    r *= m.col(j);
-                }
+                detail::dispatch_op<detail::op<T, Operon::NodeType::Add>>(m, nodes, i);
                 break;
             }
             case NodeType::Sub: {
-                auto j = i-1;
-                if (s.Arity == 1) {
-                    r = -m.col(j);
-                } else {
-                    r = m.col(j);
-                    for (size_t k = 1; k < s.Arity; ++k) {
-                        j -= nodes[j].Length+1;
-                        r -= m.col(j);
-                    }
-                }
+                detail::dispatch_op<detail::op<T, Operon::NodeType::Sub>>(m, nodes, i);
+                break;
+            }
+            case NodeType::Mul: {
+                detail::dispatch_op<detail::op<T, Operon::NodeType::Mul>>(m, nodes, i);
                 break;
             }
             case NodeType::Div: {
-                auto j = i-1;
-                if (s.Arity == 1) {
-                    r = m.col(j).inverse();
-                } else {
-                    r = m.col(j);
-                    for (size_t k = 1; k < s.Arity; ++k) {
-                        j -= nodes[j].Length+1;
-                        r /= m.col(j);
-                    }
-                }
+                detail::dispatch_op<detail::op<T, Operon::NodeType::Div>>(m, nodes, i);
                 break;
             }
             case NodeType::Constant: {
@@ -137,41 +105,41 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             default: {
                 if (treeContainsNonlinearSymbols) {
                     switch (s.Type) {
-                        case NodeType::Log: {
-                            r = m.col(i - 1).log();
-                            break;
-                        }
-                        case NodeType::Exp: {
-                            r = m.col(i - 1).exp();
-                            break;
-                        }
-                        case NodeType::Sin: {
-                            r = m.col(i - 1).sin();
-                            break;
-                        }
-                        case NodeType::Cos: {
-                            r = m.col(i - 1).cos();
-                            break;
-                        }
-                        case NodeType::Tan: {
-                            r = m.col(i - 1).tan();
-                            break;
-                        }
-                        case NodeType::Sqrt: {
-                            r = m.col(i - 1).sqrt();
-                            break;
-                        }
-                        case NodeType::Cbrt: {
-                            r = m.col(i - 1).unaryExpr([](T v) { return T(ceres::cbrt(v)); });
-                            break;
-                        }
-                        case NodeType::Square: {
-                            r = m.col(i - 1).square();
-                            break;
-                        }
-                        default: {
-                            break;
-                        }
+                    case NodeType::Log: {
+                        r = m.col(i - 1).log();
+                        break;
+                    }
+                    case NodeType::Exp: {
+                        r = m.col(i - 1).exp();
+                        break;
+                    }
+                    case NodeType::Sin: {
+                        r = m.col(i - 1).sin();
+                        break;
+                    }
+                    case NodeType::Cos: {
+                        r = m.col(i - 1).cos();
+                        break;
+                    }
+                    case NodeType::Tan: {
+                        r = m.col(i - 1).tan();
+                        break;
+                    }
+                    case NodeType::Sqrt: {
+                        r = m.col(i - 1).sqrt();
+                        break;
+                    }
+                    case NodeType::Cbrt: {
+                        r = m.col(i - 1).unaryExpr([](T v) { return T(ceres::cbrt(v)); });
+                        break;
+                    }
+                    case NodeType::Square: {
+                        r = m.col(i - 1).square();
+                        break;
+                    }
+                    default: {
+                        break;
+                    }
                     }
                 }
                 break;
@@ -230,4 +198,3 @@ private:
 };
 }
 #endif
-
