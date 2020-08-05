@@ -22,7 +22,6 @@
 
 #include <algorithm>
 #include <bitset>
-#include <execution>
 #include <unordered_map>
 
 #include "core/common.hpp"
@@ -39,9 +38,10 @@ public:
 
         frequencies.fill(0);
         for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
-            if (IsEnabled(static_cast<NodeType>(1u << i))) {
-                frequencies[i] = 1;
-            }
+            auto type = static_cast<NodeType>(1u << i);
+            frequencies[i] = 1;
+            auto arity = Node(type).Arity;
+            arityLimits[i] = { arity, arity };
         }
     }
 
@@ -77,12 +77,13 @@ public:
     static const GrammarConfig TypeCoherent = Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
     static const GrammarConfig Full = TypeCoherent | NodeType::Tan | NodeType::Sqrt | NodeType::Cbrt;
 
-    std::vector<std::pair<NodeType, size_t>> EnabledSymbols() const
+    // return a vector of enabled symbols
+    std::vector<NodeType> EnabledSymbols() const
     {
-        std::vector<std::pair<NodeType, size_t>> allowed;
+        std::vector<NodeType> allowed;
         for (size_t i = 0; i < frequencies.size(); ++i) {
             if (auto f = frequencies[i]; f > 0) {
-                allowed.push_back({ static_cast<NodeType>(1u << i), f });
+                allowed.push_back(static_cast<NodeType>(1u << i));
             }
         }
         return allowed;
@@ -92,67 +93,46 @@ public:
     {
         size_t minArity = std::numeric_limits<size_t>::max();
         size_t maxArity = std::numeric_limits<size_t>::min();
-        for (size_t i = 0; i < frequencies.size() - 2; ++i) {
-            if (frequencies[i] == 0) {
-                continue;
+
+        for (size_t i = 0; i < arityLimits.size(); ++i) {
+            auto type = static_cast<NodeType>(1u << i);
+
+            if (IsEnabled(type)) {
+                auto [amin, amax] = arityLimits[i];
+
+                minArity = std::min(minArity, amin);
+                maxArity = std::max(maxArity, amax);
             }
-            size_t arity = i < 4 ? 2 : 1;
-            minArity = std::min(minArity, arity);
-            maxArity = std::max(maxArity, arity);
         }
+
         return { minArity, maxArity };
     }
 
-    Node SampleRandomSymbol(Operon::Random& random, size_t minArity = 0, size_t maxArity = 2) const
-    {
-        decltype(frequencies)::const_iterator head = frequencies.end();
-        decltype(frequencies)::const_iterator tail = frequencies.end();
+    Node SampleRandomSymbol(Operon::Random& random, size_t minArity, size_t maxArity) const;
 
-        Expects(maxArity <= 2);
-        Expects(minArity <= maxArity);
+    void SetMinimumArity(NodeType type, size_t minArity) {
+        EXPECT(minArity <= GetMaximumArity(type));
+        std::get<0>(arityLimits[NodeTypes::GetIndex(type)]) = minArity; 
+    }
 
-        if (minArity == 0) {
-            tail = frequencies.end();
-        } else if (minArity == 1) {
-            tail = frequencies.end() - 2;
-        } else {
-            tail = frequencies.begin() + 4;
-        }
+    size_t GetMinimumArity(NodeType type) const noexcept {
+        return std::get<0>(arityLimits[NodeTypes::GetIndex(type)]);
+    }
 
-        if (maxArity == 0) {
-            head = frequencies.end() - 2;
-        } else if (maxArity == 1) {
-            head = frequencies.begin() + 4;
-        } else {
-            head = frequencies.begin();
-        }
+    void SetMaximumArity(NodeType type, size_t maxArity) {
+        EXPECT(maxArity >= GetMinimumArity(type));
+        std::get<1>(arityLimits[NodeTypes::GetIndex(type)]) = maxArity; 
+        ENSURE(std::get<1>(arityLimits[NodeTypes::GetIndex(type)]) == maxArity);
+    }
 
-        if (std::all_of(head, tail, [](size_t v) { return v == 0; })) {
-            throw new std::runtime_error(fmt::format("Could not sample any symbol as all frequencies are set to zero"));
-        }
-        auto sum = std::reduce(std::execution::unseq, head, tail);  
-        auto r = std::uniform_real_distribution<double>(0., sum)(random);
-        auto c = 0.0;
-
-        gsl::index idx = 0;
-        
-        for(auto it = head; it != tail; ++it) {
-            c += *it;
-            if (c > r) {
-                idx = std::distance(frequencies.begin(), it); 
-                break;
-            }
-        }
-        
-        auto node = Node(static_cast<NodeType>(1u << idx));
-        Ensures(IsEnabled(node.Type));
-
-        return node;
+    size_t GetMaximumArity(NodeType type) const noexcept {
+        return std::get<1>(arityLimits[NodeTypes::GetIndex(type)]);
     }
 
 private:
     NodeType config = Grammar::Arithmetic;
     std::array<size_t, Operon::NodeTypes::Count> frequencies;
+    std::array<std::tuple<size_t, size_t>, Operon::NodeTypes::Count> arityLimits;
 };
 
 }
