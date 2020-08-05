@@ -25,9 +25,26 @@
 #include "hash/hash.hpp"
 #include "random/random.hpp"
 #include "types.hpp"
+
+#include <fmt/core.h>
+#include <fmt/color.h>
 #include <random>
 
 namespace Operon {
+
+#define EXPECT(cond) \
+    if(GSL_UNLIKELY(!(cond))) \
+    { \
+        fmt::print("Precondition {} failed at {}: {}\n", fmt::format(fmt::fg(fmt::terminal_color::green), "{}", #cond), __FILE__, __LINE__); \
+        gsl::details::terminate(); \
+    } 
+
+#define ENSURE(cond) \
+    if(GSL_UNLIKELY(!(cond))) \
+    { \
+        fmt::print("Precondition {} failed at {}: {}\n", fmt::format(fmt::fg(fmt::terminal_color::green), "{}", #cond), __FILE__, __LINE__); \
+        gsl::details::terminate(); \
+    }
 
 class Range {
 public:
