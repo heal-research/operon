@@ -199,8 +199,11 @@ public:
         }
     }
 
-    Operon::Vector<Node>& Nodes() { return nodes; }
-    const Operon::Vector<Node>& Nodes() const { return nodes; }
+    Operon::Vector<Node>& Nodes() & { return nodes; }
+    Operon::Vector<Node>&& Nodes() && { return std::move(nodes); }
+    const Operon::Vector<Node>& Nodes() const& { return nodes; }
+
+
     inline size_t CoefficientsCount() const
     {
         return std::count_if(nodes.begin(), nodes.end(), [](const Node& s) { return s.IsLeaf(); });
