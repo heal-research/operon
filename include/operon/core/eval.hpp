@@ -80,19 +80,19 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 
             switch (s.Type) {
             case NodeType::Add: {
-                detail::dispatch_op<detail::op<T, Operon::NodeType::Add>>(m, nodes, i);
+                detail::dispatch_op<T, Operon::NodeType::Add>(m, nodes, i);
                 break;
             }
             case NodeType::Sub: {
-                detail::dispatch_op<detail::op<T, Operon::NodeType::Sub>>(m, nodes, i);
+                detail::dispatch_op<T, Operon::NodeType::Sub>(m, nodes, i);
                 break;
             }
             case NodeType::Mul: {
-                detail::dispatch_op<detail::op<T, Operon::NodeType::Mul>>(m, nodes, i);
+                detail::dispatch_op<T, Operon::NodeType::Mul>(m, nodes, i);
                 break;
             }
             case NodeType::Div: {
-                detail::dispatch_op<detail::op<T, Operon::NodeType::Div>>(m, nodes, i);
+                detail::dispatch_op<T, Operon::NodeType::Div>(m, nodes, i);
                 break;
             }
             case NodeType::Constant: {
