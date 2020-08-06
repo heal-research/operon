@@ -40,8 +40,8 @@ let
     buildInputs = [ eigen_trunk pkgs.glog ];
     src = pkgs.fetchgit {
       url             = "https://github.com/ceres-solver/ceres-solver.git";
-      rev             = "e39d9ed1d60dfeb58dd2a0df4622c683f87b28e3";
-      sha256          = "0f9h87hhbnk7j15sf97dw9hnyf3d58r0b6hy1sldrmpgl827x9w0";
+      rev             = "242c703b501ffd64d645f4016d63c8b41c381038";
+      sha256          = "0ffgj18dhlgvq8y9gskw0ydl7jpk5z46vrcz59jwnqmi0lzjjrlf";
       fetchSubmodules = false;
     };
     cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=FALSE" ];
