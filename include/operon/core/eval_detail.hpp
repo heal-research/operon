@@ -27,135 +27,115 @@ namespace Operon {
 constexpr size_t BATCHSIZE = 64;
 
 namespace detail {
-// addition up to 5 arguments
-template <typename T, Operon::NodeType N = NodeType::Add>
-struct op {
-    using Type = T;
-    using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Aligned16, Eigen::Stride<BATCHSIZE, 1>>;
+    // addition up to 5 arguments
+    template <typename T, Operon::NodeType N = NodeType::Add>
+    struct op {
+        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
 
-    inline void operator()(Arg arg1, Arg ret) { ret = arg1; }
-    inline void operator()(Arg arg1, Arg arg2, Arg ret) { ret = arg1 + arg2; }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg ret) { ret = arg1 + arg2 + arg3; }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg arg4, Arg ret) { ret = arg1 + arg2 + arg3 + arg4; }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg arg4, Arg arg5, Arg ret) { ret = arg1 + arg2 + arg3 + arg4 + arg5; }
-};
+        inline void operator()(Arg ret, Arg arg1) { ret = arg1; }
 
-template <typename T>
-struct op<T, Operon::NodeType::Sub> {
-    using Type = T;
-    using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Aligned16, Eigen::Stride<BATCHSIZE, 1>>;
-
-    inline void operator()(Arg arg1, Arg ret) { ret = -arg1; }
-    inline void operator()(Arg arg1, Arg arg2, Arg ret) { ret = arg1 - arg2; }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg ret) { ret = arg1 - (arg2 + arg3); }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg arg4, Arg ret) { ret = arg1 - (arg2 + arg3 + arg4); }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg arg4, Arg arg5, Arg ret) { ret = arg1 - (arg2 + arg3 + arg4 + arg5); }
-};
-
-template <typename T>
-struct op<T, Operon::NodeType::Mul> {
-    using Type = T;
-    using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Aligned16, Eigen::Stride<BATCHSIZE, 1>>;
-
-    inline void operator()(Arg arg1, Arg ret) { ret = arg1; }
-    inline void operator()(Arg arg1, Arg arg2, Arg ret) { ret = arg1 * arg2; }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg ret) { ret = arg1 * arg2 * arg3; }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg arg4, Arg ret) { ret = arg1 * arg2 * arg3 * arg4; }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg arg4, Arg arg5, Arg ret) { ret = arg1 * arg2 * arg3 * arg4 * arg5; }
-};
-
-template <typename T>
-struct op<T, Operon::NodeType::Div> {
-    using Type = T;
-    using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Aligned16, Eigen::Stride<BATCHSIZE, 1>>;
-
-    inline void operator()(Arg arg1, Arg ret) { ret = arg1.inverse(); }
-    inline void operator()(Arg arg1, Arg arg2, Arg ret) { ret = arg1 / arg2; }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg ret) { ret = arg1 / (arg2 * arg3); }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg arg4, Arg ret) { ret = arg1 / (arg2 * arg3 * arg4); }
-    inline void operator()(Arg arg1, Arg arg2, Arg arg3, Arg arg4, Arg arg5, Arg ret) { ret = arg1 / (arg2 * arg3 * arg4 * arg5); }
-};
-
-// dispatching mechanism
-template <typename OP>
-inline void dispatch_op(Eigen::Array<typename OP::Type, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
-{
-    auto nextSibling = [&](size_t i) { return i - (nodes[i].Length + 1); };
-
-    OP op;
-    auto r = m.col(parentIndex);
-
-    auto f2 = [&](size_t i) {
-        auto j1 = nextSibling(i);
-        op(m.col(i), m.col(j1), r);
-        return j1;
+        template<typename... Args>
+        inline void operator()(Arg ret, Arg arg1, Args... args) { ret = arg1 + (args + ...); }
     };
 
-    auto f3 = [&](size_t i) {
-        auto j1 = nextSibling(i), j2 = nextSibling(j1);
-        op(m.col(i), m.col(j1), m.col(j2), r);
-        return j2;
+    template <typename T>
+    struct op<T, Operon::NodeType::Sub> {
+        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
+
+        inline void operator()(Arg ret, Arg arg1) { ret = -arg1; }
+
+        template<typename... Args>
+        inline void operator()(Arg ret, Arg arg1, Args... args) { ret = arg1 - (args + ...); }
     };
 
-    auto f4 = [&](size_t i) {
-        auto j1 = nextSibling(i), j2 = nextSibling(j1), j3 = nextSibling(j2);
-        op(m.col(i), m.col(j1), m.col(j2), m.col(j3), r);
-        return j3;
+    template <typename T>
+    struct op<T, Operon::NodeType::Mul> {
+        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
+
+        inline void operator()(Arg ret, Arg arg1) { ret = arg1; }
+
+        template<typename... Args>
+        inline void operator()(Arg ret, Arg arg1, Args... args) { ret = arg1 * (args * ...); }
     };
 
-    auto f5 = [&](size_t i) {
-        auto j1 = nextSibling(i), j2 = nextSibling(j1), j3 = nextSibling(j2), j4 = nextSibling(j3);
-        op(m.col(i), m.col(j1), m.col(j2), m.col(j3), m.col(j4), r);
-        return j4;
+    template <typename T>
+    struct op<T, Operon::NodeType::Div> {
+        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
+
+        inline void operator()(Arg ret, Arg arg1) { ret = arg1.inverse(); }
+        
+        template<typename... Args>
+        inline void operator()(Arg ret, Arg arg1, Args... args) { ret = arg1 / (args * ...); }
     };
 
-    int arity = nodes[parentIndex].Arity;
-    auto i = parentIndex - 1;
-    bool continued = false;
-    // n-ary case
-    do {
-        switch (arity) {
-        case 1:
-            continued ? op(r, m.col(i), r) : op(m.col(i), r); 
-            return;
-        case 2:
-            f2(i);
-            return;
-        case 3:
-            f3(i);
-            return;
-        case 4:
-            f4(i);
-            return;
-        case 5:
-            f5(i);
-            return;
-        default:
-            i = nextSibling(f5(i));
-            arity -= 5;
-            continued = true;
-        }
-    } while (arity > 0);
-}
+    // dispatching mechanism
+    template <typename T, Operon::NodeType N>
+    inline void dispatch_op(Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
+    {
+        auto nextSibling = [&](size_t i) { return i - (nodes[i].Length + 1); };
 
-template <typename OP>
-inline void dispatch_op_simple(Eigen::Array<typename OP::Type, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
-{
-    OP op;
-    auto r = m.col(parentIndex);
-    size_t arity = nodes[parentIndex].Arity;
-    size_t j = parentIndex - 1;
+        op<T, N> op;
+        auto r = m.col(parentIndex);
 
-    if (arity == 1) {
-        op(m.col(j), r);
-    } else {
-        r = m.col(j);
-        for (size_t k = 1; k < nodes[parentIndex].Arity; ++k) {
-            j -= nodes[j].Length + 1;
-            op(r, m.col(j), r);
+        int arity = nodes[parentIndex].Arity;
+        auto i = parentIndex - 1;
+        bool continued = false;
+        // n-ary case
+        do {
+            switch (arity) {
+            case 1: {
+                continued ? op(r, r, m.col(i)) : op(r, m.col(i));
+                return;
+            }
+            case 2: {
+                auto j1 = nextSibling(i);
+                op(r, m.col(i), m.col(j1));
+                return;
+            }
+            case 3: {
+                auto j1 = nextSibling(i), j2 = nextSibling(j1);
+                op(r, m.col(i), m.col(j1), m.col(j2));
+                return;
+            }
+            case 4: {
+                auto j1 = nextSibling(i), j2 = nextSibling(j1), j3 = nextSibling(j2);
+                op(r, m.col(i), m.col(j1), m.col(j2), m.col(j3));
+                return;
+            }
+            case 5: {
+                auto j1 = nextSibling(i), j2 = nextSibling(j1), j3 = nextSibling(j2), j4 = nextSibling(j3);
+                op(r, m.col(i), m.col(j1), m.col(j2), m.col(j3), m.col(j4));
+                return;
+            }
+            default: {
+                auto j1 = nextSibling(i), j2 = nextSibling(j1), j3 = nextSibling(j2), j4 = nextSibling(j3);
+                op(r, m.col(i), m.col(j1), m.col(j2), m.col(j3), m.col(j4));
+                i = nextSibling(j4);
+                arity -= 5;
+                continued = true;
+            }
+            }
+        } while (arity > 0);
+    }
+
+    template <typename T, Operon::NodeType N>
+    inline void dispatch_op_simple(Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
+    {
+        op<T, N> op;
+        auto r = m.col(parentIndex);
+        size_t arity = nodes[parentIndex].Arity;
+        size_t j = parentIndex - 1;
+
+        if (arity == 1) {
+            op(m.col(j), r);
+        } else {
+            r = m.col(j);
+            for (size_t k = 1; k < nodes[parentIndex].Arity; ++k) {
+                j -= nodes[j].Length + 1;
+                op(r, m.col(j), r);
+            }
         }
     }
-}
 
 } // namespace detail
 } // namespace Operon
