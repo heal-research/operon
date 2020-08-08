@@ -48,7 +48,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     csv
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
-    URL https://raw.githubusercontent.com/vincentlaucsb/csv-parser/master/single_include/csv.hpp
+    URL https://raw.githubusercontent.com/d99kris/rapidcsv/master/src/rapidcsv.h
     DOWNLOAD_NO_EXTRACT 1
 )
 

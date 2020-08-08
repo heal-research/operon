@@ -20,60 +20,43 @@
 #include "core/dataset.hpp"
 #include <fmt/core.h>
 
-#pragma GCC diagnostic ignored "-Wreorder"
-#pragma GCC diagnostic ignored "-Wignored-qualifiers"
-#pragma GCC diagnostic ignored "-Wunknown-pragmas"
-#include "csv.hpp"
-#pragma GCC diagnostic warning "-Wreorder"
-#pragma GCC diagnostic warning "-Wignored-qualifiers"
-#pragma GCC diagnostic warning "-Wunknown-pragmas"
+#include "rapidcsv.h"
 
 namespace Operon {
 Dataset::Dataset(const std::string& file, bool hasHeader)
 {
-    auto info = csv::get_file_info(file);
-    auto nrows = info.n_rows;
-    auto ncols = info.n_cols;
-    variables.resize(ncols);
+    rapidcsv::Document doc(file, rapidcsv::LabelParams(hasHeader-1, -1));
 
-    if (hasHeader) {
-        nrows += 1;
-        for (auto i = 0; i < ncols; ++i) {
-            variables[i].Name = info.col_names[i];
-            variables[i].Index = i;
-        }
-    } else {
-        for (auto i = 0; i < ncols; ++i) {
-            variables[i].Name = fmt::format("X{}", i + 1);
-            variables[i].Index = i;
-        }
+    // get row and column count
+    size_t nrow = doc.GetRowCount();
+    size_t ncol = doc.GetColumnCount();
+
+    // fix column names
+    auto columnNames = doc.GetColumnNames();
+
+    variables.resize(ncol);
+    for (size_t i = 0; i < ncol; ++i) {
+        variables[i].Name = columnNames.empty() ? fmt::format("X{}", i+1) : columnNames[i];
+        variables[i].Index = i;
+    }
+    if (columnNames.empty())
         variables.back().Name = "Y";
-    }
-
-    csv::CSVReader reader(file);
-
-    values = MatrixType(nrows, ncols);
-    gsl::index i = 0;
-    for (auto& row : reader) {
-        gsl::index j = 0;
-        for (auto& field : row) {
-            if (field.is_num()) {
-                values(i, j) = field.get<double>();
-                ++j;
-            } else {
-                throw new std::runtime_error(fmt::format("Could not cast {} as a floating-point type.", field.get()));
-            }
-        }
-        ++i;
-    }
 
     std::sort(variables.begin(), variables.end(), [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); });
     // fill in variable hash values using a fixed seed
     Operon::Random random(1234);
-    std::vector<Operon::Hash> hashes(ncols);
+    std::vector<Operon::Hash> hashes(ncol);
     std::generate(hashes.begin(), hashes.end(), [&]() { return random(); });
     std::sort(hashes.begin(), hashes.end());
-    for (auto i = 0; i < ncols; ++i) {
+
+    // allocate and fill in values
+    values = MatrixType(nrow, ncol);
+    for (size_t i = 0; i < ncol; ++i) {
+        auto col = values.col(i);
+        for (size_t j = 0; j < nrow; ++j)
+            col(j) = doc.GetCell<Operon::Scalar>(variables[i].Index, j);
+        
+        variables[i].Index = i;
         variables[i].Hash = hashes[i];
     }
 }
