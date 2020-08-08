@@ -32,95 +32,124 @@ namespace detail {
     struct op {
         using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
 
-        inline void operator()(Arg ret, Arg arg1) { ret = arg1; }
+        inline void apply(Arg ret, Arg arg1) { ret = arg1; }
 
         template <typename... Args>
-        inline void operator()(Arg ret, Arg arg1, Args... args) { ret = arg1 + (args + ...); }
+        inline void apply(Arg ret, Arg arg1, Args... args) { ret = arg1 + (args + ...); }
+
+        inline void accumulate(Arg ret, Arg arg1) { ret += arg1; }
+
+        template <typename... Args>
+        inline void accumulate(Arg ret, Arg arg1, Args... args) { ret += arg1 + (args + ...); }
     };
 
     template <typename T>
     struct op<T, Operon::NodeType::Sub> {
         using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
 
-        inline void operator()(Arg ret, Arg arg1) { ret = -arg1; }
+        inline void apply(Arg ret, Arg arg1) { ret = -arg1; }
 
         template <typename... Args>
-        inline void operator()(Arg ret, Arg arg1, Args... args) { ret = arg1 - (args + ...); }
+        inline void apply(Arg ret, Arg arg1, Args... args) { ret = arg1 - (args + ...); }
+
+        inline void accumulate(Arg ret, Arg arg1) { ret -= arg1; }
+
+        template <typename... Args>
+        inline void accumulate(Arg ret, Arg arg1, Args... args) { ret -= arg1 + (args + ...); }
     };
 
     template <typename T>
     struct op<T, Operon::NodeType::Mul> {
         using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
 
-        inline void operator()(Arg ret, Arg arg1) { ret = arg1; }
+        inline void apply(Arg ret, Arg arg1) { ret = arg1; }
 
         template <typename... Args>
-        inline void operator()(Arg ret, Arg arg1, Args... args) { ret = arg1 * (args * ...); }
+        inline void apply(Arg ret, Arg arg1, Args... args) { ret = arg1 * (args * ...); }
+
+        inline void accumulate(Arg ret, Arg arg1) { ret *= arg1; }
+
+        template <typename... Args>
+        inline void accumulate(Arg ret, Arg arg1, Args... args) { ret *= arg1 * (args * ...); }
     };
 
     template <typename T>
     struct op<T, Operon::NodeType::Div> {
         using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
 
-        inline void operator()(Arg ret, Arg arg1) { ret = arg1.inverse(); }
+        template <bool acc = false>
+        inline void apply(Arg ret, Arg arg1) { ret = arg1.inverse(); }
 
         template <typename... Args>
-        inline void operator()(Arg ret, Arg arg1, Args... args) { ret = arg1 / (args * ...); }
+        inline void apply(Arg ret, Arg arg1, Args... args) { ret = arg1 / (args * ...); }
+
+        inline void accumulate(Arg ret, Arg arg1) { ret /= arg1; }
+
+        template <typename... Args>
+        inline void accumulate(Arg ret, Arg arg1, Args... args) { ret /= arg1 * (args * ...); }
     };
 
     // dispatching mechanism
+    // compared to the simple/naive way of evaluating n-ary symbols, this method has the following advantages:
+    // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments 
+    // 2) improving floating-point precision by minimizing the number of intermediate steps.
+    //    if arity > 5, one accumulation is performed every 5 args
     template <typename T, Operon::NodeType N>
     inline void dispatch_op(Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
     {
         op<T, N> op;
-        auto r = m.col(parentIndex);
 
         int arity = nodes[parentIndex].Arity;
-        auto i = parentIndex - 1;
+        auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
+        auto result = m.col(parentIndex);
 
-        // a single arg must be handled separately due to Sub and Div operations
-        if (arity == 1) {
-            op(r, m.col(i));
-            return;
-        }
-
-        // if we're consuming the arity in a loop there is no special case just stop when arity is zero
-        auto nextSibling = [&](size_t i) { return i - (nodes[i].Length + 1); };
+        auto arg1 = parentIndex - 1;
+        bool continued = false;
 
         while (arity > 0) {
             switch (arity) {
             case 1: {
-                op(r, r, m.col(i));
+                continued
+                    ? op.accumulate(result, m.col(arg1))
+                    : op.apply(result, m.col(arg1));
                 arity = 0;
                 break;
             }
             case 2: {
-                auto j1 = nextSibling(i);
-                op(r, m.col(i), m.col(j1));
+                auto arg2 = nextArg(arg1);
+                continued
+                    ? op.accumulate(result, m.col(arg1), m.col(arg2))
+                    : op.apply(result, m.col(arg1), m.col(arg2));
                 arity = 0;
                 break;
             }
             case 3: {
-                auto j1 = nextSibling(i), j2 = nextSibling(j1);
-                op(r, m.col(i), m.col(j1), m.col(j2));
+                auto arg2 = nextArg(arg1), arg3 = nextArg(arg2);
+                continued
+                    ? op.accumulate(result, m.col(arg1), m.col(arg2), m.col(arg3))
+                    : op.apply(result, m.col(arg1), m.col(arg2), m.col(arg3));
                 arity = 0;
                 break;
             }
             case 4: {
-                auto j1 = nextSibling(i), j2 = nextSibling(j1), j3 = nextSibling(j2);
-                op(r, m.col(i), m.col(j1), m.col(j2), m.col(j3));
+                auto arg2 = nextArg(arg1), arg3 = nextArg(arg2), arg4 = nextArg(arg3);
+                continued
+                    ? op.accumulate(result, m.col(arg1), m.col(arg2), m.col(arg3), m.col(arg4))
+                    : op.apply(result, m.col(arg1), m.col(arg2), m.col(arg3), m.col(arg4));
                 arity = 0;
                 break;
             }
             default: {
-                auto j1 = nextSibling(i), j2 = nextSibling(j1), j3 = nextSibling(j2), j4 = nextSibling(j3);
-                op(r, m.col(i), m.col(j1), m.col(j2), m.col(j3), m.col(j4));
+                auto arg2 = nextArg(arg1), arg3 = nextArg(arg2), arg4 = nextArg(arg3), arg5 = nextArg(arg4);
+                continued
+                    ? op.accumulate(result, m.col(arg1), m.col(arg2), m.col(arg3), m.col(arg4), m.col(arg5))
+                    : op.apply(result, m.col(arg1), m.col(arg2), m.col(arg3), m.col(arg4), m.col(arg5));
                 arity -= 5;
-                if (arity > 0)
-                    i = nextSibling(j4);
+                arg1 = nextArg(arg5);
                 break;
             }
             }
+            continued = true;
         }
     }
 
@@ -133,10 +162,10 @@ namespace detail {
         size_t arity = nodes[parentIndex].Arity;
 
         if (arity == 1) {
-            op(r, m.col(i));
+            op.apply(r, m.col(i));
         } else {
             auto j = i - (nodes[i].Length + 1);
-            op(r, m.col(i), m.col(j));
+            op.apply(r, m.col(i), m.col(j));
         }
     }
 
@@ -149,11 +178,15 @@ namespace detail {
 
         auto i = parentIndex - 1;
 
-        r = m.col(i);
+        if (arity == 1) {
+            op.apply(r, m.col(i));
+        } else {
+            r = m.col(i);
 
-        for (size_t k = 1; k < arity; ++k) {
-            i -= nodes[i].Length + 1;
-            op(r, r, m.col(i));
+            for (size_t k = 1; k < arity; ++k) {
+                i -= nodes[i].Length + 1;
+                op.accumulate(r, m.col(i));
+            }
         }
     }
 
