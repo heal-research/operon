@@ -89,12 +89,9 @@ namespace Test {
             grammar.SetConfig(cfg);
             for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul }) {
                 grammar.SetMinimumArity(t, 2);
-                grammar.SetMaximumArity(t, 5);
+                grammar.SetMaximumArity(t, 10);
             }
             std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
-
-            size_t count = 0;
-            size_t arity = 0;
 
             auto totalOps = TotalNodes(trees) * range.Size();
             b.batch(totalOps);

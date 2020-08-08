@@ -24,14 +24,14 @@
 #include "core/stats.hpp"
 #include "core/metrics.hpp"
 
-#include <catch2/catch.hpp>
+#include <doctest/doctest.h>
 
 #include "core/nnls_tiny.hpp"
 #include <ceres/tiny_solver.h>
 
 namespace Operon {
 namespace Test {
-TEST_CASE("Evaluation correctness", "[implementation]")
+TEST_CASE("Evaluation correctness")
 {
     auto ds = Dataset("../data/Poly-10.csv", true);
     auto variables = ds.Variables();
@@ -45,19 +45,32 @@ TEST_CASE("Evaluation correctness", "[implementation]")
     auto x4Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X4"; });
     auto x5Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X5"; });
     auto x6Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X6"; });
+    auto x7Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X7"; });
+    auto x8Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X8"; });
+    auto x9Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X9"; });
+    auto x10Var = *std::find_if(variables.begin(), variables.end(), [](auto& v) { return v.Name == "X10"; });
 
-    auto x1 = Node(NodeType::Variable, x1Var.Hash);
-    x1.Value = 1;
-    auto x2 = Node(NodeType::Variable, x2Var.Hash);
-    x2.Value = 1;
-    auto x3 = Node(NodeType::Variable, x3Var.Hash);
-    x3.Value = -0.018914965743;
-    auto x4 = Node(NodeType::Variable, x4Var.Hash);
-    x4.Value = 1;
-    auto x5 = Node(NodeType::Variable, x5Var.Hash);
-    x5.Value = 0.876406042248;
-    auto x6 = Node(NodeType::Variable, x6Var.Hash);
-    x6.Value = 0.518227954421;
+    auto x1Val = ds.Values().col(x1Var.Index).segment(range.Start(), range.Size());
+    auto x2Val = ds.Values().col(x2Var.Index).segment(range.Start(), range.Size());
+    auto x3Val = ds.Values().col(x3Var.Index).segment(range.Start(), range.Size());
+    auto x4Val = ds.Values().col(x4Var.Index).segment(range.Start(), range.Size());
+    auto x5Val = ds.Values().col(x5Var.Index).segment(range.Start(), range.Size());
+    auto x6Val = ds.Values().col(x6Var.Index).segment(range.Start(), range.Size());
+    auto x7Val = ds.Values().col(x7Var.Index).segment(range.Start(), range.Size());
+    auto x8Val = ds.Values().col(x8Var.Index).segment(range.Start(), range.Size());
+    auto x9Val = ds.Values().col(x9Var.Index).segment(range.Start(), range.Size());
+    auto x10Val = ds.Values().col(x10Var.Index).segment(range.Start(), range.Size());
+
+    auto x1 = Node(NodeType::Variable, x1Var.Hash); x1.Value = 1;
+    auto x2 = Node(NodeType::Variable, x2Var.Hash); x2.Value = 1;
+    auto x3 = Node(NodeType::Variable, x3Var.Hash); x3.Value = 1;
+    auto x4 = Node(NodeType::Variable, x4Var.Hash); x4.Value = 1;
+    auto x5 = Node(NodeType::Variable, x5Var.Hash); x5.Value = 1;
+    auto x6 = Node(NodeType::Variable, x6Var.Hash); x6.Value = 1;
+    auto x7 = Node(NodeType::Variable, x7Var.Hash); x7.Value = 1;
+    auto x8 = Node(NodeType::Variable, x8Var.Hash); x8.Value = 1;
+    auto x9 = Node(NodeType::Variable, x9Var.Hash); x9.Value = 1;
+    auto x10 = Node(NodeType::Variable, x10Var.Hash); x10.Value = 1;
 
     auto add = Node(NodeType::Add);
     auto sub = Node(NodeType::Sub);
@@ -66,85 +79,341 @@ TEST_CASE("Evaluation correctness", "[implementation]")
 
     Tree tree;
 
-    SECTION("Addition")
+    auto decimals = [](auto v) {
+        auto s = fmt::format("{:.50f}", v);
+        size_t d = 0;
+        auto p = s.find('.');
+        while(s[++p] == '0')
+            ++d;
+        return d;
+    };
+
+    SUBCASE("Addition")
     {
-        auto x1Values = ds.Values().col(x1Var.Index).segment(range.Start(), range.Size());
-        auto x2Values = ds.Values().col(x2Var.Index).segment(range.Start(), range.Size());
+        auto eps = 1e-6;
 
-        auto res = x1Values.array() + x2Values.array();
-
+        // binary evaluation
+        add.Arity = 2;
         tree = Tree({ x1, x2, add });
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res = x2Val + x1Val; // this is the order of arguments in the evaluation routine
         auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
 
-        for (size_t i = 0; i < targetValues.size(); ++i) {
-            fmt::print("{}\t{}\t{}\t{}\n", x1Values[i], x2Values[i], res(i), estimatedValues[i]);
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(std::fabs(estimatedValues[i] - res[i]) < eps);
+        }
+
+        // add 5 terms
+        add.Arity = 5;
+        tree = Tree({ x1, x2, x3, x4, x5, add});
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res5 = x5Val + x4Val + x3Val + x2Val + x1Val;
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res5[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(v < eps);
+        }
+
+        // add 6 terms
+        add.Arity = 6;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, add});
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res6 = x6Val + x5Val + x4Val + x3Val + x2Val + x1Val;
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res6[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(std::fabs(estimatedValues[i] - res6[i]) < eps);
+        }
+
+        // add 10 terms
+        add.Arity = 10;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, add});
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res10 = x10Val + x9Val + x8Val + x7Val + x6Val + x5Val + x4Val + x3Val + x2Val + x1Val;
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res10[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(std::fabs(estimatedValues[i] - res10[i]) < eps);
         }
     }
 
-    SECTION("Subtraction")
+    SUBCASE("Subtraction")
     {
-        auto x1Values = ds.Values().col(x1Var.Index).segment(range.Start(), range.Size());
-        auto x2Values = ds.Values().col(x2Var.Index).segment(range.Start(), range.Size());
+        auto eps = 1e-6;
 
-        auto res = x2Values.array() - x1Values.array();
-
+        // binary evaluation
+        sub.Arity = 2;
         tree = Tree({ x1, x2, sub });
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res = x2Val - x1Val;
         auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
 
-        for (size_t i = 0; i < targetValues.size(); ++i) {
-            fmt::print("{}\t{}\t{}\t{}\n", x1Values[i], x2Values[i], res(i), estimatedValues[i]);
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(v < eps);
+        }
+
+        // 5 terms
+        sub.Arity = 5;
+        tree = Tree({ x1, x2, x3, x4, x5, sub });
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res5 = x5Val - (x4Val + x3Val + x2Val + x1Val);
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res5[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(v < eps);
+        }
+
+        // 6 terms
+        sub.Arity = 6;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, sub});
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res6 = x6Val - (x5Val + x4Val + x3Val + x2Val + x1Val);
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res6[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(v < eps);
+        }
+
+        // 9 terms
+        sub.Arity = 9;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, x7, x8, x9,  sub});
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res9 = x9Val - (x8Val + x7Val + x6Val + x5Val + x4Val + x3Val + x2Val + x1Val);
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(std::fabs(estimatedValues[i] - res9[i]) < eps);
+        }
+
+        // 10 terms
+        sub.Arity = 10;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, sub});
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res10 = x10Val - (x9Val + x8Val + x7Val + x6Val + x5Val + x4Val + x3Val + x2Val + x1Val);
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(std::fabs(estimatedValues[i] - res10[i]) < eps);
         }
     }
 
-    SECTION("Multiplication")
+    SUBCASE("Multiplication")
     {
-        auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start(), range.Size());
-        auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
+        auto eps = 1e-6;
 
+        // binary evaluation
+        mul.Arity = 2;
         tree = Tree({ x1, x2, mul });
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res = x2Val * x1Val;
         auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
-        auto r2 = RSquared(estimatedValues, targetValues);
-        fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
         for (size_t i = 0; i < estimatedValues.size(); ++i) {
-            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], estimatedValues[i]);
+            auto v = std::fabs(estimatedValues[i] - res[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(v < eps);
+        }
+
+        // 5 terms
+        mul.Arity = 5;
+        tree = Tree({ x1, x2, x3, x4, x5, mul });
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res5 = x5Val * x4Val * x3Val * x2Val * x1Val;
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res5[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(v < eps);
+        }
+
+        // 6 terms
+        mul.Arity = 6;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, mul});
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res6 = x6Val * x5Val * x4Val * x3Val * x2Val * x1Val;
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res6[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(v < eps);
+        }
+
+        // 9 terms
+        mul.Arity = 9;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, x7, x8, x9, mul});
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res9 = x9Val * x8Val * x7Val * x6Val * x5Val * x4Val * x3Val * x2Val * x1Val;
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res9[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(v < eps);
+        }
+
+        // 10 terms
+        mul.Arity = 10;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, mul});
+        fmt::print("{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res10 = x10Val * x9Val * x8Val * x7Val * x6Val * x5Val * x4Val * x3Val * x2Val * x1Val;
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res10[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision.\n", decimals(v));
+            }
+            CHECK(v < eps);
         }
     }
 
-    SECTION("Division")
+    SUBCASE("Division")
     {
-        auto x1Values = ds.GetValues(x1Var.Hash).subspan(range.Start(), range.Size());
-        auto x2Values = ds.GetValues(x2Var.Hash).subspan(range.Start(), range.Size());
+        auto eps = 1e-6;
 
-        tree = Tree { x1, x2, div };
+        // binary evaluation
+        div.Arity = 2;
+        tree = Tree({ x1, x2, div });
+        fmt::print(fmt::fg(fmt::terminal_color::green), "{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res = x2Val / x1Val;
         auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
-        auto r2 = RSquared(estimatedValues, targetValues);
-        fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds), r2);
 
         for (size_t i = 0; i < estimatedValues.size(); ++i) {
-            fmt::print("{}\t{}\t{}\n", x1Values[i], x2Values[i], estimatedValues[i]);
+            auto v = std::fabs(estimatedValues[i] - res[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision  (v = {:.12f}, r = {:.12f}), |v-r| = {:.12f}).\n", decimals(v), estimatedValues[i], res[i], v);
+            }
+            CHECK(v < eps);
         }
-    }
 
-    SECTION("((0.876405277537 * X5 * 0.518227954421 * X6) - (-0.018914965743) * X3)")
-    {
-        tree = Tree { x3, x6, x5, mul, sub };
+        // 5 terms
+        div.Arity = 5;
+        tree = Tree({ x1, x2, x3, x4, x5, div });
+        fmt::print(fmt::fg(fmt::terminal_color::green), "{}\n", InfixFormatter::Format(tree, ds, 2));
 
-        auto x3Values = ds.GetValues(x3Var.Hash).subspan(range.Start(), range.Size());
-        auto x5Values = ds.GetValues(x5Var.Hash).subspan(range.Start(), range.Size());
-        auto x6Values = ds.GetValues(x6Var.Hash).subspan(range.Start(), range.Size());
-
-        auto estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
-        auto r2 = RSquared(estimatedValues, targetValues);
-        fmt::print("{} r2 = {}\n", InfixFormatter::Format(tree, ds, 12), r2);
+        auto res5 = x5Val / (x4Val * x3Val * x2Val * x1Val);
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
 
         for (size_t i = 0; i < estimatedValues.size(); ++i) {
-            fmt::print("{}\t{}\t{}\t{}\n", x3Values[i], x5Values[i], x6Values[i], estimatedValues[i]);
+            auto v = std::fabs(estimatedValues[i] - res5[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision  (v = {:.12f}, r = {:.12f}), |v-r| = {:.12f}).\n", decimals(v), estimatedValues[i], res5[i], v);
+            }
+            CHECK(v < eps);
+        }
+
+        // 6 terms
+        div.Arity = 6;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, div});
+        fmt::print(fmt::fg(fmt::terminal_color::green), "{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res6 = x6Val / (x5Val * x4Val * x3Val * x2Val * x1Val);
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res6[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision  (v = {:.12f}, r = {:.12f}, |v-r| = {:.12f}).\n", decimals(v), estimatedValues[i], res6[i], v);
+            }
+            CHECK(v < eps);
+        }
+
+        // 9 terms
+        div.Arity = 9;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, x7, x8, x9, div});
+        fmt::print(fmt::fg(fmt::terminal_color::green), "{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res9 = x9Val / (x8Val * x7Val * x6Val * x5Val * x4Val * x3Val * x2Val * x1Val);
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res9[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision  (v = {:.12f}, r = {:.12f}), |v-r| = {:.12f}).\n", decimals(v), estimatedValues[i], res9[i], v);
+            }
+            CHECK(v < eps);
+        }
+
+        // 10 terms
+        div.Arity = 10;
+        tree = Tree({ x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, div});
+        fmt::print(fmt::fg(fmt::terminal_color::green), "{}\n", InfixFormatter::Format(tree, ds, 2));
+
+        auto res10 = x10Val / (x9Val * x8Val * x7Val * x6Val * x5Val * x4Val * x3Val * x2Val * x1Val);
+        estimatedValues = Evaluate<Operon::Scalar>(tree, ds, range);
+
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto v = std::fabs(estimatedValues[i] - res10[i]);
+            if (v > 1e-12) {
+                fmt::print(fmt::fg(fmt::terminal_color::yellow), "warning: {} decimals result precision  (v = {:.12f}, r = {:.12f}), |v-r| = {:.12f}).\n", decimals(v), estimatedValues[i], res10[i], v);
+            }
+            CHECK(v < eps);
         }
     }
 }
 
-TEST_CASE("Constant optimization (autodiff)", "[implementation]")
+TEST_CASE("Constant optimization (autodiff)")
 {
     auto ds = Dataset("../data/Poly-10.csv", true);
     auto variables = ds.Variables();
@@ -217,7 +486,7 @@ TEST_CASE("Constant optimization (autodiff)", "[implementation]")
     fmt::print("{}\n", InfixFormatter::Format(poly10, ds, 6));
 }
 
-TEST_CASE("Constant optimization (tiny solver)", "[implementation]") 
+TEST_CASE("Constant optimization (tiny solver)") 
 {
     auto ds = Dataset("../data/Poly-10.csv", true);
     auto variables = ds.Variables();
@@ -304,7 +573,7 @@ TEST_CASE("Constant optimization (tiny solver)", "[implementation]")
     std::cout << "x_final: " << x0.transpose() << "\n";
 }
 
-TEST_CASE("Constant optimization (numeric)", "[implementation]")
+TEST_CASE("Constant optimization (numeric)")
 {
     auto ds = Dataset("../data/Poly-10.csv", true);
     auto variables = ds.Variables();
