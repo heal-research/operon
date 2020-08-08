@@ -149,7 +149,9 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             }
         }
         // the final result is found in the last section of the buffer corresponding to the root node
-        res.segment(row, remainingRows) = lastCol.segment(0, remainingRows).unaryExpr([](T v) { return ceres::IsFinite(v) ? v : Operon::Numeric::Max<T>(); });
+        auto seg = lastCol.segment(0, remainingRows);
+        auto max_ = Operon::Numeric::Max<T>();
+        res.segment(row, remainingRows) = (seg.isFinite()).select(seg, max_);
     }
 }
 
