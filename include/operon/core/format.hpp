@@ -74,7 +74,7 @@ class InfixFormatter {
             auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}f}}", decimalPrecision);
             fmt::format_to(std::back_inserter(current), formatString, s.Value);
         } else if (s.IsVariable()) {
-            auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}", decimalPrecision);
+            auto formatString = fmt::format(s.Value < 0 ? "(({{:.{}f}}) * {{}})" : "({{:.{}f}} * {{}})", decimalPrecision);
             fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetVariable(s.CalculatedHashValue).Name);
         } else {
             if (s.Type < NodeType::Log) // add, sub, mul, div
