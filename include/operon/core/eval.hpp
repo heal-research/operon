@@ -17,8 +17,8 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef EVALUATE_HPP
-#define EVALUATE_HPP
+#ifndef OPERON_EVAL
+#define OPERON_EVAL
 
 #include "dataset.hpp"
 #include "eval_detail.hpp"
@@ -68,7 +68,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 
     auto lastCol = m.col(nodes.size() - 1);
 
-    auto const& values = dataset.Values();
+    auto const values = Eigen::Ref<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>>(dataset.Values());
 
     size_t numRows = range.Size();
     for (size_t row = 0; row < numRows; row += BATCHSIZE) {
@@ -78,74 +78,69 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             auto r = m.col(i);
             auto const& s = nodes[i];
 
-            switch (s.Type) {
-            case NodeType::Add: {
-                detail::dispatch_op<T, Operon::NodeType::Add>(m, nodes, i);
-                break;
-            }
-            case NodeType::Sub: {
-                detail::dispatch_op<T, Operon::NodeType::Sub>(m, nodes, i);
-                break;
-            }
-            case NodeType::Mul: {
-                detail::dispatch_op<T, Operon::NodeType::Mul>(m, nodes, i);
-                break;
-            }
-            case NodeType::Div: {
-                detail::dispatch_op<T, Operon::NodeType::Div>(m, nodes, i);
-                break;
-            }
-            case NodeType::Constant: {
-                break;
-            }
-            case NodeType::Variable: {
+            if (GSL_LIKELY(s.IsVariable())) {
                 r.segment(0, remainingRows) = params[i] * values.col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
-                break;
-            }
-            default: {
-                if (treeContainsNonlinearSymbols) {
-                    switch (s.Type) {
-                    case NodeType::Log: {
-                        r = m.col(i - 1).log();
-                        break;
-                    }
-                    case NodeType::Exp: {
-                        r = m.col(i - 1).exp();
-                        break;
-                    }
-                    case NodeType::Sin: {
-                        r = m.col(i - 1).sin();
-                        break;
-                    }
-                    case NodeType::Cos: {
-                        r = m.col(i - 1).cos();
-                        break;
-                    }
-                    case NodeType::Tan: {
-                        r = m.col(i - 1).tan();
-                        break;
-                    }
-                    case NodeType::Sqrt: {
-                        r = m.col(i - 1).sqrt();
-                        break;
-                    }
-                    case NodeType::Cbrt: {
-                        r = m.col(i - 1).unaryExpr([](T v) { return T(ceres::cbrt(v)); });
-                        break;
-                    }
-                    case NodeType::Square: {
-                        r = m.col(i - 1).square();
-                        break;
-                    }
-                    default: {
-                        break;
-                    }
-                    }
+            } else {
+                switch (s.Type) {
+                case NodeType::Add: {
+                    detail::dispatch_op<T, Operon::NodeType::Add>(m, nodes, i);
+                    break;
                 }
-                break;
-                //fmt::print(stderr, "Unknown node type {}\n", nodes[i].Name());
-                //std::terminate();
-            }
+                case NodeType::Sub: {
+                    detail::dispatch_op<T, Operon::NodeType::Sub>(m, nodes, i);
+                    break;
+                }
+                case NodeType::Mul: {
+                    detail::dispatch_op<T, Operon::NodeType::Mul>(m, nodes, i);
+                    break;
+                }
+                case NodeType::Div: {
+                    detail::dispatch_op<T, Operon::NodeType::Div>(m, nodes, i);
+                    break;
+                }
+                default: {
+                    if (treeContainsNonlinearSymbols) {
+                        switch (s.Type) {
+                        case NodeType::Log: {
+                            r = m.col(i - 1).log();
+                            break;
+                        }
+                        case NodeType::Exp: {
+                            r = m.col(i - 1).exp();
+                            break;
+                        }
+                        case NodeType::Sin: {
+                            r = m.col(i - 1).sin();
+                            break;
+                        }
+                        case NodeType::Cos: {
+                            r = m.col(i - 1).cos();
+                            break;
+                        }
+                        case NodeType::Tan: {
+                            r = m.col(i - 1).tan();
+                            break;
+                        }
+                        case NodeType::Sqrt: {
+                            r = m.col(i - 1).sqrt();
+                            break;
+                        }
+                        case NodeType::Cbrt: {
+                            r = m.col(i - 1).unaryExpr([](T v) { return T(ceres::cbrt(v)); });
+                            break;
+                        }
+                        case NodeType::Square: {
+                            r = m.col(i - 1).square();
+                            break;
+                        }
+                        default: {
+                            break;
+                        }
+                        }
+                    }
+                    break;
+                }
+                }
             }
         }
         // the final result is found in the last section of the buffer corresponding to the root node
