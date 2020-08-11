@@ -5,7 +5,7 @@ namespace Operon {
 gsl::index
 ProportionalSelector::operator()(Operon::Random& random) const
 {
-    std::uniform_real_distribution<Operon::Scalar> uniformReal(0, fitness.back().first - std::numeric_limits<double>::epsilon());
+    std::uniform_real_distribution<Operon::Scalar> uniformReal(0, fitness.back().first - std::numeric_limits<Operon::Scalar>::epsilon());
     return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), 0L), std::less {})->second;
 }
 

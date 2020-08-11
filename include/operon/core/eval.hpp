@@ -39,6 +39,9 @@ Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range
     return result;
 }
 
+template <typename T, NodeType N>
+constexpr auto eval = detail::dispatch_op<T, N>;
+
 template <typename T>
 void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result) noexcept
 {
@@ -83,19 +86,19 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             } else {
                 switch (s.Type) {
                 case NodeType::Add: {
-                    detail::dispatch_op<T, Operon::NodeType::Add>(m, nodes, i);
+                    eval<T, NodeType::Add>(m, nodes, i);
                     break;
                 }
                 case NodeType::Sub: {
-                    detail::dispatch_op<T, Operon::NodeType::Sub>(m, nodes, i);
+                    eval<T, NodeType::Sub>(m, nodes, i);
                     break;
                 }
                 case NodeType::Mul: {
-                    detail::dispatch_op<T, Operon::NodeType::Mul>(m, nodes, i);
+                    eval<T, NodeType::Mul>(m, nodes, i);
                     break;
                 }
                 case NodeType::Div: {
-                    detail::dispatch_op<T, Operon::NodeType::Div>(m, nodes, i);
+                    eval<T, NodeType::Div>(m, nodes, i);
                     break;
                 }
                 default: {

@@ -121,7 +121,7 @@ void Dataset::Standardize(gsl::index i, Range range)
     Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
     auto seg = values.col(i).segment(range.Start(), range.Size());
     MeanVarianceCalculator calc;
-    auto vals = gsl::span<Operon::Scalar>(seg.data(), seg.size());
+    auto vals = gsl::span<const Operon::Scalar>(seg.data(), seg.size());
     calc.Reset();
     calc.Add(vals);
 

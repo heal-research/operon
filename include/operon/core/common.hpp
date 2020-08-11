@@ -66,7 +66,7 @@ public:
 private:
     static std::pair<size_t, size_t> CheckRange(size_t start, size_t end)
     {
-        Expects(start <= end);
+        EXPECT(start <= end);
         return { start, end };
     }
     std::pair<size_t, size_t> range_;

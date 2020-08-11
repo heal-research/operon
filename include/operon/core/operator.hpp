@@ -104,6 +104,11 @@ public:
 
     gsl::span<const Individual> Population() const { return population; }
 
+    bool Compare(Individual const& lhs, Individual const& rhs) const { 
+        EXPECT(comp != nullptr);
+        return comp(lhs, rhs); 
+    }
+
 protected:
     mutable gsl::span<const Individual> population;
     ComparisonCallback comp;
@@ -120,7 +125,7 @@ protected:
     ComparisonCallback comp;
 };
 
-class EvaluatorBase : public OperatorBase<double, Individual&> {
+class EvaluatorBase : public OperatorBase<Operon::Scalar, Individual&> {
     // some fitness measures are relative to the whole population (eg. diversity)
     // and the evaluator needs to do some preparation work using the entire pop
 public:
