@@ -37,20 +37,22 @@ namespace Operon {
                 alpha = 0;
                 beta = 0;
             }
-            void Add(Operon::Scalar original, Operon::Scalar target)
+
+            template<typename T>
+            void Add(T original, T target)
             {
                 tCalculator.Add(target);
                 ovCalculator.Add(original);
                 otCalculator.Add(original, target);
 
-                //if (ovCalculator.Variance() < eps<Operon::Scalar>) beta = 1;
+                //if (ovCalculator.Variance() < eps<double>) beta = 1;
                 auto variance = ovCalculator.Count() > 1 ? ovCalculator.SampleVariance() : 0;
-                beta = variance < std::numeric_limits<Operon::Scalar>::epsilon() ? 1 : (otCalculator.SampleCovariance() / variance);
+                beta = variance < std::numeric_limits<double>::epsilon() ? 1 : (otCalculator.SampleCovariance() / variance);
                 //else beta = otCalculator.Covariance() / ovCalculator.Variance();
                 alpha = tCalculator.Mean() - beta * ovCalculator.Mean();
             }
-            Operon::Scalar Beta() const { return beta; }
-            Operon::Scalar Alpha() const { return alpha; }
+            double Beta() const { return beta; }
+            double Alpha() const { return alpha; }
 
             template <typename InputIt1, typename InputIt2, typename U = typename InputIt1::value_type>
             static std::pair<double, double> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
