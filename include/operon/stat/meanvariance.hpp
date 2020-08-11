@@ -42,21 +42,33 @@ public:
         n = 0;
     }
 
-    void Add(Operon::Scalar);
-    void Add(Operon::Scalar val, Operon::Scalar weight);
+    template<typename T>
+    void Add(T value);
 
-    void Add(gsl::span<Operon::Scalar> vals);
-    void Add(gsl::span<Operon::Scalar> vals, gsl::span<Operon::Scalar> weights);
+    template<typename T>
+    void Add(T value, T weight);
+
+    template<typename T>
+    void Add(gsl::span<const T> values);
+
+    template<typename T>
+    void Add(gsl::span<const T> values, gsl::span<const T> weights);
+
+    template<typename T>
+    void Add(std::vector<T> const& values) { Add(gsl::span<const T>{ values.data(), values.size() }); }
+
+    template<typename T>
+    void Add(Operon::Vector<T> const& values) { Add(gsl::span<const T>{ values.data(), values.size() }); }
 
     double NaiveVariance() const 
     {
-        Expects(n > 0);
+        EXPECT(n > 0);
         return m2 / n; 
     }
 
     double SampleVariance() const
     {
-        Expects(n > 1);
+        EXPECT(n > 1);
         return m2 / (n - 1);
     }
 
