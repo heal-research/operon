@@ -29,13 +29,12 @@
 namespace Operon {
     using Hash                 = uint64_t;
     using Random               = RandomGenerator::RomuTrio;
-    //using Random               = RandomGenerator::Sfc64;
-#ifdef USE_SINGLE_PRECISION
+#if defined(USE_SINGLE_PRECISION)
     using Scalar               = float;
-#else 
+#else
     using Scalar               = double;
 #endif
-    using Dual                 = ceres::Jet<Scalar, 4>;
+    using Dual                 = ceres::Jet<double, 4>;
 
     // Operon::Vector is just an aligned std::vector 
     // alignment can be controlled with the EIGEN_MAX_ALIGN_BYTES macro
@@ -53,7 +52,7 @@ namespace Operon {
         static inline T Min() 
         {
             if constexpr (std::is_floating_point_v<T>) return std::numeric_limits<T>::lowest(); 
-            else if constexpr(std::is_same_v<T, Dual>) return T{std::numeric_limits<Scalar>::lowest()};
+            else if constexpr(std::is_same_v<T, Dual>) return T{std::numeric_limits<double>::lowest()};
             else return std::numeric_limits<T>::min(); 
         }
     }

@@ -52,6 +52,25 @@ namespace Test {
 
     namespace nb = ankerl::nanobench;
 
+    template <typename T>
+    void Evaluate(std::vector<Tree> const& trees, Dataset const& ds, Range range, ExecutionPolicy ep = ExecutionPolicy::ParallelUnsequenced) 
+    {
+        switch(ep) {
+            case ExecutionPolicy::Sequenced:
+                std::for_each(std::execution::seq, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
+                break;
+            case ExecutionPolicy::Unsequenced:
+                std::for_each(std::execution::unseq, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
+                break;
+            case ExecutionPolicy::ParallelSequenced:
+                std::for_each(std::execution::par, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
+                break;
+            case ExecutionPolicy::ParallelUnsequenced:
+                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
+                break;
+        }
+    }
+
     // used by some Langdon & Banzhaf papers as benchmark for measuring GPops/s
     TEST_CASE("Evaluation performance")
     {
@@ -77,40 +96,18 @@ namespace Test {
         auto creator = BalancedTreeCreator { grammar, inputs };
 
         std::vector<Tree> trees(n);
-        std::vector<Operon::Scalar> fit(n);
-
-        auto evaluate = [&](auto& tree) {
-            auto estimated = Evaluate<Operon::Scalar>(tree, ds, range);
-            nb::doNotOptimizeAway(estimated.size());
-        };
-
 
         auto test = [&](nb::Bench& b, GrammarConfig cfg, ExecutionPolicy pol, const std::string& name) {  
             grammar.SetConfig(cfg);
             for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul }) {
+                grammar.SetMaximumArity(t, 2);
                 grammar.SetMinimumArity(t, 2);
-                grammar.SetMaximumArity(t, 10);
             }
             std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
             auto totalOps = TotalNodes(trees) * range.Size();
             b.batch(totalOps);
-
-            switch(pol) {
-                case ExecutionPolicy::Sequenced:
-                    b.run(name, [&]() { std::for_each(std::execution::seq, trees.begin(), trees.end(), evaluate); });
-                    break;
-                case ExecutionPolicy::Unsequenced:
-                    b.run(name, [&]() { std::for_each(std::execution::unseq, trees.begin(), trees.end(), evaluate); });
-                    break;
-                case ExecutionPolicy::ParallelSequenced:
-                    b.run(name, [&]() { std::for_each(std::execution::par, trees.begin(), trees.end(), evaluate); });
-                    break;
-                case ExecutionPolicy::ParallelUnsequenced:
-                    b.run(name, [&]() { std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), evaluate); });
-                    break;
-            }
-
+            b.run(name, [&]() { Evaluate<Operon::Scalar>(trees, ds, range, pol); });
         };
 
         SUBCASE("arithmetic") {

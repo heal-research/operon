@@ -20,10 +20,10 @@
 #include "core/metrics.hpp"
 
 namespace Operon {
-Operon::Scalar NormalizedMeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y)
+double NormalizedMeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y)
 {
-    Expects(x.size() == y.size());
-    Expects(x.size() > 0);
+    EXPECT(x.size() == y.size());
+    EXPECT(x.size() > 0);
     MeanVarianceCalculator ycalc;
     MeanVarianceCalculator errcalc;
     for(size_t i = 0; i < x.size(); ++i) {
@@ -38,10 +38,10 @@ Operon::Scalar NormalizedMeanSquaredError(gsl::span<const Operon::Scalar> x, gsl
     return yvar > 0 ? errmean / yvar : yvar;
 }
 
-Operon::Scalar MeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y)
+double MeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y)
 {
-    Expects(x.size() == y.size());
-    Expects(x.size() > 0);
+    EXPECT(x.size() == y.size());
+    EXPECT(x.size() > 0);
     MeanVarianceCalculator mcalc;
     for(size_t i = 0; i < x.size(); ++i) {
         mcalc.Add((x[i] - y[i]) * (x[i] - y[i]));
@@ -49,15 +49,15 @@ Operon::Scalar MeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<con
     return mcalc.Mean();
 }
 
-Operon::Scalar RootMeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y)
+double RootMeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y)
 {
     return std::sqrt(MeanSquaredError(x, y));
 }
 
-Operon::Scalar RSquared(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y)
+double RSquared(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y)
 {
-    Expects(x.size() == y.size());
-    Expects(x.size() > 0);
+    EXPECT(x.size() == y.size());
+    EXPECT(x.size() > 0);
     auto r = PearsonsRCalculator::Coefficient(x, y);
     return r * r;
 }

@@ -77,8 +77,7 @@ public:
 
     gsl::index operator()(Operon::Random& random) const override
     {
-        std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
-        return uniformInt(random);
+        return std::uniform_int_distribution<gsl::index>(0, this->population.size() - 1)(random);
     }
 };
 
