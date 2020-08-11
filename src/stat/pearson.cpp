@@ -22,7 +22,8 @@
 
 namespace Operon {
    
-    void PearsonsRCalculator::Add(Operon::Scalar x, Operon::Scalar y) 
+    template <typename T>
+    void PearsonsRCalculator::Add(T x, T y) 
     {
         if (sumWe <= 0.) {
             sumX = x;
@@ -47,7 +48,8 @@ namespace Operon {
         sumY += y;
     }
 
-    void PearsonsRCalculator::Add(Operon::Scalar x, Operon::Scalar y, Operon::Scalar w) 
+    template <typename T>
+    void PearsonsRCalculator::Add(T x, T y, T w) 
     {
         if (w == 0.) {
             return;
@@ -75,12 +77,13 @@ namespace Operon {
         sumY += y * w;
     }
 
-    double PearsonsRCalculator::Coefficient(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y)
+    template <typename T>
+    double PearsonsRCalculator::Coefficient(gsl::span<const T> x, gsl::span<const T> y)
     {
         auto xdim = x.size();
         auto ydim = y.size();
-        Expects(xdim == ydim);
-        Expects(xdim > 0);
+        EXPECT(xdim == ydim);
+        EXPECT(xdim > 0);
         // Inlined computation of Pearson correlation, to avoid allocating objects!
         // This is a numerically stabilized version, avoiding sum-of-squares.
         double sumXX = 0., sumYY = 0., sumXY = 0.;
@@ -111,13 +114,14 @@ namespace Operon {
         return sumXY / std::sqrt(sumXX * sumYY);
     }
 
-    double PearsonsRCalculator::WeightedCoefficient(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y, gsl::span<const Operon::Scalar> weights)
+    template <typename T>
+    double PearsonsRCalculator::WeightedCoefficient(gsl::span<const T> x, gsl::span<const T> y, gsl::span<const T> weights)
     {
         auto xdim = x.size();
         auto ydim = y.size();
-        Expects(xdim == ydim);
-        Expects(xdim > 0);
-        Expects(xdim == weights.size());
+        EXPECT(xdim == ydim);
+        EXPECT(xdim > 0);
+        EXPECT(xdim == weights.size());
         // Inlined computation of Pearson correlation, to avoid allocating objects!
         // This is a numerically stabilized version, avoiding sum-of-squares.
         double sumXX = 0., sumYY = 0., sumXY = 0., sumWe = weights[0];
@@ -147,5 +151,15 @@ namespace Operon {
         return sumXY / std::sqrt(sumXX * sumYY);
     }
 
+    // necessary to prevent linker errors 
+    // https://isocpp.org/wiki/faq/templates#separate-template-fn-defn-from-decl
+    template void   PearsonsRCalculator::Add<float>(float, float);
+    template void   PearsonsRCalculator::Add<float>(float, float, float);
+    template double PearsonsRCalculator::Coefficient<float>(gsl::span<const float>, gsl::span<const float>);
+    template double PearsonsRCalculator::WeightedCoefficient<float>(gsl::span<const float>, gsl::span<const float>, gsl::span<const float>);
+    template void   PearsonsRCalculator::Add<double>(double, double);
+    template void   PearsonsRCalculator::Add<double>(double, double, double);
+    template double PearsonsRCalculator::Coefficient<double>(gsl::span<const double>, gsl::span<const double>);
+    template double PearsonsRCalculator::WeightedCoefficient<double>(gsl::span<const double>, gsl::span<const double>, gsl::span<const double>);
 }
 

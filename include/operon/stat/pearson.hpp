@@ -42,9 +42,11 @@ public:
         sumXX = sumYY = sumXY = sumX = sumY = sumWe = 0.0;
     }
 
-    void Add(Operon::Scalar x, Operon::Scalar y);
+    template<typename T>
+    void Add(T x, T y);
 
-    void Add(Operon::Scalar x, Operon::Scalar y, Operon::Scalar w);
+    template<typename T>
+    void Add(T x, T y, T w);
 
     double Correlation() const
     {
@@ -60,14 +62,14 @@ public:
     double NaiveCovariance() const { return sumXY / sumWe; }
     double SampleCovariance() const
     {
-        Expects(sumWe > 1.);
+        EXPECT(sumWe > 1.);
         return sumXY / (sumWe - 1.);
     }
 
     double NaiveVarianceX() const { return sumXX / sumWe; }
     double SampleVarianceX() const
     {
-        Expects(sumWe > 1.);
+        EXPECT(sumWe > 1.);
         return sumXX / (sumWe - 1.);
     }
 
@@ -75,15 +77,18 @@ public:
     double SampleStddevX() const { return std::sqrt(SampleVarianceX()); }
     double NaiveVarianceY() const { return sumYY / sumWe; }
     double SampleVarianceY() const {
-        Expects(sumWe > 1.);
+        EXPECT(sumWe > 1.);
         return sumYY / (sumWe - 1.);
     }
 
     double NaiveStddevY() const { return std::sqrt(NaiveVarianceY()); }
     double SampleStddevY() const { return std::sqrt(SampleVarianceY()); }
 
-    static double Coefficient(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y);
-    static double WeightedCoefficient(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y, gsl::span<const Operon::Scalar> weights);
+    template<typename T>
+    static double Coefficient(gsl::span<const T> x, gsl::span<const T> y);
+
+    template<typename T>
+    static double WeightedCoefficient(gsl::span<const T> x, gsl::span<const T> y, gsl::span<const T> weights);
 
 private:
     // Aggregation for squared residuals - we are not using sum-of-squares!

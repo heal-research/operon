@@ -21,7 +21,8 @@
 #include "stat/meanvariance.hpp"
 
 namespace Operon {
-    void MeanVarianceCalculator::Add(Operon::Scalar val) 
+    template<typename T>
+    void MeanVarianceCalculator::Add(T val) 
     {
         if (n <= 0) {
             n = 1;
@@ -36,7 +37,8 @@ namespace Operon {
         m2 += tmp * tmp / (n * oldn);
     }
 
-    void MeanVarianceCalculator::Add(Operon::Scalar val, Operon::Scalar weight) 
+    template<typename T>
+    void MeanVarianceCalculator::Add(T val, T weight) 
     {
         if (weight == 0.) {
             return;
@@ -54,7 +56,8 @@ namespace Operon {
         m2 += tmp * tmp / (weight * n * oldn);
     }
 
-    void MeanVarianceCalculator::Add(gsl::span<Operon::Scalar> vals) 
+    template<typename T>
+    void MeanVarianceCalculator::Add(gsl::span<const T> vals) 
     {
         int l = vals.size();
         if (l < 2) {
@@ -91,12 +94,24 @@ namespace Operon {
         m2 += om2 + tmp * tmp / (l * n * oldn);
     }
 
-    void MeanVarianceCalculator::Add(gsl::span<Operon::Scalar> vals, gsl::span<Operon::Scalar> weights) 
+    template<typename T>
+    void MeanVarianceCalculator::Add(gsl::span<const T> vals, gsl::span<const T> weights) 
     {
-        Expects(vals.size() == weights.size());
+        EXPECT(vals.size() == weights.size());
         for (int i = 0, end = vals.size(); i < end; i++) {
             // TODO: use a two-pass update as in the other put
             Add(vals[i], weights[i]);
         }
     }
+
+    // necessary to prevent linker errors 
+    // https://isocpp.org/wiki/faq/templates#separate-template-fn-defn-from-decl
+    template void MeanVarianceCalculator::Add<float>(float);
+    template void MeanVarianceCalculator::Add<float>(float, float);
+    template void MeanVarianceCalculator::Add<float>(gsl::span<const float>);
+    template void MeanVarianceCalculator::Add<float>(gsl::span<const float>, gsl::span<const float>);
+    template void MeanVarianceCalculator::Add<double>(double);
+    template void MeanVarianceCalculator::Add<double>(double, double);
+    template void MeanVarianceCalculator::Add<double>(gsl::span<const double>);
+    template void MeanVarianceCalculator::Add<double>(gsl::span<const double>, gsl::span<const double>);
 }
