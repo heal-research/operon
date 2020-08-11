@@ -41,16 +41,16 @@ public:
 
         auto population = this->FemaleSelector().Population();
 
-        auto first = this->femaleSelector(random);
-        auto fit = population[first][0];
+        size_t first = this->femaleSelector(random);
 
         Individual child(1);
+
+        auto parentFit = population[first][0];
 
         if (doCrossover) {
             auto second = this->maleSelector(random);
             child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
-
-            fit = std::min(fit, population[second][0]);
+            parentFit = std::fmin(parentFit, population[second][0]);
         }
 
         if (doMutation) {
@@ -61,10 +61,11 @@ public:
 
         auto f = this->evaluator(random, child);
 
-        if (std::isfinite(f) && f < fit) {
-            child[0] = this->evaluator(random, child);
+        if (std::isfinite(f) && f < parentFit) {
+            child[0] = f;
             return std::make_optional(child);
         }
+
         return std::nullopt;
     }
 
@@ -74,7 +75,7 @@ public:
     void Prepare(const gsl::span<const Individual> pop) const override
     {
         OffspringGeneratorBase::Prepare(pop);
-        lastEvaluations = this->evaluator.get().FitnessEvaluations();
+        lastEvaluations = this->Evaluator().FitnessEvaluations();
     }
 
     double SelectionPressure() const
@@ -82,7 +83,7 @@ public:
         if (this->FemaleSelector().Population().empty()) {
             return 0;
         }
-        return (this->evaluator.get().FitnessEvaluations() - lastEvaluations) / static_cast<double>(this->FemaleSelector().Population().size());
+        return (this->Evaluator().FitnessEvaluations() - lastEvaluations) / static_cast<double>(this->FemaleSelector().Population().size());
     }
 
     bool Terminate() const override
