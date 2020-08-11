@@ -135,7 +135,7 @@ Tree ReplaceSubtreeMutation::operator()(Operon::Random& random, Tree tree) const
 }
 
 Tree InsertSubtreeMutation::operator()(Operon::Random& random, Tree tree) const {
-    Expects(tree.Length() <= maxLength_);
+    EXPECT(tree.Length() <= maxLength_);
 
     if (tree.Length() == maxLength_) {
         // we can't insert anything because the tree length is at the limit
@@ -144,7 +144,7 @@ Tree InsertSubtreeMutation::operator()(Operon::Random& random, Tree tree) const 
 
     auto& nodes = tree.Nodes();
 
-    auto test = [](auto const& node) { return node.Type < NodeType::Log && node.Arity < 5; };
+    auto test = [](auto const& node) { return static_cast<bool>(node.Type & (NodeType::Add | NodeType::Mul)); };
 
     auto n = std::count_if(nodes.begin(), nodes.end(), test);
 
@@ -182,5 +182,55 @@ Tree InsertSubtreeMutation::operator()(Operon::Random& random, Tree tree) const 
 
     return Tree(mutated).UpdateNodes();
 }
+
+Tree ShuffleSubtreesMutation::operator()(Operon::Random& random, Tree tree) const {
+    auto& nodes = tree.Nodes();
+    auto nFunc = std::count_if(nodes.begin(), nodes.end(), [](const auto& node) { return !node.IsLeaf(); });
+
+    if (nFunc == 0) {
+        return tree;
+    }
+
+    // pick a random function node
+    auto idx = std::uniform_int_distribution<size_t>(1, nFunc)(random);
+
+    // find the function node in the nodes array
+    size_t i = 0;
+    for (; i < nodes.size(); ++i) {
+        if (nodes[i].IsLeaf()) 
+            continue;
+
+        if (--idx == 0) 
+            break;
+    }
+    auto const& s = nodes[i];
+
+    // the child nodes will be shuffled so we keep them in a buffer 
+    std::vector<Node> buffer(nodes.begin() + i - s.Length, nodes.begin() + i);
+    EXPECT(buffer.size() == s.Length);
+
+    // get child indices relative to buffer 
+    std::vector<size_t> childIndices(s.Arity);
+
+    size_t j = s.Length-1;
+    for (uint16_t k = 0; k < s.Arity; ++k) {
+        childIndices[k] = j;
+        j -= buffer[j].Length+1;
+    }
+
+    // shuffle child indices
+    std::shuffle(childIndices.begin(), childIndices.end(), random);
+
+    //// write back from buffer to nodes in the shuffled order
+    auto insertionPoint = nodes.begin() + i - s.Length;
+
+    for (auto k : childIndices) {
+        std::copy(buffer.begin() + k - buffer[k].Length, buffer.begin() + k + 1, insertionPoint);
+        insertionPoint += buffer[k].Length+1;
+    }
+
+    return tree.UpdateNodes();
+}
+
 } // namespace Operon
 

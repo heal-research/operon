@@ -103,6 +103,10 @@ private:
 
 };
 
+struct ShuffleSubtreesMutation : public MutatorBase {
+    Tree operator()(Operon::Random&, Tree) const override;
+};
+
 }
 
 #endif
