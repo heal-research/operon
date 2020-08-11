@@ -201,9 +201,8 @@ int main(int argc, char* argv[])
 
         for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div }) {
             problem.GetGrammar().SetMinimumArity(t, 2);
-            problem.GetGrammar().SetMaximumArity(t, 5);
+            problem.GetGrammar().SetMaximumArity(t, 2);
         }
-
 
         const gsl::index idx { 0 };
         using Ind                = Individual;
@@ -248,17 +247,19 @@ int main(int argc, char* argv[])
         auto changeFunc          = ChangeFunctionMutation { problem.GetGrammar() };
         auto replaceSubtree      = ReplaceSubtreeMutation { *creator, maxLength, maxDepth };
         auto insertSubtree       = InsertSubtreeMutation { *creator, maxLength, maxDepth };
+        auto shuffleSubtree      = ShuffleSubtreesMutation {};
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
         mutator.Add(replaceSubtree, 1.0);
-        mutator.Add(insertSubtree, 1.0);
+        //mutator.Add(insertSubtree, 1.0);
+        //mutator.Add(shuffleSubtree, 1.0);
 
         RSquaredEvaluator evaluator(problem);
         evaluator.SetLocalOptimizationIterations(config.Iterations);
         evaluator.SetBudget(config.Evaluations);
 
-        Expects(problem.TrainingRange().Size() > 0);
+        EXPECT(problem.TrainingRange().Size() > 0);
 
         auto comp = [](Individual const& lhs, Individual const& rhs) { return lhs[0] < rhs[0]; };
 
@@ -396,8 +397,8 @@ int main(int argc, char* argv[])
 
             // scale values
             auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
-            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
+            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return b * v + a; });
+            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return b * v + a; });
 
             auto r2Train = RSquared(estimatedTrain, targetTrain);
             auto r2Test = RSquared(estimatedTest, targetTest);
@@ -405,21 +406,21 @@ int main(int argc, char* argv[])
             auto nmseTrain = NormalizedMeanSquaredError(estimatedTrain, targetTrain);
             auto nmseTest = NormalizedMeanSquaredError(estimatedTest, targetTest);
 
-            auto rmseTrain = RootMeanSquaredError(estimatedTrain, targetTrain);
-            auto rmseTest = RootMeanSquaredError(estimatedTest, targetTest);
+            auto rmseTrain = MeanSquaredError(estimatedTrain, targetTrain);
+            auto rmseTest = MeanSquaredError(estimatedTest, targetTest);
 
             auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
             auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
 
             auto t1 = std::chrono::high_resolution_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / 1000.0;
+            auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1e6;
 
             auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
 
             // calculate memory consumption
-            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
+            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<double>{}, getSize);
             auto off = gp.Offspring();
-            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<Operon::Scalar>{}, getSize);
+            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<double>{}, getSize);
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", best[idx], r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
