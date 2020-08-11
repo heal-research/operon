@@ -36,12 +36,10 @@ class ReplaceWorstReinserter : public ReinserterBase {
             }
 
             ExecutionPolicy ep;
-            auto idx = 0;
-            auto comp = [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; };
             if (pop.size() > pool.size()) {
-                std::sort(ep, pop.begin(), pop.end(), comp);
+                std::sort(ep, pop.begin(), pop.end(), this->comp);
             } else if (pop.size() < pool.size()) {
-                std::sort(ep, pool.begin(), pool.end(), comp);
+                std::sort(ep, pool.begin(), pool.end(), this->comp);
             }
             auto offset = std::min(pop.size(), pool.size());
             std::copy_if(ep, std::make_move_iterator(pool.begin()), std::make_move_iterator(pool.begin() + offset), pop.begin() + pop.size() - offset, [](const auto& ind) { return !ind.Genotype.Empty(); });
