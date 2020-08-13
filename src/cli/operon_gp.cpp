@@ -22,8 +22,8 @@
 #include <cxxopts.hpp>
 #include <fmt/core.h>
 
-#include <tbb/task_scheduler_init.h>
 #include <tbb/global_control.h>
+#include <thread>
 
 #include "algorithms/gp.hpp"
 
@@ -102,7 +102,7 @@ int main(int argc, char* argv[])
     std::string fileName; // data file name
     std::string target;
     bool showGrammar = false;
-    auto threads = tbb::task_scheduler_init::default_num_threads();
+    auto threads = std::thread::hardware_concurrency();
     GrammarConfig grammarConfig = Grammar::Arithmetic;
 
     auto maxLength = result["maxlength"].as<size_t>();
