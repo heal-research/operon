@@ -46,7 +46,7 @@ struct Individual {
     {
     }
     Individual(size_t fitDim)
-        : Fitness(fitDim)
+        : Fitness(fitDim, 0.0)
     {
     }
 };

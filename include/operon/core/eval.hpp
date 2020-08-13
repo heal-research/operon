@@ -81,8 +81,9 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             auto r = m.col(i);
             auto const& s = nodes[i];
 
-            if (GSL_LIKELY(s.IsVariable())) {
-                r.segment(0, remainingRows) = params[i] * values.col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
+            if (GSL_LIKELY(s.IsLeaf())) {
+                if (s.IsVariable())
+                    r.segment(0, remainingRows) = params[i] * values.col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
             } else {
                 switch (s.Type) {
                 case NodeType::Add: {
