@@ -142,7 +142,7 @@ feature_summary(WHAT DISABLED_FEATURES DESCRIPTION "Disabled features:" QUIET_ON
 
 add_library(
     operon
-    SHARED
+    STATIC 
     src/core/metrics.cpp
     src/core/tree.cpp
     src/core/problem.cpp
@@ -211,7 +211,7 @@ if(MSVC)
     include_directories(${FMT_INCLUDE_DIR})
 else()
     set(MYFLAGS -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy)
-    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
     target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
 endif(MSVC)
@@ -251,7 +251,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/performance/math.cpp
         test/performance/random.cpp
         #test/implementation/evaluation.cpp
-        #test/implementation/details.cpp
+        test/implementation/details.cpp
         test/implementation/hashing.cpp
         test/implementation/initialization.cpp
         test/implementation/mutation.cpp
