@@ -83,16 +83,14 @@ namespace {
 }
 
 struct Node {
-    Operon::Scalar Value; // value for constants or weighting factor for variables
     Operon::Hash HashValue;
     Operon::Hash CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
+    Operon::Scalar Value; // value for constants or weighting factor for variables
     uint16_t Arity; // 0-65535
     uint16_t Length; // 0-65535
     uint16_t Depth; // 0-65535
-
     uint16_t Parent; // index of parent node
     NodeType Type;
-
     bool IsEnabled;
 
     Node() = default; 
