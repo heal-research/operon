@@ -1,9 +1,19 @@
 let
+  pkgs_stable = import <nixos> {};
   pkgs = import <nixos-unstable> {};
   cxxopts = import ./cxxopts.nix; 
   tracy = import ./tracy.nix;
   qcachegrind = pkgs.libsForQt5.callPackage ./qcachegrind.nix {};
   tbb = pkgs.tbb.overrideAttrs (old: rec {
+    version = "2020_U3";
+
+    src = pkgs.fetchFromGitHub {
+      owner = "01org";
+      repo = "tbb";
+      rev = version;
+      sha256 = "0r9axsdlmacjlcnax4vkzg86nwf8lsx7wbqdi3wnryaxk0xvdcx6";
+    };
+
     installPhase = old.installPhase + ''
         ${pkgs.cmake}/bin/cmake \
             -DINSTALL_DIR="$out"/lib/cmake/TBB \
@@ -48,6 +58,7 @@ let
       sha256          = "0ffgj18dhlgvq8y9gskw0ydl7jpk5z46vrcz59jwnqmi0lzjjrlf";
       fetchSubmodules = false;
     };
+    enableParallelBuilding = true;
     cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=FALSE -DBUILD_TESTING=FALSE" ];
   });
   fmt = pkgs.fmt.overrideAttrs(old: { outputs = [ "out" ]; });
@@ -65,7 +76,7 @@ pkgs.gcc10Stdenv.mkDerivation {
         # python environment for bindings and scripting
         python_native
         pybind11_trunk
-        (python_native.withPackages (ps: with ps; [ pip numpy pandas pyperf colorama coloredlogs seaborn sphinx sphinx_rtd_theme jupyterlab ]))
+        (pkgs_stable.python38.withPackages (ps: with ps; [ pip numpy pandas pyperf colorama coloredlogs seaborn sphinx recommonmark sphinx_rtd_theme jupyterlab ]))
         # Project dependencies
         ccls # completion vim
         bear # generate compilation database
