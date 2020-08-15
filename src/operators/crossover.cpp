@@ -20,58 +20,70 @@
 #include "operators/crossover.hpp"
 
 namespace Operon {
-static gsl::index SelectRandomBranch(Operon::Random& random, const Tree& tree, double internalProb, size_t maxBranchDepth, size_t maxBranchLength)
+static gsl::index SelectRandomBranch(Operon::Random& random, const Tree& tree, double internalProb, size_t maxBranchLevel, size_t maxBranchDepth, size_t maxBranchLength)
 {
-    auto selectInternalNode = std::bernoulli_distribution(internalProb)(random);
-    const auto& nodes = tree.Nodes();
-    // create a vector of indices where leafs are in the front and internal nodes in the back
-    std::vector<gsl::index> indices(nodes.size());
-    size_t head = 0;
-    size_t tail = nodes.size() - 1;
+    auto const& nodes = tree.Nodes();
+
+    std::vector<size_t> candidates(nodes.size());
+
+    size_t nLeaf = 0,
+           nFunc = 0;
+
     for (size_t i = 0; i < nodes.size(); ++i) {
-        const auto& node = nodes[i];
-        auto idx = node.IsLeaf() ? head++ : tail--;
-        indices[idx] = i;
-    }
-    // if we want an internal node, we shuffle the corresponding part of the indices vector
-    // then we walk over it and return the first index that satisfies the constraints
-    if (selectInternalNode) {
-        std::shuffle(indices.begin() + head, indices.end(), random);
-        for (size_t i = head; i < indices.size(); ++i) {
-            auto idx = indices[i];
-            const auto& node = nodes[idx];
+        auto const& node = nodes[i];
 
-            if (node.Length + 1u > maxBranchLength || node.Depth > maxBranchDepth) {
-                continue;
-            }
+        if (node.Length + 1u > maxBranchLength || node.Depth > maxBranchDepth || tree.Level(i) > maxBranchLevel) {
+            continue;
+        }
 
-            return idx;
+        if (node.IsLeaf()) {
+            candidates[nLeaf] = i;
+            ++nLeaf;
+        } else {
+            ++nFunc;
+            candidates[nodes.size()-nFunc] = i;
         }
     }
-    // if we couldn't find a suitable internal node or just wanted a leaf, fallback here
-    std::uniform_int_distribution<size_t> uniformInt(0, head - 1);
-    auto idx = uniformInt(random);
-    return indices[idx];
+    using dist = std::uniform_int_distribution<size_t>;
+
+    if (nLeaf > 0 && nFunc > 0)
+        return std::bernoulli_distribution(internalProb)(random)
+            ? candidates[dist(candidates.size()-nFunc, candidates.size()-1)(random)]
+            : candidates[dist(0, nLeaf-1)(random)];
+    
+    if (nLeaf > 0)
+        return candidates[dist(0, nLeaf-1)(random)];
+
+    if (nFunc > 0)
+        return candidates[dist(candidates.size()-nFunc, candidates.size()-1)(random)];
+
+    throw std::runtime_error(fmt::format("Could not find suitable candidate for: max branch level = {}, max branch depth = {}, max branch length = {}\n", maxBranchLevel, maxBranchDepth, maxBranchLength));
 }
 
 std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(Operon::Random& random, const Tree& lhs, const Tree& rhs) const
 {
-    auto i = SelectRandomBranch(random, lhs, internalProbability, maxDepth, maxLength);
-    size_t maxBranchDepth    = maxDepth - lhs.Level(i);
+    auto i = SelectRandomBranch(random, lhs, internalProbability, maxDepth, std::numeric_limits<size_t>::max(), maxLength);
     size_t partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
-    size_t maxBranchLength   = maxLength - partialTreeLength;
+    // we have to make some small allowances here due to the fact that the provided trees 
+    // might actually be larger than the maxDepth and maxLength limits given here
+    size_t maxBranchDepth    = std::max(maxDepth - lhs.Level(i), 1ul);
+    size_t maxBranchLength   = std::max(maxLength - partialTreeLength, 1ul);
 
-    auto j = SelectRandomBranch(random, rhs, internalProbability, maxBranchDepth, maxBranchLength);
+    auto j = SelectRandomBranch(random, rhs, internalProbability, std::numeric_limits<size_t>::max(), maxBranchDepth, maxBranchLength);
     return std::make_pair(i, j);
 }
 
 Tree SubtreeCrossover::operator()(Operon::Random& random, const Tree& lhs, const Tree& rhs) const
 {
     auto [i, j] = FindCompatibleSwapLocations(random, lhs, rhs);
+
     auto child = Cross(lhs, rhs, i, j);
-    if (child.Depth() > maxDepth) {
-        std::runtime_error(fmt::format("child depth {} exceeds max depth {}\n", child.Depth(), maxDepth));
-    }
+    auto md    = std::max(maxDepth, lhs.Depth());
+    auto ml    = std::max(maxLength, lhs.Length());
+
+    ENSURE(child.Depth() <= md);
+    ENSURE(child.Length() <= ml);
+
     return child;
 }
 }
