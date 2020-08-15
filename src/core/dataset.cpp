@@ -122,7 +122,6 @@ void Dataset::Standardize(gsl::index i, Range range)
     auto seg = values.col(i).segment(range.Start(), range.Size());
     MeanVarianceCalculator calc;
     auto vals = gsl::span<const Operon::Scalar>(seg.data(), seg.size());
-    calc.Reset();
     calc.Add(vals);
 
     values.col(i) = (values.col(i).array() - calc.Mean()) / calc.StandardDeviation();

@@ -35,7 +35,6 @@ public:
     }
 
     llvm::Function* CompileTree(const Operon::Tree& tree) {
-
         // we need to insert functions in the module for the mathematical operations that are not intrinsic
         auto tangent = createFunction("tan", 1, module.get()); 
 
@@ -68,7 +67,6 @@ public:
 
         for (size_t i = 0; i < nodes.size(); ++i) {
             switch (auto const& s = nodes[i]; s.Type) {
-
             case NodeType::Add: {
                 auto a = i - 1; // first child index
                 auto b = a - 1 - nodes[a].Length;
@@ -136,6 +134,7 @@ public:
     void Evaluate(const Tree& tree)
     {
     }
+
 private:
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module;

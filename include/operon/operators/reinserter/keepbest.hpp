@@ -30,7 +30,7 @@ class KeepBestReinserter : public ReinserterBase {
     public:
         explicit KeepBestReinserter(ComparisonCallback cb) : ReinserterBase(cb) { }
         // keep the best |pop| individuals from pop+pool
-        virtual void operator()(Operon::Random&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
+        void operator()(Operon::Random&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
             ExecutionPolicy ep;
             // sort the population and the recombination pool
             std::sort(ep, pop.begin(), pop.end(), this->comp);

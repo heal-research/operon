@@ -28,7 +28,6 @@
 namespace Operon {
 
 class MeanVarianceCalculator {
-
 public:
     MeanVarianceCalculator()
         : m2{0}, sum{0}, n{0}
