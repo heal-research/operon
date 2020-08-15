@@ -97,6 +97,9 @@ public:
         for (size_t i = 0; i < arityLimits.size(); ++i) {
             auto type = static_cast<NodeType>(1u << i);
 
+            if (type == NodeType::Constant || type == NodeType::Variable)
+                continue;
+
             if (IsEnabled(type)) {
                 auto [amin, amax] = arityLimits[i];
 
@@ -104,6 +107,7 @@ public:
                 maxArity = std::max(maxArity, amax);
             }
         }
+        EXPECT(minArity <= maxArity);
 
         return { minArity, maxArity };
     }
