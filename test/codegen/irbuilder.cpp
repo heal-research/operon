@@ -3,5 +3,4 @@
 #include "codegen/generator.hpp"
 
 TEST_CASE("Codegen from tree") {
-
 }

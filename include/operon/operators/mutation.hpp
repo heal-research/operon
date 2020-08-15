@@ -67,7 +67,6 @@ struct ChangeFunctionMutation : public MutatorBase {
 
 private:
     Grammar grammar;
-
 };
 
 struct InsertSubtreeMutation : public MutatorBase {
@@ -100,7 +99,6 @@ private:
     std::reference_wrapper<CreatorBase> creator_;
     size_t maxLength_;
     size_t maxDepth_;
-
 };
 
 struct ShuffleSubtreesMutation : public MutatorBase {

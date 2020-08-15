@@ -33,8 +33,8 @@ namespace Test {
     TEST_CASE("Tree creation performance")
     {
         size_t n = 5000;
-        size_t minLength = 1000;
-        size_t maxLength = 1100;
+        size_t minLength = 1;
+        size_t maxLength = 100;
         size_t maxDepth = 1000;
 
         Operon::Random rd(std::random_device {}());

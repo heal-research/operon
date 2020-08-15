@@ -27,7 +27,6 @@ namespace Operon {
 
 class ProbabilisticTreeCreator final : public CreatorBase {
 public:
-
     ProbabilisticTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables, double bias = 0.0)
         : CreatorBase(grammar, variables)
         , irregularityBias(bias)
