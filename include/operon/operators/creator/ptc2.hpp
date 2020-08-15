@@ -28,11 +28,15 @@ namespace Operon {
 class ProbabilisticTreeCreator final : public CreatorBase {
 public:
 
-    ProbabilisticTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables)
+    ProbabilisticTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables, double bias = 0.0)
         : CreatorBase(grammar, variables)
+        , irregularityBias(bias)
     {
     }
     Tree operator()(Operon::Random& random, size_t targetLen, size_t minDepth, size_t maxDepth) const override; 
+
+private:
+    double irregularityBias;
 };
 }
 
