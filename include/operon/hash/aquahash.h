@@ -39,7 +39,6 @@ private:
     static constexpr size_t finalized = max_input + 1;
 
 public:
-
     // Reference implementation of AquaHash small key algorithm
     static __m128i SmallKeyAlgorithm(const uint8_t * key, const size_t bytes, __m128i initialize = _mm_setzero_si128()) {
         assert(bytes <= max_input);
@@ -435,6 +434,4 @@ public:
     }
 };
 
-
 #endif // #ifndef AQUAHASH_H
-

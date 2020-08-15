@@ -34,7 +34,6 @@ namespace Operon {
 
 template <typename TInitializer, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class GeneticProgrammingAlgorithm {
-
 private:
     std::reference_wrapper<const Problem> problem_;
     std::reference_wrapper<const GeneticAlgorithmConfig> config_;

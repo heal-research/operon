@@ -24,17 +24,14 @@
 #include "core/operator.hpp"
 
 namespace Operon {
-
 class GrowTreeCreator final : public CreatorBase {
     public:
         GrowTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables)
-            : CreatorBase(grammar, variables) {
-
-        }
+            : CreatorBase(grammar, variables) 
+        { }
 
     Tree operator()(Operon::Random& random, size_t targetLen, size_t minDepth, size_t maxDepth) const override; 
 };
-
 }
 
 #endif
