@@ -24,18 +24,9 @@
 #include "operators/creator/ptc2.hpp"
 
 namespace Operon {
-    Tree ProbabilisticTreeCreator::operator()(Operon::Random& random, size_t targetLen, size_t, size_t maxDepth) const 
+    Tree ProbabilisticTreeCreator::operator()(Operon::Random& random, size_t targetLen, size_t, size_t) const 
     {
         EXPECT(targetLen > 0);
-        EXPECT(maxDepth > 0);
-
-        const auto& grammar = grammar_.get();
-
-        auto [minFunctionArity, maxFunctionArity] = grammar.FunctionArityLimits();
-        if (minFunctionArity > 1 && targetLen % 2 == 0) {
-            //targetLen = std::bernoulli_distribution(0.5)(random) ? targetLen - 1 : targetLen + 1;
-            targetLen = targetLen - 1;
-        }
 
         std::uniform_int_distribution<size_t> uniformInt(0, variables_.size() - 1);
         std::normal_distribution<double> normalReal(0, 1);
@@ -49,29 +40,28 @@ namespace Operon {
             }
         };
 
+        const auto& grammar = grammar_.get();
+        auto [minFunctionArity, maxFunctionArity] = grammar.FunctionArityLimits();
+
+        // length one can be achieved with a single leaf
+        // otherwise the minimum achievable length is minFunctionArity+1
+        if (targetLen > 1 && targetLen < minFunctionArity + 1)
+            targetLen = minFunctionArity + 1;
+
         Operon::Vector<Node> nodes;
         nodes.reserve(targetLen);
 
         auto maxArity = std::min(maxFunctionArity, targetLen - 1);
         auto minArity = std::min(minFunctionArity, maxArity);
 
-        if (maxDepth == 1) {
-            minArity = 0;
-            maxArity = 0;
-        }
-
         auto root = grammar.SampleRandomSymbol(random, minArity, maxArity);
         init(root);
+
+        if (root.IsLeaf())
+            return Tree({ root }).UpdateNodes();
+
         root.Depth = 1;
-
         nodes.push_back(root);
-
-        if (root.IsLeaf()) {
-            nodes.resize(1);
-            auto tree = Tree(nodes).UpdateNodes();
-            return tree;
-        }
-        EXPECT(root.Arity > 0);
 
         std::deque<size_t> q;
         for (size_t i = 0; i < root.Arity; ++i) {
@@ -91,10 +81,23 @@ namespace Operon {
 
         root.Parent = 0;
 
+        std::bernoulli_distribution sampleIrregular(irregularityBias);
+
         while (q.size() > 0) {
             auto childDepth = random_dequeue();
 
-            maxArity = childDepth == maxDepth ? 0 : std::min(maxFunctionArity, targetLen - q.size() - nodes.size() - 1);
+            maxArity = q.size() > 1 && sampleIrregular(random)
+                ? 0
+                : std::min(maxFunctionArity, targetLen - q.size() - nodes.size() - 1);
+
+            // certain lengths cannot be generated using available symbols
+            // in this case we push the target length towards an achievable value
+            if (maxArity > 0 && maxArity < minFunctionArity) {
+                EXPECT(targetLen > 0);
+                EXPECT(targetLen == 1 || targetLen >= minFunctionArity+1);
+                targetLen -= minFunctionArity - maxArity;
+                maxArity = std::min(maxFunctionArity, targetLen - q.size() - nodes.size() - 1);
+            }
             minArity = std::min(minFunctionArity, maxArity);
 
             auto node = grammar.SampleRandomSymbol(random, minArity, maxArity);
