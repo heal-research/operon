@@ -119,6 +119,11 @@ Tree ReplaceSubtreeMutation::operator()(Operon::Random& random, Tree tree) const
     size_t oldLevel = tree.Level(i);
 
     size_t maxLength = maxLength_ - nodes.size() + oldLen;
+    // the correction below is necessary because it can happen that maxLength_ < nodes.size()
+    // (for example when the tree creator cannot achieve exactly a target length and
+    //  then it creates a slightly larger tree)
+    maxLength = std::max(maxLength, 1ul);
+
     auto maxDepth = std::max(tree.Depth(), maxDepth_) - oldLevel + 1; 
 
     auto newLen = std::uniform_int_distribution<size_t>(1, maxLength)(random);
@@ -135,9 +140,7 @@ Tree ReplaceSubtreeMutation::operator()(Operon::Random& random, Tree tree) const
 }
 
 Tree InsertSubtreeMutation::operator()(Operon::Random& random, Tree tree) const {
-    EXPECT(tree.Length() <= maxLength_);
-
-    if (tree.Length() == maxLength_) {
+    if (tree.Length() >= maxLength_) {
         // we can't insert anything because the tree length is at the limit
         return tree;
     }
