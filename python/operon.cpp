@@ -23,10 +23,22 @@ PYBIND11_MODULE(pyoperon, m)
     m.doc() = "Operon Python Module";
     m.attr("__version__") = 0.1;
 
+    // free functions
+    using eval_t = std::add_pointer_t<Operon::Vector<Operon::Scalar>(Operon::Tree const&, Operon::Dataset const&, Operon::Range)>;
+    m.def("Evaluate", static_cast<eval_t>(&Operon::Evaluate<Operon::Scalar>), py::arg("tree"), py::arg("dataset"), py::arg("range"));
+
+    // classes
     py::class_<Operon::Variable>(m, "Variable")
         .def_readwrite("Name", &Operon::Variable::Name)
         .def_readwrite("Hash", &Operon::Variable::Hash)
         .def_readwrite("Index", &Operon::Variable::Index);
+
+    py::class_<Operon::Range>(m, "Range")
+        .def(py::init<size_t, size_t>())
+        .def(py::init<std::pair<size_t, size_t>>())
+        .def_property_readonly("Start", &Operon::Range::Start)
+        .def_property_readonly("End", &Operon::Range::End)
+        .def_property_readonly("Size", &Operon::Range::Size);
 
     // algorithm configuration is being held in a struct on the C++ side
     py::class_<Operon::GeneticAlgorithmConfig>(m, "GeneticAlgorithmConfig")
@@ -142,7 +154,7 @@ PYBIND11_MODULE(pyoperon, m)
         .def("Rows", &Operon::Dataset::Rows)
         .def("Cols", &Operon::Dataset::Cols)
         .def("Values", &Operon::Dataset::Values)
-        .def("VariableNames", &Operon::Dataset::VariableNames)
+        .def_property_readonly("VariableNames", &Operon::Dataset::VariableNames)
         .def("GetValues", py::overload_cast<const std::string&>(&Operon::Dataset::GetValues, py::const_))
         .def("GetValues", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetValues, py::const_))
         .def("GetValues", py::overload_cast<gsl::index>(&Operon::Dataset::GetValues, py::const_))
