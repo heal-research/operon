@@ -32,7 +32,13 @@
 namespace Operon {
 
 template <typename T>
-Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
+Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range)
+{
+    return Evaluate<T>(tree, dataset, range, nullptr);
+}
+
+template <typename T>
+Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters)
 {
     Operon::Vector<T> result(range.Size());
     Evaluate(tree, dataset, range, parameters, gsl::span<T>(result));
@@ -152,6 +158,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
         auto max_ = Operon::Numeric::Max<T>();
         res.segment(row, remainingRows) = (seg.isFinite()).select(seg, max_);
     }
+
 }
 
 struct TreeEvaluator {
