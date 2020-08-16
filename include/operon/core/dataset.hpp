@@ -89,16 +89,16 @@ public:
 
     const MatrixType& Values() const { return values; }
 
-    const std::vector<std::string> VariableNames();
+    std::vector<std::string> VariableNames();
 
-    const gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
-    const gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
-    const gsl::span<const Operon::Scalar> GetValues(gsl::index index) const noexcept;
+    gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
+    gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
+    gsl::span<const Operon::Scalar> GetValues(gsl::index index) const noexcept;
 
     const Variable& GetVariable(const std::string& name) const noexcept;
     const Variable& GetVariable(Operon::Hash hashValue) const noexcept;
 
-    const std::vector<Variable>& Variables() const noexcept { return variables; }
+    gsl::span<const Variable> Variables() const noexcept { return gsl::span<const Variable>(variables.data(), variables.size()); }
 
     void Shuffle(Operon::Random& random);
 

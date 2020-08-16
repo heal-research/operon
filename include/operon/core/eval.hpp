@@ -32,13 +32,7 @@
 namespace Operon {
 
 template <typename T>
-Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range)
-{
-    return Evaluate<T>(tree, dataset, range, nullptr);
-}
-
-template <typename T>
-Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters)
+Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
 {
     Operon::Vector<T> result(range.Size());
     Evaluate(tree, dataset, range, parameters, gsl::span<T>(result));
