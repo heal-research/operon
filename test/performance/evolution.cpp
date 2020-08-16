@@ -9,7 +9,6 @@
 #include "nanobench.h"
 
 #include <execution>
-#include <tbb/task_scheduler_init.h>
 #include <tbb/global_control.h>
 
 using namespace Operon;

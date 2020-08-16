@@ -32,11 +32,10 @@ class BalancedTreeCreator final : public CreatorBase {
 public:
     using U = std::tuple<Node, size_t, size_t>;
 
-    BalancedTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables, double bias = 0.0) 
+    BalancedTreeCreator(Grammar const& grammar, const gsl::span<const Variable> variables, double bias = 0.0) 
         : CreatorBase(grammar, variables)
         , irregularityBias(bias)
-    {
-    }
+    { }
     Tree operator()(Operon::Random& random, size_t targetLen, size_t minDepth, size_t maxDepth) const override; 
 
     void SetBias(double bias) { irregularityBias = bias; }
