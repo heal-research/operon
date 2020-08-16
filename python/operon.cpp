@@ -1,6 +1,9 @@
 #include <pybind11/operators.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/stl_bind.h>
+#include <pybind11/eigen.h>
+#include <pybind11/numpy.h>
 
 #include "algorithms/config.hpp"
 #include "core/common.hpp"
@@ -8,6 +11,7 @@
 #include "core/eval.hpp"
 #include "core/format.hpp"
 #include "core/grammar.hpp"
+#include "core/metrics.hpp"
 #include "core/operator.hpp"
 
 #include "operators/creator.hpp"
@@ -16,16 +20,41 @@
 #include "operators/mutation.hpp"
 #include "operators/selection.hpp"
 
+#include "stat/pearson.hpp"
+
 namespace py = pybind11;
+
+// enable pass-by-reference semantics for this vector type
+PYBIND11_MAKE_OPAQUE(std::vector<Operon::Variable>);
 
 PYBIND11_MODULE(pyoperon, m)
 {
     m.doc() = "Operon Python Module";
     m.attr("__version__") = 0.1;
 
+    // binding code
+    py::bind_vector<std::vector<Operon::Variable>>(m, "VariableCollection");
+
     // free functions
-    using eval_t = std::add_pointer_t<Operon::Vector<Operon::Scalar>(Operon::Tree const&, Operon::Dataset const&, Operon::Range)>;
-    m.def("Evaluate", static_cast<eval_t>(&Operon::Evaluate<Operon::Scalar>), py::arg("tree"), py::arg("dataset"), py::arg("range"));
+    // we use a lambda to avoid defining a fourth arg for the defaulted C++ function arg
+    m.def("Evaluate", [](Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r) {
+                auto result = py::array_t<Operon::Scalar>(r.Size());
+                auto buf = result.request();
+                Operon::Evaluate(t, d, r, (Operon::Scalar *)nullptr, gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, buf.size));
+                return result;
+                }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
+
+    // we want to call this from the python side
+    m.def("RSquared", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) { 
+            py::buffer_info x = lhs.request();
+            py::buffer_info y = rhs.request();
+
+            auto r = Operon::RSquared(
+                    gsl::span<const Operon::Scalar>((Operon::Scalar *)x.ptr, x.size), 
+                    gsl::span<const Operon::Scalar>((Operon::Scalar *)y.ptr, y.size)
+            );
+            return std::isnan(r) ? 0.0 : r * r;
+    });
 
     // classes
     py::class_<Operon::Variable>(m, "Variable")
@@ -151,23 +180,28 @@ PYBIND11_MODULE(pyoperon, m)
         .def(py::init<const std::string&, bool>(), py::arg("filename"), py::arg("has_header"))
         .def(py::init<const Operon::Dataset&>())
         .def(py::init<const std::vector<Operon::Variable>&, const std::vector<std::vector<Operon::Scalar>>&>())
-        .def("Rows", &Operon::Dataset::Rows)
-        .def("Cols", &Operon::Dataset::Cols)
-        .def("Values", &Operon::Dataset::Values)
+        .def_property_readonly("Rows", &Operon::Dataset::Rows)
+        .def_property_readonly("Cols", &Operon::Dataset::Cols)
+        .def_property_readonly("Values", &Operon::Dataset::Values)
         .def_property_readonly("VariableNames", &Operon::Dataset::VariableNames)
         .def("GetValues", py::overload_cast<const std::string&>(&Operon::Dataset::GetValues, py::const_))
         .def("GetValues", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetValues, py::const_))
         .def("GetValues", py::overload_cast<gsl::index>(&Operon::Dataset::GetValues, py::const_))
         .def("GetVariable", py::overload_cast<const std::string&>(&Operon::Dataset::GetVariable, py::const_))
         .def("GetVariable", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetVariable, py::const_))
-        .def_property_readonly("Variables", &Operon::Dataset::Variables)
+        .def_property_readonly("Variables", [](const Operon::Dataset& self) {
+            auto vars = self.Variables();
+            return std::vector<Operon::Variable>(vars.begin(), vars.end());
+                })
         .def("Shuffle", &Operon::Dataset::Shuffle)
         .def("Normalize", &Operon::Dataset::Normalize)
         .def("Standardize", &Operon::Dataset::Standardize);
 
     // tree creator
     py::class_<Operon::BalancedTreeCreator>(m, "BalancedTreeCreator")
-        .def(py::init<const Operon::Grammar&, const std::vector<Operon::Variable>, double>(), py::arg("grammar"), py::arg("variables"), py::arg("bias"))
+        .def(py::init([](Operon::Grammar const& grammar, std::vector<Operon::Variable> const& variables, double bias){
+            return Operon::BalancedTreeCreator(grammar, gsl::span<const Operon::Variable>(variables.data(), variables.size()), bias); 
+        }), py::arg("grammar"), py::arg("variables"), py::arg("bias"))
         .def("__call__", &Operon::BalancedTreeCreator::operator())
         .def_property("IrregularityBias", &Operon::BalancedTreeCreator::GetBias, &Operon::BalancedTreeCreator::SetBias);
 
@@ -186,6 +220,7 @@ PYBIND11_MODULE(pyoperon, m)
 
     // mutation
     py::class_<Operon::OnePointMutation>(m, "OnePointMutation")
+        .def(py::init<>())
         .def("__call__", &Operon::OnePointMutation::operator());
 
     py::class_<Operon::ChangeVariableMutation>(m, "ChangeVariableMutation")
@@ -195,6 +230,10 @@ PYBIND11_MODULE(pyoperon, m)
     py::class_<Operon::ChangeFunctionMutation>(m, "ChangeFunctionMutation")
         .def(py::init<Operon::Grammar>())
         .def("__call__", &Operon::ChangeFunctionMutation::operator());
+
+    py::class_<Operon::ReplaceSubtreeMutation>(m, "ReplaceSubtreeMutation")
+        .def(py::init<Operon::CreatorBase&, size_t, size_t>())
+        .def("__call__", &Operon::ReplaceSubtreeMutation::operator());
 
     // selection
     py::class_<Operon::TournamentSelector>(m, "TournamentSelector")

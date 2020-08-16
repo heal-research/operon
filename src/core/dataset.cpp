@@ -61,26 +61,26 @@ Dataset::Dataset(const std::string& file, bool hasHeader)
     }
 }
 
-const std::vector<std::string> Dataset::VariableNames()
+std::vector<std::string> Dataset::VariableNames()
 {
     std::vector<std::string> names;
     std::transform(variables.begin(), variables.end(), std::back_inserter(names), [](const Variable& v) { return v.Name; });
     return names;
 }
 
-const gsl::span<const Operon::Scalar> Dataset::GetValues(const std::string& name) const noexcept
+gsl::span<const Operon::Scalar> Dataset::GetValues(const std::string& name) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
     return gsl::span<const Operon::Scalar>(values.col(it->Index).data(), values.rows());
 }
 
-const gsl::span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue) const noexcept
+gsl::span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
     return gsl::span<const Operon::Scalar>(values.col(it->Index).data(), values.rows());
 }
 
-const gsl::span<const Operon::Scalar> Dataset::GetValues(gsl::index index) const noexcept
+gsl::span<const Operon::Scalar> Dataset::GetValues(gsl::index index) const noexcept
 {
     return gsl::span<const Operon::Scalar>(values.col(index).data(), values.rows());
 }
