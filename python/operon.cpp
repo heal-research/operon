@@ -198,18 +198,20 @@ PYBIND11_MODULE(pyoperon, m)
         .def("Standardize", &Operon::Dataset::Standardize);
 
     // tree creator
-    py::class_<Operon::BalancedTreeCreator>(m, "BalancedTreeCreator")
+    py::class_<Operon::CreatorBase>(m, "CreatorBase");
+    
+    py::class_<Operon::BalancedTreeCreator, Operon::CreatorBase>(m, "BalancedTreeCreator")
         .def(py::init([](Operon::Grammar const& grammar, std::vector<Operon::Variable> const& variables, double bias){
             return Operon::BalancedTreeCreator(grammar, gsl::span<const Operon::Variable>(variables.data(), variables.size()), bias); 
         }), py::arg("grammar"), py::arg("variables"), py::arg("bias"))
         .def("__call__", &Operon::BalancedTreeCreator::operator())
         .def_property("IrregularityBias", &Operon::BalancedTreeCreator::GetBias, &Operon::BalancedTreeCreator::SetBias);
 
-    py::class_<Operon::ProbabilisticTreeCreator>(m, "ProbabilisticTreeCreator")
+    py::class_<Operon::ProbabilisticTreeCreator, Operon::CreatorBase>(m, "ProbabilisticTreeCreator")
         .def(py::init<const Operon::Grammar&, const std::vector<Operon::Variable>>())
         .def("__call__", &Operon::ProbabilisticTreeCreator::operator());
 
-    py::class_<Operon::GrowTreeCreator>(m, "GrowTreeCreator")
+    py::class_<Operon::GrowTreeCreator, Operon::CreatorBase>(m, "GrowTreeCreator")
         .def(py::init<const Operon::Grammar&, const std::vector<Operon::Variable>>())
         .def("__call__", &Operon::GrowTreeCreator::operator());
 
@@ -224,7 +226,9 @@ PYBIND11_MODULE(pyoperon, m)
         .def("__call__", &Operon::OnePointMutation::operator());
 
     py::class_<Operon::ChangeVariableMutation>(m, "ChangeVariableMutation")
-        .def(py::init<const gsl::span<const Operon::Variable>>())
+        .def(py::init([](std::vector<Operon::Variable> const& variables){
+            return Operon::ChangeVariableMutation(gsl::span<const Operon::Variable>(variables.data(), variables.size()));
+        }), py::arg("variables"))
         .def("__call__", &Operon::ChangeVariableMutation::operator());
 
     py::class_<Operon::ChangeFunctionMutation>(m, "ChangeFunctionMutation")
