@@ -44,6 +44,8 @@ Tree BalancedTreeCreator::operator()(Operon::Random& random, size_t targetLen, s
     if (targetLen > 1 && targetLen < minFunctionArity + 1)
         targetLen = minFunctionArity + 1;
 
+    using U = std::tuple<Node, size_t, size_t>;
+
     std::vector<U> tuples;
     tuples.reserve(targetLen);
 
@@ -68,7 +70,6 @@ Tree BalancedTreeCreator::operator()(Operon::Random& random, size_t targetLen, s
         auto childDepth = nodeDepth + 1;
         std::get<2>(tuples[i]) = tuples.size();
         for (int j = 0; j < node.Arity; ++j) {
-
             maxArity = openSlots - tuples.size() > 1 && sampleIrregular(random)
                 ? 0
                 : std::min(maxFunctionArity, targetLen - openSlots - 1);
