@@ -1,9 +1,9 @@
+#include <pybind11/eigen.h>
+#include <pybind11/numpy.h>
 #include <pybind11/operators.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
-#include <pybind11/eigen.h>
-#include <pybind11/numpy.h>
 
 #include "algorithms/config.hpp"
 #include "core/common.hpp"
@@ -38,22 +38,20 @@ PYBIND11_MODULE(pyoperon, m)
     // free functions
     // we use a lambda to avoid defining a fourth arg for the defaulted C++ function arg
     m.def("Evaluate", [](Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r) {
-                auto result = py::array_t<Operon::Scalar>(r.Size());
-                auto buf = result.request();
-                Operon::Evaluate(t, d, r, (Operon::Scalar *)nullptr, gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, buf.size));
-                return result;
-                }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
+        auto result = py::array_t<Operon::Scalar>(r.Size());
+        auto buf = result.request();
+        Operon::Evaluate(t, d, r, (Operon::Scalar*)nullptr, gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, buf.size));
+        return result;
+    }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
 
     // we want to call this from the python side
-    m.def("RSquared", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) { 
-            py::buffer_info x = lhs.request();
-            py::buffer_info y = rhs.request();
-
-            auto r = Operon::RSquared(
-                    gsl::span<const Operon::Scalar>((Operon::Scalar *)x.ptr, x.size), 
-                    gsl::span<const Operon::Scalar>((Operon::Scalar *)y.ptr, y.size)
-            );
-            return std::isnan(r) ? 0.0 : r * r;
+    m.def("RSquared", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
+        py::buffer_info x = lhs.request();
+        py::buffer_info y = rhs.request();
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, x.size);
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, y.size);
+        auto r = Operon::RSquared(sx, sy);
+        return std::isnan(r) ? 0.0 : r;
     });
 
     // classes
@@ -146,7 +144,7 @@ PYBIND11_MODULE(pyoperon, m)
         .def("SetCoefficients", &Operon::Tree::SetCoefficients)
         .def("GetCoefficients", &Operon::Tree::GetCoefficients)
         .def("CoefficientsCount", &Operon::Tree::CoefficientsCount)
-        .def_property_readonly("Nodes", static_cast<Operon::Vector<Operon::Node>& (Operon::Tree::*)() &>(&Operon::Tree::Nodes))
+        .def_property_readonly("Nodes", static_cast<Operon::Vector<Operon::Node>& (Operon::Tree::*)()&>(&Operon::Tree::Nodes))
         .def_property_readonly("Nodes", static_cast<Operon::Vector<Operon::Node> const& (Operon::Tree::*)() const&>(&Operon::Tree::Nodes))
         //.def_property_readonly("Nodes", static_cast<Operon::Vector<Operon::Node>&& (Operon::Tree::*)() &&>(&Operon::Tree::Nodes))
         .def_property_readonly("Length", &Operon::Tree::Length)
@@ -192,18 +190,19 @@ PYBIND11_MODULE(pyoperon, m)
         .def_property_readonly("Variables", [](const Operon::Dataset& self) {
             auto vars = self.Variables();
             return std::vector<Operon::Variable>(vars.begin(), vars.end());
-                })
+        })
         .def("Shuffle", &Operon::Dataset::Shuffle)
         .def("Normalize", &Operon::Dataset::Normalize)
         .def("Standardize", &Operon::Dataset::Standardize);
 
     // tree creator
     py::class_<Operon::CreatorBase>(m, "CreatorBase");
-    
+
     py::class_<Operon::BalancedTreeCreator, Operon::CreatorBase>(m, "BalancedTreeCreator")
-        .def(py::init([](Operon::Grammar const& grammar, std::vector<Operon::Variable> const& variables, double bias){
-            return Operon::BalancedTreeCreator(grammar, gsl::span<const Operon::Variable>(variables.data(), variables.size()), bias); 
-        }), py::arg("grammar"), py::arg("variables"), py::arg("bias"))
+        .def(py::init([](Operon::Grammar const& grammar, std::vector<Operon::Variable> const& variables, double bias) {
+            return Operon::BalancedTreeCreator(grammar, gsl::span<const Operon::Variable>(variables.data(), variables.size()), bias);
+        }),
+            py::arg("grammar"), py::arg("variables"), py::arg("bias"))
         .def("__call__", &Operon::BalancedTreeCreator::operator())
         .def_property("IrregularityBias", &Operon::BalancedTreeCreator::GetBias, &Operon::BalancedTreeCreator::SetBias);
 
@@ -226,9 +225,10 @@ PYBIND11_MODULE(pyoperon, m)
         .def("__call__", &Operon::OnePointMutation::operator());
 
     py::class_<Operon::ChangeVariableMutation>(m, "ChangeVariableMutation")
-        .def(py::init([](std::vector<Operon::Variable> const& variables){
+        .def(py::init([](std::vector<Operon::Variable> const& variables) {
             return Operon::ChangeVariableMutation(gsl::span<const Operon::Variable>(variables.data(), variables.size()));
-        }), py::arg("variables"))
+        }),
+            py::arg("variables"))
         .def("__call__", &Operon::ChangeVariableMutation::operator());
 
     py::class_<Operon::ChangeFunctionMutation>(m, "ChangeFunctionMutation")
