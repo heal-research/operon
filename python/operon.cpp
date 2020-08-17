@@ -126,7 +126,45 @@ PYBIND11_MODULE(pyoperon, m)
         .def(py::self < py::self)
         .def(py::self <= py::self)
         .def(py::self > py::self)
-        .def(py::self >= py::self);
+        .def(py::self >= py::self)
+        // pickle support
+        .def(py::pickle(
+            [](Operon::Node const& n) { // __getstate__
+                /* Return a tuple that fully encodes the state of the object */
+                return py::make_tuple(
+                    n.HashValue,
+                    n.CalculatedHashValue,
+                    n.Value,
+                    n.Arity,
+                    n.Length,
+                    n.Depth,
+                    n.Parent,
+                    n.Type,
+                    n.IsEnabled
+                );
+            },
+            [](py::tuple t) { // __setstate__
+                if (t.size() != 9) {
+                    throw std::runtime_error("Invalid state!");
+                }
+
+                /* Create a new C++ instance */
+                Operon::Node n(t[7].cast<Operon::NodeType>());
+
+                /* Assign any additional state */
+                n.HashValue           = t[0].cast<Operon::Hash>();
+                n.CalculatedHashValue = t[1].cast<Operon::Hash>();
+                n.Value               = t[2].cast<Operon::Scalar>();
+                n.Arity               = t[3].cast<uint16_t>();
+                n.Length              = t[4].cast<uint16_t>();
+                n.Depth               = t[5].cast<uint16_t>();
+                n.Parent              = t[6].cast<uint16_t>();
+                n.IsEnabled           = t[8].cast<bool>();
+
+                return n;
+            }
+        ))
+        ;
 
     // tree
     py::class_<Operon::Tree>(m, "Tree")
@@ -155,7 +193,20 @@ PYBIND11_MODULE(pyoperon, m)
         .def_property_readonly("Empty", &Operon::Tree::Empty)
         .def_property_readonly("HashValue", &Operon::Tree::HashValue)
         .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Tree::operator[]))
-        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Tree::operator[], py::const_));
+        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Tree::operator[], py::const_))
+        .def(py::pickle(
+            [](Operon::Tree const& tree) {
+                return py::make_tuple(tree.Nodes());
+            },
+            [](py::tuple t) {
+                if (t.size() != 1) {
+                    throw std::runtime_error("Invalid state!");
+                }
+
+                return Operon::Tree(t[0].cast<Operon::Vector<Operon::Node>>()).UpdateNodes();
+            }
+        ))
+        ;
 
     // grammar
     py::class_<Operon::Grammar>(m, "Grammar")
