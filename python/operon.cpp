@@ -40,7 +40,8 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("Evaluate", [](Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r) {
         auto result = py::array_t<Operon::Scalar>(r.Size());
         auto buf = result.request();
-        Operon::Evaluate(t, d, r, (Operon::Scalar*)nullptr, gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, buf.size));
+        auto res = gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, buf.size);
+        Operon::Evaluate(t, d, r, (Operon::Scalar*)nullptr, res);
         return result;
     }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
 
@@ -51,7 +52,34 @@ PYBIND11_MODULE(pyoperon, m)
         gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, x.size);
         gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, y.size);
         auto r = Operon::RSquared(sx, sy);
-        return std::isnan(r) ? 0.0 : r;
+        return std::isnan(r) ? Operon::Numeric::Min<Operon::Scalar>() : r;
+    });
+
+    m.def("NormalizedMeanSquaredError", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
+        py::buffer_info x = lhs.request();
+        py::buffer_info y = rhs.request();
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, x.size);
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, y.size);
+        auto r = Operon::NormalizedMeanSquaredError(sx, sy);
+        return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>() : r;
+    });
+
+    m.def("RootMeanSquaredError", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
+        py::buffer_info x = lhs.request();
+        py::buffer_info y = rhs.request();
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, x.size);
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, y.size);
+        auto r = Operon::RootMeanSquaredError(sx, sy);
+        return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>()  : r;
+    });
+
+    m.def("MeanSquaredError", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
+        py::buffer_info x = lhs.request();
+        py::buffer_info y = rhs.request();
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, x.size);
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, y.size);
+        auto r = Operon::MeanSquaredError(sx, sy);
+        return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>() : r;
     });
 
     // classes
