@@ -45,6 +45,43 @@ PYBIND11_MODULE(pyoperon, m)
         return result;
     }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
 
+    m.def("CalculateFitness", [](Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r, std::string const& target, std::string const& metric) {
+        auto estimated = Operon::Evaluate(t, d, r, (Operon::Scalar*)nullptr);
+        auto values = d.GetValues(target).subspan(r.Start(), r.Size());
+
+        if (metric == "rsquared") 
+            return Operon::RSquared(estimated, values); 
+        if (metric == "mse")
+            return Operon::MeanSquaredError(estimated, values);
+        if (metric == "rmse")
+            return Operon::RootMeanSquaredError(estimated, values);
+        if (metric == "nmse")
+            return Operon::NormalizedMeanSquaredError(estimated, values);
+
+        throw std::runtime_error("Invalid fitness metric"); 
+
+    }, py::arg("tree"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
+
+    m.def("CalculateFitness", [](std::vector<Operon::Tree> const& trees, Operon::Dataset const& d, Operon::Range r, std::string const& target, std::string const& metric) {
+        std::add_pointer<double(gsl::span<const Operon::Scalar>, gsl::span<const Operon::Scalar>)>::type func;
+        if (metric == "rsquared")  func = Operon::RSquared;
+        else if (metric == "mse")  func = Operon::MeanSquaredError;
+        else if (metric == "nmse") func = Operon::NormalizedMeanSquaredError;
+        else if (metric == "rmse") func = Operon::RootMeanSquaredError;
+        else throw std::runtime_error("Unsupported error metric");
+
+        auto result = py::array_t<double>(trees.size());
+        auto buf = result.request();
+        auto values = d.GetValues(target).subspan(r.Start(), r.Size());
+
+        std::transform(std::execution::par, trees.begin(), trees.end(), (double*)buf.ptr, [&](auto const& t) -> double {
+            auto estimated = Operon::Evaluate(t, d, r, (Operon::Scalar*)nullptr);
+            return func(estimated, values);
+        });
+
+        return result;
+    }, py::arg("trees"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
+
     // we want to call this from the python side
     m.def("RSquared", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
         py::buffer_info x = lhs.request();
@@ -215,8 +252,8 @@ PYBIND11_MODULE(pyoperon, m)
         //.def_property_readonly("Nodes", static_cast<Operon::Vector<Operon::Node>&& (Operon::Tree::*)() &&>(&Operon::Tree::Nodes))
         .def_property_readonly("Length", &Operon::Tree::Length)
         .def_property_readonly("VisitationLength", &Operon::Tree::VisitationLength)
-        .def_property_readonly("Depth", py::overload_cast<>(&Operon::Tree::Depth, py::const_))
-        .def_property_readonly("Depth", py::overload_cast<gsl::index>(&Operon::Tree::Depth, py::const_))
+        .def_property_readonly("Depth", static_cast<size_t (Operon::Tree::*)() const>(&Operon::Tree::Depth))
+//        .def_property_readonly("Depth", static_cast<size_t (Operon::Tree::*)(gsl::index) const>(&Operon::Tree::Depth))
         .def_property_readonly("Level", &Operon::Tree::Level)
         .def_property_readonly("Empty", &Operon::Tree::Empty)
         .def_property_readonly("HashValue", &Operon::Tree::HashValue)
