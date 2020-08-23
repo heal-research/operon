@@ -24,7 +24,7 @@
 #include "operators/creator/ptc2.hpp"
 
 namespace Operon {
-    Tree ProbabilisticTreeCreator::operator()(Operon::Random& random, size_t targetLen, size_t, size_t) const 
+    Tree ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t, size_t) const
     {
         EXPECT(targetLen > 0);
 

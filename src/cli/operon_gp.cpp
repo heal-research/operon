@@ -58,7 +58,7 @@ int main(int argc, char* argv[])
         ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
         ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))
         ("pool-size", "Recombination pool size (how many generated offspring per generation)", cxxopts::value<size_t>()->default_value("1000"))
-        ("seed", "Random number seed", cxxopts::value<Operon::Random::result_type>()->default_value("0"))
+        ("seed", "Random number seed", cxxopts::value<Operon::RandomGenerator::result_type>()->default_value("0"))
         ("generations", "Number of generations", cxxopts::value<size_t>()->default_value("1000"))
         ("evaluations", "Evaluation budget", cxxopts::value<size_t>()->default_value("1000000"))
         ("iterations", "Local optimization iterations", cxxopts::value<size_t>()->default_value("0"))
@@ -356,7 +356,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        Operon::Random random(config.Seed);
+        Operon::RandomGenerator random(config.Seed);
         if (result["shuffle"].as<bool>()) 
         {
             problem.GetDataset().Shuffle(random);

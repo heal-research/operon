@@ -28,7 +28,7 @@ class ReplaceWorstReinserter : public ReinserterBase {
     public:
         explicit ReplaceWorstReinserter(ComparisonCallback cb) : ReinserterBase(cb) { }
         // replace the worst individuals in pop with the best individuals from pool
-        void operator()(Operon::Random&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
+        void operator()(Operon::RandomGenerator&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
             // typically the pool and the population are the same size
             if (pop.size() == pool.size()) {
                 pop.swap(pool);

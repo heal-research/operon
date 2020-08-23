@@ -37,7 +37,7 @@ namespace Test {
         size_t maxLength = 100;
         size_t maxDepth = 1000;
 
-        Operon::Random rd(std::random_device {}());
+        Operon::RandomGenerator rd(std::random_device {}());
         auto ds = Dataset("../data/Poly-10.csv", true);
 
         auto target = "Y";

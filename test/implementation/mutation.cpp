@@ -31,7 +31,7 @@ TEST_CASE("InsertSubtreeMutation")
 
     BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
 
-    Operon::Random random(std::random_device {}());
+    Operon::RandomGenerator random(std::random_device {}());
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
     auto targetLen = sizeDistribution(random);
 

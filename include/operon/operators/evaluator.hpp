@@ -37,7 +37,7 @@ public:
     }
 
     typename EvaluatorBase::ReturnType
-    operator()(Operon::Random&, Individual& ind) const override
+    operator()(Operon::RandomGenerator&, Individual& ind) const override
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();
@@ -75,7 +75,7 @@ public:
     }
 
     typename EvaluatorBase::ReturnType
-    operator()(Operon::Random&, Individual& ind) const
+    operator()(Operon::RandomGenerator&, Individual& ind) const
     {
         ++this->fitnessEvaluations;
         auto& problem = this->problem.get();

@@ -37,7 +37,7 @@ public:
         : CreatorBase(grammar, variables) 
     {
     }
-    Tree operator()(Operon::Random& random, size_t targetLen, size_t, size_t maxDepth) const override
+    Tree operator()(Operon::RandomGenerator& random, size_t targetLen, size_t, size_t maxDepth) const override
     {
         Operon::Vector<Node> nodes;
         std::stack<std::tuple<Node, size_t, size_t>> stk;

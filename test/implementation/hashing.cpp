@@ -88,7 +88,7 @@ TEST_CASE("Hash-based distance") {
     size_t minDepth  = 1;
     size_t maxDepth = 1000;
 
-    auto rd = Operon::Random(1234);
+    Operon::RandomGenerator rd(1234);
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
@@ -111,7 +111,7 @@ TEST_CASE("Hash-based distance") {
     std::iota(indices.begin(), indices.end(), 0);
     std::generate(std::execution::seq, seeds.begin(), seeds.end(), [&](){ return rd(); });
     std::transform(std::execution::seq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
-        Operon::Random rand(seeds[i]);
+        Operon::RandomGenerator rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
         return tree;
     });
@@ -134,7 +134,7 @@ TEST_CASE("Hash collisions") {
     size_t minDepth = 0;
     size_t maxDepth = 100;
 
-    auto rd = Operon::Random(1234);
+    Operon::RandomGenerator rd(1234);
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
@@ -156,7 +156,7 @@ TEST_CASE("Hash collisions") {
     std::iota(indices.begin(), indices.end(), 0);
     std::generate(std::execution::unseq, seeds.begin(), seeds.end(), [&](){ return rd(); });
     std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
-        Operon::Random rand(seeds[i]);
+        Operon::RandomGenerator rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
         tree.Hash<Operon::HashFunction::FNV1Hash>(Operon::HashMode::Strict);
         return tree;

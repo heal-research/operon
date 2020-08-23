@@ -20,7 +20,7 @@
 #include "operators/crossover.hpp"
 
 namespace Operon {
-static gsl::index SelectRandomBranch(Operon::Random& random, const Tree& tree, double internalProb, size_t maxBranchLevel, size_t maxBranchDepth, size_t maxBranchLength)
+static gsl::index SelectRandomBranch(Operon::RandomGenerator& random, const Tree& tree, double internalProb, size_t maxBranchLevel, size_t maxBranchDepth, size_t maxBranchLength)
 {
     auto const& nodes = tree.Nodes();
 
@@ -60,7 +60,7 @@ static gsl::index SelectRandomBranch(Operon::Random& random, const Tree& tree, d
     throw std::runtime_error(fmt::format("Could not find suitable candidate for: max branch level = {}, max branch depth = {}, max branch length = {}\n", maxBranchLevel, maxBranchDepth, maxBranchLength));
 }
 
-std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(Operon::Random& random, const Tree& lhs, const Tree& rhs) const
+std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const
 {
     auto i = SelectRandomBranch(random, lhs, internalProbability, maxDepth, std::numeric_limits<size_t>::max(), maxLength);
     size_t partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
@@ -73,7 +73,7 @@ std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(
     return std::make_pair(i, j);
 }
 
-Tree SubtreeCrossover::operator()(Operon::Random& random, const Tree& lhs, const Tree& rhs) const
+Tree SubtreeCrossover::operator()(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const
 {
     auto [i, j] = FindCompatibleSwapLocations(random, lhs, rhs);
 

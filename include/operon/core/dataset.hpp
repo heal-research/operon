@@ -27,6 +27,7 @@
 #include <Eigen/Eigen>
 #include <algorithm>
 #include <exception>
+#include <gsl/gsl_util>
 #include <numeric>
 #include <unordered_map>
 #include <vector>
@@ -100,12 +101,12 @@ public:
 
     gsl::span<const Variable> Variables() const noexcept { return gsl::span<const Variable>(variables.data(), variables.size()); }
 
-    void Shuffle(Operon::Random& random);
+    void Shuffle(Operon::RandomGenerator& random);
 
     void Normalize(gsl::index i, Range range);
 
     // standardize column i using mean and stddev calculated over the specified range
-    void Standardize(gsl::index i, Range range); 
+    void Standardize(gsl::index i, Range range);
 };
 }
 

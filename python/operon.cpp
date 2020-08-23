@@ -49,15 +49,10 @@ PYBIND11_MODULE(pyoperon, m)
         auto estimated = Operon::Evaluate(t, d, r, (Operon::Scalar*)nullptr);
         auto values = d.GetValues(target).subspan(r.Start(), r.Size());
 
-        if (metric == "rsquared") 
-            return Operon::RSquared(estimated, values); 
-        if (metric == "mse")
-            return Operon::MeanSquaredError(estimated, values);
-        if (metric == "rmse")
-            return Operon::RootMeanSquaredError(estimated, values);
-        if (metric == "nmse")
-            return Operon::NormalizedMeanSquaredError(estimated, values);
-
+        if (metric == "rsquared") return Operon::RSquared(estimated, values); 
+        if (metric == "mse")      return Operon::MeanSquaredError(estimated, values);
+        if (metric == "rmse")     return Operon::RootMeanSquaredError(estimated, values);
+        if (metric == "nmse")     return Operon::NormalizedMeanSquaredError(estimated, values);
         throw std::runtime_error("Invalid fitness metric"); 
 
     }, py::arg("tree"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
@@ -118,6 +113,10 @@ PYBIND11_MODULE(pyoperon, m)
         auto r = Operon::MeanSquaredError(sx, sy);
         return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>() : r;
     });
+
+    // random numbers
+    m.def("UniformInt", &Operon::Random::UniformInt<Operon::RandomGenerator, int>);
+    m.def("UniformReal", &Operon::Random::UniformReal<Operon::RandomGenerator, double>);
 
     // classes
     py::class_<Operon::Variable>(m, "Variable")
@@ -374,9 +373,9 @@ PYBIND11_MODULE(pyoperon, m)
         .def("SetObjIndex", &Operon::ProportionalSelector::SetObjIndex);
 
     // random generators
-    py::class_<Operon::RandomGenerator::RomuTrio>(m, "RomuTrio")
+    py::class_<Operon::Random::RomuTrio>(m, "RomuTrio")
         .def(py::init<uint64_t>())
-        .def("__call__", &Operon::RandomGenerator::RomuTrio::operator());
+        .def("__call__", &Operon::Random::RomuTrio::operator());
 
     // tree format
     py::class_<Operon::TreeFormatter>(m, "TreeFormatter")

@@ -20,27 +20,19 @@
 #include "operators/mutation.hpp"
 
 namespace Operon {
-Tree OnePointMutation::operator()(Operon::Random& random, Tree tree) const
+Tree OnePointMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
 {
     auto& nodes = tree.Nodes();
-
-    auto leafCount = std::count_if(nodes.begin(), nodes.end(), [](const Node& node) { return node.IsLeaf(); });
-    std::uniform_int_distribution<gsl::index> uniformInt(1, leafCount);
-    auto index = uniformInt(random);
-
-    size_t i = 0;
-    for (; i < nodes.size(); ++i) {
-        if (nodes[i].IsLeaf() && --index == 0)
-            break;
-    }
-
+    // sample a random leaf
+    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsLeaf(); });
+    EXPECT(it < nodes.end());
     std::normal_distribution<double> normalReal(0, 1);
-    tree[i].Value += normalReal(random);
+    it->Value += normalReal(random);
 
     return tree;
 }
 
-Tree MultiPointMutation::operator()(Operon::Random& random, Tree tree) const
+Tree MultiPointMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
 {
     std::normal_distribution<double> normalReal(0, 1);
     for (auto& node : tree.Nodes()) {
@@ -51,9 +43,8 @@ Tree MultiPointMutation::operator()(Operon::Random& random, Tree tree) const
     return tree;
 }
 
-Tree MultiMutation::operator()(Operon::Random& random, Tree tree) const
+Tree MultiMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
 {
-    //auto i = std::discrete_distribution<gsl::index>(probabilities.begin(), probabilities.end())(random);
     auto sum = std::reduce(probabilities.begin(), probabilities.end());
     auto r = std::uniform_real_distribution<double>(0, sum)(random);
     auto c = 0.0;
@@ -68,49 +59,32 @@ Tree MultiMutation::operator()(Operon::Random& random, Tree tree) const
     return op(random, std::move(tree));
 }
 
-Tree ChangeVariableMutation::operator()(Operon::Random& random, Tree tree) const
+Tree ChangeVariableMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
 {
     auto& nodes = tree.Nodes();
+    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsVariable(); });
+    if (it == nodes.end())
+        return tree; // no variables in the tree, nothing to do
 
-    auto leafCount = std::count_if(nodes.begin(), nodes.end(), [](const Node& node) { return node.IsLeaf(); });
-    std::uniform_int_distribution<gsl::index> uniformInt(1, leafCount);
-    auto index = uniformInt(random);
-
-    size_t i = 0;
-    for (; i < nodes.size(); ++i) {
-        if (nodes[i].IsLeaf() && --index == 0)
-            break;
-    }
-
-    std::uniform_int_distribution<gsl::index> normalInt(0, variables.size() - 1);
-    tree[i].HashValue = tree[i].CalculatedHashValue = variables[normalInt(random)].Hash;
-
+    it->HashValue = it->CalculatedHashValue = Sample(random, variables.begin(), variables.end())->Hash;
     return tree;
 }
 
-Tree ChangeFunctionMutation::operator()(Operon::Random& random, Tree tree) const {
+Tree ChangeFunctionMutation::operator()(Operon::RandomGenerator& random, Tree tree) const {
     auto& nodes = tree.Nodes();
-    auto funcCount = std::count_if(nodes.begin(), nodes.end(), [](const Node& node) { return !node.IsLeaf(); });
 
-    if (funcCount == 0) {
-        return tree;
-    }
+    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return !n.IsLeaf(); });
+    if (it == nodes.end()) 
+        return tree; // no functions in the tree, nothing to do
 
-    std::uniform_int_distribution<gsl::index> uniformInt(1, funcCount);
-    auto index = uniformInt(random);
+    auto minArity = std::min(static_cast<size_t>(it->Arity), grammar.GetMinimumArity(it->Type));
+    auto maxArity = std::max(static_cast<size_t>(it->Arity), grammar.GetMaximumArity(it->Type));
 
-    size_t i = 0;
-    for (; i < nodes.size(); ++i) {
-        if (!nodes[i].IsLeaf() && --index == 0)
-            break;
-    }
-    auto minArity = std::min(static_cast<size_t>(nodes[i].Arity), grammar.GetMinimumArity(nodes[i].Type));
-    auto maxArity = std::max(static_cast<size_t>(nodes[i].Arity), grammar.GetMaximumArity(nodes[i].Type));
-    nodes[i].Type = grammar.SampleRandomSymbol(random, minArity, maxArity).Type;
+    it->Type = grammar.SampleRandomSymbol(random, minArity, maxArity).Type;
     return tree;
 }
 
-Tree ReplaceSubtreeMutation::operator()(Operon::Random& random, Tree tree) const {
+Tree ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const {
     auto& nodes = tree.Nodes();
 
     auto i = std::uniform_int_distribution<size_t>(0, nodes.size()-1)(random);
@@ -139,7 +113,7 @@ Tree ReplaceSubtreeMutation::operator()(Operon::Random& random, Tree tree) const
     return Tree(mutated).UpdateNodes();
 }
 
-Tree InsertSubtreeMutation::operator()(Operon::Random& random, Tree tree) const {
+Tree InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const {
     if (tree.Length() >= maxLength_) {
         // we can't insert anything because the tree length is at the limit
         return tree;
@@ -186,7 +160,7 @@ Tree InsertSubtreeMutation::operator()(Operon::Random& random, Tree tree) const 
     return Tree(mutated).UpdateNodes();
 }
 
-Tree ShuffleSubtreesMutation::operator()(Operon::Random& random, Tree tree) const {
+Tree ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree tree) const {
     auto& nodes = tree.Nodes();
     auto nFunc = std::count_if(nodes.begin(), nodes.end(), [](const auto& node) { return !node.IsLeaf(); });
 
