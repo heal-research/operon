@@ -22,7 +22,7 @@
 #include <execution>
 
 namespace Operon {
-    Node Grammar::SampleRandomSymbol(Operon::Random& random, size_t minArity, size_t maxArity) const
+    Node Grammar::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const
     {
         EXPECT(minArity <= maxArity);
 

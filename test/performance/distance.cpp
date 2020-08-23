@@ -39,7 +39,7 @@ TEST_CASE("Intersection performance")
     size_t maxLength = 100;
     size_t maxDepth = 1000;
 
-    auto rd = Operon::Random(1234);
+    Operon::RandomGenerator rd(1234);
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";

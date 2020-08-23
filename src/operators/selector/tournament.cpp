@@ -2,7 +2,7 @@
 
 namespace Operon {
 gsl::index
-TournamentSelector::operator()(Operon::Random& random) const
+TournamentSelector::operator()(Operon::RandomGenerator& random) const
 {
     std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
     auto best = uniformInt(random);
@@ -17,7 +17,7 @@ TournamentSelector::operator()(Operon::Random& random) const
 }
 
 gsl::index
-RankTournamentSelector::operator()(Operon::Random& random) const
+RankTournamentSelector::operator()(Operon::RandomGenerator& random) const
 {
     std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
     auto best = uniformInt(random);

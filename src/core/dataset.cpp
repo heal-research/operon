@@ -44,7 +44,7 @@ Dataset::Dataset(const std::string& file, bool hasHeader)
 
     std::sort(variables.begin(), variables.end(), [&](const Variable& a, const Variable& b) { return CompareWithSize(a.Name, b.Name); });
     // fill in variable hash values using a fixed seed
-    Operon::Random random(1234);
+    Operon::RandomGenerator random(1234);
     std::vector<Operon::Hash> hashes(ncol);
     std::generate(hashes.begin(), hashes.end(), [&]() { return random(); });
     std::sort(hashes.begin(), hashes.end());
@@ -97,7 +97,7 @@ const Variable& Dataset::GetVariable(Operon::Hash hashValue) const noexcept
     return *it;
 }
 
-void Dataset::Shuffle(Operon::Random& random)
+void Dataset::Shuffle(Operon::RandomGenerator& random)
 {
     Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values.rows());
     perm.setIdentity();

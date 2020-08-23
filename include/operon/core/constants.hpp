@@ -35,7 +35,6 @@ namespace Operon {
         AquaHash,
         FNV1Hash,
     };
-
 }
 
 #endif

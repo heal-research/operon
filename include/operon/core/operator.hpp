@@ -60,7 +60,7 @@ struct OperatorBase {
     using ReturnType = Ret;
     using ArgumentType = std::tuple<Args...>;
     // all operators take a random device (source of randomness) as the first parameter
-    virtual Ret operator()(Operon::Random& random, Args... args) const = 0;
+    virtual Ret operator()(Operon::RandomGenerator& random, Args... args) const = 0;
     virtual ~OperatorBase() {}
 };
 

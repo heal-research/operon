@@ -78,7 +78,7 @@ namespace Test {
         size_t maxLength = 100;
         size_t maxDepth = 1000;
 
-        Operon::Random rd(1234); 
+        Operon::RandomGenerator rd(1234);
         auto ds = Dataset("../data/Friedman-I.csv", true);
 
         auto target = "Y";

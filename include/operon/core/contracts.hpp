@@ -17,21 +17,26 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef OPERON_KOZA_CREATOR_HPP
-#define OPERON_KOZA_CREATOR_HPP
+#ifndef OPERON_CONTRACTS_HPP
+#define OPERON_CONTRACTS_HPP
 
-#include "core/grammar.hpp"
-#include "core/operator.hpp"
+#include <fmt/color.h>
+#include <fmt/core.h>
+#include <gsl/gsl_assert>
 
-namespace Operon {
-class GrowTreeCreator final : public CreatorBase {
-    public:
-        GrowTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables)
-            : CreatorBase(grammar, variables) 
-        { }
+#define EXPECT(cond) \
+    if(GSL_UNLIKELY(!(cond))) \
+    { \
+        fmt::print("Precondition {} failed at {}: {}\n", fmt::format(fmt::fg(fmt::terminal_color::green), "{}", #cond), __FILE__, __LINE__); \
+        gsl::details::terminate(); \
+    } 
 
-    Tree operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const override;
-};
-}
+#define ENSURE(cond) \
+    if(GSL_UNLIKELY(!(cond))) \
+    { \
+        fmt::print("Precondition {} failed at {}: {}\n", fmt::format(fmt::fg(fmt::terminal_color::green), "{}", #cond), __FILE__, __LINE__); \
+        gsl::details::terminate(); \
+    }
 
 #endif
+

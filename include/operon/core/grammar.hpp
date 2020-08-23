@@ -112,7 +112,7 @@ public:
         return { minArity, maxArity };
     }
 
-    Node SampleRandomSymbol(Operon::Random& random, size_t minArity, size_t maxArity) const;
+    Node SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const;
 
     void SetMinimumArity(NodeType type, size_t minArity) {
         EXPECT(minArity <= GetMaximumArity(type));

@@ -24,15 +24,15 @@
 
 namespace Operon {
 struct OnePointMutation : public MutatorBase {
-    Tree operator()(Operon::Random&, Tree) const override;
+    Tree operator()(Operon::RandomGenerator&, Tree) const override;
 };
 
 struct MultiPointMutation : public MutatorBase {
-    Tree operator()(Operon::Random&, Tree) const override;
+    Tree operator()(Operon::RandomGenerator&, Tree) const override;
 };
 
 struct MultiMutation : public MutatorBase {
-    Tree operator()(Operon::Random&, Tree) const override;
+    Tree operator()(Operon::RandomGenerator&, Tree) const override;
 
     void Add(const MutatorBase& op, double prob)
     {
@@ -51,7 +51,7 @@ struct ChangeVariableMutation : public MutatorBase {
     {
     }
 
-    Tree operator()(Operon::Random&, Tree) const override;
+    Tree operator()(Operon::RandomGenerator&, Tree) const override;
 
 private:
     const gsl::span<const Variable> variables;
@@ -63,7 +63,7 @@ struct ChangeFunctionMutation : public MutatorBase {
     {
     }
 
-    Tree operator()(Operon::Random&, Tree) const override;
+    Tree operator()(Operon::RandomGenerator&, Tree) const override;
 
 private:
     Grammar grammar;
@@ -77,7 +77,7 @@ struct InsertSubtreeMutation : public MutatorBase {
     {
     }
 
-    Tree operator()(Operon::Random&, Tree) const override;
+    Tree operator()(Operon::RandomGenerator&, Tree) const override;
 
 private:
     std::reference_wrapper<CreatorBase> creator_;
@@ -93,7 +93,7 @@ struct ReplaceSubtreeMutation : public MutatorBase {
     {
     }
 
-    Tree operator()(Operon::Random&, Tree) const override;
+    Tree operator()(Operon::RandomGenerator&, Tree) const override;
 
 private:
     std::reference_wrapper<CreatorBase> creator_;
@@ -102,7 +102,7 @@ private:
 };
 
 struct ShuffleSubtreesMutation : public MutatorBase {
-    Tree operator()(Operon::Random&, Tree) const override;
+    Tree operator()(Operon::RandomGenerator&, Tree) const override;
 };
 
 }

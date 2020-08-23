@@ -35,10 +35,10 @@ TEST_CASE("Random number generators") {
     bench<std::ranlux24>(&b, "std::ranlux24_base");
     bench<std::ranlux48>(&b, "std::ranlux48");
     bench<std::knuth_b>(&b, "std::knuth_b");
-    bench<Operon::RandomGenerator::Jsf64>(&b, "Operon::RandomGenerator::Jsf64");
-    bench<Operon::RandomGenerator::RomuDuo>(&b, "Operon::RandomGenerator::RomuDuo");
-    bench<Operon::RandomGenerator::RomuTrio>(&b, "Operon::RandomGenerator::RomuTrio");
-    bench<Operon::RandomGenerator::Sfc64>(&b, "Operon::RandomGenerator::Sfc64");
+    bench<Operon::Random::Jsf64>(&b, "Operon::RandomGenerator::Jsf64");
+    bench<Operon::Random::RomuDuo>(&b, "Operon::RandomGenerator::RomuDuo");
+    bench<Operon::Random::RomuTrio>(&b, "Operon::RandomGenerator::RomuTrio");
+    bench<Operon::Random::Sfc64>(&b, "Operon::RandomGenerator::Sfc64");
     bench<nb::Rng>(&b, "ankerl::nanobench::Rng");
 };
 

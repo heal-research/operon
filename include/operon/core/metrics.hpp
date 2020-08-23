@@ -20,7 +20,8 @@
 #ifndef METRICS_HPP
 #define METRICS_HPP
 
-#include "core/common.hpp"
+#include "core/types.hpp"
+#include "core/contracts.hpp"
 #include "core/stats.hpp"
 
 namespace Operon {

@@ -20,23 +20,22 @@
 #include "operators/creator/koza.hpp"
 
 namespace Operon {
-    Tree GrowTreeCreator::operator()(Operon::Random& random, size_t, size_t minDepth, size_t maxDepth) const
+    Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t minDepth, size_t maxDepth) const
     { 
         minDepth = std::max(1ul, minDepth);
         EXPECT(minDepth <= maxDepth);
-        const auto& grammar = grammar_.get();
+        auto const& grammar = grammar_.get();
 
-        const auto& t = grammar.FunctionArityLimits();
+        auto const& t = grammar.FunctionArityLimits();
         
         size_t minFunctionArity = std::get<0>(t);
         size_t maxFunctionArity = std::get<1>(t);
 
-        std::uniform_int_distribution<size_t> uniformInt(0, variables_.size() - 1);
         std::normal_distribution<double> normalReal(0, 1);
         auto init = [&](Node& node) {
             if (node.IsLeaf()) {
                 if (node.IsVariable()) {
-                    node.HashValue = variables_[uniformInt(random)].Hash;
+                    node.HashValue = Operon::Random::Sample(random, variables_.begin(), variables_.end())->Hash;
                     node.CalculatedHashValue = node.HashValue; 
                 }
                 node.Value = normalReal(random);
@@ -48,29 +47,27 @@ namespace Operon {
         size_t maxArity = maxFunctionArity;
 
         std::uniform_int_distribution<size_t> dist(minDepth, maxDepth);
-        auto actualDepthLimit = dist(random);
-        bool minDepthReached = false;
+      auto actualDepthLimit = dist(random);
 
-        const auto grow = [&](size_t depth) {
-            const auto grow_impl = [&](size_t depth, const auto& grow_ref) {
-                minDepthReached = depth >= minDepth;
+        auto const grow = [&](size_t depth) {
+            auto const grow_impl = [&](size_t depth, const auto& grow_ref) {
+                auto minDepthReached = depth >= minDepth;
 
-                if (depth >= actualDepthLimit) {
-                    minArity = 0;
-                    maxArity = 0;
-                } else {
-                    minArity = minDepthReached ? 0 : minFunctionArity; 
+                minArity = 0;
+                maxArity = 0;
+
+                if (depth < actualDepthLimit) {
+                    minArity = minDepthReached ? 0 : minFunctionArity;
                     maxArity = maxFunctionArity;
-                }
+                } 
 
                 auto node = grammar.SampleRandomSymbol(random, minArity, maxArity);
                 init(node);
 
                 nodes.push_back(node);
 
-                if (node.IsLeaf()) {
+                if (node.IsLeaf())
                     return;
-                }
 
                 for (size_t i = 0; i < node.Arity; ++i) {
                     grow_ref(depth + 1, grow_ref); 

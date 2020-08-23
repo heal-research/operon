@@ -79,7 +79,7 @@ int main(int, char**) {
 
     // set up a genetic programming algorithm
     GeneticProgrammingAlgorithm gp(problem, config, initializer, generator, reinserter); 
-    Random random(config.Seed);
+    RandomGenerator random(config.Seed);
 
     int generation = 0;
     auto report = [&] { fmt::print("{}\n", ++generation); };

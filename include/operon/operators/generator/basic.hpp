@@ -31,7 +31,7 @@ public:
     {
     }
 
-    std::optional<Individual> operator()(Operon::Random& random, double pCrossover, double pMutation) const override
+    std::optional<Individual> operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation) const override
     {
         std::uniform_real_distribution<double> uniformReal;
         bool doCrossover = std::bernoulli_distribution(pCrossover)(random);

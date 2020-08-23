@@ -20,16 +20,15 @@
 #include "operators/creator/balanced.hpp"
 
 namespace Operon {
-Tree BalancedTreeCreator::operator()(Operon::Random& random, size_t targetLen, size_t, size_t) const
+Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t, size_t) const
 {
     EXPECT(targetLen > 0);
 
-    std::uniform_int_distribution<size_t> uniformInt(0, variables_.size() - 1);
     std::normal_distribution<double> normalReal(0, 1);
     auto init = [&](Node& node) {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {
-                node.HashValue = variables_[uniformInt(random)].Hash;
+                node.HashValue = Operon::Random::Sample(random, variables_.begin(), variables_.end())->Hash;
                 node.CalculatedHashValue = node.HashValue;
             }
             node.Value = normalReal(random);

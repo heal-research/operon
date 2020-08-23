@@ -20,43 +20,44 @@
 #ifndef OPERON_TYPES_HPP
 #define OPERON_TYPES_HPP
 
-#include <cstdint>
 #include "random/random.hpp"
-
-#include <ceres/jet.h>
 #include <Eigen/Core>
+#include <ceres/jet.h>
+#include <cstdint>
 
 namespace Operon {
-    using Hash                 = uint64_t;
-    using Random               = RandomGenerator::RomuTrio;
+using Hash = uint64_t;
+using RandomGenerator = Random::RomuTrio;
 #if defined(USE_SINGLE_PRECISION)
-    using Scalar               = float;
+using Scalar = float;
 #else
-    using Scalar               = double;
+using Scalar = double;
 #endif
-    using Dual                 = ceres::Jet<double, 4>;
+using Dual = ceres::Jet<double, 4>;
 
-    // Operon::Vector is just an aligned std::vector 
-    // alignment can be controlled with the EIGEN_MAX_ALIGN_BYTES macro
-    // https://eigen.tuxfamily.org/dox/TopicPreprocessorDirectives.html#TopicPreprocessorDirectivesPerformance
-    template<typename T>
-    using Vector               = std::vector<T, Eigen::aligned_allocator<T>>;
+// Operon::Vector is just an aligned std::vector
+// alignment can be controlled with the EIGEN_MAX_ALIGN_BYTES macro
+// https://eigen.tuxfamily.org/dox/TopicPreprocessorDirectives.html#TopicPreprocessorDirectivesPerformance
+template <typename T>
+using Vector = std::vector<T, Eigen::aligned_allocator<T>>;
 
-    namespace Numeric {
-        template<typename T> 
-        static inline T Max() 
-        {
-            return std::numeric_limits<T>::max();
-        }
-        template<typename T>
-        static inline T Min() 
-        {
-            if constexpr (std::is_floating_point_v<T>) return std::numeric_limits<T>::lowest(); 
-            else if constexpr(std::is_same_v<T, Dual>) return T{std::numeric_limits<double>::lowest()};
-            else return std::numeric_limits<T>::min(); 
-        }
+namespace Numeric {
+    template <typename T>
+    static inline T Max()
+    {
+        return std::numeric_limits<T>::max();
     }
+    template <typename T>
+    static inline T Min()
+    {
+        if constexpr (std::is_floating_point_v<T>)
+            return std::numeric_limits<T>::lowest();
+        else if constexpr (std::is_same_v<T, Dual>)
+            return T { std::numeric_limits<double>::lowest() };
+        else
+            return std::numeric_limits<T>::min();
+    }
+}
 } // namespace operon
 
 #endif
-

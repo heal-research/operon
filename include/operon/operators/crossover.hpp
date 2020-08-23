@@ -33,8 +33,8 @@ public:
         , maxLength(l)
     {
     }
-    auto operator()(Operon::Random& random, const Tree& lhs, const Tree& rhs) const -> Tree override;
-    std::pair<gsl::index, gsl::index> FindCompatibleSwapLocations(Operon::Random& random, const Tree& lhs, const Tree& rhs) const;
+    auto operator()(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const -> Tree override;
+    std::pair<gsl::index, gsl::index> FindCompatibleSwapLocations(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const;
 
     static inline Tree Cross(const Tree& lhs, const Tree& rhs, gsl::index i, gsl::index j) 
     {
