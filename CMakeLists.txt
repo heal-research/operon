@@ -205,7 +205,6 @@ target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PREC
 if(MSVC)
     target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
-    target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     # ugly hack to set the include dir correctly
     find_path(FMT_INCLUDE_DIR fmt/core.h)
     include_directories(${FMT_INCLUDE_DIR})
@@ -255,10 +254,16 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/implementation/hashing.cpp
         test/implementation/initialization.cpp
         test/implementation/mutation.cpp
+        test/implementation/random.cpp
         #test/implementation/selection.cpp
         #        test/codegen/irbuilder.cpp
         )
     target_compile_features(operon-test PRIVATE cxx_std_17)
+    if(MSVC) 
+        target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+    else()
+        target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    endif(MSVC)
     target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb doctest::doctest)
     target_include_directories(
         operon-test
@@ -268,6 +273,5 @@ if(doctest_FOUND AND BUILD_TESTS)
         ${CERES_INCLUDE_DIRS}
         )
     target_compile_definitions(operon-test PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
-    target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
 endif()
 
