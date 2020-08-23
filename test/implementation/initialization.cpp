@@ -35,7 +35,7 @@ TEST_CASE("Sample nodes from grammar")
     Grammar grammar;
     grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
     grammar.Enable(NodeType::Add, 5);
-    Operon::Random rd(std::random_device {}());
+    Operon::RandomGenerator rd(std::random_device {}());
 
     std::vector<double> observed(NodeTypes::Count, 0);
     size_t r = grammar.EnabledSymbols().size() + 1;
@@ -70,7 +70,7 @@ TEST_CASE("Sample nodes from grammar")
     REQUIRE(chi <= criticalValue);
 }
 
-std::vector<Tree> GenerateTrees(Random& random, CreatorBase& creator, std::vector<size_t> lengths, size_t maxDepth = 1000)
+std::vector<Tree> GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator, std::vector<size_t> lengths, size_t maxDepth = 1000)
 {
     std::vector<Tree> trees;
     trees.reserve(lengths.size());
@@ -129,7 +129,7 @@ TEST_CASE("GROW")
 
     GrowTreeCreator grow { grammar, inputs };
 
-    Operon::Random random(std::random_device {}());
+    Operon::RandomGenerator random(std::random_device {}());
 
     SUBCASE("Symbol frequencies")
     {
@@ -208,7 +208,7 @@ TEST_CASE("BTC")
 
     BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
 
-    Operon::Random random(std::random_device {}());
+    Operon::RandomGenerator random(std::random_device {}());
 
     std::vector<size_t> lengths(n);
 
@@ -312,7 +312,7 @@ TEST_CASE("PTC2")
 
     ProbabilisticTreeCreator ptc { grammar, inputs };
 
-    Operon::Random random(std::random_device {}());
+    Operon::RandomGenerator random(std::random_device {}());
 
     std::vector<size_t> lengths(n);
 

@@ -65,7 +65,7 @@ TEST_CASE("Evolution speed") {
     Reinserter reinserter(comparison);
 
     // set up a genetic programming algorithm
-    Random random(config.Seed);
+    RandomGenerator random(config.Seed);
 
     ankerl::nanobench::Bench b;
     b.performanceCounters(true);

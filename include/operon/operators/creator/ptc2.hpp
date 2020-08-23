@@ -32,7 +32,7 @@ public:
         , irregularityBias(bias)
     {
     }
-    Tree operator()(Operon::Random& random, size_t targetLen, size_t minDepth, size_t maxDepth) const override; 
+    Tree operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const override;
 
 private:
     double irregularityBias;

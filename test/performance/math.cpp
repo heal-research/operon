@@ -15,7 +15,7 @@ namespace Operon {
 
 TEST_CASE("Libm functions cost model")
 {
-    Operon::Random rand(std::random_device{}());
+    Operon::RandomGenerator rand(std::random_device{}());
 
     size_t rows = 1000, cols = 100;
 

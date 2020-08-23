@@ -27,7 +27,7 @@
 #include <limits>
 
 namespace Operon {
-namespace RandomGenerator {
+namespace Random {
     namespace detail {
         static inline constexpr uint64_t rotl(uint64_t x, unsigned k) noexcept
         {

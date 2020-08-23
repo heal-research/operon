@@ -23,6 +23,7 @@
 
 #include "core/common.hpp"
 #include <cmath>
+#include <gsl/span>
 
 namespace Operon {
 class PearsonsRCalculator {
@@ -31,8 +32,8 @@ public:
         : sumXX { 0.0 }
         , sumXY { 0.0 }
         , sumYY { 0.0 }
-        , sumX  { 0.0 }
-        , sumY  { 0.0 }
+        , sumX { 0.0 }
+        , sumY { 0.0 }
         , sumWe { 0.0 }
     {
     }
@@ -42,10 +43,10 @@ public:
         sumXX = sumYY = sumXY = sumX = sumY = sumWe = 0.0;
     }
 
-    template<typename T>
+    template <typename T>
     void Add(T x, T y);
 
-    template<typename T>
+    template <typename T>
     void Add(T x, T y, T w);
 
     double Correlation() const
@@ -76,7 +77,8 @@ public:
     double NaiveStddevX() const { return std::sqrt(NaiveVarianceX()); }
     double SampleStddevX() const { return std::sqrt(SampleVarianceX()); }
     double NaiveVarianceY() const { return sumYY / sumWe; }
-    double SampleVarianceY() const {
+    double SampleVarianceY() const
+    {
         EXPECT(sumWe > 1.);
         return sumYY / (sumWe - 1.);
     }
@@ -84,10 +86,10 @@ public:
     double NaiveStddevY() const { return std::sqrt(NaiveVarianceY()); }
     double SampleStddevY() const { return std::sqrt(SampleVarianceY()); }
 
-    template<typename T>
+    template <typename T>
     static double Coefficient(gsl::span<const T> x, gsl::span<const T> y);
 
-    template<typename T>
+    template <typename T>
     static double WeightedCoefficient(gsl::span<const T> x, gsl::span<const T> y, gsl::span<const T> weights);
 
 private:

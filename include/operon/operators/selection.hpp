@@ -28,7 +28,7 @@ class TournamentSelector : public SelectorBase {
 public:
     explicit TournamentSelector(ComparisonCallback cb) : SelectorBase(cb){ } 
 
-    gsl::index operator()(Operon::Random& random) const override;
+    gsl::index operator()(Operon::RandomGenerator& random) const override;
     void SetTournamentSize(size_t size) { tournamentSize = size; }
     size_t GetTournamentSize() const { return tournamentSize; }
 
@@ -40,7 +40,7 @@ class RankTournamentSelector : public SelectorBase {
 public:
     explicit RankTournamentSelector(ComparisonCallback cb) : SelectorBase(cb){ } 
 
-    gsl::index operator()(Operon::Random& random) const override;
+    gsl::index operator()(Operon::RandomGenerator& random) const override;
 
     void Prepare(const gsl::span<const Individual> pop) const override;
 
@@ -57,7 +57,7 @@ class ProportionalSelector : public SelectorBase {
 public:
     explicit ProportionalSelector(ComparisonCallback cb) : SelectorBase(cb), idx(0) { } 
 
-    gsl::index operator()(Operon::Random& random) const override;
+    gsl::index operator()(Operon::RandomGenerator& random) const override;
     
     void Prepare(const gsl::span<const Individual> pop) const override;
 
@@ -75,7 +75,7 @@ class RandomSelector : public SelectorBase {
 public:
     RandomSelector() : SelectorBase(nullptr) { }
 
-    gsl::index operator()(Operon::Random& random) const override
+    gsl::index operator()(Operon::RandomGenerator& random) const override
     {
         return std::uniform_int_distribution<gsl::index>(0, this->population.size() - 1)(random);
     }

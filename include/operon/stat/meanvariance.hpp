@@ -24,6 +24,7 @@
 #include <cmath>
 
 #include "core/common.hpp"
+#include "gsl/span"
 
 namespace Operon {
 

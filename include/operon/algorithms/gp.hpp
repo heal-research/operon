@@ -78,7 +78,7 @@ public:
         generation = 0;
     }
 
-    void Run(Operon::Random& random, std::function<void()> report = nullptr)
+    void Run(Operon::RandomGenerator& random, std::function<void()> report = nullptr)
     {
         auto& config       = GetConfig();
         auto& initializer  = GetInitializer();
@@ -88,7 +88,7 @@ public:
         std::vector<gsl::index> indices(std::max(config.PopulationSize, config.PoolSize));
         std::iota(indices.begin(), indices.end(), 0L);
         // random seeds for each thread
-        std::vector<Operon::Random::result_type> seeds(config.PopulationSize);
+        std::vector<Operon::RandomGenerator::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
 
         std::vector<size_t> treeLengths(config.PopulationSize);
@@ -98,7 +98,7 @@ public:
 
         auto create = [&](gsl::index i) {
             // create one random generator per thread
-            Operon::Random rndlocal{seeds[i]};
+            Operon::RandomGenerator rndlocal{seeds[i]};
             parents[i].Genotype = initializer(rndlocal);
             parents[i][idx] = Operon::Numeric::Max<Operon::Scalar>();
         };
@@ -118,7 +118,7 @@ public:
         std::atomic_bool terminate = false;
         // produce some offspring
         auto iterate = [&](gsl::index i) {
-            Operon::Random rndlocal{seeds[i]};
+            Operon::RandomGenerator rndlocal{seeds[i]};
 
             while (!(terminate = generator.Terminate())) {
                 if (auto result = generator(rndlocal, config.CrossoverProbability, config.MutationProbability); result.has_value()) {
