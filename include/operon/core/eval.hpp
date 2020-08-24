@@ -71,8 +71,6 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 
     auto lastCol = m.col(nodes.size() - 1);
 
-    auto const values = Eigen::Ref<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>>(dataset.Values());
-
     size_t numRows = range.Size();
     for (size_t row = 0; row < numRows; row += BATCHSIZE) {
         auto remainingRows = std::min(BATCHSIZE, numRows - row);
@@ -82,8 +80,11 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             auto const& s = nodes[i];
 
             if (GSL_LIKELY(s.IsLeaf())) {
-                if (s.IsVariable())
-                    r.segment(0, remainingRows) = params[i] * values.col(indices[i]).segment(range.Start() + row, remainingRows).cast<T>();
+                if (s.IsVariable()) {
+                    auto vals = dataset.GetValues(indices[i]).subspan(range.Start() + row, remainingRows);
+                    Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> seg(vals.data(), vals.size());
+                    r.segment(0, remainingRows) = params[i] * seg.cast<T>();
+                }
             } else {
                 switch (s.Type) {
                 case NodeType::Add: {
@@ -152,7 +153,6 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
         auto max_ = Operon::Numeric::Max<T>();
         res.segment(row, remainingRows) = (seg.isFinite()).select(seg, max_);
     }
-
 }
 
 struct TreeEvaluator {
