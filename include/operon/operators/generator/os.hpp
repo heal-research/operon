@@ -27,6 +27,8 @@ class OffspringSelectionGenerator : public OffspringGeneratorBase {
 public:
     explicit OffspringSelectionGenerator(EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel)
         : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel)
+        , maxSelectionPressure(100)
+        , comparisonFactor(1.0)
     {
     }
 
@@ -45,12 +47,13 @@ public:
 
         Individual child(1);
 
-        auto parentFit = population[first][0];
+        auto f1 = population[first][0];
+        auto f2 = f1;
 
         if (doCrossover) {
             auto second = this->maleSelector(random);
             child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
-            parentFit = std::fmin(parentFit, population[second][0]);
+            f2 = population[second][0];
         }
 
         if (doMutation) {
@@ -61,7 +64,7 @@ public:
 
         auto f = this->evaluator(random, child);
 
-        if (std::isfinite(f) && f < parentFit) {
+        if (std::isfinite(f) && f < (std::max(f1, f2) - comparisonFactor * std::abs(f1 - f2))) {
             child[0] = f;
             return std::make_optional(child);
         }
@@ -71,6 +74,9 @@ public:
 
     void MaxSelectionPressure(size_t value) { maxSelectionPressure = value; }
     size_t MaxSelectionPressure() const { return maxSelectionPressure; }
+
+    void ComparisonFactor(double value) { comparisonFactor = value; }
+    double ComparisonFactor() const { return comparisonFactor; }
 
     void Prepare(const gsl::span<const Individual> pop) const override
     {
@@ -94,6 +100,7 @@ public:
 private:
     mutable size_t lastEvaluations;
     size_t maxSelectionPressure;
+    double comparisonFactor;
 };
 } // namespace Operon
 
