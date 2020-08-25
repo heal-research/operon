@@ -333,14 +333,24 @@ int main(int argc, char* argv[])
                 generator.reset(ptr);
             } else if (tokens[0] == "os") {
                 size_t selectionPressure = 100;
+                double comparisonFactor = 1.0;
                 if (tokens.size() > 1) {
                     if (auto [p, ec] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), selectionPressure); ec != std::errc()) {
-                        fmt::print(stderr, "{}\n{}\n", "Error: could not parse brood size argument.", opts.help());
+                        fmt::print(stderr, "{}\n{}\n", "Error: could not parse maximum selection pressure argument.", opts.help());
+                        exit(EXIT_FAILURE);
+                    }
+                }
+                if (tokens.size() > 2) {
+                    if (auto [val, ok] = ParseDouble(tokens[2]); ok) {
+                        comparisonFactor = val;
+                    } else {
+                        fmt::print(stderr, "{}\n{}\n", "Error: could not parse comparison factor argument.", opts.help());
                         exit(EXIT_FAILURE);
                     }
                 }
                 auto ptr = new OffspringSelectionGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector);
                 ptr->MaxSelectionPressure(selectionPressure);
+                ptr->ComparisonFactor(comparisonFactor);
                 generator.reset(ptr);
             }
         }
