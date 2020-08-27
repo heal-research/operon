@@ -91,11 +91,7 @@ public:
         std::vector<Operon::RandomGenerator::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
 
-        std::vector<size_t> treeLengths(config.PopulationSize);
-        std::uniform_int_distribution<size_t> treeLengthDistribution(1, 50);
-
         auto idx = 0;
-
         auto create = [&](gsl::index i) {
             // create one random generator per thread
             Operon::RandomGenerator rndlocal{seeds[i]};
@@ -103,6 +99,7 @@ public:
             parents[i][idx] = Operon::Numeric::Max<Operon::Scalar>();
         };
         const auto& evaluator = generator.Evaluator();
+
         auto evaluate = [&](Individual& ind) {
             auto f = evaluator(random, ind);
             if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }

@@ -30,7 +30,7 @@ public:
     Initializer(const CreatorBase& creator, TDistribution& dist)
         : creator_(creator)
         , dist_(dist)
-        , minDepth_(0)
+        , minDepth_(1)
         , maxDepth_(1000)
     {
     }
