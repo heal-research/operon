@@ -1,11 +1,12 @@
 #include <pybind11/eigen.h>
+#include <pybind11/functional.h>
 #include <pybind11/numpy.h>
 #include <pybind11/operators.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#include "algorithms/config.hpp"
+#include "algorithms/gp.hpp"
 #include "core/common.hpp"
 #include "core/constants.hpp"
 #include "core/eval.hpp"
@@ -16,9 +17,11 @@
 
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
+#include "operators/evaluator.hpp"
 #include "operators/generator.hpp"
 #include "operators/mutation.hpp"
 #include "operators/selection.hpp"
+#include "operators/reinserter/replaceworst.hpp"
 
 #include "stat/pearson.hpp"
 
@@ -119,6 +122,12 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("UniformReal", &Operon::Random::UniformReal<Operon::RandomGenerator, double>);
 
     // classes
+    py::class_<Operon::Individual>(m, "Individual")
+        .def(py::init<>())
+        .def(py::init<size_t>())
+        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Individual::operator[]))
+        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Individual::operator[], py::const_));
+    
     py::class_<Operon::Variable>(m, "Variable")
         .def_readwrite("Name", &Operon::Variable::Name)
         .def_readwrite("Hash", &Operon::Variable::Hash)
@@ -130,17 +139,6 @@ PYBIND11_MODULE(pyoperon, m)
         .def_property_readonly("Start", &Operon::Range::Start)
         .def_property_readonly("End", &Operon::Range::End)
         .def_property_readonly("Size", &Operon::Range::Size);
-
-    // algorithm configuration is being held in a struct on the C++ side
-    py::class_<Operon::GeneticAlgorithmConfig>(m, "GeneticAlgorithmConfig")
-        .def_readwrite("Generations", &Operon::GeneticAlgorithmConfig::Generations)
-        .def_readwrite("Evaluations", &Operon::GeneticAlgorithmConfig::Evaluations)
-        .def_readwrite("Iterations", &Operon::GeneticAlgorithmConfig::Iterations)
-        .def_readwrite("PopulationSize", &Operon::GeneticAlgorithmConfig::PopulationSize)
-        .def_readwrite("PoolSize", &Operon::GeneticAlgorithmConfig::PoolSize)
-        .def_readwrite("CrossoverProbability", &Operon::GeneticAlgorithmConfig::CrossoverProbability)
-        .def_readwrite("MutationProbability", &Operon::GeneticAlgorithmConfig::MutationProbability)
-        .def_readwrite("Seed", &Operon::GeneticAlgorithmConfig::Seed);
 
     // node type
     py::enum_<Operon::NodeType>(m, "NodeType")
@@ -269,8 +267,7 @@ PYBIND11_MODULE(pyoperon, m)
 
                 return Operon::Tree(t[0].cast<Operon::Vector<Operon::Node>>()).UpdateNodes();
             }
-        ))
-        ;
+        ));
 
     // grammar
     py::class_<Operon::Grammar>(m, "Grammar")
@@ -297,11 +294,11 @@ PYBIND11_MODULE(pyoperon, m)
         .def_property_readonly("Cols", &Operon::Dataset::Cols)
         .def_property_readonly("Values", &Operon::Dataset::Values)
         .def_property_readonly("VariableNames", &Operon::Dataset::VariableNames)
-        .def("GetValues", py::overload_cast<const std::string&>(&Operon::Dataset::GetValues, py::const_))
-        .def("GetValues", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetValues, py::const_))
-        .def("GetValues", py::overload_cast<gsl::index>(&Operon::Dataset::GetValues, py::const_))
-        .def("GetVariable", py::overload_cast<const std::string&>(&Operon::Dataset::GetVariable, py::const_))
-        .def("GetVariable", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetVariable, py::const_))
+        .def("GetValues", py::overload_cast<const std::string&>(&Operon::Dataset::GetValues, py::const_), py::call_guard<py::gil_scoped_release>())
+        .def("GetValues", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetValues, py::const_), py::call_guard<py::gil_scoped_release>())
+        .def("GetValues", py::overload_cast<gsl::index>(&Operon::Dataset::GetValues, py::const_), py::call_guard<py::gil_scoped_release>())
+        .def("GetVariable", py::overload_cast<const std::string&>(&Operon::Dataset::GetVariable, py::const_), py::call_guard<py::gil_scoped_release>())
+        .def("GetVariable", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetVariable, py::const_), py::call_guard<py::gil_scoped_release>())
         .def_property_readonly("Variables", [](const Operon::Dataset& self) {
             auto vars = self.Variables();
             return std::vector<Operon::Variable>(vars.begin(), vars.end());
@@ -318,7 +315,7 @@ PYBIND11_MODULE(pyoperon, m)
             return Operon::BalancedTreeCreator(grammar, gsl::span<const Operon::Variable>(variables.data(), variables.size()), bias);
         }),
             py::arg("grammar"), py::arg("variables"), py::arg("bias"))
-        .def("__call__", &Operon::BalancedTreeCreator::operator())
+        .def("__call__", &Operon::BalancedTreeCreator::operator(), py::call_guard<py::gil_scoped_release>())
         .def_property("IrregularityBias", &Operon::BalancedTreeCreator::GetBias, &Operon::BalancedTreeCreator::SetBias);
 
     py::class_<Operon::ProbabilisticTreeCreator, Operon::CreatorBase>(m, "ProbabilisticTreeCreator")
@@ -327,55 +324,90 @@ PYBIND11_MODULE(pyoperon, m)
 
     py::class_<Operon::GrowTreeCreator, Operon::CreatorBase>(m, "GrowTreeCreator")
         .def(py::init<const Operon::Grammar&, const std::vector<Operon::Variable>>())
-        .def("__call__", &Operon::GrowTreeCreator::operator());
+        .def("__call__", &Operon::GrowTreeCreator::operator(), py::call_guard<py::gil_scoped_release>());
 
     // crossover
-    py::class_<Operon::SubtreeCrossover>(m, "SubtreeCrossover")
+    py::class_<Operon::CrossoverBase>(m, "CrossoverBase");
+
+    py::class_<Operon::SubtreeCrossover, Operon::CrossoverBase>(m, "SubtreeCrossover")
         .def(py::init<double, size_t, size_t>())
-        .def("__call__", &Operon::SubtreeCrossover::operator());
+        .def("__call__", &Operon::SubtreeCrossover::operator(), py::call_guard<py::gil_scoped_release>());
 
     // mutation
-    py::class_<Operon::OnePointMutation>(m, "OnePointMutation")
-        .def(py::init<>())
-        .def("__call__", &Operon::OnePointMutation::operator());
+    py::class_<Operon::MutatorBase>(m, "MutatorBase");
 
-    py::class_<Operon::ChangeVariableMutation>(m, "ChangeVariableMutation")
+    py::class_<Operon::OnePointMutation, Operon::MutatorBase>(m, "OnePointMutation")
+        .def(py::init<>())
+        .def("__call__", &Operon::OnePointMutation::operator(), py::call_guard<py::gil_scoped_release>());
+
+    py::class_<Operon::ChangeVariableMutation, Operon::MutatorBase>(m, "ChangeVariableMutation")
         .def(py::init([](std::vector<Operon::Variable> const& variables) {
             return Operon::ChangeVariableMutation(gsl::span<const Operon::Variable>(variables.data(), variables.size()));
         }),
             py::arg("variables"))
-        .def("__call__", &Operon::ChangeVariableMutation::operator());
+        .def("__call__", &Operon::ChangeVariableMutation::operator(), py::call_guard<py::gil_scoped_release>());
 
-    py::class_<Operon::ChangeFunctionMutation>(m, "ChangeFunctionMutation")
+    py::class_<Operon::ChangeFunctionMutation, Operon::MutatorBase>(m, "ChangeFunctionMutation")
         .def(py::init<Operon::Grammar>())
-        .def("__call__", &Operon::ChangeFunctionMutation::operator());
+        .def("__call__", &Operon::ChangeFunctionMutation::operator(), py::call_guard<py::gil_scoped_release>());
 
-    py::class_<Operon::ReplaceSubtreeMutation>(m, "ReplaceSubtreeMutation")
+    py::class_<Operon::ReplaceSubtreeMutation, Operon::MutatorBase>(m, "ReplaceSubtreeMutation")
         .def(py::init<Operon::CreatorBase&, size_t, size_t>())
-        .def("__call__", &Operon::ReplaceSubtreeMutation::operator());
+        .def("__call__", &Operon::ReplaceSubtreeMutation::operator(), py::call_guard<py::gil_scoped_release>());
+
+    py::class_<Operon::MultiMutation, Operon::MutatorBase>(m, "MultiMutation")
+        .def(py::init<>())
+        .def("__call__", &Operon::MultiMutation::operator(), py::call_guard<py::gil_scoped_release>())
+        .def("Add", &Operon::MultiMutation::Add);
 
     // selection
-    py::class_<Operon::TournamentSelector>(m, "TournamentSelector")
+    py::class_<Operon::SelectorBase>(m, "SelectorBase");
+
+    py::class_<Operon::TournamentSelector, Operon::SelectorBase>(m, "TournamentSelector")
         .def(py::init<Operon::ComparisonCallback>())
-        .def("__call__", &Operon::TournamentSelector::operator())
+        .def("__call__", &Operon::TournamentSelector::operator(), py::call_guard<py::gil_scoped_release>())
         .def_property("TournamentSize", &Operon::TournamentSelector::GetTournamentSize, &Operon::TournamentSelector::SetTournamentSize);
 
-    py::class_<Operon::RankTournamentSelector>(m, "RankTournamentSelector")
+    py::class_<Operon::RankTournamentSelector, Operon::SelectorBase>(m, "RankTournamentSelector")
         .def(py::init<Operon::ComparisonCallback>())
         .def("__call__", &Operon::RankTournamentSelector::operator())
         .def("Prepare", &Operon::RankTournamentSelector::Prepare)
         .def_property("TournamentSize", &Operon::RankTournamentSelector::GetTournamentSize, &Operon::RankTournamentSelector::SetTournamentSize);
 
-    py::class_<Operon::ProportionalSelector>(m, "ProportionalSelector")
+    py::class_<Operon::ProportionalSelector, Operon::SelectorBase>(m, "ProportionalSelector")
         .def(py::init<Operon::ComparisonCallback>())
-        .def("__call__", &Operon::ProportionalSelector::operator())
+        .def("__call__", &Operon::ProportionalSelector::operator(), py::call_guard<py::gil_scoped_release>())
         .def("Prepare", py::overload_cast<const gsl::span<const Operon::Individual>>(&Operon::ProportionalSelector::Prepare, py::const_))
         .def("SetObjIndex", &Operon::ProportionalSelector::SetObjIndex);
+
+    // reinserter
+    py::class_<Operon::ReinserterBase>(m, "ReinserterBase");
+
+    py::class_<Operon::ReplaceWorstReinserter<std::execution::parallel_unsequenced_policy>, Operon::ReinserterBase>(m, "ReplaceWorstReinserter")
+        .def(py::init<Operon::ComparisonCallback>())
+        .def("__call__", &Operon::ReplaceWorstReinserter<std::execution::parallel_unsequenced_policy>::operator(), py::call_guard<py::gil_scoped_release>());
+
+    // offspring generator
+    py::class_<Operon::OffspringGeneratorBase>(m, "OffspringGeneratorBase");
+    
+    py::class_<Operon::BasicOffspringGenerator, Operon::OffspringGeneratorBase>(m, "BasicOffspringGenerator")
+        .def(py::init<Operon::EvaluatorBase&, Operon::CrossoverBase&, Operon::MutatorBase&, 
+                Operon::SelectorBase&, Operon::SelectorBase&>())
+        .def("__call__", &Operon::BasicOffspringGenerator::operator());
+
+    // evaluator
+    py::class_<Operon::EvaluatorBase>(m, "EvaluatorBase")
+        .def_property("LocalOptimizationIterations", &Operon::EvaluatorBase::GetLocalOptimizationIterations, &Operon::EvaluatorBase::SetLocalOptimizationIterations)
+        .def_property("Budget",&Operon::EvaluatorBase::GetBudget, &Operon::EvaluatorBase::SetBudget);
+
+    py::class_<Operon::RSquaredEvaluator, Operon::EvaluatorBase>(m, "RSquaredEvaluator")
+        .def(py::init<Operon::Problem&>())
+        .def("__call__", &Operon::RSquaredEvaluator::operator());
 
     // random generators
     py::class_<Operon::Random::RomuTrio>(m, "RomuTrio")
         .def(py::init<uint64_t>())
-        .def("__call__", &Operon::Random::RomuTrio::operator());
+        .def("__call__", &Operon::Random::RomuTrio::operator(), py::call_guard<py::gil_scoped_release>());
 
     // tree format
     py::class_<Operon::TreeFormatter>(m, "TreeFormatter")
@@ -383,4 +415,64 @@ PYBIND11_MODULE(pyoperon, m)
 
     py::class_<Operon::InfixFormatter>(m, "InfixFormatter")
         .def_static("Format", &Operon::InfixFormatter::Format);
+
+    // problem
+    py::class_<Operon::Problem>(m, "Problem")
+        .def(py::init([](Operon::Dataset const& ds, std::vector<Operon::Variable> const& variables, std::string const& target,
+                        Operon::Range trainingRange, Operon::Range testRange){
+            gsl::span<const Operon::Variable> vars(variables.data(), variables.size());
+            return Operon::Problem(ds, variables, target, trainingRange, testRange);
+        }));
+
+    // genetic algorithm
+    py::class_<Operon::GeneticAlgorithmConfig>(m, "GeneticAlgorithmConfig")
+        .def(py::init([](size_t gen, size_t evals, size_t iter, size_t popsize, size_t poolsize, double pc, double pm, size_t seed){
+                    Operon::GeneticAlgorithmConfig config;
+                    config.Generations = gen;
+                    config.Evaluations = evals;
+                    config.Iterations = iter;
+                    config.PopulationSize = popsize;
+                    config.PoolSize = poolsize;
+                    config.CrossoverProbability = pc;
+                    config.MutationProbability = pm;
+                    config.Seed = seed;
+                    return config;
+             })
+                , py::arg("generations")
+                , py::arg("max_evaluations")
+                , py::arg("local_iterations")
+                , py::arg("population_size")
+                , py::arg("pool_size")
+                , py::arg("p_crossover")
+                , py::arg("p_mutation")
+                , py::arg("seed"))
+        .def_readwrite("Generations", &Operon::GeneticAlgorithmConfig::Generations)
+        .def_readwrite("Evaluations", &Operon::GeneticAlgorithmConfig::Evaluations)
+        .def_readwrite("Iterations", &Operon::GeneticAlgorithmConfig::Iterations)
+        .def_readwrite("PopulationSize", &Operon::GeneticAlgorithmConfig::PopulationSize)
+        .def_readwrite("PoolSize", &Operon::GeneticAlgorithmConfig::PoolSize)
+        .def_readwrite("CrossoverProbability", &Operon::GeneticAlgorithmConfig::CrossoverProbability)
+        .def_readwrite("MutationProbability", &Operon::GeneticAlgorithmConfig::MutationProbability)
+        .def_readwrite("Seed", &Operon::GeneticAlgorithmConfig::Seed);
+
+    using UniformInitializer = Operon::Initializer<std::uniform_int_distribution<size_t>>;
+    py::class_<UniformInitializer>(m, "UniformInitializer")
+        .def(py::init([](Operon::CreatorBase const& creator, size_t minLength, size_t maxLength) { 
+                    std::uniform_int_distribution<size_t> dist(minLength, maxLength);
+                    return UniformInitializer(creator, dist);
+                    }))
+        .def("__call__", &UniformInitializer::operator())
+        .def_property("MinDepth"
+                , py::overload_cast<>(&UniformInitializer::MinDepth, py::const_)
+                , py::overload_cast<size_t>(&UniformInitializer::MinDepth))
+        .def_property("MaxDepth"
+                , py::overload_cast<>(&UniformInitializer::MaxDepth, py::const_)
+                , py::overload_cast<size_t>(&UniformInitializer::MaxDepth))
+        ;
+
+    using GeneticProgrammingAlgorithm = Operon::GeneticProgrammingAlgorithm<UniformInitializer, std::execution::parallel_unsequenced_policy>;
+    py::class_<GeneticProgrammingAlgorithm>(m, "GeneticProgrammingAlgorithm")
+        .def(py::init<Operon::Problem const&, Operon::GeneticAlgorithmConfig const&, UniformInitializer&,
+                Operon::OffspringGeneratorBase const&, Operon::ReinserterBase const&>())
+        .def("Run", &GeneticProgrammingAlgorithm::Run, py::call_guard<py::gil_scoped_release>());
 }
