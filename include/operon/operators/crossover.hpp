@@ -36,7 +36,7 @@ public:
     auto operator()(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const -> Tree override;
     std::pair<gsl::index, gsl::index> FindCompatibleSwapLocations(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const;
 
-    static inline Tree Cross(const Tree& lhs, const Tree& rhs, gsl::index i, gsl::index j) 
+    static inline Tree Cross(const Tree& lhs, const Tree& rhs, gsl::index i, gsl::index j)
     {
         auto& left = lhs.Nodes();
         auto& right = rhs.Nodes();
