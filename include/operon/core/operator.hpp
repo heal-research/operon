@@ -51,8 +51,7 @@ struct Individual {
     }
 };
 
-//using ComparisonCallback = std::add_pointer<bool(Individual const&, Individual const&)>::type;
-using ComparisonCallback = std::add_pointer_t<bool(Individual const&, Individual const&)>;
+using ComparisonCallback = std::function<bool(Individual const&, Individual const&)>;
 
 // operator base classes for two types of operators: stateless and stateful
 template <typename Ret, typename... Args>
