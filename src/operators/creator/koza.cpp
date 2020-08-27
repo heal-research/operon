@@ -20,65 +20,65 @@
 #include "operators/creator/koza.hpp"
 
 namespace Operon {
-    Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t minDepth, size_t maxDepth) const
-    { 
-        minDepth = std::max(1ul, minDepth);
-        EXPECT(minDepth <= maxDepth);
-        auto const& grammar = grammar_.get();
+Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t minDepth, size_t maxDepth) const
+{
+    minDepth = std::max(1ul, minDepth);
+    EXPECT(minDepth <= maxDepth);
+    auto const& grammar = grammar_.get();
 
-        auto const& t = grammar.FunctionArityLimits();
-        
-        size_t minFunctionArity = std::get<0>(t);
-        size_t maxFunctionArity = std::get<1>(t);
+    auto const& t = grammar.FunctionArityLimits();
 
-        std::normal_distribution<double> normalReal(0, 1);
-        auto init = [&](Node& node) {
-            if (node.IsLeaf()) {
-                if (node.IsVariable()) {
-                    node.HashValue = Operon::Random::Sample(random, variables_.begin(), variables_.end())->Hash;
-                    node.CalculatedHashValue = node.HashValue; 
-                }
-                node.Value = normalReal(random);
+    size_t minFunctionArity = std::get<0>(t);
+    size_t maxFunctionArity = std::get<1>(t);
+
+    std::normal_distribution<double> normalReal(0, 1);
+    auto init = [&](Node& node) {
+        if (node.IsLeaf()) {
+            if (node.IsVariable()) {
+                node.HashValue = Operon::Random::Sample(random, variables_.begin(), variables_.end())->Hash;
+                node.CalculatedHashValue = node.HashValue;
+            }
+            node.Value = normalReal(random);
+        }
+    };
+
+    Operon::Vector<Node> nodes;
+    size_t minArity = minFunctionArity;
+    size_t maxArity = maxFunctionArity;
+
+    std::uniform_int_distribution<size_t> dist(minDepth, maxDepth);
+    auto actualDepthLimit = dist(random);
+
+    auto const grow = [&](size_t depth) {
+        auto const grow_impl = [&](size_t depth, const auto& grow_ref) {
+            auto minDepthReached = depth >= minDepth;
+
+            minArity = 0;
+            maxArity = 0;
+
+            if (depth < actualDepthLimit) {
+                minArity = minDepthReached ? 0 : minFunctionArity;
+                maxArity = maxFunctionArity;
+            }
+
+            auto node = grammar.SampleRandomSymbol(random, minArity, maxArity);
+            init(node);
+
+            nodes.push_back(node);
+
+            if (node.IsLeaf())
+                return;
+
+            for (size_t i = 0; i < node.Arity; ++i) {
+                grow_ref(depth + 1, grow_ref);
             }
         };
+        grow_impl(depth, grow_impl);
+    };
 
-        Operon::Vector<Node> nodes;
-        size_t minArity = minFunctionArity;
-        size_t maxArity = maxFunctionArity;
+    grow(1);
 
-        std::uniform_int_distribution<size_t> dist(minDepth, maxDepth);
-      auto actualDepthLimit = dist(random);
-
-        auto const grow = [&](size_t depth) {
-            auto const grow_impl = [&](size_t depth, const auto& grow_ref) {
-                auto minDepthReached = depth >= minDepth;
-
-                minArity = 0;
-                maxArity = 0;
-
-                if (depth < actualDepthLimit) {
-                    minArity = minDepthReached ? 0 : minFunctionArity;
-                    maxArity = maxFunctionArity;
-                } 
-
-                auto node = grammar.SampleRandomSymbol(random, minArity, maxArity);
-                init(node);
-
-                nodes.push_back(node);
-
-                if (node.IsLeaf())
-                    return;
-
-                for (size_t i = 0; i < node.Arity; ++i) {
-                    grow_ref(depth + 1, grow_ref); 
-                }
-            };
-            grow_impl(depth, grow_impl);
-        };
-
-        grow(1);
-
-        std::reverse(nodes.begin(), nodes.end());
-        return Tree(nodes).UpdateNodes();
-    }
+    std::reverse(nodes.begin(), nodes.end());
+    return Tree(nodes).UpdateNodes();
+}
 }
