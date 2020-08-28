@@ -26,7 +26,7 @@ namespace Operon {
 
 class TournamentSelector : public SelectorBase {
 public:
-    explicit TournamentSelector(ComparisonCallback cb) : SelectorBase(cb){ } 
+    explicit TournamentSelector(ComparisonCallback const& cb) : SelectorBase(cb){ } 
 
     gsl::index operator()(Operon::RandomGenerator& random) const override;
     void SetTournamentSize(size_t size) { tournamentSize = size; }

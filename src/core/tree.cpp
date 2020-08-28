@@ -48,6 +48,12 @@ Tree& Tree::UpdateNodes()
         }
         ++s.Depth;
     }
+    nodes.back().Level = 1;
+
+    for (auto it = nodes.rbegin() + 1; it < nodes.rend(); ++it) {
+        it->Level = nodes[it->Parent].Level + 1;
+    }
+
     return *this;
 }
 
@@ -165,20 +171,6 @@ size_t Tree::Depth() const noexcept
 size_t Tree::VisitationLength() const noexcept
 {
     return std::transform_reduce(nodes.begin(), nodes.end(), 0UL, std::plus<> {}, [](const auto& node) { return node.Length + 1; });
-}
-
-// calculate the level in the tree (distance to tree root) for the subtree at index i
-size_t Tree::Level(gsl::index i) const noexcept
-{
-    // the root node is always the last node with index Length() - 1
-    gsl::index root = Length() - 1;
-
-    size_t level = 1;
-    while (i < root) {
-        i = nodes[i].Parent;
-        ++level;
-    }
-    return level;
 }
 
 Tree& Tree::Hash(Operon::HashFunction f, Operon::HashMode m)

@@ -22,7 +22,6 @@
 
 #include "creator/balanced.hpp"
 #include "creator/koza.hpp"
-#include "creator/uniform.hpp"
 #include "creator/ptc2.hpp"
 
 #endif

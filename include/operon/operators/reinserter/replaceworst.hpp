@@ -26,7 +26,7 @@ namespace Operon {
 template <typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class ReplaceWorstReinserter : public ReinserterBase {
     public:
-        explicit ReplaceWorstReinserter(ComparisonCallback cb) : ReinserterBase(cb) { }
+        explicit ReplaceWorstReinserter(ComparisonCallback const& cb) : ReinserterBase(cb) { }
         // replace the worst individuals in pop with the best individuals from pool
         void operator()(Operon::RandomGenerator&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
             // typically the pool and the population are the same size
