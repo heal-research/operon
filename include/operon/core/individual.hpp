@@ -1,0 +1,51 @@
+#ifndef OPERON_INDIVIDUAL_HPP
+#define OPERON_INDIVIDUAL_HPP
+
+namespace Operon {
+
+struct Individual {
+    Tree Genotype;
+    std::vector<Operon::Scalar> Fitness;
+
+    Operon::Scalar& operator[](gsl::index i) noexcept { return Fitness[i]; }
+    Operon::Scalar operator[](gsl::index i) const noexcept { return Fitness[i]; }
+
+    Individual()
+        : Individual(1)
+    {
+    }
+    Individual(size_t fitDim)
+        : Fitness(fitDim, 0.0)
+    {
+    }
+};
+
+struct Comparison {
+    virtual bool operator()(Individual const&, Individual const&) const = 0;
+    virtual ~Comparison() {}
+};
+
+struct SingleObjectiveComparison final : public Comparison {
+    SingleObjectiveComparison(size_t idx)
+        : objectiveIndex(idx)
+    {
+    }
+    SingleObjectiveComparison()
+        : SingleObjectiveComparison(0)
+    {
+    }
+
+    bool operator()(Individual const& lhs, Individual const& rhs) const override
+    {
+        return lhs[objectiveIndex] < rhs[objectiveIndex];
+    }
+
+private:
+    size_t objectiveIndex;
+};
+
+using ComparisonCallback = std::function<bool(Individual const&, Individual const&)>;
+
+} // namespace
+
+#endif

@@ -1,3 +1,22 @@
+/* This file is part of:
+ * Operon - Large Scale Genetic Programming Framework
+ *
+ * Licensed under the ISC License <https://opensource.org/licenses/ISC> 
+ * Copyright (C) 2020 Bogdan Burlacu 
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+ * FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+ * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE. 
+ */
+
 #include <pybind11/eigen.h>
 #include <pybind11/functional.h>
 #include <pybind11/numpy.h>
@@ -132,6 +151,12 @@ PYBIND11_MODULE(pyoperon, m)
         .def_readwrite("Genotype", &Operon::Individual::Genotype)
         .def("SetFitness", [](Operon::Individual& self, Operon::Scalar f, size_t i) { self[i] = f; })
         .def("GetFitness", [](Operon::Individual& self, size_t i) { return self[i]; });
+
+    py::class_<Operon::Comparison>(m, "Comparison");
+
+    py::class_<Operon::SingleObjectiveComparison, Operon::Comparison>(m, "SingleObjectiveComparison")
+        .def(py::init<size_t>())
+        .def("__call__", &Operon::SingleObjectiveComparison::operator());
     
     py::class_<Operon::Variable>(m, "Variable")
         .def_readwrite("Name", &Operon::Variable::Name)
@@ -369,6 +394,9 @@ PYBIND11_MODULE(pyoperon, m)
     py::class_<Operon::SelectorBase>(m, "SelectorBase");
 
     py::class_<Operon::TournamentSelector, Operon::SelectorBase>(m, "TournamentSelector")
+        .def(py::init([](size_t i){ 
+                    return Operon::TournamentSelector([i](const auto& a, const auto& b) { return a[i] < b[i]; });
+                    }), py::arg("objective_index"))
         .def(py::init<Operon::ComparisonCallback const&>())
         .def("__call__", &Operon::TournamentSelector::operator())
         .def_property("TournamentSize", &Operon::TournamentSelector::GetTournamentSize, &Operon::TournamentSelector::SetTournamentSize);
@@ -380,7 +408,7 @@ PYBIND11_MODULE(pyoperon, m)
         .def_property("TournamentSize", &Operon::RankTournamentSelector::GetTournamentSize, &Operon::RankTournamentSelector::SetTournamentSize);
 
     py::class_<Operon::ProportionalSelector, Operon::SelectorBase>(m, "ProportionalSelector")
-        .def(py::init<Operon::ComparisonCallback>())
+        .def(py::init<Operon::ComparisonCallback const&>())
         .def("__call__", &Operon::ProportionalSelector::operator())
         .def("Prepare", py::overload_cast<const gsl::span<const Operon::Individual>>(&Operon::ProportionalSelector::Prepare, py::const_))
         .def("SetObjIndex", &Operon::ProportionalSelector::SetObjIndex);
@@ -389,6 +417,9 @@ PYBIND11_MODULE(pyoperon, m)
     py::class_<Operon::ReinserterBase>(m, "ReinserterBase");
 
     py::class_<Operon::ReplaceWorstReinserter<std::execution::parallel_unsequenced_policy>, Operon::ReinserterBase>(m, "ReplaceWorstReinserter")
+        .def(py::init([](size_t i) { 
+            return Operon::ReplaceWorstReinserter([i](const auto& a, const auto& b) { return a[i] < b[i]; });
+                    }), py::arg("objective_index"))
         .def(py::init<Operon::ComparisonCallback>())
         .def("__call__", &Operon::ReplaceWorstReinserter<std::execution::parallel_unsequenced_policy>::operator());
 
@@ -456,15 +487,14 @@ PYBIND11_MODULE(pyoperon, m)
                     config.MutationProbability = pm;
                     config.Seed = seed;
                     return config;
-             })
-                , py::arg("generations")
-                , py::arg("max_evaluations")
-                , py::arg("local_iterations")
-                , py::arg("population_size")
-                , py::arg("pool_size")
-                , py::arg("p_crossover")
-                , py::arg("p_mutation")
-                , py::arg("seed"))
+            }), py::arg("generations")
+               , py::arg("max_evaluations")
+               , py::arg("local_iterations")
+               , py::arg("population_size")
+               , py::arg("pool_size")
+               , py::arg("p_crossover") 
+               , py::arg("p_mutation") 
+               , py::arg("seed"))
         .def_readwrite("Generations", &Operon::GeneticAlgorithmConfig::Generations)
         .def_readwrite("Evaluations", &Operon::GeneticAlgorithmConfig::Evaluations)
         .def_readwrite("Iterations", &Operon::GeneticAlgorithmConfig::Iterations)
@@ -489,9 +519,13 @@ PYBIND11_MODULE(pyoperon, m)
                 , py::overload_cast<size_t>(&UniformInitializer::MaxDepth))
         ;
 
-    using GeneticProgrammingAlgorithm = Operon::GeneticProgrammingAlgorithm<UniformInitializer, std::execution::parallel_unsequenced_policy>;
+    using GeneticProgrammingAlgorithm = Operon::GeneticProgrammingAlgorithm<UniformInitializer>;
     py::class_<GeneticProgrammingAlgorithm>(m, "GeneticProgrammingAlgorithm")
         .def(py::init<Operon::Problem const&, Operon::GeneticAlgorithmConfig const&, UniformInitializer&,
                 Operon::OffspringGeneratorBase const&, Operon::ReinserterBase const&>())
-        .def("Run", &GeneticProgrammingAlgorithm::Run, py::call_guard<py::gil_scoped_release>());
+        .def("Run", &GeneticProgrammingAlgorithm::Run, py::call_guard<py::gil_scoped_release>(), py::arg("rng"), py::arg("callback"), py::arg("threads") = 0)
+        .def("BestModel", [](GeneticProgrammingAlgorithm const& self, Operon::Comparison const& comparison) {
+                    auto min_elem = std::min_element(self.Parents().begin(), self.Parents().end(), [&](auto const& a, auto const& b) { return comparison(a, b);});
+                    return *min_elem;
+                });
 }

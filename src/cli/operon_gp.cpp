@@ -245,9 +245,9 @@ int main(int argc, char* argv[])
         auto onePoint            = OnePointMutation {};
         auto changeVar           = ChangeVariableMutation { problem.InputVariables() };
         auto changeFunc          = ChangeFunctionMutation { problem.GetGrammar() };
-        auto replaceSubtree      = ReplaceSubtreeMutation { *creator, maxLength, maxDepth };
-        auto insertSubtree       = InsertSubtreeMutation { *creator, maxLength, maxDepth };
-        auto shuffleSubtree      = ShuffleSubtreesMutation {};
+        auto replaceSubtree      = ReplaceSubtreeMutation { *creator, maxDepth, maxLength};
+        //auto insertSubtree       = InsertSubtreeMutation { *creator, maxDepth, maxLength};
+        //auto shuffleSubtree      = ShuffleSubtreesMutation {};
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);

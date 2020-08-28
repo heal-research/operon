@@ -28,30 +28,13 @@
 #include "common.hpp"
 #include "dataset.hpp"
 #include "grammar.hpp"
+#include "individual.hpp"
 #include "problem.hpp"
 #include "tree.hpp"
 
 namespace Operon {
 // it's useful to have a data structure holding additional attributes for a solution candidate
 // maybe we should have an array of trees here?
-struct Individual {
-    Tree Genotype;
-    std::vector<Operon::Scalar> Fitness;
-
-    Operon::Scalar& operator[](gsl::index i) noexcept { return Fitness[i]; }
-    Operon::Scalar operator[](gsl::index i) const noexcept { return Fitness[i]; }
-
-    Individual()
-        : Individual(1)
-    {
-    }
-    Individual(size_t fitDim)
-        : Fitness(fitDim, 0.0)
-    {
-    }
-};
-
-using ComparisonCallback = std::function<bool(Individual const&, Individual const&)>;
 
 // operator base classes for two types of operators: stateless and stateful
 template <typename Ret, typename... Args>
@@ -90,8 +73,8 @@ struct MutatorBase : public OperatorBase<Tree, Tree> {
 class SelectorBase : public OperatorBase<gsl::index> {
 public:
     using SelectableType = Individual;
-
-    explicit SelectorBase(ComparisonCallback cb)
+    SelectorBase() { }
+    explicit SelectorBase(ComparisonCallback const& cb)
         : comp(cb)
     {
     }
@@ -115,7 +98,7 @@ protected:
 
 class ReinserterBase : public OperatorBase<void, std::vector<Individual>&, std::vector<Individual>&> {
 public:
-    explicit ReinserterBase(ComparisonCallback cb)
+    explicit ReinserterBase(ComparisonCallback const& cb)
         : comp(cb)
     {
     }

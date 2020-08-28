@@ -90,7 +90,7 @@ Tree ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tr
     auto i = std::uniform_int_distribution<size_t>(0, nodes.size()-1)(random);
 
     size_t oldLen = nodes[i].Length + 1;
-    size_t oldLevel = tree.Level(i);
+    size_t oldLevel = nodes[i].Level;
 
     size_t maxLength = maxLength_ - nodes.size() + oldLen;
     // the correction below is necessary because it can happen that maxLength_ < nodes.size()
@@ -139,7 +139,7 @@ Tree InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
     auto availableLength = maxLength_ - nodes.size();
     EXPECT(availableLength > 0);
 
-    auto availableDepth = std::max(tree.Depth(), maxDepth_) - tree.Level(i); 
+    auto availableDepth = std::max(tree.Depth(), maxDepth_) - nodes[i].Level; 
     EXPECT(availableDepth > 0);
 
     auto newLen = std::uniform_int_distribution<size_t>(1, availableLength)(random);

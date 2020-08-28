@@ -218,7 +218,6 @@ public:
     size_t Length() const noexcept { return nodes.size(); }
     size_t VisitationLength() const noexcept;
     size_t Depth() const noexcept;
-    size_t Level(gsl::index) const noexcept;
     bool Empty() const noexcept { return nodes.empty(); }
 
     Operon::Hash HashValue() const { return nodes.empty() ? 0 : nodes.back().CalculatedHashValue; }
