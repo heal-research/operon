@@ -24,15 +24,19 @@
 #include "core/eval.hpp"
 #include "core/format.hpp"
 #include "core/metrics.hpp"
-#include "operators/crossover.hpp"
 #include "operators/creator.hpp"
+#include "operators/crossover.hpp"
+#include "operators/generator.hpp"
 #include "operators/initializer.hpp"
 #include "operators/mutation.hpp"
-#include "operators/generator.hpp"
+
+#include <execution>
+#include <tbb/global_control.h>
+#include <thread>
 
 namespace Operon {
 
-template <typename TInitializer, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+template <typename TInitializer>
 class GeneticProgrammingAlgorithm {
 private:
     std::reference_wrapper<const Problem> problem_;
@@ -78,12 +82,12 @@ public:
         generation = 0;
     }
 
-    void Run(Operon::RandomGenerator& random, std::function<void()> report = nullptr)
+    void Run(Operon::RandomGenerator& random, std::function<void()> report = nullptr, size_t threads = 0)
     {
-        auto& config       = GetConfig();
-        auto& initializer  = GetInitializer();
-        auto& generator    = GetGenerator();
-        auto& reinserter   = GetReinserter();
+        auto& config = GetConfig();
+        auto& initializer = GetInitializer();
+        auto& generator = GetGenerator();
+        auto& reinserter = GetReinserter();
         // easier to work with indices
         std::vector<gsl::index> indices(std::max(config.PopulationSize, config.PoolSize));
         std::iota(indices.begin(), indices.end(), 0L);
@@ -94,7 +98,7 @@ public:
         auto idx = 0;
         auto create = [&](gsl::index i) {
             // create one random generator per thread
-            Operon::RandomGenerator rndlocal{seeds[i]};
+            Operon::RandomGenerator rndlocal { seeds[i] };
             parents[i].Genotype = initializer(rndlocal);
             parents[i][idx] = Operon::Numeric::Max<Operon::Scalar>();
         };
@@ -102,20 +106,23 @@ public:
 
         auto evaluate = [&](Individual& ind) {
             auto f = evaluator(random, ind);
-            if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
+            if (!std::isfinite(f)) {
+                f = Operon::Numeric::Max<Operon::Scalar>();
+            }
             ind[idx] = f;
         };
 
         // generate the initial population and perform evaluation
-        ExecutionPolicy executionPolicy;
-        std::for_each(executionPolicy, indices.begin(), indices.begin() + config.PopulationSize, create);
-        std::for_each(executionPolicy, parents.begin(), parents.end(), evaluate);
+        tbb::global_control c(tbb::global_control::max_allowed_parallelism, threads ? threads : std::thread::hardware_concurrency());
+
+        std::for_each(std::execution::par_unseq, indices.begin(), indices.begin() + config.PopulationSize, create);
+        std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
 
         // flag to signal algorithm termination
         std::atomic_bool terminate = false;
         // produce some offspring
         auto iterate = [&](gsl::index i) {
-            Operon::RandomGenerator rndlocal{seeds[i]};
+            Operon::RandomGenerator rndlocal { seeds[i] };
 
             while (!(terminate = generator.Terminate())) {
                 if (auto result = generator(rndlocal, config.CrossoverProbability, config.MutationProbability); result.has_value()) {
@@ -125,8 +132,9 @@ public:
             }
         };
 
-        // report statistics for the initial population 
-        if (report) { std::invoke(report); }
+        // report statistics for the initial population
+        if (report)
+            std::invoke(report);
 
         for (generation = 1; generation <= config.Generations; ++generation) {
             // get some new seeds
@@ -137,20 +145,22 @@ public:
 
             generator.Prepare(parents);
             // we always allow one elite (maybe this should be more configurable?)
-            std::for_each(executionPolicy, indices.cbegin() + 1, indices.cbegin() + config.PoolSize, iterate);
+            std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cbegin() + config.PoolSize, iterate);
             // merge pool back into pop
             reinserter(random, parents, offspring);
 
             // report progress and stats
-            if (report) { std::invoke(report); }
+            if (report) {
+                std::invoke(report);
+            }
 
             // stop if termination requested
             //if (terminate || best->Fitness[idx] < 1e-6) { return; }
-            if (terminate) return;
+            if (terminate)
+                return;
         }
     }
 };
 } // namespace operon
 
 #endif
-

@@ -18,6 +18,7 @@
  */
 
 #include <doctest/doctest.h>
+#include <execution>
 #include <unordered_set>
 
 #include "core/tree.hpp"

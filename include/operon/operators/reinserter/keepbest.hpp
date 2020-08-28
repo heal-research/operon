@@ -28,7 +28,7 @@ namespace Operon {
 template <typename ExecutionPolicy = std::execution::unsequenced_policy>
 class KeepBestReinserter : public ReinserterBase {
     public:
-        explicit KeepBestReinserter(ComparisonCallback cb) : ReinserterBase(cb) { }
+        explicit KeepBestReinserter(ComparisonCallback const& cb) : ReinserterBase(cb) { }
         // keep the best |pop| individuals from pop+pool
         void operator()(Operon::RandomGenerator&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
             ExecutionPolicy ep;

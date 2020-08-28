@@ -32,7 +32,7 @@ static gsl::index SelectRandomBranch(Operon::RandomGenerator& random, const Tree
     for (size_t i = 0; i < nodes.size(); ++i) {
         auto const& node = nodes[i];
 
-        if (node.Length + 1u > maxBranchLength || node.Depth > maxBranchDepth || tree.Level(i) > maxBranchLevel) {
+        if (node.Length + 1u > maxBranchLength || node.Depth > maxBranchDepth || nodes[i].Level > maxBranchLevel) {
             continue;
         }
 
@@ -66,7 +66,7 @@ std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(
     size_t partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
     // we have to make some small allowances here due to the fact that the provided trees 
     // might actually be larger than the maxDepth and maxLength limits given here
-    size_t maxBranchDepth    = std::max(maxDepth - lhs.Level(i), 1ul);
+    size_t maxBranchDepth    = std::max(maxDepth - lhs[i].Level, 1ul);
     size_t maxBranchLength   = std::max(maxLength - partialTreeLength, 1ul);
 
     auto j = SelectRandomBranch(random, rhs, internalProbability, std::numeric_limits<size_t>::max(), maxBranchDepth, maxBranchLength);

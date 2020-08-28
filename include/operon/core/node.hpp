@@ -89,6 +89,7 @@ struct Node {
     uint16_t Arity; // 0-65535
     uint16_t Length; // 0-65535
     uint16_t Depth; // 0-65535
+    uint16_t Level;
     uint16_t Parent; // index of parent node
     NodeType Type;
     bool IsEnabled;

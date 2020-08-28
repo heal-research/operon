@@ -70,10 +70,10 @@ private:
 };
 
 struct InsertSubtreeMutation : public MutatorBase {
-    InsertSubtreeMutation(CreatorBase& creator, size_t maxLength, size_t maxDepth) 
+    InsertSubtreeMutation(CreatorBase& creator, size_t maxDepth, size_t maxLength) 
         : creator_(creator)
-        , maxLength_(maxLength)
         , maxDepth_(maxDepth)
+        , maxLength_(maxLength)
     {
     }
 
@@ -81,15 +81,15 @@ struct InsertSubtreeMutation : public MutatorBase {
 
 private:
     std::reference_wrapper<CreatorBase> creator_;
-    size_t maxLength_;
     size_t maxDepth_;
+    size_t maxLength_;
 };
 
 struct ReplaceSubtreeMutation : public MutatorBase {
-    ReplaceSubtreeMutation(CreatorBase& creator, size_t maxLength, size_t maxDepth) 
+    ReplaceSubtreeMutation(CreatorBase& creator, size_t maxDepth, size_t maxLength) 
         : creator_(creator) 
-        , maxLength_(maxLength)
         , maxDepth_(maxDepth)
+        , maxLength_(maxLength)
     {
     }
 
@@ -97,8 +97,8 @@ struct ReplaceSubtreeMutation : public MutatorBase {
 
 private:
     std::reference_wrapper<CreatorBase> creator_;
-    size_t maxLength_;
     size_t maxDepth_;
+    size_t maxLength_;
 };
 
 struct ShuffleSubtreesMutation : public MutatorBase {
