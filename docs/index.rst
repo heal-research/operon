@@ -3,10 +3,22 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. figure:: _static/logo_mini.png
+    :height: 100px
+    :align: center
+
+
+.. note::
+    **The documentation is under construction.**
+
 Introduction
 ============
 
-*Operon* is a `genetic programming`_ (GP) framework for `symbolic regression`_ (SR) implemented in modern C++ with a focus on efficiency and performance. 
+*Operon* is a modern C++ framework for `symbolic regression <https://en.wikipedia.org/wiki/Symbolic_regression>`_ that uses `genetic programming <https://en.wikipedia.org/wiki/Genetic_programming>`_ to explore a hypothesis space of possible mathematical expressions in order to find the best-fitting model for a given `regression target <https://en.wikipedia.org/wiki/Regression_analysis>`_.
+Its main purpose is to help develop accurate and interpretable white-box models in areas such as `system identification <https://en.wikipedia.org/wiki/System_identification>`_.
+
+.. image:: _static/evo_rtd.gif
+    :align: center
 
 Motivation
 ----------
@@ -17,17 +29,19 @@ Modern concurrency model
     Traditional threading approaches are not optimal for today's many-core systems. This means designing the evolutionary main loop in such a way as to avoid synchronisation overhead and take advantage of C++17's `execution policies`_.  
 
 Performance
-    By using an efficient linear tree representation where each ``Node`` is `trivial`_ and vectorized evaluation with the help of the `Eigen_` library. The encoding consumes 40 bytes per tree node, allowing practitioners to work with very large populations.
+    By using an efficient linear tree representation where each ``Node`` is `trivial`_ and vectorized evaluation with the help of the `Eigen <https://eigen.tuxfamily.org/>`_ library. The encoding consumes 40 bytes per tree node, allowing practitioners to work with very large populations.
 
 Ease-of-use
-    We assume the user wants to put the framework to work with some real data and does not wish to waste time with useless tutorials and toy examples. 
+    *Operon* (the core library) comes with a command-line client that just works: you pass it a dataset and it will start optimizing. Its behavior can be configured by command line options, making it easy to integrate with any scripting environment or high-level language such as Python. A Python script is provided for performing experiments automatically aggregating the results. 
 
-    *Operon* (the core library) is complemented by a command-line client that just works: you pass it a dataset and it will start optimizing. Its behavior can be configured by command line options, making it easy to integrate with any scripting environment or high-level language such as Python. A Python script is provided for performing experiments automatically aggregating the results. 
+    For more advanced use cases, we provide a C++ and a Python API, briefly illustrated with some `examples <https://github.com/foolnotion/operon/tree/master/examples>`_.
 
-For an overview of *Operon* please have a look at the :doc:`features` page. The API is illustrated by an :doc:`example`.
-The main concepts are described in the :doc:`operators` section. 
+For an overview of *Operon* please have a look at the :doc:`features` page. 
 
 The software was also presented at GECCO'2020 *EvoSoft* workshop: https://dl.acm.org/doi/10.1145/3377929.3398099. If you want to reference it in your publication, please use:
+
+Reference
+^^^^^^^^^
 
 .. code-block:: tex
 
@@ -70,10 +84,12 @@ The software was also presented at GECCO'2020 *EvoSoft* workshop: https://dl.acm
 .. * :ref:`search`
 
 .. toctree::
-    :maxdepth: 1
-    :hidden:
+    :maxdepth: 0
+
+    self
 
     features
+    build
     example
 
 .. _`symbolic regression`: https://en.wikipedia.org/wiki/Symbolic_regression
