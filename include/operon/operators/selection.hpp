@@ -26,6 +26,7 @@ namespace Operon {
 
 class TournamentSelector : public SelectorBase {
 public:
+    explicit TournamentSelector(ComparisonCallback&& cb) : SelectorBase(cb){ } 
     explicit TournamentSelector(ComparisonCallback const& cb) : SelectorBase(cb){ } 
 
     gsl::index operator()(Operon::RandomGenerator& random) const override;
@@ -38,7 +39,8 @@ private:
 
 class RankTournamentSelector : public SelectorBase {
 public:
-    explicit RankTournamentSelector(ComparisonCallback cb) : SelectorBase(cb){ } 
+    explicit RankTournamentSelector(ComparisonCallback&& cb) : SelectorBase(cb){ } 
+    explicit RankTournamentSelector(ComparisonCallback const& cb) : SelectorBase(cb){ } 
 
     gsl::index operator()(Operon::RandomGenerator& random) const override;
 
@@ -55,7 +57,8 @@ private:
 
 class ProportionalSelector : public SelectorBase {
 public:
-    explicit ProportionalSelector(ComparisonCallback cb) : SelectorBase(cb), idx(0) { } 
+    explicit ProportionalSelector(ComparisonCallback&& cb) : SelectorBase(cb), idx(0) { } 
+    explicit ProportionalSelector(ComparisonCallback const& cb) : SelectorBase(cb), idx(0) { } 
 
     gsl::index operator()(Operon::RandomGenerator& random) const override;
     

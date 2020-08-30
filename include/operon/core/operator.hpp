@@ -74,10 +74,12 @@ class SelectorBase : public OperatorBase<gsl::index> {
 public:
     using SelectableType = Individual;
     SelectorBase() { }
-    explicit SelectorBase(ComparisonCallback const& cb)
-        : comp(cb)
+    explicit SelectorBase(ComparisonCallback&& cb)
+        : comp(std::move(cb))
     {
     }
+
+    explicit SelectorBase(ComparisonCallback const& cb) : comp(cb) { }
 
     virtual void Prepare(const gsl::span<const Individual> pop) const
     {
@@ -87,7 +89,6 @@ public:
     gsl::span<const Individual> Population() const { return population; }
 
     bool Compare(Individual const& lhs, Individual const& rhs) const { 
-        EXPECT(comp != nullptr);
         return comp(lhs, rhs); 
     }
 
@@ -98,6 +99,11 @@ protected:
 
 class ReinserterBase : public OperatorBase<void, std::vector<Individual>&, std::vector<Individual>&> {
 public:
+    explicit ReinserterBase(ComparisonCallback&& cb)
+        : comp(std::move(cb))
+    {
+    }
+
     explicit ReinserterBase(ComparisonCallback const& cb)
         : comp(cb)
     {
