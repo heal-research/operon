@@ -1,84 +1,68 @@
+<p align="center">
+    <img src="./docs/_static/logo_mini.png" height="80px" />
+</p>
+
 # Introduction
 
-*Operon* is a [Genetic Programming](https://en.wikipedia.org/wiki/Genetic_programming) (GP) system written in modern C++ with an emphasis on usability and performance.
+*Operon* is a modern C++ framework for [symbolic regression](https://en.wikipedia.org/wiki/Symbolic_regression) that uses [genetic programming](https://en.wikipedia.org/wiki/Genetic_programming) to explore a hypothesis space of possible mathematical expressions in order to find the best-fitting model for a given [regression target](https://en.wikipedia.org/wiki/Regression_analysis).
+Its main purpose is to help develop accurate and interpretable white-box models in the area of [system identification](https://en.wikipedia.org/wiki/System_identification). More in-depth documentation available at https://operongp.readthedocs.io/.
 
-## Why yet another GP framework?
+## How does it work?
 
-*Operon*'s main purpose is to help us test new concepts mainly in the area of [symbolic regression](https://en.wikipedia.org/wiki/Symbolic_regression). That is, we evolve populations of expression trees with the aim of producing accurate *and* interpretable white-box models for solving [system identification](https://en.wikipedia.org/wiki/System_identification) tasks.
+Broadly speaking, genetic programming (GP) is said to evolve a population of "computer programs" ― [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree)-like structures encoding behavior for a given problem domain ― following the principles of [natural selection](https://en.wikipedia.org/wiki/Natural_selection). It repeatedly combines random program parts keeping only the best results ― the "fittest". Here, the biological concept of [fitness](https://en.wikipedia.org/wiki/Survival_of_the_fittest) is defined as a measure of a program's ability to solve a certain task.
 
-At the same time, we wanted an efficient implementation using modern concepts and idioms like those outlined in the [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#c-core-guidelines). Our design goals in developing *Operon* are:
-* Modern build system (we use [Cmake](https://cmake.org/))
-* Crossplatform (*Operon* has been tested on Windows and Linux)
-* Reliance on modern language features (C++17) and standard library functions and algorithms
-* Easily to extend
-* Unit test coverage
+In symbolic regression, the programs represent mathematical expressions typically encoded as [expression trees](https://en.wikipedia.org/wiki/Binary_expression_tree). Fitness is usually defined as [goodness of fit](https://en.wikipedia.org/wiki/Goodness_of_fit) between the dependent variable and the prediction of a tree-encoded model. Iterative selection of best-scoring models followed by random recombination leads naturally to a self-improving process that is able to uncover patterns in the data:  
 
-# Features
+<p align="center">
+    <img src="./docs/_static/evo.gif"  />
+</p>
 
-## Encoding
-*Operon* uses a linear postfix representation for GP trees. All operators manipulate the representation directly, with no intermediate step. This allows us to leverage a more modern design (no pointers to parent or child nodes) and achieve superior runtime performance.
+# Build instructions 
 
-## Genetic operators
-* proportional or tournament selection
-* one- and multi-point mutation,
-* subtree crossover
-* tree initialization with the grow method
+The project requires CMake and a C++17 compliant compiler that supports execution policies from `std::execution`. Using the git versions of `Eigen` and `Ceres` is recommended. `Eigen` in particular hasn't had a new release for almost two years, but development is very active. On Windows we recommend building with `MinGW` or with your `WSL` distro.
 
-## Fitness evaluation
-* Support common performance metrics R^2, MSE, NMSE, etc
-* Efficient model evaluation using [Eigen](https://eigen.tuxfamily.org/)
-* Efficient parallelization using Intel's [thread building blocks](https://github.com/intel/tbb) library
-* Support numerical and automatic differentiation of expression trees
-* Hybridization with local search
-    - Uses a best in class non-linear least squares solver from [Ceres](http://ceres-solver.org/)
-    - Support both *Baldwinian* and *Lamarckian* learning models
+### Required dependencies
+- [oneTBB](https://github.com/oneapi-src/oneTBB)
+- [Eigen](http://eigen.tuxfamily.org)
+- [Ceres](http://ceres-solver.org/)
+- [{fmt}](https://fmt.dev/latest/index.html)
 
-## Other algorithmic improvements
-* Novel tree hashing algorithm ([paper](https://dblp.org/rec/journals/corr/abs-1902-00882))
-* Hash-based tree distance measure enabling fast calculation of population diversity
+### Optional dependencies
+- [cxxopts](https://github.com/jarro2783/cxxopts) required for the cli app.
+- [doctest](https://github.com/onqtam/doctest) required for unit tests.
+- [python](https://www.python.org/) and [pybind11](https://github.com/pybind/pybind11) required to build the python bindings.
 
-# Installation
+These libraries are well-known and should be available in your distribution's package repository. On Windows they can be easily managed using [vcpkg](https://github.com/Microsoft/vcpkg). CMake will download the following header-only libraries during the build generation phase: [microsoft-gsl](https://github.com/microsoft/GSL), [rapidcsv](https://github.com/d99kris/rapidcsv), [nanobench](https://github.com/martinus/nanobench) and [xxhash](https://github.com/Cyan4973/xxHash).
 
-The following dependencies need to be satisfied:
-* [Intel-tbb](https://github.com/intel/tbb)
-* [Eigen](http://eigen.tuxfamily.org)
-* [Ceres](http://ceres-solver.org/)
-* [Cxxopts](https://github.com/jarro2783/cxxopts)
-* [{fmt}](https://fmt.dev/latest/index.html)
-* [Catch2](https://github.com/catchorg/Catch2)
-* [microsoft-gsl](https://github.com/microsoft/GSL)
-
-These libraries are well-known and should be available in your distribution's package repository. On Windows they can be easily managed using [vcpkg](https://github.com/Microsoft/vcpkg).
-
-## Build instructions
-
-Building requires a recent version of [cmake](https://cmake.org/) and the latest gcc compiler (currently only gcc-9.1 supports the parallel STL algorithms backed up by Intel-tbb).
-
+### Build options
 The following options can be passed to CMake:
-- `-DUSE_JEMALLOC=ON`
+| Option                      | Description |
+|:----------------------------|:------------|
+| `-DUSE_SINGLE_PRECISION=ON` | Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes.           |
+| `-DUSE_OPENLIBM=ON`         | Link against Julia's openlibm, a high performance mathematical library (recommended to improve consistency across compilers and operating systems).            |
+| `-DBUILD_TESTS=ON` | Build the unit tests. |
+| `-DBUILD_PYBIND=ON` | Build the Python bindings. |
+| `-DUSE_JEMALLOC=ON`         | Link against [jemalloc](http://jemalloc.net/), a general purpose `malloc(3)` implementation that emphasizes fragmentation avoidance and scalable concurrency support (mutually exclusive with `tcmalloc`).           |
+| `-DUSE_TCMALLOC=ON`         | Link against [tcmalloc](https://google.github.io/tcmalloc/) (thread-caching malloc), a `malloc(3)` implementation that reduces lock contention for multi-threaded programs (mutually exclusive with `jemalloc`).          |
 
-[jemalloc](http://jemalloc.net/) is a general purpose `malloc(3)` implementation that emphasizes fragmentation avoidance and scalable concurrency support. Typically improves performance.
-
-- `-DUSE_TCMALLOC=ON`
-
-[TCMalloc](https://google.github.io/tcmalloc/) is a fast, multi-threaded `malloc(3)` implementation from Google. Typically improves performance.
-
-- `-DUSE_SINGLE_PRECISION=ON`
-
-Enable single-precision model evaluation in Operon. Typically results in 2x performance. Empirical testing did not reveal any downside to enabling this option.
-
-### Windows / VCPKG
+## Windows / VCPKG
 
 - Install [vcpkg](https://github.com/Microsoft/vcpkg) following the instructions from https://github.com/Microsoft/vcpkg
 - Install the required dependencies: `vcpkg install <deps>`
 - `cd <path/to/operon>`
 - `mkdir build && cd build`
-- `cmake .. -G"Visual Studio 15 2017 Win64" -DCMAKE_TOOLCHAIN_FILE=[vcpkg root]\scripts\buildsystems\vcpkg.cmake`
+- `cmake .. -G"Your Visual Studio Version" -DCMAKE_TOOLCHAIN_FILE=[vcpkg root]\scripts\buildsystems\vcpkg.cmake`
 - `cmake --build . --config Release`
 
-### GNU/Linux
+## GNU/Linux
 
 - Install the required dependencies
 - `mkdir build && cd build`
 - `cmake .. -DCMAKE_BUILD_TYPE=Release`. Use `Debug` for a debug build, or use `CC=clang CXX=clang++` to build with a different compiler.
-- `make`. You may add `VERBOSE=1` to get the full compilation output or `-j` for parallel compilation.
+- `make`. Add `VERBOSE=1` to get the full compilation output or `-j` for parallel compilation.
+
+# Usage
+
+* Run `operon-gp --help` to see the usage of the console client. This is the easiest way to just start modeling some data. The program expects a csv input file and assumes that the file has a header.  
+* The Python script provided under `scripts` wraps the `operon-gp` binary and can be used to run bigger experiments. Data can be provided as `csv` or `json` files containing metadata (see `data` folder for examples). The script will run a grid search over a parameter space defined by the user.
+* Several examples (C++ and Python) are available  [here](https://github.com/foolnotion/operon/blob/master/examples) 
