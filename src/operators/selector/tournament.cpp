@@ -9,7 +9,7 @@ TournamentSelector::operator()(Operon::RandomGenerator& random) const
 
     for (size_t i = 1; i < tournamentSize; ++i) {
         auto curr = uniformInt(random);
-        if (this->comp(population[curr], population[best])) {
+        if (this->Compare(population[curr], population[best])) {
             best = curr;
         }
     }
