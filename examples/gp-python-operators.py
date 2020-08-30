@@ -44,7 +44,7 @@ crossover      = Operon.SubtreeCrossover(p_internal, max_depth, max_length)
 mut_onepoint   = Operon.OnePointMutation()
 mut_changeVar  = Operon.ChangeVariableMutation(inputs)
 mut_changeFunc = Operon.ChangeFunctionMutation(grammar)
-mut_replace    = Operon.ReplaceSubtreeMutation(btc, max_length, max_depth)
+mut_replace    = Operon.ReplaceSubtreeMutation(btc, max_depth, max_length)
 mutation       = [ mut_onepoint, mut_changeFunc, mut_replace, mut_changeVar ]
 
 # selection operator (tournament selection
