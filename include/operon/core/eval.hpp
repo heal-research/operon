@@ -53,17 +53,15 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
     Operon::Vector<T> params(nodes.size());
     gsl::index idx = 0;
 
-    bool p = parameters == nullptr;
-
     bool treeContainsNonlinearSymbols = false;
     for (size_t i = 0; i < nodes.size(); ++i) {
         if (nodes[i].IsConstant()) {
-            auto v = p ? T(nodes[i].Value) : parameters[idx];
+            auto v = parameters ? parameters[idx] : T(nodes[i].Value);
             m.col(i).setConstant(v);
             idx++;
         } else if (nodes[i].IsVariable()) {
-            indices[i] = dataset.GetVariable(nodes[i].HashValue).Index;
-            params[i] = p ? T(nodes[i].Value) : parameters[idx];
+            indices[i] = dataset.GetVariable(nodes[i].HashValue).value().Index;
+            params[i] = parameters ? parameters[idx] : T(nodes[i].Value);
             idx++;
         }
         treeContainsNonlinearSymbols |= static_cast<bool>(nodes[i].Type & ~PrimitiveSet::Arithmetic);
