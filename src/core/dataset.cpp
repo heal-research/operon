@@ -85,16 +85,16 @@ gsl::span<const Operon::Scalar> Dataset::GetValues(gsl::index index) const noexc
     return gsl::span<const Operon::Scalar>(values.col(index).data(), values.rows());
 }
 
-const Variable& Dataset::GetVariable(const std::string& name) const noexcept
+const std::optional<Variable> Dataset::GetVariable(const std::string& name) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return CompareWithSize(v.Name, name); });
-    return *it;
+    return it < variables.end() ? std::make_optional(*it) : std::nullopt; 
 }
 
-const Variable& Dataset::GetVariable(Operon::Hash hashValue) const noexcept
+const std::optional<Variable> Dataset::GetVariable(Operon::Hash hashValue) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
-    return *it;
+    return it < variables.end() ? std::make_optional(*it) : std::nullopt; 
 }
 
 void Dataset::Shuffle(Operon::RandomGenerator& random)
