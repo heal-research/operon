@@ -29,7 +29,8 @@ TEST_CASE("Evolution speed") {
 
     Range trainingRange { 0, ds.Rows() / 2 };
     Range testRange     { ds.Rows() / 2, ds.Rows() };
-    Problem problem(ds, ds.Variables(), target, trainingRange, testRange);
+    auto problem = Operon::Problem(ds).Inputs(ds.Variables()).Target(target).TrainingRange(trainingRange).TestRange(testRange);
+
     problem.GetPrimitiveSet().SetConfig(PrimitiveSet::Arithmetic);
 
 

@@ -95,6 +95,7 @@ public:
     gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
     gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
     gsl::span<const Operon::Scalar> GetValues(gsl::index index) const noexcept;
+    gsl::span<const Operon::Scalar> GetValues(Variable const& variable) const noexcept { return GetValues(variable.Hash); }
 
     const std::optional<Variable> GetVariable(const std::string& name) const noexcept;
     const std::optional<Variable> GetVariable(Operon::Hash hashValue) const noexcept;
