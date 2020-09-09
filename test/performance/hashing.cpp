@@ -24,7 +24,7 @@
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "hash/hash.hpp"
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 #include "operators/creator.hpp"
 #include "analyzers/diversity.hpp"
 
@@ -49,8 +49,8 @@ TEST_CASE("Hashing performance") {
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
     std::uniform_int_distribution<size_t> dist(0, n-1);
 
-    Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic);
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic);
 
     std::vector<Tree> trees(n);
     auto btc = BalancedTreeCreator { grammar, inputs };

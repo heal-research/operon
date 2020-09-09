@@ -22,9 +22,9 @@
 
 #include "dataset.hpp"
 #include "eval_detail.hpp"
-#include "grammar.hpp"
 #include "gsl/gsl"
 #include "tree.hpp"
+#include "pset.hpp"
 #include <execution>
 
 #include <ceres/ceres.h>
@@ -66,7 +66,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             params[i] = p ? T(nodes[i].Value) : parameters[idx];
             idx++;
         }
-        treeContainsNonlinearSymbols |= static_cast<bool>(nodes[i].Type & ~Grammar::Arithmetic);
+        treeContainsNonlinearSymbols |= static_cast<bool>(nodes[i].Type & ~PrimitiveSet::Arithmetic);
     }
 
     auto lastCol = m.col(nodes.size() - 1);

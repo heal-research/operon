@@ -24,8 +24,8 @@ config         = Operon.GeneticAlgorithmConfig(generations=1000, max_evaluations
 selector       = Operon.TournamentSelector(objective_index=0)
 selector.TournamentSize = 5
 
-grammar        = Operon.Grammar()
-grammar.SetConfig(Operon.Grammar.Arithmetic | Operon.NodeType.Exp | Operon.NodeType.Log | Operon.NodeType.Sin | Operon.NodeType.Cos)
+grammar        = Operon.PrimitiveSet()
+grammar.SetConfig(Operon.PrimitiveSet.Arithmetic | Operon.NodeType.Exp | Operon.NodeType.Log | Operon.NodeType.Sin | Operon.NodeType.Cos)
 
 minL, maxL     = 1, 50
 maxD           = 10

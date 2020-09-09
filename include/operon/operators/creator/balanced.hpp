@@ -20,7 +20,7 @@
 #ifndef BALANCED_TREE_CREATOR_HPP
 #define BALANCED_TREE_CREATOR_HPP
 
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 #include "core/operator.hpp"
 
 namespace Operon {
@@ -32,8 +32,8 @@ class BalancedTreeCreator final : public CreatorBase {
 public:
     using U = std::tuple<Node, size_t, size_t>;
 
-    BalancedTreeCreator(Grammar const& grammar, const gsl::span<const Variable> variables, double bias = 0.0) 
-        : CreatorBase(grammar, variables)
+    BalancedTreeCreator(PrimitiveSet const& pset, const gsl::span<const Variable> variables, double bias = 0.0) 
+        : CreatorBase(pset, variables)
         , irregularityBias(bias)
     { }
     Tree operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const override;

@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
         ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>())
         ("enable-symbols", "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
         ("disable-symbols", "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
-        ("show-grammar", "Show grammar (primitive set) used by the algorithm")
+        ("show-pset", "Display the primitive set used by the algorithm")
         ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
         ("debug", "Debug mode (more information displayed)")("help", "Print help");
 
@@ -101,9 +101,9 @@ int main(int argc, char* argv[])
     std::unique_ptr<Dataset> dataset;
     std::string fileName; // data file name
     std::string target;
-    bool showGrammar = false;
+    bool showPrimitiveSet = false;
     auto threads = std::thread::hardware_concurrency();
-    GrammarConfig grammarConfig = Grammar::Arithmetic;
+    PrimitiveSetConfig psetConfig = PrimitiveSet::Arithmetic;
 
     auto maxLength = result["maxlength"].as<size_t>();
     auto maxDepth = result["maxdepth"].as<size_t>();
@@ -135,29 +135,29 @@ int main(int argc, char* argv[])
                 maxDepth = kv.as<size_t>();
             }
             if (key == "enable-symbols") {
-                auto mask = ParseGrammarConfig(value);
-                grammarConfig |= mask;
+                auto mask = ParsePrimitiveSetConfig(value);
+                psetConfig |= mask;
             }
             if (key == "disable-symbols") {
-                auto mask = ~ParseGrammarConfig(value);
-                grammarConfig &= mask;
+                auto mask = ~ParsePrimitiveSetConfig(value);
+                psetConfig &= mask;
             }
             if (key == "threads") {
                 threads = kv.as<size_t>();
             }
-            if (key == "show-grammar") {
-                showGrammar = true;
+            if (key == "show-pset") {
+                showPrimitiveSet = true;
             }
         }
 
-        if (showGrammar) {
-            Grammar tmpGrammar;
-            tmpGrammar.SetConfig(grammarConfig);
+        if (showPrimitiveSet) {
+            PrimitiveSet tmpPrimitiveSet;
+            tmpPrimitiveSet.SetConfig(psetConfig);
             for (auto i = 0u; i < NodeTypes::Count; ++i) {
                 auto type = static_cast<NodeType>(1u << i);
                 auto n = Node(type);
-                if (tmpGrammar.IsEnabled(type)) {
-                    fmt::print("{}\t{}\n", n.Name(), tmpGrammar.GetFrequency(type));
+                if (tmpPrimitiveSet.IsEnabled(type)) {
+                    fmt::print("{}\t{}\n", n.Name(), tmpPrimitiveSet.GetFrequency(type));
                 }
             }
             return 0;
@@ -197,11 +197,11 @@ int main(int argc, char* argv[])
 
         auto variables = dataset->Variables();
         auto problem = Problem(*dataset, variables, target, trainingRange, testRange);
-        problem.GetGrammar().SetConfig(grammarConfig);
+        problem.GetPrimitiveSet().SetConfig(psetConfig);
 
         for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div }) {
-            problem.GetGrammar().SetMinimumArity(t, 2);
-            problem.GetGrammar().SetMaximumArity(t, 2);
+            problem.GetPrimitiveSet().SetMinimumArity(t, 2);
+            problem.GetPrimitiveSet().SetMaximumArity(t, 2);
         }
 
         const gsl::index idx { 0 };
@@ -212,14 +212,14 @@ int main(int argc, char* argv[])
         std::unique_ptr<CreatorBase> creator;
 
         if (result.count("tree-creator") == 0) {
-            creator.reset(new BalancedTreeCreator(problem.GetGrammar(), problem.InputVariables(), 0.0));
+            creator.reset(new BalancedTreeCreator(problem.GetPrimitiveSet(), problem.InputVariables(), 0.0));
         } else {
             auto value = result["tree-creator"].as<std::string>();
 
             if (value == "ptc2") {
-                creator.reset(new ProbabilisticTreeCreator(problem.GetGrammar(), problem.InputVariables()));
+                creator.reset(new ProbabilisticTreeCreator(problem.GetPrimitiveSet(), problem.InputVariables()));
             } else if (value == "grow") {
-                creator.reset(new GrowTreeCreator(problem.GetGrammar(), problem.InputVariables()));
+                creator.reset(new GrowTreeCreator(problem.GetPrimitiveSet(), problem.InputVariables()));
             } else {
                 auto tokens = Split(value, ':');
                 double irregularityBias = 0.0;
@@ -231,12 +231,12 @@ int main(int argc, char* argv[])
                         exit(EXIT_FAILURE);
                     }
                 }
-                creator.reset(new BalancedTreeCreator(problem.GetGrammar(), problem.InputVariables(), irregularityBias));
+                creator.reset(new BalancedTreeCreator(problem.GetPrimitiveSet(), problem.InputVariables(), irregularityBias));
             }
         }
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        //auto creator             = BalancedTreeCreator { problem.GetGrammar(), problem.InputVariables() };
+        //auto creator             = BalancedTreeCreator { problem.GetPrimitiveSet(), problem.InputVariables() };
         auto initializer         = Initializer { *creator, sizeDistribution };
         initializer.MinDepth(1);
         initializer.MaxDepth(1000);
@@ -244,7 +244,7 @@ int main(int argc, char* argv[])
         auto mutator             = MultiMutation {};
         auto onePoint            = OnePointMutation {};
         auto changeVar           = ChangeVariableMutation { problem.InputVariables() };
-        auto changeFunc          = ChangeFunctionMutation { problem.GetGrammar() };
+        auto changeFunc          = ChangeFunctionMutation { problem.GetPrimitiveSet() };
         auto replaceSubtree      = ReplaceSubtreeMutation { *creator, maxDepth, maxLength};
         //auto insertSubtree       = InsertSubtreeMutation { *creator, maxDepth, maxLength};
         //auto shuffleSubtree      = ShuffleSubtreesMutation {};

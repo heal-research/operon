@@ -27,7 +27,7 @@
 
 #include "common.hpp"
 #include "dataset.hpp"
-#include "grammar.hpp"
+#include "pset.hpp"
 #include "individual.hpp"
 #include "problem.hpp"
 #include "tree.hpp"
@@ -46,17 +46,17 @@ struct OperatorBase {
     virtual ~OperatorBase() {}
 };
 
-// the creator builds a new tree using the existing grammar and allowed inputs
+// the creator builds a new tree using the existing pset and allowed inputs
 struct CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
 public:
-    CreatorBase(const Grammar& grammar, const gsl::span<const Variable> variables)
-        : grammar_(grammar)
+    CreatorBase(const PrimitiveSet& pset, const gsl::span<const Variable> variables)
+        : pset_(pset)
         , variables_(variables)
     {
     }
 
 protected:
-    std::reference_wrapper<const Grammar> grammar_;
+    std::reference_wrapper<const PrimitiveSet> pset_;
     const gsl::span<const Variable> variables_;
 };
 

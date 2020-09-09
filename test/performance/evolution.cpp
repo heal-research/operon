@@ -30,7 +30,7 @@ TEST_CASE("Evolution speed") {
     Range trainingRange { 0, ds.Rows() / 2 };
     Range testRange     { ds.Rows() / 2, ds.Rows() };
     Problem problem(ds, ds.Variables(), target, trainingRange, testRange);
-    problem.GetGrammar().SetConfig(Grammar::Arithmetic);
+    problem.GetPrimitiveSet().SetConfig(PrimitiveSet::Arithmetic);
 
 
     using Evaluator  = RSquaredEvaluator;
@@ -43,7 +43,7 @@ TEST_CASE("Evolution speed") {
     size_t maxTreeDepth  = 10;
     size_t maxTreeLength = 50;
     std::uniform_int_distribution<size_t> treeSizeDistribution(1, maxTreeLength);
-    BalancedTreeCreator creator { problem.GetGrammar(), problem.InputVariables() };
+    BalancedTreeCreator creator { problem.GetPrimitiveSet(), problem.InputVariables() };
 
     Initializer initializer { creator, treeSizeDistribution };
 
@@ -53,7 +53,7 @@ TEST_CASE("Evolution speed") {
     MultiMutation mutation;
     OnePointMutation onePoint;
     ChangeVariableMutation changeVar { problem.InputVariables() };
-    ChangeFunctionMutation changeFunc { problem.GetGrammar() };
+    ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
     mutation.Add(onePoint, 1.0);
     mutation.Add(changeVar, 1.0);
     mutation.Add(changeFunc, 1.0);
