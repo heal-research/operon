@@ -99,8 +99,8 @@ TEST_CASE("Hash-based distance") {
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
-    Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic);
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic);
 
     std::vector<size_t> indices(n);
     std::vector<Operon::Hash> seeds(n);
@@ -145,8 +145,8 @@ TEST_CASE("Hash collisions") {
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
-    Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic);
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic);
 
     std::vector<size_t> indices(n);
     std::vector<Operon::Hash> seeds(n);

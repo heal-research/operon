@@ -24,9 +24,9 @@ Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t
 {
     minDepth = std::max(1ul, minDepth);
     EXPECT(minDepth <= maxDepth);
-    auto const& grammar = grammar_.get();
+    auto const& pset = pset_.get();
 
-    auto const& t = grammar.FunctionArityLimits();
+    auto const& t = pset.FunctionArityLimits();
 
     size_t minFunctionArity = std::get<0>(t);
     size_t maxFunctionArity = std::get<1>(t);
@@ -61,7 +61,7 @@ Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t
                 maxArity = maxFunctionArity;
             }
 
-            auto node = grammar.SampleRandomSymbol(random, minArity, maxArity);
+            auto node = pset.SampleRandomSymbol(random, minArity, maxArity);
             init(node);
 
             nodes.push_back(node);

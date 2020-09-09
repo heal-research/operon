@@ -30,7 +30,7 @@
 #include "core/constants.hpp"
 #include "core/eval.hpp"
 #include "core/format.hpp"
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 #include "core/metrics.hpp"
 #include "core/operator.hpp"
 
@@ -300,20 +300,20 @@ PYBIND11_MODULE(pyoperon, m)
         ));
 
     // grammar
-    py::class_<Operon::Grammar>(m, "Grammar")
+    py::class_<Operon::PrimitiveSet>(m, "PrimitiveSet")
         .def(py::init<>())
-        .def_property_readonly_static("Arithmetic", [](py::object /* self */) { return Operon::Grammar::Arithmetic; })
-        .def("IsEnabled", &Operon::Grammar::IsEnabled)
-        .def("Enable", &Operon::Grammar::Enable)
-        .def("Disable", &Operon::Grammar::Disable)
-        .def("GetConfig", &Operon::Grammar::GetConfig)
-        .def("SetConfig", &Operon::Grammar::SetConfig)
-        .def("GetFrequency", &Operon::Grammar::GetFrequency)
-        .def("GetMinimumArity", &Operon::Grammar::GetMinimumArity)
-        .def("GetMaximumArity", &Operon::Grammar::GetMaximumArity)
-        .def_property_readonly("EnabledSymbols", &Operon::Grammar::EnabledSymbols)
-        .def("FunctionArityLimits", &Operon::Grammar::FunctionArityLimits)
-        .def("SampleRandomSymbol", &Operon::Grammar::SampleRandomSymbol);
+        .def_property_readonly_static("Arithmetic", [](py::object /* self */) { return Operon::PrimitiveSet::Arithmetic; })
+        .def("IsEnabled", &Operon::PrimitiveSet::IsEnabled)
+        .def("Enable", &Operon::PrimitiveSet::Enable)
+        .def("Disable", &Operon::PrimitiveSet::Disable)
+        .def("GetConfig", &Operon::PrimitiveSet::GetConfig)
+        .def("SetConfig", &Operon::PrimitiveSet::SetConfig)
+        .def("GetFrequency", &Operon::PrimitiveSet::GetFrequency)
+        .def("GetMinimumArity", &Operon::PrimitiveSet::GetMinimumArity)
+        .def("GetMaximumArity", &Operon::PrimitiveSet::GetMaximumArity)
+        .def_property_readonly("EnabledSymbols", &Operon::PrimitiveSet::EnabledSymbols)
+        .def("FunctionArityLimits", &Operon::PrimitiveSet::FunctionArityLimits)
+        .def("SampleRandomSymbol", &Operon::PrimitiveSet::SampleRandomSymbol);
 
     // dataset
     py::class_<Operon::Dataset>(m, "Dataset")
@@ -341,7 +341,7 @@ PYBIND11_MODULE(pyoperon, m)
     py::class_<Operon::CreatorBase>(m, "CreatorBase");
 
     py::class_<Operon::BalancedTreeCreator, Operon::CreatorBase>(m, "BalancedTreeCreator")
-        .def(py::init([](Operon::Grammar const& grammar, std::vector<Operon::Variable> const& variables, double bias) {
+        .def(py::init([](Operon::PrimitiveSet const& grammar, std::vector<Operon::Variable> const& variables, double bias) {
             return Operon::BalancedTreeCreator(grammar, gsl::span<const Operon::Variable>(variables.data(), variables.size()), bias);
         }),
             py::arg("grammar"), py::arg("variables"), py::arg("bias"))
@@ -349,11 +349,11 @@ PYBIND11_MODULE(pyoperon, m)
         .def_property("IrregularityBias", &Operon::BalancedTreeCreator::GetBias, &Operon::BalancedTreeCreator::SetBias);
 
     py::class_<Operon::ProbabilisticTreeCreator, Operon::CreatorBase>(m, "ProbabilisticTreeCreator")
-        .def(py::init<const Operon::Grammar&, const std::vector<Operon::Variable>>())
+        .def(py::init<const Operon::PrimitiveSet&, const std::vector<Operon::Variable>>())
         .def("__call__", &Operon::ProbabilisticTreeCreator::operator());
 
     py::class_<Operon::GrowTreeCreator, Operon::CreatorBase>(m, "GrowTreeCreator")
-        .def(py::init<const Operon::Grammar&, const std::vector<Operon::Variable>>())
+        .def(py::init<const Operon::PrimitiveSet&, const std::vector<Operon::Variable>>())
         .def("__call__", &Operon::GrowTreeCreator::operator());
 
     // crossover
@@ -378,7 +378,7 @@ PYBIND11_MODULE(pyoperon, m)
         .def("__call__", &Operon::ChangeVariableMutation::operator());
 
     py::class_<Operon::ChangeFunctionMutation, Operon::MutatorBase>(m, "ChangeFunctionMutation")
-        .def(py::init<Operon::Grammar>())
+        .def(py::init<Operon::PrimitiveSet>())
         .def("__call__", &Operon::ChangeFunctionMutation::operator());
 
     py::class_<Operon::ReplaceSubtreeMutation, Operon::MutatorBase>(m, "ReplaceSubtreeMutation")

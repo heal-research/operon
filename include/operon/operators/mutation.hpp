@@ -58,15 +58,15 @@ private:
 };
 
 struct ChangeFunctionMutation : public MutatorBase {
-    ChangeFunctionMutation(Grammar g) 
-        : grammar(g) 
+    ChangeFunctionMutation(PrimitiveSet g) 
+        : pset(g) 
     {
     }
 
     Tree operator()(Operon::RandomGenerator&, Tree) const override;
 
 private:
-    Grammar grammar;
+    PrimitiveSet pset;
 };
 
 struct InsertSubtreeMutation : public MutatorBase {

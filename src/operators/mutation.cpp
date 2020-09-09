@@ -77,10 +77,10 @@ Tree ChangeFunctionMutation::operator()(Operon::RandomGenerator& random, Tree tr
     if (it == nodes.end()) 
         return tree; // no functions in the tree, nothing to do
 
-    auto minArity = std::min(static_cast<size_t>(it->Arity), grammar.GetMinimumArity(it->Type));
-    auto maxArity = std::max(static_cast<size_t>(it->Arity), grammar.GetMaximumArity(it->Type));
+    auto minArity = std::min(static_cast<size_t>(it->Arity), pset.GetMinimumArity(it->Type));
+    auto maxArity = std::max(static_cast<size_t>(it->Arity), pset.GetMaximumArity(it->Type));
 
-    it->Type = grammar.SampleRandomSymbol(random, minArity, maxArity).Type;
+    it->Type = pset.SampleRandomSymbol(random, minArity, maxArity).Type;
     return tree;
 }
 

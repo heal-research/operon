@@ -17,12 +17,12 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 
 #include <execution>
 
 namespace Operon {
-    Node Grammar::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const
+    Node PrimitiveSet::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const
     {
         EXPECT(minArity <= maxArity);
 

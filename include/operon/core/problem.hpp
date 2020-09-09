@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "dataset.hpp"
-#include "grammar.hpp"
+#include "pset.hpp"
 
 namespace Operon {
 struct Solution {
@@ -53,8 +53,8 @@ public:
     Range ValidationRange() const { return validation; }
 
     const std::string& TargetVariable() const { return target; }
-    const Grammar& GetGrammar() const { return grammar; }
-    Grammar& GetGrammar() { return grammar; }
+    const PrimitiveSet& GetPrimitiveSet() const { return pset; }
+    PrimitiveSet& GetPrimitiveSet() { return pset; }
     const Dataset& GetDataset() const { return dataset; }
     Dataset& GetDataset() { return dataset; }
 
@@ -78,7 +78,7 @@ public:
 
 private:
     Dataset dataset;
-    Grammar grammar;
+    PrimitiveSet pset;
     Range training;
     Range test;
     Range validation;

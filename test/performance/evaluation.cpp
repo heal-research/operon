@@ -23,7 +23,7 @@
 #include "core/common.hpp"
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 
 #include "operators/creator.hpp"
 #include "nanobench.h"
@@ -89,7 +89,7 @@ namespace Test {
         //Range range = { 0, ds.Rows() };
         Range range = { 0, 5000 };
 
-        Grammar grammar;
+        PrimitiveSet grammar;
 
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
@@ -97,7 +97,7 @@ namespace Test {
 
         std::vector<Tree> trees(n);
 
-        auto test = [&](nb::Bench& b, GrammarConfig cfg, ExecutionPolicy pol, const std::string& name) {  
+        auto test = [&](nb::Bench& b, PrimitiveSetConfig cfg, ExecutionPolicy pol, const std::string& name) {  
             grammar.SetConfig(cfg);
             for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul }) {
                 grammar.SetMaximumArity(t, 2);
@@ -116,7 +116,7 @@ namespace Test {
             b.title("arithmetic").relative(true).performanceCounters(true).minEpochIterations(5);
             for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
                 tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, Grammar::Arithmetic, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+                test(b, PrimitiveSet::Arithmetic, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
         }
 
@@ -125,7 +125,7 @@ namespace Test {
             b.title("arithmetic + exp").relative(true).performanceCounters(true).minEpochIterations(5);
             for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
                 tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, Grammar::Arithmetic | NodeType::Exp, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+                test(b, PrimitiveSet::Arithmetic | NodeType::Exp, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
         }
 
@@ -134,7 +134,7 @@ namespace Test {
             b.title("arithmetic + log").relative(true).performanceCounters(true).minEpochIterations(5);
             for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
                 tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, Grammar::Arithmetic | NodeType::Log, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+                test(b, PrimitiveSet::Arithmetic | NodeType::Log, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
         }
 
@@ -143,7 +143,7 @@ namespace Test {
             b.title("arithmetic + sin").relative(true).performanceCounters(true).minEpochIterations(5);
             for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
                 tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, Grammar::Arithmetic | NodeType::Sin, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+                test(b, PrimitiveSet::Arithmetic | NodeType::Sin, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
         }
 
@@ -152,7 +152,7 @@ namespace Test {
             b.title("arithmetic + cos").relative(true).performanceCounters(true).minEpochIterations(5);
             for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
                 tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, Grammar::Arithmetic | NodeType::Cos, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+                test(b, PrimitiveSet::Arithmetic | NodeType::Cos, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
         }
 
@@ -161,7 +161,7 @@ namespace Test {
             b.title("arithmetic + tan").relative(true).performanceCounters(true).minEpochIterations(5);
             for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
                 tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, Grammar::Arithmetic | NodeType::Tan, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+                test(b, PrimitiveSet::Arithmetic | NodeType::Tan, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
         }
 
@@ -170,7 +170,7 @@ namespace Test {
             b.title("arithmetic + sqrt").relative(true).performanceCounters(true).minEpochIterations(5);
             for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
                 tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, Grammar::Arithmetic | NodeType::Sqrt, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+                test(b, PrimitiveSet::Arithmetic | NodeType::Sqrt, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
         }
 
@@ -179,7 +179,7 @@ namespace Test {
             b.title("arithmetic + cbrt").relative(true).performanceCounters(true).minEpochIterations(5);
             for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
                 tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, Grammar::Arithmetic | NodeType::Cbrt, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+                test(b, PrimitiveSet::Arithmetic | NodeType::Cbrt, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
         }
     }

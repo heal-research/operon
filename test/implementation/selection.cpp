@@ -46,7 +46,7 @@ TEST_CASE("Selection Distribution")
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
     std::vector<Individual<1>> individuals(nTrees);
-    Grammar grammar;
+    PrimitiveSet grammar;
     auto creator = BalancedTreeCreator { grammar, inputs };
     for (size_t i = 0; i < nTrees; ++i) {
         individuals[i].Genotype = creator(random, sizeDistribution(random), maxDepth);

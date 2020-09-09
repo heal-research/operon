@@ -20,8 +20,8 @@ inputs                 = Operon.VariableCollection(v for v in ds.Variables if v.
 
 y_train                = ds.Values[0:training_range.End, target.Index]
 
-grammar                = Operon.Grammar()
-grammar.SetConfig(Operon.Grammar.Arithmetic | Operon.NodeType.Exp | Operon.NodeType.Log | Operon.NodeType.Sin | Operon.NodeType.Cos)
+grammar                = Operon.PrimitiveSet()
+grammar.SetConfig(Operon.PrimitiveSet.Arithmetic | Operon.NodeType.Exp | Operon.NodeType.Log | Operon.NodeType.Sin | Operon.NodeType.Cos)
 
 population_size        = 1000
 min_length, max_length = 1, 50

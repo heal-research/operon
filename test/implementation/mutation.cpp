@@ -3,7 +3,7 @@
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "core/format.hpp"
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 #include "core/stats.hpp"
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
@@ -22,8 +22,8 @@ TEST_CASE("InsertSubtreeMutation")
 
     Range range { 0, 250 };
 
-    Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
     grammar.Enable(NodeType::Add, 1);
     grammar.Enable(NodeType::Mul, 1);
     grammar.Enable(NodeType::Sub, 1);

@@ -23,7 +23,7 @@
 #include "core/common.hpp"
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 
 #include "nanobench.h"
 #include "operators/creator.hpp"
@@ -49,8 +49,8 @@ namespace Test {
 
         std::vector<Tree> trees(n);
 
-        Grammar grammar;
-        grammar.SetConfig(Grammar::Arithmetic);
+        PrimitiveSet grammar;
+        grammar.SetConfig(PrimitiveSet::Arithmetic);
 
         auto btc = BalancedTreeCreator { grammar, inputs };
         auto gtc = GrowTreeCreator { grammar, inputs };
