@@ -30,15 +30,15 @@
 #include "core/common.hpp"
 #include "core/format.hpp"
 #include "core/metrics.hpp"
-#include "operators/initializer.hpp"
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
 #include "operators/evaluator.hpp"
-#include "operators/mutation.hpp"
 #include "operators/generator.hpp"
-#include "operators/selection.hpp"
+#include "operators/initializer.hpp"
+#include "operators/mutation.hpp"
 #include "operators/reinserter/keepbest.hpp"
 #include "operators/reinserter/replaceworst.hpp"
+#include "operators/selection.hpp"
 #include "stat/linearscaler.hpp"
 
 #include "util.hpp"
@@ -56,6 +56,7 @@ int main(int argc, char* argv[])
         ("train", "Training range specified as start:end (required)", cxxopts::value<std::string>())
         ("test", "Test range specified as start:end", cxxopts::value<std::string>())
         ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
+        ("inputs", "Comma-separated list of input variables", cxxopts::value<std::string>())
         ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))
         ("pool-size", "Recombination pool size (how many generated offspring per generation)", cxxopts::value<size_t>()->default_value("1000"))
         ("seed", "Random number seed", cxxopts::value<Operon::RandomGenerator::result_type>()->default_value("0"))
@@ -74,9 +75,10 @@ int main(int argc, char* argv[])
         ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>())
         ("enable-symbols", "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
         ("disable-symbols", "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
-        ("show-pset", "Display the primitive set used by the algorithm")
+        ("show-primitives", "Display the primitive set used by the algorithm")
         ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
-        ("debug", "Debug mode (more information displayed)")("help", "Print help");
+        ("debug", "Debug mode (more information displayed)")
+        ("help", "Print help");
 
     auto result = opts.parse(argc, argv);
     if (result.arguments().empty() || result.count("help") > 0) {
@@ -93,7 +95,7 @@ int main(int argc, char* argv[])
     config.Iterations = result["iterations"].as<size_t>();
     config.CrossoverProbability = result["crossover-probability"].as<Operon::Scalar>();
     config.MutationProbability = result["mutation-probability"].as<Operon::Scalar>();
-    config.Seed = std::random_device{}();
+    config.Seed = std::random_device {}();
 
     // parse remaining config options
     Range trainingRange;
@@ -103,7 +105,7 @@ int main(int argc, char* argv[])
     std::string target;
     bool showPrimitiveSet = false;
     auto threads = std::thread::hardware_concurrency();
-    PrimitiveSetConfig psetConfig = PrimitiveSet::Arithmetic;
+    NodeType primitiveSetConfig = PrimitiveSet::Arithmetic;
 
     auto maxLength = result["maxlength"].as<size_t>();
     auto maxDepth = result["maxdepth"].as<size_t>();
@@ -136,28 +138,28 @@ int main(int argc, char* argv[])
             }
             if (key == "enable-symbols") {
                 auto mask = ParsePrimitiveSetConfig(value);
-                psetConfig |= mask;
+                primitiveSetConfig |= mask;
             }
             if (key == "disable-symbols") {
                 auto mask = ~ParsePrimitiveSetConfig(value);
-                psetConfig &= mask;
+                primitiveSetConfig &= mask;
             }
             if (key == "threads") {
                 threads = kv.as<size_t>();
             }
-            if (key == "show-pset") {
+            if (key == "show-primitives") {
                 showPrimitiveSet = true;
             }
         }
 
         if (showPrimitiveSet) {
-            PrimitiveSet tmpPrimitiveSet;
-            tmpPrimitiveSet.SetConfig(psetConfig);
+            PrimitiveSet tmpSet;
+            tmpSet.SetConfig(primitiveSetConfig);
             for (auto i = 0u; i < NodeTypes::Count; ++i) {
                 auto type = static_cast<NodeType>(1u << i);
                 auto n = Node(type);
-                if (tmpPrimitiveSet.IsEnabled(type)) {
-                    fmt::print("{}\t{}\n", n.Name(), tmpPrimitiveSet.GetFrequency(type));
+                if (tmpSet.IsEnabled(type)) {
+                    fmt::print("{}\t{}\n", n.Name(), tmpSet.GetFrequency(type));
                 }
             }
             return 0;
@@ -195,9 +197,24 @@ int main(int argc, char* argv[])
             exit(EXIT_FAILURE);
         }
 
-        auto variables = dataset->Variables();
-        auto problem = Problem(*dataset, variables, target, trainingRange, testRange);
-        problem.GetPrimitiveSet().SetConfig(psetConfig);
+        std::vector<Variable> inputs;
+        if (result.count("inputs") == 0) {
+            auto variables = dataset->Variables();
+            std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& var) { return var.Name != target; });
+        } else {
+            auto str = result["inputs"].as<std::string>();
+            auto tokens = Split(str, ',');
+
+            for (auto const& tok : tokens) {
+                if (auto res = dataset->GetVariable(tok); res.has_value()) {
+                    inputs.push_back(res.value());
+                } else {
+                    fmt::print(stderr, "Variable {} does not exist in the dataset.", tok); 
+                    exit(EXIT_FAILURE);
+                }
+            }
+        }
+        auto problem = Problem(*dataset).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
 
         for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div }) {
             problem.GetPrimitiveSet().SetMinimumArity(t, 2);
@@ -205,8 +222,8 @@ int main(int argc, char* argv[])
         }
 
         const gsl::index idx { 0 };
-        using Ind                = Individual;
-        using Reinserter         = ReinserterBase;
+        using Ind = Individual;
+        using Reinserter = ReinserterBase;
         using OffspringGenerator = OffspringGeneratorBase;
 
         std::unique_ptr<CreatorBase> creator;
@@ -237,15 +254,15 @@ int main(int argc, char* argv[])
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         //auto creator             = BalancedTreeCreator { problem.GetPrimitiveSet(), problem.InputVariables() };
-        auto initializer         = Initializer { *creator, sizeDistribution };
+        auto initializer = Initializer { *creator, sizeDistribution };
         initializer.MinDepth(1);
         initializer.MaxDepth(1000);
-        auto crossover           = SubtreeCrossover { 0.9, maxDepth, maxLength };
-        auto mutator             = MultiMutation {};
-        auto onePoint            = OnePointMutation {};
-        auto changeVar           = ChangeVariableMutation { problem.InputVariables() };
-        auto changeFunc          = ChangeFunctionMutation { problem.GetPrimitiveSet() };
-        auto replaceSubtree      = ReplaceSubtreeMutation { *creator, maxDepth, maxLength};
+        auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
+        auto mutator = MultiMutation {};
+        auto onePoint = OnePointMutation {};
+        auto changeVar = ChangeVariableMutation { problem.InputVariables() };
+        auto changeFunc = ChangeFunctionMutation { problem.GetPrimitiveSet() };
+        auto replaceSubtree = ReplaceSubtreeMutation { *creator, maxDepth, maxLength };
         //auto insertSubtree       = InsertSubtreeMutation { *creator, maxDepth, maxLength};
         //auto shuffleSubtree      = ShuffleSubtreesMutation {};
         mutator.Add(onePoint, 1.0);
@@ -367,12 +384,10 @@ int main(int argc, char* argv[])
         }
 
         Operon::RandomGenerator random(config.Seed);
-        if (result["shuffle"].as<bool>()) 
-        {
+        if (result["shuffle"].as<bool>()) {
             problem.GetDataset().Shuffle(random);
         }
-        if (result["standardize"].as<bool>())
-        {
+        if (result["standardize"].as<bool>()) {
             problem.StandardizeData(problem.TrainingRange());
         }
 
@@ -428,14 +443,14 @@ int main(int argc, char* argv[])
             auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
 
             // calculate memory consumption
-            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<double>{}, getSize);
+            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<double> {}, getSize);
             auto off = gp.Offspring();
-            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<double>{}, getSize);
+            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<double> {}, getSize);
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", best[idx], r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
             fmt::print("{:.4f}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, 0.0, 0.0, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
-            fmt::print("{}\t{}\n", totalMemory, config.Seed); 
+            fmt::print("{}\t{}\n", totalMemory, config.Seed);
 
             //fmt::print("best: {}\n", InfixFormatter::Format(best.Genotype, *dataset, 6));
         };
