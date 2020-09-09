@@ -20,9 +20,4 @@
 #include "core/problem.hpp"
 
 namespace Operon {
-Solution Problem::CreateSolution(const Tree&) const
-{
-    Solution sol;
-    return sol;
-}
 }

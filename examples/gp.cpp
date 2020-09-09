@@ -41,7 +41,8 @@ int main(int, char**) {
 
     Range trainingRange { 0, ds.Rows() / 2 };
     Range testRange     { ds.Rows() / 2, ds.Rows() };
-    Problem problem(ds, ds.Variables(), target, trainingRange, testRange);
+    Problem problem(ds);
+    problem.Inputs(ds.Variables()).Target(target).TrainingRange(trainingRange).TestRange(testRange);
     problem.GetPrimitiveSet().SetConfig(PrimitiveSet::Arithmetic);
 
     // set up the solution creator 

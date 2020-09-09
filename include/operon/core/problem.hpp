@@ -27,51 +27,104 @@
 #include "pset.hpp"
 
 namespace Operon {
-struct Solution {
-    Tree Model;
-    Operon::Scalar TrainR2;
-    Operon::Scalar TestR2;
-    Operon::Scalar TrainNmse;
-    Operon::Scalar TestNmse;
-};
 
 class Problem {
 public:
-    Problem(const Dataset& ds, gsl::span<const Variable> allVariables, std::string targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 })
+    Problem(Dataset const& ds) 
+        : dataset(ds)
+    {
+        std::copy(ds.Variables().begin(), ds.Variables().end()-1, std::back_inserter(inputVariables));
+        training = Range{0, ds.Rows() / 2};
+        test = Range{ds.Rows() / 2, ds.Rows()};
+        target = dataset.Variables().back();
+    }
+
+    Problem(const Dataset& ds, gsl::span<const Variable> inputVariables, Variable const& targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 })
         : dataset(ds)
         , training(trainingRange)
         , test(testRange)
         , validation(validationRange)
         , target(targetVariable)
+        , inputVariables(inputVariables.begin(), inputVariables.end())
     {
-        std::copy_if(allVariables.begin(), allVariables.end(), std::back_inserter(inputVariables), [&](const auto& v) { return v.Name != targetVariable; });
-        std::sort(inputVariables.begin(), inputVariables.end(), [](const auto& lhs, const auto& rhs) { return lhs.Hash < rhs.Hash; });
+    }
+
+    Problem& Target(std::string const& target) {
+        auto var = dataset.GetVariable(target);
+        EXPECT(var.has_value());
+        this->target = var.value();
+        return *this;
+    }
+
+    Problem& Target(Variable const& target) {
+        auto var = dataset.GetVariable(target.Hash);
+        EXPECT(var.has_value());
+        this->target = target;
+        return *this;
+    }
+
+    Problem& TrainingRange(Range range) {
+        training = range;
+        return *this;
+    }
+
+    Problem& TestRange(Range range) {
+        test = range;
+        return *this;
+    }
+
+    Problem& ValidationRange(Range range) {
+        validation = range;
+        return *this;
+    }
+
+    Problem& Inputs(std::vector<Variable> const& inputs) {
+        inputVariables.clear();
+        std::copy(inputs.begin(), inputs.end(), std::back_inserter(inputVariables));
+        return *this;
+    }
+
+    Problem& Inputs(gsl::span<const Variable> inputs) {
+        inputVariables.clear();
+        std::copy(inputs.begin(), inputs.end(), std::back_inserter(inputVariables));
+        return *this;
+    }
+
+    Problem& Inputs(std::vector<std::string> const& inputs) {
+        std::vector<Variable> tmp;
+        for (auto const& s : inputs) {
+            auto res = dataset.GetVariable(s);
+            if (!res.has_value()) {
+                throw std::runtime_error(fmt::format("The input {} does not exist in the dataset.\n", s));
+            }
+            tmp.push_back(res.value());
+        }
+        inputVariables.swap(tmp);
+        return *this;
     }
 
     Range TrainingRange() const { return training; }
     Range TestRange() const { return test; }
     Range ValidationRange() const { return validation; }
 
-    const std::string& TargetVariable() const { return target; }
+    const Variable& TargetVariable() const { return target; }
     const PrimitiveSet& GetPrimitiveSet() const { return pset; }
     PrimitiveSet& GetPrimitiveSet() { return pset; }
     const Dataset& GetDataset() const { return dataset; }
     Dataset& GetDataset() { return dataset; }
 
     const gsl::span<const Variable> InputVariables() const { return inputVariables; }
-    const gsl::span<const Operon::Scalar> TargetValues() { return dataset.GetValues(target); }
-
-    Solution CreateSolution(const Tree&) const;
+    const gsl::span<const Operon::Scalar> TargetValues() { return dataset.GetValues(target.Hash); }
 
     void StandardizeData(Range range)
     {
-        for (const auto& var : inputVariables) {
+        for (auto const& var : inputVariables) {
             dataset.Standardize(var.Index, range);
         }
     }
 
     void NormalizeData(Range range) {
-        for (const auto& var : inputVariables) {
+        for (auto const& var : inputVariables) {
             dataset.Normalize(var.Index, range);
         }
     }
@@ -82,7 +135,7 @@ private:
     Range training;
     Range test;
     Range validation;
-    std::string target;
+    Variable target;
     std::vector<Variable> inputVariables;
 };
 }
