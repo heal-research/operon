@@ -39,7 +39,11 @@ class TreeFormatter {
             fmt::format_to(std::back_inserter(current), formatString, s.Value);
         } else if (s.IsVariable()) {
             auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}\n" : "{{:.{}f}} * {{}}\n", decimalPrecision);
-            fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetVariable(s.CalculatedHashValue).Name);
+            if (auto res = dataset.GetVariable(s.CalculatedHashValue); res.has_value()) {
+                fmt::format_to(std::back_inserter(current), formatString, s.Value, res.value().Name);
+            } else {
+                throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
+            }
         } else {
             fmt::format_to(std::back_inserter(current), "{} {} {}\n", s.Name(), s.Depth, s.Length+1);
         }
@@ -75,7 +79,11 @@ class InfixFormatter {
             fmt::format_to(std::back_inserter(current), formatString, s.Value);
         } else if (s.IsVariable()) {
             auto formatString = fmt::format(s.Value < 0 ? "(({{:.{}f}}) * {{}})" : "({{:.{}f}} * {{}})", decimalPrecision);
-            fmt::format_to(std::back_inserter(current), formatString, s.Value, dataset.GetVariable(s.CalculatedHashValue).Name);
+            if (auto res = dataset.GetVariable(s.CalculatedHashValue); res.has_value()) {
+                fmt::format_to(std::back_inserter(current), formatString, s.Value, res.value().Name);
+            } else {
+                throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
+            }
         } else {
             if (s.Type < NodeType::Log) // add, sub, mul, div
             {
