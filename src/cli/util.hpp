@@ -27,7 +27,7 @@
 #include <string>
 
 #include "core/dataset.hpp"
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 
 namespace Operon {
 // parse a range specified as stard:end
@@ -83,34 +83,34 @@ std::string FormatBytes(size_t bytes)
     return fmt::format("{:.2f} {}b", bytes / std::pow(1024, p), sizes[p]);
 }
 
-GrammarConfig ParseGrammarConfig(const std::string& options)
+PrimitiveSetConfig ParsePrimitiveSetConfig(const std::string& options)
 {
-    GrammarConfig config = static_cast<GrammarConfig>(0);
+    PrimitiveSetConfig config = static_cast<PrimitiveSetConfig>(0);
     for (auto& s : Split(options, ',')) {
         if (s == "add") {
-            config |= GrammarConfig::Add;
+            config |= PrimitiveSetConfig::Add;
         } else if (s == "sub") {
-            config |= GrammarConfig::Sub;
+            config |= PrimitiveSetConfig::Sub;
         } else if (s == "mul") {
-            config |= GrammarConfig::Mul;
+            config |= PrimitiveSetConfig::Mul;
         } else if (s == "div") {
-            config |= GrammarConfig::Div;
+            config |= PrimitiveSetConfig::Div;
         } else if (s == "exp") {
-            config |= GrammarConfig::Exp;
+            config |= PrimitiveSetConfig::Exp;
         } else if (s == "log") {
-            config |= GrammarConfig::Log;
+            config |= PrimitiveSetConfig::Log;
         } else if (s == "sin") {
-            config |= GrammarConfig::Sin;
+            config |= PrimitiveSetConfig::Sin;
         } else if (s == "cos") {
-            config |= GrammarConfig::Cos;
+            config |= PrimitiveSetConfig::Cos;
         } else if (s == "tan") {
-            config |= GrammarConfig::Tan;
+            config |= PrimitiveSetConfig::Tan;
         } else if (s == "sqrt") {
-            config |= GrammarConfig::Sqrt;
+            config |= PrimitiveSetConfig::Sqrt;
         } else if (s == "cbrt") {
-            config |= GrammarConfig::Cbrt;
+            config |= PrimitiveSetConfig::Cbrt;
         } else if (s == "square") {
-            config |= GrammarConfig::Square;
+            config |= PrimitiveSetConfig::Square;
         } else {
             fmt::print("Unrecognized symbol {}\n", s);
             std::exit(1);

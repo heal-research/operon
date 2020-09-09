@@ -136,6 +136,10 @@ if(USE_SINGLE_PRECISION)
     message(STATUS "Option USE_SINGLE_PRECISION was specified, single-precision model evaluation will be used.")
 endif()
 
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+    set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+endif()
+
 # print a status of what we found
 feature_summary(WHAT ENABLED_FEATURES DESCRIPTION "Enabled features:" QUIET_ON_EMPTY)
 feature_summary(WHAT DISABLED_FEATURES DESCRIPTION "Disabled features:" QUIET_ON_EMPTY)
@@ -147,7 +151,7 @@ add_library(
     src/core/tree.cpp
     src/core/problem.cpp
     src/core/dataset.cpp
-    src/core/grammar.cpp
+    src/core/pset.cpp
     src/hash/metrohash64.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp

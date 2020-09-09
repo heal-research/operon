@@ -25,7 +25,7 @@
 #include "core/stats.hpp"
 #include "core/metrics.hpp"
 #include "core/distance.hpp"
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 #include "analyzers/diversity.hpp"
 #include "operators/creator.hpp"
 
@@ -49,8 +49,8 @@ TEST_CASE("Intersection performance")
 
     std::uniform_int_distribution<size_t> sizeDistribution(maxLength, maxLength);
 
-    Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic | NodeType::Exp | NodeType::Log);
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log);
 
     std::vector<Tree> trees(n);
     auto btc = BalancedTreeCreator { grammar, inputs };

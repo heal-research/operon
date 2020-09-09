@@ -40,8 +40,8 @@ namespace Operon {
             }
         };
 
-        const auto& grammar = grammar_.get();
-        auto [minFunctionArity, maxFunctionArity] = grammar.FunctionArityLimits();
+        const auto& pset = pset_.get();
+        auto [minFunctionArity, maxFunctionArity] = pset.FunctionArityLimits();
 
         // length one can be achieved with a single leaf
         // otherwise the minimum achievable length is minFunctionArity+1
@@ -54,7 +54,7 @@ namespace Operon {
         auto maxArity = std::min(maxFunctionArity, targetLen - 1);
         auto minArity = std::min(minFunctionArity, maxArity);
 
-        auto root = grammar.SampleRandomSymbol(random, minArity, maxArity);
+        auto root = pset.SampleRandomSymbol(random, minArity, maxArity);
         init(root);
 
         if (root.IsLeaf())
@@ -100,7 +100,7 @@ namespace Operon {
             }
             minArity = std::min(minFunctionArity, maxArity);
 
-            auto node = grammar.SampleRandomSymbol(random, minArity, maxArity);
+            auto node = pset.SampleRandomSymbol(random, minArity, maxArity);
 
             init(node);
             node.Depth = childDepth;

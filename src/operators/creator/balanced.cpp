@@ -35,8 +35,8 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         }
     };
 
-    const auto& grammar = grammar_.get();
-    auto [minFunctionArity, maxFunctionArity] = grammar.FunctionArityLimits();
+    const auto& pset = pset_.get();
+    auto [minFunctionArity, maxFunctionArity] = pset.FunctionArityLimits();
 
     // length one can be achieved with a single leaf
     // otherwise the minimum achievable length is minFunctionArity+1
@@ -51,7 +51,7 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     auto maxArity = std::min(maxFunctionArity, targetLen - 1);
     auto minArity = std::min(minFunctionArity, maxArity); // -1 because we start with a root
 
-    auto root = grammar.SampleRandomSymbol(random, minArity, maxArity);
+    auto root = pset.SampleRandomSymbol(random, minArity, maxArity);
     init(root);
 
     if (root.IsLeaf()) {
@@ -83,7 +83,7 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
             }
             minArity = std::min(minFunctionArity, maxArity);
 
-            auto child = grammar.SampleRandomSymbol(random, minArity, maxArity);
+            auto child = pset.SampleRandomSymbol(random, minArity, maxArity);
             init(child);
             tuples.emplace_back(child, childDepth, 0);
             openSlots += child.Arity;

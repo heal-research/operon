@@ -17,8 +17,8 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#ifndef GRAMMAR_HPP
-#define GRAMMAR_HPP
+#ifndef OPERON_PSET_HPP 
+#define OPERON_PSET_HPP
 
 #include <algorithm>
 #include <bitset>
@@ -28,13 +28,13 @@
 #include "core/tree.hpp"
 
 namespace Operon {
-using GrammarConfig = NodeType;
+using PrimitiveSetConfig = NodeType;
 
-class Grammar {
+class PrimitiveSet {
 public:
-    Grammar()
+    PrimitiveSet()
     {
-        config = Grammar::Arithmetic;
+        config = PrimitiveSet::Arithmetic;
 
         frequencies.fill(0);
         for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
@@ -56,8 +56,8 @@ public:
         config &= ~type;
         frequencies[NodeTypes::GetIndex(type)] = 0;
     }
-    GrammarConfig GetConfig() const { return config; }
-    void SetConfig(GrammarConfig cfg)
+    PrimitiveSetConfig GetConfig() const { return config; }
+    void SetConfig(PrimitiveSetConfig cfg)
     {
         config = cfg;
         for (auto i = 0u; i < frequencies.size(); ++i) {
@@ -73,9 +73,9 @@ public:
     }
     size_t GetFrequency(NodeType type) const { return frequencies[NodeTypes::GetIndex(type)]; }
 
-    static const GrammarConfig Arithmetic = NodeType::Constant | NodeType::Variable | NodeType::Add | NodeType::Sub | NodeType::Mul | NodeType::Div;
-    static const GrammarConfig TypeCoherent = Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
-    static const GrammarConfig Full = TypeCoherent | NodeType::Tan | NodeType::Sqrt | NodeType::Cbrt;
+    static const PrimitiveSetConfig Arithmetic = NodeType::Constant | NodeType::Variable | NodeType::Add | NodeType::Sub | NodeType::Mul | NodeType::Div;
+    static const PrimitiveSetConfig TypeCoherent = Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
+    static const PrimitiveSetConfig Full = TypeCoherent | NodeType::Tan | NodeType::Sqrt | NodeType::Cbrt;
 
     // return a vector of enabled symbols
     std::vector<NodeType> EnabledSymbols() const
@@ -134,7 +134,7 @@ public:
     }
 
 private:
-    NodeType config = Grammar::Arithmetic;
+    NodeType config = PrimitiveSet::Arithmetic;
     std::array<size_t, Operon::NodeTypes::Count> frequencies;
     std::array<std::tuple<size_t, size_t>, Operon::NodeTypes::Count> arityLimits;
 };

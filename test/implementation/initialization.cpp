@@ -24,7 +24,7 @@
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "core/format.hpp"
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 #include "core/stats.hpp"
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
@@ -32,8 +32,8 @@
 namespace Operon::Test {
 TEST_CASE("Sample nodes from grammar")
 {
-    Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
     grammar.Enable(NodeType::Add, 5);
     Operon::RandomGenerator rd(std::random_device {}());
 
@@ -118,8 +118,8 @@ TEST_CASE("GROW")
 
     size_t n = 10000;
 
-    Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
     grammar.Enable(NodeType::Add, 1);
     grammar.Enable(NodeType::Mul, 1);
     grammar.Enable(NodeType::Sub, 1);
@@ -195,8 +195,8 @@ TEST_CASE("BTC")
     size_t n = 10000;
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
-    Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
     grammar.Enable(NodeType::Add, 1);
     grammar.SetMaximumArity(NodeType::Add, 5);
     grammar.Enable(NodeType::Mul, 1);
@@ -303,8 +303,8 @@ TEST_CASE("PTC2")
     size_t n = 10000;
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
-    Grammar grammar;
-    grammar.SetConfig(Grammar::Arithmetic | NodeType::Log | NodeType::Exp);
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
     grammar.Enable(NodeType::Add, 1);
     grammar.Enable(NodeType::Mul, 1);
     grammar.Enable(NodeType::Sub, 1);

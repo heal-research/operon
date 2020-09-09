@@ -20,15 +20,15 @@
 #ifndef PROBABILISTIC_TREE_CREATOR_HPP
 #define PROBABILISTIC_TREE_CREATOR_HPP
 
-#include "core/grammar.hpp"
+#include "core/pset.hpp"
 #include "core/operator.hpp"
 
 namespace Operon {
 
 class ProbabilisticTreeCreator final : public CreatorBase {
 public:
-    ProbabilisticTreeCreator(const Grammar& grammar, const gsl::span<const Variable> variables, double bias = 0.0)
-        : CreatorBase(grammar, variables)
+    ProbabilisticTreeCreator(const PrimitiveSet& pset, const gsl::span<const Variable> variables, double bias = 0.0)
+        : CreatorBase(pset, variables)
         , irregularityBias(bias)
     {
     }
