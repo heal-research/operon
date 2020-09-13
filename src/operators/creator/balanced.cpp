@@ -55,7 +55,7 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     init(root);
 
     if (root.IsLeaf()) {
-        return Tree({root}).UpdateNodes();
+        return Tree({ root }).UpdateNodes();
     }
 
     tuples.emplace_back(root, 1, 1);
@@ -78,7 +78,7 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
             if (maxArity > 0 && maxArity < minFunctionArity) {
                 targetLen -= minFunctionArity - maxArity;
                 EXPECT(targetLen > 0);
-                EXPECT(targetLen == 1 || targetLen >= minFunctionArity+1);
+                EXPECT(targetLen == 1 || targetLen >= minFunctionArity + 1);
                 maxArity = std::min(maxFunctionArity, targetLen - openSlots - 1);
             }
             minArity = std::min(minFunctionArity, maxArity);
@@ -93,20 +93,17 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     Operon::Vector<Node> postfix(tuples.size());
     auto idx = tuples.size();
 
-    const auto add = [&](const U& t) {
-        auto add_impl = [&](const U& t, auto& add_ref) {
-            auto [node, _, nodeChildIndex] = t;
-            postfix[--idx] = node;
-            if (node.IsLeaf()) {
-                return;
-            }
-            for (size_t i = nodeChildIndex; i < nodeChildIndex + node.Arity; ++i) {
-                add_ref(tuples[i], add_ref);
-            }
-        };
-        add_impl(t, add_impl);
+    auto add = [&](const U& t, auto&& add) {
+        auto [node, _, nodeChildIndex] = t;
+        postfix[--idx] = node;
+        if (node.IsLeaf()) {
+            return;
+        }
+        for (size_t i = nodeChildIndex; i < nodeChildIndex + node.Arity; ++i) {
+            add(tuples[i], add);
+        }
     };
-    add(tuples.front());
+    add(tuples.front(), add);
     auto tree = Tree(postfix).UpdateNodes();
     return tree;
 }

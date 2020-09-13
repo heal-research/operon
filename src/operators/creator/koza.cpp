@@ -49,34 +49,31 @@ Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t
     std::uniform_int_distribution<size_t> dist(minDepth, maxDepth);
     auto actualDepthLimit = dist(random);
 
-    auto const grow = [&](size_t depth) {
-        auto const grow_impl = [&](size_t depth, const auto& grow_ref) {
-            auto minDepthReached = depth >= minDepth;
+    auto const grow = [&](size_t depth, auto&& grow) {
+        auto minDepthReached = depth >= minDepth;
 
-            minArity = 0;
-            maxArity = 0;
+        minArity = 0;
+        maxArity = 0;
 
-            if (depth < actualDepthLimit) {
-                minArity = minDepthReached ? 0 : minFunctionArity;
-                maxArity = maxFunctionArity;
-            }
+        if (depth < actualDepthLimit) {
+            minArity = minDepthReached ? 0 : minFunctionArity;
+            maxArity = maxFunctionArity;
+        }
 
-            auto node = pset.SampleRandomSymbol(random, minArity, maxArity);
-            init(node);
+        auto node = pset.SampleRandomSymbol(random, minArity, maxArity);
+        init(node);
 
-            nodes.push_back(node);
+        nodes.push_back(node);
 
-            if (node.IsLeaf())
-                return;
+        if (node.IsLeaf())
+            return;
 
-            for (size_t i = 0; i < node.Arity; ++i) {
-                grow_ref(depth + 1, grow_ref);
-            }
-        };
-        grow_impl(depth, grow_impl);
+        for (size_t i = 0; i < node.Arity; ++i) {
+            grow(depth + 1, grow);
+        }
     };
 
-    grow(1);
+    grow(1, grow);
 
     std::reverse(nodes.begin(), nodes.end());
     return Tree(nodes).UpdateNodes();
