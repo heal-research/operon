@@ -45,7 +45,7 @@
 
 using namespace Operon;
 
-int main(int argc, char* argv[])
+int main(int argc, char** argv)
 {
     cxxopts::Options opts("operon_cli", "C++ large-scale genetic programming");
 

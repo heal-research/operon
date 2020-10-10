@@ -1,6 +1,6 @@
 let
-  pkgs_stable = import <nixos> {};
-  pkgs = import <nixos-unstable> {};
+  pkgs_stable = import <nixos> { };
+  pkgs = import <nixos-unstable> { };
   cxxopts = import ./cxxopts.nix; 
   tracy = import ./tracy.nix;
   qcachegrind = pkgs.libsForQt5.callPackage ./qcachegrind.nix {};
@@ -22,73 +22,73 @@ let
     '';
   });
   eigen_trunk = pkgs.eigen.overrideAttrs (old: rec {
+    version = "3.3.90";
     stdenv = pkgs.gcc10Stdenv;
-    src = pkgs.fetchgit {
-      url             = "https://gitlab.com/libeigen/eigen.git";
-      #rev             = "f566724023e1a82be7fecfe0639e908772d3cea6";
-      #sha256          = "055x45z5nh14kh7vig8kl23mp3zmsm3c6924hnlghia6qpmm4vc1";
-      rev             = "46f8a18567731925e06a7389a6c611e1dc420ea8";
-      sha256          = "1j7jxyis1idykj3smzqy4i7zq9g9c1lil5rdnkdbikbbvljbq1ir";
-      fetchSubmodules = false;
+    src = pkgs.fetchFromGitLab {
+      owner = "libeigen";
+      repo = "eigen";
+      rev             = "2279f2c62f1e5c0dfaa500e637c92d528acd85b1";
+      sha256          = "1rdl4vkfn9r9z9x7arb8y8sf477znp6xjyzwfl9p5hs8a3a717gm";
     };
     patches = [ ./eigen_include_dir.patch ];
-    #patches = [ ./eigen_include_dir_old.patch ];
-    #patches = [ ./eigen_include_dir_oldest.patch ];
   });
   pybind11_trunk = pkgs.python38Packages.pybind11.overrideAttrs (old: rec {
     stdenv = pkgs.gcc10Stdenv;
-    buildInputs = [ eigen_trunk ];
-    src = pkgs.fetchgit {
-      url           = "https://github.com/pybind/pybind11.git";
-      rev           = "3e448c0b5e3abcd179781dd718df2bd2340ddb06";
-      sha256        = "15q9761xgg1p5z0xx47l9hh0qh2bzq6l6fyjivcym1rnl25qd43k";
-      fetchSubmodules = false;
+    buildInputs = with pkgs; [ eigen_trunk ];
+    src = pkgs.fetchFromGitHub {
+      repo   = "pybind11";
+      owner  = "pybind";
+      rev    = "b6f37f67ac6c6d2ec2fa35ca3816b9de7da9fcbd";
+      sha256 = "1v3nliadmgfs8pkm5mrf6z0071588xcwdd2hqnlh8sfvhf2j24zf";
     };
-    patches = [ ./pybind11_include.patch ./pybind11_cxx_standard.patch ];
+    patches = [ ./pybind11_include.patch ];
   });
   ceres_trunk = pkgs.ceres-solver.overrideAttrs (old: rec {
-    CFLAGS = (old.CFLAGS or "") + "-march=znver2 -O3";
+    CFLAGS = (old.CFLAGS or "") + "-march=native -O3";
     stdenv = pkgs.gcc10Stdenv;
-    buildInputs = [ eigen_trunk pkgs.glog ];
-    src = pkgs.fetchgit {
-      url             = "https://github.com/ceres-solver/ceres-solver.git";
-      #rev             = "242c703b501ffd64d645f4016d63c8b41c381038";
-      #sha256          = "0ffgj18dhlgvq8y9gskw0ydl7jpk5z46vrcz59jwnqmi0lzjjrlf";
-      rev             = "242c703b501ffd64d645f4016d63c8b41c381038";
-      sha256          = "0ffgj18dhlgvq8y9gskw0ydl7jpk5z46vrcz59jwnqmi0lzjjrlf";
-      fetchSubmodules = false;
+    buildInputs = with pkgs; [ eigen_trunk glog ];
+
+    version = "2.0.0";
+    src = pkgs.fetchFromGitHub {
+      repo   = "ceres-solver";
+      owner  = "ceres-solver";
+      rev    = "65c397daeca77da53d16e73720b9a17edd6757ab";
+      sha256 = "1v5ahl0ni5kz58ppmaarznbjwlhg7w7y06nyakc2jzjxqbzwv4vx";
     };
     enableParallelBuilding = true;
     cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=FALSE -DBUILD_TESTING=FALSE" ];
   });
-  fmt = pkgs.fmt.overrideAttrs(old: { outputs = [ "out" ]; });
-  python_native = pkgs.python38.overrideAttrs (old: rec {
-    CFLAGS = (old.CFLAGS or "") + "-march=znver2 -O3";
-    stdenv = pkgs.gcc10Stdenv;
+  fmt = pkgs.fmt.overrideAttrs(old: rec { 
+    #version = "7.0.3";
+    outputs = [ "out" ];
+
+    cmakeFlags = [
+      "-DBUILD_SHARED_LIBS=ON"
+      "-DFMT_TEST=OFF"
+      "-DFMT_CUDA_TEST=OFF"
+      "-DFMT_FUZZ=OFF"
+    ];
   });
 in
-#unstable.llvmPackages_10.stdenv.mkDerivation {
-pkgs.gcc10Stdenv.mkDerivation {
+  pkgs.gcc10Stdenv.mkDerivation {
     name = "operon-env";
     hardeningDisable = [ "all" ]; 
 
     buildInputs = with pkgs; [
         # python environment for bindings and scripting
-        python_native
         pybind11_trunk
-        (pkgs_stable.python38.withPackages (ps: with ps; [ pip numpy pandas pyperf colorama coloredlogs seaborn sphinx recommonmark sphinx_rtd_theme jupyterlab ]))
+        (pkgs.python38.withPackages (ps: with ps; [ pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload ]))
+        (pkgs_stable.python38.withPackages (ps: with ps; [ sphinx recommonmark sphinx_rtd_theme ]))
         # Project dependencies
-        ccls # completion vim
-        bear # generate compilation database
         # profiling and debugging
         gdb
         valgrind
         linuxPackages.perf
+        #bear
         #tracy
         #bloaty
         #heaptrack
         #hotspot
-        git
         cmake
         tbb
         #eigen
@@ -100,12 +100,15 @@ pkgs.gcc10Stdenv.mkDerivation {
         fmt
         glog
         doctest
-        llvm_10 # code generation
+#        llvm_10 # code generation
         clang_10
         # visualize profile results
-        qcachegrind
+        #pyprof2calltree
+        #qcachegrind
         #massif-visualizer
         graphviz
         cxxopts
+        #asciinema
+        hyperfine
       ];
     }

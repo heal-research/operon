@@ -49,8 +49,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
     Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
     Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1);
 
-    Operon::Vector<gsl::index> indices(nodes.size());
     Operon::Vector<T> params(nodes.size());
+    Operon::Vector<gsl::span<const Operon::Scalar>> vals(nodes.size());
     gsl::index idx = 0;
 
     bool treeContainsNonlinearSymbols = false;
@@ -60,8 +60,8 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
             m.col(i).setConstant(v);
             idx++;
         } else if (nodes[i].IsVariable()) {
-            indices[i] = dataset.GetVariable(nodes[i].HashValue).value().Index;
             params[i] = parameters ? parameters[idx] : T(nodes[i].Value);
+            vals[i] = dataset.GetValues(nodes[i].HashValue);
             idx++;
         }
         treeContainsNonlinearSymbols |= static_cast<bool>(nodes[i].Type & ~PrimitiveSet::Arithmetic);
@@ -75,12 +75,11 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto r = m.col(i);
-            auto const& s = nodes[i];
+            auto const s = nodes[i];
 
             if (GSL_LIKELY(s.IsLeaf())) {
                 if (s.IsVariable()) {
-                    auto vals = dataset.GetValues(indices[i]).subspan(range.Start() + row, remainingRows);
-                    Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> seg(vals.data(), vals.size());
+                    Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> seg(vals[i].data() + range.Start() + row, remainingRows);
                     r.segment(0, remainingRows) = params[i] * seg.cast<T>();
                 }
             } else {
