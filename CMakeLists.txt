@@ -17,7 +17,7 @@ find_package(Eigen3)
 find_package(Ceres QUIET)
 find_package(Threads)
 find_package(TBB)
-find_package(Python3 COMPONENTS Development)
+find_package(Python3 COMPONENTS Development Interpreter)
 find_package(pybind11)
 find_package(doctest)
 

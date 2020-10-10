@@ -2,7 +2,7 @@ with import <nixos-unstable> {};
 
 gcc10Stdenv.mkDerivation rec {
   pname = "cxxopts";
-  version = "2.2.0";
+  version = "2.2.1";
 
   stdenv = pkgs.gcc10Stdenv;
 
@@ -10,7 +10,7 @@ gcc10Stdenv.mkDerivation rec {
     owner = "jarro2783";
     repo = "cxxopts";
     rev = "v${version}";
-    sha256 = "1lz4v7jwp870ddrrks6kwh62c8hqc2pfdcpwshlmcf758li8ajz6";
+    sha256 = "0d3y747lsh1wkalc39nxd088rbypxigm991lk3j91zpn56whrpha";
   };
 
   nativeBuildInputs = [ cmake ];
