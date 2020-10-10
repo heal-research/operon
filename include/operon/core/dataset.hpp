@@ -29,7 +29,6 @@
 #include <exception>
 #include <gsl/gsl_util>
 #include <numeric>
-#include <unordered_map>
 #include <vector>
 
 namespace Operon {
@@ -37,7 +36,9 @@ namespace Operon {
 namespace {
     inline bool CompareWithSize(const std::string& lhs, const std::string& rhs)
     {
-        return std::make_tuple(lhs.size(), lhs) < std::make_tuple(rhs.size(), rhs);
+        auto s1 = lhs.size();
+        auto s2 = rhs.size();
+        return std::tie(s1, lhs) < std::tie(s2, rhs);
     }
 }
 
