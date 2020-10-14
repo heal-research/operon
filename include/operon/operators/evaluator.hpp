@@ -31,6 +31,9 @@
 namespace Operon {
 class NormalizedMeanSquaredErrorEvaluator : public EvaluatorBase {
 public:
+    static constexpr Operon::Scalar LowerBound = 0.0;
+    static constexpr Operon::Scalar UpperBound = Operon::Numeric::Max<Operon::Scalar>();
+
     NormalizedMeanSquaredErrorEvaluator(Problem& problem)
         : EvaluatorBase(problem)
     {
@@ -78,8 +81,8 @@ public:
     operator()(Operon::RandomGenerator&, Individual& ind) const
     {
         ++this->fitnessEvaluations;
-        auto& problem = this->problem.get();
-        auto& dataset = problem.GetDataset();
+        auto const& problem = this->problem.get();
+        auto const& dataset = problem.GetDataset();
         auto& genotype = ind.Genotype;
 
         auto trainingRange = problem.TrainingRange();
@@ -88,40 +91,12 @@ public:
         if (this->iterations > 0) {
             auto summary = OptimizeAutodiff(genotype, dataset, targetValues, trainingRange, this->iterations);
             this->localEvaluations += summary.iterations.size();
-            //auto coeff = genotype.GetCoefficients();
-            //Eigen::Matrix<double, Eigen::Dynamic, 1> param(coeff.size());
-
-            //// use the tree coefficients as a starting point
-            //for (size_t i = 0; i < coeff.size(); ++i) {
-            //    param(i) = coeff[i];
-            //}
-
-            //TinyCostFunction func(genotype, dataset, targetValues, trainingRange);
-            //ceres::TinySolver<TinyCostFunction> solver;
-            //solver.options.max_num_iterations = this->iterations;
-            //auto summary = solver.Solve(func, &param);
-
-            //for (size_t i = 0; i < coeff.size(); ++i) {
-            //   coeff[i] =  param(i);
-            //}
-            //genotype.SetCoefficients(coeff);
-
-            //this->localEvaluations += summary.iterations;
         }
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
-
-        MeanVarianceCalculator mv;
-        mv.Add(estimatedValues);
-
-        auto variance = mv.NaiveVariance();
-        
-        double r2 = 0;
-        if (variance > 1e-12) {
-            r2 = RSquared(estimatedValues, targetValues);
-            if (!std::isfinite(r2) || r2 > UpperBound || r2 < LowerBound) { 
-                r2 = 0; 
-            }
+        auto r2 = RSquared(estimatedValues, targetValues);
+        if (!std::isfinite(r2) || r2 > UpperBound || r2 < LowerBound) {
+            r2 = 0;
         }
         return UpperBound - r2 + LowerBound;
     }
