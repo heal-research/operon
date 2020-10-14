@@ -22,7 +22,11 @@
 namespace Operon {
 Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t, size_t) const
 {
-    EXPECT(targetLen > 0);
+    const auto& pset = pset_.get();
+    auto [minFunctionArity, maxFunctionArity] = pset.FunctionArityLimits();
+
+    //fmt::print("target len: {}\n", targetLen);
+    //EXPECT(targetLen > minFunctionArity);
 
     std::normal_distribution<double> normalReal(0, 1);
     auto init = [&](Node& node) {
@@ -34,9 +38,6 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
             node.Value = normalReal(random);
         }
     };
-
-    const auto& pset = pset_.get();
-    auto [minFunctionArity, maxFunctionArity] = pset.FunctionArityLimits();
 
     // length one can be achieved with a single leaf
     // otherwise the minimum achievable length is minFunctionArity+1
@@ -73,15 +74,10 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
                 ? 0
                 : std::min(maxFunctionArity, targetLen - openSlots - 1);
 
-            // certain lengths cannot be generated using available symbols
-            // in this case we push the target length towards an achievable value
-            if (maxArity > 0 && maxArity < minFunctionArity) {
-                targetLen -= minFunctionArity - maxArity;
-                EXPECT(targetLen > 0);
-                EXPECT(targetLen == 1 || targetLen >= minFunctionArity + 1);
-                maxArity = std::min(maxFunctionArity, targetLen - openSlots - 1);
+            // fall back to a leaf node if the desired arity is not achievable with the current primitive set
+            if (maxArity < minFunctionArity) {
+                minArity = maxArity = 0;
             }
-            minArity = std::min(minFunctionArity, maxArity);
 
             auto child = pset.SampleRandomSymbol(random, minArity, maxArity);
             init(child);
