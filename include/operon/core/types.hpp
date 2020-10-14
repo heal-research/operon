@@ -43,12 +43,12 @@ using Vector = std::vector<T, Eigen::aligned_allocator<T>>;
 
 namespace Numeric {
     template <typename T>
-    static inline T Max()
+    static constexpr inline T Max()
     {
         return std::numeric_limits<T>::max();
     }
     template <typename T>
-    static inline T Min()
+    static constexpr inline T Min()
     {
         if constexpr (std::is_floating_point_v<T>)
             return std::numeric_limits<T>::lowest();
