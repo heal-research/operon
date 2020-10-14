@@ -81,6 +81,7 @@ set(BUILD_PYBIND_DESCRIPTION         "Build python bindings.")
 set(OPENLIBM_DESCRIPTION             "Link against Julia's openlibm, a high performance mathematical library.")
 set(JEMALLOC_DESCRIPTION             "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support.")
 set(TCMALLOC_DESCRIPTION             "Link against tcmalloc (thread-caching malloc), a malloc(3) implementation that reduces lock contention for multi-threaded programs.")
+set(MIMALLOC_DESCRIPTION             "Link against mimalloc, a general purpose allocator with excellent performance characteristics.")
 set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes.")
 
 # option descriptions
@@ -89,6 +90,7 @@ option(BUILD_PYBIND         ${BUILD_PYBIND_DESCRIPTION}         OFF)
 option(USE_OPENLIBM         ${OPENLIBM_DESCRIPTION}             OFF)
 option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
 option(USE_TCMALLOC         ${TCMALLOC_DESCRIPTION}             OFF)
+option(USE_MIMALLOC         ${MIMALLOC_DESCRIPTION}             OFF)
 option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION} OFF)
 
 add_feature_info(BUILD_TESTS          BUILD_TESTS          ${BUILD_TESTS_DESCRIPTION})
@@ -96,11 +98,10 @@ add_feature_info(BUILD_PYBIND         BUILD_PYBIND         ${BUILD_PYBIND_DESCRI
 add_feature_info(USE_OPENLIBM         USE_OPENLIBM         ${OPENLIBM_DESCRIPTION})
 add_feature_info(USE_JEMALLOC         USE_JEMALLOC         ${JEMALLOC_DESCRIPTION})
 add_feature_info(USE_TCMALLOC         USE_TCMALLOC         ${TCMALLOC_DESCRIPTION})
+add_feature_info(USE_MIMALLOC         USE_MIMALLOC         ${MIMALLOC_DESCRIPTION})
 add_feature_info(USE_SINGLE_PRECISION USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION})
 
-if(USE_JEMALLOC AND USE_TCMALLOC)
-    message(FATAL_ERROR "Options USE_JEMALLOC and USE_TCMALLOC are mutually exclusive. Please specify only one.")
-endif()
+set(COUNTER 0)
 
 if(USE_OPENLIBM)
     find_library(OPENLIBM openlibm)
@@ -113,6 +114,7 @@ if(USE_OPENLIBM)
 endif()
 
 if(USE_JEMALLOC)
+    math(EXPR COUNTER "${COUNTER}+1")
     find_library(JEMALLOC jemalloc)
     if(NOT JEMALLOC)
         message(WARNING "Option USE_JEMALLOC was specified, but jemalloc could not be found.")
@@ -123,6 +125,7 @@ if(USE_JEMALLOC)
 endif()
 
 if(USE_TCMALLOC)
+    math(EXPR COUNTER "${COUNTER}+1")
     find_library(TCMALLOC tcmalloc)
     if(NOT TCMALLOC)
         message(WARNING "Option USE_TCMALLOC was specified, but tcmalloc could not be found.")
@@ -131,6 +134,23 @@ if(USE_TCMALLOC)
         message(STATUS "Option USE_TCMALLOC was specified, found tcmalloc at ${TCMALLOC}.")
     endif()
 endif()
+
+if(USE_MIMALLOC)
+    math(EXPR COUNTER "${COUNTER}+1")
+    find_library(MIMALLOC mimalloc)
+    if(NOT MIMALLOC)
+        message(WARNING "Option USE_MIMALLOC was specified, but mimalloc could not be found.")
+        set(MIMALLOC "")
+    else()
+        message(STATUS "Option USE_MIMALLOC was specified, found mimalloc at ${MIMALLOC}.")
+    endif()
+endif()
+
+if(COUNTER GREATER 1)
+    message(FATAL_ERROR "Options USE_JEMALLOC, USE_TCMALLOC and USE_MIMALLOC are mutually exclusive. Please specify only one.")
+endif()
+
+set(MALLOC_LIB ${JEMALLOC} ${TCMALLOC} ${MIMALLOC})
 
 if(USE_SINGLE_PRECISION)
     message(STATUS "Option USE_SINGLE_PRECISION was specified, single-precision model evaluation will be used.")
@@ -164,7 +184,7 @@ add_library(
     src/stat/pearson.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
-target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
+target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
 target_include_directories(
     operon
     PRIVATE
@@ -181,7 +201,7 @@ add_executable(
     src/cli/operon_gp.cpp
 )
 target_compile_features(operon-gp PRIVATE cxx_std_17)
-target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb)
+target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
 target_include_directories(
     operon-gp
     PRIVATE
@@ -196,7 +216,7 @@ add_executable(
     examples/gp.cpp
     )
 target_compile_features(operon-example-gp PRIVATE cxx_std_17)
-target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb)
+target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
 target_include_directories(
     operon-example-gp
     PRIVATE
@@ -268,7 +288,7 @@ if(doctest_FOUND AND BUILD_TESTS)
     else()
         target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     endif(MSVC)
-    target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${JEMALLOC} ${TCMALLOC} ${CERES_LIBRARIES} TBB::tbb doctest::doctest)
+    target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb doctest::doctest)
     target_include_directories(
         operon-test
         PRIVATE
