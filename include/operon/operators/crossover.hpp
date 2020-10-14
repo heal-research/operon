@@ -38,8 +38,8 @@ public:
 
     static inline Tree Cross(const Tree& lhs, const Tree& rhs, gsl::index i, gsl::index j)
     {
-        auto& left = lhs.Nodes();
-        auto& right = rhs.Nodes();
+        auto const& left = lhs.Nodes();
+        auto const& right = rhs.Nodes();
         Operon::Vector<Node> nodes;
         nodes.reserve(right[j].Length - left[i].Length + left.size());
         std::copy_n(left.begin(), i - left[i].Length, back_inserter(nodes));

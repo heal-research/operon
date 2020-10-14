@@ -51,6 +51,7 @@ namespace detail {
             , count(0)
             , arity(nodes[i].Arity)
         {
+            EXPECT(i > 0);
         }
 
         value_type& operator*() { return nodes[index]; }

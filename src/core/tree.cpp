@@ -41,9 +41,7 @@ Tree& Tree::UpdateNodes()
         }
         for (auto it = Children(i); it.HasNext(); ++it) {
             s.Length += it->Length;
-            if (s.Depth < it->Depth) {
-                s.Depth = it->Depth;
-            }
+            s.Depth = std::max(s.Depth, it->Depth);
             nodes[it.Index()].Parent = i;
         }
         ++s.Depth;
