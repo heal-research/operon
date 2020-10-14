@@ -89,14 +89,16 @@ Tree ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tr
 
     auto i = std::uniform_int_distribution<size_t>(0, nodes.size()-1)(random);
 
-    size_t oldLen = nodes[i].Length + 1;
-    size_t oldLevel = nodes[i].Level;
+    auto oldLen = nodes[i].Length + 1;
+    auto oldLevel = nodes[i].Level;
 
-    size_t maxLength = maxLength_ - nodes.size() + oldLen;
+    auto partialLength = nodes.size() - oldLen;
+
     // the correction below is necessary because it can happen that maxLength_ < nodes.size()
     // (for example when the tree creator cannot achieve exactly a target length and
     //  then it creates a slightly larger tree)
-    maxLength = std::max(maxLength, 1ul);
+    int maxLength = maxLength_ - partialLength;
+    maxLength = std::max(maxLength, 1);
 
     auto maxDepth = std::max(tree.Depth(), maxDepth_) - oldLevel + 1; 
 
@@ -111,6 +113,22 @@ Tree ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tr
     std::copy(nodes.begin() + i + 1, nodes.end(),                           std::back_inserter(mutated));
     
     return Tree(mutated).UpdateNodes();
+}
+
+Tree RemoveSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const {
+    auto& nodes = tree.Nodes();
+
+    if (nodes.size() == 1)
+        return tree; // nothing to remove
+
+    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end()-1); // -1 because we don't want to remove the tree root
+    auto const& p = nodes[it->Parent];
+    if (p.Arity > pset.GetMinimumArity(p.Type)) {
+        nodes[it->Parent].Arity--;
+        nodes.erase(it - it->Length, it + 1);
+        tree.UpdateNodes();
+    }
+    return tree;
 }
 
 Tree InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const {

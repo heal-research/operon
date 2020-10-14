@@ -58,10 +58,19 @@ private:
 };
 
 struct ChangeFunctionMutation : public MutatorBase {
-    ChangeFunctionMutation(PrimitiveSet g) 
-        : pset(g) 
+    ChangeFunctionMutation(PrimitiveSet ps)
+        : pset(ps)
     {
     }
+
+    Tree operator()(Operon::RandomGenerator&, Tree) const override;
+
+private:
+    PrimitiveSet pset;
+};
+
+struct RemoveSubtreeMutation final : public MutatorBase {
+    RemoveSubtreeMutation(PrimitiveSet ps) : pset(ps) { }
 
     Tree operator()(Operon::RandomGenerator&, Tree) const override;
 
