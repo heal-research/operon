@@ -139,8 +139,8 @@ PYBIND11_MODULE(pyoperon, m)
     });
 
     // random numbers
-    m.def("UniformInt", &Operon::Random::UniformInt<Operon::RandomGenerator, int>);
-    m.def("UniformReal", &Operon::Random::UniformReal<Operon::RandomGenerator, double>);
+    m.def("UniformInt", &Operon::Random::Uniform<Operon::RandomGenerator, int>);
+    m.def("UniformReal", &Operon::Random::Uniform<Operon::RandomGenerator, double>);
 
     // classes
     py::class_<Operon::Individual>(m, "Individual")
