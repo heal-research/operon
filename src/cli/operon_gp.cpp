@@ -215,13 +215,12 @@ int main(int argc, char** argv)
             }
         }
         auto problem = Problem(*dataset).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
-
+        // set symbol arities
         for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div }) {
-            problem.GetPrimitiveSet().SetMinimumArity(t, 2);
             problem.GetPrimitiveSet().SetMaximumArity(t, 2);
+            problem.GetPrimitiveSet().SetMinimumArity(t, 2);
         }
 
-        const gsl::index idx { 0 };
         using Ind = Individual;
         using Reinserter = ReinserterBase;
         using OffspringGenerator = OffspringGeneratorBase;
@@ -252,7 +251,8 @@ int main(int argc, char** argv)
             }
         }
 
-        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+        auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
+        std::uniform_int_distribution<size_t> sizeDistribution(amin + 1, maxLength);
         //auto creator             = BalancedTreeCreator { problem.GetPrimitiveSet(), problem.InputVariables() };
         auto initializer = Initializer { *creator, sizeDistribution };
         initializer.MinDepth(1);
@@ -263,13 +263,15 @@ int main(int argc, char** argv)
         auto changeVar = ChangeVariableMutation { problem.InputVariables() };
         auto changeFunc = ChangeFunctionMutation { problem.GetPrimitiveSet() };
         auto replaceSubtree = ReplaceSubtreeMutation { *creator, maxDepth, maxLength };
-        //auto insertSubtree       = InsertSubtreeMutation { *creator, maxDepth, maxLength};
+        auto insertSubtree = InsertSubtreeMutation { *creator, maxDepth, maxLength};
+        auto removeSubtree = RemoveSubtreeMutation { problem.GetPrimitiveSet() };
         //auto shuffleSubtree      = ShuffleSubtreesMutation {};
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
         mutator.Add(replaceSubtree, 1.0);
-        //mutator.Add(insertSubtree, 1.0);
+        mutator.Add(insertSubtree, 1.0);
+        mutator.Add(removeSubtree, 1.0);
         //mutator.Add(shuffleSubtree, 1.0);
 
         RSquaredEvaluator evaluator(problem);
@@ -404,6 +406,7 @@ int main(int argc, char** argv)
         auto targetTest = targetValues.subspan(testRange.Start(), testRange.Size());
 
         // some boilerplate for reporting results
+        const gsl::index idx { 0 };
         auto getBest = [&](const gsl::span<const Ind> pop) -> Ind {
             auto minElem = std::min_element(pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return lhs.Fitness[idx] < rhs.Fitness[idx]; });
             return *minElem;
