@@ -30,6 +30,7 @@
 #include <gsl/gsl_util>
 #include <numeric>
 #include <vector>
+#include <optional>
 
 namespace Operon {
 // compare strings size first, as an attempt to have eg X1, X2, X10 in this order and not X1, X10, X2

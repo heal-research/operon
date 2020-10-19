@@ -120,7 +120,6 @@ TEST_CASE("Hash-based distance") {
     std::vector<std::pair<Operon::HashFunction, std::string>> hashFunctions {
         { Operon::HashFunction::XXHash,    "XXHash" },
         { Operon::HashFunction::MetroHash, "MetroHash" },
-        { Operon::HashFunction::AquaHash,  "AquaHash" },
         { Operon::HashFunction::FNV1Hash,  "FNV1Hash" },
     };
 
@@ -155,7 +154,7 @@ TEST_CASE("Hash collisions") {
     auto btc = BalancedTreeCreator { grammar, inputs };
 
     std::iota(indices.begin(), indices.end(), 0);
-    std::generate(std::execution::unseq, seeds.begin(), seeds.end(), [&](){ return rd(); });
+    std::generate(std::execution::seq, seeds.begin(), seeds.end(), [&](){ return rd(); });
     std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::RandomGenerator rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);

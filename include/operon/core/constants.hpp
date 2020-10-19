@@ -32,7 +32,6 @@ namespace Operon {
     enum HashFunction { 
         XXHash,
         MetroHash,
-        AquaHash,
         FNV1Hash,
     };
 }

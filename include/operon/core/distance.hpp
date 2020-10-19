@@ -13,6 +13,7 @@ namespace Distance {
     using HashVector = Operon::Vector<Operon::Hash>;
 
     namespace {
+#if defined(__AVX2__) && defined(NDEBUG)
         static inline bool _mm256_is_zero(__m256i m) noexcept { return _mm256_testz_si256(m, m); }
 
         static inline bool NullIntersectProbe(Operon::Hash const* lhs, Operon::Hash const* rhs) noexcept
@@ -30,6 +31,7 @@ namespace Distance {
 
             return _mm256_is_zero(_mm256_or_si256(_mm256_or_si256(r0, r1), _mm256_or_si256(r2, r3)));
         }
+#endif
 
         static size_t CountIntersect(HashVector const& lhs, HashVector const& rhs) noexcept
         {

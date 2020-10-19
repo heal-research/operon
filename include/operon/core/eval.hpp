@@ -169,7 +169,12 @@ void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::
         // the final result is found in the last section of the buffer corresponding to the root node
         auto seg = lastCol.segment(0, remainingRows);
         auto max_ = Operon::Numeric::Max<T>();
+#if EIGEN_MINOR_VERSION > 7
         res.segment(row, remainingRows) = (seg.isFinite()).select(seg, max_);
+#else
+        // less efficient
+        res.segment(row, remainingRows) = seg.unaryExpr([&](auto v) { return ceres::IsFinite(v) ? v : max_; });
+#endif
     }
 }
 
