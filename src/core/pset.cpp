@@ -36,8 +36,11 @@ namespace Operon {
             if (!IsEnabled(type) || GetFrequency(type) == 0)
                 continue;
 
+            // get the min and max arities for this symbol
+            auto [aMin, aMax] = GetMinMaxArity(type);
+
             // skip symbols that don't fit arity requirements
-            if (minArity > GetMaximumArity(type) || maxArity < GetMinimumArity(type)) 
+            if (minArity > aMax || maxArity < aMin)
                 continue;
 
             candidates[idx++] = type;
