@@ -247,7 +247,11 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         )
     target_compile_features(pyoperon PRIVATE cxx_std_17)
     target_link_libraries(pyoperon PRIVATE operon)
-    target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
+    if(MSVC) 
+        target_compile_options(pyoperon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+    else()
+        target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
+    endif()
     target_include_directories(
         pyoperon
         PRIVATE
