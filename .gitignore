@@ -1,5 +1,5 @@
-build/
+build*
 thirdparty/
-bin/
+bin*
 .ycm_extra_conf.py
 .clangd/
