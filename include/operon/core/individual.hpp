@@ -1,6 +1,11 @@
 #ifndef OPERON_INDIVIDUAL_HPP
 #define OPERON_INDIVIDUAL_HPP
 
+#include <cstddef>
+#include "core/tree.hpp"
+#include "core/types.hpp"
+#include <gsl/gsl_util>
+
 namespace Operon {
 
 struct Individual {
