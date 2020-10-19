@@ -58,10 +58,10 @@ public:
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
         // scale values
         auto [a, b] = LinearScalingCalculator::Calculate(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
-        std::transform(estimatedValues.begin(), estimatedValues.end(), estimatedValues.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
+        std::transform(std::execution::unseq, estimatedValues.begin(), estimatedValues.end(), estimatedValues.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
         auto nmse = NormalizedMeanSquaredError(estimatedValues, targetValues);
-        if (!std::isfinite(nmse)) {
-            nmse = Operon::Numeric::Max<Operon::Scalar>();
+        if (!std::isfinite(nmse) || nmse < LowerBound) {
+            nmse = UpperBound;
         }
         return nmse;
     }
@@ -94,7 +94,19 @@ public:
         }
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
-        auto r2 = RSquared(estimatedValues, targetValues);
+        PearsonsRCalculator calculator;
+        for (size_t i = 0; i < estimatedValues.size(); ++i) {
+            calculator.Add(estimatedValues[i], targetValues[i]);
+        }
+        auto varX = calculator.NaiveVarianceX();
+        if (varX < 1e-12) {
+            // this is done to avoid numerical issues when a constant model
+            // has very good R correlation to the target but fails to scale properly
+            // since the values are extremely small
+            return UpperBound;
+        }
+        auto r = calculator.Correlation();
+        auto r2 = r * r;
         if (!std::isfinite(r2) || r2 > UpperBound || r2 < LowerBound) {
             r2 = 0;
         }
