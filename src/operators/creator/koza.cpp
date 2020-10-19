@@ -22,7 +22,7 @@
 namespace Operon {
 Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t minDepth, size_t maxDepth) const
 {
-    minDepth = std::max(1ull, minDepth);
+    minDepth = std::max(size_t{1}, minDepth);
     EXPECT(minDepth <= maxDepth);
     auto const& pset = pset_.get();
 
