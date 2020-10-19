@@ -215,6 +215,7 @@ int main(int argc, char** argv)
             }
         }
         auto problem = Problem(*dataset).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
+        problem.GetPrimitiveSet().SetConfig(primitiveSetConfig);
         // set symbol arities
         for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div }) {
             problem.GetPrimitiveSet().SetMaximumArity(t, 2);
@@ -275,6 +276,7 @@ int main(int argc, char** argv)
         //mutator.Add(shuffleSubtree, 1.0);
 
         RSquaredEvaluator evaluator(problem);
+        //NormalizedMeanSquaredErrorEvaluator evaluator(problem);
         evaluator.SetLocalOptimizationIterations(config.Iterations);
         evaluator.SetBudget(config.Evaluations);
 
@@ -408,7 +410,7 @@ int main(int argc, char** argv)
         // some boilerplate for reporting results
         const gsl::index idx { 0 };
         auto getBest = [&](const gsl::span<const Ind> pop) -> Ind {
-            auto minElem = std::min_element(pop.begin(), pop.end(), [&](const auto& lhs, const auto& rhs) { return lhs.Fitness[idx] < rhs.Fitness[idx]; });
+            auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
             return *minElem;
         };
 
@@ -420,13 +422,14 @@ int main(int argc, char** argv)
 
             //fmt::print("best: {}\n", InfixFormatter::Format(best.Genotype, *dataset));
 
-            auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
-            auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);
+            auto batchSize = 100ul;
+            auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, *dataset, trainingRange, batchSize);
+            auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, *dataset, testRange, batchSize);
 
             // scale values
             auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-            std::transform(estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return b * v + a; });
-            std::transform(estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return b * v + a; });
+            std::transform(std::execution::par_unseq, estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return b * v + a; });
+            std::transform(std::execution::par_unseq, estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return b * v + a; });
 
             auto r2Train = RSquared(estimatedTrain, targetTrain);
             auto r2Test = RSquared(estimatedTest, targetTest);
@@ -454,8 +457,6 @@ int main(int argc, char** argv)
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", best[idx], r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
             fmt::print("{:.4f}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, 0.0, 0.0, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
             fmt::print("{}\t{}\n", totalMemory, config.Seed);
-
-            //fmt::print("best: {}\n", InfixFormatter::Format(best.Genotype, *dataset, 6));
         };
 
         gp.Run(random, report);
