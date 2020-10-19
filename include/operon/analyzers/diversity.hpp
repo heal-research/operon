@@ -35,8 +35,8 @@ namespace {
     static inline Operon::Distance::HashVector MakeHashes(Tree& tree, Operon::HashMode mode) {
         Operon::Distance::HashVector hashes(tree.Length());
         tree.Hash<F>(mode);
-        std::transform(std::execution::unseq, tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
-        std::sort(std::execution::unseq, hashes.begin(), hashes.end());
+        std::transform(std::execution::seq, tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
+        std::sort(std::execution::seq, hashes.begin(), hashes.end());
         return hashes;
     }
 }

@@ -25,7 +25,7 @@
 #include "core/operator.hpp"
 
 namespace Operon {
-template <typename ExecutionPolicy = std::execution::unsequenced_policy>
+template <typename ExecutionPolicy = std::execution::sequenced_policy>
 class KeepBestReinserter : public ReinserterBase {
     public:
         explicit KeepBestReinserter(ComparisonCallback&& cb) : ReinserterBase(cb) { }

@@ -37,7 +37,7 @@ public:
 
     Tree operator()(Operon::RandomGenerator& random) const override
     {
-        auto targetLen = std::max(1ul, static_cast<size_t>(std::round(dist_(random))));
+        auto targetLen = std::max(1ull, static_cast<size_t>(std::round(dist_(random))));
         return creator_(random, targetLen, minDepth_, maxDepth_);
     }
 

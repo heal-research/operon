@@ -45,14 +45,14 @@ TEST_CASE("Sample nodes from grammar")
         auto node = grammar.SampleRandomSymbol(rd, 0, 2);
         ++observed[NodeTypes::GetIndex(node.Type)];
     }
-    std::transform(std::execution::unseq, observed.begin(), observed.end(), observed.begin(), [&](double v) { return v / nTrials; });
+    std::transform(std::execution::seq, observed.begin(), observed.end(), observed.begin(), [&](double v) { return v / nTrials; });
     std::vector<double> actual(NodeTypes::Count, 0);
     for (size_t i = 0; i < observed.size(); ++i) {
         auto nodeType = static_cast<NodeType>(1u << i);
         actual[NodeTypes::GetIndex(nodeType)] = grammar.GetFrequency(nodeType);
     }
-    auto freqSum = std::reduce(std::execution::unseq, actual.begin(), actual.end(), 0.0, std::plus {});
-    std::transform(std::execution::unseq, actual.begin(), actual.end(), actual.begin(), [&](double v) { return v / freqSum; });
+    auto freqSum = std::reduce(std::execution::seq, actual.begin(), actual.end(), 0.0, std::plus {});
+    std::transform(std::execution::seq, actual.begin(), actual.end(), actual.begin(), [&](double v) { return v / freqSum; });
     auto chi = 0.0;
     for (auto i = 0u; i < observed.size(); ++i) {
         auto nodeType = static_cast<NodeType>(1u << i);
@@ -269,7 +269,7 @@ TEST_CASE("BTC")
             std::vector<size_t> shapes(trees.size());
             std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t> {}, [](const auto& node) { return node.Length + 1; }); });
 
-            avgShape += std::reduce(std::execution::unseq, shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
+            avgShape += std::reduce(std::execution::seq, shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
             auto cnt = CalculateHistogram(shapes);
             if (counts.size() < cnt.size()) {
                 counts.resize(cnt.size());
@@ -372,7 +372,7 @@ TEST_CASE("PTC2")
             auto trees = GenerateTrees(random, ptc, lengths);
             std::vector<size_t> shapes(trees.size());
             std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t> {}, [](const auto& node) { return node.Length + 1; }); });
-            avgShape += std::reduce(std::execution::unseq, shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
+            avgShape += std::reduce(std::execution::seq, shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
             auto cnt = CalculateHistogram(shapes);
             if (counts.size() < cnt.size()) {
                 counts.resize(cnt.size());

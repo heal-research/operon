@@ -70,7 +70,7 @@ private:
     void Prepare() const; 
 
     // discrete CDF of the population fitness values
-    mutable std::vector<std::pair<Operon::Scalar, gsl::index>> fitness;
+    mutable std::vector<std::pair<Operon::Scalar, size_t>> fitness;
     gsl::index idx = 0;
 };
 
