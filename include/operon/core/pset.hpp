@@ -133,6 +133,15 @@ public:
         return std::get<1>(arityLimits[NodeTypes::GetIndex(type)]);
     }
 
+    std::tuple<size_t, size_t> GetMinMaxArity(NodeType type) const noexcept {
+        return arityLimits[NodeTypes::GetIndex(type)];
+    }
+
+    void SetMinMaxArity(NodeType type, size_t minArity, size_t maxArity) noexcept {
+        EXPECT(maxArity >= minArity);
+        arityLimits[NodeTypes::GetIndex(type)] = { minArity, maxArity };
+    }
+
 private:
     NodeType config = PrimitiveSet::Arithmetic;
     std::array<size_t, Operon::NodeTypes::Count> frequencies;
