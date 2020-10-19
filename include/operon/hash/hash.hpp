@@ -22,10 +22,6 @@
 
 #include "core/constants.hpp"
 
-#if defined(__SSE2__) && defined(NDEBUG)
-#include "aquahash.h"
-#endif
-
 #include "metrohash64.hpp"
 
 #define XXH_INLINE_ALL
@@ -52,17 +48,6 @@ struct Hasher<HashFunction::MetroHash> {
         return h;
     }
 };
-
-#if defined(__SSE2__) && defined(NDEBUG)
-template<>
-struct Hasher<HashFunction::AquaHash> {
-    uint64_t operator()(const uint8_t* key, size_t len) noexcept
-    {
-        __m128i h = AquaHash::SmallKeyAlgorithm(key, len);
-        return _mm_extract_epi64(h, 0) ^ _mm_extract_epi64(h, 1);
-    }
-};
-#endif
 
 template<>
 struct Hasher<HashFunction::FNV1Hash> {

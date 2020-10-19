@@ -60,7 +60,8 @@ namespace Test {
                 std::for_each(std::execution::seq, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
                 break;
             case ExecutionPolicy::Unsequenced:
-                std::for_each(std::execution::unseq, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
+                // use seq because unseq is not yet supported by MSVC
+                std::for_each(std::execution::seq, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
                 break;
             case ExecutionPolicy::ParallelSequenced:
                 std::for_each(std::execution::par, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });

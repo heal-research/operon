@@ -183,9 +183,6 @@ Tree& Tree::Hash(Operon::HashFunction f, Operon::HashMode m)
     case Operon::HashFunction::FNV1Hash: {
         return Hash<Operon::HashFunction::FNV1Hash>(m);
     }
-    case Operon::HashFunction::AquaHash: {
-        return Hash<Operon::HashFunction::AquaHash>(m);
-    }
     }
     return *this;
 }

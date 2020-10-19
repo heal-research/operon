@@ -19,6 +19,7 @@
 
 #include "core/pset.hpp"
 
+#include <numeric>
 #include <execution>
 
 namespace Operon {
@@ -49,7 +50,7 @@ namespace Operon {
         // throw an error if arity requirements are unreasonable (TODO: maybe here return optional)
         EXPECT(idx > 0);
 
-        auto sum = std::transform_reduce(std::execution::unseq, candidates.begin(), candidates.begin() + idx, 0.0, std::plus{}, [&](auto& t) { return GetFrequency(t); });
+        auto sum = std::transform_reduce(candidates.begin(), candidates.begin() + idx, 0.0, std::plus{}, [&](auto& t) { return GetFrequency(t); });
 
         auto r = std::uniform_real_distribution<double>(0., sum)(random);
         auto c = 0.0;
