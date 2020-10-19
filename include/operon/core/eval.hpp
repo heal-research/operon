@@ -31,11 +31,32 @@
 
 namespace Operon {
 
+// evaluate a tree and return a vector of values
 template <typename T>
-Operon::Vector<T> Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters = nullptr)
+Operon::Vector<T> Evaluate(Tree const& tree, Dataset const& dataset, Range const range, T const* const parameters = nullptr)
 {
     Operon::Vector<T> result(range.Size());
-    Evaluate(tree, dataset, range, parameters, gsl::span<T>(result));
+    Evaluate(tree, dataset, range, gsl::span<T>(result), parameters);
+    return result;
+}
+
+template <typename T>
+Operon::Vector<T> Evaluate(Tree const& tree, Dataset const& dataset, Range const range, size_t const batchSize, T const* const parameters = nullptr)
+{
+    Operon::Vector<Operon::Scalar> result(range.Size());
+    gsl::span<Operon::Scalar> view(result);
+
+    size_t n = range.Size() / batchSize;
+    size_t m = range.Size() % batchSize;
+    std::vector<size_t> indices(n + (m != 0));
+    std::iota(indices.begin(), indices.end(), 0ul);
+    std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](auto idx) 
+    {
+        auto start = range.Start() + idx * batchSize;
+        auto end = std::min(start + batchSize, range.End());
+        auto subview = view.subspan(idx * batchSize, end-start);
+        Evaluate<Operon::Scalar>(tree, dataset, Range{ start, end }, subview, parameters); 
+    });
     return result;
 }
 
@@ -43,7 +64,7 @@ template <typename T, NodeType N>
 constexpr auto eval = detail::dispatch_op<T, N>;
 
 template <typename T>
-void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T const* const parameters, gsl::span<T> result) noexcept
+void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::span<T> result, T const* const parameters = nullptr) noexcept
 {
     const auto& nodes = tree.Nodes();
     Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
@@ -153,7 +174,7 @@ void Evaluate(const Tree& tree, const Dataset& dataset, const Range range, T con
 }
 
 struct TreeEvaluator {
-    TreeEvaluator(const Tree& tree, const Dataset& dataset, const Range range)
+    TreeEvaluator(Tree const& tree, Dataset const& dataset, const Range range)
         : tree_ref(tree)
         , dataset_ref(dataset)
         , range(range)
@@ -161,10 +182,10 @@ struct TreeEvaluator {
     }
 
     template <typename T>
-    bool operator()(T const* const* parameters, T* residuals) const
+    bool operator()(T const* const* parameters, T* result) const
     {
-        auto res = gsl::span<T>(residuals, range.Size());
-        Evaluate(tree_ref, dataset_ref, range, parameters[0], res);
+        gsl::span<T> view(result, range.Size());
+        Evaluate(tree_ref, dataset_ref, range, view, parameters[0]);
         return true;
     }
 

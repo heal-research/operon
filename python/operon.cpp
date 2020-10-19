@@ -65,7 +65,7 @@ PYBIND11_MODULE(pyoperon, m)
         auto result = py::array_t<Operon::Scalar>(r.Size());
         auto buf = result.request();
         auto res = gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, buf.size);
-        Operon::Evaluate(t, d, r, (Operon::Scalar*)nullptr, res);
+        Operon::Evaluate(t, d, r, res, (Operon::Scalar*)nullptr);
         return result;
     }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
 

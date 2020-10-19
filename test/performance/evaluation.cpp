@@ -89,19 +89,18 @@ namespace Test {
         //Range range = { 0, ds.Rows() };
         Range range = { 0, 5000 };
 
-        PrimitiveSet grammar;
+        PrimitiveSet pset;
 
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        auto creator = BalancedTreeCreator { grammar, inputs };
+        auto creator = BalancedTreeCreator { pset, inputs };
 
         std::vector<Tree> trees(n);
 
         auto test = [&](nb::Bench& b, PrimitiveSetConfig cfg, ExecutionPolicy pol, const std::string& name) {  
-            grammar.SetConfig(cfg);
+            pset.SetConfig(cfg);
             for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul }) {
-                grammar.SetMaximumArity(t, 2);
-                grammar.SetMinimumArity(t, 2);
+                pset.SetMinMaxArity(t, 2, 2);
             }
             std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
