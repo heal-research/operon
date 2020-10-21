@@ -91,89 +91,50 @@ namespace detail {
     // dispatching mechanism
     // compared to the simple/naive way of evaluating n-ary symbols, this method has the following advantages:
     // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments
-    // 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations 
+    // 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
     //    if arity > 5, one accumulation is performed every 5 args
     template <typename T, Operon::NodeType N>
     inline void dispatch_op(Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
     {
-        using f = op<T, N>;
-
-        int arity = nodes[parentIndex].Arity;
-        auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
         auto result = m.col(parentIndex);
 
+        using f = op<T, N>;
+        const auto g = [](bool cont, decltype(result) res, auto&&... args) { cont ? f::accumulate(res, args...) : f::apply(res, args...); };
+        const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
+
         auto arg1 = parentIndex - 1;
+
         bool continued = false;
 
+        int arity = nodes[parentIndex].Arity;
         while (arity > 0) {
-            if (continued) {
-                switch (arity) {
-                case 1: {
-                    f::accumulate(result, m.col(arg1));
-                    arity = 0;
-                    break;
-                }
-                case 2: {
-                    auto arg2 = nextArg(arg1);
-                    f::accumulate(result, m.col(arg1), m.col(arg2));
-                    arity = 0;
-                    break;
-                }
-                case 3: {
-                    auto arg2 = nextArg(arg1), arg3 = nextArg(arg2);
-                    f::accumulate(result, m.col(arg1), m.col(arg2), m.col(arg3));
-                    arity = 0;
-                    break;
-                }
-                case 4: {
-                    auto arg2 = nextArg(arg1), arg3 = nextArg(arg2), arg4 = nextArg(arg3);
-                    f::accumulate(result, m.col(arg1), m.col(arg2), m.col(arg3), m.col(arg4));
-                    arity = 0;
-                    break;
-                }
-                default: {
-                    auto arg2 = nextArg(arg1), arg3 = nextArg(arg2), arg4 = nextArg(arg3), arg5 = nextArg(arg4);
-                    f::accumulate(result, m.col(arg1), m.col(arg2), m.col(arg3), m.col(arg4), m.col(arg5));
-                    arity -= 5;
-                    arg1 = nextArg(arg5);
-                    break;
-                }
-                }
-            } else {
-                switch (arity) {
-                case 1: {
-                    f::apply(result, m.col(arg1));
-                    arity = 0;
-                    break;
-                }
-                case 2: {
-                    auto arg2 = nextArg(arg1);
-                    f::apply(result, m.col(arg1), m.col(arg2));
-                    arity = 0;
-                    break;
-                }
-                case 3: {
-                    auto arg2 = nextArg(arg1), arg3 = nextArg(arg2);
-                    f::apply(result, m.col(arg1), m.col(arg2), m.col(arg3));
-                    arity = 0;
-                    break;
-                }
-                case 4: {
-                    auto arg2 = nextArg(arg1), arg3 = nextArg(arg2), arg4 = nextArg(arg3);
-                    f::apply(result, m.col(arg1), m.col(arg2), m.col(arg3), m.col(arg4));
-                    arity = 0;
-                    break;
-                }
-                default: {
-                    auto arg2 = nextArg(arg1), arg3 = nextArg(arg2), arg4 = nextArg(arg3), arg5 = nextArg(arg4);
-                    f::apply(result, m.col(arg1), m.col(arg2), m.col(arg3), m.col(arg4), m.col(arg5));
-                    arity -= 5;
-                    arg1 = nextArg(arg5);
-                    break;
-                }
-                }
-                continued = true;
+            switch (arity) {
+            case 1: {
+                g(continued, result, m.col(arg1));
+                arity = 0;
+                break;
             }
+            case 2: {
+                auto arg2 = nextArg(arg1);
+                g(continued, result, m.col(arg1), m.col(arg2));
+                arity = 0;
+                break;
+            }
+            case 3: {
+                auto arg2 = nextArg(arg1), arg3 = nextArg(arg2);
+                g(continued, result, m.col(arg1), m.col(arg2), m.col(arg3));
+                arity = 0;
+                break;
+            }
+            default: {
+                auto arg2 = nextArg(arg1), arg3 = nextArg(arg2), arg4 = nextArg(arg3);
+                g(continued, result, m.col(arg1), m.col(arg2), m.col(arg3), m.col(arg4));
+                arity -= 4;
+                arg1 = nextArg(arg4);
+                break;
+            }
+            }
+            continued = true;
         }
     }
 
