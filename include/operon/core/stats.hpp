@@ -21,5 +21,7 @@
 #define STATS_HPP
 
 #include "stat/linearscaler.hpp"
+#include "stat/meanvariance.hpp"
+#include "stat/pearson.hpp"
 
 #endif
