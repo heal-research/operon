@@ -56,10 +56,9 @@ template<typename T>
 Operon::Dataset MakeDataset(py::array_t<T> array)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
-    auto buf = array.request();
 
     // sanity check
-    if (buf.ndim != 2) {
+    if (array.ndim() != 2) {
         throw std::runtime_error("The input array must have exactly two dimensions.");
     }
 
