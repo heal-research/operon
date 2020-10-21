@@ -24,10 +24,12 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
+#include <type_traits>
 
 #include "algorithms/gp.hpp"
 #include "core/common.hpp"
 #include "core/constants.hpp"
+#include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "core/format.hpp"
 #include "core/pset.hpp"
@@ -49,6 +51,28 @@ namespace py = pybind11;
 // enable pass-by-reference semantics for this vector type
 PYBIND11_MAKE_OPAQUE(std::vector<Operon::Variable>);
 PYBIND11_MAKE_OPAQUE(std::vector<Operon::Individual>);
+
+template<typename T>
+Operon::Dataset MakeDataset(py::array_t<T> array)
+{
+    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
+    auto buf = array.request();
+
+    // sanity check
+    if (buf.ndim != 2) {
+        throw std::runtime_error("The input array must have exactly two dimensions.");
+    }
+
+    // check if the array satisfies our data storage requirements (contiguous, column-major order)
+    if (std::is_same_v<T, Operon::Scalar> && (array.flags() & py::array::f_style)) {
+        auto ref = array.template cast<Eigen::Ref<Operon::Dataset::Matrix const>>();
+        return Operon::Dataset(ref);
+    } else {
+        fmt::print("Warning: array does not satisfy contiguity or storage-order requirements. a copy will be made.");
+        auto m = array.template cast<Operon::Dataset::Matrix>();
+        return Operon::Dataset(std::move(m));
+    }
+}
 
 PYBIND11_MODULE(pyoperon, m)
 {
@@ -311,31 +335,35 @@ PYBIND11_MODULE(pyoperon, m)
         .def("GetFrequency", &Operon::PrimitiveSet::GetFrequency)
         .def("GetMinimumArity", &Operon::PrimitiveSet::GetMinimumArity)
         .def("GetMaximumArity", &Operon::PrimitiveSet::GetMaximumArity)
+        .def("GetMinMaxArity", &Operon::PrimitiveSet::GetMinMaxArity)
         .def_property_readonly("EnabledSymbols", &Operon::PrimitiveSet::EnabledSymbols)
         .def("FunctionArityLimits", &Operon::PrimitiveSet::FunctionArityLimits)
         .def("SampleRandomSymbol", &Operon::PrimitiveSet::SampleRandomSymbol);
 
     // dataset
     py::class_<Operon::Dataset>(m, "Dataset")
-        .def(py::init<const std::string&, bool>(), py::arg("filename"), py::arg("has_header"))
-        .def(py::init<const Operon::Dataset&>())
-        .def(py::init<const std::vector<Operon::Variable>&, const std::vector<std::vector<Operon::Scalar>>&>())
+        .def(py::init<std::string const&, bool>(), py::arg("filename"), py::arg("has_header"))
+        .def(py::init<Operon::Dataset const&>())
+        .def(py::init<std::vector<Operon::Variable> const&, const std::vector<std::vector<Operon::Scalar>>&>())
+        .def(py::init([](py::array_t<float> array){ return MakeDataset(array); }), py::arg("data").noconvert())
+        .def(py::init([](py::array_t<double> array){ return MakeDataset(array); }), py::arg("data").noconvert())
         .def_property_readonly("Rows", &Operon::Dataset::Rows)
         .def_property_readonly("Cols", &Operon::Dataset::Cols)
         .def_property_readonly("Values", &Operon::Dataset::Values)
-        .def_property_readonly("VariableNames", &Operon::Dataset::VariableNames)
+        .def_property("VariableNames", &Operon::Dataset::VariableNames, &Operon::Dataset::SetVariableNames)
         .def("GetValues", py::overload_cast<const std::string&>(&Operon::Dataset::GetValues, py::const_))
         .def("GetValues", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetValues, py::const_))
         .def("GetValues", py::overload_cast<gsl::index>(&Operon::Dataset::GetValues, py::const_))
         .def("GetVariable", py::overload_cast<const std::string&>(&Operon::Dataset::GetVariable, py::const_))
         .def("GetVariable", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetVariable, py::const_))
-        .def_property_readonly("Variables", [](const Operon::Dataset& self) {
+        .def_property_readonly("Variables", [](Operon::Dataset const& self) {
             auto vars = self.Variables();
             return std::vector<Operon::Variable>(vars.begin(), vars.end());
         })
         .def("Shuffle", &Operon::Dataset::Shuffle)
         .def("Normalize", &Operon::Dataset::Normalize)
-        .def("Standardize", &Operon::Dataset::Standardize);
+        .def("Standardize", &Operon::Dataset::Standardize)
+        ;
 
     // tree creator
     py::class_<Operon::CreatorBase>(m, "CreatorBase");
@@ -469,7 +497,7 @@ PYBIND11_MODULE(pyoperon, m)
     // problem
     py::class_<Operon::Problem>(m, "Problem")
         .def(py::init([](Operon::Dataset const& ds, std::vector<Operon::Variable> const& variables, std::string const& target,
-                        Operon::Range trainingRange, Operon::Range testRange){
+                        Operon::Range trainingRange, Operon::Range testRange) {
             gsl::span<const Operon::Variable> vars(variables.data(), variables.size());
             return Operon::Problem(ds).Inputs(variables).Target(target).TrainingRange(trainingRange).TestRange(testRange);
         }));
