@@ -33,46 +33,66 @@
 #include <optional>
 
 namespace Operon {
-// compare strings size first, as an attempt to have eg X1, X2, X10 in this order and not X1, X10, X2
-namespace {
-    inline bool CompareWithSize(const std::string& lhs, const std::string& rhs)
-    {
-        auto s1 = lhs.size();
-        auto s2 = rhs.size();
-        return std::tie(s1, lhs) < std::tie(s2, rhs);
-    }
-}
 
 class Dataset {
+public:
+    // some useful aliases
+    using Matrix = Eigen::Array<Operon::Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
+    using Map = Eigen::Map<Matrix const>;
+
+
 private:
     std::vector<Variable> variables;
-    using MatrixType = Eigen::Array<Operon::Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
-    MatrixType values;
+    Matrix values;
+    Map map;
 
     Dataset();
 
+    // check if we own the data or if we are a view over someone else's data
+    bool IsView() const noexcept { return values.data() != map.data(); }
+
+    // read data from a csv file and return a map (view of the data)
+    Map ReadCsv(std::string const& path, bool hasHeader);
+
+    // this method ensures the same ordering of variables in the variables vector
+    // based on index, name, hash value
+    void InitializeVariables(std::vector<std::string> const&);
+
 public:
     Dataset(const std::string& file, bool hasHeader = false);
-    Dataset(const Dataset& rhs)
+
+    Dataset(Dataset const& rhs)
         : variables(rhs.variables)
         , values(rhs.values)
+        , map(rhs.map)
     {
     }
+
     Dataset(Dataset&& rhs) noexcept
         : variables(rhs.variables)
         , values(std::move(rhs.values))
+        , map(std::move(rhs.map))
     {
     }
-    Dataset(const std::vector<Variable>& vars, const std::vector<std::vector<Operon::Scalar>>& vals)
+
+    Dataset(std::vector<Variable> const& vars, std::vector<std::vector<Operon::Scalar>> const& vals)
         : variables(vars)
+        , map(nullptr, vals[0].size(), vals.size())
     {
-        values = MatrixType(vals.front().size(), vals.size());
+        values = Matrix(vals.front().size(), vals.size());
         for (size_t i = 0; i < vals.size(); ++i) {
             for (size_t j = 0; j < vals[i].size(); ++j) {
                 values(j, i) = vals[i][j];
             }
         }
+        new (&map) Map(values.data(), values.rows(), values.cols()); // we use placement new (no allocation)
     }
+
+    Dataset(Eigen::Ref<Matrix const> ref);
+
+    Dataset(Matrix const& vals);
+
+    Dataset(Matrix&& vals);
 
     Dataset& operator=(Dataset rhs)
     {
@@ -86,13 +106,14 @@ public:
         values.swap(rhs.values);
     }
 
-    size_t Rows() const { return values.rows(); }
-    size_t Cols() const { return values.cols(); }
+    size_t Rows() const { return map.rows(); }
+    size_t Cols() const { return map.cols(); }
     std::pair<size_t, size_t> Dimensions() const { return { Rows(), Cols() }; }
 
-    const MatrixType& Values() const { return values; }
+    Eigen::Ref<Matrix const> Values() const { return map; }
 
     std::vector<std::string> VariableNames();
+    void SetVariableNames(std::vector<std::string> const&);
 
     gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
     gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
