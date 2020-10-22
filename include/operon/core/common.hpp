@@ -54,9 +54,9 @@ private:
 
 // a dataset variable described by: name, hash value (for hashing), data column index
 struct Variable {
-    std::string Name;
-    Operon::Hash Hash;
-    size_t Index;
+    std::string Name = "";
+    Operon::Hash Hash = Operon::Hash { 0 };
+    size_t Index = size_t { 0 };
 };
 }
 

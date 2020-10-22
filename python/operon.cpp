@@ -139,8 +139,9 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("RSquared", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
         py::buffer_info x = lhs.request();
         py::buffer_info y = rhs.request();
-        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<decltype(sx)::size_type>(x.size));
-        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<decltype(sy)::size_type>(y.size));
+        using size_type = gsl::span<const Operon::Scalar>::size_type;
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<size_type>(x.size));
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<size_type>(y.size));
         auto r = Operon::RSquared(sx, sy);
         return std::isnan(r) ? Operon::Numeric::Min<Operon::Scalar>() : r;
     });
@@ -148,8 +149,9 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("NormalizedMeanSquaredError", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
         py::buffer_info x = lhs.request();
         py::buffer_info y = rhs.request();
-        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<decltype(sx)::size_type>(x.size));
-        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<decltype(sy)::size_type>(y.size));
+        using size_type = gsl::span<const Operon::Scalar>::size_type;
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<size_type>(x.size));
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<size_type>(y.size));
         auto r = Operon::NormalizedMeanSquaredError(sx, sy);
         return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>() : r;
     });
@@ -157,8 +159,9 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("RootMeanSquaredError", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
         py::buffer_info x = lhs.request();
         py::buffer_info y = rhs.request();
-        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<decltype(sx)::size_type>(x.size));
-        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<decltype(sy)::size_type>(y.size));
+        using size_type = gsl::span<const Operon::Scalar>::size_type;
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<size_type>(x.size));
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<size_type>(y.size));
         auto r = Operon::RootMeanSquaredError(sx, sy);
         return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>()  : r;
     });
@@ -166,8 +169,9 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("MeanSquaredError", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
         py::buffer_info x = lhs.request();
         py::buffer_info y = rhs.request();
-        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<decltype(sx)::size_type>(x.size));
-        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<decltype(sy)::size_type>(y.size));
+        using size_type = gsl::span<const Operon::Scalar>::size_type;
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<size_type>(x.size));
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<size_type>(y.size));
         auto r = Operon::MeanSquaredError(sx, sy);
         return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>() : r;
     });
@@ -499,6 +503,10 @@ PYBIND11_MODULE(pyoperon, m)
     py::class_<Operon::RSquaredEvaluator, Operon::EvaluatorBase>(m, "RSquaredEvaluator")
         .def(py::init<Operon::Problem&>())
         .def("__call__", &Operon::RSquaredEvaluator::operator());
+
+    py::class_<Operon::NormalizedMeanSquaredErrorEvaluator, Operon::EvaluatorBase>(m, "NormalizedMeanSquaredErrorEvaluator")
+        .def(py::init<Operon::Problem&>())
+        .def("__call__", &Operon::NormalizedMeanSquaredErrorEvaluator::operator());
 
     // random generators
     py::class_<Operon::Random::RomuTrio>(m, "RomuTrio")

@@ -43,12 +43,12 @@ public:
     operator()(Operon::RandomGenerator&, Individual& ind) const override
     {
         ++this->fitnessEvaluations;
-        auto& problem = this->problem.get();
-        auto& dataset = problem.GetDataset();
+        auto& problem_ = this->problem.get();
+        auto& dataset = problem_.GetDataset();
         auto& genotype = ind.Genotype;
 
-        auto trainingRange = problem.TrainingRange();
-        auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
+        auto trainingRange = problem_.TrainingRange();
+        auto targetValues = dataset.GetValues(problem_.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         if (this->iterations > 0) {
             auto summary = OptimizeAutodiff(genotype, dataset, targetValues, trainingRange, this->iterations);
@@ -63,7 +63,7 @@ public:
         if (!std::isfinite(nmse) || nmse < LowerBound) {
             nmse = UpperBound;
         }
-        return nmse;
+        return static_cast<ReturnType>(nmse);
     }
 };
 
@@ -110,7 +110,7 @@ public:
         if (!std::isfinite(r2) || r2 > UpperBound || r2 < LowerBound) {
             r2 = 0;
         }
-        return UpperBound - r2 + LowerBound;
+        return static_cast<ReturnType>(UpperBound - r2 + LowerBound);
     }
 };
 }
