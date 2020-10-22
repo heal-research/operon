@@ -57,7 +57,7 @@ void calculateDistance(std::vector<Tree>& trees, Operon::HashFunction f, const s
     fmt::print("Average distance ({}): {}\n", name, calc.Mean());
 }
 
-void calculateDistanceWithSort(std::vector<Tree>& trees, Operon::HashFunction f, const std::string& name) {
+void calculateDistanceWithSort(std::vector<Tree>& trees, const std::string& name) {
     std::vector<Operon::Distance::HashVector> treeHashes;
     treeHashes.reserve(trees.size());
 
@@ -174,9 +174,9 @@ TEST_CASE("Hash collisions") {
         }
         tree.Nodes().clear();
     }
-    double s64 = set64.size();
-    double s32 = set32.size();
-    fmt::print("total nodes: {}, {:.3f}% unique, unique 64-bit hashes: {}, unique 32-bit hashes: {}, collision rate: {:.3f}%\n", totalNodes, s64/totalNodes * 100, s64, s32, (1 - s32/s64) * 100);
+    double s64 = (double)set64.size();
+    double s32 = (double)set32.size();
+    fmt::print("total nodes: {}, {:.3f}% unique, unique 64-bit hashes: {}, unique 32-bit hashes: {}, collision rate: {:.3f}%\n", totalNodes, s64/(double)totalNodes * 100, s64, s32, (1 - s32/s64) * 100);
 }
 } // namespace Test
 } // namespace Operon

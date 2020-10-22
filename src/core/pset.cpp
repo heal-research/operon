@@ -21,6 +21,7 @@
 
 #include <numeric>
 #include <execution>
+#include <gsl/gsl_util>
 
 namespace Operon {
     Node PrimitiveSet::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const
@@ -58,7 +59,7 @@ namespace Operon {
         Node node;
         for (size_t i = 0; i < idx; ++i) {
             auto type = candidates[i];
-            c += GetFrequency(type);
+            c += (double)GetFrequency(type);
 
             if (c > r) {
                 node = Node(type);
@@ -66,7 +67,8 @@ namespace Operon {
                 auto amin = std::max(minArity, GetMinimumArity(type));
                 auto amax = std::min(maxArity, GetMaximumArity(type));
 
-                node.Arity = std::uniform_int_distribution<size_t>(amin, amax)(random);
+                auto arity = std::uniform_int_distribution<size_t>(amin, amax)(random);
+                node.Arity = gsl::narrow_cast<uint16_t>(arity);
 
                 break;
             }

@@ -19,6 +19,7 @@
  */
 
 #include "stat/meanvariance.hpp"
+#include <gsl/gsl_util>
 
 namespace Operon {
     template<typename T>
@@ -59,7 +60,7 @@ namespace Operon {
     template<typename T>
     void MeanVarianceCalculator::Add(gsl::span<const T> vals) 
     {
-        int l = vals.size();
+        auto l = vals.size();
         if (l < 2) {
             if (l == 1) {
                 Add(vals[0]);
@@ -68,37 +69,38 @@ namespace Operon {
         }
         // First pass:
         double s1 = 0.;
-        for (int i = 0; i < l; i++) {
+        for (size_t i = 0; i < l; i++) {
             s1 += vals[i];
         }
-        double om1 = s1 / l;
+        double l1 = static_cast<double>(l);
+        double om1 = s1 / l1;
         // Second pass:
         double om2 = 0., err = 0.;
-        for (int i = 0; i < l; i++) {
+        for (size_t i = 0; i < l; i++) {
             double v = vals[i] - om1;
             om2 += v * v;
             err += v;
         }
         s1 += err;
-        om2 += err / l;
+        om2 += err / l1;
         if (n <= 0) {
-            n = l;
+            n = l1;
             sum = s1;
             m2 = om2;
             return;
         }
-        double tmp = n * s1 - sum * l;
+        double tmp = n * s1 - sum * l1;
         double oldn = n; // tmp copy
-        n += l;
+        n += l1;
         sum += s1 + err;
-        m2 += om2 + tmp * tmp / (l * n * oldn);
+        m2 += om2 + tmp * tmp / (l1 * n * oldn);
     }
 
     template<typename T>
     void MeanVarianceCalculator::Add(gsl::span<const T> vals, gsl::span<const T> weights) 
     {
         EXPECT(vals.size() == weights.size());
-        for (int i = 0, end = vals.size(); i < end; i++) {
+        for (size_t i = 0, end = vals.size(); i < end; i++) {
             // TODO: use a two-pass update as in the other put
             Add(vals[i], weights[i]);
         }

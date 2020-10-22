@@ -89,14 +89,14 @@ public:
         auto& generator = GetGenerator();
         auto& reinserter = GetReinserter();
         // easier to work with indices
-        std::vector<gsl::index> indices(std::max(config.PopulationSize, config.PoolSize));
+        std::vector<size_t> indices(std::max(config.PopulationSize, config.PoolSize));
         std::iota(indices.begin(), indices.end(), 0L);
         // random seeds for each thread
         std::vector<Operon::RandomGenerator::result_type> seeds(config.PopulationSize);
         std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
 
         auto idx = 0;
-        auto create = [&](gsl::index i) {
+        auto create = [&](size_t i) {
             // create one random generator per thread
             Operon::RandomGenerator rndlocal { seeds[i] };
             parents[i].Genotype = initializer(rndlocal);
@@ -121,7 +121,7 @@ public:
         // flag to signal algorithm termination
         std::atomic_bool terminate = false;
         // produce some offspring
-        auto iterate = [&](gsl::index i) {
+        auto iterate = [&](size_t i) {
             Operon::RandomGenerator rndlocal { seeds[i] };
 
             while (!(terminate = generator.Terminate())) {

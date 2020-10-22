@@ -52,7 +52,7 @@ struct NodeTypes {
     // magic number keeping track of the number of different node types
     static constexpr size_t Count = 14;
     // returns the index of the given type in the NodeType enum
-    static gsl::index GetIndex(NodeType type)
+    static size_t GetIndex(NodeType type)
     {
         return std::bitset<Count>(static_cast<utype>(type) - 1).count();
     }
@@ -66,17 +66,17 @@ inline NodeType& operator&=(NodeType& lhs, NodeType rhs)
 {
     lhs = lhs & rhs;
     return lhs;
-};
+}
 inline NodeType& operator|=(NodeType& lhs, NodeType rhs)
 {
     lhs = lhs | rhs;
     return lhs;
-};
+}
 inline NodeType& operator^=(NodeType& lhs, NodeType rhs)
 {
     lhs = lhs ^ rhs;
     return lhs;
-};
+}
 
 namespace {
     std::array<std::string, NodeTypes::Count> nodeNames = { "+", "*", "-", "/", "Log", "Exp", "Sin", "Cos", "Tan", "Sqrt", "Cbrt", "Square", "Constant", "Variable" };

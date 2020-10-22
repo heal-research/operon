@@ -50,8 +50,8 @@
 namespace py = pybind11;
 
 // enable pass-by-reference semantics for this vector type
-PYBIND11_MAKE_OPAQUE(std::vector<Operon::Variable>);
-PYBIND11_MAKE_OPAQUE(std::vector<Operon::Individual>);
+PYBIND11_MAKE_OPAQUE(std::vector<Operon::Variable>)
+PYBIND11_MAKE_OPAQUE(std::vector<Operon::Individual>)
 
 template<typename T>
 Operon::Dataset MakeDataset(py::array_t<T> array)
@@ -77,7 +77,8 @@ Operon::Dataset MakeDataset(py::array_t<T> array)
 template<typename T>
 py::array_t<T const> MakeView(gsl::span<T const> view)
 {
-    py::array_t<T const> arr(view.size(), view.data(), py::capsule(view.data()));
+    auto sz = static_cast<pybind11::ssize_t>(view.size());
+    py::array_t<T const> arr(sz, view.data(), py::capsule(view.data()));
     ENSURE(arr.owndata() == false);
     ENSURE(arr.data() == view.data());
     return arr;
@@ -95,10 +96,10 @@ PYBIND11_MODULE(pyoperon, m)
     // free functions
     // we use a lambda to avoid defining a fourth arg for the defaulted C++ function arg
     m.def("Evaluate", [](Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r) {
-        auto result = py::array_t<Operon::Scalar>(r.Size());
+        auto result = py::array_t<Operon::Scalar>(static_cast<pybind11::ssize_t>(r.Size()));
         auto buf = result.request();
-        auto res = gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, buf.size);
-        Operon::Evaluate(t, d, r, res, (Operon::Scalar*)nullptr);
+        auto res = gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, r.Size());
+        Operon::Evaluate(t, d, r, res, static_cast<Operon::Scalar*>(nullptr));
         return result;
         }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
 
@@ -122,7 +123,7 @@ PYBIND11_MODULE(pyoperon, m)
         else if (metric == "rmse") func = Operon::RootMeanSquaredError;
         else throw std::runtime_error("Unsupported error metric");
 
-        auto result = py::array_t<double>(trees.size());
+        auto result = py::array_t<double>(static_cast<pybind11::ssize_t>(trees.size()));
         auto buf = result.request();
         auto values = d.GetValues(target).subspan(r.Start(), r.Size());
 
@@ -138,8 +139,8 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("RSquared", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
         py::buffer_info x = lhs.request();
         py::buffer_info y = rhs.request();
-        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, x.size);
-        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, y.size);
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<decltype(sx)::size_type>(x.size));
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<decltype(sy)::size_type>(y.size));
         auto r = Operon::RSquared(sx, sy);
         return std::isnan(r) ? Operon::Numeric::Min<Operon::Scalar>() : r;
     });
@@ -147,8 +148,8 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("NormalizedMeanSquaredError", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
         py::buffer_info x = lhs.request();
         py::buffer_info y = rhs.request();
-        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, x.size);
-        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, y.size);
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<decltype(sx)::size_type>(x.size));
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<decltype(sy)::size_type>(y.size));
         auto r = Operon::NormalizedMeanSquaredError(sx, sy);
         return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>() : r;
     });
@@ -156,8 +157,8 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("RootMeanSquaredError", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
         py::buffer_info x = lhs.request();
         py::buffer_info y = rhs.request();
-        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, x.size);
-        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, y.size);
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<decltype(sx)::size_type>(x.size));
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<decltype(sy)::size_type>(y.size));
         auto r = Operon::RootMeanSquaredError(sx, sy);
         return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>()  : r;
     });
@@ -165,8 +166,8 @@ PYBIND11_MODULE(pyoperon, m)
     m.def("MeanSquaredError", [](py::array_t<Operon::Scalar> lhs, py::array_t<Operon::Scalar> rhs) {
         py::buffer_info x = lhs.request();
         py::buffer_info y = rhs.request();
-        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, x.size);
-        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, y.size);
+        gsl::span<const Operon::Scalar> sx((Operon::Scalar*)x.ptr, static_cast<decltype(sx)::size_type>(x.size));
+        gsl::span<const Operon::Scalar> sy((Operon::Scalar*)y.ptr, static_cast<decltype(sy)::size_type>(y.size));
         auto r = Operon::MeanSquaredError(sx, sy);
         return std::isnan(r) ? Operon::Numeric::Max<Operon::Scalar>() : r;
     });
@@ -179,8 +180,8 @@ PYBIND11_MODULE(pyoperon, m)
     py::class_<Operon::Individual>(m, "Individual")
         .def(py::init<>())
         .def(py::init<size_t>())
-        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Individual::operator[]))
-        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Individual::operator[], py::const_))
+        .def("__getitem__", py::overload_cast<size_t>(&Operon::Individual::operator[]))
+        .def("__getitem__", py::overload_cast<size_t>(&Operon::Individual::operator[], py::const_))
         .def_readwrite("Genotype", &Operon::Individual::Genotype)
         .def("SetFitness", [](Operon::Individual& self, Operon::Scalar f, size_t i) { self[i] = f; })
         .def("GetFitness", [](Operon::Individual& self, size_t i) { return self[i]; });
@@ -314,11 +315,11 @@ PYBIND11_MODULE(pyoperon, m)
         .def_property_readonly("Length", &Operon::Tree::Length)
         .def_property_readonly("VisitationLength", &Operon::Tree::VisitationLength)
         .def_property_readonly("Depth", static_cast<size_t (Operon::Tree::*)() const>(&Operon::Tree::Depth))
-//        .def_property_readonly("Depth", static_cast<size_t (Operon::Tree::*)(gsl::index) const>(&Operon::Tree::Depth))
+//        .def_property_readonly("Depth", static_cast<size_t (Operon::Tree::*)(size_t) const>(&Operon::Tree::Depth))
         .def_property_readonly("Empty", &Operon::Tree::Empty)
         .def_property_readonly("HashValue", &Operon::Tree::HashValue)
-        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Tree::operator[]))
-        .def("__getitem__", py::overload_cast<gsl::index>(&Operon::Tree::operator[], py::const_))
+        .def("__getitem__", py::overload_cast<size_t>(&Operon::Tree::operator[]))
+        .def("__getitem__", py::overload_cast<size_t>(&Operon::Tree::operator[], py::const_))
         .def(py::pickle(
             [](Operon::Tree const& tree) {
                 return py::make_tuple(tree.Nodes());
@@ -362,7 +363,7 @@ PYBIND11_MODULE(pyoperon, m)
         .def_property("VariableNames", &Operon::Dataset::VariableNames, &Operon::Dataset::SetVariableNames)
         .def("GetValues", [](Operon::Dataset const& self, std::string const& name) { return MakeView(self.GetValues(name)); })
         .def("GetValues", [](Operon::Dataset const& self, Operon::Hash hash) { return MakeView(self.GetValues(hash)); })
-        .def("GetValues", [](Operon::Dataset const& self, gsl::index index) { return MakeView(self.GetValues(index)); })
+        .def("GetValues", [](Operon::Dataset const& self, int index) { return MakeView(self.GetValues(index)); })
         .def("GetVariable", py::overload_cast<const std::string&>(&Operon::Dataset::GetVariable, py::const_))
         .def("GetVariable", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetVariable, py::const_))
         .def_property_readonly("Variables", [](Operon::Dataset const& self) {
@@ -421,6 +422,14 @@ PYBIND11_MODULE(pyoperon, m)
     py::class_<Operon::ReplaceSubtreeMutation, Operon::MutatorBase>(m, "ReplaceSubtreeMutation")
         .def(py::init<Operon::CreatorBase&, size_t, size_t>())
         .def("__call__", &Operon::ReplaceSubtreeMutation::operator());
+
+    py::class_<Operon::RemoveSubtreeMutation, Operon::MutatorBase>(m, "RemoveSubtreeMutation")
+        .def(py::init<Operon::PrimitiveSet>())
+        .def("__call__", &Operon::RemoveSubtreeMutation::operator());
+
+    py::class_<Operon::InsertSubtreeMutation, Operon::MutatorBase>(m, "InsertSubtreeMutation")
+        .def(py::init<Operon::CreatorBase&, size_t, size_t>())
+        .def("__call__", &Operon::InsertSubtreeMutation::operator());
 
     py::class_<Operon::MultiMutation, Operon::MutatorBase>(m, "MultiMutation")
         .def(py::init<>())

@@ -61,7 +61,7 @@ Operon::Vector<T> Evaluate(Tree const& tree, Dataset const& dataset, Range const
 }
 
 template <typename T, NodeType N>
-constexpr auto eval = detail::dispatch_op<T, N>;
+constexpr auto dispatch_op = detail::dispatch_op<T, N>;
 
 template <typename T>
 void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::span<T> result, T const* const parameters = nullptr) noexcept
@@ -72,7 +72,7 @@ void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::
 
     Operon::Vector<T> params(nodes.size());
     Operon::Vector<gsl::span<const Operon::Scalar>> vals(nodes.size());
-    gsl::index idx = 0;
+    size_t idx = 0;
 
     bool treeContainsNonlinearSymbols = false;
     for (size_t i = 0; i < nodes.size(); ++i) {
@@ -106,19 +106,19 @@ void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::
             } else {
                 switch (s.Type) {
                 case NodeType::Add: {
-                    eval<T, NodeType::Add>(m, nodes, i);
+                    dispatch_op<T, NodeType::Add>(m, nodes, i);
                     break;
                 }
                 case NodeType::Sub: {
-                    eval<T, NodeType::Sub>(m, nodes, i);
+                    dispatch_op<T, NodeType::Sub>(m, nodes, i);
                     break;
                 }
                 case NodeType::Mul: {
-                    eval<T, NodeType::Mul>(m, nodes, i);
+                    dispatch_op<T, NodeType::Mul>(m, nodes, i);
                     break;
                 }
                 case NodeType::Div: {
-                    eval<T, NodeType::Div>(m, nodes, i);
+                    dispatch_op<T, NodeType::Div>(m, nodes, i);
                     break;
                 }
                 default: {

@@ -22,10 +22,8 @@
 
 #include "core/common.hpp"
 #include "stat/meanvariance.hpp"
-#include <Eigen/Core>
-#include <Eigen/Dense>
-#include <Eigen/Eigen>
 #include <algorithm>
+#include <Eigen/Dense>
 #include <exception>
 #include <gsl/gsl_util>
 #include <numeric>
@@ -77,13 +75,13 @@ public:
 
     Dataset(std::vector<Variable> const& vars, std::vector<std::vector<Operon::Scalar>> const& vals)
         : variables(vars)
-        , map(nullptr, vals[0].size(), vals.size())
+        , map(nullptr, static_cast<Eigen::Index>(vals[0].size()), static_cast<Eigen::Index>(vals.size()))
     {
-        values = Matrix(vals.front().size(), vals.size());
-        for (size_t i = 0; i < vals.size(); ++i) {
-            for (size_t j = 0; j < vals[i].size(); ++j) {
-                values(j, i) = vals[i][j];
-            }
+        values = Matrix(map.rows(), map.cols());
+
+        for (Eigen::Index i = 0; i < values.cols(); ++i) {
+            auto m = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor> const>(vals[(size_t)i].data(), map.rows());
+            values.col(i) = m;
         }
         new (&map) Map(values.data(), values.rows(), values.cols()); // we use placement new (no allocation)
     }
@@ -106,8 +104,8 @@ public:
         values.swap(rhs.values);
     }
 
-    size_t Rows() const { return map.rows(); }
-    size_t Cols() const { return map.cols(); }
+    size_t Rows() const { return (size_t)map.rows(); }
+    size_t Cols() const { return (size_t)map.cols(); }
     std::pair<size_t, size_t> Dimensions() const { return { Rows(), Cols() }; }
 
     Eigen::Ref<Matrix const> Values() const { return map; }
@@ -117,7 +115,7 @@ public:
 
     gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
     gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
-    gsl::span<const Operon::Scalar> GetValues(gsl::index index) const noexcept;
+    gsl::span<const Operon::Scalar> GetValues(int index) const noexcept;
     gsl::span<const Operon::Scalar> GetValues(Variable const& variable) const noexcept { return GetValues(variable.Hash); }
 
     const std::optional<Variable> GetVariable(const std::string& name) const noexcept;
@@ -127,10 +125,10 @@ public:
 
     void Shuffle(Operon::RandomGenerator& random);
 
-    void Normalize(gsl::index i, Range range);
+    void Normalize(size_t i, Range range);
 
     // standardize column i using mean and stddev calculated over the specified range
-    void Standardize(gsl::index i, Range range);
+    void Standardize(size_t i, Range range);
 };
 }
 
