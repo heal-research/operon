@@ -145,7 +145,7 @@ int main(int argc, char** argv)
                 primitiveSetConfig &= mask;
             }
             if (key == "threads") {
-                threads = kv.as<size_t>();
+                threads = static_cast<decltype(threads)>(kv.as<size_t>());
             }
             if (key == "show-primitives") {
                 showPrimitiveSet = true;
@@ -408,7 +408,7 @@ int main(int argc, char** argv)
         auto targetTest = targetValues.subspan(testRange.Start(), testRange.Size());
 
         // some boilerplate for reporting results
-        const gsl::index idx { 0 };
+        const size_t idx { 0 };
         auto getBest = [&](const gsl::span<const Ind> pop) -> Ind {
             auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
             return *minElem;
@@ -440,11 +440,11 @@ int main(int argc, char** argv)
             auto rmseTrain = MeanSquaredError(estimatedTrain, targetTrain);
             auto rmseTest = MeanSquaredError(estimatedTest, targetTest);
 
-            auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
-            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
+            auto avgLength = (double)std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / (double)pop.size();
+            auto avgQuality = (double)std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [=](const auto& ind) { return ind[idx]; }) / (double)pop.size();
 
             auto t1 = std::chrono::high_resolution_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1e6;
+            auto elapsed = (double)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1e6;
 
             auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
 

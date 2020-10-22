@@ -30,7 +30,7 @@
 namespace Operon {
 Tree& Tree::UpdateNodes()
 {
-    for (size_t i = 0; i < nodes.size(); ++i) {
+    for (uint16_t i = 0; i < nodes.size(); ++i) {
         auto& s = nodes[i];
 
         s.Depth = 1;
@@ -67,7 +67,7 @@ Tree& Tree::Reduce()
         for (auto it = Children(i); it.HasNext(); ++it) {
             if (s.HashValue == it->HashValue) {
                 it->IsEnabled = false;
-                s.Arity += it->Arity - 1;
+                s.Arity += gsl::narrow_cast<uint16_t>(it->Arity - 1);
                 reduced = true;
             }
         }
@@ -90,12 +90,12 @@ Tree& Tree::Sort()
     // preallocate memory to reduce fragmentation
     Operon::Vector<Operon::Node> sorted = nodes;
 
-    Operon::Vector<int> children;
+    Operon::Vector<size_t> children;
     children.reserve(nodes.size());
 
     auto start = nodes.begin();
 
-    for (size_t i = 0; i < nodes.size(); ++i) {
+    for (uint16_t i = 0; i < nodes.size(); ++i) {
         auto& s = nodes[i];
 
         if (s.IsLeaf()) {
@@ -112,12 +112,12 @@ Tree& Tree::Sort()
                 for (auto it = Children(i); it.HasNext(); ++it) {
                     children.push_back(it.Index());
                 }
-                std::sort(children.begin(), children.end(), [&](int a, int b) { return nodes[a] < nodes[b]; }); // sort child indices
+                std::sort(children.begin(), children.end(), [&](auto a, auto b) { return nodes[a] < nodes[b]; }); // sort child indices
 
                 auto pos = sorted.begin() + i - size;
                 for (auto j : children) {
                     auto& c = nodes[j];
-                    std::copy_n(start + j - c.Length, c.Length + 1, pos);
+                    std::copy_n(start + gsl::narrow_cast<long>(j) - c.Length, c.Length + 1, pos);
                     pos += c.Length + 1;
                 }
                 children.clear();
@@ -128,12 +128,12 @@ Tree& Tree::Sort()
     return this->UpdateNodes();
 }
 
-std::vector<gsl::index> Tree::ChildIndices(gsl::index i) const
+std::vector<size_t> Tree::ChildIndices(size_t i) const
 {
     if (nodes[i].IsLeaf()) {
-        return std::vector<gsl::index> {};
+        return std::vector<size_t> {};
     }
-    std::vector<gsl::index> indices(nodes[i].Arity);
+    std::vector<size_t> indices(nodes[i].Arity);
     for (auto it = Children(i); it.HasNext(); ++it) {
         indices[it.Count()] = it.Index();
     }
@@ -156,7 +156,7 @@ void Tree::SetCoefficients(const gsl::span<const double> coefficients)
     size_t idx = 0;
     for (auto& s : nodes) {
         if (s.IsLeaf()) {
-            s.Value = coefficients[idx++];
+            s.Value = gsl::narrow_cast<Operon::Scalar>(coefficients[idx++]);
         }
     }
 }

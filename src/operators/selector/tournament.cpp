@@ -1,10 +1,10 @@
 #include "operators/selection.hpp"
 
 namespace Operon {
-gsl::index
+size_t
 TournamentSelector::operator()(Operon::RandomGenerator& random) const
 {
-    std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
+    std::uniform_int_distribution<size_t> uniformInt(0, this->population.size() - 1);
     auto best = uniformInt(random);
 
     for (size_t i = 1; i < tournamentSize; ++i) {
@@ -16,10 +16,10 @@ TournamentSelector::operator()(Operon::RandomGenerator& random) const
     return best;
 }
 
-gsl::index
+size_t
 RankTournamentSelector::operator()(Operon::RandomGenerator& random) const
 {
-    std::uniform_int_distribution<gsl::index> uniformInt(0, this->population.size() - 1);
+    std::uniform_int_distribution<size_t> uniformInt(0, this->population.size() - 1);
     auto best = uniformInt(random);
     for (size_t i = 1; i < tournamentSize; ++i) {
         auto curr = uniformInt(random);

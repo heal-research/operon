@@ -20,8 +20,6 @@
 #ifndef DIVERSITY_HPP
 #define DIVERSITY_HPP
 
-#include <Eigen/Core>
-
 #include "core/operator.hpp"
 #include "core/stats.hpp"
 #include "core/distance.hpp"
@@ -54,13 +52,13 @@ public:
         hashes.clear();
         hashes.resize(pop.size());
 
-        std::vector<gsl::index> indices(pop.size());
+        std::vector<size_t> indices(pop.size());
         std::iota(indices.begin(), indices.end(), 0);
 
         ExecutionPolicy ep;
 
         // hybrid (strict) hashing
-        std::for_each(ep, indices.begin(), indices.end(), [&](gsl::index i) {
+        std::for_each(ep, indices.begin(), indices.end(), [&](size_t i) {
             hashes[i] = MakeHashes<F>(pop[i].Genotype, mode);
         });
 
@@ -77,7 +75,7 @@ public:
 
                 if (k == distances.size() || c == n) {
                     k = 0;
-                    std::for_each(ep, indices.begin(), indices.end(), [&](gsl::index idx) {
+                    std::for_each(ep, indices.begin(), indices.end(), [&](size_t idx) {
                         auto [a, b] = pairs[idx];
                         distances[idx] = Operon::Distance::Jaccard(hashes[a], hashes[b]);
                     });

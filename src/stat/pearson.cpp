@@ -92,12 +92,12 @@ namespace Operon {
         while(i < xdim) {
             double xv = x[i], yv = y[i];
             // Delta to previous mean
-            double deltaX = xv * i - sumX;
-            double deltaY = yv * i - sumY;
+            double deltaX = xv * static_cast<double>(i) - sumX;
+            double deltaY = yv * static_cast<double>(i) - sumY;
             // Increment count first
-            double oldi = i;
+            double oldi = static_cast<double>(i);
             ++i;
-            double f = 1. / (i * oldi);
+            double f = 1. / (static_cast<double>(i) * oldi);
             // Update
             sumXX += f * deltaX * deltaX;
             sumYY += f * deltaY * deltaY;

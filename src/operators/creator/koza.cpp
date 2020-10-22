@@ -31,7 +31,7 @@ Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t
     size_t minFunctionArity = std::get<0>(t);
     size_t maxFunctionArity = std::get<1>(t);
 
-    std::normal_distribution<double> normalReal(0, 1);
+    std::normal_distribution<Operon::Scalar> normalReal(0, 1);
     auto init = [&](Node& node) {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {

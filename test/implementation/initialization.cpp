@@ -49,7 +49,7 @@ TEST_CASE("Sample nodes from grammar")
     std::vector<double> actual(NodeTypes::Count, 0);
     for (size_t i = 0; i < observed.size(); ++i) {
         auto nodeType = static_cast<NodeType>(1u << i);
-        actual[NodeTypes::GetIndex(nodeType)] = grammar.GetFrequency(nodeType);
+        actual[NodeTypes::GetIndex(nodeType)] = (double)grammar.GetFrequency(nodeType);
     }
     auto freqSum = std::reduce(std::execution::seq, actual.begin(), actual.end(), 0.0, std::plus {});
     std::transform(std::execution::seq, actual.begin(), actual.end(), actual.begin(), [&](double v) { return v / freqSum; });
@@ -65,7 +65,7 @@ TEST_CASE("Sample nodes from grammar")
     }
     chi *= nTrials;
 
-    auto criticalValue = r + 2 * std::sqrt(r);
+    auto criticalValue = (double)r + 2 * std::sqrt(r);
     fmt::print("chi = {}, critical value = {}\n", chi, criticalValue);
     REQUIRE(chi <= criticalValue);
 }
@@ -165,13 +165,13 @@ TEST_CASE("GROW")
 
             for (const auto& tree : trees) {
                 counts[tree.Depth()] += 1;
-                lengths[tree.Depth()] += tree.Length();
+                lengths[tree.Depth()] += (double)tree.Length();
             }
         }
 
         for (size_t i = 0; i < counts.size(); ++i) {
             if (counts[i] > 0) {
-                lengths[i] /= counts[i];
+                lengths[i] /= (double)counts[i];
             }
         }
 
@@ -246,7 +246,7 @@ TEST_CASE("BTC")
             std::transform(trees.begin(), trees.end(), actualLengths.begin(), [](const auto& t) { return t.Length(); });
             auto cnt = CalculateHistogram(actualLengths);
             for (size_t j = 0; j < cnt.size(); ++j) {
-                counts[j] += cnt[j];
+                counts[j] += (double)cnt[j];
             }
         }
 
@@ -269,13 +269,14 @@ TEST_CASE("BTC")
             std::vector<size_t> shapes(trees.size());
             std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t> {}, [](const auto& node) { return node.Length + 1; }); });
 
-            avgShape += std::reduce(std::execution::seq, shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
+            auto sum = std::reduce(std::execution::seq, shapes.begin(), shapes.end());
+            avgShape += static_cast<double>(sum) / static_cast<double>(trees.size());
             auto cnt = CalculateHistogram(shapes);
             if (counts.size() < cnt.size()) {
                 counts.resize(cnt.size());
             }
             for (size_t j = 0; j < cnt.size(); ++j) {
-                counts[j] += cnt[j];
+                counts[j] += (double)cnt[j];
             }
         }
 
@@ -350,7 +351,7 @@ TEST_CASE("PTC2")
             std::transform(trees.begin(), trees.end(), actualLengths.begin(), [](const auto& t) { return t.Length(); });
             auto cnt = CalculateHistogram(actualLengths);
             for (size_t j = 0; j < cnt.size(); ++j) {
-                counts[j] += cnt[j];
+                counts[j] += static_cast<double>(cnt[j]);
             }
         }
 
@@ -372,13 +373,14 @@ TEST_CASE("PTC2")
             auto trees = GenerateTrees(random, ptc, lengths);
             std::vector<size_t> shapes(trees.size());
             std::transform(trees.begin(), trees.end(), shapes.begin(), [](const auto& t) { return std::transform_reduce(std::execution::seq, t.Nodes().begin(), t.Nodes().end(), 0UL, std::plus<size_t> {}, [](const auto& node) { return node.Length + 1; }); });
-            avgShape += std::reduce(std::execution::seq, shapes.begin(), shapes.end()) / static_cast<double>(trees.size());
+            auto sum = std::reduce(std::execution::seq, shapes.begin(), shapes.end());
+            avgShape += static_cast<double>(sum) / static_cast<double>(trees.size());
             auto cnt = CalculateHistogram(shapes);
             if (counts.size() < cnt.size()) {
                 counts.resize(cnt.size());
             }
             for (size_t j = 0; j < cnt.size(); ++j) {
-                counts[j] += cnt[j];
+                counts[j] += static_cast<double>(cnt[j]);
             }
         }
 

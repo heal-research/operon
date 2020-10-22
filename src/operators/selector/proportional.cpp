@@ -2,7 +2,7 @@
 
 namespace Operon {
 
-gsl::index
+size_t
 ProportionalSelector::operator()(Operon::RandomGenerator& random) const
 {
     std::uniform_real_distribution<Operon::Scalar> uniformReal(0, fitness.back().first - std::numeric_limits<Operon::Scalar>::epsilon());

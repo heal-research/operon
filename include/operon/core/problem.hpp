@@ -49,17 +49,17 @@ public:
     {
     }
 
-    Problem& Target(std::string const& target) {
-        auto var = dataset.GetVariable(target);
+    Problem& Target(std::string const& tgt) {
+        auto var = dataset.GetVariable(tgt);
         EXPECT(var.has_value());
-        this->target = var.value();
+        target = var.value();
         return *this;
     }
 
-    Problem& Target(Variable const& target) {
-        auto var = dataset.GetVariable(target.Hash);
+    Problem& Target(Variable const& tgt) {
+        auto var = dataset.GetVariable(tgt.Hash);
         EXPECT(var.has_value());
-        this->target = target;
+        this->target = tgt;
         return *this;
     }
 
