@@ -135,7 +135,7 @@ TEST_CASE("GROW")
     {
         std::vector<Tree> trees(n);
         std::generate(trees.begin(), trees.end(), [&]() { return grow(random, 0, minDepth, maxDepth); });
-        auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.Length(); });
+        auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), size_t { 0 }, std::plus<size_t> {}, [](auto& tree) { return tree.Length(); });
         fmt::print("Symbol frequencies: \n");
         auto symbolFrequencies = CalculateSymbolFrequencies(trees);
 
@@ -222,7 +222,7 @@ TEST_CASE("BTC")
     {
         std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, btc, lengths, maxDepth);
-        auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.Length(); });
+        auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), size_t { 0 }, std::plus<size_t> {}, [](auto& tree) { return tree.Length(); });
         fmt::print("Symbol frequencies: \n");
         auto symbolFrequencies = CalculateSymbolFrequencies(trees);
 
@@ -326,7 +326,7 @@ TEST_CASE("PTC2")
     {
         std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, ptc, lengths);
-        auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0.0, std::plus<size_t> {}, [](const auto& tree) { return tree.Length(); });
+        auto totalLength = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), size_t { 0 }, std::plus<size_t> {}, [](auto& tree) { return tree.Length(); });
         auto symbolFrequencies = CalculateSymbolFrequencies(trees);
 
         fmt::print("Symbol frequencies: \n");

@@ -164,8 +164,7 @@ TEST_CASE("Hash collisions") {
 
     std::unordered_set<uint64_t> set64; 
     std::unordered_set<uint32_t> set32; 
-
-    auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<>{}, [](auto& tree) { return tree.Length(); });
+    auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), size_t { 0 }, std::plus<size_t> {}, [](auto& tree) { return tree.Length(); });
 
     for(auto& tree : trees) {
         for(auto& node : tree.Nodes()) {

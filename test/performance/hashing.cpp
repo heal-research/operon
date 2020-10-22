@@ -59,7 +59,9 @@ TEST_CASE("Hashing performance") {
     b.relative(true).performanceCounters(true).minEpochIterations(10);
     std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), 0, maxDepth); });
 
-    auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+    const auto countTotalNodes = [&]() { return std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), size_t { 0 }, std::plus<size_t> {}, [](auto& tree) { return tree.Length(); }); };
+
+    auto totalNodes = countTotalNodes();
 
     std::vector<std::pair<Operon::HashFunction, std::string>> hashFunctions {
         { Operon::HashFunction::XXHash,    "XXHash" },
@@ -105,7 +107,7 @@ TEST_CASE("Hashing performance") {
 
         for (size_t i = 1; i <= maxLength; ++i) {
             std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); });
-            totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+            totalNodes = countTotalNodes();
             b.complexityN(i).batch(totalNodes).run("strict", [&]() { 
                 ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(); }));
             });
@@ -120,7 +122,7 @@ TEST_CASE("Hashing performance") {
 
         for (size_t i = 1; i <= maxLength; ++i) {
             std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); });
-            totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+            totalNodes = countTotalNodes();
             b.complexityN(i).batch(totalNodes).run("relaxed", [&]() { 
                 ankerl::nanobench::doNotOptimizeAway(std::for_each(trees.begin(), trees.end(), [](auto t) { t.Sort(); }));
             });
