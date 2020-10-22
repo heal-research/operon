@@ -189,7 +189,7 @@ Tree ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree t
     }
 
     // pick a random function node
-    auto idx = std::uniform_int_distribution<long>(1, nFunc)(random);
+    auto idx = std::uniform_int_distribution<std::make_signed_t<size_t>>(1, nFunc)(random);
 
     // find the function node in the nodes array
     size_t i = 0;

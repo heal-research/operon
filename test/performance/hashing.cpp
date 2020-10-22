@@ -34,7 +34,7 @@ namespace Operon {
 namespace Test {
 
 TEST_CASE("Hashing performance") {
-    size_t n = 1000;
+    size_t nTrees = 1000;
     size_t maxLength = 200;
     size_t maxDepth = 1000;
 
@@ -47,12 +47,12 @@ TEST_CASE("Hashing performance") {
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    std::uniform_int_distribution<size_t> dist(0, n-1);
+    std::uniform_int_distribution<size_t> dist(0, nTrees-1);
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
-    std::vector<Tree> trees(n);
+    std::vector<Tree> trees(nTrees);
     auto btc = BalancedTreeCreator { grammar, inputs };
 
     ankerl::nanobench::Bench b;
@@ -102,9 +102,6 @@ TEST_CASE("Hashing performance") {
     }
 
     SUBCASE("strict hashing complexity") {
-        ankerl::nanobench::Bench b;
-        b.relative(true).performanceCounters(true);
-
         for (size_t i = 1; i <= maxLength; ++i) {
             std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); });
             totalNodes = countTotalNodes();
@@ -117,9 +114,6 @@ TEST_CASE("Hashing performance") {
     }
 
     SUBCASE("relaxed hashing complexity") {
-        ankerl::nanobench::Bench b;
-        b.relative(true).performanceCounters(true);
-
         for (size_t i = 1; i <= maxLength; ++i) {
             std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); });
             totalNodes = countTotalNodes();

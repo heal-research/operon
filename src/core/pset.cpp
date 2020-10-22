@@ -56,7 +56,7 @@ namespace Operon {
         auto r = std::uniform_real_distribution<double>(0., sum)(random);
         auto c = 0.0;
 
-        Node node;
+        Node node(NodeType::Constant);
         for (size_t i = 0; i < idx; ++i) {
             auto type = candidates[i];
             c += (double)GetFrequency(type);
