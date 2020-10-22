@@ -29,7 +29,7 @@ public:
     explicit TournamentSelector(ComparisonCallback&& cb) : SelectorBase(cb){ } 
     explicit TournamentSelector(ComparisonCallback const& cb) : SelectorBase(cb){ } 
 
-    gsl::index operator()(Operon::RandomGenerator& random) const override;
+    size_t operator()(Operon::RandomGenerator& random) const override;
     void SetTournamentSize(size_t size) { tournamentSize = size; }
     size_t GetTournamentSize() const { return tournamentSize; }
 
@@ -42,7 +42,7 @@ public:
     explicit RankTournamentSelector(ComparisonCallback&& cb) : SelectorBase(cb){ } 
     explicit RankTournamentSelector(ComparisonCallback const& cb) : SelectorBase(cb){ } 
 
-    gsl::index operator()(Operon::RandomGenerator& random) const override;
+    size_t operator()(Operon::RandomGenerator& random) const override;
 
     void Prepare(const gsl::span<const Individual> pop) const override;
 
@@ -60,27 +60,27 @@ public:
     explicit ProportionalSelector(ComparisonCallback&& cb) : SelectorBase(cb), idx(0) { } 
     explicit ProportionalSelector(ComparisonCallback const& cb) : SelectorBase(cb), idx(0) { } 
 
-    gsl::index operator()(Operon::RandomGenerator& random) const override;
+    size_t operator()(Operon::RandomGenerator& random) const override;
     
     void Prepare(const gsl::span<const Individual> pop) const override;
 
-    void SetObjIndex(gsl::index objIndex) { idx = objIndex; } 
+    void SetObjIndex(size_t objIndex) { idx = objIndex; }
 
 private:
     void Prepare() const; 
 
     // discrete CDF of the population fitness values
     mutable std::vector<std::pair<Operon::Scalar, size_t>> fitness;
-    gsl::index idx = 0;
+    size_t idx = 0;
 };
 
 class RandomSelector : public SelectorBase {
 public:
     RandomSelector() : SelectorBase(nullptr) { }
 
-    gsl::index operator()(Operon::RandomGenerator& random) const override
+    size_t operator()(Operon::RandomGenerator& random) const override
     {
-        return std::uniform_int_distribution<gsl::index>(0, this->population.size() - 1)(random);
+        return std::uniform_int_distribution<size_t>(0, this->population.size() - 1)(random);
     }
 };
 

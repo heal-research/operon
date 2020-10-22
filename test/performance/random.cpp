@@ -40,6 +40,6 @@ TEST_CASE("Random number generators") {
     bench<Operon::Random::RomuTrio>(&b, "Operon::RandomGenerator::RomuTrio");
     bench<Operon::Random::Sfc64>(&b, "Operon::RandomGenerator::Sfc64");
     bench<nb::Rng>(&b, "ankerl::nanobench::Rng");
-};
+}
 
 }

@@ -72,8 +72,9 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
     ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     ${PROJECT_SOURCE_DIR}/thirdparty/nanobench/include
-    ${PROJECT_SOURCE_DIR}/thirdparty/
+    ${PROJECT_SOURCE_DIR}/thirdparty/xxhash
 )
+message(STATUS "THIRDPARTY_INCLUDE_DIRS: ${THIRDPARTY_INCLUDE_DIRS}")
 
 # compile and link-time options
 set(BUILD_TESTS_DESCRIPTION          "Build unit tests.")
@@ -185,14 +186,8 @@ add_library(
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
-target_include_directories(
-    operon
-    PRIVATE
-    ${PROJECT_SOURCE_DIR}/include/operon
-    ${THIRDPARTY_INCLUDE_DIRS}
-    ${EIGEN3_INCLUDE_DIR}
-    ${CERES_INCLUDE_DIRS}
-)
+target_include_directories(operon PRIVATE ${PROJECT_SOURCE_DIR}/include/operon)
+target_include_directories(operon SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR} ${CERES_INCLUDE_DIRS} ${THIRDPARTY_INCLUDE_DIRS})
 target_compile_definitions(operon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 #binary for GP algorithm cli version
@@ -202,13 +197,7 @@ add_executable(
 )
 target_compile_features(operon-gp PRIVATE cxx_std_17)
 target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
-target_include_directories(
-    operon-gp
-    PRIVATE
-    ${PROJECT_SOURCE_DIR}/include/operon
-    ${THIRDPARTY_INCLUDE_DIRS}
-    ${CERES_INCLUDE_DIRS}
-)
+target_include_directories(operon-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS})
 target_compile_definitions(operon-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 add_executable(
@@ -217,13 +206,7 @@ add_executable(
     )
 target_compile_features(operon-example-gp PRIVATE cxx_std_17)
 target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
-target_include_directories(
-    operon-example-gp
-    PRIVATE
-    ${PROJECT_SOURCE_DIR}/include/operon
-    ${THIRDPARTY_INCLUDE_DIRS}
-    ${CERES_INCLUDE_DIRS}
-)
+target_include_directories(operon-example-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS})
 target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
 if(MSVC)
@@ -233,7 +216,7 @@ if(MSVC)
     find_path(FMT_INCLUDE_DIR fmt/core.h)
     include_directories(${FMT_INCLUDE_DIR})
 else()
-    set(MYFLAGS -Wall -Wextra -Wno-unknown-pragmas -Wno-deprecated -Wno-deprecated-copy)
+    set(MYFLAGS -Wall -Wpedantic -Wextra -Wconversion -Werror)
     target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;>$<$<CONFIG:Release>:-O3;-g;-march=native>;-fPIC")
     target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
@@ -252,16 +235,16 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
     else()
         target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
     endif()
+    target_include_directories(pyoperon PRIVATE ${PROJECT_SOURCE_DIR}/python)
     target_include_directories(
         pyoperon
-        PRIVATE
+        SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/include/operon
-        ${PROJECT_SOURCE_DIR}/python
         ${THIRDPARTY_INCLUDE_DIRS}
         ${Python3_INCLUDE_DIRS}
         ${CERES_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
-        )
+    )
     target_compile_definitions(pyoperon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 endif()
 
@@ -295,7 +278,7 @@ if(doctest_FOUND AND BUILD_TESTS)
     target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb doctest::doctest)
     target_include_directories(
         operon-test
-        PRIVATE
+        SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/include/operon
         ${THIRDPARTY_INCLUDE_DIRS}
         ${CERES_INCLUDE_DIRS}

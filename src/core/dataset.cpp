@@ -21,7 +21,7 @@
 #include <fmt/core.h>
 
 #include "core/types.hpp"
-#include "rapidcsv.h"
+#include <rapidcsv.h>
 
 namespace Operon {
 
@@ -78,9 +78,9 @@ Dataset::Map Dataset::ReadCsv(std::string const& path, bool hasHeader)
     }
     values = Matrix(nrow, ncol);
     for (size_t i = 0; i < ncol; ++i) {
-        auto col = values.col(i);
+        auto col = values.col((Eigen::Index)i);
         for (size_t j = 0; j < nrow; ++j) {
-            col(j) = doc.GetCell<Operon::Scalar>(i, j);
+            col((Eigen::Index)j) = doc.GetCell<Operon::Scalar>(i, j);
         }
     }
     return Map(values.data(), values.rows(), values.cols());
@@ -92,21 +92,21 @@ Dataset::Dataset(std::string const& path, bool hasHeader)
 }
 
 Dataset::Dataset(Matrix&& vals)
-    : variables(defaultVariables(vals.cols()))
+    : variables(defaultVariables((size_t)vals.cols()))
     , values(std::move(vals))
     , map(values.data(), values.rows(), values.cols())
 {
 }
 
 Dataset::Dataset(Matrix const& vals)
-    : variables(defaultVariables(vals.cols()))
+    : variables(defaultVariables((size_t)vals.cols()))
     , values(vals)
     , map(values.data(), values.rows(), values.cols())
 {
 }
 
 Dataset::Dataset(Eigen::Ref<Matrix const> ref)
-    : variables(defaultVariables(ref.cols()))
+    : variables(defaultVariables((size_t)ref.cols()))
     , map(ref.data(), ref.rows(), ref.cols()) 
 {
 }
@@ -118,7 +118,7 @@ void Dataset::SetVariableNames(std::vector<std::string> const& names)
         throw std::runtime_error(msg);
     }
 
-    size_t ncol = map.cols();
+    size_t ncol = (size_t)map.cols();
 
     std::vector<Operon::Hash> hashes(ncol);
     Operon::RandomGenerator rng(1234);
@@ -147,18 +147,21 @@ std::vector<std::string> Dataset::VariableNames()
 gsl::span<const Operon::Scalar> Dataset::GetValues(const std::string& name) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return compareWithSize(v.Name, name); });
-    return gsl::span<const Operon::Scalar>(map.col(it->Index).data(), map.rows());
+    auto idx = static_cast<Eigen::Index>(it->Index);
+    return gsl::span<const Operon::Scalar>(map.col(idx).data(), static_cast<size_t>(map.rows()));
 }
 
 gsl::span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
-    return gsl::span<const Operon::Scalar>(map.col(it->Index).data(), map.rows());
+    auto idx = static_cast<Eigen::Index>(it->Index);
+    return gsl::span<const Operon::Scalar>(map.col(idx).data(), static_cast<size_t>(map.rows()));
 }
 
-gsl::span<const Operon::Scalar> Dataset::GetValues(gsl::index index) const noexcept
+// this method needs to take an int argument to differentiate it from GetValues(Operon::Hash)
+gsl::span<const Operon::Scalar> Dataset::GetValues(int index) const noexcept
 {
-    return gsl::span<const Operon::Scalar>(map.col(index).data(), map.rows());
+    return gsl::span<const Operon::Scalar>(map.col(index).data(), static_cast<size_t>(map.rows()));
 }
 
 const std::optional<Variable> Dataset::GetVariable(const std::string& name) const noexcept
@@ -183,27 +186,33 @@ void Dataset::Shuffle(Operon::RandomGenerator& random)
     values = perm * values.matrix(); // permute rows
 }
 
-void Dataset::Normalize(gsl::index i, Range range)
+void Dataset::Normalize(size_t i, Range range)
 {
     if (IsView()) { throw std::runtime_error("Cannot normalize. Dataset does not own the data.\n"); }
     Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
-    auto seg = values.col(i).segment(range.Start(), range.Size());
+    auto j = static_cast<Eigen::Index>(i);
+    auto start = static_cast<Eigen::Index>(range.Start());
+    auto n = static_cast<Eigen::Index>(range.Size());
+    auto seg = values.col(j).segment(start, n);
     auto min = seg.minCoeff();
     auto max = seg.maxCoeff();
-    values.col(i) = (values.col(i).array() - min) / (max - min);
+    values.col(j) = (values.col(j).array() - min) / (max - min);
 }
 
 // standardize column i using mean and stddev calculated over the specified range
-void Dataset::Standardize(gsl::index i, Range range)
+void Dataset::Standardize(size_t i, Range range)
 {
     if (IsView()) { throw std::runtime_error("Cannot standardize. Dataset does not own the data.\n"); }
     Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
-    auto seg = values.col(i).segment(range.Start(), range.Size());
+    auto j = static_cast<Eigen::Index>(i);
+    auto start = static_cast<Eigen::Index>(range.Start());
+    auto n = static_cast<Eigen::Index>(range.Size());
+    auto seg = values.col(j).segment(start, n);
     MeanVarianceCalculator calc;
-    auto vals = gsl::span<const Operon::Scalar>(seg.data(), seg.size());
+    auto vals = gsl::span<const Operon::Scalar>(seg.data(), range.Size());
     calc.Add(vals);
 
-    values.col(i) = (values.col(i).array() - calc.Mean()) / calc.StandardDeviation();
+    values.col(j) = (values.col(j).array() - calc.Mean()) / calc.StandardDeviation();
 }
 } // namespace Operon
 

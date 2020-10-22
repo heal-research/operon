@@ -44,7 +44,7 @@ namespace detail {
         using reference = value_type&;
         using iterator_category = std::forward_iterator_tag;
 
-        explicit ChildIteratorImpl(T& tree, gsl::index i)
+        explicit ChildIteratorImpl(T& tree, size_t i)
             : nodes(tree.Nodes())
             , parentIndex(i)
             , index(i - 1)
@@ -61,7 +61,7 @@ namespace detail {
 
         ChildIteratorImpl& operator++() // pre-increment
         {
-            index -= nodes[index].Length + 1;
+            index -= nodes[index].Length + 1ul;
             ++count;
             return *this;
         }
@@ -91,8 +91,8 @@ namespace detail {
 
     private:
         const gsl::span<U> nodes;
-        const gsl::index parentIndex; // index of parent node
-        gsl::index index;
+        const size_t parentIndex; // index of parent node
+        size_t index;
         size_t count;
         const size_t arity;
     };
@@ -145,7 +145,7 @@ public:
     template <Operon::HashFunction H>
     Tree& Hash(Operon::HashMode mode) noexcept
     {
-        std::vector<gsl::index> childIndices;
+        std::vector<size_t> childIndices;
         childIndices.reserve(nodes.size());
 
         std::vector<Operon::Hash> hashes;
@@ -192,10 +192,10 @@ public:
         return *this;
     }
 
-    std::vector<gsl::index> ChildIndices(gsl::index i) const;
-    inline void SetEnabled(gsl::index i, bool enabled)
+    std::vector<size_t> ChildIndices(size_t i) const;
+    inline void SetEnabled(size_t i, bool enabled)
     {
-        for (int j = i - nodes[i].Length; j <= i; ++j) {
+        for (auto j = i - nodes[i].Length; j <= i; ++j) {
             nodes[j].IsEnabled = enabled;
         }
     }
@@ -205,16 +205,16 @@ public:
     const Operon::Vector<Node>& Nodes() const& { return nodes; }
 
 
-    inline size_t CoefficientsCount() const
+    inline auto CoefficientsCount() const
     {
-        return std::count_if(nodes.begin(), nodes.end(), [](const Node& s) { return s.IsLeaf(); });
+        return std::count_if(nodes.cbegin(), nodes.cend(), [](auto const& s) { return s.IsLeaf(); });
     }
 
     void SetCoefficients(const gsl::span<const double> coefficients);
     std::vector<double> GetCoefficients() const;
 
-    inline Node& operator[](gsl::index i) noexcept { return nodes[i]; }
-    inline const Node& operator[](gsl::index i) const noexcept { return nodes[i]; }
+    inline Node& operator[](size_t i) noexcept { return nodes[i]; }
+    inline const Node& operator[](size_t i) const noexcept { return nodes[i]; }
 
     size_t Length() const noexcept { return nodes.size(); }
     size_t VisitationLength() const noexcept;
@@ -223,8 +223,8 @@ public:
 
     Operon::Hash HashValue() const { return nodes.empty() ? 0 : nodes.back().CalculatedHashValue; }
 
-    ChildIterator Children(gsl::index i) { return ChildIterator(*this, i); }
-    ConstChildIterator Children(gsl::index i) const { return ConstChildIterator(*this, i); }
+    ChildIterator Children(size_t i) { return ChildIterator(*this, i); }
+    ConstChildIterator Children(size_t i) const { return ConstChildIterator(*this, i); }
 
 private:
     Operon::Vector<Node> nodes;

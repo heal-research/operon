@@ -21,7 +21,7 @@
 #define OPERON_TYPES_HPP
 
 #include "random/random.hpp"
-#include <Eigen/Core>
+
 #include <ceres/jet.h>
 #include <cstdint>
 

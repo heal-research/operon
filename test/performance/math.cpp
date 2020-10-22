@@ -17,7 +17,7 @@ TEST_CASE("Libm functions cost model")
 {
     Operon::RandomGenerator rand(std::random_device{}());
 
-    size_t rows = 1000, cols = 100;
+    int rows = 1000, cols = 100;
 
     std::uniform_int_distribution<int> dist(0, cols-1);
 

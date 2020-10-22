@@ -33,7 +33,7 @@ namespace Operon {
 // parse a range specified as stard:end
 Range ParseRange(const std::string& range)
 {
-    auto pos = range.find_first_of(':');
+    auto pos = static_cast<long>(range.find_first_of(':'));
     auto rangeFirst = std::string(range.begin(), range.begin() + pos);
     auto rangeLast = std::string(range.begin() + pos + 1, range.end());
     size_t begin, end;
@@ -52,7 +52,7 @@ auto ParseDouble(const std::string& str)
     char* end;
     double val = std::strtod(str.data(), &end);
     return std::make_pair(val, std::isspace(*end) || end == str.data() + str.size());
-};
+}
 
 // splits a string into substrings separated by delimiter
 std::vector<std::string> Split(const std::string& s, char delimiter)
@@ -80,7 +80,7 @@ std::string FormatBytes(size_t bytes)
 {
     constexpr char sizes[] = " KMGT";
     auto p = static_cast<size_t>(std::floor(std::log2(bytes) / std::log2(1024)));
-    return fmt::format("{:.2f} {}b", bytes / std::pow(1024, p), sizes[p]);
+    return fmt::format("{:.2f} {}b", (double)bytes / std::pow(1024, p), sizes[p]);
 }
 
 PrimitiveSetConfig ParsePrimitiveSetConfig(const std::string& options)

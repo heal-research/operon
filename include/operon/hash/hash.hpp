@@ -25,7 +25,7 @@
 #include "metrohash64.hpp"
 
 #define XXH_INLINE_ALL
-#include "xxhash/xxhash.h"
+#include <xxhash.h>
 
 #include "gsl/gsl"
 

@@ -25,7 +25,7 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     const auto& pset = pset_.get();
     auto [minFunctionArity, maxFunctionArity] = pset.FunctionArityLimits();
 
-    std::normal_distribution<double> normalReal(0, 1);
+    std::normal_distribution<Operon::Scalar> normalReal(0, 1);
     auto init = [&](Node& node) {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {

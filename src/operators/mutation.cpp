@@ -26,7 +26,7 @@ Tree OnePointMutation::operator()(Operon::RandomGenerator& random, Tree tree) co
     // sample a random leaf
     auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsLeaf(); });
     EXPECT(it < nodes.end());
-    std::normal_distribution<double> normalReal(0, 1);
+    std::normal_distribution<Operon::Scalar> normalReal(0, 1);
     it->Value += normalReal(random);
 
     return tree;
@@ -34,7 +34,7 @@ Tree OnePointMutation::operator()(Operon::RandomGenerator& random, Tree tree) co
 
 Tree MultiPointMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
 {
-    std::normal_distribution<double> normalReal(0, 1);
+    std::normal_distribution<Operon::Scalar> normalReal(0, 1);
     for (auto& node : tree.Nodes()) {
         if (node.IsLeaf()) {
             node.Value += normalReal(random);
@@ -89,28 +89,30 @@ Tree ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tr
 
     auto i = std::uniform_int_distribution<size_t>(0, nodes.size()-1)(random);
 
-    auto oldLen = nodes[i].Length + 1;
+    auto oldLen = nodes[i].Length + 1u;
     auto oldLevel = nodes[i].Level;
+
+    using signed_t = std::make_signed<size_t>::type;
 
     auto partialLength = nodes.size() - oldLen;
 
     // the correction below is necessary because it can happen that maxLength_ < nodes.size()
     // (for example when the tree creator cannot achieve exactly a target length and
     //  then it creates a slightly larger tree)
-    int maxLength = maxLength_ - partialLength;
-    maxLength = std::max(maxLength, 1);
+    auto maxLength = static_cast<signed_t>(maxLength_ - partialLength);
+    maxLength = std::max(maxLength, signed_t{1});
 
     auto maxDepth = std::max(tree.Depth(), maxDepth_) - oldLevel + 1; 
 
-    auto newLen = std::uniform_int_distribution<size_t>(1, maxLength)(random);
-    auto subtree = creator_(random, newLen, 1, maxDepth).Nodes();
+    auto newLen = std::uniform_int_distribution<signed_t>(signed_t{1}, maxLength)(random);
+    auto subtree = creator_(random, static_cast<size_t>(newLen), 1, maxDepth).Nodes();
 
     Operon::Vector<Node> mutated;
-    mutated.reserve(nodes.size() - oldLen + newLen);
+    mutated.reserve(nodes.size() - oldLen + static_cast<size_t>(newLen));
 
-    std::copy(nodes.begin(),         nodes.begin() + (i - nodes[i].Length), std::back_inserter(mutated));
+    std::copy(nodes.begin(),         nodes.begin() + static_cast<long>(i - nodes[i].Length), std::back_inserter(mutated));
     std::copy(subtree.begin(),       subtree.end(),                         std::back_inserter(mutated));
-    std::copy(nodes.begin() + i + 1, nodes.end(),                           std::back_inserter(mutated));
+    std::copy(nodes.begin() + static_cast<long>(i + 1), nodes.end(),                           std::back_inserter(mutated));
     
     return Tree(mutated).UpdateNodes();
 }
@@ -147,7 +149,7 @@ Tree InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
         return tree;
     }
 
-    auto index = std::uniform_int_distribution<size_t>(1, n)(random);
+    auto index = std::uniform_int_distribution<decltype(n)>(1, n)(random);
     size_t i = 0;
     for (; i < nodes.size(); ++i) {
         if (test(nodes[i]) && --index == 0) 
@@ -171,9 +173,9 @@ Tree InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
     nodes[i].Arity++;
 
     // copy nodes
-    std::copy(nodes.begin(),                         nodes.begin() + (i - nodes[i].Length), std::back_inserter(mutated));
+    std::copy(nodes.begin(),                         nodes.begin() + static_cast<long>(i - nodes[i].Length), std::back_inserter(mutated));
     std::copy(subtree.begin(),                       subtree.end(),                         std::back_inserter(mutated));
-    std::copy(nodes.begin() + (i - nodes[i].Length), nodes.end(),                           std::back_inserter(mutated));
+    std::copy(nodes.begin() + static_cast<long>(i - nodes[i].Length), nodes.end(),                           std::back_inserter(mutated));
 
     return Tree(mutated).UpdateNodes();
 }
@@ -187,7 +189,7 @@ Tree ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree t
     }
 
     // pick a random function node
-    auto idx = std::uniform_int_distribution<size_t>(1, nFunc)(random);
+    auto idx = std::uniform_int_distribution<long>(1, nFunc)(random);
 
     // find the function node in the nodes array
     size_t i = 0;
@@ -201,7 +203,7 @@ Tree ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree t
     auto const& s = nodes[i];
 
     // the child nodes will be shuffled so we keep them in a buffer 
-    std::vector<Node> buffer(nodes.begin() + i - s.Length, nodes.begin() + i);
+    std::vector<Node> buffer(nodes.begin() + static_cast<long>(i) - s.Length, nodes.begin() + static_cast<long>(i));
     EXPECT(buffer.size() == s.Length);
 
     // get child indices relative to buffer 
@@ -210,18 +212,18 @@ Tree ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree t
     size_t j = s.Length-1;
     for (uint16_t k = 0; k < s.Arity; ++k) {
         childIndices[k] = j;
-        j -= buffer[j].Length+1;
+        j -= buffer[j].Length + 1u;
     }
 
     // shuffle child indices
     std::shuffle(childIndices.begin(), childIndices.end(), random);
 
     //// write back from buffer to nodes in the shuffled order
-    auto insertionPoint = nodes.begin() + i - s.Length;
+    auto insertionPoint = nodes.begin() + static_cast<long>(i) - s.Length;
 
     for (auto k : childIndices) {
-        std::copy(buffer.begin() + k - buffer[k].Length, buffer.begin() + k + 1, insertionPoint);
-        insertionPoint += buffer[k].Length+1;
+        std::copy(buffer.begin() + static_cast<long>(k) - buffer[k].Length, buffer.begin() + static_cast<long>(k) + 1, insertionPoint);
+        insertionPoint += buffer[k].Length + 1u;
     }
 
     return tree.UpdateNodes();

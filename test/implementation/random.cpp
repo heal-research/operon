@@ -26,7 +26,7 @@ namespace Operon::Test {
 
 TEST_CASE("random sampling" * dt::test_suite("[implementation]"))
 {
-    std::vector<int> vec{0,1,2,3,4,5,6,7,8,9};
+    std::vector<size_t> vec{0,1,2,3,4,5,6,7,8,9};
 
     size_t samples = 1'000'000;
 

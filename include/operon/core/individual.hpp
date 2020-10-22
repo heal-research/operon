@@ -12,8 +12,8 @@ struct Individual {
     Tree Genotype;
     std::vector<Operon::Scalar> Fitness;
 
-    Operon::Scalar& operator[](gsl::index i) noexcept { return Fitness[i]; }
-    Operon::Scalar operator[](gsl::index i) const noexcept { return Fitness[i]; }
+    Operon::Scalar& operator[](size_t i) noexcept { return Fitness[i]; }
+    Operon::Scalar operator[](size_t i) const noexcept { return Fitness[i]; }
 
     Individual()
         : Individual(1)

@@ -70,7 +70,7 @@ struct MutatorBase : public OperatorBase<Tree, Tree> {
 
 // the selector a vector of individuals and returns the index of a selected individual per each call of operator()
 // this operator is meant to be a lightweight object that is initialized with a population and some other parameters on-the-fly
-class SelectorBase : public OperatorBase<gsl::index> {
+class SelectorBase : public OperatorBase<size_t> {
 public:
     using SelectableType = Individual;
     SelectorBase() { }
@@ -127,7 +127,7 @@ public:
     {
     }
 
-    virtual void Prepare(const gsl::span<const Individual> pop, gsl::index idx = 0)
+    virtual void Prepare(const gsl::span<const Individual> pop, size_t idx = 0)
     {
         population = pop;
         objIndex = idx;
@@ -156,7 +156,7 @@ protected:
     mutable std::atomic_ulong localEvaluations = 0;
     size_t iterations = DefaultLocalOptimizationIterations;
     size_t budget = DefaultEvaluationBudget;
-    mutable gsl::index objIndex;
+    mutable size_t objIndex;
 };
 
 // TODO: Maybe remove all the template parameters and go for accepting references to operator bases

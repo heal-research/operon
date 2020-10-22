@@ -29,7 +29,7 @@ Tree ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     EXPECT(targetLen > 0);
 
     std::uniform_int_distribution<size_t> uniformInt(0, variables_.size() - 1);
-    std::normal_distribution<double> normalReal(0, 1);
+    std::normal_distribution<Operon::Scalar> normalReal(0, 1);
     auto init = [&](Node& node) {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {
@@ -65,7 +65,7 @@ Tree ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
 
     std::deque<size_t> q;
     for (size_t i = 0; i < root.Arity; ++i) {
-        auto d = root.Depth + 1;
+        auto d = root.Depth + 1u;
         q.push_back(d);
     }
 
@@ -103,7 +103,7 @@ Tree ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
         auto node = pset.SampleRandomSymbol(random, minArity, maxArity);
 
         init(node);
-        node.Depth = childDepth;
+        node.Depth = gsl::narrow_cast<uint16_t>(childDepth);
 
         for (size_t i = 0; i < node.Arity; ++i) {
             q.push_back(childDepth + 1);
@@ -113,7 +113,7 @@ Tree ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     }
 
     std::sort(nodes.begin(), nodes.end(), [](const auto& lhs, const auto& rhs) { return lhs.Depth < rhs.Depth; });
-    std::vector<int> childIndices(nodes.size());
+    std::vector<size_t> childIndices(nodes.size());
 
     size_t c = 1;
     for (size_t i = 0; i < nodes.size(); ++i) {

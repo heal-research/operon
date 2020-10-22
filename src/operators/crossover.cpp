@@ -31,7 +31,7 @@ namespace {
     }
 }
 
-static gsl::index SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tree, double internalProb, T length, T level, T depth)
+static size_t SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tree, double internalProb, T length, T level, T depth)
 {
     if (tree.Length() == 1) {
         return 0;
@@ -46,7 +46,7 @@ static gsl::index SelectRandomBranch(Operon::RandomGenerator& random, Tree const
     for (size_t i = 0; i < nodes.size(); ++i) {
         auto const& node = nodes[i];
 
-        auto l = node.Length + 1;
+        auto l = node.Length + 1u;
         auto d = node.Depth;
         auto v = node.Level;
 
@@ -65,25 +65,26 @@ static gsl::index SelectRandomBranch(Operon::RandomGenerator& random, Tree const
         ? *Operon::Random::Sample(random, candidates.rbegin(), b+1)
         : *Operon::Random::Sample(random, candidates.begin(), a+1);
 
-    auto [lmin, lmax] = length;
-    auto [vmin, vmax] = level;
-    auto [dmin, dmax] = depth;
-    throw std::runtime_error(fmt::format("Could not find suitable candidate with length in [{}-{}], level in [{}-{}], depth in [{}-{}]\n", lmin, lmax, vmin, vmax, dmin, dmax));
+    //auto [lmin, lmax] = length;
+    //auto [vmin, vmax] = level;
+    //auto [dmin, dmax] = depth;
+    //throw std::runtime_error(fmt::format("Could not find suitable candidate with length in [{}-{}], level in [{}-{}], depth in [{}-{}]\n", lmin, lmax, vmin, vmax, dmin, dmax));
 }
 
-std::pair<gsl::index, gsl::index> SubtreeCrossover::FindCompatibleSwapLocations(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const
+std::pair<size_t, size_t> SubtreeCrossover::FindCompatibleSwapLocations(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const
 {
-    int diff = lhs.Length() - maxLength + 1; // +1 to account for at least one node that gets swapped in
+    using signed_t = std::make_signed<size_t>::type;
+    signed_t diff = static_cast<signed_t>(lhs.Length() - maxLength + 1); // +1 to account for at least one node that gets swapped in
 
-    auto i = SelectRandomBranch(random, lhs, internalProbability, T{std::max(diff, 1), lhs.Length()}, T{1ul, lhs.Depth()}, T{1ul, lhs.Depth()});
+    auto i = SelectRandomBranch(random, lhs, internalProbability, T{std::max(diff, signed_t{1}), lhs.Length()}, T{size_t{1}, lhs.Depth()}, T{size_t{1}, lhs.Depth()});
     size_t partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
     // we have to make some small allowances here due to the fact that the provided trees 
     // might actually be larger than the maxDepth and maxLength limits given here
-    int maxBranchDepth = maxDepth - lhs[i].Level;
-    maxBranchDepth = std::max(maxBranchDepth, 1);
+    signed_t maxBranchDepth = static_cast<signed_t>(maxDepth - lhs[i].Level);
+    maxBranchDepth = std::max(maxBranchDepth, signed_t{1});
 
-    int maxBranchLength = maxLength - partialTreeLength;
-    maxBranchLength = std::max(maxBranchLength, 1);
+    signed_t maxBranchLength = static_cast<signed_t>(maxLength - partialTreeLength);
+    maxBranchLength = std::max(maxBranchLength, signed_t{1});
 
     auto j = SelectRandomBranch(random, rhs, internalProbability, T{1ul, maxBranchLength}, T{1ul, rhs.Depth()}, T{1ul, maxBranchDepth});
     return std::make_pair(i, j);
