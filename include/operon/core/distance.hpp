@@ -81,15 +81,15 @@ namespace Distance {
         static inline double Jaccard(HashVector const& lhs, HashVector const& rhs) noexcept
         {
             size_t c = CountIntersect(lhs, rhs);
-            double n = lhs.size() + rhs.size() - c;
-            return (n - c) / n;
+            size_t n = lhs.size() + rhs.size();
+            return static_cast<double>(n - 2 * c) / n;
         }
 
         static inline double SorensenDice(HashVector const& lhs, HashVector const& rhs) noexcept
         {
-            double n = lhs.size() + rhs.size();
+            size_t n = lhs.size() + rhs.size();
             size_t c = CountIntersect(lhs, rhs);
-            return 1 - 2 * c / n;
+            return 1.0 - 2.0 * c / n;
         }
     }
 

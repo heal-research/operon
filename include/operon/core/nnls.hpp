@@ -54,15 +54,18 @@ ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::s
     } else {
         costFunction = new DynamicNumericDiffCostFunction(eval);
     }
-    costFunction->AddParameterBlock(coef.size());
-    costFunction->SetNumResiduals(range.Size());
+
+    int nParameters = static_cast<int>(coef.size());
+    int nResiduals = static_cast<int>(range.Size());
+    costFunction->AddParameterBlock(nParameters);
+    costFunction->SetNumResiduals(nResiduals);
     //auto lossFunction = new CauchyLoss(0.5); // see http://ceres-solver.org/nnls_tutorial.html#robust-curve-fitting
 
     Problem problem;
     problem.AddResidualBlock(costFunction, nullptr, coef.data());
 
     Solver::Options options;
-    options.max_num_iterations = iterations - 1; // workaround since for some reason ceres sometimes does 1 more iteration
+    options.max_num_iterations = static_cast<int>(iterations - 1); // workaround since for some reason ceres sometimes does 1 more iteration
     options.linear_solver_type = ceres::DENSE_QR;
     options.minimizer_progress_to_stdout = report;
     options.num_threads = 1;

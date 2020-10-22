@@ -38,8 +38,8 @@ struct TinyCostFunction {
     TinyCostFunction(const Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range) 
         : costFunction(new ResidualEvaluator(tree, dataset, targetValues, range))
     {
-        int nParameters = tree.GetCoefficients().size();
-        int nResiduals = targetValues.size();
+        int nParameters = static_cast<int>(tree.GetCoefficients().size());
+        int nResiduals = static_cast<int>(targetValues.size());
         costFunction.AddParameterBlock(nParameters);
         costFunction.SetNumResiduals(nResiduals);
 

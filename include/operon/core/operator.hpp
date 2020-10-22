@@ -124,6 +124,7 @@ public:
 
     EvaluatorBase(Problem& p)
         : problem(p)
+        , objIndex(0ul)
     {
     }
 
