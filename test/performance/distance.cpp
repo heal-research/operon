@@ -59,9 +59,9 @@ TEST_CASE("Intersection performance")
     std::vector<Operon::Distance::HashVector> hashesStrict(trees.size());
     std::vector<Operon::Distance::HashVector> hashesStruct(trees.size());
 
-    const auto F = Operon::HashFunction::XXHash;
-    std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [](Tree tree) { return MakeHashes<F>(tree, Operon::HashMode::Strict); });
-    std::transform(trees.begin(), trees.end(), hashesStruct.begin(), [](Tree tree) { return MakeHashes<F>(tree, Operon::HashMode::Relaxed); });
+    const auto hashFunc = [](auto& tree, Operon::HashMode mode) { return MakeHashes<Operon::HashFunction::XXHash>(tree, mode); };
+    std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) { return hashFunc(tree, Operon::HashMode::Strict); });
+    std::transform(trees.begin(), trees.end(), hashesStruct.begin(), [&](Tree tree) { return hashFunc(tree, Operon::HashMode::Relaxed); });
 
     std::uniform_int_distribution<size_t> dist(0u, trees.size()-1);
 

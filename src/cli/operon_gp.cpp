@@ -428,8 +428,8 @@ int main(int argc, char** argv)
 
             // scale values
             auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-            std::transform(std::execution::par_unseq, estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return b * v + a; });
-            std::transform(std::execution::par_unseq, estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return b * v + a; });
+            std::transform(std::execution::par_unseq, estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(b * v + a); });
+            std::transform(std::execution::par_unseq, estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(b * v + a); });
 
             auto r2Train = RSquared(estimatedTrain, targetTrain);
             auto r2Test = RSquared(estimatedTest, targetTest);
@@ -440,8 +440,8 @@ int main(int argc, char** argv)
             auto rmseTrain = MeanSquaredError(estimatedTrain, targetTrain);
             auto rmseTest = MeanSquaredError(estimatedTest, targetTest);
 
-            auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
-            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0.0, std::plus<> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
+            auto avgLength = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / pop.size();
+            auto avgQuality = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [=](const auto& ind) { return ind[idx]; }) / pop.size();
 
             auto t1 = std::chrono::high_resolution_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1e6;
@@ -449,9 +449,9 @@ int main(int argc, char** argv)
             auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
 
             // calculate memory consumption
-            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), 0U, std::plus<double> {}, getSize);
+            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<> {}, getSize);
             auto off = gp.Offspring();
-            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), 0U, std::plus<double> {}, getSize);
+            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), size_t { 0 }, std::plus<> {}, getSize);
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", best[idx], r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
