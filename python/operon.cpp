@@ -22,6 +22,7 @@
 #include <pybind11/numpy.h>
 #include <pybind11/operators.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 #include <type_traits>
@@ -73,6 +74,15 @@ Operon::Dataset MakeDataset(py::array_t<T> array)
     }
 }
 
+template<typename T>
+py::array_t<T const> MakeView(gsl::span<T const> view)
+{
+    py::array_t<T const> arr(view.size(), view.data(), py::capsule(view.data()));
+    ENSURE(arr.owndata() == false);
+    ENSURE(arr.data() == view.data());
+    return arr;
+}
+
 PYBIND11_MODULE(pyoperon, m)
 {
     m.doc() = "Operon Python Module";
@@ -90,7 +100,7 @@ PYBIND11_MODULE(pyoperon, m)
         auto res = gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, buf.size);
         Operon::Evaluate(t, d, r, res, (Operon::Scalar*)nullptr);
         return result;
-    }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
+        }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
 
     m.def("CalculateFitness", [](Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r, std::string const& target, std::string const& metric) {
         auto estimated = Operon::Evaluate(t, d, r, (Operon::Scalar*)nullptr);
@@ -350,9 +360,9 @@ PYBIND11_MODULE(pyoperon, m)
         .def_property_readonly("Cols", &Operon::Dataset::Cols)
         .def_property_readonly("Values", &Operon::Dataset::Values)
         .def_property("VariableNames", &Operon::Dataset::VariableNames, &Operon::Dataset::SetVariableNames)
-        .def("GetValues", py::overload_cast<const std::string&>(&Operon::Dataset::GetValues, py::const_))
-        .def("GetValues", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetValues, py::const_))
-        .def("GetValues", py::overload_cast<gsl::index>(&Operon::Dataset::GetValues, py::const_))
+        .def("GetValues", [](Operon::Dataset const& self, std::string const& name) { return MakeView(self.GetValues(name)); })
+        .def("GetValues", [](Operon::Dataset const& self, Operon::Hash hash) { return MakeView(self.GetValues(hash)); })
+        .def("GetValues", [](Operon::Dataset const& self, gsl::index index) { return MakeView(self.GetValues(index)); })
         .def("GetVariable", py::overload_cast<const std::string&>(&Operon::Dataset::GetVariable, py::const_))
         .def("GetVariable", py::overload_cast<Operon::Hash>(&Operon::Dataset::GetVariable, py::const_))
         .def_property_readonly("Variables", [](Operon::Dataset const& self) {
@@ -514,14 +524,14 @@ PYBIND11_MODULE(pyoperon, m)
                     config.MutationProbability = pm;
                     config.Seed = seed;
                     return config;
-            }), py::arg("generations")
-               , py::arg("max_evaluations")
-               , py::arg("local_iterations")
-               , py::arg("population_size")
-               , py::arg("pool_size")
-               , py::arg("p_crossover") 
-               , py::arg("p_mutation") 
-               , py::arg("seed"))
+        }), py::arg("generations")
+          , py::arg("max_evaluations")
+          , py::arg("local_iterations")
+          , py::arg("population_size")
+          , py::arg("pool_size")
+          , py::arg("p_crossover")
+          , py::arg("p_mutation")
+          , py::arg("seed"))
         .def_readwrite("Generations", &Operon::GeneticAlgorithmConfig::Generations)
         .def_readwrite("Evaluations", &Operon::GeneticAlgorithmConfig::Evaluations)
         .def_readwrite("Iterations", &Operon::GeneticAlgorithmConfig::Iterations)
