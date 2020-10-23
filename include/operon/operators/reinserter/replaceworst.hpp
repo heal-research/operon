@@ -21,6 +21,7 @@
 #define OPERON_REINSERTER_REPLACE_WORST
 
 #include "core/operator.hpp"
+#include <cstddef>
 
 namespace Operon {
 template <typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
@@ -42,8 +43,8 @@ class ReplaceWorstReinserter : public ReinserterBase {
             } else if (pop.size() < pool.size()) {
                 std::sort(ep, pool.begin(), pool.end(), this->comp);
             }
-            auto offset = std::min(pop.size(), pool.size());
-            std::copy_if(ep, std::make_move_iterator(pool.begin()), std::make_move_iterator(pool.begin() + offset), pop.begin() + pop.size() - offset, [](const auto& ind) { return !ind.Genotype.Empty(); });
+            auto offset = static_cast<std::ptrdiff_t>(std::min(pop.size(), pool.size()));
+            std::swap_ranges(pool.begin(), pool.begin() + offset, pop.end() - offset);
         }
 };
 } // namespace operon
