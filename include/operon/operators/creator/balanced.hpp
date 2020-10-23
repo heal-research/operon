@@ -30,8 +30,6 @@ namespace Operon {
 // if the depth is not limiting, the target length is guaranteed to be reached
 class BalancedTreeCreator final : public CreatorBase {
 public:
-    using U = std::tuple<Node, size_t, size_t>;
-
     BalancedTreeCreator(PrimitiveSet const& pset, const gsl::span<const Variable> variables, double bias = 0.0) 
         : CreatorBase(pset, variables)
         , irregularityBias(bias)
