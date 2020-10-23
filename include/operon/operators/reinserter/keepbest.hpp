@@ -40,8 +40,9 @@ class KeepBestReinserter : public ReinserterBase {
             // merge the best individuals from pop+pool into pop
             auto it = pop.begin();
             for (auto& ind : pool) {
-                if (this->comp(ind, *it))
+                if (this->comp(ind, *it)) {
                     std::swap(*it++, ind);
+                }
             }
         }
 };

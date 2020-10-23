@@ -33,15 +33,15 @@ prefix       = args.prefix
 results_path = args.out
 
 population_size   = [ 1000 ]
-pool_size         = [ 1000 ]
+pool_size         = [ 100, 200, 500, 1000 ]
 iteration_count   = [ 0 ]
 evaluation_budget = [ 1000000 ]
-generators        = ['basic' ]
-selectors         = [ ('tournament:5', 'tournament:5') ]
-reinserters       = ['replace-worst']
-creators          = ['btc', 'ptc2']
+generators        = ['os:100:0', 'os:100:0.5', 'os:200:0', 'os:200:0.5']
+selectors         = [ ('tournament:5', 'tournament:5'), ('random', 'random'), ('random', 'proportional'), ('proportional', 'random') ]
+reinserters       = ['replace-worst', 'keep-best']
+creators          = ['btc']
 
-meta_header = ['Problem', 
+meta_header = ['Problem',
         'Pop size',
         'Pool size',
         'Iter count',
@@ -52,7 +52,7 @@ meta_header = ['Problem',
         'Creator']
 
 output_header = ['Elapsed',
-        'Generation', 
+        'Generation',
         'Quality',
         'R2 (train)',
         'R2 (test)',
@@ -96,11 +96,14 @@ def is_float(v):
     except ValueError:
         return False
 
-for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter, creator in parameter_space:
+for pop_size, pool_size, iter_count, eval_count, generator, selector, reinserter, creator in parameter_space:
+    if generator == 'basic' and selector[0] == 'random':
+        continue
+
     idx = idx+1
 
-    gen_count = eval_count // pop_size 
-    
+    gen_count = pool_size * (eval_count // pool_size + 1)
+
     for i,f in enumerate(data_files):
         with open(os.path.join(base_path, f), 'r') as h:
             info           = json.load(h)
@@ -114,12 +117,12 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter,
             test_end       = test_rows['end']
             problem_name   = metadata['name']
             problem_csv    = metadata['filename']
-            config_str     = 'Configuration [{}/{}]\tpopulation size: {}\tpool size: {}\titerations: {}\tevaluation budget: {}\tselector: {}\tgenerator: {}\treinserter: {}\tcreator: {}'.format(idx, total_configurations, pop_size, pol_size, iter_count, eval_count, selector, generator, reinserter, creator)
+            config_str     = 'Configuration [{}/{}]\tpopulation size: {}\tpool size: {}\titerations: {}\tevaluation budget: {}\tselector: {}\tgenerator: {}\treinserter: {}\tcreator: {}'.format(idx, total_configurations, pop_size, pool_size, iter_count, eval_count, selector, generator, reinserter, creator)
             problem_str    = 'Problem [{}/{}]\t{}\tRows: {}\tTarget: {}\tRepetitions: {}'.format(i+1, data_count, problem_name, training_rows, target, reps)
             logger.info(fg.MAGENTA + config_str)
             logger.info(fg.MAGENTA + problem_str)
 
-            results_file   = os.path.join(results_path, '{}_{}_{}_{}_{}_{}_{}_{}_{}_{}.csv.xz'.format(prefix, problem_name, pop_size, pol_size, iter_count, eval_count, selector, generator, reinserter, creator))
+            results_file   = os.path.join(results_path, '{}_{}_{}_{}_{}_{}_{}_{}_{}_{}.csv.xz'.format(prefix, problem_name, pop_size, pool_size, iter_count, eval_count, selector, generator, reinserter, creator))
 
             if os.path.exists(results_file):
                 continue
@@ -127,33 +130,35 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter,
             problem_result = {}
 
             devnull = open(os.devnull, 'w')
+            cmd = [bin_path,
+                "--dataset", os.path.join(base_path, problem_csv),
+                "--target", target,
+                "--train", '{}:{}'.format(training_start, training_end),
+                "--test", '{}:{}'.format(test_start, test_end),
+                "--iterations", str(iter_count),
+                "--evaluations", str(eval_count),
+                "--population-size", str(pop_size),
+                "--pool-size", str(pool_size),
+                "--generations", str(gen_count),
+                "--tree-creator", str(creator),
+                "--female-selector", str(selector[0]),
+                "--male-selector", str(selector[1]),
+                "--offspring-generator", str(generator),
+                "--reinserter", str(reinserter),
+                "--maxlength", str(50),
+                "--maxdepth", str(10),
+                "--enable-symbols", "exp,log,sin,cos",
+                ]
+            print(' '.join(cmd))
 
             for j in reps_range:
-                output = subprocess.check_output([bin_path, 
-                    "--dataset", os.path.join(base_path, problem_csv), 
-                    "--target", target, 
-                    "--train", '{}:{}'.format(training_start, training_end), 
-                    "--test", '{}:{}'.format(test_start, test_end),
-                    "--iterations", str(iter_count), 
-                    "--evaluations", str(eval_count), 
-                    "--population-size", str(pop_size),
-                    "--pool-size", str(pol_size),
-                    "--generations", str(gen_count),
-                    "--tree-creator", str(creator),
-                    "--female-selector", str(selector[0]),
-                    "--male-selector", str(selector[1]),
-                    "--offspring-generator", str(generator),
-                    "--reinserter", str(reinserter),
-                    "--maxlength", str(50),
-                    "--maxdepth", str(10),
-                    "--enable-symbols", "exp,log,sin,cos",
-                    ], stderr=devnull);
+                output = subprocess.check_output(cmd, stderr=devnull);
 
                 lines = list(filter(lambda x: x, output.split(b'\n')))
                 result = '\t'.join([v.decode('ascii') for v in lines[-1].split(b'\t') ])
                 logger.info('[{:#2d}/{}]\t{}\t{}'.format(j+1, reps, problem_name, result))
 
-                meta = [ problem_name, pop_size, pol_size, iter_count, eval_count, selector, generator, reinserter, creator ]
+                meta = [ problem_name, pop_size, pool_size, iter_count, eval_count, selector, generator, reinserter, creator ]
                 problem_result[j] = meta  + [ float(v) if is_float(v) else np.nan for v in lines[-1].split(b'\t') ]
 
                 for i,line in enumerate(lines):
@@ -181,7 +186,7 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter,
 
             q1, q3                     = df['NMSE (train)'].quantile([0.25, 0.75])
             median['NMSE (train) IQR'] = q3 - q1
-            
+
             q1, q3                     = df['NMSE (test)'].quantile([0.25, 0.75])
             median['NMSE (test) IQR']  = q3 - q1
 
@@ -190,9 +195,9 @@ for pop_size, pol_size, iter_count, eval_count, generator, selector, reinserter,
 
             df.to_csv(results_file, compression='infer')
             problem_results.append(df)
-                        
+
 df_all = pd.concat(problem_results, axis=0)
-group = df_all.groupby(['Problem', 'Pop size', 'Pool size', 'Iter count', 'Eval count', 'Selector', 'Reinserter', 'Generator', 'Creator'])
+group = df_all.groupby(['Problem', 'Pop size', 'Pool size', 'Iter count', 'Eval count', 'Selector', 'Generator', 'Reinserter', 'Creator'])
 median_all = group.median(numeric_only=False)
 q25 = group.quantile(0.25)
 q75 = group.quantile(0.75)

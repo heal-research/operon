@@ -49,7 +49,7 @@ Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t
     std::uniform_int_distribution<size_t> dist(minDepth, maxDepth);
     auto actualDepthLimit = dist(random);
 
-    auto const grow = [&](size_t depth, auto&& grow) {
+    auto const grow = [&](size_t depth, auto&& ref) {
         auto minDepthReached = depth >= minDepth;
 
         minArity = 0;
@@ -69,7 +69,7 @@ Tree GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t, size_t
             return;
 
         for (size_t i = 0; i < node.Arity; ++i) {
-            grow(depth + 1, grow);
+            ref(depth + 1, ref);
         }
     };
 
