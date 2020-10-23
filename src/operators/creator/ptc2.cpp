@@ -130,7 +130,7 @@ Tree ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     Operon::Vector<Node> postfix(nodes.size());
     size_t idx = nodes.size();
 
-    const auto add = [&](size_t i, auto&& add) {
+    const auto add = [&](size_t i, auto&& ref) {
         const auto& node = nodes[i];
 
         postfix[--idx] = node;
@@ -140,7 +140,7 @@ Tree ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
         }
 
         for (size_t j = 0; j < node.Arity; ++j) {
-            add(childIndices[i] + j, add);
+            ref(childIndices[i] + j, ref);
         }
     };
 

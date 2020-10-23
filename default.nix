@@ -27,21 +27,22 @@ let
     src = pkgs.fetchFromGitLab {
       owner = "libeigen";
       repo = "eigen";
-      rev             = "2279f2c62f1e5c0dfaa500e637c92d528acd85b1";
-      sha256          = "1rdl4vkfn9r9z9x7arb8y8sf477znp6xjyzwfl9p5hs8a3a717gm";
+      rev             = "28aef8e816faadc0e51afbfe3fa91f10f477535d";
+      sha256          = "151bkpn7pkmjglfn4kbdh442g94rjv33n13vy1fgzs9mpjlhmxj9";
     };
     patches = [ ./eigen_include_dir.patch ];
   });
   pybind11_trunk = pkgs.python38Packages.pybind11.overrideAttrs (old: rec {
     stdenv = pkgs.gcc10Stdenv;
     buildInputs = with pkgs; [ eigen_trunk ];
+    version = "2.6.0";
     src = pkgs.fetchFromGitHub {
       repo   = "pybind11";
       owner  = "pybind";
-      rev    = "b6f37f67ac6c6d2ec2fa35ca3816b9de7da9fcbd";
-      sha256 = "1v3nliadmgfs8pkm5mrf6z0071588xcwdd2hqnlh8sfvhf2j24zf";
+      rev    = "v${version}";
+      sha256 = "19rnl4pq2mbh5hmj96cs309wxl51q5yyp364icg26zjm3d0ap834";
     };
-    patches = [ ./pybind11_include.patch ];
+    #patches = [ ./pybind11_include.patch ];
   });
   ceres_trunk = pkgs.ceres-solver.overrideAttrs (old: rec {
     CFLAGS = (old.CFLAGS or "") + "-march=native -O3";
@@ -52,14 +53,13 @@ let
     src = pkgs.fetchFromGitHub {
       repo   = "ceres-solver";
       owner  = "ceres-solver";
-      rev    = "65c397daeca77da53d16e73720b9a17edd6757ab";
-      sha256 = "1v5ahl0ni5kz58ppmaarznbjwlhg7w7y06nyakc2jzjxqbzwv4vx";
+      rev    = "bb127272f9b57672bca48424f2d83bc430a46eb8";
+      sha256 = "169p6r44rqmlpzzkyjkxz9y6cx5w245d05gqjw0shx2ggcmdk72b";
     };
     enableParallelBuilding = true;
     cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=FALSE -DBUILD_TESTING=FALSE" ];
   });
   fmt = pkgs.fmt.overrideAttrs(old: rec { 
-    #version = "7.0.3";
     outputs = [ "out" ];
 
     cmakeFlags = [

@@ -282,7 +282,7 @@ int main(int argc, char** argv)
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
-        auto comp = [](Individual const& lhs, Individual const& rhs) { return lhs[0] < rhs[0]; };
+        auto comp = [](auto const& lhs, auto const& rhs) { return lhs[0] < rhs[0]; };
 
         auto parseSelector = [&](const std::string& name) -> SelectorBase* {
             if (result.count(name) == 0) {
@@ -402,8 +402,6 @@ int main(int argc, char** argv)
         GeneticProgrammingAlgorithm gp { problem, config, initializer, *generator, *reinserter };
 
         auto targetValues = problem.TargetValues();
-        auto trainingRange = problem.TrainingRange();
-        auto testRange = problem.TestRange();
         auto targetTrain = targetValues.subspan(trainingRange.Start(), trainingRange.Size());
         auto targetTest = targetValues.subspan(testRange.Start(), testRange.Size());
 

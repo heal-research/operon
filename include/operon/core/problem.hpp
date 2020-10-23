@@ -39,13 +39,13 @@ public:
         target = dataset.Variables().back();
     }
 
-    Problem(Dataset const& ds, gsl::span<const Variable> inputVariables, Variable const& targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 })
+    Problem(Dataset const& ds, gsl::span<const Variable> inputs, Variable const& targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 })
         : dataset(ds)
         , training(trainingRange)
         , test(testRange)
         , validation(validationRange)
         , target(targetVariable)
-        , inputVariables(inputVariables.begin(), inputVariables.end())
+        , inputVariables(inputs.begin(), inputs.end())
     {
     }
 

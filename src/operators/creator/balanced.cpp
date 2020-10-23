@@ -86,14 +86,14 @@ Tree BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     Operon::Vector<Node> postfix(tuples.size());
     auto idx = tuples.size();
 
-    auto add = [&](const U& t, auto&& add) {
+    auto add = [&](const U& t, auto&& ref) {
         auto [node, _, nodeChildIndex] = t;
         postfix[--idx] = node;
         if (node.IsLeaf()) {
             return;
         }
         for (size_t i = nodeChildIndex; i < nodeChildIndex + node.Arity; ++i) {
-            add(tuples[i], add);
+            ref(tuples[i], ref);
         }
     };
     add(tuples.front(), add);
