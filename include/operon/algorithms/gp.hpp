@@ -92,7 +92,7 @@ public:
         std::vector<size_t> indices(std::max(config.PopulationSize, config.PoolSize));
         std::iota(indices.begin(), indices.end(), 0L);
         // random seeds for each thread
-        std::vector<Operon::RandomGenerator::result_type> seeds(config.PopulationSize);
+        std::vector<Operon::RandomGenerator::result_type> seeds(indices.size());
         std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
 
         auto idx = 0;
