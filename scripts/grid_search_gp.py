@@ -32,13 +32,13 @@ reps         = args.reps
 prefix       = args.prefix
 results_path = args.out
 
-population_size   = [ 1000 ]
-pool_size         = [ 100, 200, 500, 1000 ]
+population_size   = [ 500, 1000 ]
+pool_size         = [ 500, 1000 ]
 iteration_count   = [ 0 ]
 evaluation_budget = [ 1000000 ]
-generators        = ['os:100:0', 'os:100:0.5', 'os:200:0', 'os:200:0.5']
-selectors         = [ ('tournament:5', 'tournament:5'), ('random', 'random'), ('random', 'proportional'), ('proportional', 'random') ]
-reinserters       = ['replace-worst', 'keep-best']
+generators        = ['basic', 'os:100:0', 'os:100:0.5', 'os:100:1', 'brood:5', 'brood:10' ]
+selectors         = [ ('tournament:5', 'tournament:5'), ('random', 'tournament:5'), ('tournament:5', 'random'), ('random', 'random') ]
+reinserters       = ['replace-worst']
 creators          = ['btc']
 
 meta_header = ['Problem',
@@ -73,8 +73,6 @@ output_header = ['Elapsed',
 
 header = meta_header + output_header
 
-parameter_space = list(itertools.product(population_size, pool_size, iteration_count, evaluation_budget, generators, selectors, reinserters, creators))
-total_configurations = len(parameter_space)
 all_files = list(os.listdir(data_path)) if os.path.isdir(data_path) else [ os.path.basename(data_path) ]
 data_files = sorted([ f for f in all_files if f.endswith('.json') ])
 data_count = len(data_files)
@@ -85,9 +83,8 @@ logger = logging.getLogger("operon-gp")
 
 idx = 0
 
-total_idx = reps * len(parameter_space) * data_count
+parameter_space = list(itertools.product(population_size, pool_size, iteration_count, evaluation_budget, generators, selectors, reinserters, creators))
 
-problem_results = []
 
 def is_float(v):
     try:
@@ -96,10 +93,22 @@ def is_float(v):
     except ValueError:
         return False
 
+filtered_parameter_space = []
+# add exceptions for undesireable combinations
 for pop_size, pool_size, iter_count, eval_count, generator, selector, reinserter, creator in parameter_space:
     if generator == 'basic' and selector[0] == 'random':
         continue
 
+    if pop_size < pool_size:
+        continue
+
+    filtered_parameter_space.append([pop_size, pool_size, iter_count, eval_count, generator, selector, reinserter, creator])
+
+total_configurations = len(filtered_parameter_space)
+total_idx = reps * len(filtered_parameter_space) * data_count
+
+problem_results = []
+for pop_size, pool_size, iter_count, eval_count, generator, selector, reinserter, creator in filtered_parameter_space:
     idx = idx+1
 
     gen_count = pool_size * (eval_count // pool_size + 1)
