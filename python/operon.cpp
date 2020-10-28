@@ -21,7 +21,7 @@
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(pyoperon, m)
+PYBIND11_MODULE(_operon, m)
 {
     m.doc() = "Operon Python Module";
     m.attr("__version__") = 0.1;
@@ -63,7 +63,7 @@ PYBIND11_MODULE(pyoperon, m)
     py::class_<Operon::SingleObjectiveComparison, Operon::Comparison>(m, "SingleObjectiveComparison")
         .def(py::init<size_t>())
         .def("__call__", &Operon::SingleObjectiveComparison::operator());
-    
+
     py::class_<Operon::Variable>(m, "Variable")
         .def_readwrite("Name", &Operon::Variable::Name)
         .def_readwrite("Hash", &Operon::Variable::Hash)
