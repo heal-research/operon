@@ -168,7 +168,6 @@ feature_summary(WHAT DISABLED_FEATURES DESCRIPTION "Disabled features:" QUIET_ON
 add_library(
     operon
     STATIC 
-    src/core/metrics.cpp
     src/core/tree.cpp
     src/core/problem.cpp
     src/core/dataset.cpp
@@ -216,7 +215,7 @@ if(MSVC)
     find_path(FMT_INCLUDE_DIR fmt/core.h)
     include_directories(${FMT_INCLUDE_DIR})
 else()
-    set(MYFLAGS -Wall -Werror -Wextra -Wshadow -Wsign-compare -Wshadow -Wwrite-strings -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion -Wsuggest-override)
+    set(MYFLAGS -Wall -Werror -Wextra -Wshadow -Wsign-compare -Wshadow -Wwrite-strings -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion)
     target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;>$<$<CONFIG:Release>:-O3;-g;-march=native>;-fPIC")
     target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
@@ -227,6 +226,19 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         pyoperon
         SHARED
         python/operon.cpp
+        python/algorithm.cpp
+        python/creator.cpp
+        python/crossover.cpp
+        python/dataset.cpp
+        python/eval.cpp
+        python/generator.cpp
+        python/mutation.cpp
+        python/node.cpp
+        python/problem.cpp
+        python/pset.cpp
+        python/reinserter.cpp
+        python/selection.cpp
+        python/tree.cpp
         )
     target_compile_features(pyoperon PRIVATE cxx_std_17)
     target_link_libraries(pyoperon PRIVATE operon)

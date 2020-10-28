@@ -95,7 +95,6 @@ struct Node {
     bool IsEnabled;
 
     Node() = default; 
-    Node(Node const&) = default;
 
     explicit Node(NodeType type) noexcept
         : Node(type, static_cast<Operon::Hash>(type))

@@ -276,7 +276,7 @@ int main(int argc, char** argv)
         //mutator.Add(shuffleSubtree, 1.0);
 
         RSquaredEvaluator evaluator(problem);
-        //NormalizedMeanSquaredErrorEvaluator evaluator(problem);
+        //MeanSquaredErrorEvaluator evaluator(problem);
         evaluator.SetLocalOptimizationIterations(config.Iterations);
         evaluator.SetBudget(config.Evaluations);
 
@@ -351,6 +351,17 @@ int main(int argc, char** argv)
                 }
                 auto ptr = new BroodOffspringGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector);
                 ptr->BroodSize(broodSize);
+                generator.reset(ptr);
+            } else if (tokens[0] == "poly") {
+                size_t broodSize = 10;
+                if (tokens.size() > 1) {
+                    if (auto [p, ec] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), broodSize); ec != std::errc()) {
+                        fmt::print(stderr, "{}\n{}\n", "Error: could not parse brood size argument.", opts.help());
+                        exit(EXIT_FAILURE);
+                    }
+                }
+                auto ptr = new PolygenicOffspringGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector);
+                ptr->PolygenicSize(broodSize);
                 generator.reset(ptr);
             } else if (tokens[0] == "os") {
                 size_t selectionPressure = 100;
@@ -429,14 +440,14 @@ int main(int argc, char** argv)
             std::transform(std::execution::par_unseq, estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(b * v + a); });
             std::transform(std::execution::par_unseq, estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(b * v + a); });
 
-            auto r2Train = RSquared(estimatedTrain, targetTrain);
-            auto r2Test = RSquared(estimatedTest, targetTest);
+            auto r2Train = RSquared<Operon::Scalar>(estimatedTrain, targetTrain);
+            auto r2Test = RSquared<Operon::Scalar>(estimatedTest, targetTest);
 
-            auto nmseTrain = NormalizedMeanSquaredError(estimatedTrain, targetTrain);
-            auto nmseTest = NormalizedMeanSquaredError(estimatedTest, targetTest);
+            auto nmseTrain = NormalizedMeanSquaredError<Operon::Scalar>(estimatedTrain, targetTrain);
+            auto nmseTest = NormalizedMeanSquaredError<Operon::Scalar>(estimatedTest, targetTest);
 
-            auto rmseTrain = MeanSquaredError(estimatedTrain, targetTrain);
-            auto rmseTest = MeanSquaredError(estimatedTest, targetTest);
+            auto rmseTrain = RootMeanSquaredError<Operon::Scalar>(estimatedTrain, targetTrain);
+            auto rmseTest = RootMeanSquaredError<Operon::Scalar>(estimatedTest, targetTest);
 
             auto avgLength = (double)std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / (double)pop.size();
             auto avgQuality = (double)std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [=](const auto& ind) { return ind[idx]; }) / (double)pop.size();

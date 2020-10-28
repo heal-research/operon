@@ -23,12 +23,55 @@
 #include "core/types.hpp"
 #include "core/contracts.hpp"
 #include "core/stats.hpp"
+#include "stat/pearson.hpp"
+#include <type_traits>
 
 namespace Operon {
+template<typename T>
+double NormalizedMeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
+{
+    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
+    EXPECT(x.size() == y.size());
+    EXPECT(x.size() > 0);
+    PearsonsRCalculator calc;
+    for(size_t i = 0; i < x.size(); ++i) {
+        auto e = x[i] - y[i];
+        calc.Add(e * e, y[i]);
+    }
+    auto yvar = calc.NaiveVarianceY();
+    auto errmean = calc.MeanX();
+    return yvar > 0 ? errmean / yvar : yvar;
+}
 
-double NormalizedMeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y);
-double MeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y);
-double RootMeanSquaredError(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y);
-double RSquared(gsl::span<const Operon::Scalar> x, gsl::span<const Operon::Scalar> y);
+template<typename T>
+double MeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
+{
+    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
+    EXPECT(x.size() == y.size());
+    EXPECT(x.size() > 0);
+    MeanVarianceCalculator mcalc;
+    for(size_t i = 0; i < x.size(); ++i) {
+        auto e = x[i] - y[i];
+        mcalc.Add(e * e);
+    }
+    return mcalc.Mean();
+}
+
+template<typename T>
+double RootMeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
+{
+    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
+    return std::sqrt(MeanSquaredError(x, y));
+}
+
+template<typename T>
+double RSquared(gsl::span<const T> x, gsl::span<const T> y)
+{
+    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
+    EXPECT(x.size() == y.size());
+    EXPECT(x.size() > 0);
+    auto r = PearsonsRCalculator::Coefficient(x, y);
+    return r * r;
+}
 } // namespace
 #endif
