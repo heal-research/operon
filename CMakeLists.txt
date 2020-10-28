@@ -53,7 +53,7 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
-    nanobench 
+    nanobench
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/nanobench/include
     URL https://raw.githubusercontent.com/martinus/nanobench/master/src/include/nanobench.h
     DOWNLOAD_NO_EXTRACT 1
@@ -167,7 +167,7 @@ feature_summary(WHAT DISABLED_FEATURES DESCRIPTION "Disabled features:" QUIET_ON
 
 add_library(
     operon
-    STATIC 
+    STATIC
     src/core/tree.cpp
     src/core/problem.cpp
     src/core/dataset.cpp
@@ -223,7 +223,7 @@ endif(MSVC)
 
 if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
     pybind11_add_module(
-        pyoperon
+        _operon
         SHARED
         python/operon.cpp
         python/algorithm.cpp
@@ -240,16 +240,16 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         python/selection.cpp
         python/tree.cpp
         )
-    target_compile_features(pyoperon PRIVATE cxx_std_17)
-    target_link_libraries(pyoperon PRIVATE operon)
-    if(MSVC) 
-        target_compile_options(pyoperon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+    target_compile_features(_operon PRIVATE cxx_std_17)
+    target_link_libraries(_operon PRIVATE operon)
+    if(MSVC)
+        target_compile_options(_operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     else()
-        target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
+        target_compile_options(_operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
     endif()
-    target_include_directories(pyoperon PRIVATE ${PROJECT_SOURCE_DIR}/python)
+    target_include_directories(_operon PRIVATE ${PROJECT_SOURCE_DIR}/python)
     target_include_directories(
-        pyoperon
+        _operon
         SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/include/operon
         ${THIRDPARTY_INCLUDE_DIRS}
@@ -257,7 +257,7 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         ${CERES_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
     )
-    target_compile_definitions(pyoperon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+    target_compile_definitions(_operon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 endif()
 
 if(doctest_FOUND AND BUILD_TESTS)
@@ -282,7 +282,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         #        test/codegen/irbuilder.cpp
         )
     target_compile_features(operon-test PRIVATE cxx_std_17)
-    if(MSVC) 
+    if(MSVC)
         target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     else()
         target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
