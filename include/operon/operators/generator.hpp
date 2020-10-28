@@ -23,5 +23,6 @@
 #include "generator/basic.hpp"
 #include "generator/brood.hpp"
 #include "generator/os.hpp"
+#include "generator/poly.hpp"
 
 #endif
