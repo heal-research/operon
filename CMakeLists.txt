@@ -216,14 +216,14 @@ if(MSVC)
     include_directories(${FMT_INCLUDE_DIR})
 else()
     set(MYFLAGS -Wall -Werror -Wextra -Wshadow -Wsign-compare -Wshadow -Wwrite-strings -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion)
-    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;>$<$<CONFIG:Release>:-O3;-g;-march=native>;-fPIC")
-    target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
-    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;>$<$<CONFIG:Release>:-O3;-g;-march=znver2>;-fPIC")
+    target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
+    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
 endif(MSVC)
 
 if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
     pybind11_add_module(
-        _operon
+        pyoperon
         SHARED
         python/operon.cpp
         python/algorithm.cpp
@@ -240,16 +240,16 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         python/selection.cpp
         python/tree.cpp
         )
-    target_compile_features(_operon PRIVATE cxx_std_17)
-    target_link_libraries(_operon PRIVATE operon)
+    target_compile_features(pyoperon PRIVATE cxx_std_17)
+    target_link_libraries(pyoperon PRIVATE operon)
     if(MSVC)
-        target_compile_options(_operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+        target_compile_options(pyoperon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     else()
-        target_compile_options(_operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
+        target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=znver2>")
     endif()
-    target_include_directories(_operon PRIVATE ${PROJECT_SOURCE_DIR}/python)
+    target_include_directories(pyoperon PRIVATE ${PROJECT_SOURCE_DIR}/python)
     target_include_directories(
-        _operon
+        pyoperon
         SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/include/operon
         ${THIRDPARTY_INCLUDE_DIRS}
@@ -257,7 +257,8 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         ${CERES_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
     )
-    target_compile_definitions(_operon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+    target_compile_definitions(pyoperon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+    set_target_properties(pyoperon PROPERTIES OUTPUT_NAME "_operon")
 endif()
 
 if(doctest_FOUND AND BUILD_TESTS)
@@ -285,7 +286,7 @@ if(doctest_FOUND AND BUILD_TESTS)
     if(MSVC)
         target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     else()
-        target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+        target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
     endif(MSVC)
     target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb doctest::doctest)
     target_include_directories(
