@@ -30,9 +30,7 @@ namespace Operon {
             LinearScalingCalculator() { Reset(); }
             void Reset()
             {
-                tCalculator.Reset();
-                ovCalculator.Reset();
-                otCalculator.Reset();
+                calc.Reset();
 
                 alpha = 0;
                 beta = 0;
@@ -41,15 +39,11 @@ namespace Operon {
             template<typename T>
             void Add(T original, T target)
             {
-                tCalculator.Add(target);
-                ovCalculator.Add(original);
-                otCalculator.Add(original, target);
+                calc.Add(original, target);
 
-                //if (ovCalculator.Variance() < eps<double>) beta = 1;
-                auto variance = ovCalculator.Count() > 1 ? ovCalculator.SampleVariance() : 0;
-                beta = variance < std::numeric_limits<double>::epsilon() ? 1 : (otCalculator.SampleCovariance() / variance);
-                //else beta = otCalculator.Covariance() / ovCalculator.Variance();
-                alpha = tCalculator.Mean() - beta * ovCalculator.Mean();
+                auto variance = calc.Count() > 1 ? calc.SampleVarianceX() : 0;
+                beta = variance < std::numeric_limits<double>::epsilon() ? 1 : (calc.SampleCovariance() / variance);
+                alpha = calc.MeanY() - beta * calc.MeanX();
             }
             double Beta() const { return beta; }
             double Alpha() const { return alpha; }
@@ -69,9 +63,7 @@ namespace Operon {
             double alpha; // additive constant
             double beta; // multiplicative factor
 
-            MeanVarianceCalculator tCalculator; // target values
-            MeanVarianceCalculator ovCalculator; // original values
-            PearsonsRCalculator otCalculator;
+            PearsonsRCalculator calc;
     };
 
 
