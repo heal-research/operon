@@ -29,6 +29,42 @@
 #include "stat/pearson.hpp"
 
 namespace Operon {
+class MeanSquaredErrorEvaluator : public EvaluatorBase {
+public:
+    static constexpr Operon::Scalar LowerBound = 0.0;
+    static constexpr Operon::Scalar UpperBound = Operon::Numeric::Max<Operon::Scalar>();
+
+    MeanSquaredErrorEvaluator(Problem& problem)
+        : EvaluatorBase(problem)
+    {
+    }
+
+    typename EvaluatorBase::ReturnType
+    operator()(Operon::RandomGenerator&, Individual& ind) const override
+    {
+        ++this->fitnessEvaluations;
+        auto& problem_ = this->problem.get();
+        auto& dataset = problem_.GetDataset();
+        auto& genotype = ind.Genotype;
+
+        auto trainingRange = problem_.TrainingRange();
+        auto targetValues = dataset.GetValues(problem_.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
+
+        if (this->iterations > 0) {
+            auto summary = OptimizeAutodiff(genotype, dataset, targetValues, trainingRange, this->iterations);
+            this->localEvaluations += summary.iterations.size();
+        }
+
+        auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
+        auto mse = MeanSquaredError<Operon::Scalar>(estimatedValues, targetValues);
+
+        if (!std::isfinite(mse) || mse < LowerBound) {
+            mse = UpperBound;
+        }
+        return static_cast<ReturnType>(mse);
+    }
+};
+
 class NormalizedMeanSquaredErrorEvaluator : public EvaluatorBase {
 public:
     static constexpr Operon::Scalar LowerBound = 0.0;
@@ -57,9 +93,19 @@ public:
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
         // scale values
-        auto [a, b] = LinearScalingCalculator::Calculate(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
-        std::transform(estimatedValues.begin(), estimatedValues.end(), estimatedValues.begin(), [a = a, b = b](Operon::Scalar v) { return b * v + a; });
-        auto nmse = NormalizedMeanSquaredError(estimatedValues, targetValues);
+        auto s = LinearScalingCalculator::Calculate(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
+        auto a = static_cast<Operon::Scalar>(s.first);
+        auto b = static_cast<Operon::Scalar>(s.second);
+
+        PearsonsRCalculator calc;
+        for(size_t i = 0; i < estimatedValues.size(); ++i) {
+            auto e = estimatedValues[i] * b + a - targetValues[i];
+            calc.Add(e * e, targetValues[i]);
+        }
+        auto yvar = calc.NaiveVarianceY();
+        auto errmean = calc.MeanX();
+        auto nmse = yvar > 0 ? errmean / yvar : yvar;
+
         if (!std::isfinite(nmse) || nmse < LowerBound) {
             nmse = UpperBound;
         }
