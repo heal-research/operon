@@ -24,16 +24,16 @@ config         = Operon.GeneticAlgorithmConfig(generations=1000, max_evaluations
 selector       = Operon.TournamentSelector(objective_index=0)
 selector.TournamentSize = 5
 
-grammar        = Operon.PrimitiveSet()
-grammar.SetConfig(Operon.PrimitiveSet.Arithmetic | Operon.NodeType.Exp | Operon.NodeType.Log | Operon.NodeType.Sin | Operon.NodeType.Cos)
+pset           = Operon.PrimitiveSet()
+pset.SetConfig(Operon.PrimitiveSet.Arithmetic | Operon.NodeType.Exp | Operon.NodeType.Log | Operon.NodeType.Sin | Operon.NodeType.Cos)
 
 minL, maxL     = 1, 50
 maxD           = 10
-btc            = Operon.BalancedTreeCreator(grammar, inputs, bias=0.0)
+btc            = Operon.BalancedTreeCreator(pset, inputs, bias=0.0)
 initializer    = Operon.UniformInitializer(btc, maxD, maxL)
 mut_onepoint   = Operon.OnePointMutation()
 mut_changeVar  = Operon.ChangeVariableMutation(inputs)
-mut_changeFunc = Operon.ChangeFunctionMutation(grammar)
+mut_changeFunc = Operon.ChangeFunctionMutation(pset)
 mut_replace    = Operon.ReplaceSubtreeMutation(btc, maxD, maxL)
 mutation       = Operon.MultiMutation()
 mutation.Add(mut_onepoint, 1)
