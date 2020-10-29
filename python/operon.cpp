@@ -90,7 +90,15 @@ PYBIND11_MODULE(_operon, m)
 
     // genetic algorithm
     py::class_<Operon::GeneticAlgorithmConfig>(m, "GeneticAlgorithmConfig")
-        .def(py::init([](size_t gen, size_t evals, size_t iter, size_t popsize, size_t poolsize, double pc, double pm, size_t seed){
+        .def_readwrite("Generations", &Operon::GeneticAlgorithmConfig::Generations)
+        .def_readwrite("Evaluations", &Operon::GeneticAlgorithmConfig::Evaluations)
+        .def_readwrite("Iterations", &Operon::GeneticAlgorithmConfig::Iterations)
+        .def_readwrite("PopulationSize", &Operon::GeneticAlgorithmConfig::PopulationSize)
+        .def_readwrite("PoolSize", &Operon::GeneticAlgorithmConfig::PoolSize)
+        .def_readwrite("CrossoverProbability", &Operon::GeneticAlgorithmConfig::CrossoverProbability)
+        .def_readwrite("MutationProbability", &Operon::GeneticAlgorithmConfig::MutationProbability)
+        .def_readwrite("Seed", &Operon::GeneticAlgorithmConfig::Seed)
+        .def(py::init([](size_t gen, size_t evals, size_t iter, size_t popsize, size_t poolsize, double pc, double pm, size_t seed) {
                     Operon::GeneticAlgorithmConfig config;
                     config.Generations = gen;
                     config.Evaluations = evals;
@@ -108,14 +116,5 @@ PYBIND11_MODULE(_operon, m)
           , py::arg("pool_size")
           , py::arg("p_crossover")
           , py::arg("p_mutation")
-          , py::arg("seed"))
-        .def_readwrite("Generations", &Operon::GeneticAlgorithmConfig::Generations)
-        .def_readwrite("Evaluations", &Operon::GeneticAlgorithmConfig::Evaluations)
-        .def_readwrite("Iterations", &Operon::GeneticAlgorithmConfig::Iterations)
-        .def_readwrite("PopulationSize", &Operon::GeneticAlgorithmConfig::PopulationSize)
-        .def_readwrite("PoolSize", &Operon::GeneticAlgorithmConfig::PoolSize)
-        .def_readwrite("CrossoverProbability", &Operon::GeneticAlgorithmConfig::CrossoverProbability)
-        .def_readwrite("MutationProbability", &Operon::GeneticAlgorithmConfig::MutationProbability)
-        .def_readwrite("Seed", &Operon::GeneticAlgorithmConfig::Seed);
-
+          , py::arg("seed"));
 }
