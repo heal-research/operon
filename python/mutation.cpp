@@ -21,8 +21,8 @@ void init_mutation(py::module_ &m)
 
     py::class_<Operon::ChangeVariableMutation, Operon::MutatorBase>(m, "ChangeVariableMutation")
         .def(py::init([](std::vector<Operon::Variable> const& variables) {
-            return Operon::ChangeVariableMutation(gsl::span<const Operon::Variable>(variables.data(), variables.size()));
-        }),
+                    return Operon::ChangeVariableMutation(gsl::span<const Operon::Variable>(variables.data(), variables.size()));
+                }),
             py::arg("variables"))
         .def("__call__", &Operon::ChangeVariableMutation::operator());
 
@@ -45,6 +45,7 @@ void init_mutation(py::module_ &m)
     py::class_<Operon::MultiMutation, Operon::MutatorBase>(m, "MultiMutation")
         .def(py::init<>())
         .def("__call__", &Operon::MultiMutation::operator())
-        .def("Add", &Operon::MultiMutation::Add);
+        .def("Add", &Operon::MultiMutation::Add)
+        .def_property_readonly("Count", &Operon::MultiMutation::Count);
 
 }
