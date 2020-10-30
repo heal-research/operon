@@ -20,7 +20,9 @@
 #include "core/dataset.hpp"
 #include <fmt/core.h>
 
+#include "core/constants.hpp"
 #include "core/types.hpp"
+#include "hash/hash.hpp"
 #include <rapidcsv.h>
 
 namespace Operon {
@@ -31,14 +33,16 @@ namespace {
     const auto compareWithSize = [](auto& lhs, auto& rhs) { return std::tuple(lhs.size(), lhs) < std::tuple(rhs.size(), rhs); };
 
     const auto defaultVariables = [](size_t count) {
+        Hasher<HashFunction::XXHash> hash;
+
         std::vector<Variable> vars(count);
-        Operon::RandomGenerator rng(1234);
-        for(auto& v : vars) { v.Hash = rng(); }
         std::sort(vars.begin(), vars.end(), [](auto& a, auto& b) { return a.Hash < b.Hash; });
         for (size_t i = 0; i < vars.size(); ++i) {
             vars[i].Name = fmt::format("X{}", i+1);
             vars[i].Index = i;
+            vars[i].Hash = hash(reinterpret_cast<uint8_t const*>(vars[i].Name.c_str()), vars[i].Name.size());
         }
+        std::sort(vars.begin(), vars.end(), [](auto &a, auto &b) { return a.Hash < b.Hash; });
         return vars;
     };
 }
@@ -56,23 +60,15 @@ Dataset::Map Dataset::ReadCsv(std::string const& path, bool hasHeader)
     if (hasHeader) {
         auto names = doc.GetColumnNames();
 
-        // generate a sequence of sorted hash values
-        std::vector<Operon::Hash> hashes(ncol);
-        Operon::RandomGenerator rng(1234);
-        std::generate_n(hashes.begin(), ncol, [&]() { return rng(); });
-        std::sort(hashes.begin(), hashes.end());
+        Hasher<HashFunction::XXHash> hash;
 
         variables.resize(ncol);
         for (size_t i = 0; i < ncol; ++i) {
-            Variable v { names[i], 0, i };
+            auto h = hash(reinterpret_cast<uint8_t const*>(names[i].c_str()), names[i].size());
+            Variable v { names[i], h, i };
             variables[i] = v;
         }
-
-        std::sort(variables.begin(), variables.end(), [&](auto& a, auto& b) { return compareWithSize(a.Name, b.Name); });
-        // assign hashes to the sorted variables (so that the ordering is the same and we can binary search by hash value)
-        for (size_t i = 0; i < ncol; ++i) {
-            variables[i].Hash = hashes[i];
-        }
+        std::sort(variables.begin(), variables.end(), [](auto& a, auto& b) { return a.Hash < b.Hash; });
     } else {
         variables = defaultVariables(ncol);
     }
@@ -120,21 +116,13 @@ void Dataset::SetVariableNames(std::vector<std::string> const& names)
 
     size_t ncol = (size_t)map.cols();
 
-    std::vector<Operon::Hash> hashes(ncol);
-    Operon::RandomGenerator rng(1234);
-    std::generate_n(hashes.begin(), ncol, [&]() { return rng(); });
-    std::sort(hashes.begin(), hashes.end());
-
     for (size_t i = 0; i < ncol; ++i) {
-        Variable v { names[i], 0, i };
+        auto h = Hasher<HashFunction::XXHash>{}(reinterpret_cast<uint8_t const*>(names[i].c_str()), names[i].size());
+        Variable v { names[i], h, i };
         variables[i] = v;
     }
 
-    std::sort(variables.begin(), variables.end(), [&](auto& a, auto& b) { return compareWithSize(a.Name, b.Name); });
-    // assign hashes to the sorted variables (so that the ordering is the same and we can binary search by hash value)
-    for (size_t i = 0; i < ncol; ++i) {
-        variables[i].Hash = hashes[i];
-    }
+    std::sort(variables.begin(), variables.end(), [&](auto& a, auto& b) { return a.Hash < b.Hash; });
 }
 
 std::vector<std::string> Dataset::VariableNames()
@@ -146,9 +134,8 @@ std::vector<std::string> Dataset::VariableNames()
 
 gsl::span<const Operon::Scalar> Dataset::GetValues(const std::string& name) const noexcept
 {
-    auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return compareWithSize(v.Name, name); });
-    auto idx = static_cast<Eigen::Index>(it->Index);
-    return gsl::span<const Operon::Scalar>(map.col(idx).data(), static_cast<size_t>(map.rows()));
+    auto hashValue = Hasher<HashFunction::XXHash>{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size());
+    return GetValues(hashValue);
 }
 
 gsl::span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue) const noexcept
@@ -166,8 +153,8 @@ gsl::span<const Operon::Scalar> Dataset::GetValues(int index) const noexcept
 
 const std::optional<Variable> Dataset::GetVariable(const std::string& name) const noexcept
 {
-    auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return compareWithSize(v.Name, name); });
-    return it < variables.end() ? std::make_optional(*it) : std::nullopt; 
+    auto hashValue = Hasher<HashFunction::XXHash>{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size());
+    return GetVariable(hashValue);
 }
 
 const std::optional<Variable> Dataset::GetVariable(Operon::Hash hashValue) const noexcept
