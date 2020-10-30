@@ -22,7 +22,7 @@
 
 #include <fmt/color.h>
 #include <fmt/core.h>
-#include <gsl/gsl_assert>
+#include <gsl/assert>
 
 #define EXPECT(cond) \
     if(GSL_UNLIKELY(!(cond))) \

@@ -25,7 +25,7 @@
 #include <algorithm>
 #include <Eigen/Dense>
 #include <exception>
-#include <gsl/gsl_util>
+#include <gsl/util>
 #include <numeric>
 #include <vector>
 #include <optional>

@@ -4,7 +4,7 @@
 #include <cstddef>
 #include "core/tree.hpp"
 #include "core/types.hpp"
-#include <gsl/gsl_util>
+#include <gsl/util>
 
 namespace Operon {
 

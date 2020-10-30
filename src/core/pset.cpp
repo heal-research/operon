@@ -21,7 +21,6 @@
 
 #include <numeric>
 #include <execution>
-#include <gsl/gsl_util>
 
 namespace Operon {
     Node PrimitiveSet::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const
