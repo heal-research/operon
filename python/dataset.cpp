@@ -38,7 +38,7 @@ Operon::Dataset MakeDataset(py::array_t<T> array)
 
     // sanity check
     if (array.ndim() != 2) {
-        throw std::runtime_error("The input array must have exactly two dimensions.");
+        throw std::runtime_error("The input array must have exactly two dimensions.\n");
     }
 
     // check if the array satisfies our data storage requirements (contiguous, column-major order)
@@ -46,7 +46,7 @@ Operon::Dataset MakeDataset(py::array_t<T> array)
         auto ref = array.template cast<Eigen::Ref<Operon::Dataset::Matrix const>>();
         return Operon::Dataset(ref);
     } else {
-        fmt::print("Warning: array does not satisfy contiguity or storage-order requirements. a copy will be made.");
+        fmt::print("operon warning: array does not satisfy contiguity or storage-order requirements. a copy will be made.\n");
         auto m = array.template cast<Operon::Dataset::Matrix>();
         return Operon::Dataset(std::move(m));
     }
