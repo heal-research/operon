@@ -19,7 +19,6 @@
  */
 
 #include "stat/meanvariance.hpp"
-#include <gsl/gsl_util>
 
 namespace Operon {
     template<typename T>
