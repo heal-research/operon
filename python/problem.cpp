@@ -8,6 +8,6 @@ void init_problem(py::module_ &m)
                         Operon::Range trainingRange, Operon::Range testRange) {
             gsl::span<const Operon::Variable> vars(variables.data(), variables.size());
             return Operon::Problem(ds).Inputs(variables).Target(target).TrainingRange(trainingRange).TestRange(testRange);
-        }));
-
+        }))
+        .def_property_readonly("PrimitiveSet", [](Operon::Problem& self) { return self.GetPrimitiveSet(); });
 }
