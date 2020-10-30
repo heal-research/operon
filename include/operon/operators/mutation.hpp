@@ -40,6 +40,8 @@ struct MultiMutation : public MutatorBase {
         probabilities.push_back(prob);
     }
 
+    size_t Count() const { return operators.size(); }
+
 private:
     std::vector<std::reference_wrapper<const MutatorBase>> operators;
     std::vector<double> probabilities;
