@@ -1,4 +1,5 @@
 #include "pyoperon.hpp"
+#include <operators/mutation.hpp>
 
 void init_mutation(py::module_ &m)
 {
@@ -7,7 +8,16 @@ void init_mutation(py::module_ &m)
 
     py::class_<Operon::OnePointMutation, Operon::MutatorBase>(m, "OnePointMutation")
         .def(py::init<>())
-        .def("__call__", &Operon::OnePointMutation::operator());
+        .def("__call__", &Operon::OnePointMutation::operator())
+        .def(py::pickle(
+            [](Operon::OnePointMutation const&) {
+                return py::make_tuple(); // no state nothing to pickle
+
+            },
+            [](py::tuple) {
+                return Operon::OnePointMutation();
+            }
+        ));
 
     py::class_<Operon::ChangeVariableMutation, Operon::MutatorBase>(m, "ChangeVariableMutation")
         .def(py::init([](std::vector<Operon::Variable> const& variables) {
