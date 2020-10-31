@@ -93,12 +93,12 @@ void init_node(py::module_ &m)
         .def("Square", []() { return Operon::Node(Operon::NodeType::Square); })
         .def("Constant", [](double v) {
                 Operon::Node constant(Operon::NodeType::Constant);
-                constant.Value = v;
+                constant.Value = static_cast<Operon::Scalar>(v);
                 return constant;
                 })
         .def("Variable", [](double w) {
                 Operon::Node variable(Operon::NodeType::Variable);
-                variable.Value = w;
+                variable.Value = static_cast<Operon::Scalar>(w);
                 return variable;
                 })
         // pickle support
