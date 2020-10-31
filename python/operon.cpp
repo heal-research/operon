@@ -81,6 +81,10 @@ PYBIND11_MODULE(_operon, m)
         .def(py::init<uint64_t>())
         .def("__call__", &Operon::Random::RomuTrio::operator());
 
+    py::class_<Operon::Random::Sfc64>(m, "Sfc64")
+        .def(py::init<uint64_t>())
+        .def("__call__", &Operon::Random::Sfc64::operator());
+
     // tree format
     py::class_<Operon::TreeFormatter>(m, "TreeFormatter")
         .def_static("Format", &Operon::TreeFormatter::Format);

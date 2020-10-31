@@ -9,5 +9,6 @@ void init_algorithm(py::module_ &m)
         .def("BestModel", [](GeneticProgrammingAlgorithm const& self, Operon::Comparison const& comparison) {
                     auto min_elem = std::min_element(self.Parents().begin(), self.Parents().end(), [&](auto const& a, auto const& b) { return comparison(a, b);});
                     return *min_elem;
-                });
+                })
+        .def_property_readonly("Generation", &GeneticProgrammingAlgorithm::Generation);
 }

@@ -117,7 +117,7 @@ struct Node {
 
         IsEnabled = true;
 
-        Value = IsConstant() ? 1. : 0.;
+        Value = 1.;
     }
 
     const std::string& Name() const noexcept { return nodeNames[NodeTypes::GetIndex(Type)]; }
