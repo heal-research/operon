@@ -82,6 +82,11 @@ Dataset::Map Dataset::ReadCsv(std::string const& path, bool hasHeader)
     return Map(values.data(), values.rows(), values.cols());
 }
 
+Dataset::Dataset(std::vector<std::vector<Operon::Scalar>> const& vals)
+    : Dataset(defaultVariables(vals.size()), vals)
+{
+}
+
 Dataset::Dataset(std::string const& path, bool hasHeader)
     : map(ReadCsv(path, hasHeader))
 {
