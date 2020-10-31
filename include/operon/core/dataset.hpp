@@ -86,6 +86,8 @@ public:
         new (&map) Map(values.data(), values.rows(), values.cols()); // we use placement new (no allocation)
     }
 
+    Dataset(std::vector<std::vector<Operon::Scalar>> const& vals);
+
     Dataset(Eigen::Ref<Matrix const> ref);
 
     Dataset(Matrix const& vals);

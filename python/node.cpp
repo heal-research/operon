@@ -1,8 +1,8 @@
 /* This file is part of:
  * Operon - Large Scale Genetic Programming Framework
  *
- * Licensed under the ISC License <https://opensource.org/licenses/ISC> 
- * Copyright (C) 2020 Bogdan Burlacu 
+ * Licensed under the ISC License <https://opensource.org/licenses/ISC>
+ * Copyright (C) 2020 Bogdan Burlacu
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,7 +14,7 @@
  * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
  * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
  * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
- * PERFORMANCE OF THIS SOFTWARE. 
+ * PERFORMANCE OF THIS SOFTWARE.
  */
 
 #include <pybind11/pybind11.h>
@@ -78,6 +78,29 @@ void init_node(py::module_ &m)
         .def(py::self <= py::self)
         .def(py::self > py::self)
         .def(py::self >= py::self)
+        // node factory for convenience
+        .def("Add", []() { return Operon::Node(Operon::NodeType::Add); })
+        .def("Sub", []() { return Operon::Node(Operon::NodeType::Sub); })
+        .def("Mul", []() { return Operon::Node(Operon::NodeType::Mul); })
+        .def("Div", []() { return Operon::Node(Operon::NodeType::Div); })
+        .def("Exp", []() { return Operon::Node(Operon::NodeType::Exp); })
+        .def("Log", []() { return Operon::Node(Operon::NodeType::Log); })
+        .def("Sin", []() { return Operon::Node(Operon::NodeType::Sin); })
+        .def("Cos", []() { return Operon::Node(Operon::NodeType::Cos); })
+        .def("Tan", []() { return Operon::Node(Operon::NodeType::Tan); })
+        .def("Sqrt", []() { return Operon::Node(Operon::NodeType::Sqrt); })
+        .def("Cbrt", []() { return Operon::Node(Operon::NodeType::Cbrt); })
+        .def("Square", []() { return Operon::Node(Operon::NodeType::Square); })
+        .def("Constant", [](double v) {
+                Operon::Node constant(Operon::NodeType::Constant);
+                constant.Value = v;
+                return constant;
+                })
+        .def("Variable", [](double w) {
+                Operon::Node variable(Operon::NodeType::Variable);
+                variable.Value = w;
+                return variable;
+                })
         // pickle support
         .def(py::pickle(
             [](Operon::Node const& n) { // __getstate__

@@ -4,6 +4,7 @@
 #include <pybind11/stl.h>
 
 #include <gsl/span>
+#include <stat/linearscaler.hpp>
 
 #include "core/metrics.hpp"
 #include "core/eval.hpp"
@@ -64,7 +65,18 @@ void init_eval(py::module_ &m)
         return result;
     }, py::arg("trees"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
 
-    // we want to call this from the python side
+    m.def("FitLeastSquares", [](py::array_t<float> lhs, py::array_t<float> rhs) {
+        auto s1 = MakeSpan(lhs);
+        auto s2 = MakeSpan(rhs);
+        return Operon::LinearScalingCalculator::Calculate(s1.begin(), s1.end(), s2.begin());
+    });
+
+    m.def("FitLeastSquares", [](py::array_t<double> lhs, py::array_t<double> rhs) {
+        auto s1 = MakeSpan(lhs);
+        auto s2 = MakeSpan(rhs);
+        return Operon::LinearScalingCalculator::Calculate(s1.begin(), s1.end(), s2.begin());
+    });
+
     m.def("RSquared", [](py::array_t<float> lhs, py::array_t<float> rhs) {
         return Operon::RSquared<float>(MakeSpan(lhs), MakeSpan(rhs));
     });
@@ -100,7 +112,10 @@ void init_eval(py::module_ &m)
     // evaluator
     py::class_<Operon::EvaluatorBase>(m, "EvaluatorBase")
         .def_property("LocalOptimizationIterations", &Operon::EvaluatorBase::GetLocalOptimizationIterations, &Operon::EvaluatorBase::SetLocalOptimizationIterations)
-        .def_property("Budget",&Operon::EvaluatorBase::GetBudget, &Operon::EvaluatorBase::SetBudget);
+        .def_property("Budget",&Operon::EvaluatorBase::GetBudget, &Operon::EvaluatorBase::SetBudget)
+        .def_property_readonly("FitnessEvaluations", &Operon::EvaluatorBase::FitnessEvaluations)
+        .def_property_readonly("LocalEvaluations", &Operon::EvaluatorBase::LocalEvaluations)
+        .def_property_readonly("TotalEvaluations", &Operon::EvaluatorBase::TotalEvaluations);
 
     py::class_<Operon::RSquaredEvaluator, Operon::EvaluatorBase>(m, "RSquaredEvaluator")
         .def(py::init<Operon::Problem&>())
