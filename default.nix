@@ -67,6 +67,12 @@ let
       "-DFMT_FUZZ=OFF"
     ];
   });
+  eli5 = import ./eli5.nix {
+    lib = pkgs.gcc10Stdenv.lib;
+    buildPythonPackage = pkgs.python38Packages.buildPythonPackage;
+    fetchPypi = pkgs.python38Packages.fetchPypi;
+    pythonPackages = pkgs.python38Packages;
+  };
 in
   pkgs.gcc10Stdenv.mkDerivation {
     name = "operon-env";
@@ -75,7 +81,7 @@ in
     buildInputs = with pkgs; [
         # python environment for bindings and scripting
         pybind11_trunk
-        (pkgs.python38.withPackages (ps: with ps; [ pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload ]))
+        (pkgs.python38.withPackages (ps: with ps; [ pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz ]))
         (pkgs_stable.python38.withPackages (ps: with ps; [ sphinx recommonmark sphinx_rtd_theme ]))
         # Project dependencies
         # profiling and debugging
@@ -109,5 +115,6 @@ in
         #asciinema
         hyperfine
         ninja
+        eli5
       ];
     }
