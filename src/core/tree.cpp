@@ -20,12 +20,14 @@
 #include <algorithm>
 #include <iostream>
 #include <iterator>
+#include <numeric>
 #include <optional>
 #include <stack>
 #include <utility>
 
 #include "core/common.hpp"
 #include "core/tree.hpp"
+
 
 namespace Operon {
 Tree& Tree::UpdateNodes()
