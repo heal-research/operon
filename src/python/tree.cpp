@@ -1,5 +1,5 @@
 
-#include "pyoperon.hpp"
+#include "operon.hpp"
 
 void init_tree(py::module_ &m)
 {

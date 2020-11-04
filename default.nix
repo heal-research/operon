@@ -73,6 +73,12 @@ let
     fetchPypi = pkgs.python38Packages.fetchPypi;
     pythonPackages = pkgs.python38Packages;
   };
+  pmlb = import ./pmlb.nix {
+    lib = pkgs.gcc10Stdenv.lib;
+    buildPythonPackage = pkgs.python38Packages.buildPythonPackage;
+    fetchPypi = pkgs.python38Packages.fetchPypi;
+    pythonPackages = pkgs.python38Packages;
+  };
 in
   pkgs.gcc10Stdenv.mkDerivation {
     name = "operon-env";
@@ -116,5 +122,6 @@ in
         hyperfine
         ninja
         eli5
+        pmlb
       ];
     }

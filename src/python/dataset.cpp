@@ -27,7 +27,7 @@
 
 #include "core/dataset.hpp"
 
-#include "pyoperon.hpp"
+#include "operon.hpp"
 
 namespace py = pybind11;
 

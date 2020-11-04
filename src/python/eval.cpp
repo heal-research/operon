@@ -9,7 +9,7 @@
 #include "core/metrics.hpp"
 #include "core/eval.hpp"
 
-#include "pyoperon.hpp"
+#include "operon.hpp"
 
 namespace py = pybind11;
 
