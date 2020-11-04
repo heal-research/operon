@@ -1,4 +1,4 @@
-#include "pyoperon.hpp"
+#include "operon.hpp"
 #include <operators/mutation.hpp>
 
 void init_mutation(py::module_ &m)

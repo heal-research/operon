@@ -1,4 +1,4 @@
-#include "pyoperon.hpp"
+#include "operon.hpp"
 
 void init_crossover(py::module_ &m)
 {

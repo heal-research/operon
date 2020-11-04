@@ -22,7 +22,7 @@
 
 #include "core/node.hpp"
 
-#include "pyoperon.hpp"
+#include "operon.hpp"
 
 namespace py = pybind11;
 

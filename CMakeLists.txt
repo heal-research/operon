@@ -225,20 +225,20 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
     pybind11_add_module(
         pyoperon
         SHARED
-        python/operon.cpp
-        python/algorithm.cpp
-        python/creator.cpp
-        python/crossover.cpp
-        python/dataset.cpp
-        python/eval.cpp
-        python/generator.cpp
-        python/mutation.cpp
-        python/node.cpp
-        python/problem.cpp
-        python/pset.cpp
-        python/reinserter.cpp
-        python/selection.cpp
-        python/tree.cpp
+        src/python/operon.cpp
+        src/python/algorithm.cpp
+        src/python/creator.cpp
+        src/python/crossover.cpp
+        src/python/dataset.cpp
+        src/python/eval.cpp
+        src/python/generator.cpp
+        src/python/mutation.cpp
+        src/python/node.cpp
+        src/python/problem.cpp
+        src/python/pset.cpp
+        src/python/reinserter.cpp
+        src/python/selection.cpp
+        src/python/tree.cpp
         )
     target_compile_features(pyoperon PRIVATE cxx_std_17)
     target_link_libraries(pyoperon PRIVATE operon)
