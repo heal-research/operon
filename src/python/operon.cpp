@@ -17,7 +17,7 @@
  * PERFORMANCE OF THIS SOFTWARE. 
  */
 
-#include "pyoperon.hpp"
+#include "operon.hpp"
 
 namespace py = pybind11;
 
