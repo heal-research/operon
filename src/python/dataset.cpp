@@ -68,6 +68,24 @@ Operon::Dataset MakeDataset(std::vector<std::vector<T>> const& values)
     return Operon::Dataset(std::move(m));
 }
 
+Operon::Dataset MakeDataset(py::buffer buf)
+{
+    auto info = buf.request();
+
+    if (info.ndim != 2) {
+        throw std::runtime_error("The buffer must have two dimensions.\n");
+    }
+
+    if (info.format == py::format_descriptor<Operon::Scalar>::format()) {
+        auto ref = buf.template cast<Eigen::Ref<Operon::Dataset::Matrix const>>();
+        return Operon::Dataset(ref);
+    } else {
+        fmt::print(stderr, "operon warning: array does not satisfy contiguity or storage-order requirements. data will be copied.\n");
+        auto m = buf.template cast<Operon::Dataset::Matrix>();
+        return Operon::Dataset(std::move(m));
+    }
+}
+
 template<typename T>
 py::array_t<T const> MakeView(gsl::span<T const> view)
 {
@@ -88,8 +106,9 @@ void init_dataset(py::module_ &m)
         .def(py::init<std::vector<Operon::Variable> const&, const std::vector<std::vector<Operon::Scalar>>&>())
         .def(py::init([](py::array_t<float> array){ return MakeDataset(array); }), py::arg("data").noconvert())
         .def(py::init([](py::array_t<double> array){ return MakeDataset(array); }), py::arg("data").noconvert())
-        .def(py::init([](std::vector<std::vector<float>> const& values) { return MakeDataset(values); }))
-        .def(py::init([](std::vector<std::vector<double>> const& values) { return MakeDataset(values); }))
+        .def(py::init([](std::vector<std::vector<float>> const& values) { return MakeDataset(values); }), py::arg("data").noconvert())
+        .def(py::init([](std::vector<std::vector<double>> const& values) { return MakeDataset(values); }), py::arg("data").noconvert())
+        .def(py::init([](py::buffer buf) { return MakeDataset(buf); }), py::arg("data").noconvert())
         .def_property_readonly("Rows", &Operon::Dataset::Rows)
         .def_property_readonly("Cols", &Operon::Dataset::Cols)
         .def_property_readonly("Values", &Operon::Dataset::Values)
