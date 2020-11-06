@@ -279,23 +279,22 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         OUTPUT_VARIABLE PYTHON_SITE
         OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-    # detect if the user has set up a virtual env
-    if(DEFINED ENV{VIRTUAL_ENV} OR DEFINED ENV{CONDA_PREFIX})
-        set(_pip_args)
+    if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+        set(PYOPERON_INSTALL_PATH ${Python3_SITELIB})
     else()
-        set(_pip_args "--user")
+        set(PYOPERON_INSTALL_PATH ${CMAKE_INSTALL_PREFIX})
     endif()
-
+    message(STATUS "Python bindings will be installed in ${PYOPERON_INSTALL_PATH}")
     # install python packages
     install(
         DIRECTORY ${PROJECT_SOURCE_DIR}/python/operon
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/${PYTHON_SITE}
-    )
+        DESTINATION ${PYOPERON_INSTALL_PATH}/
+        )
     # install python bindings library
     install(
         TARGETS pyoperon
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/${PYTHON_SITE}/operon/
-    )
+        DESTINATION ${PYOPERON_INSTALL_PATH}/operon/
+        )
 endif()
 
 if(doctest_FOUND AND BUILD_TESTS)
