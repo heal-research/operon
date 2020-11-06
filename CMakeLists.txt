@@ -43,7 +43,6 @@ FetchContent_Declare(
     GIT_TAG master
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/GSL
     SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/GSL
-    EXCLUDE_FROM_ALL TRUE
 )
 
 FetchContent_Declare(
