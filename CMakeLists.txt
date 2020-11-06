@@ -215,6 +215,7 @@ target_compile_features(operon-example-gp PRIVATE cxx_std_17)
 target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
 target_include_directories(operon-example-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS})
 target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+set_target_properties(operon-example-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 if(MSVC)
     target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
@@ -287,12 +288,12 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
     # install python packages
     install(
         DIRECTORY ${PROJECT_SOURCE_DIR}/python/operon
-        DESTINATION ${PYOPERON_INSTALL_PATH}/
+        DESTINATION ${PYOPERON_INSTALL_PATH}
         )
     # install python bindings library
     install(
         TARGETS pyoperon
-        DESTINATION ${PYOPERON_INSTALL_PATH}/operon/
+        DESTINATION ${PYOPERON_INSTALL_PATH}/operon
         )
 endif()
 
