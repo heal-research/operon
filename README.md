@@ -66,3 +66,26 @@ The following options can be passed to CMake:
 * Run `operon-gp --help` to see the usage of the console client. This is the easiest way to just start modeling some data. The program expects a csv input file and assumes that the file has a header.  
 * The Python script provided under `scripts` wraps the `operon-gp` binary and can be used to run bigger experiments. Data can be provided as `csv` or `json` files containing metadata (see `data` folder for examples). The script will run a grid search over a parameter space defined by the user.
 * Several examples (C++ and Python) are available  [here](https://github.com/foolnotion/operon/blob/master/examples) 
+
+# Installing the Python bindings
+
+Operon comes with Python bindings as well as a scikit learn estimator. To build the bindings the option `-DBUILD_PYBIND=TRUE` must be passed to CMake. The desired install path can be specified using the `CMAKE_INSTALL_PREFIX` variable (for example, `-DCMAKE_INSTALL_PREFIX=/usr/local/lib/python3.8/site-packages`). If an install prefix is not provided CMake will try to detect the default path as reported by Python.
+
+Then, the Python module and package can be installed with `cmake --install .` or `make install` (with `sudo` if needed).
+
+## Usage
+
+### Sklearn estimator
+```python
+from operon.sklearn import SymbolicRegressor
+
+reg = SymbolicRegressor()
+
+# usual sklearn stuff
+reg.fit(X, y)
+```
+
+### Operon library
+```python
+from operon import Dataset, RSquared, etc.
+```
