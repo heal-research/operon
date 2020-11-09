@@ -12,7 +12,7 @@ from pmlb import fetch_data, dataset_names, classification_dataset_names, regres
 
 X, y = fetch_data('1027_ESL', return_X_y=True)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, shuffle=False)
+X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.75, test_size=0.25, shuffle=True)
 
 reg = SymbolicRegressor(
         allowed_symbols='add,sub,mul,div,constant,variable',
