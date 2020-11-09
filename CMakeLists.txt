@@ -23,7 +23,6 @@ find_package(doctest)
 
 # operon library
 set_package_properties(Git     PROPERTIES TYPE REQUIRED)
-set_package_properties(cxxopts PROPERTIES TYPE REQUIRED)
 set_package_properties(fmt     PROPERTIES TYPE REQUIRED)
 set_package_properties(Eigen3  PROPERTIES TYPE REQUIRED)
 set_package_properties(Ceres   PROPERTIES TYPE REQUIRED)
@@ -32,6 +31,7 @@ set_package_properties(Threads PROPERTIES TYPE REQUIRED)
 
 # unit tests
 set_package_properties(doctest PROPERTIES TYPE OPTIONAL)
+set_package_properties(cxxopts PROPERTIES TYPE OPTIONAL)
 
 # python binding
 set_package_properties(Python3 PROPERTIES TYPE OPTIONAL)
@@ -196,39 +196,46 @@ target_include_directories(operon PRIVATE ${PROJECT_SOURCE_DIR}/include/operon)
 target_include_directories(operon SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR} ${CERES_INCLUDE_DIRS} ${THIRDPARTY_INCLUDE_DIRS})
 target_compile_definitions(operon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 
-#binary for GP algorithm cli version
-add_executable(
-    operon-gp
-    src/cli/operon_gp.cpp
-)
-target_compile_features(operon-gp PRIVATE cxx_std_17)
-target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
-target_include_directories(operon-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS})
-target_compile_definitions(operon-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
-set_target_properties(operon-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
-
 add_executable(
     operon-example-gp
     examples/gp.cpp
     )
+
 target_compile_features(operon-example-gp PRIVATE cxx_std_17)
-target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
+target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
 target_include_directories(operon-example-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS})
 target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 set_target_properties(operon-example-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 if(MSVC)
     target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
-    target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
     # ugly hack to set the include dir correctly
     find_path(FMT_INCLUDE_DIR fmt/core.h)
     include_directories(${FMT_INCLUDE_DIR})
 else()
     set(MYFLAGS -Wall -Werror -Wextra -Wshadow -Wsign-compare -Wshadow -Wwrite-strings -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion)
     target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;>$<$<CONFIG:Release>:-O3;-g;-march=native>;-fPIC")
-    target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
 endif(MSVC)
+
+if (cxxopts_FOUND)
+    #binary for GP algorithm cli version
+    add_executable(
+        operon-gp
+        src/cli/operon_gp.cpp
+    )
+    target_compile_features(operon-gp PRIVATE cxx_std_17)
+    target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
+    target_include_directories(operon-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS})
+    target_compile_definitions(operon-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+    set_target_properties(operon-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+    if(MSVC)
+        target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+    else()
+        target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    endif()
+endif()
 
 if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
     pybind11_add_module(
