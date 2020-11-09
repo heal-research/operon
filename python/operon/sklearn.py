@@ -65,7 +65,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         self.female_selector           = 'tournament' if female_selector is None else female_selector
         self.male_selector             = 'tournament' if male_selector is None else male_selector
         self.population_size           = 1000 if population_size is None else int(population_size)
-        self.pool_size                 = 1000 if pool_size is None else int(pool_size)
+        self.pool_size                 = population_size if pool_size is None else int(pool_size)
         self.generations               = 1000 if generations is None else int(generations)
         self.max_evaluations           = 1000000 if max_evaluations is None else int(max_evaluations)
         self.local_iterations          = 0 if local_iterations is None else int(local_iterations)
