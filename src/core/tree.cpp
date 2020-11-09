@@ -42,7 +42,7 @@ Tree& Tree::UpdateNodes()
             continue;
         }
         for (auto it = Children(i); it.HasNext(); ++it) {
-            s.Length += it->Length;
+            s.Length = static_cast<uint16_t>(s.Length + it->Length);
             s.Depth = std::max(s.Depth, it->Depth);
             nodes[it.Index()].Parent = i;
         }
@@ -51,7 +51,7 @@ Tree& Tree::UpdateNodes()
     nodes.back().Level = 1;
 
     for (auto it = nodes.rbegin() + 1; it < nodes.rend(); ++it) {
-        it->Level = nodes[it->Parent].Level + 1;
+        it->Level = static_cast<uint16_t>(nodes[it->Parent].Level + 1);
     }
 
     return *this;
@@ -69,7 +69,7 @@ Tree& Tree::Reduce()
         for (auto it = Children(i); it.HasNext(); ++it) {
             if (s.HashValue == it->HashValue) {
                 it->IsEnabled = false;
-                s.Arity += gsl::narrow_cast<uint16_t>(it->Arity - 1);
+                s.Arity = static_cast<uint16_t>(s.Arity + it->Arity - 1);
                 reduced = true;
             }
         }
