@@ -29,9 +29,6 @@ namespace Operon {
 
 // internal implementation details
 namespace {
-    // compare strings size first, as an attempt to have eg X1, X2, X10 in this order and not X1, X10, X2
-    const auto compareWithSize = [](auto& lhs, auto& rhs) { return std::tuple(lhs.size(), lhs) < std::tuple(rhs.size(), rhs); };
-
     const auto defaultVariables = [](size_t count) {
         Hasher<HashFunction::XXHash> hash;
 
