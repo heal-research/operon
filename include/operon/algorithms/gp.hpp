@@ -64,9 +64,10 @@ public:
     {
     }
 
-    const gsl::span<const Individual> Parents() const { return gsl::span<const Individual>(parents); }
-    const gsl::span<Individual> Parents() { return gsl::span<Individual>(parents); }
-    const gsl::span<const Individual> Offspring() const { return gsl::span<const Individual>(offspring); }
+    std::vector<Individual> const& Parents() const { return parents; }
+    std::vector<Individual>& Parents() { return parents; }
+    std::vector<Individual> const& Offspring() const { return offspring; }
+    std::vector<Individual>& Offspring() { return offspring; }
 
     const Problem& GetProblem() const { return problem_.get(); }
     const GeneticAlgorithmConfig& GetConfig() const { return config_.get(); }
@@ -80,6 +81,7 @@ public:
     void Reset()
     {
         generation = 0;
+        generator_.get().Evaluator().Reset();
     }
 
     void Run(Operon::RandomGenerator& random, std::function<void()> report = nullptr, size_t threads = 0)
