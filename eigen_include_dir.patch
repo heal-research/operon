@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index a6ab9de25..a66101f64 100644
+index 3226338ff..3006d4a04 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -439,12 +439,6 @@ set(PKGCONFIG_INSTALL_DIR
+@@ -440,12 +440,6 @@ set(PKGCONFIG_INSTALL_DIR
      CACHE STRING "The directory relative to CMAKE_PREFIX_PATH where eigen3.pc is installed"
      )
  
@@ -15,15 +15,7 @@ index a6ab9de25..a66101f64 100644
  # similar to set_target_properties but append the property instead of overwriting it
  macro(ei_add_target_property target prop value)
  
-@@ -468,6 +462,7 @@ if(EIGEN_BUILD_PKGCONFIG)
-         )
- endif()
- 
-+
- install(DIRECTORY Eigen DESTINATION ${INCLUDE_INSTALL_DIR} COMPONENT Devel)
- 
- add_subdirectory(doc EXCLUDE_FROM_ALL)
-@@ -582,9 +577,17 @@ set ( EIGEN_VERSION_MAJOR  ${EIGEN_WORLD_VERSION} )
+@@ -589,9 +583,17 @@ set ( EIGEN_VERSION_MAJOR  ${EIGEN_WORLD_VERSION} )
  set ( EIGEN_VERSION_MINOR  ${EIGEN_MAJOR_VERSION} )
  set ( EIGEN_VERSION_PATCH  ${EIGEN_MINOR_VERSION} )
  set ( EIGEN_DEFINITIONS "")
