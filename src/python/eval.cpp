@@ -13,14 +13,6 @@
 
 namespace py = pybind11;
 
-template<typename T> 
-gsl::span<T> MakeSpan(py::array_t<T> arr)
-{
-    py::buffer_info info = arr.request();
-    using size_type = gsl::span<const Operon::Scalar>::size_type;
-    return gsl::span<T>(static_cast<T*>(info.ptr), static_cast<size_type>(info.size));
-}
-
 void init_eval(py::module_ &m)
 {
     // free functions
