@@ -9,7 +9,7 @@ let
     src = pkgs.fetchFromGitHub {
       owner = "01org";
       repo = "tbb";
-      rev = version;
+      rev = "${version}";
       sha256 = "0r9axsdlmacjlcnax4vkzg86nwf8lsx7wbqdi3wnryaxk0xvdcx6";
     };
 
@@ -21,13 +21,13 @@ let
     '';
   });
   eigen_trunk = pkgs.eigen.overrideAttrs (old: rec {
-    version = "3.3.90";
+    version = "3.3.8";
     stdenv = pkgs.gcc10Stdenv;
     src = pkgs.fetchFromGitLab {
       owner = "libeigen";
       repo = "eigen";
-      rev    = "28aef8e816faadc0e51afbfe3fa91f10f477535d";
-      sha256 = "151bkpn7pkmjglfn4kbdh442g94rjv33n13vy1fgzs9mpjlhmxj9";
+      rev    = "${version}";
+      sha256 = "1mrvcwnvwbwbm60ss7415sdgja6dq4bjcgvlc2zqmm6jycqhs9gn";
     };
     patches = [ ./eigen_include_dir.patch ];
   });
