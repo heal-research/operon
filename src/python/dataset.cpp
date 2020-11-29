@@ -86,16 +86,6 @@ Operon::Dataset MakeDataset(py::buffer buf)
     }
 }
 
-template<typename T>
-py::array_t<T const> MakeView(gsl::span<T const> view)
-{
-    auto sz = static_cast<pybind11::ssize_t>(view.size());
-    py::array_t<T const> arr(sz, view.data(), py::capsule(view.data()));
-    ENSURE(arr.owndata() == false);
-    ENSURE(arr.data() == view.data());
-    return arr;
-}
-
 
 void init_dataset(py::module_ &m)
 {
