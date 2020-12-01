@@ -1,4 +1,4 @@
-
+#include <operators/evaluator.hpp>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
@@ -117,4 +117,7 @@ void init_eval(py::module_ &m)
         .def(py::init<Operon::Problem&>())
         .def("__call__", &Operon::NormalizedMeanSquaredErrorEvaluator::operator());
 
+    py::class_<Operon::UserDefinedEvaluator, Operon::EvaluatorBase>(m, "UserDefinedEvaluator")
+        .def(py::init<Operon::Problem&, std::function<typename Operon::EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> const&>())
+        .def("__call__", &Operon::UserDefinedEvaluator::operator());
 }

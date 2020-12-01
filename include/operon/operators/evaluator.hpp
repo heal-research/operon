@@ -25,10 +25,45 @@
 #include "core/nnls_tiny.hpp"
 #include "core/metrics.hpp"
 #include "core/operator.hpp"
+#include "core/types.hpp"
 #include "stat/meanvariance.hpp"
 #include "stat/pearson.hpp"
 
 namespace Operon {
+class UserDefinedEvaluator : public EvaluatorBase {
+public:
+    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> && func)
+        : EvaluatorBase(problem), fref(std::move(func))
+    {
+    }
+
+    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> const& func)
+        : EvaluatorBase(problem), fref(func)
+    {
+    }
+
+    // the func signature taking a pointer to the rng is a workaround for pybind11, since the random generator is non-copyable we pass a pointer
+    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> && func)
+        : EvaluatorBase(problem), fptr(std::move(func))
+    {
+    }
+
+    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> const& func)
+        : EvaluatorBase(problem), fptr(func)
+    {
+    }
+
+    typename EvaluatorBase::ReturnType
+    operator()(Operon::RandomGenerator& rng, Individual& ind) const override
+    {
+        return fptr ? fptr(&rng, ind) : fref(rng, ind);
+    }
+
+private:
+    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> fref;
+    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> fptr; // workaround for pybind11
+};
+
 class MeanSquaredErrorEvaluator : public EvaluatorBase {
 public:
     static constexpr Operon::Scalar LowerBound = 0.0;
