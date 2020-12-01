@@ -87,7 +87,7 @@ in
     buildInputs = with pkgs; [
         # python environment for bindings and scripting
         pybind11_trunk
-        (pkgs.python38.withPackages (ps: with ps; [ pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz ]))
+        (pkgs.python38.withPackages (ps: with ps; [ pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz dask ]))
         (pkgs_stable.python38.withPackages (ps: with ps; [ sphinx recommonmark sphinx_rtd_theme ]))
         # Project dependencies
         # profiling and debugging
