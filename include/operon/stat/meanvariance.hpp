@@ -27,60 +27,78 @@
 #include "gsl/span"
 
 namespace Operon {
+namespace detail {
+    using A = Eigen::Array4d;
+    using R = Eigen::Ref<A>;
+    using M = Eigen::Map<A>;
+
+}
 
 class MeanVarianceCalculator {
 public:
     MeanVarianceCalculator()
-        : m2{0}, sum{0}, n{0}
+        : q { 0 }
+        , s { 0 }
+        , n { 0 }
     {
     }
 
     void Reset()
     {
-        m2 = 0;
-        sum = 0;
+        q = 0;
+        s = 0;
         n = 0;
     }
 
-    template<typename T>
+    template <typename T>
     void Add(T value);
 
-    template<typename T>
+    template <typename T>
     void Add(T value, T weight);
 
-    template<typename T>
+    template <typename T>
     void Add(gsl::span<const T> values);
 
-    template<typename T>
+    template <typename T>
+    void AddTwoPass(gsl::span<const T> values);
+
+    template <typename T>
     void Add(gsl::span<const T> values, gsl::span<const T> weights);
 
-    template<typename T>
-    void Add(std::vector<T> const& values) { Add(gsl::span<const T>{ values.data(), values.size() }); }
+    template <typename T>
+    void Add(std::vector<T> const& values) { Add(gsl::span<const T> { values.data(), values.size() }); }
 
-    template<typename T>
-    void Add(Operon::Vector<T> const& values) { Add(gsl::span<const T>{ values.data(), values.size() }); }
+    template <typename T>
+    void Add(Operon::Vector<T> const& values) { Add(gsl::span<const T> { values.data(), values.size() }); }
 
-    double NaiveVariance() const 
+    template <typename T>
+    void AddTwoPass(std::vector<T> const& values) { AddTwoPass(gsl::span<const T> { values.data(), values.size() }); }
+
+    template <typename T>
+    void AddTwoPass(Operon::Vector<T> const& values) { AddTwoPass(gsl::span<const T> { values.data(), values.size() }); }
+
+    double NaiveVariance() const
     {
         EXPECT(n > 0);
-        return m2 / n; 
+        return q / n;
     }
 
     double SampleVariance() const
     {
         EXPECT(n > 1);
-        return m2 / (n - 1);
+        return q / (n - 1);
     }
 
-    double SumOfSquares() const { return m2; }
-    double StandardDeviation() const { return std::sqrt(SampleVariance()); }
+    double SumOfSquares() const { return q; }
+    double NaiveStandardDeviation() const { return std::sqrt(NaiveVariance()); }
+    double SampleStandardDeviation() const { return std::sqrt(SampleVariance()); }
     double Count() const { return n; }
-    double Mean() const { return sum / n; }
+    double Mean() const { return s / n; }
 
 private:
-    double m2;
-    double sum;
-    double n;
+    double q; // sum of squares
+    double s; // sum
+    double n; // number of elements
 };
 } // namespace Operon
 #endif

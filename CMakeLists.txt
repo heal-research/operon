@@ -187,6 +187,7 @@ add_library(
     src/operators/creator/ptc2.cpp
     src/operators/selector/proportional.cpp
     src/operators/selector/tournament.cpp
+    src/stat/combine.cpp
     src/stat/meanvariance.cpp
     src/stat/pearson.cpp
 )
@@ -208,14 +209,14 @@ target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PREC
 set_target_properties(operon-example-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 if(MSVC)
-    target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+    target_compile_options(operon PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
     # ugly hack to set the include dir correctly
     find_path(FMT_INCLUDE_DIR fmt/core.h)
     include_directories(${FMT_INCLUDE_DIR})
 else()
     set(MYFLAGS -Wall -Werror -Wextra -Wshadow -Wsign-compare -Wshadow -Wwrite-strings -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion)
-    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;>$<$<CONFIG:Release>:-O3;-g;-march=native>;-fPIC")
-    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;>$<$<CONFIG:Release>:-O3;-g;-march=znver2>;-fPIC")
+    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
 endif(MSVC)
 
 if (cxxopts_FOUND)
@@ -231,9 +232,9 @@ if (cxxopts_FOUND)
     set_target_properties(operon-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
     if(MSVC)
-        target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+        target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
     else()
-        target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+        target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
     endif()
 endif()
 
@@ -260,9 +261,9 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
     target_compile_features(pyoperon PRIVATE cxx_std_17)
     target_link_libraries(pyoperon PRIVATE operon)
     if(MSVC)
-        target_compile_options(pyoperon PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+        target_compile_options(pyoperon PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
     else()
-        target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=native>")
+        target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=znver2>")
     endif()
     target_include_directories(pyoperon PRIVATE ${PROJECT_SOURCE_DIR}/python)
     target_include_directories(
@@ -316,20 +317,22 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/performance/distance.cpp
         test/performance/math.cpp
         test/performance/random.cpp
+        test/performance/stat.cpp
         #test/implementation/evaluation.cpp
         test/implementation/details.cpp
         test/implementation/hashing.cpp
         test/implementation/initialization.cpp
         test/implementation/mutation.cpp
         test/implementation/random.cpp
+        test/implementation/stat.cpp
         #test/implementation/selection.cpp
         #        test/codegen/irbuilder.cpp
         )
     target_compile_features(operon-test PRIVATE cxx_std_17)
     if(MSVC)
-        target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O2;/std:c++latest>")
+        target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
     else()
-        target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+        target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=znver2>")
     endif(MSVC)
     target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb doctest::doctest)
     target_include_directories(

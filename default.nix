@@ -20,20 +20,20 @@ let
             -P cmake/tbb_config_installer.cmake
     '';
   });
-  eigen_trunk = pkgs.eigen.overrideAttrs (old: rec {
-    version = "3.3.8";
+  eigen339 = pkgs.eigen.overrideAttrs (old: rec {
+    version = "3.3.9";
     stdenv = pkgs.gcc10Stdenv;
     src = pkgs.fetchFromGitLab {
       owner = "libeigen";
       repo = "eigen";
       rev    = "${version}";
-      sha256 = "1mrvcwnvwbwbm60ss7415sdgja6dq4bjcgvlc2zqmm6jycqhs9gn";
+      sha256 = "0m4h9fd5s1pzpncy17r3w0b5a6ywqjajmnr720ndb7fc4bn0dhi4";
     };
     patches = [ ./eigen_include_dir.patch ];
   });
   pybind11_trunk = pkgs.python38Packages.pybind11.overrideAttrs (old: rec {
     stdenv = pkgs.gcc10Stdenv;
-    buildInputs = with pkgs; [ eigen_trunk ];
+    buildInputs = with pkgs; [ eigen339 ];
     version = "2.6.0";
     src = pkgs.fetchFromGitHub {
       repo   = "pybind11";
@@ -42,10 +42,10 @@ let
       sha256 = "19rnl4pq2mbh5hmj96cs309wxl51q5yyp364icg26zjm3d0ap834";
     };
   });
-  ceres_trunk = pkgs.ceres-solver.overrideAttrs (old: rec {
+  ceres200 = pkgs.ceres-solver.overrideAttrs (old: rec {
     CFLAGS = (old.CFLAGS or "") + "-march=native -O3";
     stdenv = pkgs.gcc10Stdenv;
-    buildInputs = with pkgs; [ eigen_trunk glog ];
+    buildInputs = with pkgs; [ eigen339 glog ];
 
     version = "2.0.0";
     src = pkgs.fetchFromGitHub {
@@ -102,8 +102,8 @@ in
         cmake
         tbb
         #eigen
-        eigen_trunk
-        ceres_trunk
+        eigen339
+        ceres200
         openlibm
         gperftools
         jemalloc
