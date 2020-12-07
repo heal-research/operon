@@ -201,7 +201,7 @@ void Dataset::Standardize(size_t i, Range range)
     auto vals = gsl::span<const Operon::Scalar>(seg.data(), range.Size());
     calc.Add(vals);
 
-    values.col(j) = (values.col(j).array() - calc.Mean()) / calc.StandardDeviation();
+    values.col(j) = (values.col(j).array() - calc.Mean()) / calc.NaiveStandardDeviation();
 }
 } // namespace Operon
 

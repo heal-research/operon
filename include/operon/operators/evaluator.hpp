@@ -176,9 +176,7 @@ public:
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
         PearsonsRCalculator calculator;
-        for (size_t i = 0; i < estimatedValues.size(); ++i) {
-            calculator.Add(estimatedValues[i], targetValues[i]);
-        }
+        calculator.Add(gsl::span<Operon::Scalar const>(estimatedValues), targetValues);
         auto varX = calculator.NaiveVarianceX();
         if (varX < 1e-12) {
             // this is done to avoid numerical issues when a constant model
