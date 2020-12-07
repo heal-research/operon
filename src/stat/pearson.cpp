@@ -31,6 +31,7 @@ namespace Operon {
             for (size_t i = 0; i < x.size(); ++i) {
                 Add(x[i], y[i]);
             }
+            return;
         }
 
         size_t sz = x.size() - x.size() % 4; // closest multiple of 4
