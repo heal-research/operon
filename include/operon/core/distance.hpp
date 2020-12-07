@@ -82,14 +82,14 @@ namespace Distance {
         {
             size_t c = CountIntersect(lhs, rhs);
             size_t n = lhs.size() + rhs.size();
-            return static_cast<double>(n - 2 * c) / n;
+            return static_cast<double>(n - 2 * c) / static_cast<double>(n);
         }
 
         static inline double SorensenDice(HashVector const& lhs, HashVector const& rhs) noexcept
         {
             size_t n = lhs.size() + rhs.size();
             size_t c = CountIntersect(lhs, rhs);
-            return 1.0 - 2.0 * c / n;
+            return 1.0 - 2.0 * static_cast<double>(c) / static_cast<double>(n);
         }
     }
 
