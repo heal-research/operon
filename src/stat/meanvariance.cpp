@@ -64,42 +64,28 @@ namespace Operon {
     template<typename T>
     void MeanVarianceCalculator::Add(gsl::span<const T> values)
     {
+        constexpr int N = 4;
         // the general idea is to partition the data and perform this computation in parallel
-        if (values.size() < 16) {
+        if (values.size() < 4 * N) {
             for (auto v : values) {
                 Add(v);
             }
             return;
         }
 
+        using A = Eigen::Array<double, N, 1>; // use doubles for the statistics (more precision)
+        using M = Eigen::Map<const Eigen::Array<T, N, 1>>; // type for mapping data from memory
+
         size_t sz = values.size() - values.size() % 4; // closest multiple of 4
-        size_t ps = sz / 4; // partition size
 
-        gsl::span<const T> parts[4] = {
-            values.subspan(0 * ps, ps),
-            values.subspan(1 * ps, ps),
-            values.subspan(2 * ps, ps),
-            values.subspan(3 * ps, ps)
-        };
+        A qq = A::Zero();
+        A nn = A::Ones(); // counts
 
-        Eigen::Array4d qq { 0, 0, 0, 0}; // sums of squares
-        Eigen::Array4d nn { 1, 1, 1 ,1 }; // counts
+        A ss = M(values.data()).template cast<double>();
 
-        Eigen::Array4d ss {
-            parts[0][0],
-            parts[1][0],
-            parts[2][0],
-            parts[3][0]
-        };
-
-        for (size_t i = 1; i < ps; ++i) {
-            Eigen::Array4d xx {
-                parts[0][i],
-                parts[1][i],
-                parts[2][i],
-                parts[3][i]
-            };
-            Eigen::Array4d dd = nn * xx - ss;
+        for (size_t i = N; i < sz; i += N) {
+            A xx = M(values.data() + i).template cast<double>();
+            A dd = nn * xx - ss;
             nn += 1.0;
             ss += xx;
             qq += dd * dd / (nn * (nn - 1));
