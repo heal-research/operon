@@ -426,7 +426,7 @@ int main(int argc, char** argv)
         Ind best(1);
 
         auto report = [&]() {
-            auto pop = gp.Parents();
+            auto const& pop = gp.Parents();
             best = getBest(pop);
 
             //fmt::print("best: {}\n", InfixFormatter::Format(best.Genotype, *dataset));
@@ -459,7 +459,7 @@ int main(int argc, char** argv)
 
             // calculate memory consumption
             size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<> {}, getSize);
-            auto off = gp.Offspring();
+            auto const& off = gp.Offspring();
             totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), size_t { 0 }, std::plus<> {}, getSize);
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
