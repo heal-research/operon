@@ -187,7 +187,6 @@ add_library(
     src/operators/creator/ptc2.cpp
     src/operators/selector/proportional.cpp
     src/operators/selector/tournament.cpp
-    src/stat/combine.cpp
     src/stat/meanvariance.cpp
     src/stat/pearson.cpp
 )

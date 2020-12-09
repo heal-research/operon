@@ -25,72 +25,41 @@ namespace Operon {
     template<typename T>
     void PearsonsRCalculator::Add(gsl::span<const T> x, gsl::span<const T> y)
     {
+        constexpr int N = 4;
+
         EXPECT(x.size() == y.size());
         // the general idea is to partition the data and perform this computation in parallel
-        if (x.size() < 16) {
+        if (x.size() < 4 * N) {
             for (size_t i = 0; i < x.size(); ++i) {
                 Add(x[i], y[i]);
             }
             return;
         }
 
-        size_t sz = x.size() - x.size() % 4; // closest multiple of 4
-        size_t ps = sz / 4; // partition size
+        using A = Eigen::Array<double, N, 1>; // use doubles for the statistics (more precision)
+        using M = Eigen::Map<const Eigen::Array<T, N, 1>>; // type for mapping data from memory
 
-        gsl::span<const T> xs[4] = {
-            x.subspan(0 * ps, ps),
-            x.subspan(1 * ps, ps),
-            x.subspan(2 * ps, ps),
-            x.subspan(3 * ps, ps)
-        };
+        size_t sz = x.size() - x.size() % N; // closest multiple of N
 
-        gsl::span<const T> ys[4] = {
-            y.subspan(0 * ps, ps),
-            y.subspan(1 * ps, ps),
-            y.subspan(2 * ps, ps),
-            y.subspan(3 * ps, ps)
-        };
+        A _sumX = M(x.data()).template cast<double>();
+        A _sumY = M(y.data()).template cast<double>();
 
-        Eigen::Array4d _sumX {
-            xs[0][0],
-            xs[1][0],
-            xs[2][0],
-            xs[3][0]
-        };
+        A _sumXX = A::Zero();
+        A _sumXY = A::Zero();
+        A _sumYY = A::Zero();
+        A _sumWe = A::Ones();
 
-        Eigen::Array4d _sumY {
-            ys[0][0],
-            ys[1][0],
-            ys[2][0],
-            ys[3][0]
-        };
+        for (size_t n = N; n < sz; n += N) {
+            A xx = M(x.data() + n).template cast<double>();
+            A yy = M(y.data() + n).template cast<double>();
 
-        Eigen::Array4d _sumXX { 0, 0, 0, 0 };
-        Eigen::Array4d _sumXY { 0, 0, 0, 0 };
-        Eigen::Array4d _sumYY { 0, 0, 0, 0 };
-        Eigen::Array4d _sumWe { 1, 1, 1 ,1 };
+            A dx = xx * _sumWe - _sumX;
+            A dy = yy * _sumWe - _sumY;
 
-        for (size_t i = 1; i < ps; ++i) {
-            Eigen::Array4d xx {
-                xs[0][i],
-                xs[1][i],
-                xs[2][i],
-                xs[3][i]
-            };
-
-            Eigen::Array4d yy {
-                ys[0][i],
-                ys[1][i],
-                ys[2][i],
-                ys[3][i]
-            };
-
-            Eigen::Array4d dx = xx * _sumWe - _sumX;
-            Eigen::Array4d dy = yy * _sumWe - _sumY;
-
+            A _sumWeOld = _sumWe;
             _sumWe += 1;
 
-            Eigen::Array4d f = (_sumWe * (_sumWe - 1)).inverse();
+            A f = (_sumWe * _sumWeOld).inverse();
 
             _sumXX += f * dx * dx;
             _sumYY += f * dy * dy;
@@ -112,8 +81,9 @@ namespace Operon {
         if (sz < x.size()) {
             Add(x.subspan(sz, x.size() - sz), y.subspan(sz, y.size() - sz));
         }
+
     }
-    // necessary to prevent linker errors 
+    // necessary to prevent linker errors
     // https://isocpp.org/wiki/faq/templates#separate-template-fn-defn-from-decl
     template void   PearsonsRCalculator::Add<float>(float, float);
     template void   PearsonsRCalculator::Add<float>(float, float, float);
