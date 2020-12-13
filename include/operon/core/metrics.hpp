@@ -70,7 +70,9 @@ double RSquared(gsl::span<const T> x, gsl::span<const T> y)
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(x.size() > 0);
-    auto r = PearsonsRCalculator::Coefficient(x, y);
+    PearsonsRCalculator calc;
+    calc.Add(x, y);
+    auto r = calc.Correlation();
     return r * r;
 }
 } // namespace
