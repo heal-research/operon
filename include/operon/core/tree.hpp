@@ -204,14 +204,13 @@ public:
     Operon::Vector<Node>&& Nodes() && { return std::move(nodes); }
     const Operon::Vector<Node>& Nodes() const& { return nodes; }
 
-
     inline auto CoefficientsCount() const
     {
         return std::count_if(nodes.cbegin(), nodes.cend(), [](auto const& s) { return s.IsLeaf(); });
     }
 
-    void SetCoefficients(const gsl::span<const double> coefficients);
-    std::vector<double> GetCoefficients() const;
+    void SetCoefficients(const gsl::span<const Operon::Scalar> coefficients);
+    std::vector<Operon::Scalar> GetCoefficients() const;
 
     inline Node& operator[](size_t i) noexcept { return nodes[i]; }
     inline const Node& operator[](size_t i) const noexcept { return nodes[i]; }
