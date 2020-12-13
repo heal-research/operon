@@ -24,7 +24,7 @@
 #include <Eigen/Dense>
 
 namespace Operon {
-constexpr size_t BATCHSIZE = 64;
+constexpr size_t BATCHSIZE = 512 / sizeof(Operon::Scalar);
 
 namespace detail {
     // addition up to 5 arguments

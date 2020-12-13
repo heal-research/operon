@@ -96,7 +96,7 @@ void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::
         auto remainingRows = std::min(BATCHSIZE, numRows - row);
 
         for (size_t i = 0; i < nodes.size(); ++i) {
-            auto r = m.col(i);
+            typename decltype(m)::ColXpr r = m.col(i);
             auto const& s = nodes[i];
 
             if (GSL_LIKELY(s.IsLeaf())) {
