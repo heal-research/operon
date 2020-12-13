@@ -32,7 +32,6 @@
 #include "core/common.hpp"
 #include "core/constants.hpp"
 #include "core/dataset.hpp"
-#include "core/eval.hpp"
 #include "core/format.hpp"
 #include "core/individual.hpp"
 #include "core/pset.hpp"
@@ -41,7 +40,6 @@
 
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
-#include "operators/evaluator.hpp"
 #include "operators/generator.hpp"
 #include "operators/initializer.hpp"
 #include "operators/mutation.hpp"

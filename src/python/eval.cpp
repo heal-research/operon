@@ -1,4 +1,3 @@
-#include <operators/evaluator.hpp>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
@@ -6,8 +5,7 @@
 #include <gsl/span>
 #include <stat/linearscaler.hpp>
 
-#include "core/metrics.hpp"
-#include "core/eval.hpp"
+#include "operators/evaluator.hpp"
 
 #include "operon.hpp"
 
