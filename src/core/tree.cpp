@@ -142,9 +142,9 @@ std::vector<size_t> Tree::ChildIndices(size_t i) const
     return indices;
 }
 
-std::vector<double> Tree::GetCoefficients() const
+std::vector<Operon::Scalar> Tree::GetCoefficients() const
 {
-    std::vector<double> coefficients;
+    std::vector<Operon::Scalar> coefficients;
     for (auto& s : nodes) {
         if (s.IsConstant() || s.IsVariable()) {
             coefficients.push_back(s.Value);
@@ -153,7 +153,7 @@ std::vector<double> Tree::GetCoefficients() const
     return coefficients;
 }
 
-void Tree::SetCoefficients(const gsl::span<const double> coefficients)
+void Tree::SetCoefficients(const gsl::span<const Operon::Scalar> coefficients)
 {
     size_t idx = 0;
     for (auto& s : nodes) {
