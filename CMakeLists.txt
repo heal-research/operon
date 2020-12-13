@@ -84,13 +84,15 @@ set(THIRDPARTY_INCLUDE_DIRS
 message(STATUS "THIRDPARTY_INCLUDE_DIRS: ${THIRDPARTY_INCLUDE_DIRS}")
 
 # compile and link-time options
-set(BUILD_TESTS_DESCRIPTION          "Build unit tests.")
-set(BUILD_PYBIND_DESCRIPTION         "Build python bindings.")
-set(OPENLIBM_DESCRIPTION             "Link against Julia's openlibm, a high performance mathematical library.")
-set(JEMALLOC_DESCRIPTION             "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support.")
-set(TCMALLOC_DESCRIPTION             "Link against tcmalloc (thread-caching malloc), a malloc(3) implementation that reduces lock contention for multi-threaded programs.")
-set(MIMALLOC_DESCRIPTION             "Link against mimalloc, a general purpose allocator with excellent performance characteristics.")
-set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes.")
+set(BUILD_TESTS_DESCRIPTION          "Build unit tests [default=OFF].")
+set(BUILD_PYBIND_DESCRIPTION         "Build python bindings [default=OFF].")
+set(OPENLIBM_DESCRIPTION             "Link against Julia's openlibm, a high performance mathematical library [default=OFF].")
+set(JEMALLOC_DESCRIPTION             "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support [default=OFF].")
+set(TCMALLOC_DESCRIPTION             "Link against tcmalloc (thread-caching malloc), a malloc(3) implementation that reduces lock contention for multi-threaded programs [default=OFF].")
+set(MIMALLOC_DESCRIPTION             "Link against mimalloc, a general purpose allocator with excellent performance characteristics [default=OFF].")
+set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes [default=OFF].")
+set(CERES_TINY_SOLVER_DESCRIPTION    "Use the tiny solver included in Ceres, intended for solving small dense problems with low latency and low overhead [default=OFF].")
+set(CERES_ALWAYS_DOUBLE_DESCRIPTION  "Always use double-precision for the scalar part of a jet. If not set then USE_SINGLE_PRECISION is used [default=ON].")
 
 # option descriptions
 option(BUILD_TESTS          ${BUILD_TESTS_DESCRIPTION}          OFF)
@@ -100,6 +102,8 @@ option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
 option(USE_TCMALLOC         ${TCMALLOC_DESCRIPTION}             OFF)
 option(USE_MIMALLOC         ${MIMALLOC_DESCRIPTION}             OFF)
 option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION} OFF)
+option(CERES_TINY_SOLVER    ${CERES_TINY_SOLVER_DESCRIPTION}    OFF)
+option(CERES_ALWAYS_DOUBLE  ${CERES_ALWAYS_DOUBLE_DESCRIPTION}  OFF)
 
 add_feature_info(BUILD_TESTS          BUILD_TESTS          ${BUILD_TESTS_DESCRIPTION})
 add_feature_info(BUILD_PYBIND         BUILD_PYBIND         ${BUILD_PYBIND_DESCRIPTION})
@@ -108,6 +112,8 @@ add_feature_info(USE_JEMALLOC         USE_JEMALLOC         ${JEMALLOC_DESCRIPTIO
 add_feature_info(USE_TCMALLOC         USE_TCMALLOC         ${TCMALLOC_DESCRIPTION})
 add_feature_info(USE_MIMALLOC         USE_MIMALLOC         ${MIMALLOC_DESCRIPTION})
 add_feature_info(USE_SINGLE_PRECISION USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION})
+add_feature_info(CERES_TINY_SOLVER    CERES_TINY_SOLVER    ${CERES_TINY_SOLVER_DESCRIPTION})
+add_feature_info(CERES_ALWAYS_DOUBLE  CERES_ALWAYS_DOUBLE  ${CERES_ALWAYS_DOUBLE_DESCRIPTION})
 
 set(COUNTER 0)
 
@@ -194,7 +200,11 @@ target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
 target_include_directories(operon PRIVATE ${PROJECT_SOURCE_DIR}/include/operon)
 target_include_directories(operon SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR} ${CERES_INCLUDE_DIRS} ${THIRDPARTY_INCLUDE_DIRS})
-target_compile_definitions(operon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+target_compile_definitions(operon PRIVATE
+    "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
+    "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
+    "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+    )
 
 add_executable(
     operon-example-gp
@@ -227,7 +237,11 @@ if (cxxopts_FOUND)
     target_compile_features(operon-gp PRIVATE cxx_std_17)
     target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
     target_include_directories(operon-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS})
-    target_compile_definitions(operon-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+    target_compile_definitions(operon-gp PRIVATE
+        "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
+        "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
+        "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+        )
     set_target_properties(operon-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
     if(MSVC)
@@ -274,7 +288,11 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         ${CERES_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
     )
-    target_compile_definitions(pyoperon PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+    target_compile_definitions(pyoperon PRIVATE
+        "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
+        "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
+        "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+        )
     set_target_properties(pyoperon PROPERTIES OUTPUT_NAME "_operon")
 
     # for installation we want to detect the python path and then copy our package over
@@ -341,7 +359,11 @@ if(doctest_FOUND AND BUILD_TESTS)
         ${THIRDPARTY_INCLUDE_DIRS}
         ${CERES_INCLUDE_DIRS}
         )
-    target_compile_definitions(operon-test PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+    target_compile_definitions(operon-test PRIVATE
+        "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
+        "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
+        "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+        )
     set_target_properties(operon-test PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endif()
 
