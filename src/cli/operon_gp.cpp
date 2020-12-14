@@ -67,6 +67,7 @@ int main(int argc, char** argv)
         ("maxlength", "Maximum length", cxxopts::value<size_t>()->default_value("50"))
         ("maxdepth", "Maximum depth", cxxopts::value<size_t>()->default_value("10"))
         ("crossover-probability", "The probability to apply crossover", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
+        ("crossover-internal-probability", "Crossover bias towards swapping function nodes", cxxopts::value<Operon::Scalar>()->default_value("0.9"))
         ("mutation-probability", "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))
         ("tree-creator", "Tree creator operator to initialize the population with.", cxxopts::value<std::string>())
         ("female-selector", "Female selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
@@ -109,6 +110,7 @@ int main(int argc, char** argv)
 
     auto maxLength = result["maxlength"].as<size_t>();
     auto maxDepth = result["maxdepth"].as<size_t>();
+    auto crossoverInternalProbability = result["crossover-internal-probability"].as<Operon::Scalar>();
 
     try {
         for (auto kv : result.arguments()) {
@@ -258,7 +260,7 @@ int main(int argc, char** argv)
         auto initializer = Initializer { *creator, sizeDistribution };
         initializer.MinDepth(1);
         initializer.MaxDepth(1000);
-        auto crossover = SubtreeCrossover { 0.9, maxDepth, maxLength };
+        auto crossover = SubtreeCrossover { crossoverInternalProbability, maxDepth, maxLength };
         auto mutator = MultiMutation {};
         auto onePoint = OnePointMutation {};
         auto changeVar = ChangeVariableMutation { problem.InputVariables() };
