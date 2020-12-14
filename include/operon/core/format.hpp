@@ -35,18 +35,19 @@ class TreeFormatter {
 
         auto& s = tree[i];
         if (s.IsConstant()) {
-            auto formatString = fmt::format("{{:.{}f}}\n", decimalPrecision);
+            auto formatString = fmt::format("{{:.{}f}}", decimalPrecision);
             fmt::format_to(std::back_inserter(current), formatString, s.Value);
         } else if (s.IsVariable()) {
-            auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}\n" : "{{:.{}f}} * {{}}\n", decimalPrecision);
+            auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}", decimalPrecision);
             if (auto res = dataset.GetVariable(s.CalculatedHashValue); res.has_value()) {
                 fmt::format_to(std::back_inserter(current), formatString, s.Value, res.value().Name);
             } else {
                 throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
             }
         } else {
-            fmt::format_to(std::back_inserter(current), "{} {} {}\n", s.Name(), s.Depth, s.Length+1);
+            fmt::format_to(std::back_inserter(current), "{}", s.Name());
         }
+        fmt::format_to(std::back_inserter(current), " D:{} L:{} N:{}\n", s.Depth, s.Level, s.Length+1);
 
         if (s.IsLeaf()) {
             return;
