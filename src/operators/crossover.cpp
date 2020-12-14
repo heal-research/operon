@@ -23,15 +23,15 @@
 namespace Operon {
 
 namespace {
-    using T = std::tuple<size_t, size_t>;
+    using Limits = std::pair<size_t, size_t>;
 
-    bool not_in(T t, size_t v) {
+    bool not_in(Limits t, size_t v) {
         auto [a, b] = t;
         return v < a || b < v;
     }
 }
 
-static size_t SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tree, double internalProb, T length, T level, T depth)
+static size_t SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tree, double internalProb, Limits length, Limits level, Limits depth)
 {
     if (tree.Length() == 1) {
         return 0;
@@ -50,7 +50,7 @@ static size_t SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tr
         auto d = node.Depth;
         auto v = node.Level;
 
-        if (not_in(length, l) || not_in(level, v)  || not_in(depth, d)) {
+        if (not_in(length, l) || not_in(level, v) || not_in(depth, d)) {
             continue;
         }
 
@@ -61,32 +61,29 @@ static size_t SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tr
         }
     }
 
-    return std::bernoulli_distribution(internalProb)(random)
-        ? *Operon::Random::Sample(random, candidates.rbegin(), b+1)
-        : *Operon::Random::Sample(random, candidates.begin(), a+1);
-
-    //auto [lmin, lmax] = length;
-    //auto [vmin, vmax] = level;
-    //auto [dmin, dmax] = depth;
-    //throw std::runtime_error(fmt::format("Could not find suitable candidate with length in [{}-{}], level in [{}-{}], depth in [{}-{}]\n", lmin, lmax, vmin, vmax, dmin, dmax));
+    if (b > candidates.rbegin() && std::bernoulli_distribution(internalProb)(random)) {
+        return *Operon::Random::Sample(random, candidates.rbegin(), b);
+    } else {
+        return *Operon::Random::Sample(random, candidates.begin(), a);
+    }
 }
 
-std::pair<size_t, size_t> SubtreeCrossover::FindCompatibleSwapLocations(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const
+std::pair<size_t, size_t> SubtreeCrossover::FindCompatibleSwapLocations(Operon::RandomGenerator& random, Tree const& lhs, Tree const& rhs) const
 {
     using signed_t = std::make_signed<size_t>::type;
     signed_t diff = static_cast<signed_t>(lhs.Length() - maxLength + 1); // +1 to account for at least one node that gets swapped in
 
-    auto i = SelectRandomBranch(random, lhs, internalProbability, T{std::max(diff, signed_t{1}), lhs.Length()}, T{size_t{1}, lhs.Depth()}, T{size_t{1}, lhs.Depth()});
-    size_t partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
+    auto i = SelectRandomBranch(random, lhs, internalProbability, Limits{std::max(diff, signed_t{1}), lhs.Length()}, Limits{size_t{1}, lhs.Depth()}, Limits{size_t{1}, lhs.Depth()});
     // we have to make some small allowances here due to the fact that the provided trees 
     // might actually be larger than the maxDepth and maxLength limits given here
     signed_t maxBranchDepth = static_cast<signed_t>(maxDepth - lhs[i].Level);
     maxBranchDepth = std::max(maxBranchDepth, signed_t{1});
 
+    size_t partialTreeLength = (lhs.Length() - (lhs[i].Length + 1));
     signed_t maxBranchLength = static_cast<signed_t>(maxLength - partialTreeLength);
     maxBranchLength = std::max(maxBranchLength, signed_t{1});
 
-    auto j = SelectRandomBranch(random, rhs, internalProbability, T{1ul, maxBranchLength}, T{1ul, rhs.Depth()}, T{1ul, maxBranchDepth});
+    auto j = SelectRandomBranch(random, rhs, internalProbability, Limits{1ul, maxBranchLength}, Limits{1ul, rhs.Depth()}, Limits{1ul, maxBranchDepth});
     return std::make_pair(i, j);
 }
 
