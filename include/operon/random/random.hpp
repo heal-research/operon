@@ -27,8 +27,9 @@ T Uniform(R& random, T a, T b)
 template <typename R, typename InputIterator>
 InputIterator Sample(R& random, InputIterator start, InputIterator end)
 {
-    auto dist = std::distance(start, end)-1;
-    std::advance(start, Uniform(random, decltype(dist){0}, dist));
+    auto dist = std::distance(start, end);
+    if (dist <= 1) return start;
+    std::advance(start, Uniform(random, decltype(dist){0}, dist-1));
     return start;
 }
 
