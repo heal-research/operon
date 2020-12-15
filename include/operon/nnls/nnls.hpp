@@ -21,9 +21,8 @@
 #define OPERON_NNLS_HPP
 
 #include "nnls/cost_function.hpp"
-#include "nnls/tiny_cost_function.hpp"
-#include "nnls/tiny_solver.hpp"
 #include <ceres/dynamic_autodiff_cost_function.h>
+#include <ceres/tiny_solver.h>
 
 namespace Operon {
 // returns an array of optimized parameters
@@ -35,7 +34,6 @@ ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::s
     using ceres::DynamicCostFunction;
     using ceres::DynamicNumericDiffCostFunction;
     using ceres::Problem;
-    using ceres::Solve;
     using ceres::Solver;
 
     Solver::Summary summary;
@@ -57,21 +55,11 @@ ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::s
 
     DynamicCostFunction* costFunction;
     if constexpr (autodiff) {
-        using CostFunctor = TinyCostFunction<ResidualEvaluator, Dual>;
-        auto eval = new CostFunctor(tree, dataset, targetValues, range);
-        costFunction = new Operon::DynamicAutoDiffCostFunction<CostFunctor, Dual::DIMENSION>(eval);
-        //auto eval = new ResidualEvaluator(tree, dataset, targetValues, range);
-        //costFunction = new DynamicAutoDiffCostFunction<ResidualEvaluator, Dual::DIMENSION>(eval);
+        costFunction = new Operon::DynamicAutoDiffCostFunction<ResidualEvaluator, Dual, Eigen::RowMajor>(tree, dataset, targetValues, range);
     } else {
         auto eval = new ResidualEvaluator(tree, dataset, targetValues, range);
         costFunction = new DynamicNumericDiffCostFunction(eval);
     }
-
-    int nParameters = static_cast<int>(coef.size());
-    int nResiduals = static_cast<int>(range.Size());
-    costFunction->AddParameterBlock(nParameters);
-    costFunction->SetNumResiduals(nResiduals);
-    //auto lossFunction = new CauchyLoss(0.5); // see http://ceres-solver.org/nnls_tutorial.html#robust-curve-fitting
 
     Problem problem;
     problem.AddResidualBlock(costFunction, nullptr, coef.data());
@@ -118,12 +106,12 @@ auto OptimizeNumeric(Args&&... args)
 template <bool autodiff = true>
 ceres::Solver::Summary OptimizeTiny(Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range, size_t iterations = 50, bool writeCoefficients = true, bool = false /* ignored */)
 {
-    ceres::TinySolver<TinyCostFunction<ResidualEvaluator, Dual>> solver;
+    Operon::DynamicAutoDiffCostFunction<ResidualEvaluator, Dual, Eigen::ColMajor> cf(tree, dataset, targetValues, range);
+    ceres::TinySolver<decltype(cf)> solver;
     solver.options.max_num_iterations = static_cast<int>(iterations);
 
-    TinyCostFunction<ResidualEvaluator, Dual> cf(tree, dataset, targetValues, range);
     auto x0 = tree.GetCoefficients();
-    decltype(solver)::Parameters params = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size()).cast<Scalar>();
+    decltype(solver)::Parameters params = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size()).cast<typename decltype(cf)::Scalar>();
     solver.Solve(cf, &params);
 
     if (writeCoefficients) {

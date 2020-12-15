@@ -51,8 +51,8 @@ let
     src = pkgs.fetchFromGitHub {
       repo   = "ceres-solver";
       owner  = "ceres-solver";
-      rev    = "${version}";
-      sha256 = "05wpvz461kpbx221s1idsg5lx4hzz28lnnvrniygclrmr0d9s7xg";
+      rev    = "e84cf10e13633618a780543e83c117a84316b790";
+      sha256 = "04w1gip6ag6fjs89kds5sgpr6djnfsfwjyhhdcx7mrrdz8lva077";
     };
     enableParallelBuilding = true;
     cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=FALSE -DBUILD_TESTING=FALSE" ];
