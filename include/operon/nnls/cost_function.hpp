@@ -7,58 +7,119 @@
 #include <type_traits>
 #include <vector>
 
-#include "ceres/dynamic_cost_function.h"
-#include "ceres/types.h"
+#include <ceres/dynamic_cost_function.h>
+#include <ceres/internal/fixed_array.h>
+#include <ceres/types.h>
 
+#include "core/eval.hpp"
 #include "core/types.hpp"
 
 namespace Operon {
+// this cost function is adapted to work with both solvers from Ceres: the normal one and the tiny solver
+// for this, a number of template parameters are necessary:
+// - the CostFunctor is the actual functor for computing the residuals
+// - the JetT type represents a dual number, the user can specify the type for the Scalar part (float, double) and the Stride (Ceres-specific)
+// - the StorageOrder specifies the format of the jacobian (row-major for the big Ceres solver, column-major for the tiny solver)
+template <typename CostFunctor, typename JetT, int StorageOrder = Eigen::RowMajor>
+struct DynamicAutoDiffCostFunction final : public ceres::DynamicCostFunction {
+    using Scalar = typename JetT::Scalar;
+    const int Stride = JetT::DIMENSION;
 
-// this class represents a simplification of ceres::DynamicAutoDiffCostFunction
-// more tailored for our use case: a single parameter block and a single jacobian
-// (exactly the same as the TinyCostFunction, which it uses to get back results)
-// notably, this function can operate in single- or double-precision
-// (Ceres supports double only)
-template <typename CostFunctor, int Stride = 4>
-class DynamicAutoDiffCostFunction : public ceres::DynamicCostFunction {
-public:
-    using Scalar = typename CostFunctor::Scalar;
+    enum {
+        NUM_RESIDUALS = Eigen::Dynamic,
+        NUM_PARAMETERS = Eigen::Dynamic,
+    };
 
-    // Takes ownership by default.
-    DynamicAutoDiffCostFunction(CostFunctor* functor,
-        ceres::Ownership ownership = ceres::TAKE_OWNERSHIP)
-        : functor_(functor)
-        , ownership_(ownership)
+    DynamicAutoDiffCostFunction(const Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range)
+        : functor_(tree, dataset, targetValues, range)
     {
+        numParameters_ = static_cast<int>(tree.GetCoefficients().size());
+        numResiduals_ = static_cast<int>(targetValues.size());
+
+        mutable_parameter_block_sizes()->push_back(numParameters_);
+        set_num_residuals(numResiduals_);
     }
 
-    explicit DynamicAutoDiffCostFunction(DynamicAutoDiffCostFunction&& other)
-        : functor_(std::move(other.functor_))
-        , ownership_(other.ownership_)
+    bool Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const
     {
-    }
-
-    virtual ~DynamicAutoDiffCostFunction()
-    {
-        // Manually release pointer if configured to not take ownership
-        // rather than deleting only if ownership is taken.  This is to
-        // stay maximally compatible to old user code which may have
-        // forgotten to implement a virtual destructor, from when the
-        // AutoDiffCostFunction always took ownership.
-        if (ownership_ == ceres::DO_NOT_TAKE_OWNERSHIP) {
-            functor_.release();
+        if (jacobian == nullptr) {
+            return functor_(&parameters, residuals);
         }
+
+        // Allocate scratch space for the strided evaluation.
+        ceres::internal::FixedArray<JetT, (256 * 7) / sizeof(JetT)> input_jets(numParameters_);
+        ceres::internal::FixedArray<JetT, (256 * 7) / sizeof(JetT)> output_jets(numResiduals_);
+
+        for (int j = 0; j < numParameters_; ++j) {
+            input_jets[j].a = static_cast<Scalar>(parameters[j]);
+        }
+
+        // Evaluate all of the strides. Each stride is a chunk of the derivative to
+        // evaluate, typically some size proportional to the size of the SIMD
+        // registers of the CPU.
+        int num_strides = static_cast<int>(
+            std::ceil(static_cast<float>(numParameters_) / static_cast<float>(Stride)));
+
+        int current_derivative_section = 0;
+        int current_derivative_section_cursor = 0;
+
+        for (int pass = 0; pass < num_strides; ++pass) {
+            // Set most of the jet components to zero, except for
+            // non-constant #Stride parameters.
+            const int initial_derivative_section = current_derivative_section;
+            const int initial_derivative_section_cursor = current_derivative_section_cursor;
+
+            int active_parameter_count = 0;
+            for (int j = 0; j < numParameters_; ++j) {
+                input_jets[j].v.setZero();
+                if (active_parameter_count < Stride && j >= current_derivative_section_cursor) {
+                    input_jets[j].v[active_parameter_count] = 1.0;
+                    ++active_parameter_count;
+                }
+            }
+
+            auto ptr = &input_jets[0];
+            if (!functor_(&ptr, &output_jets[0])) {
+                return false;
+            }
+
+            // Copy the pieces of the jacobians into their final place.
+            active_parameter_count = 0;
+
+            current_derivative_section = initial_derivative_section;
+            current_derivative_section_cursor = initial_derivative_section_cursor;
+
+            Eigen::Map<Eigen::Matrix<typename JetT::Scalar, -1, -1, StorageOrder>> jMap(jacobian, numResiduals_, numParameters_);
+
+            for (int j = 0; j < numParameters_; ++j) {
+                if (active_parameter_count < Stride && j >= current_derivative_section_cursor) {
+                    for (int k = 0; k < numResiduals_; ++k) {
+                        jMap(k, j) = output_jets[k].v[active_parameter_count];
+                    }
+                    ++active_parameter_count;
+                    ++current_derivative_section_cursor;
+                }
+            }
+
+            // Only copy the residuals over once (even though we compute them on
+            // every loop).
+            if (pass == num_strides - 1) {
+                std::transform(output_jets.begin(), output_jets.end(), residuals, [](auto const& jet) { return jet.a; });
+            }
+        }
+        return true;
     }
 
+    // this method gets called by the Ceres solver
     bool Evaluate(double const* const* parameters, double* residuals, double** jacobians) const override
     {
         EXPECT(parameters != nullptr);
         if constexpr(std::is_same_v<Scalar, double>) {
-            return (*functor_).Evaluate(parameters[0], residuals, jacobians != nullptr ? jacobians[0] : nullptr);
+            return Evaluate(parameters[0], residuals, jacobians != nullptr ? jacobians[0] : nullptr);
         } else {
             // we need to make a copy
-            int numResiduals  = (*functor_).NumResiduals();
-            int numParameters = (*functor_).NumParameters();
+            int numResiduals  = NumResiduals();
+            int numParameters = NumParameters();
 
             Eigen::Map<const Eigen::Matrix<double, -1, 1>> pMap(parameters[0], numParameters);
             Eigen::Map<Eigen::Matrix<double, -1, 1>> rMap(residuals, numResiduals);
@@ -68,13 +129,13 @@ public:
 
             bool success;
             if (jacobians == nullptr) {
-                success = (*functor_).Evaluate(param.data(), resid.data(), nullptr);
+                success = Evaluate(param.data(), resid.data(), nullptr);
                 if (!success) { return false; }
             } else {
                 Eigen::Map<Eigen::Matrix<double, -1, -1>> jMap(jacobians[0], numResiduals, numParameters);
                 Eigen::Matrix<Scalar, -1, -1> jacob(numResiduals, numParameters);
 
-                success = (*functor_).Evaluate(param.data(), resid.data(), jacob.data());
+                success = Evaluate(param.data(), resid.data(), jacob.data());
                 if (!success) { return false; }
 
                 jMap = jacob.template cast<double>();
@@ -85,10 +146,32 @@ public:
         }
     }
 
+    // this method gets called by the Ceres tiny solver
+    bool operator()(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const
+    {
+        return Evaluate(parameters, residuals, jacobian);
+    }
+
+    void AddParameterBlock(int) override {
+        throw new std::runtime_error("This method should not be used.");
+    }
+
+    void SetNumResiduals(int) override {
+        throw new std::runtime_error("This method should not be used.");
+    }
+
+    // required by tiny solver
+    int NumResiduals() const { return num_residuals(); }
+    int NumParameters() const { return parameter_block_sizes().front(); }
+
 private:
-    std::unique_ptr<CostFunctor> functor_;
-    ceres::Ownership ownership_;
+    CostFunctor functor_;
+    int numResiduals_;
+    int numParameters_;
 };
+
+
+
 } // namespace ceres
 
 #endif
