@@ -30,7 +30,6 @@
 #include <ceres/ceres.h>
 
 namespace Operon {
-
 // evaluate a tree and return a vector of values
 template <typename T>
 Operon::Vector<T> Evaluate(Tree const& tree, Dataset const& dataset, Range const range, T const* const parameters = nullptr)
@@ -60,15 +59,15 @@ Operon::Vector<T> Evaluate(Tree const& tree, Dataset const& dataset, Range const
     return result;
 }
 
-template <typename T, NodeType N>
-constexpr auto dispatch_op = detail::dispatch_op<T, N>;
+template <typename T, size_t S, NodeType N>
+constexpr auto dispatch_op = detail::dispatch_op<T, S, N>;
 
-template <typename T>
+template <typename T, size_t S = 512 / sizeof(T)>
 void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::span<T> result, T const* const parameters = nullptr) noexcept
 {
     const auto& nodes = tree.Nodes();
     EXPECT(nodes.size() > 0);
-    Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor> m(BATCHSIZE, nodes.size());
+    Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor> m(S, nodes.size());
     Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1);
 
     Operon::Vector<T> params(nodes.size());
@@ -92,8 +91,8 @@ void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::
     auto lastCol = m.col(nodes.size() - 1);
 
     size_t numRows = range.Size();
-    for (size_t row = 0; row < numRows; row += BATCHSIZE) {
-        auto remainingRows = std::min(BATCHSIZE, numRows - row);
+    for (size_t row = 0; row < numRows; row += S) {
+        auto remainingRows = std::min(S, numRows - row);
 
         for (size_t i = 0; i < nodes.size(); ++i) {
             typename decltype(m)::ColXpr r = m.col(i);
@@ -107,19 +106,19 @@ void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::
             } else {
                 switch (s.Type) {
                 case NodeType::Add: {
-                    dispatch_op<T, NodeType::Add>(m, nodes, i);
+                    dispatch_op<T, S, NodeType::Add>(m, nodes, i);
                     break;
                 }
                 case NodeType::Sub: {
-                    dispatch_op<T, NodeType::Sub>(m, nodes, i);
+                    dispatch_op<T, S, NodeType::Sub>(m, nodes, i);
                     break;
                 }
                 case NodeType::Mul: {
-                    dispatch_op<T, NodeType::Mul>(m, nodes, i);
+                    dispatch_op<T, S, NodeType::Mul>(m, nodes, i);
                     break;
                 }
                 case NodeType::Div: {
-                    dispatch_op<T, NodeType::Div>(m, nodes, i);
+                    dispatch_op<T, S, NodeType::Div>(m, nodes, i);
                     break;
                 }
                 default: {
