@@ -24,13 +24,11 @@
 #include <Eigen/Dense>
 
 namespace Operon {
-constexpr size_t BATCHSIZE = 512 / sizeof(Operon::Scalar);
-
 namespace detail {
     // addition up to 5 arguments
-    template <typename T, Operon::NodeType N = NodeType::Add>
+    template <typename T, size_t S, Operon::NodeType N = NodeType::Add>
     struct op {
-        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
+        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<S, 1>>;
 
         static inline void apply(Arg ret, Arg arg1) { ret = arg1; }
 
@@ -43,9 +41,9 @@ namespace detail {
         static inline void accumulate(Arg ret, Arg arg1, Args... args) { ret += arg1 + (args + ...); }
     };
 
-    template <typename T>
-    struct op<T, Operon::NodeType::Sub> {
-        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
+    template <typename T, size_t S>
+    struct op<T, S, Operon::NodeType::Sub> {
+        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<S, 1>>;
 
         static inline void apply(Arg ret, Arg arg1) { ret = -arg1; }
 
@@ -58,9 +56,9 @@ namespace detail {
         static inline void accumulate(Arg ret, Arg arg1, Args... args) { ret -= arg1 + (args + ...); }
     };
 
-    template <typename T>
-    struct op<T, Operon::NodeType::Mul> {
-        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
+    template <typename T, size_t S>
+    struct op<T, S, Operon::NodeType::Mul> {
+        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<S, 1>>;
 
         static inline void apply(Arg ret, Arg arg1) { ret = arg1; }
 
@@ -73,9 +71,9 @@ namespace detail {
         static inline void accumulate(Arg ret, Arg arg1, Args... args) { ret *= arg1 * (args * ...); }
     };
 
-    template <typename T>
-    struct op<T, Operon::NodeType::Div> {
-        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<BATCHSIZE, 1>>;
+    template <typename T, size_t S>
+    struct op<T, S, Operon::NodeType::Div> {
+        using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<S, 1>>;
 
         static inline void apply(Arg ret, Arg arg1) { ret = arg1.inverse(); }
 
@@ -93,12 +91,12 @@ namespace detail {
     // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments
     // 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
     //    if arity > 5, one accumulation is performed every 5 args
-    template <typename T, Operon::NodeType N>
-    inline void dispatch_op(Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
+    template <typename T, size_t S, Operon::NodeType N>
+    inline void dispatch_op(Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
     {
         auto result = m.col(parentIndex);
 
-        using f = op<T, N>;
+        using f = op<T, S, N>;
         const auto g = [](bool cont, decltype(result) res, auto&&... args) { cont ? f::accumulate(res, args...) : f::apply(res, args...); };
         const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
 
@@ -138,23 +136,23 @@ namespace detail {
         }
     }
 
-    template <typename T, Operon::NodeType N>
-    inline void dispatch_op_simple_binary(Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
+    template <typename T, size_t S, Operon::NodeType N>
+    inline void dispatch_op_simple_binary(Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
     {
         auto r = m.col(parentIndex);
         size_t i = parentIndex - 1;
         size_t arity = nodes[parentIndex].Arity;
 
         if (arity == 1) {
-            op<T, N>::apply(r, m.col(i));
+            op<T, S, N>::apply(r, m.col(i));
         } else {
             auto j = i - (nodes[i].Length + 1);
-            op<T, N>::apply(r, m.col(i), m.col(j));
+            op<T, S, N>::apply(r, m.col(i), m.col(j));
         }
     }
 
-    template <typename T, Operon::NodeType N>
-    inline void dispatch_op_simple_nary(Eigen::DenseBase<Eigen::Array<T, BATCHSIZE, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
+    template <typename T, size_t S, Operon::NodeType N>
+    inline void dispatch_op_simple_nary(Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
     {
         auto r = m.col(parentIndex);
         size_t arity = nodes[parentIndex].Arity;
@@ -162,13 +160,13 @@ namespace detail {
         auto i = parentIndex - 1;
 
         if (arity == 1) {
-            op<T, N>::apply(r, m.col(i));
+            op<T, S, N>::apply(r, m.col(i));
         } else {
             r = m.col(i);
 
             for (size_t k = 1; k < arity; ++k) {
                 i -= nodes[i].Length + 1;
-                op<T, N>::accumulate(r, m.col(i));
+                op<T, S, N>::accumulate(r, m.col(i));
             }
         }
     }
