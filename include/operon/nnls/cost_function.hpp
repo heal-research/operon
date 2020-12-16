@@ -50,18 +50,22 @@ struct DynamicAutoDiffCostFunction final : public ceres::DynamicCostFunction {
         ceres::internal::FixedArray<JetT, (256 * 7) / sizeof(JetT)> input_jets(numParameters_);
         ceres::internal::FixedArray<JetT, (256 * 7) / sizeof(JetT)> output_jets(numResiduals_);
 
-        for (int j = 0; j < numParameters_; ++j) {
-            input_jets[j].a = static_cast<Scalar>(parameters[j]);
-        }
-
         // Evaluate all of the strides. Each stride is a chunk of the derivative to
         // evaluate, typically some size proportional to the size of the SIMD
         // registers of the CPU.
         int num_strides = static_cast<int>(
             std::ceil(static_cast<float>(numParameters_) / static_cast<float>(Stride)));
 
+        auto ptr = &input_jets[0];
+
+        for (int j = 0; j < numParameters_; ++j) {
+            input_jets[j].a = static_cast<Scalar>(parameters[j]);
+        }
+
         int current_derivative_section = 0;
         int current_derivative_section_cursor = 0;
+
+        Eigen::Map<Eigen::Matrix<typename JetT::Scalar, -1, -1, StorageOrder>> jMap(jacobian, numResiduals_, numParameters_);
 
         for (int pass = 0; pass < num_strides; ++pass) {
             // Set most of the jet components to zero, except for
@@ -78,21 +82,17 @@ struct DynamicAutoDiffCostFunction final : public ceres::DynamicCostFunction {
                 }
             }
 
-            auto ptr = &input_jets[0];
             if (!functor_(&ptr, &output_jets[0])) {
                 return false;
             }
 
-            // Copy the pieces of the jacobians into their final place.
             active_parameter_count = 0;
-
             current_derivative_section = initial_derivative_section;
             current_derivative_section_cursor = initial_derivative_section_cursor;
 
-            Eigen::Map<Eigen::Matrix<typename JetT::Scalar, -1, -1, StorageOrder>> jMap(jacobian, numResiduals_, numParameters_);
-
-            for (int j = 0; j < numParameters_; ++j) {
-                if (active_parameter_count < Stride && j >= current_derivative_section_cursor) {
+            // Copy the pieces of the jacobians into their final place.
+            for (int j = current_derivative_section_cursor; j < numParameters_; ++j) {
+                if (active_parameter_count < Stride) {
                     for (int k = 0; k < numResiduals_; ++k) {
                         jMap(k, j) = output_jets[k].v[active_parameter_count];
                     }
@@ -101,8 +101,7 @@ struct DynamicAutoDiffCostFunction final : public ceres::DynamicCostFunction {
                 }
             }
 
-            // Only copy the residuals over once (even though we compute them on
-            // every loop).
+            // Only copy the residuals over once (even though we compute them on every loop).
             if (pass == num_strides - 1) {
                 std::transform(output_jets.begin(), output_jets.end(), residuals, [](auto const& jet) { return jet.a; });
             }
