@@ -25,6 +25,7 @@
 
 #include "dataset.hpp"
 #include "pset.hpp"
+#include "range.hpp"
 
 namespace Operon {
 

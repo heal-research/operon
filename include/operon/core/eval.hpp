@@ -25,6 +25,7 @@
 #include "gsl/gsl"
 #include "tree.hpp"
 #include "pset.hpp"
+#include "range.hpp"
 
 namespace Operon {
 // evaluate a tree and return a vector of values

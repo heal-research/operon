@@ -20,8 +20,6 @@
 #ifndef DATASET_H
 #define DATASET_H
 
-#include "core/common.hpp"
-#include "stat/meanvariance.hpp"
 #include <algorithm>
 #include <Eigen/Dense>
 #include <exception>
@@ -30,14 +28,24 @@
 #include <vector>
 #include <optional>
 
+#include "core/common.hpp"
+#include "stat/meanvariance.hpp"
+#include "core/range.hpp"
+
 namespace Operon {
+
+// a dataset variable described by: name, hash value (for hashing), data column index
+struct Variable {
+    std::string Name = "";
+    Operon::Hash Hash = Operon::Hash { 0 };
+    size_t Index = size_t { 0 };
+};
 
 class Dataset {
 public:
     // some useful aliases
     using Matrix = Eigen::Array<Operon::Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
     using Map = Eigen::Map<Matrix const>;
-
 
 private:
     std::vector<Variable> variables;

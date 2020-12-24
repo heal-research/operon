@@ -36,6 +36,21 @@ set_package_properties(cxxopts PROPERTIES TYPE OPTIONAL) # command-line parser
 set_package_properties(Python3 PROPERTIES TYPE OPTIONAL)
 set_package_properties(pybind11 PROPERTIES TYPE OPTIONAL)
 
+# get revision information from git
+if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    INCLUDE(cmake/GetGitRevisionDescription.cmake)
+    EXECUTE_PROCESS(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD OUTPUT_VARIABLE SHORT_SHA OUTPUT_STRIP_TRAILING_WHITESPACE)
+    SET(REVISION ${SHORT_SHA} CACHE STRING "git short sha" FORCE)
+
+    # only use the plugin to tie the configure state to the sha to force rebuilds
+    # of files that depend on version.h
+    get_git_head_revision(REFSPEC COMMITHASH.cmake)
+else()
+    message(WARNING "Git not found, cannot set version info")
+    SET(REVISION "unknown")
+endif()
+
+
 FetchContent_Declare(
     gsl
     GIT_REPOSITORY https://github.com/microsoft/GSL.git
@@ -108,7 +123,9 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/thirdparty/xxhash
     ${PROJECT_SOURCE_DIR}/thirdparty/tiny_solver
 )
-message(STATUS "THIRDPARTY_INCLUDE_DIRS: ${THIRDPARTY_INCLUDE_DIRS}")
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/buildinfo.hpp.in
+               ${CMAKE_BINARY_DIR}/buildinfo.hpp)
 
 # compile and link-time options
 set(BUILD_TESTS_DESCRIPTION          "Build unit tests [default=OFF].")
@@ -224,7 +241,7 @@ add_library(
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
-target_include_directories(operon PRIVATE ${PROJECT_SOURCE_DIR}/include/operon)
+target_include_directories(operon PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${PROJECT_BINARY_DIR})
 target_include_directories(operon SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR} ${CERES_INCLUDE_DIRS} ${THIRDPARTY_INCLUDE_DIRS})
 target_compile_definitions(operon PRIVATE
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
@@ -263,7 +280,13 @@ if (cxxopts_FOUND)
     )
     target_compile_features(operon-gp PRIVATE cxx_std_17)
     target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
-    target_include_directories(operon-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CERES_INCLUDE_DIRS})
+    target_include_directories(operon-gp SYSTEM PRIVATE
+        ${PROJECT_SOURCE_DIR}/include/operon
+        ${THIRDPARTY_INCLUDE_DIRS}
+        ${EIGEN3_INCLUDE_DIR}
+        ${CERES_INCLUDE_DIRS}
+        ${CMAKE_BINARY_DIR}
+        )
     target_compile_definitions(operon-gp PRIVATE
         "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
         "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
@@ -315,6 +338,7 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         ${Python3_INCLUDE_DIRS}
         ${CERES_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
+        ${CMAKE_BINARY_DIR}
     )
     target_compile_definitions(pyoperon PRIVATE
         "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
@@ -388,6 +412,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         ${THIRDPARTY_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
         ${CERES_INCLUDE_DIRS}
+        ${CMAKE_BINARY_DIR}
         )
     target_compile_definitions(operon-test PRIVATE
         "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
