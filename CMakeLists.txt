@@ -14,7 +14,7 @@ find_package(Git)
 find_package(cxxopts)
 find_package(fmt)
 find_package(Eigen3)
-find_package(Ceres QUIET)
+find_package(Ceres)
 find_package(Threads)
 find_package(TBB)
 find_package(Python3 COMPONENTS Development Interpreter)
@@ -25,13 +25,12 @@ find_package(doctest)
 set_package_properties(Git     PROPERTIES TYPE REQUIRED)
 set_package_properties(fmt     PROPERTIES TYPE REQUIRED)
 set_package_properties(Eigen3  PROPERTIES TYPE REQUIRED)
-set_package_properties(Ceres   PROPERTIES TYPE REQUIRED)
 set_package_properties(Tbb     PROPERTIES TYPE REQUIRED)
 set_package_properties(Threads PROPERTIES TYPE REQUIRED)
 
-# unit tests
-set_package_properties(doctest PROPERTIES TYPE OPTIONAL)
-set_package_properties(cxxopts PROPERTIES TYPE OPTIONAL)
+set_package_properties(Ceres   PROPERTIES TYPE OPTIONAL) # non-linear least squares
+set_package_properties(doctest PROPERTIES TYPE OPTIONAL) # unit tests
+set_package_properties(cxxopts PROPERTIES TYPE OPTIONAL) # command-line parser
 
 # python binding
 set_package_properties(Python3 PROPERTIES TYPE OPTIONAL)
@@ -66,6 +65,21 @@ FetchContent_Declare(
     DOWNLOAD_NO_EXTRACT 1
 )
 
+FetchContent_Declare(
+    ceres_tiny_solver
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/tiny_solver
+    URL https://raw.githubusercontent.com/ceres-solver/ceres-solver/master/include/ceres/tiny_solver.h
+    DOWNLOAD_NO_EXTRACT 1
+)
+
+FetchContent_Declare(
+    ceres_jet
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/tiny_solver
+    URL https://raw.githubusercontent.com/ceres-solver/ceres-solver/master/include/ceres/jet.h
+    PATCH_COMMAND sed -i /port\.h/d ${PROJECT_SOURCE_DIR}/thirdparty/tiny_solver/jet.h
+    DOWNLOAD_NO_EXTRACT 1
+)
+
 # populate gsl this way so we can pass EXCLUDE_FROM_ALL
 # (since by default it specifies an install cmake target polluting our install dir)
 if(NOT gsl_POPULATED)
@@ -73,13 +87,26 @@ if(NOT gsl_POPULATED)
     add_subdirectory(${gsl_SOURCE_DIR} ${gsl_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
+# populate content
 FetchContent_MakeAvailable(xxhash csv nanobench)
+
+# populate optional content
+if (USE_TINY_SOLVER)
+    FetchContent_MakeAvailable(ceres_tiny_solver ceres_jet)
+else()
+    if (NOT Ceres_FOUND)
+
+    else()
+
+    endif()
+endif()
 
 set(THIRDPARTY_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
     ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     ${PROJECT_SOURCE_DIR}/thirdparty/nanobench/include
     ${PROJECT_SOURCE_DIR}/thirdparty/xxhash
+    ${PROJECT_SOURCE_DIR}/thirdparty/tiny_solver
 )
 message(STATUS "THIRDPARTY_INCLUDE_DIRS: ${THIRDPARTY_INCLUDE_DIRS}")
 
@@ -92,7 +119,7 @@ set(TCMALLOC_DESCRIPTION             "Link against tcmalloc (thread-caching mall
 set(MIMALLOC_DESCRIPTION             "Link against mimalloc, a general purpose allocator with excellent performance characteristics [default=OFF].")
 set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes [default=OFF].")
 set(CERES_TINY_SOLVER_DESCRIPTION    "Use the tiny solver included in Ceres, intended for solving small dense problems with low latency and low overhead [default=OFF].")
-set(CERES_ALWAYS_DOUBLE_DESCRIPTION  "Always use double-precision for the scalar part of a jet. If not set then USE_SINGLE_PRECISION is used [default=ON].")
+set(CERES_ALWAYS_DOUBLE_DESCRIPTION  "Always use double-precision for the scalar part of a jet. If not set then the value of USE_SINGLE_PRECISION is used [default=ON].")
 
 # option descriptions
 option(BUILD_TESTS          ${BUILD_TESTS_DESCRIPTION}          OFF)
@@ -115,8 +142,6 @@ add_feature_info(USE_SINGLE_PRECISION USE_SINGLE_PRECISION ${USE_SINGLE_PRECISIO
 add_feature_info(CERES_TINY_SOLVER    CERES_TINY_SOLVER    ${CERES_TINY_SOLVER_DESCRIPTION})
 add_feature_info(CERES_ALWAYS_DOUBLE  CERES_ALWAYS_DOUBLE  ${CERES_ALWAYS_DOUBLE_DESCRIPTION})
 
-set(COUNTER 0)
-
 if(USE_OPENLIBM)
     find_library(OPENLIBM openlibm)
     if(NOT OPENLIBM)
@@ -127,6 +152,7 @@ if(USE_OPENLIBM)
     endif()
 endif()
 
+set(COUNTER 0)
 if(USE_JEMALLOC)
     math(EXPR COUNTER "${COUNTER}+1")
     find_library(JEMALLOC jemalloc)
@@ -204,6 +230,7 @@ target_compile_definitions(operon PRIVATE
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
     "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
     "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+    "$<$<BOOL:${Ceres_FOUND}>:HAVE_CERES>"
     )
 
 add_executable(
@@ -213,7 +240,7 @@ add_executable(
 
 target_compile_features(operon-example-gp PRIVATE cxx_std_17)
 target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
-target_include_directories(operon-example-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS})
+target_include_directories(operon-example-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CERES_INCLUDE_DIRS})
 target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 set_target_properties(operon-example-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
@@ -236,11 +263,12 @@ if (cxxopts_FOUND)
     )
     target_compile_features(operon-gp PRIVATE cxx_std_17)
     target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
-    target_include_directories(operon-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${CERES_INCLUDE_DIRS})
+    target_include_directories(operon-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CERES_INCLUDE_DIRS})
     target_compile_definitions(operon-gp PRIVATE
         "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
         "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
         "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+        "$<$<BOOL:${Ceres_FOUND}>:HAVE_CERES>"
         )
     set_target_properties(operon-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
@@ -292,6 +320,7 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
         "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
         "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+        "$<$<BOOL:${Ceres_FOUND}>:HAVE_CERES>"
         )
     set_target_properties(pyoperon PROPERTIES OUTPUT_NAME "_operon")
 
@@ -357,12 +386,14 @@ if(doctest_FOUND AND BUILD_TESTS)
         SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/include/operon
         ${THIRDPARTY_INCLUDE_DIRS}
+        ${EIGEN3_INCLUDE_DIR}
         ${CERES_INCLUDE_DIRS}
         )
     target_compile_definitions(operon-test PRIVATE
         "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
         "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
         "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+        "$<$<BOOL:${Ceres_FOUND}>:HAVE_CERES>"
         )
     set_target_properties(operon-test PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endif()
