@@ -22,7 +22,12 @@
 
 #include "random/random.hpp"
 
+#if defined(HAVE_CERES)
 #include <ceres/jet.h>
+#else
+#include "jet.h"
+#endif
+
 #include <cstdint>
 
 namespace Operon {
@@ -38,7 +43,7 @@ using Scalar = double;
 #if defined(CERES_ALWAYS_DOUBLE)
 using Dual = ceres::Jet<double, 4>;
 #else
-using Dual = ceres::Jet<Operon::Scalar, 4>;
+using Dual = ceres::Jet<Operon::Scalar, 4 * sizeof(double) / sizeof(Scalar)>;
 #endif
 
 // Operon::Vector is just an aligned std::vector

@@ -3,6 +3,7 @@ let
   pkgs = import <nixos-unstable> { };
   cxxopts = import ./cxxopts.nix; 
   qcachegrind = pkgs.libsForQt5.callPackage ./qcachegrind.nix {};
+
   tbb = pkgs.tbb.overrideAttrs (old: rec {
     version = "2020_U3";
 
@@ -55,7 +56,7 @@ let
       sha256 = "04w1gip6ag6fjs89kds5sgpr6djnfsfwjyhhdcx7mrrdz8lva077";
     };
     enableParallelBuilding = true;
-    cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=ON" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=FALSE -DBUILD_TESTING=FALSE" ];
+    cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=OFF" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=FALSE -DBUILD_TESTING=FALSE" ];
   });
   fmt = pkgs.fmt.overrideAttrs(old: rec { 
     outputs = [ "out" ];

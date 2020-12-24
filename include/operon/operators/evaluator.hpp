@@ -28,16 +28,6 @@
 #include "stat/pearson.hpp"
 
 namespace Operon {
-namespace detail {
-    ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range, size_t iterations = 50, bool writeCoefficients = true, bool report = false)
-    {
-#if defined(CERES_TINY_SOLVER)
-        return OptimizeTinyAutodiff(tree, dataset, targetValues, range, iterations, writeCoefficients, report);
-#else
-        return OptimizeAutodiff(tree, dataset, targetValues, range, iterations, writeCoefficients, report);
-#endif
-    }
-}
 
 class UserDefinedEvaluator : public EvaluatorBase {
 public:
@@ -95,8 +85,8 @@ public:
         auto targetValues = dataset.GetValues(problem_.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         if (this->iterations > 0) {
-            auto summary = detail::Optimize(genotype, dataset, targetValues, trainingRange, this->iterations);
-            this->localEvaluations += summary.iterations.size();
+            auto summary = Optimize(genotype, dataset, targetValues, trainingRange, this->iterations);
+            this->localEvaluations += summary.Iterations;
         }
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
@@ -131,8 +121,8 @@ public:
         auto targetValues = dataset.GetValues(problem_.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         if (this->iterations > 0) {
-            auto summary = detail::Optimize(genotype, dataset, targetValues, trainingRange, this->iterations);
-            this->localEvaluations += summary.iterations.size();
+            auto summary = Optimize(genotype, dataset, targetValues, trainingRange, this->iterations);
+            this->localEvaluations += summary.Iterations;
         }
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
@@ -179,8 +169,8 @@ public:
         auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         if (this->iterations > 0) {
-            auto summary = detail::Optimize(genotype, dataset, targetValues, trainingRange, this->iterations);
-            this->localEvaluations += summary.iterations.size();
+            auto summary = Optimize(genotype, dataset, targetValues, trainingRange, this->iterations);
+            this->localEvaluations += summary.Iterations;
         }
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
