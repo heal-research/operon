@@ -106,15 +106,7 @@ endif()
 FetchContent_MakeAvailable(xxhash csv nanobench)
 
 # populate optional content
-if (USE_TINY_SOLVER)
-    FetchContent_MakeAvailable(ceres_tiny_solver ceres_jet)
-else()
-    if (NOT Ceres_FOUND)
-
-    else()
-
-    endif()
-endif()
+FetchContent_MakeAvailable(ceres_tiny_solver ceres_jet)
 
 set(THIRDPARTY_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
