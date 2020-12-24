@@ -30,6 +30,7 @@
 #include "core/common.hpp"
 #include "core/format.hpp"
 #include "core/metrics.hpp"
+#include "core/version.hpp"
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
 #include "operators/evaluator.hpp"
@@ -79,11 +80,17 @@ int main(int argc, char** argv)
         ("show-primitives", "Display the primitive set used by the algorithm")
         ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
         ("debug", "Debug mode (more information displayed)")
-        ("help", "Print help");
+        ("help", "Print help")
+        ("version", "Print version and program information");
 
     auto result = opts.parse(argc, argv);
     if (result.arguments().empty() || result.count("help") > 0) {
         fmt::print("{}\n", opts.help());
+        exit(EXIT_SUCCESS);
+    }
+
+    if (result.count("version") > 0) {
+        fmt::print("{}\n", Version());
         exit(EXIT_SUCCESS);
     }
 

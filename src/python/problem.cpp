@@ -1,5 +1,7 @@
 #include "operon.hpp"
 
+#include "core/range.hpp"
+
 void init_problem(py::module_ &m)
 {
     // problem
