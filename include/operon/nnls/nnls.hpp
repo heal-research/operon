@@ -20,123 +20,24 @@
 #ifndef OPERON_NNLS_HPP
 #define OPERON_NNLS_HPP
 
-#include "nnls/cost_function.hpp"
-#include <ceres/dynamic_autodiff_cost_function.h>
-#include <ceres/tiny_solver.h>
+#include "core/types.hpp"
+#include "tiny_optimizer.hpp"
+
+#if defined(HAVE_CERES)
+#include "ceres_optimizer.hpp"
+#endif
 
 namespace Operon {
-// returns an array of optimized parameters
-template <bool autodiff = true>
-ceres::Solver::Summary Optimize(Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range, size_t iterations = 50, bool writeCoefficients = true, bool report = false)
-{
-    using ceres::CauchyLoss;
-    using ceres::DynamicAutoDiffCostFunction;
-    using ceres::DynamicCostFunction;
-    using ceres::DynamicNumericDiffCostFunction;
-    using ceres::Problem;
-    using ceres::Solver;
 
-    Solver::Summary summary;
-    std::vector<double> coef;
-    for (auto const& node : tree.Nodes()) {
-        if (node.IsLeaf()) coef.push_back(node.Value);
-    }
-
-    if (coef.empty()) {
-        return summary;
-    }
-
-    if (report) {
-        fmt::print("x_0: ");
-        for (auto c : coef)
-            fmt::print("{} ", c);
-        fmt::print("\n");
-    }
-
-    DynamicCostFunction* costFunction;
-    if constexpr (autodiff) {
-        costFunction = new Operon::DynamicAutoDiffCostFunction<ResidualEvaluator, Dual, Eigen::RowMajor>(tree, dataset, targetValues, range);
-    } else {
-        auto eval = new ResidualEvaluator(tree, dataset, targetValues, range);
-        costFunction = new DynamicNumericDiffCostFunction(eval);
-    }
-
-    Problem problem;
-    problem.AddResidualBlock(costFunction, nullptr, coef.data());
-
-    Solver::Options options;
-    options.max_num_iterations = static_cast<int>(iterations - 1); // workaround since for some reason ceres sometimes does 1 more iteration
-    options.linear_solver_type = ceres::DENSE_QR;
-    options.minimizer_progress_to_stdout = report;
-    options.num_threads = 1;
-    options.logging_type = ceres::LoggingType::SILENT;
-    Solve(options, &problem, &summary);
-
-    if (report) {
-        fmt::print("{}\n", summary.BriefReport());
-        fmt::print("x_final: ");
-        for (auto c : coef)
-            fmt::print("{} ", c);
-        fmt::print("\n");
-    }
-    if (writeCoefficients) {
-        size_t idx = 0;
-        for (auto& node : tree.Nodes()) {
-            if (node.IsLeaf()) {
-                node.Value = static_cast<Operon::Scalar>(coef[idx++]);
-            }
-        }
-    }
-    return summary;
-}
-
-// set up some convenience methods using perfect forwarding
-template <typename... Args>
-auto OptimizeAutodiff(Args&&... args)
-{
-    return Optimize<true>(std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-auto OptimizeNumeric(Args&&... args)
-{
-    return Optimize<false>(std::forward<Args>(args)...);
-}
-
-template <bool autodiff = true>
-ceres::Solver::Summary OptimizeTiny(Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range, size_t iterations = 50, bool writeCoefficients = true, bool = false /* ignored */)
-{
-    Operon::DynamicAutoDiffCostFunction<ResidualEvaluator, Dual, Eigen::ColMajor> cf(tree, dataset, targetValues, range);
-    ceres::TinySolver<decltype(cf)> solver;
-    solver.options.max_num_iterations = static_cast<int>(iterations);
-
-    auto x0 = tree.GetCoefficients();
-    decltype(solver)::Parameters params = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size()).cast<typename decltype(cf)::Scalar>();
-    solver.Solve(cf, &params);
-
-    if (writeCoefficients) {
-        tree.SetCoefficients({ params.data(), x0.size() });
-    }
-
-    ceres::Solver::Summary summary;
-    summary.initial_cost = solver.summary.initial_cost;
-    summary.final_cost = solver.summary.final_cost;
-    summary.iterations.resize(solver.summary.iterations);
-    return summary;
-}
-
-// set up some convenience methods using perfect forwarding
-template <typename... Args>
-auto OptimizeTinyAutodiff(Args&&... args)
-{
-    return OptimizeTiny<true>(std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-auto OptimizeTinyNumeric(Args&&... args)
-{
-    return OptimizeTiny<false>(std::forward<Args>(args)...);
+OptimizerSummary Optimize(Tree& tree, Dataset const& dataset, const gsl::span<const Operon::Scalar> targetValues, Range const range, size_t iterations = 50, bool writeCoefficients = true, bool report = false) {
+#if defined(CERES_TINY_SOLVER) || !defined(HAVE_CERES)
+    Optimizer<DerivativeMethod::AUTODIFF, OptimizerType::TINY> optimizer;
+#else
+    Optimizer<DerivativeMethod::AUTODIFF, OptimizerType::CERES> optimizer;
+#endif
+    return optimizer.Optimize(tree, dataset, targetValues, range, iterations, writeCoefficients, report);
 }
 }
+
 #endif
 

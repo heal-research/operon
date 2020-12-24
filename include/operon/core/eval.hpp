@@ -1,8 +1,8 @@
 /* This file is part of:
  * Operon - Large Scale Genetic Programming Framework
  *
- * Licensed under the ISC License <https://opensource.org/licenses/ISC> 
- * Copyright (C) 2020 Bogdan Burlacu 
+ * Licensed under the ISC License <https://opensource.org/licenses/ISC>
+ * Copyright (C) 2020 Bogdan Burlacu
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,7 +14,7 @@
  * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
  * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
  * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
- * PERFORMANCE OF THIS SOFTWARE. 
+ * PERFORMANCE OF THIS SOFTWARE.
  */
 
 #ifndef OPERON_EVAL
@@ -25,9 +25,6 @@
 #include "gsl/gsl"
 #include "tree.hpp"
 #include "pset.hpp"
-#include <execution>
-
-#include <ceres/ceres.h>
 
 namespace Operon {
 // evaluate a tree and return a vector of values
@@ -49,12 +46,12 @@ Operon::Vector<T> Evaluate(Tree const& tree, Dataset const& dataset, Range const
     size_t m = range.Size() % batchSize;
     std::vector<size_t> indices(n + (m != 0));
     std::iota(indices.begin(), indices.end(), 0ul);
-    std::for_each(std::execution::par_unseq, indices.begin(), indices.end(), [&](auto idx) 
+    std::for_each(indices.begin(), indices.end(), [&](auto idx)
     {
         auto start = range.Start() + idx * batchSize;
         auto end = std::min(start + batchSize, range.End());
         auto subview = view.subspan(idx * batchSize, end-start);
-        Evaluate<Operon::Scalar>(tree, dataset, Range{ start, end }, subview, parameters); 
+        Evaluate<Operon::Scalar>(tree, dataset, Range{ start, end }, subview, parameters);
     });
     return result;
 }
