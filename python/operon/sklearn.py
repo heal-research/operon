@@ -75,7 +75,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         self.tournament_size           = 5 if tournament_size is None else tournament_size # todo: set for both parent selectors
         self.btc_bias                  = 0.0 if btc_bias is None else btc_bias
         self.n_threads                 = 1 if n_threads is None else int(n_threads)
-        self.random_state              = random.getrandbits(64) if random_state is None else random_state
+        self.random_state              = random_state
 
 
     def __init_primitive_config(self, allowed_symbols):
@@ -268,6 +268,9 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
 
         min_arity, max_arity  = pset.FunctionArityLimits()
         initializer           = op.UniformInitializer(creator, min_arity+1, self.max_length)
+
+        if self.random_state is None:
+            self.random_state = random.getrandbits(64)
 
         config                = op.GeneticAlgorithmConfig(
                                     generations      = self.generations,
