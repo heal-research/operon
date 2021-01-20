@@ -300,8 +300,10 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
 
         self._model           = op.Tree(nodes).UpdateNodes()
 
+        self._model_str_ = op.InfixFormatter.Format(self._model, ds, 12)
+
         if show_model:
-            print(op.InfixFormatter.Format(self._model, ds, 12))
+            print(self._model_str_)
             print('internal model r2: ', 1 - best[0])
 
         self._stats = {
