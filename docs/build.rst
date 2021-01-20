@@ -42,3 +42,54 @@ Configuration options
 #. ``BUILD_PYBIND``: Build the Python bindings.
 #. ``USE_JEMALLOC``: Link against `jemalloc <http://jemalloc.net/>`_, a general purpose ``malloc(3)`` implementation that emphasizes fragmentation avoidance and scalable concurrency support (mutually exclusive with ``tcmalloc``).
 #. ``USE_TCMALLOC``: Link against `tcmalloc <https://google.github.io/tcmalloc/>`_ (thread-caching malloc), a ``malloc(3)`` implementation that reduces lock contention for multi-threaded programs (mutually exclusive with `jemalloc`).
+
+Install Examples
+^^^^^^^^^^^^^^^^
+
+Here is an example install of operon in linux using a `conda <https://anaconda.org/anaconda/conda>` environment and bash commands.
+
+1. Specify an `environment.yml` file with the dependencies:
+
+   .. code-block:: yaml
+
+      name: operon-env
+      channels:
+        - conda-forge
+      dependencies:
+        - python=3.9.1
+        - cmake=3.19.1  
+        - pybind11=2.6.1 
+        - eigen=3.3.9 
+        - fmt=7.1.3 
+        - ceres-solver=2.0.0 
+        - tbb-devel=2020.2 
+        - openlibm 
+        - cxxopts 
+
+2. Run the following commands:
+
+   .. code-block:: Python
+        
+      # create and activate conda environment
+      conda env create -f environment.yml
+      conda activate operon-env
+
+      # Use gcc-9
+      export CC=gcc-9
+      export CXX=gcc-9
+
+      # clone operon
+      git clone https://github.com/heal-research/operon
+      cd operon
+
+      # run cmake with options
+      mkdir build; cd build; 
+      cmake .. -DCMAKE_BUILD_TYPE=Release  -DBUILD_PYBIND=ON -DUSE_OPENLIBM=ON -DUSE_SINGLE_PRECISION=ON -DCERES_TINY_SOLVER=ON 
+
+      # build
+      make VERBOSE=1 -j pyoperon
+
+      # install python package
+      make install
+
+3. To test that the python package installed correctly, try `python -c "from operon.sklearn import SymbolicRegressor`. 
