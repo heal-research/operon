@@ -6,9 +6,9 @@ import seaborn as sns
 from scipy import stats
 import random, time, sys, os, json
 
-import _operon as Operon
+import operon as Operon
 
-ds             = Operon.Dataset('../data/Poly-10.csv', has_header=True)
+ds             = Operon.Dataset('../../data/Poly-10.csv', has_header=True)
 training_range = Operon.Range(0, ds.Rows // 2)
 test_range     = Operon.Range(ds.Rows // 2, ds.Rows)
 target         = ds.GetVariable('Y')
@@ -55,6 +55,7 @@ max_ticks = 50
 interval = 1 if config.Generations < max_ticks else int(np.round(config.Generations / max_ticks, 0))
 comp = Operon.SingleObjectiveComparison(0)
 t0 = time.time()
+
 def report():
     global gen
     best = gp.BestModel(comp)
@@ -68,4 +69,7 @@ def report():
     sys.stdout.flush()
     gen += 1
 
-gp.Run(rng, report, threads=24)
+gp.Run(rng, report, threads=4)
+best = gp.BestModel(comp)
+model_string = Operon.TreeFormatter.Format(best.Genotype, ds, 6)
+#print(f'\n{model_string}')

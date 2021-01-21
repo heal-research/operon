@@ -18,11 +18,11 @@ reg = SymbolicRegressor(
         allowed_symbols='add,sub,mul,div,constant,variable',
         offspring_generator='basic',
         local_iterations=0,
-        n_threads=24,
-        random_state=None,
+        n_threads=32,
         )
 
-reg.fit(X_train, y_train, show_model=True)
+reg.fit(X_train, y_train)
+print(reg.get_model_string(2))
 print(reg._stats)
 
 y_pred_train = reg.predict(X_train)
