@@ -9,9 +9,9 @@ from scipy import stats
 import sys
 
 # operon python bindings
-import _operon as Operon
+import operon as Operon
 
-ds                     = Operon.Dataset('../data/Poly-10.csv', has_header=True)
+ds                     = Operon.Dataset('../../data/Poly-10.csv', has_header=True)
 training_range         = Operon.Range(0, ds.Rows // 2)
 test_range             = Operon.Range(training_range.End, ds.Rows)
 
