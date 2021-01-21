@@ -87,10 +87,12 @@ PYBIND11_MODULE(_operon, m)
 
     // tree format
     py::class_<Operon::TreeFormatter>(m, "TreeFormatter")
-        .def_static("Format", &Operon::TreeFormatter::Format);
+        .def_static("Format", py::overload_cast<Operon::Tree const&, Operon::Dataset const&, int>(&Operon::TreeFormatter::Format))
+        .def_static("Format", py::overload_cast<Operon::Tree const&, std::unordered_map<Operon::Hash, std::string> const&, int>(&Operon::TreeFormatter::Format));
 
     py::class_<Operon::InfixFormatter>(m, "InfixFormatter")
-        .def_static("Format", &Operon::InfixFormatter::Format);
+        .def_static("Format", py::overload_cast<Operon::Tree const&, Operon::Dataset const&, int>(&Operon::InfixFormatter::Format))
+        .def_static("Format", py::overload_cast<Operon::Tree const&, std::unordered_map<Operon::Hash, std::string> const&, int>(&Operon::InfixFormatter::Format));
 
     // genetic algorithm
     py::class_<Operon::GeneticAlgorithmConfig>(m, "GeneticAlgorithmConfig")
