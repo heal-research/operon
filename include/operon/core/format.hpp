@@ -25,7 +25,7 @@
 
 namespace Operon {
 class TreeFormatter {
-    static void FormatNode(const Tree& tree, const Dataset& dataset, size_t i, std::string& current, std::string indent, bool isLast, bool initialMarker, int decimalPrecision)
+    static void FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> variableNames, size_t i, std::string& current, std::string indent, bool isLast, bool initialMarker, int decimalPrecision)
     {
         current += indent;
 
@@ -39,8 +39,9 @@ class TreeFormatter {
             fmt::format_to(std::back_inserter(current), formatString, s.Value);
         } else if (s.IsVariable()) {
             auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}", decimalPrecision);
-            if (auto res = dataset.GetVariable(s.CalculatedHashValue); res.has_value()) {
-                fmt::format_to(std::back_inserter(current), formatString, s.Value, res.value().Name);
+
+            if(auto it = variableNames.find(s.CalculatedHashValue); it != variableNames.end()) {
+                fmt::format_to(std::back_inserter(current), formatString, s.Value, it->second);
             } else {
                 throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
             }
@@ -58,21 +59,33 @@ class TreeFormatter {
         }
 
         for (auto it = tree.Children(i); it.HasNext(); ++it) {
-            FormatNode(tree, dataset, it.Index(), current, indent, it.Count() + 1 == s.Arity, true, decimalPrecision);
+            FormatNode(tree, variableNames, it.Index(), current, indent, it.Count() + 1 == s.Arity, true, decimalPrecision);
         }
     }
 
 public:
-    static std::string Format(const Tree& tree, const Dataset& dataset, int decimalPrecision = 2)
+    static std::string Format(Tree const& tree, Dataset const& dataset, int decimalPrecision = 2)
+    {
+        std::unordered_map<Operon::Hash, std::string> variableNames;
+        for (auto const& var : dataset.Variables()) {
+            variableNames.insert({ var.Hash, var.Name });
+        }
+
+        std::string result;
+        FormatNode(tree, variableNames, tree.Length() - 1, result, "", true, false, decimalPrecision);
+        return result;
+    }
+
+    static std::string Format(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2)
     {
         std::string result;
-        FormatNode(tree, dataset, tree.Length() - 1, result, "", true, false, decimalPrecision);
+        FormatNode(tree, variableNames, tree.Length() - 1, result, "", true, false, decimalPrecision);
         return result;
     }
 };
 
 class InfixFormatter {
-    static void FormatNode(const Tree& tree, const Dataset& dataset, size_t i, std::string& current, int decimalPrecision)
+    static void FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, size_t i, std::string& current, int decimalPrecision)
     {
         auto& s = tree[i];
         if (s.IsConstant()) {
@@ -80,8 +93,8 @@ class InfixFormatter {
             fmt::format_to(std::back_inserter(current), formatString, s.Value);
         } else if (s.IsVariable()) {
             auto formatString = fmt::format(s.Value < 0 ? "(({{:.{}f}}) * {{}})" : "({{:.{}f}} * {{}})", decimalPrecision);
-            if (auto res = dataset.GetVariable(s.CalculatedHashValue); res.has_value()) {
-                fmt::format_to(std::back_inserter(current), formatString, s.Value, res.value().Name);
+            if(auto it = variableNames.find(s.CalculatedHashValue); it != variableNames.end()) {
+                fmt::format_to(std::back_inserter(current), formatString, s.Value, it->second);
             } else {
                 throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
             }
@@ -90,7 +103,7 @@ class InfixFormatter {
             {
                 fmt::format_to(std::back_inserter(current), "(");
                 for (auto it = tree.Children(i); it.HasNext(); ++it) {
-                    FormatNode(tree, dataset, it.Index(), current, decimalPrecision);
+                    FormatNode(tree, variableNames, it.Index(), current, decimalPrecision);
                     if (it.Count() + 1 < s.Arity) {
                         fmt::format_to(std::back_inserter(current), " {} ", s.Name());
                     }
@@ -103,10 +116,10 @@ class InfixFormatter {
                 if (tree[i - 1].IsLeaf()) {
                     // surround a single leaf argument with parantheses
                     fmt::format_to(std::back_inserter(current), "(");
-                    FormatNode(tree, dataset, i - 1, current, decimalPrecision);
+                    FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                     fmt::format_to(std::back_inserter(current), ")");
                 } else {
-                    FormatNode(tree, dataset, i - 1, current, decimalPrecision);
+                    FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 }
                 fmt::format_to(std::back_inserter(current), ")");
             }
@@ -114,10 +127,21 @@ class InfixFormatter {
     }
 
 public:
-    static std::string Format(const Tree& tree, const Dataset& dataset, int decimalPrecision = 2)
+    static std::string Format(Tree const& tree, Dataset const& dataset, int decimalPrecision = 2)
+    {
+        std::unordered_map<Operon::Hash, std::string> variableNames;
+        for (auto const& var : dataset.Variables()) {
+            variableNames.insert({ var.Hash, var.Name });
+        }
+        std::string result;
+        FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
+        return result;
+    }
+
+    static std::string Format(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2)
     {
         std::string result;
-        FormatNode(tree, dataset, tree.Length() - 1, result, decimalPrecision);
+        FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
         return result;
     }
 };
