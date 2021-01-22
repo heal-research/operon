@@ -37,7 +37,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         female_selector                = 'tournament',
         male_selector                  = 'tournament',
         population_size                = 1000,
-        pool_size                      = 1000,
+        pool_size                      = None,
         generations                    = 1000,
         max_evaluations                = int(1000 * 1000),
         local_iterations               = 0,
@@ -76,6 +76,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         self.btc_bias                  = 0.0 if btc_bias is None else btc_bias
         self.n_threads                 = 1 if n_threads is None else int(n_threads)
         self.random_state              = random_state
+        self._model_vars               = {}
 
 
     def __init_primitive_config(self, allowed_symbols):
@@ -215,7 +216,11 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         raise ValueError('Unknown mutation method {}'.format(mutation_name))
 
 
-    def fit(self, X, y, show_model=False):
+    def get_model_string(self, precision):
+        return op.InfixFormatter.Format(self._model, self._model_vars, precision) if len(self._model_vars) > 0 else None
+
+
+    def fit(self, X, y):
         """A reference implementation of a fitting function.
 
         Parameters
@@ -246,7 +251,6 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         pset.SetConfig(pcfg)
 
         creator               = self.__init_creator(self.initialization_method, pset, inputs)
-
         evaluator             = self.__init_evaluator(self.error_metric, problem)
         evaluator.Budget      = self.max_evaluations;
         evaluator.LocalOptimizationIterations = self.local_iterations
@@ -284,7 +288,6 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
                                     )
 
         gp                    = op.GeneticProgrammingAlgorithm(problem, config, initializer, generator, reinserter)
-
         rng                   = op.RomuTrio(np.uint64(config.Seed))
 
         gp.Run(rng, None, self.n_threads)
@@ -300,9 +303,8 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
 
         self._model           = op.Tree(nodes).UpdateNodes()
 
-        if show_model:
-            print(op.InfixFormatter.Format(self._model, ds, 12))
-            print('internal model r2: ', 1 - best[0])
+        # update model vars dictionary
+        self._model_vars = { node.HashValue: ds.GetVariable(node.HashValue).Name for node in nodes if node.IsVariable }
 
         self._stats = {
             'model_length':        self._model.Length - 4, # do not count scaling nodes?
