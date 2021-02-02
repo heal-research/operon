@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
@@ -217,7 +218,9 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
 
 
     def get_model_string(self, precision):
-        return op.InfixFormatter.Format(self._model, self._model_vars, precision) if len(self._model_vars) > 0 else None
+        if len(self._model_vars) == 0:
+            print('warning: model contains no variables', file=sys.stderr)
+        return op.InfixFormatter.Format(self._model, self._model_vars, precision)
 
 
     def fit(self, X, y):
