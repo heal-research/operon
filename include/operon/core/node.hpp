@@ -20,6 +20,7 @@
 #ifndef NODE_HPP
 #define NODE_HPP
 
+#include <array>
 #include <bitset>
 #include <cstdint>
 #include <functional>
@@ -79,7 +80,7 @@ inline NodeType& operator^=(NodeType& lhs, NodeType rhs)
 }
 
 namespace {
-    std::array<std::string, NodeTypes::Count> nodeNames = { "+", "*", "-", "/", "Log", "Exp", "Sin", "Cos", "Tan", "Sqrt", "Cbrt", "Square", "Constant", "Variable" };
+    std::array<std::string, NodeTypes::Count> nodeNames = { "+", "*", "-", "/", "log", "exp", "sin", "cos", "tan", "sqrt", "cbrt", "square", "constant", "variable" };
 }
 
 struct Node {
