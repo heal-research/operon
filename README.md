@@ -5,6 +5,7 @@
 # Modern C++ framework for Symbolic Regression
 
 [![Build Status](https://dev.azure.com/heal-research/HEAL.Operon/_apis/build/status/heal-research.operon?branchName=master)](https://dev.azure.com/heal-research/HEAL.Operon/_build/latest?definitionId=4&branchName=master)
+[![Documentation Status](https://readthedocs.org/projects/operongp/badge/?version=latest)](https://operongp.readthedocs.io/en/latest/?badge=latest)
 
 *Operon* is a modern C++ framework for [symbolic regression](https://en.wikipedia.org/wiki/Symbolic_regression) that uses [genetic programming](https://en.wikipedia.org/wiki/Genetic_programming) to explore a hypothesis space of possible mathematical expressions in order to find the best-fitting model for a given [regression target](https://en.wikipedia.org/wiki/Regression_analysis).
 Its main purpose is to help develop accurate and interpretable white-box models in the area of [system identification](https://en.wikipedia.org/wiki/System_identification). More in-depth documentation available at https://operongp.readthedocs.io/.
