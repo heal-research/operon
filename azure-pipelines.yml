@@ -20,5 +20,5 @@ steps:
   displayName: 'Configure project'
 
 - script: |
-    make
+    cmake --build ./build/
   displayName: 'Build project'
