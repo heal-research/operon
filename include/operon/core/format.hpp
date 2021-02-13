@@ -85,43 +85,52 @@ public:
 };
 
 class InfixFormatter {
-    static void FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, size_t i, std::string& current, int decimalPrecision)
+    static void FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer & current, int decimalPrecision)
     {
         auto& s = tree[i];
         if (s.IsConstant()) {
             auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}f}}", decimalPrecision);
-            fmt::format_to(std::back_inserter(current), formatString, s.Value);
+            fmt::format_to(current, formatString, s.Value);
         } else if (s.IsVariable()) {
             auto formatString = fmt::format(s.Value < 0 ? "(({{:.{}f}}) * {{}})" : "({{:.{}f}} * {{}})", decimalPrecision);
             if(auto it = variableNames.find(s.CalculatedHashValue); it != variableNames.end()) {
-                fmt::format_to(std::back_inserter(current), formatString, s.Value, it->second);
+                fmt::format_to(current, formatString, s.Value, it->second);
             } else {
                 throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
             }
         } else {
             if (s.Type < NodeType::Log) // add, sub, mul, div
             {
-                fmt::format_to(std::back_inserter(current), "(");
+                if (s.Arity == 1) {
+                    if (s.Type == NodeType::Sub) {
+                        // subtraction with a single argument is a negation -x
+                        fmt::format_to(current, "-");
+                    } else if (s.Type == NodeType::Div) {
+                        // division with a single argument is an inversion 1/x
+                        fmt::format_to(current, "1/");
+                    }
+                }
+                fmt::format_to(current, "(");
                 for (auto it = tree.Children(i); it.HasNext(); ++it) {
                     FormatNode(tree, variableNames, it.Index(), current, decimalPrecision);
                     if (it.Count() + 1 < s.Arity) {
-                        fmt::format_to(std::back_inserter(current), " {} ", s.Name());
+                        fmt::format_to(current, " {} ", s.Name());
                     }
                 }
-                fmt::format_to(std::back_inserter(current), ")");
+                fmt::format_to(current, ")");
             } else // unary operators log, exp, sin, etc.
             {
-                fmt::format_to(std::back_inserter(current), "{}", s.Name());
-                fmt::format_to(std::back_inserter(current), "(");
+                fmt::format_to(current, "{}", s.Name());
+                fmt::format_to(current, "(");
                 if (tree[i - 1].IsLeaf()) {
                     // surround a single leaf argument with parantheses
-                    fmt::format_to(std::back_inserter(current), "(");
+                    fmt::format_to(current, "(");
                     FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
-                    fmt::format_to(std::back_inserter(current), ")");
+                    fmt::format_to(current, ")");
                 } else {
                     FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 }
-                fmt::format_to(std::back_inserter(current), ")");
+                fmt::format_to(current, ")");
             }
         }
     }
@@ -133,16 +142,16 @@ public:
         for (auto const& var : dataset.Variables()) {
             variableNames.insert({ var.Hash, var.Name });
         }
-        std::string result;
+        fmt::memory_buffer result;
         FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
-        return result;
+        return std::string(result.begin(), result.end());
     }
 
     static std::string Format(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2)
     {
-        std::string result;
+        fmt::memory_buffer result;
         FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
-        return result;
+        return std::string(result.begin(), result.end());
     }
 };
 }
