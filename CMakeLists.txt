@@ -100,7 +100,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/foolnotion/pratt-parser-calculator
     GIT_TAG main
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/parser
-    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/parser
+    SOURCE_DIR ${DOWNLOAD_DIR}
 )
 
 FetchContent_Declare(
