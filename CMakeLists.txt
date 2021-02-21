@@ -400,7 +400,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/performance/distance.cpp
         test/performance/math.cpp
         test/performance/random.cpp
-        test/performance/stat.cpp
+        #test/performance/stat.cpp
         #test/implementation/evaluation.cpp
         test/implementation/details.cpp
         test/implementation/hashing.cpp
@@ -408,7 +408,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/implementation/initialization.cpp
         test/implementation/mutation.cpp
         test/implementation/random.cpp
-        test/implementation/stat.cpp
+        #test/implementation/stat.cpp
         #test/implementation/selection.cpp
         #test/codegen/irbuilder.cpp
         )
@@ -418,7 +418,7 @@ if(doctest_FOUND AND BUILD_TESTS)
     else()
         target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     endif(MSVC)
-    target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres TBB::tbb doctest::doctest mathpresso)
+    target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres TBB::tbb doctest::doctest)
     target_include_directories(
         operon-test
         SYSTEM PRIVATE
