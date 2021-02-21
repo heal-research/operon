@@ -1,8 +1,5 @@
 let
-  pkgs_stable = import <nixos> { };
   pkgs = import <nixos-unstable> { };
-  cxxopts = import ./cxxopts.nix; 
-  qcachegrind = pkgs.libsForQt5.callPackage ./qcachegrind.nix {};
 
   tbb = pkgs.tbb.overrideAttrs (old: rec {
     version = "2020_U3";
@@ -21,32 +18,21 @@ let
             -P cmake/tbb_config_installer.cmake
     '';
   });
-  eigen339 = pkgs.eigen.overrideAttrs (old: rec {
-    version = "3.3.9";
+  eigen = pkgs.eigen.overrideAttrs (old: rec {
+    version = "3.4";
     stdenv = pkgs.gcc10Stdenv;
-    src = pkgs.fetchFromGitLab {
-      owner = "libeigen";
-      repo = "eigen";
-      rev    = "${version}";
-      sha256 = "0m4h9fd5s1pzpncy17r3w0b5a6ywqjajmnr720ndb7fc4bn0dhi4";
+    src = builtins.fetchGit {
+      url = "https://gitlab.com/libeigen/eigen";
+      ref = "3.4";
+      rev = "92b2167e3a2d54174fa8c453d774b273f3f75cb7";
     };
-    patches = [ ./eigen_include_dir.patch ];
+    patches = [];
+    cmakeFlags = [ "-DCMAKE_PREFIX_PATH=$out" "-DINCLUDE_INSTALL_DIR=include/eigen3" ];
   });
-  pybind11_trunk = pkgs.python38Packages.pybind11.overrideAttrs (old: rec {
-    stdenv = pkgs.gcc10Stdenv;
-    buildInputs = with pkgs; [ eigen339 ];
-    version = "2.6.0";
-    src = pkgs.fetchFromGitHub {
-      repo   = "pybind11";
-      owner  = "pybind";
-      rev    = "v${version}";
-      sha256 = "19rnl4pq2mbh5hmj96cs309wxl51q5yyp364icg26zjm3d0ap834";
-    };
-  });
-  ceres200 = pkgs.ceres-solver.overrideAttrs (old: rec {
+  ceres-solver = pkgs.ceres-solver.overrideAttrs (old: rec {
     CFLAGS = (old.CFLAGS or "") + "-march=native -O3";
     stdenv = pkgs.gcc10Stdenv;
-    buildInputs = with pkgs; [ eigen339 glog ];
+    buildInputs = with pkgs; [ eigen glog ];
 
     version = "2.0.0";
     src = pkgs.fetchFromGitHub {
@@ -68,18 +54,6 @@ let
       "-DFMT_FUZZ=OFF"
     ];
   });
-  eli5 = import ./eli5.nix {
-    lib = pkgs.gcc10Stdenv.lib;
-    buildPythonPackage = pkgs.python38Packages.buildPythonPackage;
-    fetchPypi = pkgs.python38Packages.fetchPypi;
-    pythonPackages = pkgs.python38Packages;
-  };
-  pmlb = import ./pmlb.nix {
-    lib = pkgs.gcc10Stdenv.lib;
-    buildPythonPackage = pkgs.python38Packages.buildPythonPackage;
-    fetchPypi = pkgs.python38Packages.fetchPypi;
-    pythonPackages = pkgs.python38Packages;
-  };
 in
   pkgs.gcc10Stdenv.mkDerivation {
     name = "operon-env";
@@ -87,40 +61,25 @@ in
 
     buildInputs = with pkgs; [
         # python environment for bindings and scripting
-        pybind11_trunk
-        (pkgs.python38.withPackages (ps: with ps; [ pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz dask ]))
-        (pkgs_stable.python38.withPackages (ps: with ps; [ sphinx recommonmark sphinx_rtd_theme ]))
-        # Project dependencies
-        # profiling and debugging
+        (pkgs.python38.withPackages (ps: with ps; [ pybind11 pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz dask sphinx recommonmark sphinx_rtd_theme ]))
+        # Project dependencies and utils for profiling and debugging
         gdb
         valgrind
         linuxPackages.perf
-        #bear
-        #tracy
-        #bloaty
-        #heaptrack
-        #hotspot
         cmake
         tbb
-        #eigen
-        eigen339
-        ceres200
+        eigen
+        ceres-solver
         openlibm
         gperftools
         jemalloc
+        mimalloc
         fmt
         glog
         doctest
-#        llvm_10 # code generation
         clang_10
-        # visualize profile results
-        #pyprof2calltree
-        #qcachegrind
-        #massif-visualizer
         graphviz
         cxxopts
-        #asciinema
-        hyperfine
         ninja
         eli5
         pmlb
