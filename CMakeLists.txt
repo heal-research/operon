@@ -54,7 +54,7 @@ endif()
 FetchContent_Declare(
     gsl
     GIT_REPOSITORY https://github.com/microsoft/GSL.git
-    GIT_TAG master
+    GIT_TAG main
     DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/GSL
     SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/GSL
 )
@@ -95,6 +95,22 @@ FetchContent_Declare(
     DOWNLOAD_NO_EXTRACT 1
 )
 
+FetchContent_Declare(
+    infix_parser
+    GIT_REPOSITORY https://github.com/foolnotion/pratt-parser-calculator
+    GIT_TAG main
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/parser
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/parser
+)
+
+FetchContent_Declare(
+    robin_hood
+    URL https://raw.githubusercontent.com/martinus/robin-hood-hashing/master/src/include/robin_hood.h
+    DOWNLOAD_NO_EXTRACT 1
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/robin_hood
+    SOURCE_DIR ${DOWNLOAD_DIR}
+)
+
 # populate gsl this way so we can pass EXCLUDE_FROM_ALL
 # (since by default it specifies an install cmake target polluting our install dir)
 if(NOT gsl_POPULATED)
@@ -102,18 +118,24 @@ if(NOT gsl_POPULATED)
     add_subdirectory(${gsl_SOURCE_DIR} ${gsl_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT infix_parser_POPULATED)
+    FetchContent_Populate(infix_parser)
+    add_subdirectory(${infix_parser_SOURCE_DIR} ${infix_parser_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif()
+
 # populate content
-FetchContent_MakeAvailable(xxhash csv nanobench)
+FetchContent_MakeAvailable(xxhash csv nanobench robin_hood)
 
 # populate optional content
 FetchContent_MakeAvailable(ceres_tiny_solver ceres_jet)
 
 set(THIRDPARTY_INCLUDE_DIRS
-    ${PROJECT_SOURCE_DIR}/thirdparty/GSL/include
-    ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
-    ${PROJECT_SOURCE_DIR}/thirdparty/nanobench/include
-    ${PROJECT_SOURCE_DIR}/thirdparty/xxhash
-    ${PROJECT_SOURCE_DIR}/thirdparty/tiny_solver
+    ${PRATT_PARSER_INCLUDE_DIRS}
+    ${ceres_tiny_solver_SOURCE_DIR}
+    ${csv_SOURCE_DIR}
+    ${gsl_SOURCE_DIR}/include
+    ${nanobench_SOURCE_DIR}
+    ${xxhash_SOURCE_DIR}
 )
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/buildinfo.hpp.in
@@ -232,9 +254,9 @@ add_library(
     src/stat/pearson.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
-target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} Threads::Threads TBB::tbb)
+target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres Threads::Threads TBB::tbb)
 target_include_directories(operon PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${PROJECT_BINARY_DIR})
-target_include_directories(operon SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR} ${CERES_INCLUDE_DIRS} ${THIRDPARTY_INCLUDE_DIRS})
+target_include_directories(operon SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIRS})
 target_compile_definitions(operon PRIVATE
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
     "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
@@ -248,8 +270,8 @@ add_executable(
     )
 
 target_compile_features(operon-example-gp PRIVATE cxx_std_17)
-target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
-target_include_directories(operon-example-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${CERES_INCLUDE_DIRS})
+target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres TBB::tbb)
+target_include_directories(operon-example-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
 target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 set_target_properties(operon-example-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
@@ -271,12 +293,11 @@ if (cxxopts_FOUND)
         src/cli/operon_gp.cpp
     )
     target_compile_features(operon-gp PRIVATE cxx_std_17)
-    target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb)
+    target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres TBB::tbb)
     target_include_directories(operon-gp SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/include/operon
         ${THIRDPARTY_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
-        ${CERES_INCLUDE_DIRS}
         ${CMAKE_BINARY_DIR}
         )
     target_compile_definitions(operon-gp PRIVATE
@@ -328,7 +349,6 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         ${PROJECT_SOURCE_DIR}/include/operon
         ${THIRDPARTY_INCLUDE_DIRS}
         ${Python3_INCLUDE_DIRS}
-        ${CERES_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
         ${CMAKE_BINARY_DIR}
     )
@@ -383,12 +403,13 @@ if(doctest_FOUND AND BUILD_TESTS)
         #test/implementation/evaluation.cpp
         test/implementation/details.cpp
         test/implementation/hashing.cpp
+        test/implementation/infix_parser.cpp
         test/implementation/initialization.cpp
         test/implementation/mutation.cpp
         test/implementation/random.cpp
         test/implementation/stat.cpp
         #test/implementation/selection.cpp
-        #        test/codegen/irbuilder.cpp
+        #test/codegen/irbuilder.cpp
         )
     target_compile_features(operon-test PRIVATE cxx_std_17)
     if(MSVC)
@@ -396,14 +417,13 @@ if(doctest_FOUND AND BUILD_TESTS)
     else()
         target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     endif(MSVC)
-    target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} ${CERES_LIBRARIES} TBB::tbb doctest::doctest)
+    target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres TBB::tbb doctest::doctest mathpresso)
     target_include_directories(
         operon-test
         SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/include/operon
         ${THIRDPARTY_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
-        ${CERES_INCLUDE_DIRS}
         ${CMAKE_BINARY_DIR}
         )
     target_compile_definitions(operon-test PRIVATE
