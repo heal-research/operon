@@ -32,13 +32,11 @@ struct nud {
         }
 
         if (tok == token_kind::variable) {
-            auto hash = parser.template get_desc(left.name);
+            auto hash = parser.template get_desc<Operon::Hash>(left.name);
             if (!hash.has_value()) {
                 throw std::invalid_argument(fmt::format("unknown variable name {}\n", left.name));
             }
-            Node var(NodeType::Variable);
-            var.HashValue = var.CalculatedHashValue = hash.value();
-            return value_t { var };
+            return value_t { Node(NodeType::Variable, hash.value()) };
         }
 
         auto bp = pratt::token_precedence[tok]; // binding power

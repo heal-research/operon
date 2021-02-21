@@ -4,7 +4,12 @@
 #include <Eigen/Core>
 
 #include "core/eval.hpp"
+
+#if defined(CERES_TINY_SOLVER)
 #include "tiny_solver.h"
+#else
+#include <ceres/tiny_solver.h>
+#endif
 
 namespace Operon {
 // this cost function is adapted to work with both solvers from Ceres: the normal one and the tiny solver
