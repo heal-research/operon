@@ -32,7 +32,7 @@ struct nud {
         }
 
         if (tok == token_kind::variable) {
-            auto hash = parser.get_hash(left.name);
+            auto hash = parser.template get_desc(left.name);
             if (!hash.has_value()) {
                 throw std::invalid_argument(fmt::format("unknown variable name {}\n", left.name));
             }
