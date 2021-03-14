@@ -58,6 +58,7 @@ int main(int argc, char** argv)
         ("test", "Test range specified as start:end", cxxopts::value<std::string>())
         ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
         ("inputs", "Comma-separated list of input variables", cxxopts::value<std::string>())
+        ("error-metric", "The error metric used for calculating fitness", cxxopts::value<std::string>()->default_value("r2"))
         ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))
         ("pool-size", "Recombination pool size (how many generated offspring per generation)", cxxopts::value<size_t>()->default_value("1000"))
         ("seed", "Random number seed", cxxopts::value<Operon::RandomGenerator::result_type>()->default_value("0"))
@@ -284,10 +285,24 @@ int main(int argc, char** argv)
         mutator.Add(removeSubtree, 1.0);
         //mutator.Add(shuffleSubtree, 1.0);
 
-        RSquaredEvaluator evaluator(problem);
-        //MeanSquaredErrorEvaluator evaluator(problem);
-        evaluator.SetLocalOptimizationIterations(config.Iterations);
-        evaluator.SetBudget(config.Evaluations);
+        std::unique_ptr<EvaluatorBase> evaluator;
+        auto errorMetric = result["error-metric"].as<std::string>();
+        if (errorMetric == "r2") {
+            evaluator.reset(new RSquaredEvaluator(problem));
+        } else if (errorMetric == "nmse") {
+            evaluator.reset(new NormalizedMeanSquaredErrorEvaluator(problem));
+        } else if (errorMetric == "mse") {
+            evaluator.reset(new MeanSquaredErrorEvaluator(problem));
+        } else if (errorMetric == "rmse") {
+            evaluator.reset(new RootMeanSquaredErrorEvaluator(problem));
+        } else if (errorMetric == "mae") {
+            evaluator.reset(new MeanAbsoluteErrorEvaluator(problem));
+        } else {
+            throw std::runtime_error(fmt::format("Unknown metric {}\n", errorMetric));
+        }
+
+        evaluator->SetLocalOptimizationIterations(config.Iterations);
+        evaluator->SetBudget(config.Evaluations);
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
@@ -344,12 +359,12 @@ int main(int argc, char** argv)
 
         std::unique_ptr<OffspringGenerator> generator;
         if (result.count("offspring-generator") == 0) {
-            generator.reset(new BasicOffspringGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector));
+            generator.reset(new BasicOffspringGenerator(*evaluator, crossover, mutator, *femaleSelector, *maleSelector));
         } else {
             auto value = result["offspring-generator"].as<std::string>();
             auto tokens = Split(value, ':');
             if (tokens[0] == "basic") {
-                generator.reset(new BasicOffspringGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector));
+                generator.reset(new BasicOffspringGenerator(*evaluator, crossover, mutator, *femaleSelector, *maleSelector));
             } else if (tokens[0] == "brood") {
                 size_t broodSize = 10;
                 if (tokens.size() > 1) {
@@ -358,7 +373,7 @@ int main(int argc, char** argv)
                         exit(EXIT_FAILURE);
                     }
                 }
-                auto ptr = new BroodOffspringGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector);
+                auto ptr = new BroodOffspringGenerator(*evaluator, crossover, mutator, *femaleSelector, *maleSelector);
                 ptr->BroodSize(broodSize);
                 generator.reset(ptr);
             } else if (tokens[0] == "poly") {
@@ -369,7 +384,7 @@ int main(int argc, char** argv)
                         exit(EXIT_FAILURE);
                     }
                 }
-                auto ptr = new PolygenicOffspringGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector);
+                auto ptr = new PolygenicOffspringGenerator(*evaluator, crossover, mutator, *femaleSelector, *maleSelector);
                 ptr->PolygenicSize(broodSize);
                 generator.reset(ptr);
             } else if (tokens[0] == "os") {
@@ -389,7 +404,7 @@ int main(int argc, char** argv)
                         exit(EXIT_FAILURE);
                     }
                 }
-                auto ptr = new OffspringSelectionGenerator(evaluator, crossover, mutator, *femaleSelector, *maleSelector);
+                auto ptr = new OffspringSelectionGenerator(*evaluator, crossover, mutator, *femaleSelector, *maleSelector);
                 ptr->MaxSelectionPressure(selectionPressure);
                 ptr->ComparisonFactor(comparisonFactor);
                 generator.reset(ptr);
@@ -455,8 +470,8 @@ int main(int argc, char** argv)
             auto nmseTrain = NormalizedMeanSquaredError<Operon::Scalar>(estimatedTrain, targetTrain);
             auto nmseTest = NormalizedMeanSquaredError<Operon::Scalar>(estimatedTest, targetTest);
 
-            auto rmseTrain = RootMeanSquaredError<Operon::Scalar>(estimatedTrain, targetTrain);
-            auto rmseTest = RootMeanSquaredError<Operon::Scalar>(estimatedTest, targetTest);
+            auto maeTrain = MeanAbsoluteError<Operon::Scalar>(estimatedTrain, targetTrain);
+            auto maeTest = MeanAbsoluteError<Operon::Scalar>(estimatedTest, targetTest);
 
             auto avgLength = (double)std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / (double)pop.size();
             auto avgQuality = (double)std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [=](const auto& ind) { return ind[idx]; }) / (double)pop.size();
@@ -472,13 +487,13 @@ int main(int argc, char** argv)
             totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), size_t { 0 }, std::plus<> {}, getSize);
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
-            fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", best[idx], r2Train, r2Test, rmseTrain, rmseTest, nmseTrain, nmseTest);
-            fmt::print("{:.4f}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, 0.0, 0.0, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
+            fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
+            fmt::print("{:.4f}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, 0.0, 0.0, evaluator->FitnessEvaluations(), evaluator->LocalEvaluations(), evaluator->TotalEvaluations());
             fmt::print("{}\t{}\n", totalMemory, config.Seed);
         };
 
         gp.Run(random, report);
-        //fmt::print("{}\n", InfixFormatter::Format(best.Genotype, *dataset));
+        fmt::print("{}\n", InfixFormatter::Format(best.Genotype, *dataset, 20));
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);
