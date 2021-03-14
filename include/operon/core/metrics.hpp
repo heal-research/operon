@@ -34,10 +34,10 @@ double NormalizedMeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
     EXPECT(x.size() == y.size());
     EXPECT(x.size() > 0);
     PearsonsRCalculator calc;
-    for(size_t i = 0; i < x.size(); ++i) {
-        auto e = x[i] - y[i];
-        calc.Add(e * e, y[i]);
-    }
+    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> a(x.data(), x.size());
+    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
+    Eigen::Array<T, Eigen::Dynamic, 1> c = (a - b).square();
+    calc.Add(gsl::span<const T>(c.data(), c.size()), y);
     auto yvar = calc.NaiveVarianceY();
     auto errmean = calc.MeanX();
     return yvar > 0 ? errmean / yvar : yvar;
@@ -49,15 +49,11 @@ double MeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(x.size() > 0);
+    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> a(x.data(), x.size());
+    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
+    Eigen::Array<T, Eigen::Dynamic, 1> c = (a - b).square();
     MeanVarianceCalculator mcalc;
-    //std::vector<T> v; v.reserve(x.size());
-    //std::transform(x.cbegin(), x.cend(), y.cbegin(), std::back_inserter(v), [](auto a, auto b) { auto e = a - b; return e * e; });
-    //mcalc.Add(v);
-
-    for(size_t i = 0; i < x.size(); ++i) {
-        auto e = x[i] - y[i];
-        mcalc.Add(e * e);
-    }
+    mcalc.Add(gsl::span<T const>(c.data(), c.size()));
     return mcalc.Mean();
 }
 
@@ -67,10 +63,11 @@ double MeanAbsoluteError(gsl::span<const T> x, gsl::span<const T> y)
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(x.size() > 0);
+    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> a(x.data(), x.size());
+    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
+    Eigen::Array<T, Eigen::Dynamic, 1> c = (a - b).abs();
     MeanVarianceCalculator mcalc;
-    for(size_t i = 0; i < x.size(); ++i) {
-        mcalc.Add(std::abs(x[i] - y[i]));
-    }
+    mcalc.Add(gsl::span<T const>(c.data(), c.size()));
     return mcalc.Mean();
 }
 

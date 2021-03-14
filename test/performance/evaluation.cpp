@@ -224,11 +224,14 @@ namespace Test {
             });
         };
 
-        test("r-squared", Operon::Evaluator<Operon::R2>(problem));
-        test("nmse",      Operon::Evaluator<Operon::NMSE, false>(problem));
-        test("nmse + ls", Operon::Evaluator<Operon::NMSE, true>(problem));
-        test("mae",       Operon::Evaluator<Operon::MAE, false>(problem));
-        test("mae + ls",  Operon::Evaluator<Operon::MAE, true>(problem));
+        test("r-squared",      Operon::Evaluator<Operon::R2, false>(problem));
+        test("r-squared + ls", Operon::Evaluator<Operon::R2, true>(problem));
+        test("nmse",           Operon::Evaluator<Operon::NMSE, false>(problem));
+        test("nmse + ls",      Operon::Evaluator<Operon::NMSE, true>(problem));
+        test("mae",            Operon::Evaluator<Operon::MAE, false>(problem));
+        test("mae + ls",       Operon::Evaluator<Operon::MAE, true>(problem));
+        test("mse",            Operon::Evaluator<Operon::MSE, false>(problem));
+        test("mse + ls",       Operon::Evaluator<Operon::MSE, true>(problem));
     }
 } // namespace Test
 } // namespace Operon
