@@ -99,6 +99,14 @@ void init_eval(py::module_ &m)
         return Operon::MeanSquaredError<double>(MakeSpan(lhs), MakeSpan(rhs));
     });
 
+    m.def("MeanAbsoluteError", [](py::array_t<float> lhs, py::array_t<float> rhs) {
+        return Operon::MeanAbsoluteError<float>(MakeSpan(lhs), MakeSpan(rhs));
+    });
+
+    m.def("MeanAbsoluteError", [](py::array_t<double> lhs, py::array_t<double> rhs) {
+        return Operon::MeanAbsoluteError<double>(MakeSpan(lhs), MakeSpan(rhs));
+    });
+
     // evaluator
     py::class_<Operon::EvaluatorBase>(m, "EvaluatorBase")
         .def_property("LocalOptimizationIterations", &Operon::EvaluatorBase::GetLocalOptimizationIterations, &Operon::EvaluatorBase::SetLocalOptimizationIterations)
@@ -107,13 +115,25 @@ void init_eval(py::module_ &m)
         .def_property_readonly("LocalEvaluations", &Operon::EvaluatorBase::LocalEvaluations)
         .def_property_readonly("TotalEvaluations", &Operon::EvaluatorBase::TotalEvaluations);
 
-    py::class_<Operon::RSquaredEvaluator, Operon::EvaluatorBase>(m, "RSquaredEvaluator")
+    py::class_<Operon::MeanSquaredErrorEvaluator, Operon::EvaluatorBase>(m, "MeanSquaredErrorEvaluator")
         .def(py::init<Operon::Problem&>())
-        .def("__call__", &Operon::RSquaredEvaluator::operator());
+        .def("__call__", &Operon::MeanSquaredErrorEvaluator::operator());
+
+    py::class_<Operon::RootMeanSquaredErrorEvaluator, Operon::EvaluatorBase>(m, "RootMeanSquaredErrorEvaluator")
+        .def(py::init<Operon::Problem&>())
+        .def("__call__", &Operon::RootMeanSquaredErrorEvaluator::operator());
 
     py::class_<Operon::NormalizedMeanSquaredErrorEvaluator, Operon::EvaluatorBase>(m, "NormalizedMeanSquaredErrorEvaluator")
         .def(py::init<Operon::Problem&>())
         .def("__call__", &Operon::NormalizedMeanSquaredErrorEvaluator::operator());
+
+    py::class_<Operon::MeanAbsoluteErrorEvaluator, Operon::EvaluatorBase>(m, "MeanAbsoluteErrorEvaluator")
+        .def(py::init<Operon::Problem&>())
+        .def("__call__", &Operon::MeanAbsoluteErrorEvaluator::operator());
+
+    py::class_<Operon::RSquaredEvaluator, Operon::EvaluatorBase>(m, "RSquaredEvaluator")
+        .def(py::init<Operon::Problem&>())
+        .def("__call__", &Operon::RSquaredEvaluator::operator());
 
     py::class_<Operon::UserDefinedEvaluator, Operon::EvaluatorBase>(m, "UserDefinedEvaluator")
         .def(py::init<Operon::Problem&, std::function<typename Operon::EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> const&>())

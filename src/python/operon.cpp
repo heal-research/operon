@@ -19,6 +19,8 @@
 
 #include "operon.hpp"
 
+#include "parser/infix.hpp"
+
 namespace py = pybind11;
 
 PYBIND11_MODULE(_operon, m)
@@ -93,6 +95,9 @@ PYBIND11_MODULE(_operon, m)
     py::class_<Operon::InfixFormatter>(m, "InfixFormatter")
         .def_static("Format", py::overload_cast<Operon::Tree const&, Operon::Dataset const&, int>(&Operon::InfixFormatter::Format))
         .def_static("Format", py::overload_cast<Operon::Tree const&, std::unordered_map<Operon::Hash, std::string> const&, int>(&Operon::InfixFormatter::Format));
+
+    py::class_<Operon::InfixParser>(m, "InfixParser")
+        .def_static("Parse", &Operon::InfixParser::Parse<std::unordered_map<std::string, Operon::Hash>>);
 
     // genetic algorithm
     py::class_<Operon::GeneticAlgorithmConfig>(m, "GeneticAlgorithmConfig")

@@ -31,8 +31,8 @@ struct TinyCostFunction {
     TinyCostFunction(const Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range)
         : functor_(tree, dataset, targetValues, range)
     {
-        numResiduals_ = targetValues.size();
-        numParameters_ = tree.GetCoefficients().size();
+        numResiduals_ = static_cast<int>(targetValues.size());
+        numParameters_ = static_cast<int>(tree.GetCoefficients().size());
     }
 
     bool Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const

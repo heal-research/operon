@@ -156,6 +156,15 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         elif error_metric == 'nmse':
             return op.NormalizedMeanSquaredErrorEvaluator(problem)
 
+        elif error_metric == 'rmse':
+            return op.RootMeanSquaredErrorEvaluator(problem)
+
+        elif error_metric == 'mse':
+            return op.MeanSquaredErrorEvaluator(problem)
+
+        elif error_metric == 'mae':
+            return op.MeanAbsoluteErrorEvaluator(problem)
+
         raise ValueError('Unknown error metric {}'.format(error_metric))
 
 
@@ -244,6 +253,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
 
         ds                    = op.Dataset(D)
         target                = max(ds.Variables, key=lambda x: x.Index) # last column is the target
+
         inputs                = op.VariableCollection(v for v in ds.Variables if v.Index != target.Index)
         training_range        = op.Range(0, ds.Rows)
         test_range            = op.Range(ds.Rows-1, ds.Rows) # hackish, because it can't be empty
@@ -275,6 +285,8 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
 
         min_arity, max_arity  = pset.FunctionArityLimits()
         initializer           = op.UniformInitializer(creator, min_arity+1, self.max_length)
+        initializer.MinDepth  = 1
+        initializer.MaxDepth  = 1000
 
         if self.random_state is None:
             self.random_state = random.getrandbits(64)
@@ -307,7 +319,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         self._model           = op.Tree(nodes).UpdateNodes()
 
         # update model vars dictionary
-        self._model_vars = { node.HashValue: ds.GetVariable(node.HashValue).Name for node in nodes if node.IsVariable }
+        self._model_vars = { node.HashValue : ds.GetVariable(node.HashValue).Name for node in nodes if node.IsVariable }
 
         self._stats = {
             'model_length':        self._model.Length - 4, # do not count scaling nodes?

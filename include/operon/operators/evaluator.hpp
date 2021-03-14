@@ -63,12 +63,11 @@ private:
     std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> fptr; // workaround for pybind11
 };
 
-class MeanSquaredErrorEvaluator : public EvaluatorBase {
-public:
-    static constexpr Operon::Scalar LowerBound = 0.0;
-    static constexpr Operon::Scalar UpperBound = Operon::Numeric::Max<Operon::Scalar>();
+template<typename ErrorMetric, bool LinearScaling = false>
+class Evaluator : public EvaluatorBase {
 
-    MeanSquaredErrorEvaluator(Problem& problem)
+public:
+    Evaluator(Problem& problem)
         : EvaluatorBase(problem)
     {
     }
@@ -90,107 +89,38 @@ public:
         }
 
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
-        auto mse = MeanSquaredError<Operon::Scalar>(estimatedValues, targetValues);
 
-        if (!std::isfinite(mse) || mse < LowerBound) {
-            mse = UpperBound;
+        if constexpr (LinearScaling) {
+            // scale values
+            Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 2, Eigen::ColMajor> a(trainingRange.Size(), 2);
+            Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> x(estimatedValues.data(), estimatedValues.size());
+            a.col(0) = x;
+            a.col(1).setConstant(1);
+
+            Eigen::Map<const Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>> y(targetValues.data(), targetValues.size());
+            Eigen::ColPivHouseholderQR<decltype(a)> hh(a);
+            auto v = hh.solve(y);
+            x = v(0) + x * v(1);
         }
-        return static_cast<ReturnType>(mse);
+        auto fit = metric(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
+
+        if (!std::isfinite(fit)) {
+            return Operon::Numeric::Max<Operon::Scalar>();
+        }
+        return fit;
     }
+
+
+private:
+    ErrorMetric metric;
 };
 
-class NormalizedMeanSquaredErrorEvaluator : public EvaluatorBase {
-public:
-    static constexpr Operon::Scalar LowerBound = 0.0;
-    static constexpr Operon::Scalar UpperBound = Operon::Numeric::Max<Operon::Scalar>();
+using MeanSquaredErrorEvaluator           = Evaluator<MSE, true>;
+using NormalizedMeanSquaredErrorEvaluator = Evaluator<NMSE, true>;
+using RootMeanSquaredErrorEvaluator       = Evaluator<RMSE, true>;
+using MeanAbsoluteErrorEvaluator          = Evaluator<MAE, true>;
+using RSquaredEvaluator                   = Evaluator<R2, false>;
 
-    NormalizedMeanSquaredErrorEvaluator(Problem& problem)
-        : EvaluatorBase(problem)
-    {
-    }
-
-    typename EvaluatorBase::ReturnType
-    operator()(Operon::RandomGenerator&, Individual& ind) const override
-    {
-        ++this->fitnessEvaluations;
-        auto& problem_ = this->problem.get();
-        auto& dataset = problem_.GetDataset();
-        auto& genotype = ind.Genotype;
-
-        auto trainingRange = problem_.TrainingRange();
-        auto targetValues = dataset.GetValues(problem_.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
-
-        if (this->iterations > 0) {
-            auto summary = Optimize(genotype, dataset, targetValues, trainingRange, this->iterations);
-            this->localEvaluations += summary.Iterations;
-        }
-
-        auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
-        // scale values
-        auto s = LinearScalingCalculator::Calculate(estimatedValues.begin(), estimatedValues.end(), targetValues.begin());
-        auto a = static_cast<Operon::Scalar>(s.first);
-        auto b = static_cast<Operon::Scalar>(s.second);
-
-        PearsonsRCalculator calc;
-        for(size_t i = 0; i < estimatedValues.size(); ++i) {
-            auto e = estimatedValues[i] * b + a - targetValues[i];
-            calc.Add(e * e, targetValues[i]);
-        }
-        auto yvar = calc.NaiveVarianceY();
-        auto errmean = calc.MeanX();
-        auto nmse = yvar > 0 ? errmean / yvar : yvar;
-
-        if (!std::isfinite(nmse) || nmse < LowerBound) {
-            nmse = UpperBound;
-        }
-        return static_cast<ReturnType>(nmse);
-    }
-};
-
-class RSquaredEvaluator : public EvaluatorBase {
-public:
-    static constexpr Operon::Scalar LowerBound = 0.0;
-    static constexpr Operon::Scalar UpperBound = 1.0;
-
-    RSquaredEvaluator(Problem& problem)
-        : EvaluatorBase(problem)
-    {
-    }
-
-    typename EvaluatorBase::ReturnType
-    operator()(Operon::RandomGenerator&, Individual& ind) const
-    {
-        ++this->fitnessEvaluations;
-        auto const& problem = this->problem.get();
-        auto const& dataset = problem.GetDataset();
-        auto& genotype = ind.Genotype;
-
-        auto trainingRange = problem.TrainingRange();
-        auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
-
-        if (this->iterations > 0) {
-            auto summary = Optimize(genotype, dataset, targetValues, trainingRange, this->iterations);
-            this->localEvaluations += summary.Iterations;
-        }
-
-        auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
-        PearsonsRCalculator calculator;
-        calculator.Add(gsl::span<Operon::Scalar const>(estimatedValues), targetValues);
-        auto varX = calculator.NaiveVarianceX();
-        if (varX < 1e-12) {
-            // this is done to avoid numerical issues when a constant model
-            // has very good R correlation to the target but fails to scale properly
-            // since the values are extremely small
-            return UpperBound;
-        }
-        auto r = calculator.Correlation();
-        auto r2 = r * r;
-        if (!std::isfinite(r2) || r2 > UpperBound || r2 < LowerBound) {
-            r2 = 0;
-        }
-        return static_cast<ReturnType>(UpperBound - r2 + LowerBound);
-    }
-};
 }
 #endif
 
