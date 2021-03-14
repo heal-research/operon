@@ -33,7 +33,6 @@ namespace {
         Hasher<HashFunction::XXHash> hash;
 
         std::vector<Variable> vars(count);
-        std::sort(vars.begin(), vars.end(), [](auto& a, auto& b) { return a.Hash < b.Hash; });
         for (size_t i = 0; i < vars.size(); ++i) {
             vars[i].Name = fmt::format("X{}", i+1);
             vars[i].Index = i;

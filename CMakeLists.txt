@@ -244,6 +244,7 @@ add_library(
     src/core/dataset.cpp
     src/core/pset.cpp
     src/hash/metrohash64.cpp
+    src/nnls/nnls.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
     src/operators/creator/balanced.cpp
@@ -405,7 +406,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/implementation/details.cpp
         test/implementation/hashing.cpp
         test/implementation/infix_parser.cpp
-        test/implementation/initialization.cpp
+        #test/implementation/initialization.cpp
         test/implementation/mutation.cpp
         test/implementation/random.cpp
         #test/implementation/stat.cpp
@@ -426,6 +427,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         ${THIRDPARTY_INCLUDE_DIRS}
         ${EIGEN3_INCLUDE_DIR}
         ${CMAKE_BINARY_DIR}
+        ${PRATT_PARSER_INCLUDE_DIRS}
         )
     target_compile_definitions(operon-test PRIVATE
         "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"

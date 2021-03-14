@@ -57,10 +57,10 @@ Operon::Vector<T> Evaluate(Tree const& tree, Dataset const& dataset, Range const
     return result;
 }
 
-template <typename T, size_t S, NodeType N>
+template <typename T, int S, NodeType N>
 constexpr auto dispatch_op = detail::dispatch_op<T, S, N>;
 
-template <typename T, size_t S = 512 / sizeof(T)>
+template <typename T, int S = 512 / sizeof(T)>
 void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::span<T> result, T const* const parameters = nullptr) noexcept
 {
     const auto& nodes = tree.Nodes();
@@ -88,8 +88,8 @@ void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::
 
     auto lastCol = m.col(nodes.size() - 1);
 
-    size_t numRows = range.Size();
-    for (size_t row = 0; row < numRows; row += S) {
+    int numRows = static_cast<int>(range.Size());
+    for (int row = 0; row < numRows; row += S) {
         auto remainingRows = std::min(S, numRows - row);
 
         for (size_t i = 0; i < nodes.size(); ++i) {
@@ -177,29 +177,29 @@ void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::
 }
 
 struct TreeEvaluator {
-    TreeEvaluator(Tree const& tree, Dataset const& dataset, const Range range)
+    TreeEvaluator(Tree const& tree, Dataset const& dataset, Range const range)
         : tree_ref(tree)
         , dataset_ref(dataset)
-        , range(range)
+        , range_(range)
     {
     }
 
     template <typename T>
     bool operator()(T const* const* parameters, T* result) const
     {
-        gsl::span<T> view(result, range.Size());
-        Evaluate(tree_ref, dataset_ref, range, view, parameters[0]);
+        gsl::span<T> view(result, range_.Size());
+        Evaluate(tree_ref, dataset_ref, range_, view, parameters[0]);
         return true;
     }
 
 private:
     std::reference_wrapper<const Tree> tree_ref;
     std::reference_wrapper<const Dataset> dataset_ref;
-    Range range;
+    Range range_;
 };
 
 struct ResidualEvaluator {
-    ResidualEvaluator(const Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, const Range range)
+    ResidualEvaluator(const Tree& tree, const Dataset& dataset, const gsl::span<const Operon::Scalar> targetValues, Range const range)
         : treeEvaluator(tree, dataset, range)
         , target_ref(targetValues)
     {
