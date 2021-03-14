@@ -26,7 +26,7 @@
 namespace Operon {
 namespace detail {
     // addition up to 5 arguments
-    template <typename T, size_t S, Operon::NodeType N = NodeType::Add>
+    template <typename T, int S, Operon::NodeType N = NodeType::Add>
     struct op {
         using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<S, 1>>;
 
@@ -41,7 +41,7 @@ namespace detail {
         static inline void accumulate(Arg ret, Arg arg1, Args... args) { ret += arg1 + (args + ...); }
     };
 
-    template <typename T, size_t S>
+    template <typename T, int S>
     struct op<T, S, Operon::NodeType::Sub> {
         using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<S, 1>>;
 
@@ -56,7 +56,7 @@ namespace detail {
         static inline void accumulate(Arg ret, Arg arg1, Args... args) { ret -= arg1 + (args + ...); }
     };
 
-    template <typename T, size_t S>
+    template <typename T, int S>
     struct op<T, S, Operon::NodeType::Mul> {
         using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<S, 1>>;
 
@@ -71,7 +71,7 @@ namespace detail {
         static inline void accumulate(Arg ret, Arg arg1, Args... args) { ret *= arg1 * (args * ...); }
     };
 
-    template <typename T, size_t S>
+    template <typename T, int S>
     struct op<T, S, Operon::NodeType::Div> {
         using Arg = Eigen::Ref<typename Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>::ColXpr, Eigen::Unaligned, Eigen::Stride<S, 1>>;
 
@@ -91,7 +91,7 @@ namespace detail {
     // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments
     // 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
     //    if arity > 5, one accumulation is performed every 5 args
-    template <typename T, size_t S, Operon::NodeType N>
+    template <typename T, int S, Operon::NodeType N>
     inline void dispatch_op(Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
     {
         auto result = m.col(parentIndex);
@@ -136,7 +136,7 @@ namespace detail {
         }
     }
 
-    template <typename T, size_t S, Operon::NodeType N>
+    template <typename T, int S, Operon::NodeType N>
     inline void dispatch_op_simple_binary(Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
     {
         auto r = m.col(parentIndex);
@@ -151,7 +151,7 @@ namespace detail {
         }
     }
 
-    template <typename T, size_t S, Operon::NodeType N>
+    template <typename T, int S, Operon::NodeType N>
     inline void dispatch_op_simple_nary(Eigen::DenseBase<Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex)
     {
         auto r = m.col(parentIndex);

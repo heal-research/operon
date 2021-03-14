@@ -50,9 +50,26 @@ double MeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
     EXPECT(x.size() == y.size());
     EXPECT(x.size() > 0);
     MeanVarianceCalculator mcalc;
+    //std::vector<T> v; v.reserve(x.size());
+    //std::transform(x.cbegin(), x.cend(), y.cbegin(), std::back_inserter(v), [](auto a, auto b) { auto e = a - b; return e * e; });
+    //mcalc.Add(v);
+
     for(size_t i = 0; i < x.size(); ++i) {
         auto e = x[i] - y[i];
         mcalc.Add(e * e);
+    }
+    return mcalc.Mean();
+}
+
+template<typename T>
+double MeanAbsoluteError(gsl::span<const T> x, gsl::span<const T> y)
+{
+    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
+    EXPECT(x.size() == y.size());
+    EXPECT(x.size() > 0);
+    MeanVarianceCalculator mcalc;
+    for(size_t i = 0; i < x.size(); ++i) {
+        mcalc.Add(std::abs(x[i] - y[i]));
     }
     return mcalc.Mean();
 }
@@ -75,5 +92,46 @@ double RSquared(gsl::span<const T> x, gsl::span<const T> y)
     auto r = calc.Correlation();
     return r * r;
 }
+
+struct MSE {
+    template<typename T>
+    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    {
+        return MeanSquaredError(x, y);
+    }
+};
+
+struct NMSE {
+    template<typename T>
+    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    {
+        return NormalizedMeanSquaredError(x, y);
+    }
+};
+
+struct RMSE {
+    template<typename T>
+    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    {
+        return RootMeanSquaredError(x, y);
+    }
+};
+
+struct MAE {
+    template<typename T>
+    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    {
+        return MeanAbsoluteError(x, y);
+    }
+};
+
+struct R2 {
+    template<typename T>
+    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    {
+        return -RSquared(x, y);
+    }
+};
+
 } // namespace
 #endif

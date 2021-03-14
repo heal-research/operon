@@ -19,21 +19,20 @@
 
 #include <doctest/doctest.h>
 #include <execution>
+#include <tbb/global_control.h>
+#include <thread>
 
 #include "core/common.hpp"
 #include "core/dataset.hpp"
 #include "core/eval.hpp"
 #include "core/pset.hpp"
-
 #include "operators/creator.hpp"
-#include "nanobench.h"
+#include "operators/evaluator.hpp"
 
-#include <tbb/global_control.h>
-#include <thread>
+#include "nanobench.h"
 
 namespace Operon {
 namespace Test {
-
     std::size_t TotalNodes(const std::vector<Tree>& trees) {
 #ifdef _MSC_VER
         auto totalNodes = std::reduce(trees.begin(), trees.end(), 0UL, [](size_t partial, const auto& t) { return partial + t.Length(); });
@@ -91,7 +90,6 @@ namespace Test {
         Range range = { 0, 5000 };
 
         PrimitiveSet pset;
-
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         auto creator = BalancedTreeCreator { pset, inputs };
@@ -182,6 +180,55 @@ namespace Test {
                 test(b, PrimitiveSet::Arithmetic | NodeType::Cbrt, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
             }
         }
+    }
+
+    TEST_CASE("Evaluator performance")
+    {
+        const size_t n         = 100;
+        const size_t maxLength = 100;
+        const size_t maxDepth  = 1000;
+
+        Operon::RandomGenerator rd(1234);
+        auto ds = Dataset("../data/Friedman-I.csv", true);
+
+        auto target = "Y";
+        auto variables = ds.Variables();
+        std::vector<Variable> inputs;
+        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target; });
+        Range range = { 0, ds.Rows() };
+
+        auto problem = Problem(ds).Inputs(inputs).Target(target).TrainingRange(range).TestRange(range);
+        problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
+
+        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+        auto creator = BalancedTreeCreator { problem.GetPrimitiveSet(), inputs };
+
+        std::vector<Tree> trees(n);
+        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+
+        std::vector<Individual> individuals(n);
+        for (size_t i = 0; i < individuals.size(); ++i) {
+            individuals[i].Genotype = trees[i];
+        }
+
+        nb::Bench b;
+        b.title("Evaluator performance").relative(true).performanceCounters(true).minEpochIterations(10);
+
+        auto totalNodes = TotalNodes(trees);
+
+        auto test = [&](std::string const& name, EvaluatorBase&& evaluator) {
+            evaluator.SetLocalOptimizationIterations(0);
+            evaluator.SetBudget(std::numeric_limits<size_t>::max());
+            b.batch(totalNodes * range.Size()).run(name, [&]() {
+                return std::transform_reduce(individuals.begin(), individuals.end(), 0.0, std::plus<>{}, [&](auto& ind) { return evaluator(rd, ind); });
+            });
+        };
+
+        test("r-squared", Operon::Evaluator<Operon::R2>(problem));
+        test("nmse",      Operon::Evaluator<Operon::NMSE, false>(problem));
+        test("nmse + ls", Operon::Evaluator<Operon::NMSE, true>(problem));
+        test("mae",       Operon::Evaluator<Operon::MAE, false>(problem));
+        test("mae + ls",  Operon::Evaluator<Operon::MAE, true>(problem));
     }
 } // namespace Test
 } // namespace Operon
