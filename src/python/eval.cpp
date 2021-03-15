@@ -56,15 +56,15 @@ void init_eval(py::module_ &m)
     }, py::arg("trees"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
 
     m.def("FitLeastSquares", [](py::array_t<float> lhs, py::array_t<float> rhs) {
-        auto s1 = MakeSpan(lhs);
-        auto s2 = MakeSpan(rhs);
-        return Operon::LinearScalingCalculator::Calculate(s1.begin(), s1.end(), s2.begin());
+        auto s1 = MakeConstSpan(lhs);
+        auto s2 = MakeConstSpan(rhs);
+        return Operon::LinearScalingCalculator::Calculate(s1, s2);
     });
 
     m.def("FitLeastSquares", [](py::array_t<double> lhs, py::array_t<double> rhs) {
-        auto s1 = MakeSpan(lhs);
-        auto s2 = MakeSpan(rhs);
-        return Operon::LinearScalingCalculator::Calculate(s1.begin(), s1.end(), s2.begin());
+        auto s1 = MakeConstSpan(lhs);
+        auto s2 = MakeConstSpan(rhs);
+        return Operon::LinearScalingCalculator::Calculate(s1, s2);
     });
 
     m.def("RSquared", [](py::array_t<float> lhs, py::array_t<float> rhs) {

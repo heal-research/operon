@@ -310,11 +310,11 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         best                  = gp.BestModel(comp)
 
         y_pred                = op.Evaluate(best.Genotype, ds, training_range)
-        a, b                  = op.FitLeastSquares(y_pred, y)
+        scale, offset         = op.FitLeastSquares(y_pred, y)
 
         # add four nodes at the top of the tree for linear scaling
         nodes                 = best.Genotype.Nodes
-        nodes.extend([ op.Node.Constant(b), op.Node.Mul(), op.Node.Constant(a), op.Node.Add() ])
+        nodes.extend([ op.Node.Constant(scale), op.Node.Mul(), op.Node.Constant(offset), op.Node.Add() ])
 
         self._model           = op.Tree(nodes).UpdateNodes()
 
