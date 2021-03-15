@@ -54,11 +54,9 @@ private:
 
     Dataset();
 
-    // check if we own the data or if we are a view over someone else's data
-    bool IsView() const noexcept { return values.data() != map.data(); }
 
     // read data from a csv file and return a map (view of the data)
-    Map ReadCsv(std::string const& path, bool hasHeader);
+    Matrix ReadCsv(std::string const& path, bool hasHeader);
 
     // this method ensures the same ordering of variables in the variables vector
     // based on index, name, hash value
@@ -70,7 +68,7 @@ public:
     Dataset(Dataset const& rhs)
         : variables(rhs.variables)
         , values(rhs.values)
-        , map(rhs.map)
+        , map(values.data(), values.rows(), values.cols())
     {
     }
 
@@ -113,6 +111,9 @@ public:
         variables.swap(rhs.variables);
         values.swap(rhs.values);
     }
+
+    // check if we own the data or if we are a view over someone else's data
+    bool IsView() const noexcept { return values.data() != map.data(); }
 
     size_t Rows() const { return (size_t)map.rows(); }
     size_t Cols() const { return (size_t)map.cols(); }

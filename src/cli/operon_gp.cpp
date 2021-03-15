@@ -127,6 +127,7 @@ int main(int argc, char** argv)
             if (key == "dataset") {
                 fileName = value;
                 dataset.reset(new Dataset(fileName, true));
+                ENSURE(!dataset->IsView());
             }
             if (key == "seed") {
                 config.Seed = kv.as<size_t>();
@@ -264,7 +265,6 @@ int main(int argc, char** argv)
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         std::uniform_int_distribution<size_t> sizeDistribution(amin + 1, maxLength);
-        //auto creator             = BalancedTreeCreator { problem.GetPrimitiveSet(), problem.InputVariables() };
         auto initializer = Initializer { *creator, sizeDistribution };
         initializer.MinDepth(1);
         initializer.MaxDepth(1000);
@@ -276,14 +276,12 @@ int main(int argc, char** argv)
         auto replaceSubtree = ReplaceSubtreeMutation { *creator, maxDepth, maxLength };
         auto insertSubtree = InsertSubtreeMutation { *creator, maxDepth, maxLength};
         auto removeSubtree = RemoveSubtreeMutation { problem.GetPrimitiveSet() };
-        //auto shuffleSubtree      = ShuffleSubtreesMutation {};
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
         mutator.Add(replaceSubtree, 1.0);
         mutator.Add(insertSubtree, 1.0);
         mutator.Add(removeSubtree, 1.0);
-        //mutator.Add(shuffleSubtree, 1.0);
 
         std::unique_ptr<EvaluatorBase> evaluator;
         auto errorMetric = result["error-metric"].as<std::string>();
@@ -453,11 +451,9 @@ int main(int argc, char** argv)
             auto const& pop = gp.Parents();
             best = getBest(pop);
 
-            //fmt::print("best: {}\n", InfixFormatter::Format(best.Genotype, *dataset));
-
             auto batchSize = 100ul;
-            auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, *dataset, trainingRange, batchSize);
-            auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, *dataset, testRange, batchSize);
+            auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange, batchSize);
+            auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange, batchSize);
 
             // scale values
             auto [a, b] = LinearScalingCalculator::Calculate(gsl::span<Operon::Scalar const>{ estimatedTrain }, targetTrain);
@@ -493,7 +489,7 @@ int main(int argc, char** argv)
         };
 
         gp.Run(random, report);
-        fmt::print("{}\n", InfixFormatter::Format(best.Genotype, *dataset, 20));
+        fmt::print("{}\n", InfixFormatter::Format(best.Genotype, problem.GetDataset(), 20));
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);

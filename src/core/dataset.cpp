@@ -43,7 +43,7 @@ namespace {
     };
 }
 
-Dataset::Map Dataset::ReadCsv(std::string const& path, bool hasHeader)
+Dataset::Matrix Dataset::ReadCsv(std::string const& path, bool hasHeader)
 {
     rapidcsv::Document doc(path, rapidcsv::LabelParams(hasHeader-1, -1));
 
@@ -75,7 +75,7 @@ Dataset::Map Dataset::ReadCsv(std::string const& path, bool hasHeader)
             col((Eigen::Index)j) = doc.GetCell<Operon::Scalar>(i, j);
         }
     }
-    return Map(values.data(), values.rows(), values.cols());
+    return values;
 }
 
 Dataset::Dataset(std::vector<std::vector<Operon::Scalar>> const& vals)
@@ -84,7 +84,8 @@ Dataset::Dataset(std::vector<std::vector<Operon::Scalar>> const& vals)
 }
 
 Dataset::Dataset(std::string const& path, bool hasHeader)
-    : map(ReadCsv(path, hasHeader))
+    : values(std::move(ReadCsv(path, hasHeader)))
+    , map(values.data(), values.rows(), values.cols())
 {
 }
 
