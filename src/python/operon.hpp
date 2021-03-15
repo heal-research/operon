@@ -75,6 +75,14 @@ gsl::span<T> MakeSpan(py::array_t<T> arr)
     return gsl::span<T>(static_cast<T*>(info.ptr), static_cast<size_type>(info.size));
 }
 
+template<typename T>
+gsl::span<T const> MakeConstSpan(py::array_t<T> arr)
+{
+    py::buffer_info info = arr.request();
+    using size_type = gsl::span<const Operon::Scalar>::size_type;
+    return gsl::span<T const>(static_cast<T const*>(info.ptr), static_cast<size_type>(info.size));
+}
+
 void init_algorithm(py::module_&);
 void init_creator(py::module_&);
 void init_crossover(py::module_&);
