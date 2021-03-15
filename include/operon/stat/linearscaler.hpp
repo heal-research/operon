@@ -20,8 +20,6 @@
 #ifndef LINEARSCALER_HPP
 #define LINEARSCALER_HPP
 
-#include <Eigen/Dense>
-
 #include "core/common.hpp"
 #include "stat/meanvariance.hpp"
 #include "stat/pearson.hpp"
@@ -29,13 +27,14 @@
 namespace Operon {
     class LinearScalingCalculator {
         public:
-            LinearScalingCalculator() { Reset(); }
+            LinearScalingCalculator() : scale(0), offset(0)
+            {
+                Reset();
+            }
+
             void Reset()
             {
                 calc.Reset();
-
-                alpha = 0;
-                beta = 0;
             }
 
             template<typename T>
@@ -44,11 +43,12 @@ namespace Operon {
                 calc.Add(original, target);
 
                 auto variance = calc.Count() > 1 ? calc.SampleVarianceX() : 0;
-                beta = variance < std::numeric_limits<double>::epsilon() ? 1 : (calc.SampleCovariance() / variance);
-                alpha = calc.MeanY() - beta * calc.MeanX();
+                scale = variance < std::numeric_limits<double>::epsilon() ? 1 : (calc.SampleCovariance() / variance);
+                offset = calc.MeanY() - scale * calc.MeanX();
             }
-            double Beta() const { return beta; }
-            double Alpha() const { return alpha; }
+
+            double Scale() const { return scale; }
+            double Offset() const { return offset; }
 
             template <typename InputIt1, typename InputIt2, typename U = typename InputIt1::value_type>
             static std::pair<double, double> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
@@ -58,29 +58,25 @@ namespace Operon {
                 for (; xBegin != xEnd; ++xBegin, ++yBegin) {
                     calc.Add(*xBegin, *yBegin);
                 }
-                return { calc.Alpha(), calc.Beta() };
+                return { calc.Scale(), calc.Offset() };
             }
 
             template<typename T>
-            static std::pair<double, double> Calculate(gsl::span<T const> lhs, gsl::span<T const> rhs)
+            static inline std::pair<double, double> Calculate(gsl::span<T const> lhs, gsl::span<T const> rhs)
             {
                 EXPECT(lhs.size() == rhs.size());
                 EXPECT(lhs.size() > 0);
-
-                Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> x(lhs.data(), lhs.size());
-                Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> y(rhs.data(), rhs.size());
-
-                Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 2, Eigen::ColMajor> a(lhs.size(), 2);
-                a.col(0) = x;
-                a.col(1).setConstant(1);
-                Eigen::ColPivHouseholderQR<decltype(a)> hh(a);
-                auto v = hh.solve(y);
-                return std::make_pair(v(0), v(1));
+                double s, o;
+                Operon::PearsonsRCalculator calc;
+                calc.Add(lhs, rhs);
+                s = calc.SampleCovariance() / calc.SampleVarianceX();
+                o = calc.MeanY() - s * calc.MeanX();
+                return { s, o };
             }
 
         private:
-            double alpha; // additive constant
-            double beta; // multiplicative factor
+            double scale;
+            double offset;
 
             PearsonsRCalculator calc;
     };

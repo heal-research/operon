@@ -401,7 +401,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/performance/distance.cpp
         test/performance/math.cpp
         test/performance/random.cpp
-        #test/performance/stat.cpp
+        test/performance/stat.cpp
         #test/implementation/evaluation.cpp
         test/implementation/details.cpp
         test/implementation/hashing.cpp
