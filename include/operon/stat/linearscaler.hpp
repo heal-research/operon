@@ -20,6 +20,8 @@
 #ifndef LINEARSCALER_HPP
 #define LINEARSCALER_HPP
 
+#include <Eigen/Dense>
+
 #include "core/common.hpp"
 #include "stat/meanvariance.hpp"
 #include "stat/pearson.hpp"
