@@ -59,6 +59,23 @@ namespace Operon {
                 return { calc.Alpha(), calc.Beta() };
             }
 
+            template<typename T>
+            static std::pair<double, double> Calculate(gsl::span<T const> lhs, gsl::span<T const> rhs)
+            {
+                EXPECT(lhs.size() == rhs.size());
+                EXPECT(lhs.size() > 0);
+
+                Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> x(lhs.data(), lhs.size());
+                Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> y(rhs.data(), rhs.size());
+
+                Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 2, Eigen::ColMajor> a(lhs.size(), 2);
+                a.col(0) = x;
+                a.col(1).setConstant(1);
+                Eigen::ColPivHouseholderQR<decltype(a)> hh(a);
+                auto v = hh.solve(y);
+                return std::make_pair(v(0), v(1));
+            }
+
         private:
             double alpha; // additive constant
             double beta; // multiplicative factor
