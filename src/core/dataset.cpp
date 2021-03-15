@@ -68,14 +68,14 @@ Dataset::Matrix Dataset::ReadCsv(std::string const& path, bool hasHeader)
     } else {
         variables = defaultVariables(ncol);
     }
-    values = Matrix(nrow, ncol);
+    Matrix m(nrow, ncol);
     for (size_t i = 0; i < ncol; ++i) {
-        auto col = values.col((Eigen::Index)i);
+        auto col = m.col((Eigen::Index)i);
         for (size_t j = 0; j < nrow; ++j) {
             col((Eigen::Index)j) = doc.GetCell<Operon::Scalar>(i, j);
         }
     }
-    return values;
+    return m;
 }
 
 Dataset::Dataset(std::vector<std::vector<Operon::Scalar>> const& vals)
