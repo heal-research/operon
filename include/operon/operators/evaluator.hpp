@@ -91,16 +91,9 @@ public:
         auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
 
         if constexpr (LinearScaling) {
-            // scale values
-            Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 2, Eigen::ColMajor> a(trainingRange.Size(), 2);
+            auto [m, c] = Operon::LinearScalingCalculator::Calculate(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
             Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> x(estimatedValues.data(), estimatedValues.size());
-            a.col(0) = x;
-            a.col(1).setConstant(1);
-
-            Eigen::Map<const Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>> y(targetValues.data(), targetValues.size());
-            Eigen::ColPivHouseholderQR<decltype(a)> hh(a);
-            auto v = hh.solve(y);
-            x = v(0) + x * v(1);
+            x = x * m + c;
         }
         auto fit = metric(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
 

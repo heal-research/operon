@@ -460,9 +460,9 @@ int main(int argc, char** argv)
             auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, *dataset, testRange, batchSize);
 
             // scale values
-            auto [a, b] = LinearScalingCalculator::Calculate(estimatedTrain.begin(), estimatedTrain.end(), targetTrain.begin());
-            std::transform(std::execution::par_unseq, estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(b * v + a); });
-            std::transform(std::execution::par_unseq, estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(b * v + a); });
+            auto [a, b] = LinearScalingCalculator::Calculate(gsl::span<Operon::Scalar const>{ estimatedTrain }, targetTrain);
+            std::transform(std::execution::par_unseq, estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(a * v + b); });
+            std::transform(std::execution::par_unseq, estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(a * v + b); });
 
             auto r2Train = RSquared<Operon::Scalar>(estimatedTrain, targetTrain);
             auto r2Test = RSquared<Operon::Scalar>(estimatedTest, targetTest);
