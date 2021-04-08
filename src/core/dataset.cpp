@@ -84,7 +84,7 @@ Dataset::Dataset(std::vector<std::vector<Operon::Scalar>> const& vals)
 }
 
 Dataset::Dataset(std::string const& path, bool hasHeader)
-    : values(std::move(ReadCsv(path, hasHeader)))
+    : values(ReadCsv(path, hasHeader))
     , map(values.data(), values.rows(), values.cols())
 {
 }
@@ -178,13 +178,13 @@ void Dataset::Shuffle(Operon::RandomGenerator& random)
 void Dataset::Normalize(size_t i, Range range)
 {
     if (IsView()) { throw std::runtime_error("Cannot normalize. Dataset does not own the data.\n"); }
-    Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
-    auto j = static_cast<Eigen::Index>(i);
+    EXPECT(range.Start() + range.Size() <= static_cast<size_t>(values.rows()));
+    auto j     = static_cast<Eigen::Index>(i);
     auto start = static_cast<Eigen::Index>(range.Start());
-    auto n = static_cast<Eigen::Index>(range.Size());
-    auto seg = values.col(j).segment(start, n);
-    auto min = seg.minCoeff();
-    auto max = seg.maxCoeff();
+    auto size  = static_cast<Eigen::Index>(range.Size());
+    auto seg   = values.col(j).segment(start, size);
+    auto min   = seg.minCoeff();
+    auto max   = seg.maxCoeff();
     values.col(j) = (values.col(j).array() - min) / (max - min);
 }
 
@@ -192,7 +192,7 @@ void Dataset::Normalize(size_t i, Range range)
 void Dataset::Standardize(size_t i, Range range)
 {
     if (IsView()) { throw std::runtime_error("Cannot standardize. Dataset does not own the data.\n"); }
-    Expects(range.Start() + range.Size() < static_cast<size_t>(values.rows()));
+    EXPECT(range.Start() + range.Size() <= static_cast<size_t>(values.rows()));
     auto j = static_cast<Eigen::Index>(i);
     auto start = static_cast<Eigen::Index>(range.Start());
     auto n = static_cast<Eigen::Index>(range.Size());
@@ -200,7 +200,6 @@ void Dataset::Standardize(size_t i, Range range)
     MeanVarianceCalculator calc;
     auto vals = gsl::span<const Operon::Scalar>(seg.data(), range.Size());
     calc.Add(vals);
-
     values.col(j) = (values.col(j).array() - calc.Mean()) / calc.NaiveStandardDeviation();
 }
 } // namespace Operon
