@@ -19,12 +19,13 @@
 
 #include <doctest/doctest.h>
 #include <execution>
+#include <interpreter/dispatch_table.hpp>
 #include <tbb/global_control.h>
 #include <thread>
 
 #include "core/common.hpp"
 #include "core/dataset.hpp"
-#include "core/eval.hpp"
+#include "interpreter/interpreter.hpp"
 #include "core/pset.hpp"
 #include "operators/creator.hpp"
 #include "operators/evaluator.hpp"
@@ -54,19 +55,21 @@ namespace Test {
     template <typename T>
     void Evaluate(std::vector<Tree> const& trees, Dataset const& ds, Range range, ExecutionPolicy ep = ExecutionPolicy::ParallelUnsequenced) 
     {
+        DispatchTable ft;
+        Interpreter interpreter(ft);
         switch(ep) {
             case ExecutionPolicy::Sequenced:
-                std::for_each(std::execution::seq, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
+                std::for_each(std::execution::seq, trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
                 break;
             case ExecutionPolicy::Unsequenced:
                 // use seq because unseq is not yet supported by MSVC
-                std::for_each(std::execution::seq, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
+                std::for_each(std::execution::seq, trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
                 break;
             case ExecutionPolicy::ParallelSequenced:
-                std::for_each(std::execution::par, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
+                std::for_each(std::execution::par, trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
                 break;
             case ExecutionPolicy::ParallelUnsequenced:
-                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](auto const& tree) { Evaluate<T>(tree, ds, range); });
+                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
                 break;
         }
     }
@@ -211,6 +214,9 @@ namespace Test {
             individuals[i].Genotype = trees[i];
         }
 
+        DispatchTable dt;
+        Interpreter interpreter(dt);
+
         nb::Bench b;
         b.title("Evaluator performance").relative(true).performanceCounters(true).minEpochIterations(10);
 
@@ -223,15 +229,15 @@ namespace Test {
                 return std::transform_reduce(individuals.begin(), individuals.end(), 0.0, std::plus<>{}, [&](auto& ind) { return evaluator(rd, ind); });
             });
         };
-
-        test("r-squared",      Operon::Evaluator<Operon::R2, false>(problem));
-        test("r-squared + ls", Operon::Evaluator<Operon::R2, true>(problem));
-        test("nmse",           Operon::Evaluator<Operon::NMSE, false>(problem));
-        test("nmse + ls",      Operon::Evaluator<Operon::NMSE, true>(problem));
-        test("mae",            Operon::Evaluator<Operon::MAE, false>(problem));
-        test("mae + ls",       Operon::Evaluator<Operon::MAE, true>(problem));
-        test("mse",            Operon::Evaluator<Operon::MSE, false>(problem));
-        test("mse + ls",       Operon::Evaluator<Operon::MSE, true>(problem));
+        
+        test("r-squared",      Operon::Evaluator<Operon::R2, false>(problem, interpreter));
+        test("r-squared + ls", Operon::Evaluator<Operon::R2, true>(problem, interpreter));
+        test("nmse",           Operon::Evaluator<Operon::NMSE, false>(problem, interpreter));
+        test("nmse + ls",      Operon::Evaluator<Operon::NMSE, true>(problem, interpreter));
+        test("mae",            Operon::Evaluator<Operon::MAE, false>(problem, interpreter));
+        test("mae + ls",       Operon::Evaluator<Operon::MAE, true>(problem, interpreter));
+        test("mse",            Operon::Evaluator<Operon::MSE, false>(problem, interpreter));
+        test("mse + ls",       Operon::Evaluator<Operon::MSE, true>(problem, interpreter));
     }
 } // namespace Test
 } // namespace Operon

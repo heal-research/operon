@@ -20,7 +20,6 @@
 #include <doctest/doctest.h>
 
 #include "core/dataset.hpp"
-#include "core/eval.hpp"
 #include "core/format.hpp"
 #include "core/stats.hpp"
 #include "core/metrics.hpp"

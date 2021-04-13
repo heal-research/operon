@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "core/eval.hpp"
+#include "interpreter/interpreter.hpp"
 #include "core/format.hpp"
 #include "core/pset.hpp"
 #include "nanobench.h"
@@ -56,14 +56,16 @@ TEST_SUITE("[implementation]")
 
         fmt::print("{}\n", InfixFormatter::Format(trees.front(), ds, 2));
 
+        DispatchTable ft;
+
         // check the output of the parsed trees against the output of the original trees
         bool isOk = true;
         Range range{0, 1};
         for (int i = 0; i < nTrees; ++i) {
             auto const& t1 = trees[i];
             auto const& t2 = parsedTrees[i];
-            auto v1 = Evaluate<double>(t1, ds, range)[0]; 
-            auto v2 = Evaluate<double>(t2, ds, range)[0]; 
+            auto v1 = Interpreter::Evaluate<Operon::Scalar>(ft, t1, ds, range)[0];
+            auto v2 = Interpreter::Evaluate<Operon::Scalar>(ft, t2, ds, range)[0];
             isOk &= std::abs(v1-v2) < 1e-12;
 
             if (!isOk) break;
@@ -88,6 +90,33 @@ TEST_SUITE("[implementation]")
 
         auto tree = Operon::InfixParser::Parse(model_str, vars_map);
         fmt::print("{}\n", Operon::InfixFormatter::Format(tree, vars_names));
+    }
+
+    TEST_CASE("Formatter")
+    {
+        SUBCASE("Analytical quotient")
+        {
+            Node c1(NodeType::Constant); c1.Value = 2;
+            Node c2(NodeType::Constant); c2.Value = 3;
+            Node aq(NodeType::Aq);
+            fmt::print("aq: {}\n", aq.Arity);
+
+            Node dv(NodeType::Div);
+            Tree t1({c2, c1, aq});
+            Tree t2({c2, c1, dv});
+
+            std::unordered_map<Operon::Hash, std::string> map;
+
+            Dataset::Matrix m(1,1);
+            Operon::Dataset ds(m);
+            Range r(0, 1);
+            DispatchTable ft;
+            auto v1 = Interpreter::Evaluate<Operon::Scalar>(ft, t1, ds, r)[0];
+            auto v2 = Interpreter::Evaluate<Operon::Scalar>(ft, t2, ds, r)[0];
+
+            fmt::print("{} = {}\n", InfixFormatter::Format(t1, map, 3), v1);
+            fmt::print("{} = {}\n", InfixFormatter::Format(t2, map, 3), v2);
+        }
     }
 }
 

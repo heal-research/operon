@@ -20,13 +20,12 @@
 #include <doctest/doctest.h>
 #include <execution>
 
+#include "analyzers/diversity.hpp"
 #include "core/common.hpp"
 #include "core/dataset.hpp"
-#include "core/eval.hpp"
-#include "hash/hash.hpp"
 #include "core/pset.hpp"
+#include "hash/hash.hpp"
 #include "operators/creator.hpp"
-#include "analyzers/diversity.hpp"
 
 #include "nanobench.h"
 
