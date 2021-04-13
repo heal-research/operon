@@ -244,7 +244,6 @@ add_library(
     src/core/dataset.cpp
     src/core/pset.cpp
     src/hash/metrohash64.cpp
-    src/nnls/nnls.cpp
     src/operators/crossover.cpp
     src/operators/mutation.cpp
     src/operators/creator/balanced.cpp

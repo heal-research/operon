@@ -30,28 +30,32 @@
 #include <fmt/format.h>
 
 namespace Operon {
-enum class NodeType : uint16_t {
-    // terminal nodes
+enum class NodeType : uint32_t {
+    // terminal nodes - ordered by arity
     Add = 1u << 0,
     Mul = 1u << 1,
     Sub = 1u << 2,
     Div = 1u << 3,
-    Log = 1u << 4,
-    Exp = 1u << 5,
-    Sin = 1u << 6,
-    Cos = 1u << 7,
-    Tan = 1u << 8,
-    Sqrt = 1u << 9,
-    Cbrt = 1u << 10,
-    Square = 1u << 11,
-    Constant = 1u << 12,
-    Variable = 1u << 13
+    Aq  = 1u << 4,
+    Pow = 1u << 5,
+    Log = 1u << 6,
+    Exp = 1u << 7,
+    Sin = 1u << 8,
+    Cos = 1u << 9,
+    Tan = 1u << 10,
+    Tanh = 1u << 11,
+    Sqrt = 1u << 12,
+    Cbrt = 1u << 13,
+    Square = 1u << 14,
+    Dynamic = 1u << 15,
+    Constant = 1u << 16,
+    Variable = 1u << 17
 };
 
 using utype = std::underlying_type_t<NodeType>;
 struct NodeTypes {
     // magic number keeping track of the number of different node types
-    static constexpr size_t Count = 14;
+    static constexpr size_t Count = 18;
     // returns the index of the given type in the NodeType enum
     static size_t GetIndex(NodeType type)
     {
@@ -80,7 +84,7 @@ inline NodeType& operator^=(NodeType& lhs, NodeType rhs)
 }
 
 namespace {
-    std::array<std::string, NodeTypes::Count> nodeNames = { "+", "*", "-", "/", "log", "exp", "sin", "cos", "tan", "sqrt", "cbrt", "square", "constant", "variable" };
+    std::array<std::string, NodeTypes::Count> nodeNames = { "+", "*", "-", "/", "aq", "pow", "log", "exp", "sin", "cos", "tan", "tanh", "sqrt", "cbrt", "square", "dyn", "constant", "variable" };
 }
 
 struct Node {
@@ -107,10 +111,10 @@ struct Node {
         , Type(type)
     {
         Arity = 0;
-        if (Type < NodeType::Log) // Add, Mul
+        if (Type < NodeType::Log) // Add, Mul, Sub, Div, Aq, Pow
         {
             Arity = 2;
-        } else if (Type < NodeType::Constant) // Log, Exp, Sin, Inv, Sqrt, Cbrt
+        } else if (Type < NodeType::Constant) // Log, Exp, Sin, Cos, Tan, Tanh, Sqrt, Cbrt, Square
         {
             Arity = 1;
         }
@@ -166,14 +170,18 @@ struct Node {
     inline bool IsSubtraction() const { return Is<NodeType::Sub>(); }
     inline bool IsMultiplication() const { return Is<NodeType::Mul>(); }
     inline bool IsDivision() const { return Is<NodeType::Div>(); }
+    inline bool IsAq() const { return Is<NodeType::Aq>(); }
+    inline bool IsPow() const { return Is<NodeType::Pow>(); }
     inline bool IsExp() const { return Is<NodeType::Exp>(); }
     inline bool IsLog() const { return Is<NodeType::Log>(); }
     inline bool IsSin() const { return Is<NodeType::Sin>(); }
     inline bool IsCos() const { return Is<NodeType::Cos>(); }
     inline bool IsTan() const { return Is<NodeType::Tan>(); }
+    inline bool IsTanh() const { return Is<NodeType::Tanh>(); }
     inline bool IsSquareRoot() const { return Is<NodeType::Sqrt>(); }
     inline bool IsCubeRoot() const { return Is<NodeType::Cbrt>(); }
     inline bool IsSquare() const { return Is<NodeType::Square>(); }
+    inline bool IsDynamic() const { return Is<NodeType::Dynamic>(); }
 };
 }
 #endif // NODE_H

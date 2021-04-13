@@ -21,7 +21,6 @@
 #define GP_HPP
 
 #include "algorithms/config.hpp"
-#include "core/eval.hpp"
 #include "core/format.hpp"
 #include "core/metrics.hpp"
 #include "operators/creator.hpp"
