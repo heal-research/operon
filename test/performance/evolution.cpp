@@ -79,7 +79,8 @@ TEST_CASE("Evolution speed") {
         config.Evaluations = config.Generations * i;
         config.Seed = random();
 
-        Evaluator evaluator(problem);
+        Interpreter interpreter;
+        Evaluator evaluator(problem, interpreter);
         evaluator.SetLocalOptimizationIterations(config.Iterations);
         evaluator.SetBudget(config.Evaluations);
         Generator generator(evaluator, crossover, mutation, selector, selector);
