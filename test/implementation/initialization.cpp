@@ -22,7 +22,6 @@
 #include <execution>
 
 #include "core/dataset.hpp"
-#include "core/eval.hpp"
 #include "core/format.hpp"
 #include "core/pset.hpp"
 #include "core/stats.hpp"
@@ -33,8 +32,9 @@ namespace Operon::Test {
 TEST_CASE("Sample nodes from grammar")
 {
     PrimitiveSet grammar;
-    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
-    grammar.Enable(NodeType::Add, 5);
+    //grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
+    //grammar.Enable(NodeType::Add, 1);
+    grammar.SetConfig(PrimitiveSet::Full);
     Operon::RandomGenerator rd(std::random_device {}());
 
     std::vector<double> observed(NodeTypes::Count, 0);

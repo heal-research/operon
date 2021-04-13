@@ -22,7 +22,7 @@
 
 #include "core/common.hpp"
 #include "core/dataset.hpp"
-#include "core/eval.hpp"
+#include "interpreter/interpreter.hpp"
 #include "core/pset.hpp"
 
 #include "nanobench.h"
