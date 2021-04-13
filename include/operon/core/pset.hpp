@@ -74,8 +74,8 @@ public:
     size_t GetFrequency(NodeType type) const { return frequencies[NodeTypes::GetIndex(type)]; }
 
     static const PrimitiveSetConfig Arithmetic = NodeType::Constant | NodeType::Variable | NodeType::Add | NodeType::Sub | NodeType::Mul | NodeType::Div;
-    static const PrimitiveSetConfig TypeCoherent = Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
-    static const PrimitiveSetConfig Full = TypeCoherent | NodeType::Tan | NodeType::Sqrt | NodeType::Cbrt;
+    static const PrimitiveSetConfig TypeCoherent = Arithmetic | NodeType::Pow | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
+    static const PrimitiveSetConfig Full = TypeCoherent | NodeType::Aq | NodeType::Tan | NodeType::Tanh | NodeType::Sqrt | NodeType::Cbrt;
 
     // return a vector of enabled symbols
     std::vector<NodeType> EnabledSymbols() const

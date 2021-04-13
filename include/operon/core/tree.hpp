@@ -192,6 +192,14 @@ public:
         return *this;
     }
 
+    Tree Subtree(size_t i) {
+        auto const& n = nodes[i];
+        Operon::Vector<Node> subtree;
+        subtree.reserve(n.Length);
+        std::copy_n(nodes.begin() + i - n.Length, n.Length, std::back_inserter(subtree));
+        return Tree(subtree).UpdateNodes();
+    }
+
     std::vector<size_t> ChildIndices(size_t i) const;
     inline void SetEnabled(size_t i, bool enabled)
     {

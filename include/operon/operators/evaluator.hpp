@@ -67,10 +67,13 @@ template<typename ErrorMetric, bool LinearScaling = false>
 class Evaluator : public EvaluatorBase {
 
 public:
-    Evaluator(Problem& problem)
-        : EvaluatorBase(problem)
+    Evaluator(Problem& problem, Interpreter& interp)
+        : EvaluatorBase(problem), interpreter(interp)
     {
     }
+
+    Interpreter& GetInterpreter() { return interpreter; }
+    Interpreter const& GetInterpreter() const { return interpreter; }
 
     typename EvaluatorBase::ReturnType
     operator()(Operon::RandomGenerator&, Individual& ind) const override
@@ -84,18 +87,28 @@ public:
         auto targetValues = dataset.GetValues(problem_.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         if (this->iterations > 0) {
-            auto summary = Optimize(genotype, dataset, targetValues, trainingRange, this->iterations);
+#if defined(CERES_TINY_SOLVER) || !defined(HAVE_CERES)
+        NonlinearLeastSquaresOptimizer<OptimizerType::TINY> opt(interpreter.get(), genotype, dataset);
+#else
+        NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter.get(), genotype, dataset);
+#endif
+            auto summary = opt.Optimize(targetValues, trainingRange, this->iterations);
             this->localEvaluations += summary.Iterations;
         }
 
-        auto estimatedValues = Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
+        auto estimatedValues = GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
 
+        //Operon::Scalar scale = 1.0;
+        //Operon::Scalar offset = 0.0;
         if constexpr (LinearScaling) {
             auto [m, c] = Operon::LinearScalingCalculator::Calculate(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
             Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> x(estimatedValues.data(), estimatedValues.size());
             x = x * m + c;
+            //auto stats = bivariate::accumulate<Operon::Scalar>(estimatedValues.data(), targetValues.data(), estimatedValues.size());
+            //scale = stats.covariance / stats.sample_variance_x;
+            //offset = stats.mean_y - scale * stats.mean_x;
         }
-        auto fit = metric(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
+        auto fit = ErrorMetric{}(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
 
         if (!std::isfinite(fit)) {
             return Operon::Numeric::Max<Operon::Scalar>();
@@ -105,14 +118,14 @@ public:
 
 
 private:
-    ErrorMetric metric;
+    std::reference_wrapper<Interpreter> interpreter;
 };
 
-using MeanSquaredErrorEvaluator           = Evaluator<MSE, true>;
+using MeanSquaredErrorEvaluator           = Evaluator<MSE,  true>;
 using NormalizedMeanSquaredErrorEvaluator = Evaluator<NMSE, true>;
 using RootMeanSquaredErrorEvaluator       = Evaluator<RMSE, true>;
-using MeanAbsoluteErrorEvaluator          = Evaluator<MAE, true>;
-using RSquaredEvaluator                   = Evaluator<R2, false>;
+using MeanAbsoluteErrorEvaluator          = Evaluator<MAE,  true>;
+using RSquaredEvaluator                   = Evaluator<R2,   false>;
 
 }
 #endif

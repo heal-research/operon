@@ -83,34 +83,33 @@ std::string FormatBytes(size_t bytes)
     return fmt::format("{:.2f} {}b", (double)bytes / std::pow(1024, p), sizes[p]);
 }
 
+static const std::unordered_map<std::string, NodeType> primitives {
+    { "add",      NodeType::Add },
+    { "mul",      NodeType::Mul },
+    { "sub",      NodeType::Sub },
+    { "div",      NodeType::Div },
+    { "aq",       NodeType::Aq },
+    { "pow",      NodeType::Pow },
+    { "log",      NodeType::Log },
+    { "exp",      NodeType::Exp },
+    { "sin",      NodeType::Sin },
+    { "cos",      NodeType::Cos },
+    { "tan",      NodeType::Tan },
+    { "tanh",     NodeType::Tanh },
+    { "sqrt",     NodeType::Sqrt },
+    { "cbrt",     NodeType::Cbrt },
+    { "square",   NodeType::Square },
+    { "dyn",      NodeType::Dynamic },
+    { "constant", NodeType::Constant },
+    { "variable", NodeType::Variable }
+};
+
 PrimitiveSetConfig ParsePrimitiveSetConfig(const std::string& options)
 {
     PrimitiveSetConfig config = static_cast<PrimitiveSetConfig>(0);
     for (auto& s : Split(options, ',')) {
-        if (s == "add") {
-            config |= PrimitiveSetConfig::Add;
-        } else if (s == "sub") {
-            config |= PrimitiveSetConfig::Sub;
-        } else if (s == "mul") {
-            config |= PrimitiveSetConfig::Mul;
-        } else if (s == "div") {
-            config |= PrimitiveSetConfig::Div;
-        } else if (s == "exp") {
-            config |= PrimitiveSetConfig::Exp;
-        } else if (s == "log") {
-            config |= PrimitiveSetConfig::Log;
-        } else if (s == "sin") {
-            config |= PrimitiveSetConfig::Sin;
-        } else if (s == "cos") {
-            config |= PrimitiveSetConfig::Cos;
-        } else if (s == "tan") {
-            config |= PrimitiveSetConfig::Tan;
-        } else if (s == "sqrt") {
-            config |= PrimitiveSetConfig::Sqrt;
-        } else if (s == "cbrt") {
-            config |= PrimitiveSetConfig::Cbrt;
-        } else if (s == "square") {
-            config |= PrimitiveSetConfig::Square;
+        if (auto it = primitives.find(s); it != primitives.end()) {
+            config |= it->second;
         } else {
             fmt::print("Unrecognized symbol {}\n", s);
             std::exit(1);
