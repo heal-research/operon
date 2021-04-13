@@ -63,6 +63,7 @@ in
         # python environment for bindings and scripting
         (pkgs.python38.withPackages (ps: with ps; [ pybind11 pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz dask sphinx recommonmark sphinx_rtd_theme ]))
         # Project dependencies and utils for profiling and debugging
+        bear
         gdb
         valgrind
         linuxPackages.perf
@@ -77,7 +78,7 @@ in
         fmt
         glog
         doctest
-        clang_10
+        clang_11
         graphviz
         cxxopts
         ninja

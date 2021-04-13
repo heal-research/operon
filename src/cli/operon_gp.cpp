@@ -283,18 +283,23 @@ int main(int argc, char** argv)
         mutator.Add(insertSubtree, 1.0);
         mutator.Add(removeSubtree, 1.0);
 
+        // initialize an interpreter using a default dispatch table
+        // (the dispatch table is by default initialized with the common operations, but they can be overriden)
+        DispatchTable ft;
+        Interpreter interpreter(ft);
+
         std::unique_ptr<EvaluatorBase> evaluator;
         auto errorMetric = result["error-metric"].as<std::string>();
         if (errorMetric == "r2") {
-            evaluator.reset(new RSquaredEvaluator(problem));
+            evaluator.reset(new RSquaredEvaluator(problem, interpreter));
         } else if (errorMetric == "nmse") {
-            evaluator.reset(new NormalizedMeanSquaredErrorEvaluator(problem));
+            evaluator.reset(new NormalizedMeanSquaredErrorEvaluator(problem, interpreter));
         } else if (errorMetric == "mse") {
-            evaluator.reset(new MeanSquaredErrorEvaluator(problem));
+            evaluator.reset(new MeanSquaredErrorEvaluator(problem, interpreter));
         } else if (errorMetric == "rmse") {
-            evaluator.reset(new RootMeanSquaredErrorEvaluator(problem));
+            evaluator.reset(new RootMeanSquaredErrorEvaluator(problem, interpreter));
         } else if (errorMetric == "mae") {
-            evaluator.reset(new MeanAbsoluteErrorEvaluator(problem));
+            evaluator.reset(new MeanAbsoluteErrorEvaluator(problem, interpreter));
         } else {
             throw std::runtime_error(fmt::format("Unknown metric {}\n", errorMetric));
         }
@@ -447,16 +452,18 @@ int main(int argc, char** argv)
 
         Ind best(1);
 
+
         auto report = [&]() {
             auto const& pop = gp.Parents();
             best = getBest(pop);
 
             auto batchSize = 100ul;
-            auto estimatedTrain = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange, batchSize);
-            auto estimatedTest = Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange, batchSize);
+            auto estimatedTrain = interpreter.Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange, batchSize);
+            auto estimatedTest = interpreter.Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange, batchSize);
 
             // scale values
             auto [a, b] = LinearScalingCalculator::Calculate(gsl::span<Operon::Scalar const>{ estimatedTrain }, targetTrain);
+            //auto [a,b] = std::make_tuple(1.0, 0.0);
             std::transform(std::execution::par_unseq, estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(a * v + b); });
             std::transform(std::execution::par_unseq, estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(a * v + b); });
 

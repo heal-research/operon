@@ -1,3 +1,4 @@
+#include <interpreter/dispatch_table.hpp>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
@@ -15,16 +16,16 @@ void init_eval(py::module_ &m)
 {
     // free functions
     // we use a lambda to avoid defining a fourth arg for the defaulted C++ function arg
-    m.def("Evaluate", [](Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r) {
+    m.def("Evaluate", [](Operon::Interpreter const& i, Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r) {
         auto result = py::array_t<Operon::Scalar>(static_cast<pybind11::ssize_t>(r.Size()));
         auto buf = result.request();
         auto res = gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, r.Size());
-        Operon::Evaluate(t, d, r, res, static_cast<Operon::Scalar*>(nullptr));
+        i.Evaluate(t, d, r, res, static_cast<Operon::Scalar*>(nullptr));
         return result;
-        }, py::arg("tree"), py::arg("dataset"), py::arg("range"));
+        }, py::arg("interpreter"), py::arg("tree"), py::arg("dataset"), py::arg("range"));
 
-    m.def("CalculateFitness", [](Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r, std::string const& target, std::string const& metric) {
-        auto estimated = Operon::Evaluate(t, d, r, static_cast<Operon::Scalar*>(nullptr));
+    m.def("CalculateFitness", [](Operon::Interpreter const& i, Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r, std::string const& target, std::string const& metric) {
+        auto estimated = i.Evaluate(t, d, r, static_cast<Operon::Scalar*>(nullptr));
         auto values = d.GetValues(target).subspan(r.Start(), r.Size());
 
         if (metric == "rsquared") return Operon::RSquared<Operon::Scalar>(estimated, values); 
@@ -33,9 +34,9 @@ void init_eval(py::module_ &m)
         if (metric == "nmse")     return Operon::NormalizedMeanSquaredError<Operon::Scalar>(estimated, values);
         throw std::runtime_error("Invalid fitness metric"); 
 
-    }, py::arg("tree"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
+    }, py::arg("interpreter"), py::arg("tree"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
 
-    m.def("CalculateFitness", [](std::vector<Operon::Tree> const& trees, Operon::Dataset const& d, Operon::Range r, std::string const& target, std::string const& metric) {
+    m.def("CalculateFitness", [](Operon::Interpreter const& i, std::vector<Operon::Tree> const& trees, Operon::Dataset const& d, Operon::Range r, std::string const& target, std::string const& metric) {
         std::add_pointer<double(gsl::span<const Operon::Scalar>, gsl::span<const Operon::Scalar>)>::type func;
         if (metric == "rsquared")  func = Operon::RSquared;
         else if (metric == "mse")  func = Operon::MeanSquaredError;
@@ -48,12 +49,12 @@ void init_eval(py::module_ &m)
         auto values = d.GetValues(target).subspan(r.Start(), r.Size());
 
         std::transform(std::execution::par, trees.begin(), trees.end(), (double*)buf.ptr, [&](auto const& t) -> double {
-            auto estimated = Operon::Evaluate(t, d, r, (Operon::Scalar*)nullptr);
+            auto estimated = i.Evaluate(t, d, r, (Operon::Scalar*)nullptr);
             return func(estimated, values);
         });
 
         return result;
-    }, py::arg("trees"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
+    }, py::arg("interpreter"), py::arg("trees"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
 
     m.def("FitLeastSquares", [](py::array_t<float> lhs, py::array_t<float> rhs) {
         auto s1 = MakeConstSpan(lhs);
@@ -107,6 +108,12 @@ void init_eval(py::module_ &m)
         return Operon::MeanAbsoluteError<double>(MakeSpan(lhs), MakeSpan(rhs));
     });
 
+    // dispatch table
+    //py::class_<Operon::DispatchTable>(m, "DispatchTable")
+    //    .def("GetScalar", &Operon::DispatchTable::Get<Operon::Scalar>);
+
+    // interpreter
+
     // evaluator
     py::class_<Operon::EvaluatorBase>(m, "EvaluatorBase")
         .def_property("LocalOptimizationIterations", &Operon::EvaluatorBase::GetLocalOptimizationIterations, &Operon::EvaluatorBase::SetLocalOptimizationIterations)
@@ -116,23 +123,23 @@ void init_eval(py::module_ &m)
         .def_property_readonly("TotalEvaluations", &Operon::EvaluatorBase::TotalEvaluations);
 
     py::class_<Operon::MeanSquaredErrorEvaluator, Operon::EvaluatorBase>(m, "MeanSquaredErrorEvaluator")
-        .def(py::init<Operon::Problem&>())
+        .def(py::init<Operon::Problem&, Operon::Interpreter&>())
         .def("__call__", &Operon::MeanSquaredErrorEvaluator::operator());
 
     py::class_<Operon::RootMeanSquaredErrorEvaluator, Operon::EvaluatorBase>(m, "RootMeanSquaredErrorEvaluator")
-        .def(py::init<Operon::Problem&>())
+        .def(py::init<Operon::Problem&, Operon::Interpreter&>())
         .def("__call__", &Operon::RootMeanSquaredErrorEvaluator::operator());
 
     py::class_<Operon::NormalizedMeanSquaredErrorEvaluator, Operon::EvaluatorBase>(m, "NormalizedMeanSquaredErrorEvaluator")
-        .def(py::init<Operon::Problem&>())
+        .def(py::init<Operon::Problem&, Operon::Interpreter&>())
         .def("__call__", &Operon::NormalizedMeanSquaredErrorEvaluator::operator());
 
     py::class_<Operon::MeanAbsoluteErrorEvaluator, Operon::EvaluatorBase>(m, "MeanAbsoluteErrorEvaluator")
-        .def(py::init<Operon::Problem&>())
+        .def(py::init<Operon::Problem&, Operon::Interpreter&>())
         .def("__call__", &Operon::MeanAbsoluteErrorEvaluator::operator());
 
     py::class_<Operon::RSquaredEvaluator, Operon::EvaluatorBase>(m, "RSquaredEvaluator")
-        .def(py::init<Operon::Problem&>())
+        .def(py::init<Operon::Problem&, Operon::Interpreter&>())
         .def("__call__", &Operon::RSquaredEvaluator::operator());
 
     py::class_<Operon::UserDefinedEvaluator, Operon::EvaluatorBase>(m, "UserDefinedEvaluator")
