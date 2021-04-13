@@ -52,6 +52,7 @@ struct nud {
         case token_kind::sin:    { result.push_back(Node(NodeType::Sin)); break; }
         case token_kind::cos:    { result.push_back(Node(NodeType::Cos)); break; }
         case token_kind::tan:    { result.push_back(Node(NodeType::Tan)); break; }
+        case token_kind::tanh:   { result.push_back(Node(NodeType::Tanh)); break; }
         case token_kind::sqrt:   { result.push_back(Node(NodeType::Sqrt)); break; }
         case token_kind::cbrt:   { result.push_back(Node(NodeType::Cbrt)); break; }
         case token_kind::square: { result.push_back(Node(NodeType::Square)); break; }
@@ -81,6 +82,7 @@ struct led {
         case token_kind::sub: { rhs.push_back(Node(NodeType::Sub)); break; }
         case token_kind::mul: { rhs.push_back(Node(NodeType::Mul)); break; }
         case token_kind::div: { rhs.push_back(Node(NodeType::Div)); break; }
+        case token_kind::pow: { rhs.push_back(Node(NodeType::Pow)); break; }
         default: {
             throw std::runtime_error(fmt::format("led: unsupported token ", std::string(pratt::token_name[static_cast<int>(tok)])));
         }
