@@ -98,15 +98,10 @@ public:
 
         auto estimatedValues = GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
 
-        //Operon::Scalar scale = 1.0;
-        //Operon::Scalar offset = 0.0;
         if constexpr (LinearScaling) {
             auto [m, c] = Operon::LinearScalingCalculator::Calculate(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
             Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> x(estimatedValues.data(), estimatedValues.size());
             x = x * m + c;
-            //auto stats = bivariate::accumulate<Operon::Scalar>(estimatedValues.data(), targetValues.data(), estimatedValues.size());
-            //scale = stats.covariance / stats.sample_variance_x;
-            //offset = stats.mean_y - scale * stats.mean_x;
         }
         auto fit = ErrorMetric{}(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
 

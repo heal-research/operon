@@ -78,6 +78,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         self.n_threads                 = 1 if n_threads is None else int(n_threads)
         self.random_state              = random_state
         self._model_vars               = {}
+        self._interpreter               = op.Interpreter()
 
 
     def __init_primitive_config(self, allowed_symbols):
@@ -149,21 +150,21 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         raise ValueError('Unknown selection method {}'.format(selection_method))
 
 
-    def __init_evaluator(self, error_metric, problem):
+    def __init_evaluator(self, error_metric, problem, interpreter):
         if error_metric == 'r2':
-            return op.RSquaredEvaluator(problem)
+            return op.RSquaredEvaluator(problem, interpreter)
 
         elif error_metric == 'nmse':
-            return op.NormalizedMeanSquaredErrorEvaluator(problem)
+            return op.NormalizedMeanSquaredErrorEvaluator(problem, interpreter)
 
         elif error_metric == 'rmse':
-            return op.RootMeanSquaredErrorEvaluator(problem)
+            return op.RootMeanSquaredErrorEvaluator(problem, interpreter)
 
         elif error_metric == 'mse':
-            return op.MeanSquaredErrorEvaluator(problem)
+            return op.MeanSquaredErrorEvaluator(problem, interpreter)
 
         elif error_metric == 'mae':
-            return op.MeanAbsoluteErrorEvaluator(problem)
+            return op.MeanAbsoluteErrorEvaluator(problem, interpreter)
 
         raise ValueError('Unknown error metric {}'.format(error_metric))
 
@@ -264,7 +265,8 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         pset.SetConfig(pcfg)
 
         creator               = self.__init_creator(self.initialization_method, pset, inputs)
-        evaluator             = self.__init_evaluator(self.error_metric, problem)
+
+        evaluator             = self.__init_evaluator(self.error_metric, problem, self._interpreter)
         evaluator.Budget      = self.max_evaluations;
         evaluator.LocalOptimizationIterations = self.local_iterations
 
@@ -309,7 +311,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         comp                  = op.SingleObjectiveComparison(0)
         best                  = gp.BestModel(comp)
 
-        y_pred                = op.Evaluate(best.Genotype, ds, training_range)
+        y_pred                = op.Evaluate(self._interpreter, best.Genotype, ds, training_range)
         scale, offset         = op.FitLeastSquares(y_pred, y)
 
         # add four nodes at the top of the tree for linear scaling
@@ -350,5 +352,5 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         X = check_array(X, accept_sparse=False)
         ds = op.Dataset(X)
         rg = op.Range(0, ds.Rows)
-        return op.Evaluate(self._model, ds, rg)
+        return op.Evaluate(self._interpreter, self._model, ds, rg)
 
