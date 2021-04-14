@@ -14,7 +14,9 @@ struct Interpreter {
     {
     }
 
-    Interpreter() { }
+    Interpreter(DispatchTable&& ft) : ftable(std::move(ft)) { }
+
+    Interpreter() : Interpreter(DispatchTable{}) { }
 
     // evaluate a tree and return a vector of values
     template <typename T>
@@ -55,6 +57,7 @@ struct Interpreter {
         Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor> m(S, nodes.size());
         Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1);
 
+        Operon::Vector<std::reference_wrapper<const DispatchTable::Callable<T>>> funcs;
         Operon::Vector<T> params(nodes.size());
         Operon::Vector<gsl::span<const Operon::Scalar>> vals(nodes.size());
         size_t idx = 0;
@@ -68,6 +71,8 @@ struct Interpreter {
                 params[i] = parameters ? parameters[idx] : T(nodes[i].Value);
                 vals[i] = dataset.GetValues(nodes[i].HashValue);
                 idx++;
+            } else {
+                funcs.push_back(std::ref(ftable.Get<T>(nodes[i].HashValue)));
             }
         }
 
@@ -77,16 +82,16 @@ struct Interpreter {
         for (int row = 0; row < numRows; row += S) {
             auto remainingRows = std::min(S, numRows - row);
 
+            idx = 0;
             for (size_t i = 0; i < nodes.size(); ++i) {
                 auto const& s = nodes[i];
-
                 if (s.IsConstant()) {
                     continue; // constants already filled above
                 } else if (s.IsVariable()) {
                     Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> seg(vals[i].data() + range.Start() + row, remainingRows);
                     m.col(i).segment(0, remainingRows) = params[i] * seg.cast<T>();
                 } else {
-                    ftable.Get<T>(nodes[i].Type)(m, nodes, i, range.Start() + row);
+                    funcs[idx++](m, nodes, i, range.Start() + row);
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
