@@ -84,36 +84,30 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
     def __init_primitive_config(self, allowed_symbols):
         symbols = allowed_symbols.split(',')
 
+        known_symbols = {
+            'add' : op.NodeType.Add,
+            'mul' : op.NodeType.Mul,
+            'sub' : op.NodeType.Sub,
+            'div' : op.NodeType.Div,
+            'aq' : op.NodeType.Aq,
+            'pow' : op.NodeType.Pow,
+            'log' : op.NodeType.Log,
+            'exp' : op.NodeType.Exp,
+            'sin' : op.NodeType.Sin,
+            'cos' : op.NodeType.Cos,
+            'tan' : op.NodeType.Tan,
+            'tanh' : op.NodeType.Tanh,
+            'sqrt' : op.NodeType.Sqrt,
+            'cbrt' : op.NodeType.Cbrt,
+            'square' : op.NodeType.Square,
+            'constant' : op.NodeType.Constant,
+            'variable' : op.NodeType.Variable,
+        }
+
         config = op.NodeType(0)
         for s in symbols:
-            if s == 'add':
-                config |= op.NodeType.Add
-            elif s == 'sub':
-                config |= op.NodeType.Sub
-            elif s == 'mul':
-                config |= op.NodeType.Mul
-            elif s == 'div':
-                config |= op.NodeType.Div
-            elif s == 'exp':
-                config |= op.NodeType.Exp
-            elif s == 'log':
-                config |= op.NodeType.Log
-            elif s == 'sin':
-                config |= op.NodeType.Sin
-            elif s == 'cos':
-                config |= op.NodeType.Cos
-            elif s == 'tan':
-                config |= op.NodeType.Tan
-            elif s == 'sqrt':
-                config |= op.NodeType.Sqrt
-            elif s == 'cbrt':
-                config |= op.NodeType.Cbrt
-            elif s == 'square':
-                config |= op.NodeType.Square
-            elif s == 'constant':
-                config |= op.NodeType.Constant
-            elif s == 'variable':
-                config |= op.NodeType.Variable
+            if s in known_symbols:
+                config |= known_symbols[s]
             else:
                 raise ValueError('Unknown symbol type {}'.format(s))
 
