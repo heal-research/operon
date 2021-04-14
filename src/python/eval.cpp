@@ -109,10 +109,13 @@ void init_eval(py::module_ &m)
     });
 
     // dispatch table
-    //py::class_<Operon::DispatchTable>(m, "DispatchTable")
-    //    .def("GetScalar", &Operon::DispatchTable::Get<Operon::Scalar>);
+    py::class_<Operon::DispatchTable>(m, "DispatchTable")
+        .def(py::init<>());
 
     // interpreter
+    py::class_<Operon::Interpreter>(m, "Interpreter")
+        .def(py::init<>())
+        .def(py::init<Operon::DispatchTable>());
 
     // evaluator
     py::class_<Operon::EvaluatorBase>(m, "EvaluatorBase")
