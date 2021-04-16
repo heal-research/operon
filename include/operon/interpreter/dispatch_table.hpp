@@ -172,37 +172,6 @@ namespace detail {
     template<typename T>
     using Callable = typename std::function<void(detail::eigen_t<T>&, Operon::Vector<Node> const&, size_t, size_t)>;
 
-    template<NodeType Type>
-    struct MakeCallable {
-        template<typename T>
-        inline Callable<T> operator()()
-        {
-            if constexpr (Type < NodeType::Aq) { // nary: add, sub, mul, div
-                return Callable<T>(detail::dispatch_op_nary<Type, T>);
-            } else if constexpr (Type < NodeType::Log) { // binary: aq, pow
-                return Callable<T>(detail::dispatch_op_binary<Type, T>);
-            } else if constexpr (Type < NodeType::Constant) { // unary: exp, log, sin, cos, tan, tanh, sqrt, cbrt, square, dynamic
-                return Callable<T>(detail::dispatch_op_unary<Type, T>);
-            }
-        };
-    };
-} // namespace detail
-
-struct DispatchTable {
-    template<typename T>
-    using Callable = detail::Callable<T>;
-    using Tuple = std::tuple<Callable<Operon::Scalar>, Callable<Operon::Dual>>;
-    using Map = robin_hood::unordered_flat_map<Operon::Hash, Tuple>;
-    using Pair = robin_hood::pair<Operon::Hash, Tuple>;
-
-    DispatchTable()
-    {
-        InitializeMap();
-    }
-
-    DispatchTable(DispatchTable const& other) : map(other.map) { }
-    DispatchTable(DispatchTable &&other) : map(std::move(other.map)) { }
-
     template<NodeType Type, typename T>
     static constexpr Callable<T> MakeCall()
     {
@@ -222,6 +191,12 @@ struct DispatchTable {
     };
 
     template<typename F, typename... Ts, std::enable_if_t<sizeof...(Ts) != 0 && (std::is_invocable_r_v<void, F, detail::eigen_t<Ts>&, Vector<Node> const&, size_t, size_t> && ...), bool> = true>
+    static constexpr auto MakeTuple(F&& f)
+    {
+        return std::tuple(Callable<Ts>(std::forward<F&&>(f))...);
+    }
+
+    template<typename F, typename... Ts, std::enable_if_t<sizeof...(Ts) != 0 && (std::is_invocable_r_v<void, F, detail::eigen_t<Ts>&, Vector<Node> const&, size_t, size_t> && ...), bool> = true>
     static constexpr auto MakeTuple(F const& f)
     {
         return std::tuple(Callable<Ts>(f)...);
@@ -234,32 +209,49 @@ struct DispatchTable {
     }
 
     template<typename F, std::enable_if_t<std::is_invocable_r_v<void, F, detail::eigen_t<Operon::Scalar>&, Vector<Node> const&, size_t> && std::is_invocable_r_v<void, F, detail::eigen_t<Operon::Dual>&, Vector<Node> const&, size_t, size_t>, bool> = true>
-    static constexpr auto MakeDefaultTuple(F const& f)
+    static constexpr auto MakeDefaultTuple(F&& f)
     {
-        return MakeTuple<F, Operon::Scalar, Operon::Dual>(f);
+        return MakeTuple<F, Operon::Scalar, Operon::Dual>(std::forward<F&&>(f));
     }
+
+} // namespace detail
+
+struct DispatchTable {
+    template<typename T>
+    using Callable = detail::Callable<T>;
+    using Tuple    = std::tuple<Callable<Operon::Scalar>, Callable<Operon::Dual>>;
+    using Map      = robin_hood::unordered_flat_map<Operon::Hash, Tuple>;
+    using Pair     = robin_hood::pair<Operon::Hash, Tuple>;
+
+    DispatchTable()
+    {
+        InitializeMap();
+    }
+
+    DispatchTable(DispatchTable const& other) : map(other.map) { }
+    DispatchTable(DispatchTable &&other) : map(std::move(other.map)) { }
 
     void InitializeMap()
     {
         const auto hash = [](auto t) { return Node(t).HashValue; };
 
         map = Map{
-            { hash(NodeType::Add), MakeDefaultTuple<NodeType::Add>() },
-            { hash(NodeType::Sub), MakeDefaultTuple<NodeType::Sub>() },
-            { hash(NodeType::Mul), MakeDefaultTuple<NodeType::Mul>() },
-            { hash(NodeType::Sub), MakeDefaultTuple<NodeType::Sub>() },
-            { hash(NodeType::Div), MakeDefaultTuple<NodeType::Div>() },
-            { hash(NodeType::Aq), MakeDefaultTuple<NodeType::Aq>() },
-            { hash(NodeType::Pow), MakeDefaultTuple<NodeType::Pow>() },
-            { hash(NodeType::Log), MakeDefaultTuple<NodeType::Log>() },
-            { hash(NodeType::Exp), MakeDefaultTuple<NodeType::Exp>() },
-            { hash(NodeType::Sin), MakeDefaultTuple<NodeType::Sin>() },
-            { hash(NodeType::Cos), MakeDefaultTuple<NodeType::Cos>() },
-            { hash(NodeType::Tan), MakeDefaultTuple<NodeType::Tan>() },
-            { hash(NodeType::Tanh), MakeDefaultTuple<NodeType::Tanh>() },
-            { hash(NodeType::Sqrt), MakeDefaultTuple<NodeType::Sqrt>() },
-            { hash(NodeType::Cbrt), MakeDefaultTuple<NodeType::Cbrt>() },
-            { hash(NodeType::Square), MakeDefaultTuple<NodeType::Square>() },
+            { hash(NodeType::Add), detail::MakeDefaultTuple<NodeType::Add>() },
+            { hash(NodeType::Sub), detail::MakeDefaultTuple<NodeType::Sub>() },
+            { hash(NodeType::Mul), detail::MakeDefaultTuple<NodeType::Mul>() },
+            { hash(NodeType::Sub), detail::MakeDefaultTuple<NodeType::Sub>() },
+            { hash(NodeType::Div), detail::MakeDefaultTuple<NodeType::Div>() },
+            { hash(NodeType::Aq),  detail::MakeDefaultTuple<NodeType::Aq>() },
+            { hash(NodeType::Pow), detail::MakeDefaultTuple<NodeType::Pow>() },
+            { hash(NodeType::Log), detail::MakeDefaultTuple<NodeType::Log>() },
+            { hash(NodeType::Exp), detail::MakeDefaultTuple<NodeType::Exp>() },
+            { hash(NodeType::Sin), detail::MakeDefaultTuple<NodeType::Sin>() },
+            { hash(NodeType::Cos), detail::MakeDefaultTuple<NodeType::Cos>() },
+            { hash(NodeType::Tan), detail::MakeDefaultTuple<NodeType::Tan>() },
+            { hash(NodeType::Tanh), detail::MakeDefaultTuple<NodeType::Tanh>() },
+            { hash(NodeType::Sqrt), detail::MakeDefaultTuple<NodeType::Sqrt>() },
+            { hash(NodeType::Cbrt), detail::MakeDefaultTuple<NodeType::Cbrt>() },
+            { hash(NodeType::Square), detail::MakeDefaultTuple<NodeType::Square>() },
             /* constants and variables not needed here */
         };
     };
@@ -288,7 +280,7 @@ struct DispatchTable {
 
     template<typename F, std::enable_if_t<std::is_invocable_r_v<void, F, detail::eigen_t<Operon::Dual>&, Vector<Node> const&, size_t, size_t>, bool> = true>
     void RegisterCallable(Operon::Hash hash, F const& f) {
-        map[hash] = MakeTuple<F, Operon::Scalar, Operon::Dual>(f);
+        map[hash] = detail::MakeTuple<F, Operon::Scalar, Operon::Dual>(f);
     }
 
 private:
