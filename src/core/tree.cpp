@@ -145,8 +145,8 @@ std::vector<size_t> Tree::ChildIndices(size_t i) const
 std::vector<Operon::Scalar> Tree::GetCoefficients() const
 {
     std::vector<Operon::Scalar> coefficients;
-    for (auto& s : nodes) {
-        if (s.IsConstant() || s.IsVariable()) {
+    for (auto const& s : nodes) {
+        if (s.IsLeaf()) {
             coefficients.push_back(s.Value);
         }
     }
