@@ -72,13 +72,13 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
 
         auto& tree = this->tree_.get();
         auto x0 = tree.GetCoefficients();
-        decltype(solver)::Parameters params = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size()).cast<typename decltype(cf)::Scalar>();
-        solver.Solve(cf, &params);
-
-        if (writeCoefficients) {
-            tree.SetCoefficients({ params.data(), x0.size() });
+        if (!x0.empty()) {
+            decltype(solver)::Parameters params = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size()).cast<typename decltype(cf)::Scalar>();
+            solver.Solve(cf, &params);
+            if (writeCoefficients) {
+                tree.SetCoefficients({ params.data(), x0.size() });
+            }
         }
-
         OptimizerSummary summary;
         summary.InitialCost = solver.summary.initial_cost;
         summary.FinalCost = solver.summary.final_cost;
