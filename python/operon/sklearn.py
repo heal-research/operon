@@ -78,7 +78,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         self.n_threads                 = 1 if n_threads is None else int(n_threads)
         self.random_state              = random_state
         self._model_vars               = {}
-        self._interpreter               = op.Interpreter()
+        self._interpreter              = op.Interpreter()
 
 
     def __init_primitive_config(self, allowed_symbols):
