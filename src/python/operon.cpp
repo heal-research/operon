@@ -19,6 +19,7 @@
 
 #include "operon.hpp"
 
+#include "core/version.hpp"
 #include "parser/infix.hpp"
 
 namespace py = pybind11;
@@ -45,6 +46,9 @@ PYBIND11_MODULE(_operon, m)
     init_reinserter(m);
     init_selection(m);
     init_tree(m);
+
+    // build information
+    m.def("Version", &Operon::Version);
 
     // random numbers
     m.def("UniformInt", &Operon::Random::Uniform<Operon::RandomGenerator, int>);
