@@ -50,6 +50,10 @@ else()
     SET(REVISION "unknown")
 endif()
 
+
+# timestamp the current build
+string(TIMESTAMP OPERON_BUILD_TIMESTAMP "%Y-%m-%dT%H:%M:%SZ")
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/buildinfo.hpp.in
                ${CMAKE_BINARY_DIR}/buildinfo.hpp)
 
