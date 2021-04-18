@@ -42,7 +42,7 @@ let
       sha256 = "04w1gip6ag6fjs89kds5sgpr6djnfsfwjyhhdcx7mrrdz8lva077";
     };
     enableParallelBuilding = true;
-    cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=OFF" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=FALSE -DBUILD_TESTING=FALSE" ];
+    cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=OFF" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=OFF" "-DBUILD_EXAMPLES=FALSE" "-DBUILD_TESTING=FALSE" ];
   });
   fmt = pkgs.fmt.overrideAttrs(old: rec { 
     outputs = [ "out" ];
@@ -61,7 +61,7 @@ in
 
     buildInputs = with pkgs; [
         # python environment for bindings and scripting
-        (pkgs.python38.withPackages (ps: with ps; [ pybind11 pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz dask sphinx recommonmark sphinx_rtd_theme ]))
+        (pkgs.python39.withPackages (ps: with ps; [ pybind11 pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz dask sphinx recommonmark sphinx_rtd_theme ]))
         # Project dependencies and utils for profiling and debugging
         bear
         gdb
