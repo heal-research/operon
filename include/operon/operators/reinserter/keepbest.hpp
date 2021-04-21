@@ -38,11 +38,14 @@ class KeepBestReinserter : public ReinserterBase {
             std::sort(ep, pool.begin(), pool.end(), this->comp);
 
             // merge the best individuals from pop+pool into pop
-            auto it = pop.begin();
-            for (auto& ind : pool) {
-                if (this->comp(ind, *it)) {
-                    std::swap(*it++, ind);
+            size_t i = 0, j = 0;
+
+            while (i < pool.size() && j < pop.size()) {
+                if (this->comp(pool[i], pop[j])) {
+                    std::swap(pool[i], pop[j]);
+                    ++i;
                 }
+                ++j;
             }
         }
 };
