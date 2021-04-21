@@ -135,19 +135,18 @@ class InfixFormatter {
                     }
                 }
                 fmt::format_to(current, ")");
-            } else // unary operators log, exp, sin, etc.
-            {
-                fmt::format_to(current, "{}", s.Name());
-                fmt::format_to(current, "(");
-                if (tree[i - 1].IsLeaf()) {
-                    // surround a single leaf argument with parantheses
+            } else { // unary operators log, exp, sin, etc.
+                if (s.IsSquare()) {
+                    // format square(a)  as a ^ 2
+                    fmt::format_to(current, "(");
+                    FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
+                    fmt::format_to(current, " ^ 2)");
+                } else {
+                    fmt::format_to(current, "{}", s.Name());
                     fmt::format_to(current, "(");
                     FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                     fmt::format_to(current, ")");
-                } else {
-                    FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 }
-                fmt::format_to(current, ")");
             }
         }
     }
