@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, cross_val_score

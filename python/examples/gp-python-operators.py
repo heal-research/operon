@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+
 import numpy as np
 import pandas as pd
 import random
