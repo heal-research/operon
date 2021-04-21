@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+
 #include "operon.hpp"
 
 void init_creator(py::module_ &m)

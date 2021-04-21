@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+
 #include <interpreter/dispatch_table.hpp>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>

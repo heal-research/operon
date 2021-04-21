@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+
 #include "random/random.hpp"
 #include "nanobench.h"
 #include <doctest/doctest.h>
