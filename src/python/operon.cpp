@@ -113,7 +113,8 @@ PYBIND11_MODULE(_operon, m)
         .def_readwrite("CrossoverProbability", &Operon::GeneticAlgorithmConfig::CrossoverProbability)
         .def_readwrite("MutationProbability", &Operon::GeneticAlgorithmConfig::MutationProbability)
         .def_readwrite("Seed", &Operon::GeneticAlgorithmConfig::Seed)
-        .def(py::init([](size_t gen, size_t evals, size_t iter, size_t popsize, size_t poolsize, double pc, double pm, size_t seed) {
+        .def_readwrite("TimeLimit", &Operon::GeneticAlgorithmConfig::TimeLimit)
+        .def(py::init([](size_t gen, size_t evals, size_t iter, size_t popsize, size_t poolsize, double pc, double pm, size_t seed, size_t timelimit) {
                     Operon::GeneticAlgorithmConfig config;
                     config.Generations = gen;
                     config.Evaluations = evals;
@@ -123,6 +124,7 @@ PYBIND11_MODULE(_operon, m)
                     config.CrossoverProbability = pc;
                     config.MutationProbability = pm;
                     config.Seed = seed;
+                    config.TimeLimit = timelimit;
                     return config;
         }), py::arg("generations")
           , py::arg("max_evaluations")
@@ -131,5 +133,6 @@ PYBIND11_MODULE(_operon, m)
           , py::arg("pool_size")
           , py::arg("p_crossover")
           , py::arg("p_mutation")
-          , py::arg("seed"));
+          , py::arg("seed")
+          , py::arg("time_limit"));
 }
