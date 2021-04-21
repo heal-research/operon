@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+
 cmake_minimum_required(VERSION 3.11)
 
 include(FetchContent)
@@ -244,7 +247,6 @@ add_library(
     operon
     STATIC
     src/core/tree.cpp
-    src/core/problem.cpp
     src/core/dataset.cpp
     src/core/pset.cpp
     src/hash/metrohash64.cpp
@@ -333,7 +335,6 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         src/python/generator.cpp
         src/python/mutation.cpp
         src/python/node.cpp
-        src/python/problem.cpp
         src/python/pset.cpp
         src/python/reinserter.cpp
         src/python/selection.cpp

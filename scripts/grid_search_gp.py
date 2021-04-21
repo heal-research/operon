@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+
 from colorama import Back as bg
 from colorama import Fore as fg
 from colorama import Style as st

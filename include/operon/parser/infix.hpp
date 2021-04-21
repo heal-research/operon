@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+
 #ifndef OPERON_PARSER_HPP
 #define OPERON_PARSER_HPP
 
