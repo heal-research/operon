@@ -29,6 +29,7 @@
 #include "operators/initializer.hpp"
 #include "operators/mutation.hpp"
 
+#include <chrono>
 #include <execution>
 #include <tbb/global_control.h>
 #include <thread>
@@ -113,6 +114,9 @@ public:
             ind[idx] = f;
         };
 
+        // start the chronometer
+        auto t0 = std::chrono::steady_clock::now();
+
         // generate the initial population and perform evaluation
         tbb::global_control c(tbb::global_control::max_allowed_parallelism, threads ? threads : std::thread::hardware_concurrency());
 
@@ -126,6 +130,10 @@ public:
             Operon::RandomGenerator rndlocal { seeds[i] };
 
             while (!(terminate = generator.Terminate())) {
+                auto t1 = std::chrono::steady_clock::now();
+                double elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()) / 1e3;
+                terminate = elapsed > config.TimeLimit;
+
                 if (auto result = generator(rndlocal, config.CrossoverProbability, config.MutationProbability); result.has_value()) {
                     offspring[i] = std::move(result.value());
                     return;
