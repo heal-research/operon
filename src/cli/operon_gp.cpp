@@ -80,6 +80,7 @@ int main(int argc, char** argv)
         ("disable-symbols", "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
         ("show-primitives", "Display the primitive set used by the algorithm")
         ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
+        ("timelimit", "Time limit after which the algorithm will terminate", cxxopts::value<size_t>()->default_value(fmt::format("{}", std::numeric_limits<size_t>::max())))
         ("debug", "Debug mode (more information displayed)")
         ("help", "Print help")
         ("version", "Print version and program information");
@@ -104,6 +105,7 @@ int main(int argc, char** argv)
     config.Iterations = result["iterations"].as<size_t>();
     config.CrossoverProbability = result["crossover-probability"].as<Operon::Scalar>();
     config.MutationProbability = result["mutation-probability"].as<Operon::Scalar>();
+    config.TimeLimit = result["timelimit"].as<size_t>();
     config.Seed = std::random_device {}();
 
     // parse remaining config options
@@ -124,6 +126,7 @@ int main(int argc, char** argv)
         for (auto kv : result.arguments()) {
             auto& key = kv.key();
             auto& value = kv.value();
+
             if (key == "dataset") {
                 fileName = value;
                 dataset.reset(new Dataset(fileName, true));
