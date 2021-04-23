@@ -335,6 +335,7 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
         src/python/generator.cpp
         src/python/mutation.cpp
         src/python/node.cpp
+        src/python/problem.cpp
         src/python/pset.cpp
         src/python/reinserter.cpp
         src/python/selection.cpp
