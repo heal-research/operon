@@ -310,12 +310,12 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         gp.Run(rng, None, self.n_threads)
         comp                  = op.SingleObjectiveComparison(0)
         best                  = gp.BestModel(comp)
-
-        y_pred                = op.Evaluate(self._interpreter, best.Genotype, ds, training_range)
-        scale, offset         = op.FitLeastSquares(y_pred, y)
+        nodes                 = best.Genotype.Nodes
+        n_vars                = len([ node for node in nodes if node.IsVariable ])
 
         # add four nodes at the top of the tree for linear scaling
-        nodes                 = best.Genotype.Nodes
+        y_pred                = op.Evaluate(self._interpreter, best.Genotype, ds, training_range)
+        scale, offset         = op.FitLeastSquares(y_pred, y)
         nodes.extend([ op.Node.Constant(scale), op.Node.Mul(), op.Node.Constant(offset), op.Node.Add() ])
 
         self._model           = op.Tree(nodes).UpdateNodes()
@@ -325,11 +325,12 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
 
         self._stats = {
             'model_length':        self._model.Length - 4, # do not count scaling nodes?
+            'model_complexity':    self._model.Length - 4 + 2 * n_vars,
             'generations':         gp.Generation,
             'fitness_evaluations': evaluator.FitnessEvaluations,
             'local_evaluations':   evaluator.LocalEvaluations,
             'random_state':        self.random_state
-                }
+        }
 
         self.is_fitted_ = True
         # `fit` should always return `self`
