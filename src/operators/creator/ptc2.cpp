@@ -87,7 +87,7 @@ Tree ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
         auto node = pset.SampleRandomSymbol(random, minArity, maxArity);
 
         init(node);
-        node.Depth = gsl::narrow_cast<uint16_t>(childDepth);
+        node.Depth = static_cast<uint16_t>(childDepth);
 
         for (size_t i = 0; i < node.Arity; ++i) {
             q.push_back(childDepth + 1);

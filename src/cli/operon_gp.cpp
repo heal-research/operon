@@ -432,7 +432,7 @@ int main(int argc, char** argv)
 
         // some boilerplate for reporting results
         const size_t idx { 0 };
-        auto getBest = [&](const gsl::span<const Ind> pop) -> Ind {
+        auto getBest = [&](const Operon::Span<const Ind> pop) -> Ind {
             auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
             return *minElem;
         };
@@ -449,7 +449,7 @@ int main(int argc, char** argv)
             auto estimatedTest = interpreter.Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange, batchSize);
 
             // scale values
-            auto [a, b] = LinearScalingCalculator::Calculate(gsl::span<Operon::Scalar const>{ estimatedTrain }, targetTrain);
+            auto [a, b] = LinearScalingCalculator::Calculate(Operon::Span<Operon::Scalar const>{ estimatedTrain }, targetTrain);
             //auto [a,b] = std::make_tuple(1.0, 0.0);
             std::transform(std::execution::par_unseq, estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(a * v + b); });
             std::transform(std::execution::par_unseq, estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(a * v + b); });

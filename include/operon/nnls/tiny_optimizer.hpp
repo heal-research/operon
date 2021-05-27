@@ -17,7 +17,7 @@ namespace Operon {
 
 // simple functor that wraps everything together and provides residuals
 struct ResidualEvaluator {
-    ResidualEvaluator(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset, const gsl::span<const Operon::Scalar> targetValues, Range const range)
+    ResidualEvaluator(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset, const Operon::Span<const Operon::Scalar> targetValues, Range const range)
         : interpreter_(interpreter)
         , tree_(tree)
         , dataset_(dataset)
@@ -30,7 +30,7 @@ struct ResidualEvaluator {
     template <typename T>
     bool operator()(T const* const* parameters, T* residuals) const
     {
-        gsl::span<T> result(residuals, target_.size());
+        Operon::Span<T> result(residuals, target_.size());
         GetInterpreter().Evaluate<T>(tree_.get(), dataset_.get(), range_, result, parameters[0]);
         Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> resMap(residuals, target_.size());
         Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> targetMap(target_.data(), target_.size());
@@ -48,7 +48,7 @@ private:
     std::reference_wrapper<Tree const> tree_;
     std::reference_wrapper<Dataset const> dataset_;
     Range range_;
-    gsl::span<const Operon::Scalar> target_;
+    Operon::Span<const Operon::Scalar> target_;
     size_t numParameters_; // cache the number of parameters in the tree
 };
 

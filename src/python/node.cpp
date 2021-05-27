@@ -5,7 +5,6 @@
 #include <pybind11/operators.h>
 
 #include "core/node.hpp"
-
 #include "operon.hpp"
 
 namespace py = pybind11;

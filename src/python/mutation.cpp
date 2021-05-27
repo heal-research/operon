@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
 #include "operon.hpp"
-#include <operators/mutation.hpp>
+#include "operators/mutation.hpp"
 
 void init_mutation(py::module_ &m)
 {
@@ -24,7 +24,7 @@ void init_mutation(py::module_ &m)
 
     py::class_<Operon::ChangeVariableMutation, Operon::MutatorBase>(m, "ChangeVariableMutation")
         .def(py::init([](std::vector<Operon::Variable> const& variables) {
-                    return Operon::ChangeVariableMutation(gsl::span<const Operon::Variable>(variables.data(), variables.size()));
+                    return Operon::ChangeVariableMutation(Operon::Span<const Operon::Variable>(variables.data(), variables.size()));
                 }),
             py::arg("variables"))
         .def("__call__", &Operon::ChangeVariableMutation::operator());

@@ -7,7 +7,6 @@
 #include <cmath>
 
 #include "core/common.hpp"
-#include "gsl/span"
 
 namespace Operon {
 namespace detail {
@@ -40,25 +39,25 @@ public:
     void Add(T value, T weight);
 
     template <typename T>
-    void Add(gsl::span<const T> values);
+    void Add(Operon::Span<const T> values);
 
     template <typename T>
-    void AddTwoPass(gsl::span<const T> values);
+    void AddTwoPass(Operon::Span<const T> values);
 
     template <typename T>
-    void Add(gsl::span<const T> values, gsl::span<const T> weights);
+    void Add(Operon::Span<const T> values, Operon::Span<const T> weights);
 
     template <typename T>
-    void Add(std::vector<T> const& values) { Add(gsl::span<const T> { values.data(), values.size() }); }
+    void Add(std::vector<T> const& values) { Add(Operon::Span<const T> { values.data(), values.size() }); }
 
     template <typename T>
-    void Add(Operon::Vector<T> const& values) { Add(gsl::span<const T> { values.data(), values.size() }); }
+    void Add(Operon::Vector<T> const& values) { Add(Operon::Span<const T> { values.data(), values.size() }); }
 
     template <typename T>
-    void AddTwoPass(std::vector<T> const& values) { AddTwoPass(gsl::span<const T> { values.data(), values.size() }); }
+    void AddTwoPass(std::vector<T> const& values) { AddTwoPass(Operon::Span<const T> { values.data(), values.size() }); }
 
     template <typename T>
-    void AddTwoPass(Operon::Vector<T> const& values) { AddTwoPass(gsl::span<const T> { values.data(), values.size() }); }
+    void AddTwoPass(Operon::Vector<T> const& values) { AddTwoPass(Operon::Span<const T> { values.data(), values.size() }); }
 
     double NaiveVariance() const
     {

@@ -83,11 +83,11 @@ public:
         auto estimatedValues = GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
 
         if constexpr (LinearScaling) {
-            auto [m, c] = Operon::LinearScalingCalculator::Calculate(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
+            auto [m, c] = Operon::LinearScalingCalculator::Calculate(Operon::Span<Operon::Scalar const>{ estimatedValues }, targetValues);
             Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> x(estimatedValues.data(), estimatedValues.size());
             x = x * m + c;
         }
-        auto fit = ErrorMetric{}(gsl::span<Operon::Scalar const>{ estimatedValues }, targetValues);
+        auto fit = ErrorMetric{}(Operon::Span<Operon::Scalar const>{ estimatedValues }, targetValues);
 
         if (!std::isfinite(fit)) {
             return Operon::Numeric::Max<Operon::Scalar>();

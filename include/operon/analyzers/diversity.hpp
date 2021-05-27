@@ -31,7 +31,7 @@ public:
         return diversity;
     }
 
-    void Prepare(gsl::span<const T> pop, Operon::HashMode mode = Operon::HashMode::Strict)
+    void Prepare(Operon::Span<const T> pop, Operon::HashMode mode = Operon::HashMode::Strict)
     {
         hashes.clear();
         hashes.resize(pop.size());
@@ -63,7 +63,7 @@ public:
                         auto [a, b] = pairs[idx];
                         distances[idx] = Operon::Distance::Jaccard(hashes[a], hashes[b]);
                     });
-                    calc.Add(gsl::span(distances.data(), distances.size()));
+                    calc.Add(Operon::Span(distances.data(), distances.size()));
                 }
             }
         }

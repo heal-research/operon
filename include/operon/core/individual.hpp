@@ -7,7 +7,6 @@
 #include <cstddef>
 #include "core/tree.hpp"
 #include "core/types.hpp"
-#include <gsl/util>
 
 namespace Operon {
 
@@ -30,7 +29,7 @@ struct Individual {
 
 struct Comparison {
     virtual bool operator()(Individual const&, Individual const&) const = 0;
-    virtual ~Comparison() {}
+    virtual ~Comparison() noexcept = default;
 };
 
 struct SingleObjectiveComparison final : public Comparison {

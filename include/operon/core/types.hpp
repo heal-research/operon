@@ -5,6 +5,7 @@
 #define OPERON_TYPES_HPP
 
 #include "random/random.hpp"
+#include "span.hpp"
 
 #if defined(HAVE_CERES)
 #include <ceres/jet.h>
@@ -35,6 +36,9 @@ using Dual = ceres::Jet<Operon::Scalar, 4 * sizeof(double) / sizeof(Scalar)>;
 // https://eigen.tuxfamily.org/dox/TopicPreprocessorDirectives.html#TopicPreprocessorDirectivesPerformance
 template <typename T>
 using Vector = std::vector<T, Eigen::aligned_allocator<T>>;
+
+template <typename T>
+using Span = nonstd::span<T>;
 
 namespace Numeric {
     template <typename T>

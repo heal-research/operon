@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
-#include <interpreter/dispatch_table.hpp>
-#include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include <gsl/span>
-#include <stat/linearscaler.hpp>
-
+#include "interpreter/dispatch_table.hpp"
 #include "operators/evaluator.hpp"
-
 #include "operon.hpp"
+#include "stat/linearscaler.hpp"
 
 namespace py = pybind11;
 
@@ -22,7 +19,7 @@ void init_eval(py::module_ &m)
     m.def("Evaluate", [](Operon::Interpreter const& i, Operon::Tree const& t, Operon::Dataset const& d, Operon::Range r) {
         auto result = py::array_t<Operon::Scalar>(static_cast<pybind11::ssize_t>(r.Size()));
         auto buf = result.request();
-        auto res = gsl::span<Operon::Scalar>((Operon::Scalar*)buf.ptr, r.Size());
+        auto res = Operon::Span<Operon::Scalar>((Operon::Scalar*)buf.ptr, r.Size());
         i.Evaluate(t, d, r, res, static_cast<Operon::Scalar*>(nullptr));
         return result;
         }, py::arg("interpreter"), py::arg("tree"), py::arg("dataset"), py::arg("range"));
@@ -40,7 +37,7 @@ void init_eval(py::module_ &m)
     }, py::arg("interpreter"), py::arg("tree"), py::arg("dataset"), py::arg("range"), py::arg("target"), py::arg("metric") = "rsquared");
 
     m.def("CalculateFitness", [](Operon::Interpreter const& i, std::vector<Operon::Tree> const& trees, Operon::Dataset const& d, Operon::Range r, std::string const& target, std::string const& metric) {
-        std::add_pointer<double(gsl::span<const Operon::Scalar>, gsl::span<const Operon::Scalar>)>::type func;
+        std::add_pointer<double(Operon::Span<const Operon::Scalar>, Operon::Span<const Operon::Scalar>)>::type func;
         if (metric == "rsquared")  func = Operon::RSquared;
         else if (metric == "mse")  func = Operon::MeanSquaredError;
         else if (metric == "nmse") func = Operon::NormalizedMeanSquaredError;

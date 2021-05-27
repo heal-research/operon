@@ -51,7 +51,7 @@ namespace Operon {
                 auto amax = std::min(maxArity, GetMaximumArity(type));
 
                 auto arity = std::uniform_int_distribution<size_t>(amin, amax)(random);
-                node.Arity = gsl::narrow_cast<uint16_t>(arity);
+                node.Arity = static_cast<uint16_t>(arity);
 
                 break;
             }

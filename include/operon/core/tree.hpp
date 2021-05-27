@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "common.hpp"
-#include "gsl/gsl"
 #include "hash/hash.hpp"
 #include "node.hpp"
 
@@ -74,7 +73,7 @@ namespace detail {
         inline size_t Index() const { return index; } // index of current child
 
     private:
-        const gsl::span<U> nodes;
+        const Operon::Span<U> nodes;
         const size_t parentIndex; // index of parent node
         size_t index;
         size_t count;
@@ -201,7 +200,7 @@ public:
         return std::count_if(nodes.cbegin(), nodes.cend(), [](auto const& s) { return s.IsLeaf(); });
     }
 
-    void SetCoefficients(const gsl::span<const Operon::Scalar> coefficients);
+    void SetCoefficients(const Operon::Span<const Operon::Scalar> coefficients);
     std::vector<Operon::Scalar> GetCoefficients() const;
 
     inline Node& operator[](size_t i) noexcept { return nodes[i]; }

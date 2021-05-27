@@ -31,12 +31,12 @@ void init_selection(py::module_ &m)
                     }), py::arg("objective_index"))
         .def(py::init<Operon::ComparisonCallback const&>())
         .def("__call__", &Operon::ProportionalSelector::operator())
-        .def("Prepare", py::overload_cast<const gsl::span<const Operon::Individual>>(&Operon::ProportionalSelector::Prepare, py::const_))
+        .def("Prepare", py::overload_cast<const Operon::Span<const Operon::Individual>>(&Operon::ProportionalSelector::Prepare, py::const_))
         .def("SetObjIndex", &Operon::ProportionalSelector::SetObjIndex);
 
     py::class_<Operon::RandomSelector, Operon::SelectorBase>(m, "RandomSelector")
         .def(py::init<>())
         .def("__call__", &Operon::RandomSelector::operator())
-        .def("Prepare", py::overload_cast<const gsl::span<const Operon::Individual>>(&Operon::RandomSelector::Prepare, py::const_));
+        .def("Prepare", py::overload_cast<const Operon::Span<const Operon::Individual>>(&Operon::RandomSelector::Prepare, py::const_));
 
 }

@@ -62,7 +62,7 @@ namespace Operon {
     }
 
     template<typename T>
-    void MeanVarianceCalculator::Add(gsl::span<const T> values)
+    void MeanVarianceCalculator::Add(Operon::Span<const T> values)
     {
         constexpr int N = 4;
         // the general idea is to partition the data and perform this computation in parallel
@@ -103,7 +103,7 @@ namespace Operon {
     }
 
     template<typename T>
-    void MeanVarianceCalculator::AddTwoPass(gsl::span<const T> values)
+    void MeanVarianceCalculator::AddTwoPass(Operon::Span<const T> values)
     {
         auto l = values.size();
         if (l < 2) {
@@ -142,7 +142,7 @@ namespace Operon {
     }
 
     template<typename T>
-    void MeanVarianceCalculator::Add(gsl::span<const T> vals, gsl::span<const T> weights) 
+    void MeanVarianceCalculator::Add(Operon::Span<const T> vals, Operon::Span<const T> weights) 
     {
         EXPECT(vals.size() == weights.size());
         for (size_t i = 0, end = vals.size(); i < end; i++) {
@@ -155,12 +155,12 @@ namespace Operon {
     // https://isocpp.org/wiki/faq/templates#separate-template-fn-defn-from-decl
     template void MeanVarianceCalculator::Add<float>(float);
     template void MeanVarianceCalculator::Add<float>(float, float);
-    template void MeanVarianceCalculator::Add<float>(gsl::span<const float>);
-    template void MeanVarianceCalculator::AddTwoPass<float>(gsl::span<const float>);
-    template void MeanVarianceCalculator::Add<float>(gsl::span<const float>, gsl::span<const float>);
+    template void MeanVarianceCalculator::Add<float>(Operon::Span<const float>);
+    template void MeanVarianceCalculator::AddTwoPass<float>(Operon::Span<const float>);
+    template void MeanVarianceCalculator::Add<float>(Operon::Span<const float>, Operon::Span<const float>);
     template void MeanVarianceCalculator::Add<double>(double);
     template void MeanVarianceCalculator::Add<double>(double, double);
-    template void MeanVarianceCalculator::Add<double>(gsl::span<const double>);
-    template void MeanVarianceCalculator::AddTwoPass<double>(gsl::span<const double>);
-    template void MeanVarianceCalculator::Add<double>(gsl::span<const double>, gsl::span<const double>);
+    template void MeanVarianceCalculator::Add<double>(Operon::Span<const double>);
+    template void MeanVarianceCalculator::AddTwoPass<double>(Operon::Span<const double>);
+    template void MeanVarianceCalculator::Add<double>(Operon::Span<const double>, Operon::Span<const double>);
 }
