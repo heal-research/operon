@@ -39,7 +39,7 @@ TEST_CASE("Evolution speed") {
 
     using Evaluator  = RSquaredEvaluator;
     using Selector   = TournamentSelector;
-    using Reinserter = ReplaceWorstReinserter<std::execution::parallel_unsequenced_policy>;
+    using Reinserter = ReplaceWorstReinserter;
     //using Generator  = BasicOffspringGenerator<Evaluator, Crossover, Mutation, Selector, Selector>;
     using Generator  = OffspringSelectionGenerator;
 
