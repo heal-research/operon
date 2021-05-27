@@ -22,6 +22,14 @@ struct Variable {
     std::string Name = "";
     Operon::Hash Hash = Operon::Hash { 0 };
     size_t Index = size_t { 0 };
+
+    constexpr bool operator==(Variable const& rhs) const noexcept {
+        return std::tie(Name, Hash, Index) == std::tie(rhs.Name, rhs.Hash, rhs.Index);
+    }
+
+    constexpr bool operator!=(Variable const& rhs) const noexcept {
+        return !(*this == rhs);
+    }
 };
 
 class Dataset {
@@ -36,7 +44,6 @@ private:
     Map map;
 
     Dataset();
-
 
     // read data from a csv file and return a map (view of the data)
     Matrix ReadCsv(std::string const& path, bool hasHeader);
@@ -93,6 +100,17 @@ public:
     {
         variables.swap(rhs.variables);
         values.swap(rhs.values);
+        new (&map) Map(values.data(), values.rows(), values.cols()); // we use placement new (no allocation)
+    }
+
+    bool operator==(Dataset const& rhs) const noexcept
+    {
+        return
+            Rows() == rhs.Rows() &&
+            Cols() == rhs.Cols() &&
+            variables.size() == rhs.variables.size() &&
+            std::equal(variables.begin(), variables.end(), rhs.variables.begin()) &&
+            values.isApprox(rhs.values);
     }
 
     // check if we own the data or if we are a view over someone else's data
@@ -112,8 +130,8 @@ public:
     Operon::Span<const Operon::Scalar> GetValues(int index) const noexcept;
     Operon::Span<const Operon::Scalar> GetValues(Variable const& variable) const noexcept { return GetValues(variable.Hash); }
 
-    const std::optional<Variable> GetVariable(const std::string& name) const noexcept;
-    const std::optional<Variable> GetVariable(Operon::Hash hashValue) const noexcept;
+    std::optional<Variable> GetVariable(const std::string& name) const noexcept;
+    std::optional<Variable> GetVariable(Operon::Hash hashValue) const noexcept;
 
     Operon::Span<const Variable> Variables() const noexcept { return Operon::Span<const Variable>(variables.data(), variables.size()); }
 
