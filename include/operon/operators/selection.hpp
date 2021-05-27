@@ -34,7 +34,7 @@ public:
 
     size_t operator()(Operon::RandomGenerator& random) const override;
 
-    void Prepare(const gsl::span<const Individual> pop) const override;
+    void Prepare(const Operon::Span<const Individual> pop) const override;
 
     void SetTournamentSize(size_t size) { tournamentSize = size; }
 
@@ -52,7 +52,7 @@ public:
 
     size_t operator()(Operon::RandomGenerator& random) const override;
     
-    void Prepare(const gsl::span<const Individual> pop) const override;
+    void Prepare(const Operon::Span<const Individual> pop) const override;
 
     void SetObjIndex(size_t objIndex) { idx = objIndex; }
 

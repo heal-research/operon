@@ -46,7 +46,7 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
     }
 
     template<DerivativeMethod D = DerivativeMethod::AUTODIFF>
-    OptimizerSummary Optimize(gsl::span<const Operon::Scalar> const target, Range range, size_t iterations, bool writeCoefficients = true, bool = false /* not used */)
+    OptimizerSummary Optimize(Operon::Span<const Operon::Scalar> const target, Range range, size_t iterations, bool writeCoefficients = true, bool = false /* not used */)
     {
         static_assert(D == DerivativeMethod::AUTODIFF, "The tiny optimizer only supports autodiff.");
         ResidualEvaluator re(this->interpreter_, tree_, dataset_, target, range);
@@ -79,7 +79,7 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBa
     }
 
     template<DerivativeMethod D = DerivativeMethod::AUTODIFF>
-    OptimizerSummary Optimize(gsl::span<const Operon::Scalar> const target, Range range, size_t iterations, bool writeCoefficients = true, bool report = false)
+    OptimizerSummary Optimize(Operon::Span<const Operon::Scalar> const target, Range range, size_t iterations, bool writeCoefficients = true, bool report = false)
     {
         auto& tree = this->tree_.get();
         auto coef = tree.GetCoefficients();
@@ -103,8 +103,8 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBa
         } else {
             auto eval = new ResidualEvaluator(this->interpreter_, tree_, dataset_, target, range);
             costFunction = new ceres::DynamicNumericDiffCostFunction(eval);
-            costFunction->AddParameterBlock(gsl::narrow<int>(coef.size()));
-            costFunction->SetNumResiduals(gsl::narrow<int>(target.size()));
+            costFunction->AddParameterBlock(static_cast<int>(coef.size()));
+            costFunction->SetNumResiduals(static_cast<int>(target.size()));
         }
 
         Eigen::MatrixXd params = Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>>(coef.data(), coef.size()).template cast<double>();

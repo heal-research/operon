@@ -26,7 +26,7 @@ struct Interpreter {
     Operon::Vector<T> Evaluate(Tree const& tree, Dataset const& dataset, Range const range, T const* const parameters = nullptr) const noexcept
     {
         Operon::Vector<T> result(range.Size());
-        Evaluate<T>(tree, dataset, range, gsl::span<T>(result), parameters);
+        Evaluate<T>(tree, dataset, range, Operon::Span<T>(result), parameters);
         return result;
     }
 
@@ -34,7 +34,7 @@ struct Interpreter {
     Operon::Vector<T> Evaluate(Tree const& tree, Dataset const& dataset, Range const range, size_t const batchSize, T const* const parameters = nullptr) const noexcept
     {
         Operon::Vector<T> result(range.Size());
-        gsl::span<T> view(result);
+        Operon::Span<T> view(result);
 
         size_t n = range.Size() / batchSize;
         size_t m = range.Size() % batchSize;
@@ -50,7 +50,7 @@ struct Interpreter {
     }
 
     template <typename T>
-    void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, gsl::span<T> result, T const* const parameters = nullptr) const noexcept
+    void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T> result, T const* const parameters = nullptr) const noexcept
     {
         const auto& nodes = tree.Nodes();
         EXPECT(nodes.size() > 0);
@@ -62,7 +62,7 @@ struct Interpreter {
 
         Operon::Vector<std::reference_wrapper<const DispatchTable::Callable<T>>> funcs;
         Operon::Vector<T> params(nodes.size());
-        Operon::Vector<gsl::span<const Operon::Scalar>> vals(nodes.size());
+        Operon::Vector<Operon::Span<const Operon::Scalar>> vals(nodes.size());
         size_t idx = 0;
 
         for (size_t i = 0; i < nodes.size(); ++i) {
@@ -110,7 +110,7 @@ struct Interpreter {
     }
 
     template<typename T>
-    static void Evaluate(DispatchTable& ft, Tree const& tree, Dataset const& dataset, Range const range, gsl::span<T> result, T const* const parameters = nullptr) noexcept {
+    static void Evaluate(DispatchTable& ft, Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T> result, T const* const parameters = nullptr) noexcept {
         Interpreter interpreter(ft);
         interpreter.Evaluate(tree, dataset, range, result, parameters);
     }

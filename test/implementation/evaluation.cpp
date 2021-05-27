@@ -75,7 +75,7 @@ TEST_CASE("Numeric optimization")
     }
 
     Eigen::Array<Operon::Scalar, -1, 1> res = X.col(0) + X.col(1);
-    gsl::span<Operon::Scalar> target(res.data(), res.size());
+    Operon::Span<Operon::Scalar> target(res.data(), res.size());
     auto tree = InfixParser::Parse("X1 + X2", map);
     for (auto& node : tree.Nodes()) {
         if (node.IsVariable()) node.Value = static_cast<Operon::Scalar>(0.0001);

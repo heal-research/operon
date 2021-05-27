@@ -10,7 +10,7 @@ void init_creator(py::module_ &m)
 
     py::class_<Operon::BalancedTreeCreator, Operon::CreatorBase>(m, "BalancedTreeCreator")
         .def(py::init([](Operon::PrimitiveSet const& grammar, std::vector<Operon::Variable> const& variables, double bias) {
-            return Operon::BalancedTreeCreator(grammar, gsl::span<const Operon::Variable>(variables.data(), variables.size()), bias);
+            return Operon::BalancedTreeCreator(grammar, Operon::Span<const Operon::Variable>(variables.data(), variables.size()), bias);
         }),
             py::arg("grammar"), py::arg("variables"), py::arg("bias"))
         .def("__call__", &Operon::BalancedTreeCreator::operator())

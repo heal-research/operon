@@ -103,7 +103,7 @@ Tree& Tree::Sort()
                 auto pos = sorted.begin() + i - size;
                 for (auto j : children) {
                     auto& c = nodes[j];
-                    std::copy_n(start + gsl::narrow_cast<long>(j) - c.Length, c.Length + 1, pos);
+                    std::copy_n(start + static_cast<long>(j) - c.Length, c.Length + 1, pos);
                     pos += c.Length + 1;
                 }
                 children.clear();
@@ -137,12 +137,12 @@ std::vector<Operon::Scalar> Tree::GetCoefficients() const
     return coefficients;
 }
 
-void Tree::SetCoefficients(const gsl::span<const Operon::Scalar> coefficients)
+void Tree::SetCoefficients(const Operon::Span<const Operon::Scalar> coefficients)
 {
     size_t idx = 0;
     for (auto& s : nodes) {
         if (s.IsLeaf()) {
-            s.Value = gsl::narrow_cast<Operon::Scalar>(coefficients[idx++]);
+            s.Value = static_cast<Operon::Scalar>(coefficients[idx++]);
         }
     }
 }

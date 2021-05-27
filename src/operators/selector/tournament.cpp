@@ -33,7 +33,7 @@ RankTournamentSelector::operator()(Operon::RandomGenerator& random) const
     return best;
 }
 
-void RankTournamentSelector::Prepare(const gsl::span<const Individual> pop) const
+void RankTournamentSelector::Prepare(const Operon::Span<const Individual> pop) const
 {
     SelectorBase::Prepare(pop);
     indices.resize(pop.size());

@@ -12,7 +12,7 @@
 
 namespace Operon {
 template<typename T>
-double NormalizedMeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
+double NormalizedMeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
@@ -21,14 +21,14 @@ double NormalizedMeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
     Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> a(x.data(), x.size());
     Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
     Eigen::Array<T, Eigen::Dynamic, 1> c = (a - b).square();
-    calc.Add(gsl::span<const T>(c.data(), c.size()), y);
+    calc.Add(Operon::Span<const T>(c.data(), c.size()), y);
     auto yvar = calc.NaiveVarianceY();
     auto errmean = calc.MeanX();
     return yvar > 0 ? errmean / yvar : yvar;
 }
 
 template<typename T>
-double MeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
+double MeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
@@ -37,12 +37,12 @@ double MeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
     Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
     Eigen::Array<T, Eigen::Dynamic, 1> c = (a - b).square();
     MeanVarianceCalculator mcalc;
-    mcalc.Add(gsl::span<T const>(c.data(), c.size()));
+    mcalc.Add(Operon::Span<T const>(c.data(), c.size()));
     return mcalc.Mean();
 }
 
 template<typename T>
-double MeanAbsoluteError(gsl::span<const T> x, gsl::span<const T> y)
+double MeanAbsoluteError(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
@@ -51,19 +51,19 @@ double MeanAbsoluteError(gsl::span<const T> x, gsl::span<const T> y)
     Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
     Eigen::Array<T, Eigen::Dynamic, 1> c = (a - b).abs();
     MeanVarianceCalculator mcalc;
-    mcalc.Add(gsl::span<T const>(c.data(), c.size()));
+    mcalc.Add(Operon::Span<T const>(c.data(), c.size()));
     return mcalc.Mean();
 }
 
 template<typename T>
-double RootMeanSquaredError(gsl::span<const T> x, gsl::span<const T> y)
+double RootMeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     return std::sqrt(MeanSquaredError(x, y));
 }
 
 template<typename T>
-double RSquared(gsl::span<const T> x, gsl::span<const T> y)
+double RSquared(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
@@ -76,7 +76,7 @@ double RSquared(gsl::span<const T> x, gsl::span<const T> y)
 
 struct MSE {
     template<typename T>
-    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return MeanSquaredError(x, y);
     }
@@ -84,7 +84,7 @@ struct MSE {
 
 struct NMSE {
     template<typename T>
-    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return NormalizedMeanSquaredError(x, y);
     }
@@ -92,7 +92,7 @@ struct NMSE {
 
 struct RMSE {
     template<typename T>
-    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return RootMeanSquaredError(x, y);
     }
@@ -100,7 +100,7 @@ struct RMSE {
 
 struct MAE {
     template<typename T>
-    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return MeanAbsoluteError(x, y);
     }
@@ -108,7 +108,7 @@ struct MAE {
 
 struct R2 {
     template<typename T>
-    double operator()(gsl::span<const T> x, gsl::span<const T> y) const noexcept
+    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return -RSquared(x, y);
     }

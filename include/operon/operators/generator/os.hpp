@@ -62,7 +62,7 @@ public:
     void ComparisonFactor(double value) { comparisonFactor = value; }
     double ComparisonFactor() const { return comparisonFactor; }
 
-    void Prepare(const gsl::span<const Individual> pop) const override
+    void Prepare(const Operon::Span<const Individual> pop) const override
     {
         OffspringGeneratorBase::Prepare(pop);
         lastEvaluations = this->Evaluator().FitnessEvaluations();

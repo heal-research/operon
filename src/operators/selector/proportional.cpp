@@ -12,7 +12,7 @@ ProportionalSelector::operator()(Operon::RandomGenerator& random) const
     return std::lower_bound(fitness.begin(), fitness.end(), std::make_pair(uniformReal(random), size_t{0}), std::less {})->second;
 }
 
-void ProportionalSelector::Prepare(const gsl::span<const Individual> pop) const
+void ProportionalSelector::Prepare(const Operon::Span<const Individual> pop) const
 {
     SelectorBase::Prepare(pop);
     Prepare();

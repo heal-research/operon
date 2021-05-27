@@ -10,7 +10,7 @@
 namespace Operon {
 class GrowTreeCreator final : public CreatorBase {
     public:
-        GrowTreeCreator(const PrimitiveSet& pset, const gsl::span<const Variable> variables)
+        GrowTreeCreator(const PrimitiveSet& pset, const Operon::Span<const Variable> variables)
             : CreatorBase(pset, variables) 
         { }
 

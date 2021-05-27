@@ -96,12 +96,12 @@ add_feature_info(CERES_TINY_SOLVER    CERES_TINY_SOLVER    ${CERES_TINY_SOLVER_D
 add_feature_info(CERES_ALWAYS_DOUBLE  CERES_ALWAYS_DOUBLE  ${CERES_ALWAYS_DOUBLE_DESCRIPTION})
 
 FetchContent_Declare(
-    gsl
-    GIT_REPOSITORY https://github.com/microsoft/GSL.git
-    GIT_TAG main
-    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/GSL
-    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/GSL
+    span-lite
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/span/include
+    URL https://raw.githubusercontent.com/martinmoene/span-lite/master/include/nonstd/span.hpp
+    DOWNLOAD_NO_EXTRACT 1
 )
+
 
 FetchContent_Declare(
     csv
@@ -163,21 +163,13 @@ FetchContent_Declare(
     SOURCE_DIR ${DOWNLOAD_DIR}
 )
 
-
-# populate gsl this way so we can pass EXCLUDE_FROM_ALL
-# (since by default it specifies an install cmake target polluting our install dir)
-if(NOT gsl_POPULATED)
-    FetchContent_Populate(gsl)
-    add_subdirectory(${gsl_SOURCE_DIR} ${gsl_BINARY_DIR} EXCLUDE_FROM_ALL)
-endif()
-
 if(NOT infix_parser_POPULATED)
     FetchContent_Populate(infix_parser)
     add_subdirectory(${infix_parser_SOURCE_DIR} ${infix_parser_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
 # populate content
-FetchContent_MakeAvailable(xxhash csv nanobench robin_hood pdqsort)
+FetchContent_MakeAvailable(xxhash csv nanobench robin_hood pdqsort span-lite)
 
 # populate optional content
 if (CERES_TINY_SOLVER)
@@ -191,6 +183,7 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${csv_SOURCE_DIR}
     ${gsl_SOURCE_DIR}/include
     ${nanobench_SOURCE_DIR}
+    ${span-lite_SOURCE_DIR}
     ${xxhash_SOURCE_DIR}
 )
 

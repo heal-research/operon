@@ -118,23 +118,23 @@ std::vector<std::string> Dataset::VariableNames()
     return names;
 }
 
-gsl::span<const Operon::Scalar> Dataset::GetValues(const std::string& name) const noexcept
+Operon::Span<const Operon::Scalar> Dataset::GetValues(const std::string& name) const noexcept
 {
     auto hashValue = Hasher<HashFunction::XXHash>{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size());
     return GetValues(hashValue);
 }
 
-gsl::span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue) const noexcept
+Operon::Span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
     auto idx = static_cast<Eigen::Index>(it->Index);
-    return gsl::span<const Operon::Scalar>(map.col(idx).data(), static_cast<size_t>(map.rows()));
+    return Operon::Span<const Operon::Scalar>(map.col(idx).data(), static_cast<size_t>(map.rows()));
 }
 
 // this method needs to take an int argument to differentiate it from GetValues(Operon::Hash)
-gsl::span<const Operon::Scalar> Dataset::GetValues(int index) const noexcept
+Operon::Span<const Operon::Scalar> Dataset::GetValues(int index) const noexcept
 {
-    return gsl::span<const Operon::Scalar>(map.col(index).data(), static_cast<size_t>(map.rows()));
+    return Operon::Span<const Operon::Scalar>(map.col(index).data(), static_cast<size_t>(map.rows()));
 }
 
 const std::optional<Variable> Dataset::GetVariable(const std::string& name) const noexcept
@@ -182,7 +182,7 @@ void Dataset::Standardize(size_t i, Range range)
     auto n = static_cast<Eigen::Index>(range.Size());
     auto seg = values.col(j).segment(start, n);
     MeanVarianceCalculator calc;
-    auto vals = gsl::span<const Operon::Scalar>(seg.data(), range.Size());
+    auto vals = Operon::Span<const Operon::Scalar>(seg.data(), range.Size());
     calc.Add(vals);
     values.col(j) = (values.col(j).array() - calc.Mean()) / calc.NaiveStandardDeviation();
 }

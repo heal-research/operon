@@ -14,7 +14,7 @@ namespace Operon {
 // if the depth is not limiting, the target length is guaranteed to be reached
 class BalancedTreeCreator final : public CreatorBase {
 public:
-    BalancedTreeCreator(PrimitiveSet const& pset, const gsl::span<const Variable> variables, double bias = 0.0) 
+    BalancedTreeCreator(PrimitiveSet const& pset, const Operon::Span<const Variable> variables, double bias = 0.0) 
         : CreatorBase(pset, variables)
         , irregularityBias(bias)
     { }

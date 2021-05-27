@@ -40,8 +40,8 @@ namespace Test {
         nb::Bench bench;
         bench.title("Stat").batch(N).performanceCounters(true).minEpochIterations(100);
 
-        gsl::span<Operon::Scalar const> xx(x.data(), x.size());
-        gsl::span<Operon::Scalar const> yy(y.data(), y.size());
+        Operon::Span<Operon::Scalar const> xx(x.data(), x.size());
+        Operon::Span<Operon::Scalar const> yy(y.data(), y.size());
 
         auto [a1, b1] = Operon::LinearScalingCalculator::Calculate(xx.begin(), xx.end(), yy.begin());
         auto [a2, b2] = Operon::LinearScalingCalculator::Calculate(xx, yy);
@@ -73,13 +73,13 @@ namespace Test {
 
         bench.run("corr batch", [&]() {
             calc.Reset();
-            calc.Add(gsl::span<Operon::Scalar const>(x.data(), x.size()), gsl::span<Operon::Scalar const>(y.data(), y.size()));
+            calc.Add(Operon::Span<Operon::Scalar const>(x.data(), x.size()), Operon::Span<Operon::Scalar const>(y.data(), y.size()));
             f += calc.Correlation();
         });
 
         bench.run("var batch", [&]() {
             Operon::MeanVarianceCalculator mv;
-            mv.Add(gsl::span<Operon::Scalar const>(x.data(), x.size()));
+            mv.Add(Operon::Span<Operon::Scalar const>(x.data(), x.size()));
             f += mv.NaiveVariance();
         });
 
@@ -106,7 +106,7 @@ namespace Test {
             bench.batch(s).run("univariate float/float " + std::to_string(s), [&]() {
                 ++count;
                 Operon::MeanVarianceCalculator mv;
-                mv.Add(gsl::span<decltype(xf)::value_type const>(xf.data(), size_t(s)));
+                mv.Add(Operon::Span<decltype(xf)::value_type const>(xf.data(), size_t(s)));
                 var += mv.NaiveVariance();
             });
         }
@@ -116,7 +116,7 @@ namespace Test {
             bench.batch(s).run("univariate double/double " + std::to_string(s), [&]() {
                 ++count;
                 Operon::MeanVarianceCalculator mv;
-                mv.Add(gsl::span<decltype(xd)::value_type const>(xd.data(), size_t(s)));
+                mv.Add(Operon::Span<decltype(xd)::value_type const>(xd.data(), size_t(s)));
                 var += mv.NaiveVariance();
             });
         }
@@ -127,7 +127,7 @@ namespace Test {
             bench.batch(s).run("bivariate float/float " + std::to_string(s), [&]() {
                 ++count;
                 Operon::PearsonsRCalculator pc;
-                pc.Add(gsl::span<decltype(xf)::value_type const>(xf.data(), s), gsl::span<decltype(yf)::value_type const>(yf.data(), s));
+                pc.Add(Operon::Span<decltype(xf)::value_type const>(xf.data(), s), Operon::Span<decltype(yf)::value_type const>(yf.data(), s));
                 corr += pc.Correlation();
             });
         }
@@ -137,7 +137,7 @@ namespace Test {
             bench.batch(s).run("bivariate double/double" + std::to_string(s), [&]() {
                 ++count;
                 Operon::PearsonsRCalculator pc;
-                pc.Add(gsl::span<decltype(xd)::value_type const>(xd.data(), s), gsl::span<decltype(yd)::value_type const>(yd.data(), s));
+                pc.Add(Operon::Span<decltype(xd)::value_type const>(xd.data(), s), Operon::Span<decltype(yd)::value_type const>(yd.data(), s));
                 corr += pc.Correlation();
             });
         }

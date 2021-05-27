@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
-#include <core/node.hpp>
 #include <pybind11/eigen.h>
 #include <pybind11/functional.h>
 #include <pybind11/numpy.h>
@@ -18,6 +17,7 @@
 #include "core/dataset.hpp"
 #include "core/format.hpp"
 #include "core/individual.hpp"
+#include "core/node.hpp"
 #include "core/pset.hpp"
 #include "core/metrics.hpp"
 #include "core/operator.hpp"
@@ -42,7 +42,7 @@ using UniformInitializer          = Operon::Initializer<std::uniform_int_distrib
 using GeneticProgrammingAlgorithm = Operon::GeneticProgrammingAlgorithm<UniformInitializer>;
 
 template<typename T>
-py::array_t<T const> MakeView(gsl::span<T const> view)
+py::array_t<T const> MakeView(Operon::Span<T const> view)
 {
     auto sz = static_cast<pybind11::ssize_t>(view.size());
     py::array_t<T const> arr(sz, view.data(), py::capsule(view.data()));
@@ -52,19 +52,19 @@ py::array_t<T const> MakeView(gsl::span<T const> view)
 }
 
 template<typename T>
-gsl::span<T> MakeSpan(py::array_t<T> arr)
+Operon::Span<T> MakeSpan(py::array_t<T> arr)
 {
     py::buffer_info info = arr.request();
-    using size_type = gsl::span<const Operon::Scalar>::size_type;
-    return gsl::span<T>(static_cast<T*>(info.ptr), static_cast<size_type>(info.size));
+    using size_type = Operon::Span<const Operon::Scalar>::size_type;
+    return Operon::Span<T>(static_cast<T*>(info.ptr), static_cast<size_type>(info.size));
 }
 
 template<typename T>
-gsl::span<T const> MakeConstSpan(py::array_t<T> arr)
+Operon::Span<T const> MakeConstSpan(py::array_t<T> arr)
 {
     py::buffer_info info = arr.request();
-    using size_type = gsl::span<const Operon::Scalar>::size_type;
-    return gsl::span<T const>(static_cast<T const*>(info.ptr), static_cast<size_type>(info.size));
+    using size_type = Operon::Span<const Operon::Scalar>::size_type;
+    return Operon::Span<T const>(static_cast<T const*>(info.ptr), static_cast<size_type>(info.size));
 }
 
 void init_algorithm(py::module_&);

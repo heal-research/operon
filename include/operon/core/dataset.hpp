@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <Eigen/Dense>
 #include <exception>
-#include <gsl/util>
 #include <numeric>
 #include <vector>
 #include <optional>
@@ -108,15 +107,15 @@ public:
     std::vector<std::string> VariableNames();
     void SetVariableNames(std::vector<std::string> const&);
 
-    gsl::span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
-    gsl::span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
-    gsl::span<const Operon::Scalar> GetValues(int index) const noexcept;
-    gsl::span<const Operon::Scalar> GetValues(Variable const& variable) const noexcept { return GetValues(variable.Hash); }
+    Operon::Span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
+    Operon::Span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
+    Operon::Span<const Operon::Scalar> GetValues(int index) const noexcept;
+    Operon::Span<const Operon::Scalar> GetValues(Variable const& variable) const noexcept { return GetValues(variable.Hash); }
 
     const std::optional<Variable> GetVariable(const std::string& name) const noexcept;
     const std::optional<Variable> GetVariable(Operon::Hash hashValue) const noexcept;
 
-    gsl::span<const Variable> Variables() const noexcept { return gsl::span<const Variable>(variables.data(), variables.size()); }
+    Operon::Span<const Variable> Variables() const noexcept { return Operon::Span<const Variable>(variables.data(), variables.size()); }
 
     void Shuffle(Operon::RandomGenerator& random);
 

@@ -4,8 +4,6 @@
 #ifndef OPERON_REINSERTER_KEEP_BEST
 #define OPERON_REINSERTER_KEEP_BEST
 
-#include <execution>
-
 #include "core/operator.hpp"
 #include "pdqsort.h"
 
