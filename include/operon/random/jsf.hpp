@@ -70,8 +70,8 @@ namespace Random {
 
     public:
         using result_type = rand_t<N>;
-        static inline result_type min() { return result_type { 0 }; }
-        static inline result_type max() { return std::numeric_limits<result_type>::max(); }
+        static constexpr result_type min() { return result_type { 0 }; }
+        static constexpr result_type max() { return std::numeric_limits<result_type>::max(); }
 
         explicit JsfRand(result_type seed = 0xdeadbeef) noexcept
             : a { 0xf1ea5eed }
@@ -85,8 +85,15 @@ namespace Random {
             }
         }
 
+        // disallow copying (to prevent misuse)
         JsfRand(JsfRand const&) = delete;
         JsfRand& operator=(JsfRand const&) = delete;
+
+        // allow moving
+        JsfRand(JsfRand&&) noexcept = default;
+        JsfRand& operator=(JsfRand&&) noexcept = default;
+
+        ~JsfRand() noexcept = default;
 
         inline rand_t<N> operator()() noexcept
         {
