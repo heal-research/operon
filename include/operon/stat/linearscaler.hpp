@@ -34,7 +34,7 @@ namespace Operon {
             double Scale() const { return scale; }
             double Offset() const { return offset; }
 
-            template <typename InputIt1, typename InputIt2, typename U = typename InputIt1::value_type>
+            template <typename InputIt1, typename InputIt2, typename U = typename std::iterator_traits<InputIt1>::value_type>
             static std::pair<double, double> Calculate(InputIt1 xBegin, InputIt1 xEnd, InputIt2 yBegin)
             {
                 static_assert(std::is_floating_point_v<U>);
@@ -46,7 +46,7 @@ namespace Operon {
             }
 
             template<typename T>
-            static inline std::pair<double, double> Calculate(gsl::span<T const> lhs, gsl::span<T const> rhs)
+            static inline std::pair<double, double> Calculate(Operon::Span<T const> lhs, Operon::Span<T const> rhs)
             {
                 EXPECT(lhs.size() == rhs.size());
                 EXPECT(lhs.size() > 0);

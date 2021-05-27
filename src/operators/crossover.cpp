@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
 #include "operators/crossover.hpp"
-#include <random>
 
 namespace Operon {
 

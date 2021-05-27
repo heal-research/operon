@@ -24,7 +24,7 @@ public:
         target = dataset.Variables().back();
     }
 
-    Problem(Dataset const& ds, gsl::span<const Variable> inputs, Variable const& targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 })
+    Problem(Dataset const& ds, Operon::Span<const Variable> inputs, Variable const& targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 })
         : dataset(ds)
         , training(trainingRange)
         , test(testRange)
@@ -69,7 +69,7 @@ public:
         return *this;
     }
 
-    Problem& Inputs(gsl::span<const Variable> inputs) {
+    Problem& Inputs(Operon::Span<const Variable> inputs) {
         inputVariables.clear();
         std::copy(inputs.begin(), inputs.end(), std::back_inserter(inputVariables));
         return *this;
@@ -98,8 +98,8 @@ public:
     const Dataset& GetDataset() const { return dataset; }
     Dataset& GetDataset() { return dataset; }
 
-    const gsl::span<const Variable> InputVariables() const { return inputVariables; }
-    const gsl::span<const Operon::Scalar> TargetValues() { return dataset.GetValues(target.Hash); }
+    const Operon::Span<const Variable> InputVariables() const { return inputVariables; }
+    const Operon::Span<const Operon::Scalar> TargetValues() { return dataset.GetValues(target.Hash); }
 
     void StandardizeData(Range range)
     {

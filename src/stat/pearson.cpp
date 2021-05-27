@@ -23,7 +23,7 @@
 
 namespace Operon {
     template<typename T>
-    void PearsonsRCalculator::Add(gsl::span<const T> x, gsl::span<const T> y)
+    void PearsonsRCalculator::Add(Operon::Span<const T> x, Operon::Span<const T> y)
     {
         constexpr int N = 4;
 
@@ -87,14 +87,14 @@ namespace Operon {
     // https://isocpp.org/wiki/faq/templates#separate-template-fn-defn-from-decl
     template void   PearsonsRCalculator::Add<float>(float, float);
     template void   PearsonsRCalculator::Add<float>(float, float, float);
-    template double PearsonsRCalculator::Coefficient<float>(gsl::span<const float>, gsl::span<const float>);
-    template void   PearsonsRCalculator::Add<float>(gsl::span<const float>, gsl::span<const float>);
-    template double PearsonsRCalculator::WeightedCoefficient<float>(gsl::span<const float>, gsl::span<const float>, gsl::span<const float>);
+    template double PearsonsRCalculator::Coefficient<float>(Operon::Span<const float>, Operon::Span<const float>);
+    template void   PearsonsRCalculator::Add<float>(Operon::Span<const float>, Operon::Span<const float>);
+    template double PearsonsRCalculator::WeightedCoefficient<float>(Operon::Span<const float>, Operon::Span<const float>, Operon::Span<const float>);
     template void   PearsonsRCalculator::Add<double>(double, double);
     template void   PearsonsRCalculator::Add<double>(double, double, double);
-    template double PearsonsRCalculator::Coefficient<double>(gsl::span<const double>, gsl::span<const double>);
-    template void   PearsonsRCalculator::Add<double>(gsl::span<const double>, gsl::span<const double>);
-    template double PearsonsRCalculator::WeightedCoefficient<double>(gsl::span<const double>, gsl::span<const double>, gsl::span<const double>);
+    template double PearsonsRCalculator::Coefficient<double>(Operon::Span<const double>, Operon::Span<const double>);
+    template void   PearsonsRCalculator::Add<double>(Operon::Span<const double>, Operon::Span<const double>);
+    template double PearsonsRCalculator::WeightedCoefficient<double>(Operon::Span<const double>, Operon::Span<const double>, Operon::Span<const double>);
 }
 
 

@@ -11,7 +11,7 @@ namespace Operon {
 
 class ProbabilisticTreeCreator final : public CreatorBase {
 public:
-    ProbabilisticTreeCreator(const PrimitiveSet& pset, const gsl::span<const Variable> variables, double bias = 0.0)
+    ProbabilisticTreeCreator(const PrimitiveSet& pset, const Operon::Span<const Variable> variables, double bias = 0.0)
         : CreatorBase(pset, variables)
         , irregularityBias(bias)
     {

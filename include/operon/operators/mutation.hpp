@@ -32,7 +32,7 @@ private:
 };
 
 struct ChangeVariableMutation : public MutatorBase {
-    ChangeVariableMutation(const gsl::span<const Variable> vars)
+    ChangeVariableMutation(const Operon::Span<const Variable> vars)
         : variables(vars)
     {
     }
@@ -40,7 +40,7 @@ struct ChangeVariableMutation : public MutatorBase {
     Tree operator()(Operon::RandomGenerator&, Tree) const override;
 
 private:
-    const gsl::span<const Variable> variables;
+    const Operon::Span<const Variable> variables;
 };
 
 struct ChangeFunctionMutation : public MutatorBase {

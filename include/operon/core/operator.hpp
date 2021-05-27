@@ -4,7 +4,6 @@
 #ifndef OPERATOR_HPP
 #define OPERATOR_HPP
 
-#include "gsl/gsl"
 #include <atomic>
 #include <random>
 #include <type_traits>
@@ -33,7 +32,7 @@ struct OperatorBase {
 // the creator builds a new tree using the existing pset and allowed inputs
 struct CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
 public:
-    CreatorBase(const PrimitiveSet& pset, const gsl::span<const Variable> variables)
+    CreatorBase(const PrimitiveSet& pset, const Operon::Span<const Variable> variables)
         : pset_(pset)
         , variables_(variables)
     {
@@ -41,7 +40,7 @@ public:
 
 protected:
     std::reference_wrapper<const PrimitiveSet> pset_;
-    const gsl::span<const Variable> variables_;
+    const Operon::Span<const Variable> variables_;
 };
 
 // crossover takes two parent trees and returns a child
@@ -65,19 +64,19 @@ public:
 
     explicit SelectorBase(ComparisonCallback const& cb) : comp(cb) { }
 
-    virtual void Prepare(const gsl::span<const Individual> pop) const
+    virtual void Prepare(const Operon::Span<const Individual> pop) const
     {
-        this->population = gsl::span<const Individual>(pop);
+        this->population = Operon::Span<const Individual>(pop);
     };
 
-    gsl::span<const Individual> Population() const { return population; }
+    Operon::Span<const Individual> Population() const { return population; }
 
     bool Compare(Individual const& lhs, Individual const& rhs) const { 
         return comp(lhs, rhs); 
     }
 
 protected:
-    mutable gsl::span<const Individual> population;
+    mutable Operon::Span<const Individual> population;
     ComparisonCallback comp;
 };
 
@@ -112,7 +111,7 @@ public:
     {
     }
 
-    virtual void Prepare(const gsl::span<const Individual> pop, size_t idx = 0)
+    virtual void Prepare(const Operon::Span<const Individual> pop, size_t idx = 0)
     {
         population = pop;
         objIndex = idx;
@@ -135,7 +134,7 @@ public:
     }
 
 protected:
-    gsl::span<const Individual> population;
+    Operon::Span<const Individual> population;
     std::reference_wrapper<const Problem> problem;
     mutable std::atomic_ulong fitnessEvaluations = 0;
     mutable std::atomic_ulong localEvaluations = 0;
@@ -162,7 +161,7 @@ public:
     MutatorBase& Mutator() const { return mutator.get(); }
     EvaluatorBase& Evaluator() const { return evaluator.get(); }
 
-    virtual void Prepare(gsl::span<const Individual> pop) const
+    virtual void Prepare(Operon::Span<const Individual> pop) const
     {
         this->FemaleSelector().Prepare(pop);
         this->MaleSelector().Prepare(pop);
@@ -180,7 +179,7 @@ protected:
 template <typename T>
 class PopulationAnalyzerBase : public OperatorBase<double> {
 public:
-    virtual void Prepare(gsl::span<const T> pop) = 0;
+    virtual void Prepare(Operon::Span<const T> pop) = 0;
 };
 } // namespace Operon
 #endif

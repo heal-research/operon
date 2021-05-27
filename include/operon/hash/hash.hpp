@@ -5,13 +5,10 @@
 #define OPERON_HASH_HPP
 
 #include "core/constants.hpp"
-
 #include "metrohash64.hpp"
 
 #define XXH_INLINE_ALL
 #include <xxhash.h>
-
-#include "gsl/gsl"
 
 namespace Operon {
 

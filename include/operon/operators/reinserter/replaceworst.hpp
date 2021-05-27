@@ -4,8 +4,6 @@
 #ifndef OPERON_REINSERTER_REPLACE_WORST
 #define OPERON_REINSERTER_REPLACE_WORST
 
-#include <cstddef>
-
 #include "core/operator.hpp"
 #include "pdqsort.h"
 

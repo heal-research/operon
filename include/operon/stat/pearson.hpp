@@ -7,7 +7,6 @@
 #include <cmath>
 
 #include "core/common.hpp"
-#include "gsl/span"
 
 namespace Operon {
 namespace detail {
@@ -86,19 +85,19 @@ public:
     }
 
     template <typename T>
-    void Add(gsl::span<const T> x, gsl::span<const T> y);
+    void Add(Operon::Span<const T> x, Operon::Span<const T> y);
 
     // forwarding methods
     template <typename T>
     void Add(std::vector<T> const& x, std::vector<T> const& y)
     {
-        return Add(gsl::span<const T>(x), gsl::span<const T>(y));
+        return Add(Operon::Span<const T>(x), Operon::Span<const T>(y));
     }
 
     template <typename T>
     void Add(Operon::Vector<T> const& x, Operon::Vector<T> const& y)
     {
-        return Add(gsl::span<const T>(x), gsl::span<const T>(y));
+        return Add(Operon::Span<const T>(x), Operon::Span<const T>(y));
     }
 
     double Correlation() const
@@ -146,7 +145,7 @@ public:
     double SumXY() const { return sumXY; }
 
     template <typename T>
-    static double Coefficient(gsl::span<const T> x, gsl::span<const T> y)
+    static double Coefficient(Operon::Span<const T> x, Operon::Span<const T> y)
     {
         auto xdim = x.size();
         auto ydim = y.size();
@@ -183,7 +182,7 @@ public:
     }
 
     template <typename T>
-    static double WeightedCoefficient(gsl::span<const T> x, gsl::span<const T> y, gsl::span<const T> weights)
+    static double WeightedCoefficient(Operon::Span<const T> x, Operon::Span<const T> y, Operon::Span<const T> weights)
     {
         auto xdim = x.size();
         auto ydim = y.size();

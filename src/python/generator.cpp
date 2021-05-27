@@ -19,7 +19,7 @@ void init_generator(py::module_ &m)
             py::arg("mutation_probability")
         )
         .def("Prepare", [](Operon::BasicOffspringGenerator& self, std::vector<Operon::Individual> const& individuals) {
-            gsl::span<const Operon::Individual> s(individuals.data(), individuals.size());
+            Operon::Span<const Operon::Individual> s(individuals.data(), individuals.size());
             self.Prepare(s);
         })
         .def("__call__", [](Operon::BasicOffspringGenerator& self, Operon::RandomGenerator& rng, double pc, double pm, size_t n) {
@@ -42,7 +42,7 @@ void init_generator(py::module_ &m)
             py::arg("mutation_probability")
         )
         .def("Prepare", [](Operon::OffspringSelectionGenerator& self, std::vector<Operon::Individual> const& individuals) {
-            gsl::span<const Operon::Individual> s(individuals.data(), individuals.size());
+            Operon::Span<const Operon::Individual> s(individuals.data(), individuals.size());
             self.Prepare(s);
         })
         .def("__call__", [](Operon::OffspringSelectionGenerator& self, Operon::RandomGenerator& rng, double pc, double pm, size_t n) {
@@ -74,7 +74,7 @@ void init_generator(py::module_ &m)
             py::arg("mutation_probability")
         )
         .def("Prepare", [](Operon::BroodOffspringGenerator& self, std::vector<Operon::Individual> const& individuals) {
-            gsl::span<const Operon::Individual> s(individuals.data(), individuals.size());
+            Operon::Span<const Operon::Individual> s(individuals.data(), individuals.size());
             self.Prepare(s);
         })
         .def("__call__", [](Operon::BroodOffspringGenerator& self, Operon::RandomGenerator& rng, double pc, double pm, size_t n) {
@@ -101,7 +101,7 @@ void init_generator(py::module_ &m)
             py::arg("mutation_probability")
         )
         .def("Prepare", [](Operon::PolygenicOffspringGenerator& self, std::vector<Operon::Individual> const& individuals) {
-            gsl::span<const Operon::Individual> s(individuals.data(), individuals.size());
+            Operon::Span<const Operon::Individual> s(individuals.data(), individuals.size());
             self.Prepare(s);
         })
         .def("__call__", [](Operon::PolygenicOffspringGenerator& self, Operon::RandomGenerator& rng, double pc, double pm, size_t n) {
