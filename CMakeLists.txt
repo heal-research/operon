@@ -13,6 +13,9 @@ project(
     LANGUAGES CXX
 )
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+
 find_package(Git)
 find_package(cxxopts)
 find_package(fmt)
@@ -152,6 +155,15 @@ FetchContent_Declare(
     SOURCE_DIR ${DOWNLOAD_DIR}
 )
 
+FetchContent_Declare(
+    pdqsort
+    URL https://raw.githubusercontent.com/orlp/pdqsort/master/pdqsort.h
+    DOWNLOAD_NO_EXTRACT 1
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/pdqsort
+    SOURCE_DIR ${DOWNLOAD_DIR}
+)
+
+
 # populate gsl this way so we can pass EXCLUDE_FROM_ALL
 # (since by default it specifies an install cmake target polluting our install dir)
 if(NOT gsl_POPULATED)
@@ -165,7 +177,7 @@ if(NOT infix_parser_POPULATED)
 endif()
 
 # populate content
-FetchContent_MakeAvailable(xxhash csv nanobench robin_hood)
+FetchContent_MakeAvailable(xxhash csv nanobench robin_hood pdqsort)
 
 # populate optional content
 if (CERES_TINY_SOLVER)
@@ -174,6 +186,7 @@ endif()
 
 set(THIRDPARTY_INCLUDE_DIRS
     ${PRATT_PARSER_INCLUDE_DIRS}
+    ${PROJECT_SOURCE_DIR}/thirdparty/pdqsort
     ${ceres_tiny_solver_SOURCE_DIR}
     ${csv_SOURCE_DIR}
     ${gsl_SOURCE_DIR}/include
@@ -235,6 +248,8 @@ if(USE_SINGLE_PRECISION)
     message(STATUS "Option USE_SINGLE_PRECISION was specified, single-precision model evaluation will be used.")
 endif()
 
+# removes the need to specify -DCMAKE_EXPORT_COMPILE_COMMANDS=ON in the cli
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
     set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
 endif()

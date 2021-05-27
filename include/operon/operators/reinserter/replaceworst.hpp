@@ -4,11 +4,12 @@
 #ifndef OPERON_REINSERTER_REPLACE_WORST
 #define OPERON_REINSERTER_REPLACE_WORST
 
-#include "core/operator.hpp"
 #include <cstddef>
 
+#include "core/operator.hpp"
+#include "pdqsort.h"
+
 namespace Operon {
-template <typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class ReplaceWorstReinserter : public ReinserterBase {
     public:
         explicit ReplaceWorstReinserter(ComparisonCallback&& cb) : ReinserterBase(cb) { }
@@ -21,12 +22,12 @@ class ReplaceWorstReinserter : public ReinserterBase {
                 return;
             }
 
-            ExecutionPolicy ep;
             if (pop.size() > pool.size()) {
-                std::sort(ep, pop.begin(), pop.end(), this->comp);
+                pdqsort(pop.begin(), pop.end(), this->comp);
             } else if (pop.size() < pool.size()) {
-                std::sort(ep, pool.begin(), pool.end(), this->comp);
+                pdqsort(pool.begin(), pool.end(), this->comp);
             }
+
             auto offset = static_cast<std::ptrdiff_t>(std::min(pop.size(), pool.size()));
             std::swap_ranges(pool.begin(), pool.begin() + offset, pop.end() - offset);
         }

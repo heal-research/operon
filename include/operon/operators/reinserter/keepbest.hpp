@@ -7,23 +7,21 @@
 #include <execution>
 
 #include "core/operator.hpp"
+#include "pdqsort.h"
 
 namespace Operon {
-template <typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
 class KeepBestReinserter : public ReinserterBase {
     public:
         explicit KeepBestReinserter(ComparisonCallback&& cb) : ReinserterBase(cb) { }
         explicit KeepBestReinserter(ComparisonCallback const& cb) : ReinserterBase(cb) { }
         // keep the best |pop| individuals from pop+pool
         void operator()(Operon::RandomGenerator&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
-            ExecutionPolicy ep;
             // sort the population and the recombination pool
-            std::sort(ep, pop.begin(), pop.end(), this->comp);
-            std::sort(ep, pool.begin(), pool.end(), this->comp);
+            pdqsort(pop.begin(), pop.end(), this->comp);
+            pdqsort(pool.begin(), pool.end(), this->comp);
 
             // merge the best individuals from pop+pool into pop
             size_t i = 0, j = 0;
-
             while (i < pool.size() && j < pop.size()) {
                 if (this->comp(pool[i], pop[j])) {
                     std::swap(pool[i], pop[j]);

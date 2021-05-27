@@ -402,13 +402,13 @@ int main(int argc, char** argv)
         }
         std::unique_ptr<Reinserter> reinserter;
         if (result.count("reinserter") == 0) {
-            reinserter.reset(new ReplaceWorstReinserter<>(comp));
+            reinserter.reset(new ReplaceWorstReinserter(comp));
         } else {
             auto value = result["reinserter"].as<std::string>();
             if (value == "keep-best") {
-                reinserter.reset(new KeepBestReinserter<>(comp));
+                reinserter.reset(new KeepBestReinserter(comp));
             } else if (value == "replace-worst") {
-                reinserter.reset(new ReplaceWorstReinserter<>(comp));
+                reinserter.reset(new ReplaceWorstReinserter(comp));
             }
         }
 
