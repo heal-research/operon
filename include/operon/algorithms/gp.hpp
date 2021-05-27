@@ -77,15 +77,17 @@ public:
         // easier to work with indices
         std::vector<size_t> indices(std::max(config.PopulationSize, config.PoolSize));
         std::iota(indices.begin(), indices.end(), 0L);
-        // random seeds for each thread
-        std::vector<Operon::RandomGenerator::result_type> seeds(indices.size());
-        std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
+        // one rng per thread
+        size_t s = std::max(config.PopulationSize, config.PoolSize);
+        std::vector<Operon::RandomGenerator> rngs;
+        for (size_t i = 0; i < s; ++i) {
+            rngs.emplace_back(random());
+        }
 
         auto idx = 0;
         auto create = [&](size_t i) {
             // create one random generator per thread
-            Operon::RandomGenerator rndlocal { seeds[i] };
-            parents[i].Genotype = initializer(rndlocal);
+            parents[i].Genotype = initializer(rngs[i]);
             parents[i][idx] = Operon::Numeric::Max<Operon::Scalar>();
         };
         const auto& evaluator = generator.Evaluator();
@@ -111,14 +113,12 @@ public:
         std::atomic_bool terminate = false;
         // produce some offspring
         auto iterate = [&](size_t i) {
-            Operon::RandomGenerator rndlocal { seeds[i] };
-
             while (!(terminate = generator.Terminate())) {
                 auto t1 = std::chrono::steady_clock::now();
                 double elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()) / 1e3;
                 terminate = elapsed > config.TimeLimit;
 
-                if (auto result = generator(rndlocal, config.CrossoverProbability, config.MutationProbability); result.has_value()) {
+                if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability); result.has_value()) {
                     offspring[i] = std::move(result.value());
                     return;
                 }
@@ -130,8 +130,6 @@ public:
             std::invoke(report);
 
         for (generation = 1; generation <= config.Generations; ++generation) {
-            // get some new seeds
-            std::generate(seeds.begin(), seeds.end(), [&]() { return random(); });
             // preserve one elite
             auto best = std::min_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; });
             offspring[0] = *best;
