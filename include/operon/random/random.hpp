@@ -8,6 +8,7 @@
 #include "random/jsf.hpp"
 #include "random/romu.hpp"
 #include "random/sfc64.hpp"
+#include "random/wyrand.hpp"
 
 #include <algorithm>
 #include <random>
@@ -17,7 +18,7 @@
 
 namespace Operon::Random {
 template<typename R, typename T>
-T Uniform(R& random, T a, T b) 
+T Uniform(R& random, T a, T b)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     if constexpr(std::is_integral_v<T>) {
