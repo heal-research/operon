@@ -7,7 +7,8 @@
 #include "core/constants.hpp"
 #include "core/types.hpp"
 #include "hash/hash.hpp"
-#include <rapidcsv.h>
+#include <csv/parser.hpp>
+#include <fast_float/fast_float.h>
 
 namespace Operon {
 
@@ -29,35 +30,56 @@ namespace {
 
 Dataset::Matrix Dataset::ReadCsv(std::string const& path, bool hasHeader)
 {
-    rapidcsv::Document doc(path, rapidcsv::LabelParams(hasHeader-1, -1));
+    std::ifstream f(path);
+    aria::csv::CsvParser parser(f);
 
-    // get row and column count
-    size_t nrow = doc.GetRowCount();
-    size_t ncol = doc.GetColumnCount();
+    auto nrow = std::count(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>(), '\n');
+    // rewind the ifstream
+    f.clear();
+    f.seekg(0);
 
-    // fix column names and initialize the variables
-    // allocate and fill in values
+    auto ncol = 0ul;
+
+    Hasher<HashFunction::XXHash> hash;
+    Matrix m;
+
     if (hasHeader) {
-        auto names = doc.GetColumnNames();
-
-        Hasher<HashFunction::XXHash> hash;
-
-        variables.resize(ncol);
-        for (size_t i = 0; i < ncol; ++i) {
-            auto h = hash(reinterpret_cast<uint8_t const*>(names[i].c_str()), names[i].size());
-            Variable v { names[i], h, i };
-            variables[i] = v;
+        --nrow; // for matrix allocation, don't care about column names
+        for (auto& row : parser) {
+            for (auto& field : row) {
+                auto h = hash(reinterpret_cast<uint8_t const*>(field.c_str()), field.size());
+                Variable v { field, h, ncol++ };
+                variables.push_back(v);
+            }
+            break; // read only the first row
         }
         std::sort(variables.begin(), variables.end(), [](auto& a, auto& b) { return a.Hash < b.Hash; });
-    } else {
-        variables = defaultVariables(ncol);
+        m.resize(nrow, ncol);
     }
-    Matrix m(nrow, ncol);
-    for (size_t i = 0; i < ncol; ++i) {
-        auto col = m.col((Eigen::Index)i);
-        for (size_t j = 0; j < nrow; ++j) {
-            col((Eigen::Index)j) = doc.GetCell<Operon::Scalar>(i, j);
+
+    std::vector<Operon::Scalar> vec;
+    size_t rowIdx = 0;
+
+    for (auto& row : parser) {
+        size_t fieldIdx = 0;
+        for (auto& field : row) {
+            Operon::Scalar v;
+            auto status = fast_float::from_chars(field.data(), field.data() + field.size(), v);
+            if(status.ec != std::errc()) {
+                throw std::runtime_error(fmt::format("failed to parse field {} at line {}\n", fieldIdx, rowIdx));
+            }
+            vec.push_back(v);
+            ++fieldIdx;
         }
+        if (ncol == 0) {
+            ENSURE(!hasHeader);
+            ncol = vec.size();
+            m.resize(nrow, ncol);
+            variables = defaultVariables(ncol);
+        }
+        m.row(rowIdx) = Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>>(vec.data(), vec.size());
+        vec.clear();
+        ++rowIdx;
     }
     return m;
 }
@@ -89,7 +111,7 @@ Dataset::Dataset(Matrix const& vals)
 
 Dataset::Dataset(Eigen::Ref<Matrix const> ref)
     : variables(defaultVariables((size_t)ref.cols()))
-    , map(ref.data(), ref.rows(), ref.cols()) 
+    , map(ref.data(), ref.rows(), ref.cols())
 {
 }
 
@@ -127,6 +149,7 @@ Operon::Span<const Operon::Scalar> Dataset::GetValues(const std::string& name) c
 Operon::Span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
+    ENSURE(it != variables.end());
     auto idx = static_cast<Eigen::Index>(it->Index);
     return Operon::Span<const Operon::Scalar>(map.col(idx).data(), static_cast<size_t>(map.rows()));
 }
@@ -137,16 +160,16 @@ Operon::Span<const Operon::Scalar> Dataset::GetValues(int index) const noexcept
     return Operon::Span<const Operon::Scalar>(map.col(index).data(), static_cast<size_t>(map.rows()));
 }
 
-const std::optional<Variable> Dataset::GetVariable(const std::string& name) const noexcept
+std::optional<Variable> Dataset::GetVariable(const std::string& name) const noexcept
 {
     auto hashValue = Hasher<HashFunction::XXHash>{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size());
     return GetVariable(hashValue);
 }
 
-const std::optional<Variable> Dataset::GetVariable(Operon::Hash hashValue) const noexcept
+std::optional<Variable> Dataset::GetVariable(Operon::Hash hashValue) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
-    return it < variables.end() ? std::make_optional(*it) : std::nullopt; 
+    return it < variables.end() ? std::make_optional(*it) : std::nullopt;
 }
 
 void Dataset::Shuffle(Operon::RandomGenerator& random)
@@ -187,4 +210,3 @@ void Dataset::Standardize(size_t i, Range range)
     values.col(j) = (values.col(j).array() - calc.Mean()) / calc.NaiveStandardDeviation();
 }
 } // namespace Operon
-

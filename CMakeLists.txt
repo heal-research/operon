@@ -102,11 +102,10 @@ FetchContent_Declare(
     DOWNLOAD_NO_EXTRACT 1
 )
 
-
 FetchContent_Declare(
     csv
-    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
-    URL https://raw.githubusercontent.com/d99kris/rapidcsv/master/src/rapidcsv.h
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include/csv
+    URL https://raw.githubusercontent.com/AriaFallah/csv-parser/master/parser.hpp
     DOWNLOAD_NO_EXTRACT 1
 )
 
@@ -163,13 +162,22 @@ FetchContent_Declare(
     SOURCE_DIR ${DOWNLOAD_DIR}
 )
 
+
+FetchContent_Declare(
+    fast_float
+    GIT_REPOSITORY https://github.com/fastfloat/fast_float
+    GIT_TAG main
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/fast_float
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/fast_float
+)
+
 if(NOT infix_parser_POPULATED)
     FetchContent_Populate(infix_parser)
     add_subdirectory(${infix_parser_SOURCE_DIR} ${infix_parser_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
 # populate content
-FetchContent_MakeAvailable(xxhash csv nanobench robin_hood pdqsort span-lite)
+FetchContent_MakeAvailable(xxhash csv nanobench robin_hood pdqsort span-lite fast_float)
 
 # populate optional content
 if (CERES_TINY_SOLVER)
@@ -178,9 +186,10 @@ endif()
 
 set(THIRDPARTY_INCLUDE_DIRS
     ${PRATT_PARSER_INCLUDE_DIRS}
+    ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     ${PROJECT_SOURCE_DIR}/thirdparty/pdqsort
     ${ceres_tiny_solver_SOURCE_DIR}
-    ${csv_SOURCE_DIR}
+    ${fast_float_SOURCE_DIR}/include
     ${gsl_SOURCE_DIR}/include
     ${nanobench_SOURCE_DIR}
     ${span-lite_SOURCE_DIR}
