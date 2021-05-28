@@ -20,14 +20,14 @@ namespace Distance {
         inline bool NullIntersectProbe(uint64_t const* lhs, uint64_t const* rhs) noexcept
         {
             // this can be done either with broadcasts or permutations
-            // the permutations version seems slightly faster https://godbolt.org/z/hzWjqhMfT
+            // the permutations version seems faster 
             using vec = vcl::Vec4uq;
             auto a = vec().load(lhs);
             auto b0 = vec().load(rhs);
             auto b1 = vcl::permute4<1, 2, 3, 0>(b0);
             auto b2 = vcl::permute4<2, 3, 0, 1>(b0);
             auto b3 = vcl::permute4<3, 0, 1, 2>(b0);
-            return !vcl::horizontal_add(a == b0 | a == b1 | a == b2 | a == b3);
+            return !vcl::horizontal_or(a == b0 | a == b1 | a == b2 | a == b3);
         }
 
         // returns true if lhs and rhs have _zero_ elements in common
@@ -43,7 +43,7 @@ namespace Distance {
             auto b5 = vcl::permute8<5, 6, 7, 0, 1, 2, 3, 4>(b0);
             auto b6 = vcl::permute8<6, 7, 0, 1, 2, 3, 4, 5>(b0);
             auto b7 = vcl::permute8<7, 0, 1, 2, 3, 4, 5, 6>(b0);
-            return !vcl::horizontal_add(a == b0 | a == b1 | a == b2 | a == b3 | a == b4 | a == b5 | a == b6 | a == b7);
+            return !vcl::horizontal_or(a == b0 | a == b1 | a == b2 | a == b3 | a == b4 | a == b5 | a == b6 | a == b7);
         }
 
         // this method only works when the hash vectors are sorted
