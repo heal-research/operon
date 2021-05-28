@@ -16,7 +16,7 @@
 
 namespace Operon {
 namespace Test {
-TEST_CASE("Intersection performance") 
+TEST_CASE("Intersection performance")
 {
     size_t n = 1000;
     size_t maxLength = 100;
@@ -39,8 +39,8 @@ TEST_CASE("Intersection performance")
     auto btc = BalancedTreeCreator { grammar, inputs };
     std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), 0, maxDepth); });
 
-    std::vector<Operon::Distance::HashVector> hashesStrict(trees.size());
-    std::vector<Operon::Distance::HashVector> hashesStruct(trees.size());
+    std::vector<Operon::Vector<Operon::Hash>> hashesStrict(trees.size());
+    std::vector<Operon::Vector<Operon::Hash>> hashesStruct(trees.size());
 
     const auto hashFunc = [](auto& tree, Operon::HashMode mode) { return MakeHashes<Operon::HashFunction::XXHash>(tree, mode); };
     std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) { return hashFunc(tree, Operon::HashMode::Strict); });

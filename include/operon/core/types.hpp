@@ -16,7 +16,7 @@
 #include <cstdint>
 
 namespace Operon {
-using Hash = uint64_t;
+using Hash = uint64_t; // at the moment, changing this will cause problems
 using RandomGenerator = Random::RomuTrio;
 
 #if defined(USE_SINGLE_PRECISION)
