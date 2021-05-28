@@ -6,62 +6,68 @@
 
 #include "types.hpp"
 
+#define VCL_NAMESPACE vcl
+#include "vectorclass.h"
+
 #include <immintrin.h>
 
 #include <Eigen/Core>
 
 namespace Operon {
 namespace Distance {
-
-    using HashVector = Operon::Vector<Operon::Hash>;
-
     namespace {
-#if defined(__AVX2__) && defined(NDEBUG)
-        static inline bool _mm256_is_zero(__m256i m) noexcept { return _mm256_testz_si256(m, m); }
-
-        static inline bool NullIntersectProbe(Operon::Hash const* lhs, Operon::Hash const* rhs) noexcept
+        // returns true if lhs and rhs have _zero_ elements in common
+        inline bool NullIntersectProbe(uint64_t const* lhs, uint64_t const* rhs) noexcept
         {
-            __m256i a { _mm256_load_si256((__m256i*)lhs) };
-            __m256i b0 { _mm256_set1_epi64x(rhs[0]) };
-            __m256i b1 { _mm256_set1_epi64x(rhs[1]) };
-            __m256i b2 { _mm256_set1_epi64x(rhs[2]) };
-            __m256i b3 { _mm256_set1_epi64x(rhs[3]) };
-
-            __m256i r0 { _mm256_cmpeq_epi64(a, b0) };
-            __m256i r1 { _mm256_cmpeq_epi64(a, b1) };
-            __m256i r2 { _mm256_cmpeq_epi64(a, b2) };
-            __m256i r3 { _mm256_cmpeq_epi64(a, b3) };
-
-            return _mm256_is_zero(_mm256_or_si256(_mm256_or_si256(r0, r1), _mm256_or_si256(r2, r3)));
+            // this can be done either with broadcasts or permutations
+            // the permutations version seems slightly faster https://godbolt.org/z/hzWjqhMfT
+            using vec = vcl::Vec4uq;
+            auto a = vec().load(lhs);
+            auto b0 = vec().load(rhs);
+            auto b1 = vcl::permute4<1, 2, 3, 0>(b0);
+            auto b2 = vcl::permute4<2, 3, 0, 1>(b0);
+            auto b3 = vcl::permute4<3, 0, 1, 2>(b0);
+            return !vcl::horizontal_add(a == b0 | a == b1 | a == b2 | a == b3);
         }
-#endif
 
-        static size_t CountIntersect(HashVector const& lhs, HashVector const& rhs) noexcept
+        // returns true if lhs and rhs have _zero_ elements in common
+        inline bool NullIntersectProbe(uint32_t const* lhs, uint32_t const* rhs) noexcept
         {
-            size_t count = 0;
-            size_t i = 0;
-            size_t j = 0;
+            using vec = vcl::Vec8ui;
+            auto a = vec().load(lhs);
+            auto b0 = vec().load(rhs);
+            auto b1 = vcl::permute8<1, 2, 3, 4, 5, 6, 7, 0>(b0);
+            auto b2 = vcl::permute8<2, 3, 4, 5, 6, 7, 0, 1>(b0);
+            auto b3 = vcl::permute8<3, 4, 5, 6, 7, 0, 1, 2>(b0);
+            auto b4 = vcl::permute8<4, 5, 6, 7, 0, 1, 2, 3>(b0);
+            auto b5 = vcl::permute8<5, 6, 7, 0, 1, 2, 3, 4>(b0);
+            auto b6 = vcl::permute8<6, 7, 0, 1, 2, 3, 4, 5>(b0);
+            auto b7 = vcl::permute8<7, 0, 1, 2, 3, 4, 5, 6>(b0);
+            return !vcl::horizontal_add(a == b0 | a == b1 | a == b2 | a == b3 | a == b4 | a == b5 | a == b6 | a == b7);
+        }
+
+        // this method only works when the hash vectors are sorted
+        static size_t CountIntersect(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
+        {
             size_t ls = lhs.size();
             size_t rs = rhs.size();
 
-#if defined(__AVX2__) && defined(NDEBUG)
+            constexpr auto s = sizeof(Operon::Hash);
+            auto lt = ls & (-s);
+            auto rt = rs & (-s);
+
             Operon::Hash const* p = lhs.data();
             Operon::Hash const* q = rhs.data();
-
-            auto lt = (ls / 4) * 4;
-            auto rt = (rs / 4) * 4;
-
-            while (i < lt && j < rt) {
-                if (NullIntersectProbe(p + i, q + j)) {
-                    auto a = p[i + 3];
-                    auto b = q[j + 3];
-                    i += (a <= b) * 4;
-                    j += (b <= a) * 4;
-                } else {
-                    break;
-                }
+            size_t count = 0;
+            size_t i = 0;
+            size_t j = 0;
+            while (i < lt && j < rt && NullIntersectProbe(p + i, q + j)) {
+                auto a = p[i + 3];
+                auto b = q[j + 3];
+                // we cannot have a == b because then NullIntersectProbe would return false
+                if (a < b) i += 4;
+                if (a > b) j += 4;
             }
-#endif
 
             auto lm = lhs.back();
             auto rm = rhs.back();
@@ -81,20 +87,20 @@ namespace Distance {
             return count;
         }
 
-        static inline double Jaccard(HashVector const& lhs, HashVector const& rhs) noexcept
+        static inline double Jaccard(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
         {
             size_t c = CountIntersect(lhs, rhs);
             size_t n = lhs.size() + rhs.size();
             return static_cast<double>(n - 2 * c) / static_cast<double>(n);
         }
 
-        static inline double SorensenDice(HashVector const& lhs, HashVector const& rhs) noexcept
+        static inline double SorensenDice(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
         {
             size_t n = lhs.size() + rhs.size();
             size_t c = CountIntersect(lhs, rhs);
             return 1.0 - 2.0 * static_cast<double>(c) / static_cast<double>(n);
         }
-    }
+    } // namespace
 
 } // namespace Distance
 } // namespace Operon

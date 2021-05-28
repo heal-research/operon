@@ -14,6 +14,8 @@
 #include "hash/hash.hpp"
 #include "node.hpp"
 
+#include "pdqsort.h"
+
 namespace Operon {
 class Tree;
 
@@ -162,7 +164,7 @@ public:
             auto end = begin + n.Arity;
 
             if (n.IsCommutative()) {
-                std::sort(begin, end, [&](auto a, auto b) { return nodes[a] < nodes[b]; });
+                pdqsort(begin, end, [&](auto a, auto b) { return nodes[a] < nodes[b]; });
             }
             std::transform(begin, end, std::back_inserter(hashes), [&](auto j) { return nodes[j].CalculatedHashValue; });
             hashes.push_back(n.HashValue);

@@ -17,11 +17,11 @@ namespace Operon {
 namespace Test {
 
 void calculateDistance(std::vector<Tree>& trees, Operon::HashFunction f, const std::string& name) {
-    std::vector<Operon::Distance::HashVector> treeHashes;
+    std::vector<Operon::Vector<Operon::Hash>> treeHashes;
     treeHashes.reserve(trees.size());
 
     for (auto& t : trees) {
-        Operon::Distance::HashVector hh(t.Length()); 
+        Operon::Vector<Operon::Hash> hh(t.Length());
         t.Hash(f, Operon::HashMode::Strict);
         std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
         std::sort(hh.begin(), hh.end());
@@ -42,11 +42,11 @@ void calculateDistance(std::vector<Tree>& trees, Operon::HashFunction f, const s
 }
 
 void calculateDistanceWithSort(std::vector<Tree>& trees, const std::string& name) {
-    std::vector<Operon::Distance::HashVector> treeHashes;
+    std::vector<Operon::Vector<Operon::Hash>> treeHashes;
     treeHashes.reserve(trees.size());
 
     for (auto& t : trees) {
-        Operon::Distance::HashVector hh(t.Length()); 
+        Operon::Vector<Operon::Hash> hh(t.Length());
         t.Sort();
         std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
         std::sort(hh.begin(), hh.end());
@@ -89,7 +89,7 @@ TEST_CASE("Hash-based distance") {
     std::vector<size_t> indices(n);
     std::vector<Operon::Hash> seeds(n);
     std::vector<Tree> trees(n);
-    std::vector<Operon::Distance::HashVector> treeHashes(n);
+    std::vector<Operon::Vector<Operon::Hash>> treeHashes(n);
 
     auto btc = BalancedTreeCreator { grammar, inputs };
 
@@ -146,8 +146,8 @@ TEST_CASE("Hash collisions") {
         return tree;
     });
 
-    std::unordered_set<uint64_t> set64; 
-    std::unordered_set<uint32_t> set32; 
+    std::unordered_set<uint64_t> set64;
+    std::unordered_set<uint32_t> set32;
     auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), size_t { 0 }, std::plus<size_t> {}, [](auto& tree) { return tree.Length(); });
 
     for(auto& tree : trees) {

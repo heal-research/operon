@@ -93,12 +93,12 @@ Tree& Tree::Sort()
 
         if (s.IsCommutative()) {
             if (arity == size) {
-                std::sort(start + i - size, start + i);
+                pdqsort(start + i - size, start + i);
             } else {
                 for (auto it = Children(i); it.HasNext(); ++it) {
                     children.push_back(it.Index());
                 }
-                std::sort(children.begin(), children.end(), [&](auto a, auto b) { return nodes[a] < nodes[b]; }); // sort child indices
+                pdqsort(children.begin(), children.end(), [&](auto a, auto b) { return nodes[a] < nodes[b]; }); // sort child indices
 
                 auto pos = sorted.begin() + i - size;
                 for (auto j : children) {

@@ -162,7 +162,6 @@ FetchContent_Declare(
     SOURCE_DIR ${DOWNLOAD_DIR}
 )
 
-
 FetchContent_Declare(
     fast_float
     GIT_REPOSITORY https://github.com/fastfloat/fast_float
@@ -171,13 +170,21 @@ FetchContent_Declare(
     SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/fast_float
 )
 
+FetchContent_Declare(
+    vectorclass
+    GIT_REPOSITORY https://github.com/vectorclass/version2
+    GIT_TAG master
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vcl
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vcl
+)
+
 if(NOT infix_parser_POPULATED)
     FetchContent_Populate(infix_parser)
     add_subdirectory(${infix_parser_SOURCE_DIR} ${infix_parser_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
 # populate content
-FetchContent_MakeAvailable(xxhash csv nanobench robin_hood pdqsort span-lite fast_float)
+FetchContent_MakeAvailable(xxhash csv nanobench robin_hood pdqsort span-lite fast_float vectorclass)
 
 # populate optional content
 if (CERES_TINY_SOLVER)
@@ -194,6 +201,7 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${nanobench_SOURCE_DIR}
     ${span-lite_SOURCE_DIR}
     ${xxhash_SOURCE_DIR}
+    ${vectorclass_SOURCE_DIR}
 )
 
 if(USE_OPENLIBM)
