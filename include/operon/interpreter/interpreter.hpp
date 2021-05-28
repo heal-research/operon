@@ -57,7 +57,9 @@ struct Interpreter {
 
         constexpr int S = static_cast<int>(detail::BatchSize<T>());
 
-        Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor> m(S, nodes.size());
+        using M = Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>;
+        M m = M::Zero(S, nodes.size());
+
         Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1);
 
         Operon::Vector<std::reference_wrapper<const DispatchTable::Callable<T>>> funcs;
