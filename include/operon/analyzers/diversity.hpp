@@ -14,8 +14,8 @@
 namespace Operon {
 namespace {
     template<Operon::HashFunction F>
-    static inline Operon::Distance::HashVector MakeHashes(Tree& tree, Operon::HashMode mode) {
-        Operon::Distance::HashVector hashes(tree.Length());
+    static inline Operon::Vector<Operon::Hash> MakeHashes(Tree& tree, Operon::HashMode mode) {
+        Operon::Vector<Operon::Hash> hashes(tree.Length());
         tree.Hash<F>(mode);
         std::transform(std::execution::seq, tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
         std::sort(std::execution::seq, hashes.begin(), hashes.end());
@@ -72,7 +72,7 @@ public:
 
     private:
         double diversity;
-        std::vector<Operon::Distance::HashVector> hashes; 
+        std::vector<Operon::Vector<Operon::Hash>> hashes;
     };
 } // namespace Operon
 
