@@ -10,7 +10,7 @@ pool:
   vmImage: ubuntu-latest
 
 steps:
-- script: vcpkg install ceres:x64-linux fmt:x64-linux pybind11:x64-linux cxxopts:x64-linux doctest:x64-linux tbb:x64-linux python3:x64-linux
+- script: vcpkg install ceres:x64-linux fmt:x64-linux pybind11:x64-linux cxxopts:x64-linux doctest:x64-linux python3:x64-linux
   displayName: 'Install dependencies'
 
 - script: |
