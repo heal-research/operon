@@ -14,9 +14,9 @@
 #include "operators/mutation.hpp"
 
 #include <chrono>
-#include <execution>
-#include <tbb/global_control.h>
 #include <thread>
+
+#include "taskflow/taskflow.hpp"
 
 namespace Operon {
 
@@ -68,16 +68,23 @@ public:
         generator_.get().Evaluator().Reset();
     }
 
-    void Run(Operon::RandomGenerator& random, std::function<void()> report = nullptr, size_t threads = 0)
+    void Run(Operon::RandomGenerator& random, std::function<void()> report = nullptr, size_t threads = 0) {
+        if (!threads) {
+            threads = std::thread::hardware_concurrency();
+        }
+        tf::Executor executor(threads);
+        Run(executor, random, report);
+    }
+
+    void Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report = nullptr)
     {
         auto& config = GetConfig();
         auto& initializer = GetInitializer();
         auto& generator = GetGenerator();
         auto& reinserter = GetReinserter();
-        // easier to work with indices
-        std::vector<size_t> indices(std::max(config.PopulationSize, config.PoolSize));
-        std::iota(indices.begin(), indices.end(), 0L);
-        // one rng per thread
+        auto& problem = GetProblem();
+
+        // random seeds for each thread
         size_t s = std::max(config.PopulationSize, config.PoolSize);
         std::vector<Operon::RandomGenerator> rngs;
         for (size_t i = 0; i < s; ++i) {
@@ -85,73 +92,59 @@ public:
         }
 
         auto idx = 0;
-        auto create = [&](size_t i) {
-            // create one random generator per thread
-            parents[i].Genotype = initializer(rngs[i]);
-            parents[i][idx] = Operon::Numeric::Max<Operon::Scalar>();
-        };
         const auto& evaluator = generator.Evaluator();
 
-        auto evaluate = [&](Individual& ind) {
-            auto f = evaluator(random, ind);
-            if (!std::isfinite(f)) {
-                f = Operon::Numeric::Max<Operon::Scalar>();
-            }
-            ind[idx] = f;
-        };
+        // we want to allocate all the memory that will be necessary for evaluation (e.g. for storing model responses)
+        // in one go and use it throughout the generations in order to minimize the memory pressure
+        auto trainSize = problem.TrainingRange().Size();
+
+        ENSURE(executor.num_workers() > 0);
 
         // start the chronometer
         auto t0 = std::chrono::steady_clock::now();
 
-        // generate the initial population and perform evaluation
-        tbb::global_control c(tbb::global_control::max_allowed_parallelism, threads ? threads : std::thread::hardware_concurrency());
+        tf::Taskflow taskflow;
+        // initialize population
+        taskflow.for_each_index(0ul, parents.size(), 1ul, [&](size_t i) {
+            // allocate some memory for this worker
+            parents[i].Genotype = initializer(rngs[i]);
+            parents[i][idx] = evaluator(rngs[i], parents[i]);
+        });
+        executor.run(taskflow).wait(); // wait on this future to finish
+        taskflow.clear(); // clear tasks and associated data
+        ++generation;
 
-        std::for_each(std::execution::par_unseq, indices.begin(), indices.begin() + config.PopulationSize, create);
-        std::for_each(std::execution::par_unseq, parents.begin(), parents.end(), evaluate);
+        std::atomic_bool terminate{ false }; // flag to signal algorithm termination
 
-        // flag to signal algorithm termination
-        std::atomic_bool terminate = false;
-        // produce some offspring
-        auto iterate = [&](size_t i) {
+        auto preserveElite = taskflow.emplace([&]() {
+            offspring[0] = *std::min_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; });
+        });
+
+        auto prepareGenerator = taskflow.emplace([&]() { generator.Prepare(parents); });
+
+        auto generateOffspring = taskflow.for_each_index(1ul, offspring.size(), 1ul, [&](size_t i) {
+            auto id = executor.this_worker_id();
             while (!(terminate = generator.Terminate())) {
-                auto t1 = std::chrono::steady_clock::now();
-                double elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()) / 1e3;
-                terminate = elapsed > config.TimeLimit;
-
                 if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability); result.has_value()) {
                     offspring[i] = std::move(result.value());
                     return;
                 }
             }
-        };
+        });
 
-        // report statistics for the initial population
-        if (report)
-            std::invoke(report);
+        auto reinsert = taskflow.emplace([&]() { reinserter(random, parents, offspring); });
+        auto reportProgress = taskflow.emplace([&]() { if (report) std::invoke(report); });
 
-        for (generation = 1; generation <= config.Generations; ++generation) {
-            // preserve one elite
-            auto best = std::min_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; });
-            offspring[0] = *best;
+        preserveElite.precede(prepareGenerator);
+        prepareGenerator.precede(generateOffspring);
+        generateOffspring.precede(reinsert);
+        reinsert.precede(reportProgress);
 
-            generator.Prepare(parents);
-            // we always allow one elite (maybe this should be more configurable?)
-            std::for_each(std::execution::par_unseq, indices.cbegin() + 1, indices.cbegin() + config.PoolSize, iterate);
-            // merge pool back into pop
-            reinserter(random, parents, offspring);
-
-            // report progress and stats
-            if (report) {
-                std::invoke(report);
-            }
-
-            // stop if termination requested
-            //if (terminate || best->Fitness[idx] < 1e-6) { return; }
-            if (terminate)
-                return;
-        }
+        executor.run_until(taskflow, [&]() { return terminate || generation++ == config.Generations; });
+        executor.wait_for_all();
     }
 };
 } // namespace operon
 
 #endif
+

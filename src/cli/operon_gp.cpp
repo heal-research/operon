@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
+#include <chrono>
 #include <cstdlib>
 
 #include <cxxopts.hpp>
 #include <fmt/core.h>
 
-#include <tbb/global_control.h>
 #include <thread>
 
 #include "algorithms/gp.hpp"
@@ -96,7 +96,6 @@ int main(int argc, char** argv)
     Range trainingRange;
     Range testRange;
     std::unique_ptr<Dataset> dataset;
-    std::string fileName; // data file name
     std::string target;
     bool showPrimitiveSet = false;
     auto threads = std::thread::hardware_concurrency();
@@ -112,8 +111,7 @@ int main(int argc, char** argv)
             auto& value = kv.value();
 
             if (key == "dataset") {
-                fileName = value;
-                dataset.reset(new Dataset(fileName, true));
+                dataset.reset(new Dataset(value, true));
                 ENSURE(!dataset->IsView());
             }
             if (key == "seed") {
@@ -207,7 +205,7 @@ int main(int argc, char** argv)
                 if (auto res = dataset->GetVariable(tok); res.has_value()) {
                     inputs.push_back(res.value());
                 } else {
-                    fmt::print(stderr, "Variable {} does not exist in the dataset.", tok); 
+                    fmt::print(stderr, "Variable {} does not exist in the dataset.", tok);
                     exit(EXIT_FAILURE);
                 }
             }
@@ -220,7 +218,6 @@ int main(int argc, char** argv)
             problem.GetPrimitiveSet().SetMinimumArity(t, 2);
         }
 
-        using Ind = Individual;
         using Reinserter = ReinserterBase;
         using OffspringGenerator = OffspringGeneratorBase;
 
@@ -267,7 +264,7 @@ int main(int argc, char** argv)
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
         mutator.Add(replaceSubtree, 1.0);
-        mutator.Add(insertSubtree, 1.0);
+        //mutator.Add(insertSubtree, 1.0);
         mutator.Add(removeSubtree, 1.0);
 
         // initialize an interpreter using a default dispatch table
@@ -420,7 +417,7 @@ int main(int argc, char** argv)
             problem.StandardizeData(problem.TrainingRange());
         }
 
-        tbb::global_control c(tbb::global_control::max_allowed_parallelism, threads);
+        tf::Executor executor(threads);
 
         auto t0 = std::chrono::high_resolution_clock::now();
 
@@ -432,57 +429,99 @@ int main(int argc, char** argv)
 
         // some boilerplate for reporting results
         const size_t idx { 0 };
-        auto getBest = [&](const Operon::Span<const Ind> pop) -> Ind {
+        auto getBest = [&](const Operon::Span<const Individual> pop) -> Individual {
             auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
             return *minElem;
         };
 
-        Ind best(1);
+        Individual best(1);
+        //auto const& pop = gp.Parents();
 
+        auto getSize = [](const Individual& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
 
         auto report = [&]() {
             auto const& pop = gp.Parents();
+            auto const& off = gp.Offspring();
+
             best = getBest(pop);
 
-            auto batchSize = 100ul;
-            auto estimatedTrain = interpreter.Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange, batchSize);
-            auto estimatedTest = interpreter.Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange, batchSize);
+            Operon::Vector<Operon::Scalar> estimatedTrain, estimatedTest;
+
+            tf::Taskflow taskflow;
+
+            auto evalTrain = taskflow.emplace([&]() {
+                estimatedTrain = interpreter.Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
+            });
+
+            auto evalTest = taskflow.emplace([&]() {
+                estimatedTest = interpreter.Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);
+            });
 
             // scale values
-            auto [a, b] = LinearScalingCalculator::Calculate(Operon::Span<Operon::Scalar const>{ estimatedTrain }, targetTrain);
-            //auto [a,b] = std::make_tuple(1.0, 0.0);
-            std::transform(std::execution::par_unseq, estimatedTrain.begin(), estimatedTrain.end(), estimatedTrain.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(a * v + b); });
-            std::transform(std::execution::par_unseq, estimatedTest.begin(), estimatedTest.end(), estimatedTest.begin(), [a = a, b = b](auto v) { return static_cast<Operon::Scalar>(a * v + b); });
+            Operon::Scalar a, b;
+            auto linearScaling = taskflow.emplace([&]() {
+                auto [scale, offset] = LinearScalingCalculator::Calculate(Operon::Span<Operon::Scalar const>{ estimatedTrain }, targetTrain);
+                a = static_cast<Operon::Scalar>(scale);
+                b = static_cast<Operon::Scalar>(offset);
+            });
 
-            auto r2Train = RSquared<Operon::Scalar>(estimatedTrain, targetTrain);
-            auto r2Test = RSquared<Operon::Scalar>(estimatedTest, targetTest);
+            double r2Train, r2Test, nmseTrain, nmseTest, maeTrain, maeTest;
 
-            auto nmseTrain = NormalizedMeanSquaredError<Operon::Scalar>(estimatedTrain, targetTrain);
-            auto nmseTest = NormalizedMeanSquaredError<Operon::Scalar>(estimatedTest, targetTest);
+            auto scaleTrain = taskflow.emplace([&]() {
+                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), estimatedTrain.size());
+                estimated = estimated * a + b;
+            });
 
-            auto maeTrain = MeanAbsoluteError<Operon::Scalar>(estimatedTrain, targetTrain);
-            auto maeTest = MeanAbsoluteError<Operon::Scalar>(estimatedTest, targetTest);
+            auto scaleTest = taskflow.emplace([&]() {
+                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), estimatedTest.size());
+                estimated = estimated * a + b;
+            });
 
-            auto avgLength = (double)std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [](const auto& ind) { return ind.Genotype.Length(); }) / (double)pop.size();
-            auto avgQuality = (double)std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<size_t> {}, [=](const auto& ind) { return ind[idx]; }) / (double)pop.size();
+            auto calcStats = taskflow.emplace([&]() {
+                r2Train = RSquared<Operon::Scalar>(estimatedTrain, targetTrain);
+                r2Test = RSquared<Operon::Scalar>(estimatedTest, targetTest);
+
+                nmseTrain = NormalizedMeanSquaredError<Operon::Scalar>(estimatedTrain, targetTrain);
+                nmseTest = NormalizedMeanSquaredError<Operon::Scalar>(estimatedTest, targetTest);
+
+                maeTrain = MeanAbsoluteError<Operon::Scalar>(estimatedTrain, targetTrain);
+                maeTest = MeanAbsoluteError<Operon::Scalar>(estimatedTest, targetTest);
+            });
+
+            double avgLength = 0;
+            double avgQuality = 0;
+            double totalMemory = 0;
+
+            EXPECT(std::all_of(pop.begin(), pop.end(), [](auto const& ind) { return ind.Genotype.Length() > 0; }));
+
+            auto calculateLength = taskflow.transform_reduce(pop.begin(), pop.end(), avgLength, std::plus<double>{}, [](auto const& ind) { return ind.Genotype.Length(); });
+            auto calculateQuality = taskflow.transform_reduce(pop.begin(), pop.end(), avgQuality, std::plus<double>{}, [idx=idx](auto const& ind) { return ind[idx]; });
+            auto calculatePopMemory = taskflow.transform_reduce(pop.begin(), pop.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); });
+            auto calculateOffMemory = taskflow.transform_reduce(off.begin(), off.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); });
+
+            // define task graph
+            evalTrain.precede(linearScaling);
+            evalTest.precede(linearScaling);
+            linearScaling.precede(scaleTrain, scaleTest);
+            scaleTrain.precede(calcStats);
+            scaleTest.precede(calcStats);
+            calcStats.precede(calculateLength, calculateQuality, calculatePopMemory, calculateOffMemory);
+
+            executor.run(taskflow).wait();
+
+            avgLength /= static_cast<double>(pop.size());
+            avgQuality /= static_cast<double>(pop.size());
 
             auto t1 = std::chrono::high_resolution_clock::now();
             auto elapsed = (double)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1e6;
 
-            auto getSize = [](const Ind& ind) { return sizeof(ind) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
-
-            // calculate memory consumption
-            size_t totalMemory = std::transform_reduce(std::execution::par_unseq, pop.begin(), pop.end(), size_t { 0 }, std::plus<> {}, getSize);
-            auto const& off = gp.Offspring();
-            totalMemory += std::transform_reduce(std::execution::par_unseq, off.begin(), off.end(), size_t { 0 }, std::plus<> {}, getSize);
-
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
             fmt::print("{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\t", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
-            fmt::print("{:.4f}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, 0.0, 0.0, evaluator->FitnessEvaluations(), evaluator->LocalEvaluations(), evaluator->TotalEvaluations());
+            fmt::print("{:.4f}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, /* shape */ 0.0, /* diversity */ 0.0, evaluator->FitnessEvaluations(), evaluator->LocalEvaluations(), evaluator->TotalEvaluations());
             fmt::print("{}\t{}\n", totalMemory, config.Seed);
         };
 
-        gp.Run(random, report);
+        gp.Run(executor, random, report);
         fmt::print("{}\n", InfixFormatter::Format(best.Genotype, problem.GetDataset(), 20));
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
@@ -491,3 +530,4 @@ int main(int argc, char** argv)
 
     return 0;
 }
+

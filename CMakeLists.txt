@@ -22,7 +22,6 @@ find_package(fmt)
 find_package(Eigen3)
 find_package(Ceres)
 find_package(Threads)
-find_package(TBB)
 find_package(Python3 COMPONENTS Development Interpreter)
 find_package(pybind11)
 find_package(doctest)
@@ -31,7 +30,6 @@ find_package(doctest)
 set_package_properties(Git     PROPERTIES TYPE REQUIRED)
 set_package_properties(fmt     PROPERTIES TYPE REQUIRED)
 set_package_properties(Eigen3  PROPERTIES TYPE REQUIRED)
-set_package_properties(Tbb     PROPERTIES TYPE REQUIRED)
 set_package_properties(Threads PROPERTIES TYPE REQUIRED)
 
 set_package_properties(Ceres   PROPERTIES TYPE OPTIONAL) # non-linear least squares
@@ -195,13 +193,14 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${PRATT_PARSER_INCLUDE_DIRS}
     ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     ${PROJECT_SOURCE_DIR}/thirdparty/pdqsort
+    ${PROJECT_SOURCE_DIR}/thirdparty/taskflow@667af35
     ${ceres_tiny_solver_SOURCE_DIR}
     ${fast_float_SOURCE_DIR}/include
     ${gsl_SOURCE_DIR}/include
     ${nanobench_SOURCE_DIR}
     ${span-lite_SOURCE_DIR}
-    ${xxhash_SOURCE_DIR}
     ${vectorclass_SOURCE_DIR}
+    ${xxhash_SOURCE_DIR}
 )
 
 if(USE_OPENLIBM)
@@ -286,7 +285,7 @@ add_library(
     src/stat/pearson.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
-target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres Threads::Threads TBB::tbb)
+target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres Threads::Threads)
 target_include_directories(operon PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${PROJECT_BINARY_DIR})
 target_include_directories(operon SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR} ${THIRDPARTY_INCLUDE_DIRS})
 target_compile_definitions(operon PRIVATE
@@ -302,7 +301,7 @@ add_executable(
     )
 
 target_compile_features(operon-example-gp PRIVATE cxx_std_17)
-target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres TBB::tbb)
+target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres)
 target_include_directories(operon-example-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
 target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
 set_target_properties(operon-example-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
@@ -325,7 +324,7 @@ if (cxxopts_FOUND)
         src/cli/operon_gp.cpp
     )
     target_compile_features(operon-gp PRIVATE cxx_std_17)
-    target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres TBB::tbb)
+    target_link_libraries(operon-gp PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres)
     target_include_directories(operon-gp SYSTEM PRIVATE
         ${PROJECT_SOURCE_DIR}/include/operon
         ${THIRDPARTY_INCLUDE_DIRS}
@@ -432,7 +431,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/performance/math.cpp
         test/performance/random.cpp
         test/performance/stat.cpp
-        #test/implementation/evaluation.cpp
+        test/implementation/evaluation.cpp
         test/implementation/details.cpp
         test/implementation/hashing.cpp
         test/implementation/infix_parser.cpp
@@ -449,7 +448,7 @@ if(doctest_FOUND AND BUILD_TESTS)
     else()
         target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     endif(MSVC)
-    target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres TBB::tbb doctest::doctest)
+    target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres doctest::doctest)
     target_include_directories(
         operon-test
         SYSTEM PRIVATE
