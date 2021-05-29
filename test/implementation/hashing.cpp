@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
 #include <doctest/doctest.h>
-#include <execution>
 #include <unordered_set>
 
 #include "core/tree.hpp"
@@ -94,8 +93,8 @@ TEST_CASE("Hash-based distance") {
     auto btc = BalancedTreeCreator { grammar, inputs };
 
     std::iota(indices.begin(), indices.end(), 0);
-    std::generate(std::execution::seq, seeds.begin(), seeds.end(), [&](){ return rd(); });
-    std::transform(std::execution::seq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
+    std::generate(seeds.begin(), seeds.end(), [&](){ return rd(); });
+    std::transform(indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::RandomGenerator rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
         return tree;
@@ -138,8 +137,8 @@ TEST_CASE("Hash collisions") {
     auto btc = BalancedTreeCreator { grammar, inputs };
 
     std::iota(indices.begin(), indices.end(), 0);
-    std::generate(std::execution::seq, seeds.begin(), seeds.end(), [&](){ return rd(); });
-    std::transform(std::execution::par_unseq, indices.begin(), indices.end(), trees.begin(), [&](auto i) {
+    std::generate(seeds.begin(), seeds.end(), [&](){ return rd(); });
+    std::transform(indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::RandomGenerator rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
         tree.Hash<Operon::HashFunction::FNV1Hash>(Operon::HashMode::Strict);
@@ -148,7 +147,7 @@ TEST_CASE("Hash collisions") {
 
     std::unordered_set<uint64_t> set64;
     std::unordered_set<uint32_t> set32;
-    auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), size_t { 0 }, std::plus<size_t> {}, [](auto& tree) { return tree.Length(); });
+    auto totalNodes = std::transform_reduce(trees.begin(), trees.end(), size_t { 0 }, std::plus<size_t> {}, [](auto& tree) { return tree.Length(); });
 
     for(auto& tree : trees) {
         for(auto& node : tree.Nodes()) {

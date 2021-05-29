@@ -9,7 +9,6 @@
 #include "operators/selection.hpp"
 #include <algorithm>
 #include <catch2/catch.hpp>
-#include <execution>
 
 namespace Operon::Test {
 TEST_CASE("Selection Distribution")

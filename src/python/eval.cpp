@@ -48,7 +48,8 @@ void init_eval(py::module_ &m)
         auto buf = result.request();
         auto values = d.GetValues(target).subspan(r.Start(), r.Size());
 
-        std::transform(std::execution::par, trees.begin(), trees.end(), (double*)buf.ptr, [&](auto const& t) -> double {
+        // TODO: make this run in parallel with taskflow
+        std::transform(trees.begin(), trees.end(), (double*)buf.ptr, [&](auto const& t) -> double {
             auto estimated = i.Evaluate(t, d, r, (Operon::Scalar*)nullptr);
             return func(estimated, values);
         });

@@ -2,13 +2,10 @@
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
 #include <doctest/doctest.h>
-#include <execution>
-
 #include "core/common.hpp"
 #include "core/dataset.hpp"
 #include "interpreter/interpreter.hpp"
 #include "core/pset.hpp"
-
 #include "nanobench.h"
 #include "operators/creator.hpp"
 
@@ -45,15 +42,13 @@ namespace Test {
 
         SUBCASE("BTC vs PTC")
         {
-            b.batch(n).run("BTC", [&]() { std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), 0, maxDepth); }); });
-            b.batch(n).run("PTC", [&]() { std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), 0, maxDepth); }); });
-            //b.minEpochIterations(1000).batch(n).run("BTC (parallel)", [&]() { std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), maxDepth); }); });
-            //b.minEpochIterations(1000).batch(n).run("PTC (parallel)", [&]() { std::generate(std::execution::par_unseq, trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), maxDepth); }); });
+            b.batch(n).run("BTC", [&]() { std::generate(trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), 0, maxDepth); }); });
+            b.batch(n).run("PTC", [&]() { std::generate(trees.begin(), trees.end(), [&]() { return ptc(rd, sizeDistribution(rd), 0, maxDepth); }); });
         }
         SUBCASE("BTC")
         {
             for (size_t i = 1; i <= maxLength; ++i) {
-                b.complexityN(i).run("BTC", [&]() { std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); }); });
+                b.complexityN(i).run("BTC", [&]() { std::generate(trees.begin(), trees.end(), [&]() { return btc(rd, i, 0, maxDepth); }); });
             }
             std::cout << "BTC complexity: " << b.complexityBigO() << std::endl;
         }
@@ -61,7 +56,7 @@ namespace Test {
         SUBCASE("PTC")
         {
             for (size_t i = 1; i <= maxLength; ++i) {
-                b.complexityN(i).run("PTC", [&]() { std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return ptc(rd, i, 0, maxDepth); }); });
+                b.complexityN(i).run("PTC", [&]() { std::generate(trees.begin(), trees.end(), [&]() { return ptc(rd, i, 0, maxDepth); }); });
             }
             std::cout << "PTC complexity: " << b.complexityBigO() << std::endl;
         }

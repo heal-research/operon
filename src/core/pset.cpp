@@ -4,7 +4,6 @@
 #include "core/pset.hpp"
 
 #include <numeric>
-#include <execution>
 
 namespace Operon {
     Node PrimitiveSet::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const

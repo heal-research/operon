@@ -10,9 +10,7 @@
 #include "operators/reinserter/replaceworst.hpp"
 
 #include "nanobench.h"
-
-#include <execution>
-#include <tbb/global_control.h>
+#include "taskflow/taskflow.hpp"
 
 using namespace Operon;
 
@@ -74,7 +72,7 @@ TEST_CASE("Evolution speed") {
     ankerl::nanobench::Bench b;
     b.performanceCounters(true);
 
-    tbb::global_control c(tbb::global_control::max_allowed_parallelism, 1);
+    tf::Executor executor(1);
 
     for (size_t i = 100; i <= 10000; i += 100) {
         config.PopulationSize = i;
@@ -90,7 +88,7 @@ TEST_CASE("Evolution speed") {
 
         GeneticProgrammingAlgorithm gp(problem, config, initializer, generator, reinserter); 
 
-        b.complexityN(i).run("GP", [&]() { gp.Run(random, nullptr); });
+        b.complexityN(i).run("GP", [&]() { gp.Run(executor, random, nullptr); });
     }
 
     std::cout << "GP complexity: " << b.complexityBigO() << std::endl;

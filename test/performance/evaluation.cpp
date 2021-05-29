@@ -2,9 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
 #include <doctest/doctest.h>
-#include <execution>
 #include <interpreter/dispatch_table.hpp>
-#include <tbb/global_control.h>
 #include <thread>
 
 #include "core/common.hpp"
@@ -16,46 +14,29 @@
 
 #include "nanobench.h"
 
+#include "taskflow/taskflow.hpp"
+
 namespace Operon {
 namespace Test {
     std::size_t TotalNodes(const std::vector<Tree>& trees) {
 #ifdef _MSC_VER
         auto totalNodes = std::reduce(trees.begin(), trees.end(), 0UL, [](size_t partial, const auto& t) { return partial + t.Length(); });
 #else
-        auto totalNodes = std::transform_reduce(std::execution::par_unseq, trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
+        auto totalNodes = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
 #endif
         return totalNodes;
     }
 
-    enum ExecutionPolicy {
-        Sequenced,
-        Unsequenced,
-        ParallelSequenced,
-        ParallelUnsequenced
-    };
-
     namespace nb = ankerl::nanobench;
 
     template <typename T>
-    void Evaluate(std::vector<Tree> const& trees, Dataset const& ds, Range range, ExecutionPolicy ep = ExecutionPolicy::ParallelUnsequenced) 
+    void Evaluate(tf::Executor& executor, std::vector<Tree> const& trees, Dataset const& ds, Range range)
     {
         DispatchTable ft;
         Interpreter interpreter(ft);
-        switch(ep) {
-            case ExecutionPolicy::Sequenced:
-                std::for_each(std::execution::seq, trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
-                break;
-            case ExecutionPolicy::Unsequenced:
-                // use seq because unseq is not yet supported by MSVC
-                std::for_each(std::execution::seq, trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
-                break;
-            case ExecutionPolicy::ParallelSequenced:
-                std::for_each(std::execution::par, trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
-                break;
-            case ExecutionPolicy::ParallelUnsequenced:
-                std::for_each(std::execution::par_unseq, trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
-                break;
-        }
+        tf::Taskflow taskflow;
+        taskflow.for_each(trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
+        executor.run(taskflow).wait();
     }
 
     // used by some Langdon & Banzhaf papers as benchmark for measuring GPops/s
@@ -74,7 +55,7 @@ namespace Test {
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 
         //Range range = { 0, ds.Rows() };
-        Range range = { 0, 5000 };
+        Range range = { 0, 10000 };
 
         PrimitiveSet pset;
 
@@ -83,7 +64,7 @@ namespace Test {
 
         std::vector<Tree> trees(n);
 
-        auto test = [&](nb::Bench& b, PrimitiveSetConfig cfg, ExecutionPolicy pol, const std::string& name) {  
+        auto test = [&](tf::Executor& executor, nb::Bench& b, PrimitiveSetConfig cfg, const std::string& name) {
             pset.SetConfig(cfg);
             for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul }) {
                 pset.SetMinMaxArity(t, 2, 2);
@@ -92,79 +73,79 @@ namespace Test {
 
             auto totalOps = TotalNodes(trees) * range.Size();
             b.batch(totalOps);
-            b.run(name, [&]() { Evaluate<Operon::Scalar>(trees, ds, range, pol); });
+            b.run(name, [&]() { Evaluate<Operon::Scalar>(executor, trees, ds, range); });
         };
 
         SUBCASE("arithmetic") {
             // single-thread
             nb::Bench b;
             b.title("arithmetic").relative(true).performanceCounters(true).minEpochIterations(5);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
-                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, PrimitiveSet::Arithmetic, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+                tf::Executor executor(i);
+                test(executor, b, PrimitiveSet::Arithmetic, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + exp") {
             nb::Bench b;
             b.title("arithmetic + exp").relative(true).performanceCounters(true).minEpochIterations(5);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
-                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, PrimitiveSet::Arithmetic | NodeType::Exp, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+                tf::Executor executor(i);
+                test(executor, b, PrimitiveSet::Arithmetic | NodeType::Exp, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + log") {
             nb::Bench b;
             b.title("arithmetic + log").relative(true).performanceCounters(true).minEpochIterations(5);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
-                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, PrimitiveSet::Arithmetic | NodeType::Log, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+                tf::Executor executor(i);
+                test(executor, b, PrimitiveSet::Arithmetic | NodeType::Log, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + sin") {
             nb::Bench b;
             b.title("arithmetic + sin").relative(true).performanceCounters(true).minEpochIterations(5);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
-                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, PrimitiveSet::Arithmetic | NodeType::Sin, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+                tf::Executor executor(i);
+                test(executor, b, PrimitiveSet::Arithmetic | NodeType::Sin, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + cos") {
             nb::Bench b;
             b.title("arithmetic + cos").relative(true).performanceCounters(true).minEpochIterations(5);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
-                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, PrimitiveSet::Arithmetic | NodeType::Cos, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+                tf::Executor executor(i);
+                test(executor, b, PrimitiveSet::Arithmetic | NodeType::Cos, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + tan") {
             nb::Bench b;
             b.title("arithmetic + tan").relative(true).performanceCounters(true).minEpochIterations(5);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
-                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, PrimitiveSet::Arithmetic | NodeType::Tan, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+                tf::Executor executor(i);
+                test(executor, b, PrimitiveSet::Arithmetic | NodeType::Tan, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + sqrt") {
             nb::Bench b;
             b.title("arithmetic + sqrt").relative(true).performanceCounters(true).minEpochIterations(5);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
-                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, PrimitiveSet::Arithmetic | NodeType::Sqrt, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+                tf::Executor executor(i);
+                test(executor, b, PrimitiveSet::Arithmetic | NodeType::Sqrt, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + cbrt") {
             nb::Bench b;
             b.title("arithmetic + cbrt").relative(true).performanceCounters(true).minEpochIterations(5);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) { 
-                tbb::global_control c(tbb::global_control::max_allowed_parallelism, i);
-                test(b, PrimitiveSet::Arithmetic | NodeType::Cbrt, i == 1 ? ExecutionPolicy::Unsequenced : ExecutionPolicy::ParallelUnsequenced, fmt::format("{} {}", i, i == 1 ? "thread" : "threads"));
+            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+                tf::Executor executor(i);
+                test(executor, b, PrimitiveSet::Arithmetic | NodeType::Cbrt, fmt::format("N = {}", i));
             }
         }
     }
@@ -206,6 +187,8 @@ namespace Test {
 
         auto totalNodes = TotalNodes(trees);
 
+        Operon::Vector<Operon::Scalar> buf(range.Size());
+
         auto test = [&](std::string const& name, EvaluatorBase&& evaluator) {
             evaluator.SetLocalOptimizationIterations(0);
             evaluator.SetBudget(std::numeric_limits<size_t>::max());
@@ -213,7 +196,7 @@ namespace Test {
                 return std::transform_reduce(individuals.begin(), individuals.end(), 0.0, std::plus<>{}, [&](auto& ind) { return evaluator(rd, ind); });
             });
         };
-        
+
         test("r-squared",      Operon::Evaluator<Operon::R2, false>(problem, interpreter));
         test("r-squared + ls", Operon::Evaluator<Operon::R2, true>(problem, interpreter));
         test("nmse",           Operon::Evaluator<Operon::NMSE, false>(problem, interpreter));
