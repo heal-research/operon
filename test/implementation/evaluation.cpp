@@ -38,7 +38,7 @@ TEST_CASE("Evaluation correctness")
         fmt::print("{} : {}\n", v.Name, v.Hash);
         map[v.Name] = v.Hash;
     }
-    
+
     std::vector<size_t> indices(range.Size());
     std::iota(indices.begin(), indices.end(), 0);
 
@@ -49,7 +49,7 @@ TEST_CASE("Evaluation correctness")
         auto tree = InfixParser::Parse("X1 + X2", map);
         auto estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
         auto res1 = X.col(0) + X.col(1);
-        
+
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res1(i)) < eps; }));
 
         tree = InfixParser::Parse("X1 - X2", map);

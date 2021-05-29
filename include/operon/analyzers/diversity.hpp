@@ -4,12 +4,14 @@
 #ifndef DIVERSITY_HPP
 #define DIVERSITY_HPP
 
+#include <unordered_set>
+#include <mutex>
+
+#include "pdqsort.h"
+
 #include "core/operator.hpp"
 #include "core/stats.hpp"
 #include "core/distance.hpp"
-#include <execution>
-#include <unordered_set>
-#include <mutex>
 
 namespace Operon {
 namespace {
@@ -17,13 +19,13 @@ namespace {
     static inline Operon::Vector<Operon::Hash> MakeHashes(Tree& tree, Operon::HashMode mode) {
         Operon::Vector<Operon::Hash> hashes(tree.Length());
         tree.Hash<F>(mode);
-        std::transform(std::execution::seq, tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
-        std::sort(std::execution::seq, hashes.begin(), hashes.end());
+        std::transform(tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
+        pdqsort(hashes.begin(), hashes.end());
         return hashes;
     }
 }
 
-template <typename T, Operon::HashFunction F = Operon::HashFunction::XXHash, typename ExecutionPolicy = std::execution::parallel_unsequenced_policy>
+template <typename T, Operon::HashFunction F = Operon::HashFunction::XXHash>
 class PopulationDiversityAnalyzer final : PopulationAnalyzerBase<T> {
 public:
     double operator()(Operon::RandomGenerator&) const
@@ -39,10 +41,8 @@ public:
         std::vector<size_t> indices(pop.size());
         std::iota(indices.begin(), indices.end(), 0);
 
-        ExecutionPolicy ep;
-
         // hybrid (strict) hashing
-        std::for_each(ep, indices.begin(), indices.end(), [&](size_t i) {
+        std::for_each(indices.begin(), indices.end(), [&](size_t i) {
             hashes[i] = MakeHashes<F>(pop[i].Genotype, mode);
         });
 
@@ -59,7 +59,7 @@ public:
 
                 if (k == distances.size() || c == n) {
                     k = 0;
-                    std::for_each(ep, indices.begin(), indices.end(), [&](size_t idx) {
+                    std::for_each(indices.begin(), indices.end(), [&](size_t idx) {
                         auto [a, b] = pairs[idx];
                         distances[idx] = Operon::Distance::Jaccard(hashes[a], hashes[b]);
                     });

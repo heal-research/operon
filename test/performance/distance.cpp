@@ -37,7 +37,7 @@ TEST_CASE("Intersection performance")
 
     std::vector<Tree> trees(n);
     auto btc = BalancedTreeCreator { grammar, inputs };
-    std::generate(std::execution::seq, trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), 0, maxDepth); });
+    std::generate(trees.begin(), trees.end(), [&]() { return btc(rd, sizeDistribution(rd), 0, maxDepth); });
 
     std::vector<Operon::Vector<Operon::Hash>> hashesStrict(trees.size());
     std::vector<Operon::Vector<Operon::Hash>> hashesStruct(trees.size());
@@ -51,12 +51,12 @@ TEST_CASE("Intersection performance")
     SUBCASE("Performance") {
         ankerl::nanobench::Bench b;
         b.performanceCounters(true).relative(true).minEpochIterations(100000);
-        b.run("intersect strict",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
-        b.run("intersect struct",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
-        b.run("jaccard distance",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::Jaccard(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
-        b.run("jaccard distance",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::Jaccard(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
-        b.run("sorensen-dice distance",  [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::SorensenDice(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
-        b.run("sorensen-dice distance",  [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::SorensenDice(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
+        b.run("intersect str[i]ct",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
+        b.run("intersect str[u]ct",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::CountIntersect(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
+        b.run("jaccard distance i",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::Jaccard(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
+        b.run("jaccard distance u",        [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::Jaccard(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
+        b.run("sorensen-dice distance i",  [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::SorensenDice(hashesStrict[dist(rd)], hashesStrict[dist(rd)])); });
+        b.run("sorensen-dice distance u",  [&](){ ankerl::nanobench::doNotOptimizeAway(Operon::Distance::SorensenDice(hashesStruct[dist(rd)], hashesStruct[dist(rd)])); });
     }
 }
 } // namespace Test
