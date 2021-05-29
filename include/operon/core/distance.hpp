@@ -47,7 +47,7 @@ namespace Distance {
         }
 
         // this method only works when the hash vectors are sorted
-        static size_t CountIntersect(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
+        inline size_t CountIntersect(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
         {
             size_t ls = lhs.size();
             size_t rs = rhs.size();
@@ -86,21 +86,21 @@ namespace Distance {
             }
             return count;
         }
-
-        static inline double Jaccard(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
-        {
-            size_t c = CountIntersect(lhs, rhs);
-            size_t n = lhs.size() + rhs.size();
-            return static_cast<double>(n - 2 * c) / static_cast<double>(n);
-        }
-
-        static inline double SorensenDice(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
-        {
-            size_t n = lhs.size() + rhs.size();
-            size_t c = CountIntersect(lhs, rhs);
-            return 1.0 - 2.0 * static_cast<double>(c) / static_cast<double>(n);
-        }
     } // namespace
+
+    inline double Jaccard(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
+    {
+        size_t c = CountIntersect(lhs, rhs);
+        size_t n = lhs.size() + rhs.size();
+        return static_cast<double>(n - 2 * c) / static_cast<double>(n);
+    }
+
+    inline double SorensenDice(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
+    {
+        size_t n = lhs.size() + rhs.size();
+        size_t c = CountIntersect(lhs, rhs);
+        return 1.0 - 2.0 * static_cast<double>(c) / static_cast<double>(n);
+    }
 
 } // namespace Distance
 } // namespace Operon
