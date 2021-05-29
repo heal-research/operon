@@ -14,18 +14,17 @@ Its main purpose is to help develop accurate and interpretable white-box models 
 
 Broadly speaking, genetic programming (GP) is said to evolve a population of "computer programs" ― [AST](https://en.wikipedia.org/wiki/Abstract_syntax_tree)-like structures encoding behavior for a given problem domain ― following the principles of [natural selection](https://en.wikipedia.org/wiki/Natural_selection). It repeatedly combines random program parts keeping only the best results ― the "fittest". Here, the biological concept of [fitness](https://en.wikipedia.org/wiki/Survival_of_the_fittest) is defined as a measure of a program's ability to solve a certain task.
 
-In symbolic regression, the programs represent mathematical expressions typically encoded as [expression trees](https://en.wikipedia.org/wiki/Binary_expression_tree). Fitness is usually defined as [goodness of fit](https://en.wikipedia.org/wiki/Goodness_of_fit) between the dependent variable and the prediction of a tree-encoded model. Iterative selection of best-scoring models followed by random recombination leads naturally to a self-improving process that is able to uncover patterns in the data:  
+In symbolic regression, the programs represent mathematical expressions typically encoded as [expression trees](https://en.wikipedia.org/wiki/Binary_expression_tree). Fitness is usually defined as [goodness of fit](https://en.wikipedia.org/wiki/Goodness_of_fit) between the dependent variable and the prediction of a tree-encoded model. Iterative selection of best-scoring models followed by random recombination leads naturally to a self-improving process that is able to uncover patterns in the data:
 
 <p align="center">
     <img src="./docs/_static/evo.gif"  />
 </p>
 
-# Build instructions 
+# Build instructions
 
-The project requires CMake and a C++17 compliant compiler that supports execution policies from `std::execution`. Using the git versions of `Eigen` and `Ceres` is recommended. `Eigen` in particular hasn't had a new release for almost two years, but development is very active. On Windows we recommend building with `MinGW` or with your `WSL` distro.
+The project requires CMake and a C++17 compliant compiler. Using the git versions of `Eigen` and `Ceres` is recommended. On Windows we recommend building with `MinGW` or with your `WSL` distro.
 
 ### Required dependencies
-- [oneTBB](https://github.com/oneapi-src/oneTBB)
 - [Eigen](http://eigen.tuxfamily.org)
 - [Ceres](http://ceres-solver.org/)
 - [{fmt}](https://fmt.dev/latest/index.html)
@@ -66,9 +65,9 @@ The following options can be passed to CMake:
 
 # Usage
 
-* Run `operon-gp --help` to see the usage of the console client. This is the easiest way to just start modeling some data. The program expects a csv input file and assumes that the file has a header.  
+* Run `operon-gp --help` to see the usage of the console client. This is the easiest way to just start modeling some data. The program expects a csv input file and assumes that the file has a header.
 * The Python script provided under `scripts` wraps the `operon-gp` binary and can be used to run bigger experiments. Data can be provided as `csv` or `json` files containing metadata (see `data` folder for examples). The script will run a grid search over a parameter space defined by the user.
-* Several examples (C++ and Python) are available  [here](https://github.com/foolnotion/operon/blob/master/examples) 
+* Several examples (C++ and Python) are available  [here](https://github.com/foolnotion/operon/blob/master/examples)
 
 # Installing the Python bindings
 
