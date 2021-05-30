@@ -16,55 +16,36 @@
 namespace Operon {
 namespace Distance {
     namespace {
-        // returns true if lhs and rhs have _zero_ elements in common
-        inline bool NullIntersectProbe(uint64_t const* lhs, uint64_t const* rhs) noexcept
+        template<typename T, std::enable_if_t<std::is_integral_v<T> && (sizeof(T) == 4 || sizeof(T) == 8), bool> = true>
+        constexpr bool Intersect(T const* lhs, T const* rhs) noexcept
         {
-            // this can be done either with broadcasts or permutations
-            // the permutations version seems faster 
-            using vec = vcl::Vec4uq;
-            auto a = vec().load(lhs);
-            auto b0 = vec().load(rhs);
-            auto b1 = vcl::permute4<1, 2, 3, 0>(b0);
-            auto b2 = vcl::permute4<2, 3, 0, 1>(b0);
-            auto b3 = vcl::permute4<3, 0, 1, 2>(b0);
-            return !vcl::horizontal_or(a == b0 | a == b1 | a == b2 | a == b3);
-        }
-
-        // returns true if lhs and rhs have _zero_ elements in common
-        inline bool NullIntersectProbe(uint32_t const* lhs, uint32_t const* rhs) noexcept
-        {
-            using vec = vcl::Vec8ui;
-            auto a = vec().load(lhs);
-            auto b0 = vec().load(rhs);
-            auto b1 = vcl::permute8<1, 2, 3, 4, 5, 6, 7, 0>(b0);
-            auto b2 = vcl::permute8<2, 3, 4, 5, 6, 7, 0, 1>(b0);
-            auto b3 = vcl::permute8<3, 4, 5, 6, 7, 0, 1, 2>(b0);
-            auto b4 = vcl::permute8<4, 5, 6, 7, 0, 1, 2, 3>(b0);
-            auto b5 = vcl::permute8<5, 6, 7, 0, 1, 2, 3, 4>(b0);
-            auto b6 = vcl::permute8<6, 7, 0, 1, 2, 3, 4, 5>(b0);
-            auto b7 = vcl::permute8<7, 0, 1, 2, 3, 4, 5, 6>(b0);
-            return !vcl::horizontal_or(a == b0 | a == b1 | a == b2 | a == b3 | a == b4 | a == b5 | a == b6 | a == b7);
+            auto a = std::conditional_t<sizeof(T) == 4, vcl::Vec4ui, vcl::Vec4uq>().load(lhs);
+            return vcl::horizontal_add(a == rhs[0] | a == rhs[1] | a == rhs[2] | a == rhs[3]);
         }
 
         // this method only works when the hash vectors are sorted
-        inline size_t CountIntersect(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept
+        template<typename T>
+        size_t CountIntersect(Operon::Span<T> lhs, Operon::Span<T> rhs) noexcept
         {
             size_t ls = lhs.size();
             size_t rs = rhs.size();
 
-            constexpr auto s = sizeof(Operon::Hash);
+            constexpr auto s = sizeof(T);
             auto lt = ls & (-s);
             auto rt = rs & (-s);
 
-            Operon::Hash const* p = lhs.data();
-            Operon::Hash const* q = rhs.data();
+            T const* p = lhs.data();
+            T const* q = rhs.data();
             size_t count = 0;
             size_t i = 0;
             size_t j = 0;
-            while (i < lt && j < rt && NullIntersectProbe(p + i, q + j)) {
+            while (i < lt && j < rt) {
+                if(Intersect(p + i, q + j)) {
+                    break;
+                }
                 auto a = p[i + 3];
                 auto b = q[j + 3];
-                // we cannot have a == b because then NullIntersectProbe would return false
+                // we cannot have a == b because of !Intersect 
                 if (a < b) i += 4;
                 if (a > b) j += 4;
             }
@@ -85,6 +66,13 @@ namespace Distance {
                 }
             }
             return count;
+        }
+
+        template<typename Container>
+        size_t CountIntersect(Container const& lhs, Container const& rhs) noexcept
+        {
+            using T = typename Container::value_type;
+            return CountIntersect(Operon::Span<T const>(lhs.data(), lhs.size()), Operon::Span<T const>(rhs.data(), rhs.size()));
         }
     } // namespace
 

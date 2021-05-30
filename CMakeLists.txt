@@ -16,6 +16,8 @@ project(
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
 find_package(Git)
 find_package(cxxopts)
 find_package(fmt)
@@ -42,7 +44,7 @@ set_package_properties(pybind11 PROPERTIES TYPE OPTIONAL)
 
 # get revision information from git
 if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
-    INCLUDE(cmake/GetGitRevisionDescription.cmake)
+    INCLUDE(GetGitRevisionDescription)
     EXECUTE_PROCESS(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD OUTPUT_VARIABLE SHORT_SHA OUTPUT_STRIP_TRAILING_WHITESPACE)
     SET(REVISION ${SHORT_SHA} CACHE STRING "git short sha" FORCE)
 
@@ -53,7 +55,6 @@ else()
     message(WARNING "Git not found, cannot set version info")
     SET(REVISION "unknown")
 endif()
-
 
 # timestamp the current build
 string(TIMESTAMP OPERON_BUILD_TIMESTAMP "%Y-%m-%dT%H:%M:%SZ")
