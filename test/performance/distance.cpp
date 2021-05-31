@@ -40,7 +40,7 @@ struct ComputeDistanceMatrix {
 TEST_CASE("Intersection performance")
 {
     size_t n = 1000;
-    size_t maxLength = 100;
+    size_t maxLength = 1000;
     size_t maxDepth = 1000;
 
     Operon::RandomGenerator rd(1234);
@@ -72,7 +72,8 @@ TEST_CASE("Intersection performance")
 
     auto convertVec = [](Operon::Vector<Operon::Hash> const& vec) {
         Operon::Vector<uint32_t> vec32(vec.size());
-        std::transform(vec.begin(), vec.end(), vec32.begin(), [](auto h) { return static_cast<uint32_t>(h); });
+        std::transform(vec.begin(), vec.end(), vec32.begin(), [](auto h) { return (uint32_t)h; });
+        pdqsort(vec32.begin(), vec32.end());
         return vec32;
     };
 
@@ -84,7 +85,7 @@ TEST_CASE("Intersection performance")
     auto avgLen = std::transform_reduce(trees.begin(), trees.end(), 0.0, std::plus<>{}, [](auto const& t) { return t.Length(); }) / (double)n;
     auto totalOps = trees.size() * (trees.size() - 1) / 2; 
 
-    SUBCASE("Performance") {
+    SUBCASE("Performance 64-bit") {
         ankerl::nanobench::Bench b;
         b.performanceCounters(true).relative(true);
 
@@ -115,6 +116,26 @@ TEST_CASE("Intersection performance")
             d = cdm(hashesStruct);
         });
 
+        b.batch(s).run("jaccard str[i]ct", [&](){
+            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::SorensenDice(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            d = cdm(hashesStrict);
+        });
+
+        b.batch(s).run("jaccard str[u]ct", [&](){
+            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::SorensenDice(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            d = cdm(hashesStruct);
+        });
+    }
+
+    SUBCASE("Performance 32-bit") {
+        ankerl::nanobench::Bench b;
+        b.performanceCounters(true).relative(true);
+
+        auto s = (double)totalOps * avgLen;
+
+        double d = 0;
         b.batch(s).run("intersect str[i]ct 32", [&](){
             auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::CountIntersect(lhs, rhs); };
             ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
@@ -123,6 +144,30 @@ TEST_CASE("Intersection performance")
 
         b.batch(s).run("intersect str[u]ct 32", [&](){
             auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::CountIntersect(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            d = cdm(hashesStruct32);
+        });
+
+        b.batch(s).run("jaccard str[i]ct 32", [&](){
+            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::Jaccard(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            d = cdm(hashesStrict32);
+        });
+
+        b.batch(s).run("jaccard str[u]ct 32", [&](){
+            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::Jaccard(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            d = cdm(hashesStruct32);
+        });
+
+        b.batch(s).run("jaccard str[i]ct 32", [&](){
+            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::SorensenDice(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            d = cdm(hashesStrict32);
+        });
+
+        b.batch(s).run("jaccard str[u]ct 32", [&](){
+            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::SorensenDice(lhs, rhs); };
             ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
             d = cdm(hashesStruct32);
         });
