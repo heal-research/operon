@@ -27,6 +27,7 @@ find_package(Threads)
 find_package(Python3 COMPONENTS Development Interpreter)
 find_package(pybind11)
 find_package(doctest)
+find_package(Taskflow)
 
 # operon library
 set_package_properties(Git     PROPERTIES TYPE REQUIRED)
@@ -194,7 +195,7 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${PRATT_PARSER_INCLUDE_DIRS}
     ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     ${PROJECT_SOURCE_DIR}/thirdparty/pdqsort
-    ${PROJECT_SOURCE_DIR}/thirdparty/taskflow@667af35
+    ${Taskflow_INCLUDE_DIR}
     ${ceres_tiny_solver_SOURCE_DIR}
     ${fast_float_SOURCE_DIR}/include
     ${gsl_SOURCE_DIR}/include
