@@ -25,6 +25,7 @@ In symbolic regression, the programs represent mathematical expressions typicall
 The project requires CMake and a C++17 compliant compiler. Using the git versions of `Eigen` and `Ceres` is recommended. On Windows we recommend building with `MinGW` or with your `WSL` distro.
 
 ### Required dependencies
+- [Taskflow](https://taskflow.github.io/)
 - [Eigen](http://eigen.tuxfamily.org)
 - [Ceres](http://ceres-solver.org/)
 - [{fmt}](https://fmt.dev/latest/index.html)
