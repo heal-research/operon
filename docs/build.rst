@@ -8,7 +8,7 @@ We rely on a number of libraries, the majority of which should be accessible via
 Required dependencies
 ^^^^^^^^^^^^^^^^^^^^^
 
-- `Threading Building Blocks <https://github.com/oneapi-src/oneTBB>`_ ― the backend for Operon's concurrency model.
+- `Taskflow <https://taskflow.github.io/>`_ ― the backend for Operon's concurrency model.
 - `Eigen <http://eigen.tuxfamily.org>`_ ― used internally for model evaluation.  
 - `Ceres <http://ceres-solver.org>`_ ― for numerical fitting of model coefficients. 
 - `{fmt} <https://fmt.dev/latest/index.html>`_ ― used internally instead of iostreams. 
@@ -18,8 +18,8 @@ Required dependencies
 
 Automatically downloaded by CMake
 """""""""""""""""""""""""""""""""
-- `microsoft-gsl <https://github.com/microsoft/GSL>`_ ― Microsoft's implementation of the `C++ Core Guidelines <https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md>`_
-- `rapidcsv <https://github.com/d99kris/rapidcsv>`_ ― header-only library for CSV parsing 
+- `span-lite <https://github.com/martinmoene/span-lite/>`_ ― C++20-like span to provide a bounds-safe view for sequences of objects
+- `csv-parser <https://github.com/AriaFallah/csv-p>`_ ― header-only library for CSV parsing 
 - `nanobench <https://github.com/martinus/nanobench>`_ ― microbenchmarking library used in the unit tests
 - `xxhash <https://github.com/Cyan4973/xxHash>`_ ― we use the header-only version for tree hashing 
 
@@ -46,7 +46,10 @@ Configuration options
 Install Examples
 ^^^^^^^^^^^^^^^^
 
-Here is an example install of operon in linux using a `conda <https://anaconda.org/anaconda/conda>` environment and bash commands.
+Linux/Conda
+"""""""""""
+
+Here is an example install of operon in linux using a `conda <https://anaconda.org/anaconda/conda>`_ environment and bash commands.
 
 1. Specify an `environment.yml` file with the dependencies:
 
@@ -62,7 +65,7 @@ Here is an example install of operon in linux using a `conda <https://anaconda.o
         - eigen=3.3.9 
         - fmt=7.1.3 
         - ceres-solver=2.0.0 
-        - tbb-devel=2020.2 
+        - taskflow=3.1.0
         - openlibm 
         - cxxopts 
 
@@ -74,7 +77,7 @@ Here is an example install of operon in linux using a `conda <https://anaconda.o
       conda env create -f environment.yml
       conda activate operon-env
 
-      # Use gcc-9
+      # Use gcc-9 (or later)
       export CC=gcc-9
       export CXX=gcc-9
 
@@ -92,4 +95,35 @@ Here is an example install of operon in linux using a `conda <https://anaconda.o
       # install python package
       make install
 
-3. To test that the python package installed correctly, try `python -c "from operon.sklearn import SymbolicRegressor`. 
+3. To test that the python package installed correctly, try ``python -c "from operon.sklearn import SymbolicRegressor"``.
+
+Windows/VcPkg
+""""
+
+Alternatively,  `vcpkg <https://vcpkg.io/en/index.html>`_ also works on Windows and Linux.
+
+1. Install dependencies and clone the repo
+
+    .. code-block:: Python
+    
+        # install dependencies
+        vcpkg install ceres:x64-linux fmt:x64-linux pybind11:x64-linux cxxopts:x64-linux doctest:x64-linux python3:x64-linux taskflow:x64-linux
+        
+        # clone operon
+        git clone https://github.com/heal-research/operon
+        cd operon
+        
+        
+2. Configure and build (make sure to use the appropriate generator for your system, e.g. ``-G "Visual Studio 16 2019" -A x64``. If the python path is not correctly detected, you can specify the install destination for the python module with ``-DCMAKE_INSTALL_PREFIX=<path>``
+
+    .. code-block:: Python
+    
+        # configure
+        mkdir build && cd build
+        cmake .. -DCMAKE_TOOLCHAIN_FILE=<path-to-vcpkg>/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release  -DBUILD_PYBIND=ON -DUSE_OPENLIBM=ON -DUSE_SINGLE_PRECISION=ON -DCERES_TINY_SOLVER=ON
+        
+        # build
+        make -j pyoperon
+        
+3. To test that the python package installed correctly, try ``python -c "from operon.sklearn import SymbolicRegressor"``.
+
