@@ -210,6 +210,7 @@ int main(int argc, char** argv)
                 }
             }
         }
+
         auto problem = Problem(*dataset).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
         problem.GetPrimitiveSet().SetConfig(primitiveSetConfig);
         // set symbol arities
@@ -284,6 +285,8 @@ int main(int argc, char** argv)
             evaluator.reset(new RootMeanSquaredErrorEvaluator(problem, interpreter));
         } else if (errorMetric == "mae") {
             evaluator.reset(new MeanAbsoluteErrorEvaluator(problem, interpreter));
+        } else if (errorMetric == "l2") {
+            evaluator.reset(new L2NormEvaluator(problem, interpreter));
         } else {
             throw std::runtime_error(fmt::format("Unknown metric {}\n", errorMetric));
         }
