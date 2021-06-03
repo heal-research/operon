@@ -7,8 +7,9 @@
 #include "core/metrics.hpp"
 #include "core/operator.hpp"
 #include "core/types.hpp"
+#include "core/format.hpp"
 #include "nnls/nnls.hpp"
-#include "stat/meanvariance.hpp"
+#include "nnls/tiny_optimizer.hpp"
 #include "stat/pearson.hpp"
 
 namespace Operon {
@@ -70,25 +71,37 @@ public:
         auto trainingRange = problem_.TrainingRange();
         auto targetValues = dataset.GetValues(problem_.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
+        auto computeFitness = [&]() {
+            Operon::Vector<Operon::Scalar> estimatedValues(trainingRange.Size());
+            GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange, estimatedValues);
+
+            if constexpr (LinearScaling) {
+                auto [m, c] = Operon::LinearScalingCalculator::Calculate(Operon::Span<Operon::Scalar const>{ estimatedValues }, targetValues);
+                Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> x(estimatedValues.data(), estimatedValues.size());
+                Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> y(targetValues.data(), targetValues.size());
+                x = x * m + c;
+            }
+
+            return ErrorMetric{}(Operon::Span<Operon::Scalar const>{ estimatedValues }, targetValues);
+        };
+
         if (this->iterations > 0) {
 #if defined(CERES_TINY_SOLVER) || !defined(HAVE_CERES)
-        NonlinearLeastSquaresOptimizer<OptimizerType::TINY> opt(interpreter.get(), genotype, dataset);
+            NonlinearLeastSquaresOptimizer<OptimizerType::TINY> opt(interpreter.get(), genotype, dataset);
 #else
-        NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter.get(), genotype, dataset);
+            NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter.get(), genotype, dataset);
 #endif
+            auto coeff = genotype.GetCoefficients();
             auto summary = opt.Optimize(targetValues, trainingRange, this->iterations);
             this->localEvaluations += summary.Iterations;
+
+            if (summary.InitialCost < summary.FinalCost) {
+                // if optimization failed, restore the original coefficients
+                genotype.SetCoefficients(coeff);
+            }
         }
 
-        auto estimatedValues = GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange);
-
-        if constexpr (LinearScaling) {
-            auto [m, c] = Operon::LinearScalingCalculator::Calculate(Operon::Span<Operon::Scalar const>{ estimatedValues }, targetValues);
-            Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> x(estimatedValues.data(), estimatedValues.size());
-            x = x * m + c;
-        }
-        auto fit = ErrorMetric{}(Operon::Span<Operon::Scalar const>{ estimatedValues }, targetValues);
-
+        auto fit = computeFitness();
         if (!std::isfinite(fit)) {
             return Operon::Numeric::Max<Operon::Scalar>();
         }
@@ -105,6 +118,7 @@ using NormalizedMeanSquaredErrorEvaluator = Evaluator<NMSE, true>;
 using RootMeanSquaredErrorEvaluator       = Evaluator<RMSE, true>;
 using MeanAbsoluteErrorEvaluator          = Evaluator<MAE,  true>;
 using RSquaredEvaluator                   = Evaluator<R2,   false>;
+using L2NormEvaluator                     = Evaluator<L2,   true>;
 
 }
 #endif
