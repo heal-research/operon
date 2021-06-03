@@ -80,7 +80,7 @@ protected:
     ComparisonCallback comp;
 };
 
-class ReinserterBase : public OperatorBase<void, std::vector<Individual>&, std::vector<Individual>&> {
+class ReinserterBase : public OperatorBase<void, Operon::Span<Individual>, Operon::Span<Individual>> {
 public:
     explicit ReinserterBase(ComparisonCallback&& cb)
         : comp(std::move(cb))
@@ -91,6 +91,8 @@ public:
         : comp(cb)
     {
     }
+
+    inline void Sort(Operon::Span<Individual> inds) const { pdqsort(inds.begin(), inds.end(), comp); }
 
 protected:
     ComparisonCallback comp;
