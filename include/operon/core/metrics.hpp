@@ -42,6 +42,17 @@ double MeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
 }
 
 template<typename T>
+double L2Norm(Operon::Span<const T> x, Operon::Span<const T> y)
+{
+    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
+    EXPECT(x.size() == y.size());
+    EXPECT(x.size() > 0);
+    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> a(x.data(), x.size());
+    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
+    return static_cast<double>((a - b).squaredNorm() / 2);
+}
+
+template<typename T>
 double MeanAbsoluteError(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
@@ -111,6 +122,14 @@ struct R2 {
     double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return -RSquared(x, y);
+    }
+};
+
+struct L2 {
+    template<typename T>
+    double operator()(Operon::Span<T const> x, Operon::Span<T const> y) const noexcept
+    {
+        return L2Norm(x, y);
     }
 };
 
