@@ -13,10 +13,10 @@ class KeepBestReinserter : public ReinserterBase {
         explicit KeepBestReinserter(ComparisonCallback&& cb) : ReinserterBase(cb) { }
         explicit KeepBestReinserter(ComparisonCallback const& cb) : ReinserterBase(cb) { }
         // keep the best |pop| individuals from pop+pool
-        void operator()(Operon::RandomGenerator&, std::vector<Individual>& pop, std::vector<Individual>& pool) const override {
+        void operator()(Operon::RandomGenerator&, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const override {
             // sort the population and the recombination pool
-            pdqsort(pop.begin(), pop.end(), this->comp);
-            pdqsort(pool.begin(), pool.end(), this->comp);
+            Sort(pop);
+            Sort(pool);
 
             // merge the best individuals from pop+pool into pop
             size_t i = 0, j = 0;

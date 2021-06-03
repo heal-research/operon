@@ -7,6 +7,7 @@
 #include "algorithms/config.hpp"
 #include "core/format.hpp"
 #include "core/metrics.hpp"
+#include "core/types.hpp"
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
 #include "operators/generator.hpp"
@@ -48,10 +49,8 @@ public:
     {
     }
 
-    std::vector<Individual> const& Parents() const { return parents; }
-    std::vector<Individual>& Parents() { return parents; }
-    std::vector<Individual> const& Offspring() const { return offspring; }
-    std::vector<Individual>& Offspring() { return offspring; }
+    Operon::Span<Individual const> Parents() const { return { parents.data(), parents.size() }; }
+    Operon::Span<Individual const> Offspring() const { return { offspring.data(), offspring.size() }; }
 
     const Problem& GetProblem() const { return problem_.get(); }
     const GeneticAlgorithmConfig& GetConfig() const { return config_.get(); }
@@ -123,7 +122,6 @@ public:
         auto prepareGenerator = taskflow.emplace([&]() { generator.Prepare(parents); });
 
         auto generateOffspring = taskflow.for_each_index(1ul, offspring.size(), 1ul, [&](size_t i) {
-            auto id = executor.this_worker_id();
             while (!(terminate = generator.Terminate())) {
                 if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability); result.has_value()) {
                     offspring[i] = std::move(result.value());

@@ -18,6 +18,6 @@ void init_algorithm(py::module_ &m)
                     return *min_elem;
                 })
         .def_property_readonly("Generation", &GeneticProgrammingAlgorithm::Generation)
-        .def_property_readonly("Parents", static_cast<std::vector<Operon::Individual> const& (GeneticProgrammingAlgorithm::*)() const>(&GeneticProgrammingAlgorithm::Parents))
+        .def_property_readonly("Parents", static_cast<Operon::Span<Operon::Individual const> (GeneticProgrammingAlgorithm::*)() const>(&GeneticProgrammingAlgorithm::Parents))
         .def_property_readonly("Config", &GeneticProgrammingAlgorithm::GetConfig);
 }
