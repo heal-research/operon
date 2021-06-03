@@ -68,14 +68,15 @@ struct Interpreter {
         size_t idx = 0;
 
         for (size_t i = 0; i < nodes.size(); ++i) {
-            if (nodes[i].IsConstant()) {
-                auto v = parameters ? parameters[idx] : T(nodes[i].Value);
-                m.col(i).setConstant(v);
-                idx++;
-            } else if (nodes[i].IsVariable()) {
-                params[i] = parameters ? parameters[idx] : T(nodes[i].Value);
-                vals[i] = dataset.GetValues(nodes[i].HashValue);
-                idx++;
+            auto const& n = nodes[i];
+            if (n.IsLeaf()) {
+                auto v = parameters ? parameters[idx++] : T{n.Value};
+                if (n.IsConstant()) {
+                    m.col(i).setConstant(v);
+                } else if (n.IsVariable()) {
+                    params[i] = v;
+                    vals[i] = dataset.GetValues(n.HashValue);
+                }
             } else {
                 funcs.push_back(std::ref(ftable.Get<T>(nodes[i].HashValue)));
             }
@@ -100,14 +101,7 @@ struct Interpreter {
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
-            auto seg = lastCol.segment(0, remainingRows);
-            auto max_ = Operon::Numeric::Max<T>();
-#if EIGEN_MINOR_VERSION > 7
-            res.segment(row, remainingRows) = (seg.isFinite()).select(seg, max_);
-#else
-            // less efficient
-            res.segment(row, remainingRows) = seg.unaryExpr([&](auto v) { return ceres::IsFinite(v) ? v : max_; });
-#endif
+            res.segment(row, remainingRows) = lastCol.segment(0, remainingRows);
         }
     }
 
