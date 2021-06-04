@@ -265,7 +265,7 @@ int main(int argc, char** argv)
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
         mutator.Add(replaceSubtree, 1.0);
-        //mutator.Add(insertSubtree, 1.0);
+        mutator.Add(insertSubtree, 1.0);
         mutator.Add(removeSubtree, 1.0);
 
         // initialize an interpreter using a default dispatch table

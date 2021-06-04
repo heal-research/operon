@@ -5,23 +5,29 @@
 #define OPERON_EVAL_DETAIL
 
 #include "core/node.hpp"
-#include "functions.hpp"
+#include "core/types.hpp"
+#include "interpreter/functions.hpp"
+
 #include "robin_hood.h"
 #include <Eigen/Dense>
-
 #include <fmt/core.h>
 
+#include <tuple>
+
 namespace Operon {
+
 namespace detail {
     // this should be good enough - tests show 512 is about optimal
     template<typename T>
-    constexpr size_t BatchSize() { return 512 / sizeof(T); }
+    struct batch_size {
+        static const size_t value = 512 / sizeof(T);
+    };
 
     template<typename T>
-    using eigen_t = typename Eigen::Array<T, BatchSize<T>(), Eigen::Dynamic, Eigen::ColMajor>;
+    using eigen_t = typename Eigen::Array<T, batch_size<T>::value, Eigen::Dynamic, Eigen::ColMajor>;
 
     template<typename T>
-    using eigen_ref = Eigen::Ref<eigen_t<T>, Eigen::Unaligned, Eigen::Stride<BatchSize<T>(), 1>>;
+    using eigen_ref = Eigen::Ref<eigen_t<T>, Eigen::Unaligned, Eigen::Stride<batch_size<T>::value, 1>>;
 
     // dispatching mechanism
     // compared to the simple/naive way of evaluating n-ary symbols, this method has the following advantages:
@@ -192,7 +198,13 @@ namespace detail {
         return MakeTuple<Type, Operon::Scalar, Operon::Dual>();
     }
 
-    template<typename F, std::enable_if_t<std::is_invocable_r_v<void, F, detail::eigen_t<Operon::Scalar>&, Vector<Node> const&, size_t> && std::is_invocable_r_v<void, F, detail::eigen_t<Operon::Dual>&, Vector<Node> const&, size_t, size_t>, bool> = true>
+    template<typename F, std::enable_if_t<
+        std::is_invocable_r_v<
+            void, F, detail::eigen_t<Operon::Scalar>&, Operon::Vector<Node> const&, size_t, size_t
+        > &&
+        std::is_invocable_r_v<
+            void, F, detail::eigen_t<Operon::Dual>&, Operon::Vector<Node> const&, size_t, size_t
+        >, bool> = true>
     static constexpr auto MakeDefaultTuple(F&& f)
     {
         return MakeTuple<F, Operon::Scalar, Operon::Dual>(std::forward<F&&>(f));
@@ -203,6 +215,7 @@ namespace detail {
 struct DispatchTable {
     template<typename T>
     using Callable = detail::Callable<T>;
+
     using Tuple    = std::tuple<Callable<Operon::Scalar>, Callable<Operon::Dual>>;
     using Map      = robin_hood::unordered_flat_map<Operon::Hash, Tuple>;
     using Pair     = robin_hood::pair<Operon::Hash, Tuple>;

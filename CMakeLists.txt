@@ -8,7 +8,7 @@ include(FeatureSummary)
 
 project(
     Operon
-    VERSION 0.1
+    VERSION 0.2
     DESCRIPTION "Genetic Programming"
     LANGUAGES CXX
 )
@@ -186,17 +186,11 @@ endif()
 # populate content
 FetchContent_MakeAvailable(xxhash csv nanobench robin_hood pdqsort span-lite fast_float vectorclass)
 
-# populate optional content
-if (CERES_TINY_SOLVER)
-    FetchContent_MakeAvailable(ceres_tiny_solver ceres_jet)
-endif()
-
 set(THIRDPARTY_INCLUDE_DIRS
     ${PRATT_PARSER_INCLUDE_DIRS}
     ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     ${PROJECT_SOURCE_DIR}/thirdparty/pdqsort
     ${Taskflow_INCLUDE_DIR}
-    ${ceres_tiny_solver_SOURCE_DIR}
     ${fast_float_SOURCE_DIR}/include
     ${gsl_SOURCE_DIR}/include
     ${nanobench_SOURCE_DIR}
@@ -204,6 +198,12 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${vectorclass_SOURCE_DIR}
     ${xxhash_SOURCE_DIR}
 )
+
+# populate optional content
+if (CERES_TINY_SOLVER)
+    FetchContent_MakeAvailable(ceres_tiny_solver ceres_jet)
+    list(APPEND THIRDPARTY_INCLUDE_DIRS ${ceres_tiny_solver_SOURCE_DIR} ${ceres_jet_SOURCE_DIR})
+endif()
 
 if(USE_OPENLIBM)
     find_library(OPENLIBM openlibm)
@@ -304,8 +304,18 @@ add_executable(
 
 target_compile_features(operon-example-gp PRIVATE cxx_std_17)
 target_link_libraries(operon-example-gp PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres)
-target_include_directories(operon-example-gp SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/include/operon ${THIRDPARTY_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
-target_compile_definitions(operon-example-gp PRIVATE "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>")
+target_include_directories(operon-example-gp SYSTEM PRIVATE
+    ${PROJECT_SOURCE_DIR}/include/operon
+    ${THIRDPARTY_INCLUDE_DIRS}
+    ${EIGEN3_INCLUDE_DIR}
+    ${CMAKE_BINARY_DIR}
+    )
+target_compile_definitions(operon-example-gp PRIVATE
+    "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
+    "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
+    "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+    "$<$<BOOL:${Ceres_FOUND}>:HAVE_CERES>"
+    )
 set_target_properties(operon-example-gp PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 if(MSVC)
