@@ -8,9 +8,14 @@
 
 #include "core/dataset.hpp"
 #include "core/tree.hpp"
-#include "dispatch_table.hpp"
+#include "core/types.hpp"
+#include "interpreter/dispatch_table.hpp"
 
 namespace Operon {
+
+template<typename T>
+using Span = nonstd::span<T>;
+
 struct Interpreter {
     Interpreter(DispatchTable const& ft)
         : ftable(ft)
@@ -55,14 +60,14 @@ struct Interpreter {
         const auto& nodes = tree.Nodes();
         EXPECT(nodes.size() > 0);
 
-        constexpr int S = static_cast<int>(detail::BatchSize<T>());
+        constexpr int S = static_cast<int>(detail::batch_size<T>::value);
 
         using M = Eigen::Array<T, S, Eigen::Dynamic, Eigen::ColMajor>;
         M m = M::Zero(S, nodes.size());
 
         Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1);
 
-        Operon::Vector<std::reference_wrapper<const DispatchTable::Callable<T>>> funcs;
+        Operon::Vector<std::reference_wrapper<DispatchTable::Callable<T> const>> funcs;
         Operon::Vector<T> params(nodes.size());
         Operon::Vector<Operon::Span<const Operon::Scalar>> vals(nodes.size());
         size_t idx = 0;
