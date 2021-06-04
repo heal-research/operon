@@ -49,7 +49,9 @@ int main(int, char**) {
     mutation.Add(changeFunc, 1.0);
 
     // set up remaining operators
-    RSquaredEvaluator evaluator(problem);
+    DispatchTable dt;
+    Interpreter interpreter(dt);
+    RSquaredEvaluator evaluator(problem, interpreter);
     evaluator.SetLocalOptimizationIterations(config.Iterations);
     evaluator.SetBudget(config.Evaluations);
 
@@ -59,7 +61,7 @@ int main(int, char**) {
     TournamentSelector selector(comp);
     selector.SetTournamentSize(5); 
 
-    ReplaceWorstReinserter<> reinserter(comp);
+    ReplaceWorstReinserter reinserter(comp);
     BasicOffspringGenerator generator(evaluator, crossover, mutation, selector, selector);
 
     // set up a genetic programming algorithm
