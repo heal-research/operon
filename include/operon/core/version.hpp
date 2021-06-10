@@ -30,7 +30,7 @@ namespace Operon {
         if (OPERON_CERES_VERSION) {
             fmt::format_to(buf, ", ceres {}", OPERON_CERES_VERSION);
         }
-        fmt::format_to(buf, ", tbb {}" , OPERON_TBB_VERSION);
+        fmt::format_to(buf, ", taskflow {}", OPERON_TF_VERSION);
         if (OPERON_PYBIND11_VERSION) {
             fmt::format_to(buf, ", pybind11 {}", OPERON_PYBIND11_VERSION);
         }
