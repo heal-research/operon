@@ -8,9 +8,9 @@
 #include <mutex>
 
 #include "pdqsort.h"
+#include "vstat.hpp"
 
 #include "core/operator.hpp"
-#include "core/stats.hpp"
 #include "core/distance.hpp"
 
 namespace Operon {
@@ -52,7 +52,6 @@ public:
         size_t c = 0;
         size_t n = (hashes.size()-1) * hashes.size() / 2;
 
-        MeanVarianceCalculator calc;
         for (size_t i = 0; i < hashes.size() - 1; ++i) {
             for(size_t j = i+1; j < hashes.size(); ++j) {
                 pairs[k++] = { i, j }; ++c;
@@ -63,11 +62,10 @@ public:
                         auto [a, b] = pairs[idx];
                         distances[idx] = Operon::Distance::Jaccard(hashes[a], hashes[b]);
                     });
-                    calc.Add(Operon::Span(distances.data(), distances.size()));
                 }
             }
         }
-        diversity = calc.Mean();
+        diversity = univariate::accumulate<Operon::Scalar>(distances.data(), distances.size()).mean;
     }
 
     private:

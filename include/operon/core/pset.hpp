@@ -8,7 +8,7 @@
 #include <bitset>
 #include <unordered_map>
 
-#include "core/common.hpp"
+#include "core/contracts.hpp"
 #include "core/tree.hpp"
 
 namespace Operon {

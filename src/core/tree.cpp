@@ -9,9 +9,7 @@
 #include <stack>
 #include <utility>
 
-#include "core/common.hpp"
 #include "core/tree.hpp"
-
 
 namespace Operon {
 Tree& Tree::UpdateNodes()

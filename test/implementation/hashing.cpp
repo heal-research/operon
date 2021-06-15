@@ -5,12 +5,13 @@
 #include <unordered_set>
 
 #include "core/tree.hpp"
-#include "core/common.hpp"
 #include "core/distance.hpp"
 #include "core/operator.hpp"
 #include "core/format.hpp"
 #include "hash/hash.hpp"
 #include "operators/creator.hpp"
+
+#include "vstat.hpp"
 
 namespace Operon {
 namespace Test {
@@ -27,17 +28,16 @@ void calculateDistance(std::vector<Tree>& trees, Operon::HashFunction f, const s
         treeHashes.push_back(hh);
     }
 
-    MeanVarianceCalculator calc;
-    calc.Reset();
+    univariate_accumulator<double> acc(0.0);
 
     for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
         for (size_t j = i + 1; j < treeHashes.size(); ++j) {
             auto d = Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]);
-            calc.Add(d);
+            acc(d);
         }
     }
-
-    fmt::print("Average distance ({}): {}\n", name, calc.Mean());
+    univariate_statistics stats(acc);
+    fmt::print("Average distance ({}): {}\n", name, stats.mean);
 }
 
 void calculateDistanceWithSort(std::vector<Tree>& trees, const std::string& name) {
@@ -52,17 +52,17 @@ void calculateDistanceWithSort(std::vector<Tree>& trees, const std::string& name
         treeHashes.push_back(hh);
     }
 
-    MeanVarianceCalculator calc;
-    calc.Reset();
+    univariate_accumulator<double> acc(0.0);
 
     for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
         for (size_t j = i + 1; j < treeHashes.size(); ++j) {
             auto d = Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]);
-            calc.Add(d);
+            acc(d);
         }
     }
 
-    fmt::print("Average distance (sort) ({}): {}\n", name, calc.Mean());
+    univariate_statistics stats(acc);
+    fmt::print("Average distance (sort) ({}): {}\n", name, stats.mean);
 }
 
 TEST_CASE("Hash-based distance") {

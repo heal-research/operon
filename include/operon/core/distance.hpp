@@ -6,7 +6,6 @@
 
 #include "core/types.hpp"
 
-#define VCL_NAMESPACE vcl
 #include "vectorclass.h"
 
 #include <immintrin.h>
@@ -19,21 +18,21 @@ namespace Distance {
         template<typename T, std::enable_if_t<std::is_integral_v<T> && sizeof(T) == 8, bool> = true>
         constexpr inline auto check(T const* lhs, T const* rhs) noexcept
         {
-            auto a = vcl::Vec4uq().load(lhs);
+            auto a = Vec4uq().load(lhs);
             return a == rhs[0] | a == rhs[1] | a == rhs[2] | a == rhs[3];
         }
 
         template<typename T, std::enable_if_t<std::is_integral_v<T> && sizeof(T) == 4, bool> = true>
         constexpr inline auto check(T const* lhs, T const* rhs) noexcept
         {
-            auto a = vcl::Vec8ui().load(lhs);
+            auto a = Vec8ui().load(lhs);
             return a == rhs[0] | a == rhs[1] | a == rhs[2] | a == rhs[3] | a == rhs[4] | a == rhs[5] | a == rhs[6] | a == rhs[7];
         }
 
         template<typename T, std::enable_if_t<std::is_integral_v<T> && (sizeof(T) == 4 || sizeof(T) == 8), bool> = true>
         constexpr inline bool Intersect(T const* lhs, T const* rhs) noexcept
         {
-            return vcl::horizontal_add(check(lhs, rhs));
+            return horizontal_add(check(lhs, rhs));
         }
 
         // this method only works when the hash vectors are sorted

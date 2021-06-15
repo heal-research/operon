@@ -5,7 +5,6 @@
 
 #include "core/dataset.hpp"
 #include "core/format.hpp"
-#include "core/stats.hpp"
 #include "core/metrics.hpp"
 #include "core/distance.hpp"
 #include "core/pset.hpp"
@@ -40,7 +39,7 @@ struct ComputeDistanceMatrix {
 TEST_CASE("Intersection performance")
 {
     size_t n = 1000;
-    size_t maxLength = 1000;
+    size_t maxLength = 200;
     size_t maxDepth = 1000;
 
     Operon::RandomGenerator rd(1234);

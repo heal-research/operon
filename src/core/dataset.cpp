@@ -7,6 +7,8 @@
 #include "core/constants.hpp"
 #include "core/types.hpp"
 #include "hash/hash.hpp"
+
+#include "vstat.hpp"
 #include <csv/parser.hpp>
 #include <fast_float/fast_float.h>
 
@@ -204,9 +206,8 @@ void Dataset::Standardize(size_t i, Range range)
     auto start = static_cast<Eigen::Index>(range.Start());
     auto n = static_cast<Eigen::Index>(range.Size());
     auto seg = values.col(j).segment(start, n);
-    MeanVarianceCalculator calc;
-    auto vals = Operon::Span<const Operon::Scalar>(seg.data(), range.Size());
-    calc.Add(vals);
-    values.col(j) = (values.col(j).array() - calc.Mean()) / calc.NaiveStandardDeviation();
+    auto stats = univariate::accumulate<Matrix::Scalar>(seg.data(), seg.size());
+    auto stddev = stats.variance * stats.variance;
+    values.col(j) = (values.col(j).array() - stats.mean) / stddev;
 }
 } // namespace Operon

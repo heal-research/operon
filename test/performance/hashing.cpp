@@ -4,7 +4,6 @@
 #include <doctest/doctest.h>
 
 #include "analyzers/diversity.hpp"
-#include "core/common.hpp"
 #include "core/dataset.hpp"
 #include "core/pset.hpp"
 #include "hash/hash.hpp"
