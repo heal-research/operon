@@ -8,7 +8,6 @@
 #include "interpreter/dispatch_table.hpp"
 #include "operators/evaluator.hpp"
 #include "operon.hpp"
-#include "stat/linearscaler.hpp"
 
 namespace py = pybind11;
 
@@ -60,13 +59,19 @@ void init_eval(py::module_ &m)
     m.def("FitLeastSquares", [](py::array_t<float> lhs, py::array_t<float> rhs) {
         auto s1 = MakeConstSpan(lhs);
         auto s2 = MakeConstSpan(rhs);
-        return Operon::LinearScalingCalculator::Calculate(s1, s2);
+        auto stats = bivariate::accumulate<float>(s1.data(), s2.data(), s1.size());
+        auto a = stats.covariance / stats.variance_x; // scale
+        auto b = stats.mean_y - a * stats.mean_x;     // offset
+        return std::make_pair(a, b);
     });
 
     m.def("FitLeastSquares", [](py::array_t<double> lhs, py::array_t<double> rhs) {
         auto s1 = MakeConstSpan(lhs);
         auto s2 = MakeConstSpan(rhs);
-        return Operon::LinearScalingCalculator::Calculate(s1, s2);
+        auto stats = bivariate::accumulate<float>(s1.data(), s2.data(), s1.size());
+        auto a = stats.covariance / stats.variance_x; // scale
+        auto b = stats.mean_y - a * stats.mean_x;     // offset
+        return std::make_pair(a, b);
     });
 
     m.def("RSquared", [](py::array_t<float> lhs, py::array_t<float> rhs) {
