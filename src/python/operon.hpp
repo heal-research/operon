@@ -12,7 +12,6 @@
 #include <type_traits>
 
 #include "algorithms/gp.hpp"
-#include "core/common.hpp"
 #include "core/constants.hpp"
 #include "core/dataset.hpp"
 #include "core/format.hpp"
@@ -29,8 +28,6 @@
 #include "operators/mutation.hpp"
 #include "operators/selection.hpp"
 #include "operators/reinserter/replaceworst.hpp"
-
-#include "stat/pearson.hpp"
 
 namespace py = pybind11;
 
