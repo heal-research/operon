@@ -8,7 +8,6 @@
 #include "nanobench.h"
 
 #include "core/types.hpp"
-#include "core/common.hpp"
 
 #include <Eigen/Core>
 

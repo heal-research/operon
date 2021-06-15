@@ -5,7 +5,6 @@
 #include "interpreter/interpreter.hpp"
 #include "nnls/nnls.hpp"
 #include "core/format.hpp"
-#include "core/stats.hpp"
 #include "core/metrics.hpp"
 #include "parser/infix.hpp"
 
@@ -35,7 +34,7 @@ TEST_CASE("Evaluation correctness")
 
     robin_hood::unordered_map<std::string, Operon::Hash> map;
     for (auto v : ds.Variables()) {
-        fmt::print("{} : {}\n", v.Name, v.Hash);
+        fmt::print("{} : {} {}\n", v.Name, v.Hash, v.Index);
         map[v.Name] = v.Hash;
     }
 
@@ -102,6 +101,27 @@ TEST_CASE("Numeric optimization")
         fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
     }
 }
+
+TEST_CASE("tiny bug")
+{
+    auto ds = Dataset("../data/Pagie-1.csv", true);
+    auto infix = "((((10.31296 / 4.01705) + ((-27.05388) - 23.68143)) / ((-148.00854) - ((78.81192 * Y) + ((-30.19245) * X)))) / (((((-6.40791) * Y) - (4.72377 * Y)) - (((-76.46925) * X) + 403.50482)) / (14.26075 - (-14.37711))))";
+    std::unordered_map<std::string, Operon::Hash> map;
+    for (auto const& v : ds.Variables()) {
+        map.insert({ v.Name, v.Hash });
+    }
+    auto tree = InfixParser::Parse(infix, map);
+
+    Interpreter interpreter;
+
+    auto range = Range { 0, ds.Rows() };
+    auto target = ds.GetValues("F");
+
+    NonlinearLeastSquaresOptimizer<OptimizerType::TINY> optimizer(interpreter, tree, ds);
+    auto summary = optimizer.Optimize(target, range, 10, true, true);
+    fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
+}
+
 
 } // namespace Test
 } // namespace Operon

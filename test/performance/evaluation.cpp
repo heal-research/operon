@@ -5,7 +5,6 @@
 #include <interpreter/dispatch_table.hpp>
 #include <thread>
 
-#include "core/common.hpp"
 #include "core/dataset.hpp"
 #include "interpreter/interpreter.hpp"
 #include "core/pset.hpp"

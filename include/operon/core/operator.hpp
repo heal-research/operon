@@ -8,12 +8,11 @@
 #include <random>
 #include <type_traits>
 
-#include "common.hpp"
-#include "dataset.hpp"
-#include "pset.hpp"
-#include "individual.hpp"
-#include "problem.hpp"
-#include "tree.hpp"
+#include "core/dataset.hpp"
+#include "core/pset.hpp"
+#include "core/individual.hpp"
+#include "core/problem.hpp"
+#include "core/tree.hpp"
 
 namespace Operon {
 // it's useful to have a data structure holding additional attributes for a solution candidate

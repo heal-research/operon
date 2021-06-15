@@ -10,7 +10,7 @@
 #include <functional>
 #include <type_traits>
 
-#include "common.hpp"
+#include "types.hpp"
 #include <fmt/format.h>
 
 namespace Operon {

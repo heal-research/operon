@@ -10,7 +10,6 @@
 #include "core/format.hpp"
 #include "nnls/nnls.hpp"
 #include "nnls/tiny_optimizer.hpp"
-#include "stat/pearson.hpp"
 
 namespace Operon {
 
@@ -76,10 +75,12 @@ public:
             GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange, estimatedValues);
 
             if constexpr (LinearScaling) {
-                auto [m, c] = Operon::LinearScalingCalculator::Calculate(Operon::Span<Operon::Scalar const>{ estimatedValues }, targetValues);
                 Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> x(estimatedValues.data(), estimatedValues.size());
                 Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> y(targetValues.data(), targetValues.size());
-                x = x * m + c;
+                auto stats = bivariate::accumulate<double>(x.data(), y.data(), x.size());
+                auto a = static_cast<Operon::Scalar>(stats.covariance / stats.variance_x); // scale
+                auto b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x);     // offset
+                x = x * a + b;
             }
 
             return ErrorMetric{}(Operon::Span<Operon::Scalar const>{ estimatedValues }, targetValues);

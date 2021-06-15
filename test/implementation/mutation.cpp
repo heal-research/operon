@@ -6,7 +6,6 @@
 #include "core/dataset.hpp"
 #include "core/format.hpp"
 #include "core/pset.hpp"
-#include "core/stats.hpp"
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
 #include "operators/mutation.hpp"
@@ -43,9 +42,6 @@ TEST_CASE("InsertSubtreeMutation")
     InsertSubtreeMutation mut(btc, 2 * targetLen, maxDepth);
     auto child = mut(random, tree);
     fmt::print("{}\n", TreeFormatter::Format(child, ds));
-
-    //auto v1 = Evaluate<Operon::Scalar>(tree, ds, range); 
-    //auto v2 = Evaluate<Operon::Scalar>(child, ds, range); 
 }
 
 }

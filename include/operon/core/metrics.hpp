@@ -6,43 +6,39 @@
 
 #include "core/types.hpp"
 #include "core/contracts.hpp"
-#include "core/stats.hpp"
-#include "stat/pearson.hpp"
+#include "vstat.hpp"
+
 #include <type_traits>
 
 namespace Operon {
 template<typename T>
-double NormalizedMeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
+inline double MeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(x.size() > 0);
-    PearsonsRCalculator calc;
-    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> a(x.data(), x.size());
-    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
-    Eigen::Array<T, Eigen::Dynamic, 1> c = (a - b).square();
-    calc.Add(Operon::Span<const T>(c.data(), c.size()), y);
-    auto yvar = calc.NaiveVarianceY();
-    auto errmean = calc.MeanX();
-    return yvar > 0 ? errmean / yvar : yvar;
+    return univariate::accumulate<T>(x.data(), y.data(), x.size(), [](auto a, auto b) { auto e = a - b; return e * e; }).mean;
 }
 
 template<typename T>
-double MeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
+inline double RootMeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
-    EXPECT(x.size() == y.size());
-    EXPECT(x.size() > 0);
-    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> a(x.data(), x.size());
-    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
-    Eigen::Array<T, Eigen::Dynamic, 1> c = (a - b).square();
-    MeanVarianceCalculator mcalc;
-    mcalc.Add(Operon::Span<T const>(c.data(), c.size()));
-    return mcalc.Mean();
+    return std::sqrt(MeanSquaredError(x, y));
 }
 
 template<typename T>
-double L2Norm(Operon::Span<const T> x, Operon::Span<const T> y)
+inline double NormalizedMeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
+{
+    auto var_y = univariate::accumulate<T>(y.begin(), y.end()).variance;
+    if (std::abs(var_y) < 1e-12) {
+        return var_y;
+    }
+    return MeanSquaredError(x, y) / var_y;
+}
+
+template<typename T>
+inline double L2Norm(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
@@ -53,41 +49,28 @@ double L2Norm(Operon::Span<const T> x, Operon::Span<const T> y)
 }
 
 template<typename T>
-double MeanAbsoluteError(Operon::Span<const T> x, Operon::Span<const T> y)
+inline double MeanAbsoluteError(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(x.size() > 0);
-    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> a(x.data(), x.size());
-    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> b(y.data(), y.size());
-    Eigen::Array<T, Eigen::Dynamic, 1> c = (a - b).abs();
-    MeanVarianceCalculator mcalc;
-    mcalc.Add(Operon::Span<T const>(c.data(), c.size()));
-    return mcalc.Mean();
+    return univariate::accumulate<T>(x.data(), y.data(), x.size(), [](auto a, auto b) { return std::abs(a-b); }).mean;
 }
 
 template<typename T>
-double RootMeanSquaredError(Operon::Span<const T> x, Operon::Span<const T> y)
-{
-    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
-    return std::sqrt(MeanSquaredError(x, y));
-}
-
-template<typename T>
-double RSquared(Operon::Span<const T> x, Operon::Span<const T> y)
+inline double RSquared(Operon::Span<const T> x, Operon::Span<const T> y)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(x.size() > 0);
-    PearsonsRCalculator calc;
-    calc.Add(x, y);
-    auto r = calc.Correlation();
+    auto r = bivariate::accumulate<T>(x.data(), y.data(), x.size()).correlation;
     return r * r;
 }
 
+// functors to plug into an evaluator
 struct MSE {
     template<typename T>
-    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
+    inline double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return MeanSquaredError(x, y);
     }
@@ -95,7 +78,7 @@ struct MSE {
 
 struct NMSE {
     template<typename T>
-    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
+    inline double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return NormalizedMeanSquaredError(x, y);
     }
@@ -103,7 +86,7 @@ struct NMSE {
 
 struct RMSE {
     template<typename T>
-    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
+    inline double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return RootMeanSquaredError(x, y);
     }
@@ -111,7 +94,7 @@ struct RMSE {
 
 struct MAE {
     template<typename T>
-    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
+    inline double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return MeanAbsoluteError(x, y);
     }
@@ -119,7 +102,7 @@ struct MAE {
 
 struct R2 {
     template<typename T>
-    double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
+    inline double operator()(Operon::Span<const T> x, Operon::Span<const T> y) const noexcept
     {
         return -RSquared(x, y);
     }
@@ -127,7 +110,7 @@ struct R2 {
 
 struct L2 {
     template<typename T>
-    double operator()(Operon::Span<T const> x, Operon::Span<T const> y) const noexcept
+    inline double operator()(Operon::Span<T const> x, Operon::Span<T const> y) const noexcept
     {
         return L2Norm(x, y);
     }
