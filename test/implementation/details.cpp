@@ -3,7 +3,6 @@
 
 #include <doctest/doctest.h>
 
-#include "core/common.hpp"
 #include "core/operator.hpp"
 #include "core/tree.hpp"
 

@@ -10,7 +10,6 @@
 #include <random>
 #include <vector>
 
-#include "common.hpp"
 #include "hash/hash.hpp"
 #include "node.hpp"
 

@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
 #include <doctest/doctest.h>
-#include "core/common.hpp"
 #include "core/dataset.hpp"
 #include "interpreter/interpreter.hpp"
 #include "core/pset.hpp"

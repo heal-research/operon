@@ -11,7 +11,6 @@
 
 #include "algorithms/gp.hpp"
 
-#include "core/common.hpp"
 #include "core/format.hpp"
 #include "core/metrics.hpp"
 #include "core/version.hpp"
@@ -24,7 +23,6 @@
 #include "operators/reinserter/keepbest.hpp"
 #include "operators/reinserter/replaceworst.hpp"
 #include "operators/selection.hpp"
-#include "stat/linearscaler.hpp"
 
 #include "util.hpp"
 
@@ -463,9 +461,9 @@ int main(int argc, char** argv)
             // scale values
             Operon::Scalar a, b;
             auto linearScaling = taskflow.emplace([&]() {
-                auto [scale, offset] = LinearScalingCalculator::Calculate(Operon::Span<Operon::Scalar const>{ estimatedTrain }, targetTrain);
-                a = static_cast<Operon::Scalar>(scale);
-                b = static_cast<Operon::Scalar>(offset);
+                auto stats = bivariate::accumulate<double>(estimatedTrain.data(), targetTrain.data(), estimatedTrain.size());
+                a = static_cast<Operon::Scalar>(stats.covariance / stats.variance_x);
+                b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x);
             });
 
             double r2Train, r2Test, nmseTrain, nmseTest, maeTrain, maeTest;

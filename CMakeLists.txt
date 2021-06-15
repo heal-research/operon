@@ -178,9 +178,22 @@ FetchContent_Declare(
     SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vcl
 )
 
+FetchContent_Declare(
+    vstat
+    GIT_REPOSITORY https://github.com/foolnotion/vstat
+    GIT_TAG main
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vstat
+    SOURCE_DIR ${DOWNLOAD_DIR}
+)
+
 if(NOT infix_parser_POPULATED)
     FetchContent_Populate(infix_parser)
     add_subdirectory(${infix_parser_SOURCE_DIR} ${infix_parser_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif()
+
+if(NOT vstat_POPULATED)
+    FetchContent_Populate(vstat)
+    add_subdirectory(${vstat_SOURCE_DIR} ${vstat_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
 # populate content
@@ -197,6 +210,7 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${span-lite_SOURCE_DIR}
     ${vectorclass_SOURCE_DIR}
     ${xxhash_SOURCE_DIR}
+    ${VSTAT_INCLUDE_DIRS}
 )
 
 # populate optional content
@@ -283,8 +297,6 @@ add_library(
     src/operators/creator/ptc2.cpp
     src/operators/selector/proportional.cpp
     src/operators/selector/tournament.cpp
-    src/stat/meanvariance.cpp
-    src/stat/pearson.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres Threads::Threads)
@@ -442,7 +454,6 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/performance/distance.cpp
         test/performance/math.cpp
         test/performance/random.cpp
-        test/performance/stat.cpp
         test/implementation/evaluation.cpp
         test/implementation/details.cpp
         test/implementation/hashing.cpp
@@ -450,7 +461,6 @@ if(doctest_FOUND AND BUILD_TESTS)
         #test/implementation/initialization.cpp
         test/implementation/mutation.cpp
         test/implementation/random.cpp
-        #test/implementation/stat.cpp
         #test/implementation/selection.cpp
         #test/codegen/irbuilder.cpp
         )
