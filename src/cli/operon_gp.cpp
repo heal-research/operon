@@ -448,6 +448,7 @@ int main(int argc, char** argv)
 
             Operon::Vector<Operon::Scalar> estimatedTrain, estimatedTest;
 
+            tf::Executor exe(threads);
             tf::Taskflow taskflow;
 
             auto evalTrain = taskflow.emplace([&]() {
@@ -508,7 +509,7 @@ int main(int argc, char** argv)
             scaleTest.precede(calcStats);
             calcStats.precede(calculateLength, calculateQuality, calculatePopMemory, calculateOffMemory);
 
-            executor.run(taskflow).wait();
+            exe.run(taskflow).wait();
 
             avgLength /= static_cast<double>(pop.size());
             avgQuality /= static_cast<double>(pop.size());
@@ -522,8 +523,10 @@ int main(int argc, char** argv)
             fmt::print("{}\t{}\n", totalMemory, config.Seed);
         };
 
-        gp.Run(executor, random, report);
+        gp.Run(executor, random, nullptr);
+        best = getBest(gp.Parents());
         fmt::print("{}\n", InfixFormatter::Format(best.Genotype, problem.GetDataset(), 20));
+        report();
     } catch (std::exception& e) {
         fmt::print("{}\n", e.what());
         std::exit(EXIT_FAILURE);

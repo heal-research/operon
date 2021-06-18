@@ -16,7 +16,7 @@ public:
     {
     }
 
-    std::optional<Individual> operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation) const override
+    std::optional<Individual> operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar>{}) const override
     {
         std::uniform_real_distribution<double> uniformReal;
         bool doCrossover = uniformReal(random) < pCrossover;
@@ -46,7 +46,7 @@ public:
                 : this->mutator(random, population[first].Genotype);
         }
 
-        auto f = this->evaluator(random, child);
+        auto f = this->evaluator(random, child, buf);
 
         if (std::isfinite(f) && f < (std::max(f1, f2) - comparisonFactor * std::abs(f1 - f2))) {
             child[0] = f;

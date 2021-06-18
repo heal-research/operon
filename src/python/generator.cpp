@@ -16,7 +16,8 @@ void init_generator(py::module_ &m)
         .def("__call__", &Operon::BasicOffspringGenerator::operator(),
             py::arg("rng"),
             py::arg("crossover_probability"),
-            py::arg("mutation_probability")
+            py::arg("mutation_probability"),
+            py::arg("evaluation buffer")
         )
         .def("Prepare", [](Operon::BasicOffspringGenerator& self, std::vector<Operon::Individual> const& individuals) {
             Operon::Span<const Operon::Individual> s(individuals.data(), individuals.size());
@@ -39,7 +40,8 @@ void init_generator(py::module_ &m)
         .def("__call__", &Operon::OffspringSelectionGenerator::operator(),
             py::arg("rng"),
             py::arg("crossover_probability"),
-            py::arg("mutation_probability")
+            py::arg("mutation_probability"),
+            py::arg("evaluation buffer")
         )
         .def("Prepare", [](Operon::OffspringSelectionGenerator& self, std::vector<Operon::Individual> const& individuals) {
             Operon::Span<const Operon::Individual> s(individuals.data(), individuals.size());
@@ -71,7 +73,8 @@ void init_generator(py::module_ &m)
         .def("__call__", &Operon::BroodOffspringGenerator::operator(),
             py::arg("rng"),
             py::arg("crossover_probability"),
-            py::arg("mutation_probability")
+            py::arg("mutation_probability"),
+            py::arg("evaluation buffer")
         )
         .def("Prepare", [](Operon::BroodOffspringGenerator& self, std::vector<Operon::Individual> const& individuals) {
             Operon::Span<const Operon::Individual> s(individuals.data(), individuals.size());
@@ -98,7 +101,8 @@ void init_generator(py::module_ &m)
         .def("__call__", &Operon::PolygenicOffspringGenerator::operator(),
             py::arg("rng"),
             py::arg("crossover_probability"),
-            py::arg("mutation_probability")
+            py::arg("mutation_probability"),
+            py::arg("evaluation buffer")
         )
         .def("Prepare", [](Operon::PolygenicOffspringGenerator& self, std::vector<Operon::Individual> const& individuals) {
             Operon::Span<const Operon::Individual> s(individuals.data(), individuals.size());

@@ -97,7 +97,7 @@ protected:
     ComparisonCallback comp;
 };
 
-class EvaluatorBase : public OperatorBase<Operon::Scalar, Individual&> {
+class EvaluatorBase : public OperatorBase<Operon::Scalar, Individual&, Operon::Span<Operon::Scalar>> {
     // some fitness measures are relative to the whole population (eg. diversity)
     // and the evaluator needs to do some preparation work using the entire pop
 public:
@@ -117,6 +117,7 @@ public:
         population = pop;
         objIndex = idx;
     }
+
     size_t TotalEvaluations() const { return fitnessEvaluations + localEvaluations; }
     size_t FitnessEvaluations() const { return fitnessEvaluations; }
     size_t LocalEvaluations() const { return localEvaluations; }
@@ -145,7 +146,7 @@ protected:
 };
 
 // TODO: Maybe remove all the template parameters and go for accepting references to operator bases
-class OffspringGeneratorBase : public OperatorBase<std::optional<Individual>, /* crossover prob. */ double, /* mutation prob. */ double> {
+class OffspringGeneratorBase : public OperatorBase<std::optional<Individual>, /* crossover prob. */ double, /* mutation prob. */ double, /* memory buffer */ Operon::Span<Operon::Scalar>> {
 public:
     OffspringGeneratorBase(EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel)
         : evaluator(eval)
