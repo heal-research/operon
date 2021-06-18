@@ -91,54 +91,66 @@ public:
         }
 
         auto idx = 0;
-        const auto& evaluator = generator.Evaluator();
+        auto const& evaluator = generator.Evaluator();
 
         // we want to allocate all the memory that will be necessary for evaluation (e.g. for storing model responses)
         // in one go and use it throughout the generations in order to minimize the memory pressure
         auto trainSize = problem.TrainingRange().Size();
 
         ENSURE(executor.num_workers() > 0);
-
-        // start the chronometer
-        auto t0 = std::chrono::steady_clock::now();
+        std::vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
 
         tf::Taskflow taskflow;
-        // initialize population
-        taskflow.for_each_index(0ul, parents.size(), 1ul, [&](size_t i) {
-            // allocate some memory for this worker
-            parents[i].Genotype = initializer(rngs[i]);
-            parents[i][idx] = evaluator(rngs[i], parents[i]);
-        });
-        executor.run(taskflow).wait(); // wait on this future to finish
-        taskflow.clear(); // clear tasks and associated data
-        ++generation;
 
         std::atomic_bool terminate{ false }; // flag to signal algorithm termination
 
-        auto preserveElite = taskflow.emplace([&]() {
-            offspring[0] = *std::min_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; });
-        });
+        // while loop control flow
+        auto [init, cond, body, back, done] = taskflow.emplace(
+            [&](tf::Subflow& subflow) {
+                subflow.for_each_index(0ul, parents.size(), 1ul, [&](size_t i) {
+                    auto id = executor.this_worker_id();
+                    // make sure the worker has a large enough buffer
+                    if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
+                    parents[i].Genotype = initializer(rngs[i]);
+                    parents[i][idx] = evaluator(rngs[i], parents[i], slots[id]);
+                });
+            }, // init
+            [&]() { return terminate || generation == config.Generations; }, // loop condition
+            [&](tf::Subflow& subflow) {
+                auto keepElite = subflow.emplace([&]() {
+                    offspring[0] = *std::min_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; });
+                });
+                auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents); });
+                auto generateOffspring = subflow.for_each_index(1ul, offspring.size(), 1ul, [&](size_t i) {
+                    auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
+                    while (!(terminate = generator.Terminate())) {
+                        if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, buf); result.has_value()) {
+                            offspring[i] = std::move(result.value());
+                            return;
+                        }
+                    }
+                });
+                auto reinsert = subflow.emplace([&]() { reinserter(random, parents, offspring); });
+                auto incrementGeneration = subflow.emplace([&]() { ++generation; });
+                auto reportProgress = subflow.emplace([&](){ if (report) std::invoke(report); });
 
-        auto prepareGenerator = taskflow.emplace([&]() { generator.Prepare(parents); });
+                // set-up subflow graph
+                reportProgress.precede(keepElite);
+                keepElite.precede(prepareGenerator);
+                prepareGenerator.precede(generateOffspring);
+                generateOffspring.precede(reinsert);
+                reinsert.precede(incrementGeneration);
+            }, // loop body (evolutionary main loop)
+            [&]() { return 0; }, // jump back to the next iteration
+            [&]() { if(report) std::invoke(report); }  // work done, report last gen and stop
+        ); // evolutionary loop
 
-        auto generateOffspring = taskflow.for_each_index(1ul, offspring.size(), 1ul, [&](size_t i) {
-            while (!(terminate = generator.Terminate())) {
-                if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability); result.has_value()) {
-                    offspring[i] = std::move(result.value());
-                    return;
-                }
-            }
-        });
+        init.precede(cond);
+        cond.precede(body, done);
+        body.precede(back);
+        back.precede(cond);
 
-        auto reinsert = taskflow.emplace([&]() { reinserter(random, parents, offspring); });
-        auto reportProgress = taskflow.emplace([&]() { if (report) std::invoke(report); });
-
-        preserveElite.precede(prepareGenerator);
-        prepareGenerator.precede(generateOffspring);
-        generateOffspring.precede(reinsert);
-        reinsert.precede(reportProgress);
-
-        executor.run_until(taskflow, [&]() { return terminate || generation++ == config.Generations; });
+        executor.run(taskflow);
         executor.wait_for_all();
     }
 };
