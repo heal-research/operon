@@ -14,19 +14,21 @@
 namespace Operon {
 Tree& Tree::UpdateNodes()
 {
-    for (uint16_t i = 0; i < nodes.size(); ++i) {
+    for (size_t i = 0; i < nodes.size(); ++i) {
         auto& s = nodes[i];
 
         s.Depth = 1;
         s.Length = s.Arity;
         if (s.IsLeaf()) {
-            s.Arity = s.Length = 0;
             continue;
         }
-        for (auto it = Children(i); it.HasNext(); ++it) {
-            s.Length = static_cast<uint16_t>(s.Length + it->Length);
-            s.Depth = std::max(s.Depth, it->Depth);
-            nodes[it.Index()].Parent = i;
+        auto j = i - 1;
+        for (size_t k = 0; k < s.Arity; ++k) {
+            auto &p = nodes[j];
+            s.Length = static_cast<uint16_t>(s.Length + p.Length);
+            s.Depth = std::max(s.Depth, p.Depth);
+            p.Parent = static_cast<uint16_t>(i);
+            j -= p.Length + 1;
         }
         ++s.Depth;
     }
@@ -118,8 +120,9 @@ std::vector<size_t> Tree::ChildIndices(size_t i) const
         return std::vector<size_t> {};
     }
     std::vector<size_t> indices(nodes[i].Arity);
+    size_t j = 0;
     for (auto it = Children(i); it.HasNext(); ++it) {
-        indices[it.Count()] = it.Index();
+        indices[j++] = it.Index();
     }
     return indices;
 }
