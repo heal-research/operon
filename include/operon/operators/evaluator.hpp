@@ -4,6 +4,7 @@
 #ifndef EVALUATOR_HPP
 #define EVALUATOR_HPP
 
+#include "collections/projection.hpp"
 #include "core/metrics.hpp"
 #include "core/operator.hpp"
 #include "core/types.hpp"
@@ -37,7 +38,7 @@ public:
     }
 
     typename EvaluatorBase::ReturnType
-    operator()(Operon::RandomGenerator& rng, Individual& ind) const override
+    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar>) const override
     {
         return fptr ? fptr(&rng, ind) : fref(rng, ind);
     }
@@ -60,7 +61,7 @@ public:
     Interpreter const& GetInterpreter() const { return interpreter; }
 
     typename EvaluatorBase::ReturnType
-    operator()(Operon::RandomGenerator&, Individual& ind) const override
+    operator()(Operon::RandomGenerator&, Individual& ind, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar>{}) const override
     {
         ++this->fitnessEvaluations;
         auto& problem_ = this->problem.get();
@@ -71,19 +72,22 @@ public:
         auto targetValues = dataset.GetValues(problem_.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         auto computeFitness = [&]() {
-            Operon::Vector<Operon::Scalar> estimatedValues(trainingRange.Size());
-            GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange, estimatedValues);
+            Operon::Vector<Operon::Scalar> estimatedValues;
+            if (buf.size() < trainingRange.Size()) {
+                estimatedValues.resize(trainingRange.Size());
+                buf = Operon::Span<Operon::Scalar>(estimatedValues.data(), estimatedValues.size());
+            }
+            GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange, buf);
 
             if constexpr (LinearScaling) {
-                Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> x(estimatedValues.data(), estimatedValues.size());
-                Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>> y(targetValues.data(), targetValues.size());
-                auto stats = bivariate::accumulate<double>(x.data(), y.data(), x.size());
+                auto stats = bivariate::accumulate<double>(buf.data(), targetValues.data(), buf.size());
                 auto a = static_cast<Operon::Scalar>(stats.covariance / stats.variance_x); // scale
                 auto b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x);     // offset
-                x = x * a + b;
-            }
 
-            return ErrorMetric{}(Operon::Span<Operon::Scalar const>{ estimatedValues }, targetValues);
+                Projection p(buf, [&](auto x) { return a * x + b; });
+                return ErrorMetric{}(p.begin(), p.end(), targetValues.begin());
+            }
+            return ErrorMetric{}(buf.begin(), buf.end(), targetValues.begin());
         };
 
         if (this->iterations > 0) {
