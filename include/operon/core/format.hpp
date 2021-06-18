@@ -42,8 +42,9 @@ class TreeFormatter {
             indent += isLast ? "    " : "│   ";
         }
 
+        size_t count = 0;
         for (auto it = tree.Children(i); it.HasNext(); ++it) {
-            FormatNode(tree, variableNames, it.Index(), current, indent, it.Count() + 1 == s.Arity, true, decimalPrecision);
+            FormatNode(tree, variableNames, it.Index(), current, indent, ++count == s.Arity, true, decimalPrecision);
         }
     }
 
@@ -111,9 +112,10 @@ class InfixFormatter {
                     FormatNode(tree, variableNames, k, current, decimalPrecision);
                     fmt::format_to(current, " ^ 2))");
                 } else {
+                    size_t count = 0;
                     for (auto it = tree.Children(i); it.HasNext(); ++it) {
                         FormatNode(tree, variableNames, it.Index(), current, decimalPrecision);
-                        if (it.Count() + 1 < s.Arity) {
+                        if (++count < s.Arity) {
                             fmt::format_to(current, " {} ", s.Name());
                         }
                     }

@@ -18,75 +18,62 @@
 namespace Operon {
 class Tree;
 
-namespace detail {
-    template <bool IsConst, typename T = std::conditional_t<IsConst, Tree const, Tree>, typename U = std::conditional_t<IsConst, Node const, Node>>
-    class ChildIteratorImpl {
-    public:
-        using value_type = U;
-        using difference_type = std::ptrdiff_t;
-        using pointer = value_type*;
-        using reference = value_type&;
-        using iterator_category = std::forward_iterator_tag;
+template<typename T>
+class SubtreeIterator {
+public:
+    using value_type = std::conditional_t<std::is_const_v<T>, Node const, Node>;
+    using difference_type = std::ptrdiff_t;
+    using pointer = value_type*;
+    using reference = value_type&;
+    using iterator_category = std::forward_iterator_tag;
 
-        explicit ChildIteratorImpl(T& tree, size_t i)
-            : nodes(tree.Nodes())
-            , parentIndex(i)
-            , index(i - 1)
-            , count(0)
-            , arity(nodes[i].Arity)
-        {
-            EXPECT(i > 0);
-        }
+    explicit SubtreeIterator(T& tree, size_t i)
+        : nodes(tree.Nodes())
+        , parentIndex(i)
+        , index(i - 1)
+    {
+        EXPECT(i > 0);
+    }
 
-        value_type& operator*() { return nodes[index]; }
-        value_type const& operator*() const { return nodes[index]; }
-        value_type* operator->() { return &**this; }
-        value_type const* operator->() const { return &**this; }
+    inline value_type& operator*() { return nodes[index]; }
+    inline value_type const& operator*() const { return nodes[index]; }
+    inline value_type* operator->() { return &**this; }
+    inline value_type const* operator->() const { return &**this; }
 
-        ChildIteratorImpl& operator++() // pre-increment
-        {
-            index -= nodes[index].Length + 1ul;
-            ++count;
-            return *this;
-        }
+    SubtreeIterator& operator++() // pre-increment
+    {
+        index -= nodes[index].Length + 1ul;
+        return *this;
+    }
 
-        ChildIteratorImpl operator++(int) // post-increment
-        {
-            auto t = *this;
-            ++t;
-            return t;
-        }
+    SubtreeIterator operator++(int) // post-increment
+    {
+        auto t = *this;
+        ++t;
+        return t;
+    }
 
-        bool operator==(const ChildIteratorImpl& rhs)
-        {
-            return &nodes.data() == &rhs.nodes.data() && parentIndex == rhs.parentIndex && index == rhs.index && count == rhs.count;
-        }
+    bool operator==(const SubtreeIterator& rhs)
+    {
+        return std::tie(index, parentIndex, nodes.data()) == std::tie(rhs.index, rhs.parentIndex, rhs.nodes.data());
+    }
 
-        bool operator!=(const ChildIteratorImpl& rhs)
-        {
-            return !(*this == rhs);
-        }
+    bool operator!=(const SubtreeIterator& rhs)
+    {
+        return !(*this == rhs);
+    }
 
-        inline bool HasNext() { return count < arity; }
-        inline bool IsValid() { return arity == nodes[index].Arity; }
+    inline bool HasNext() { return index < parentIndex && index >= (parentIndex - nodes[parentIndex].Length); }
+    inline size_t Index() const { return index; } // index of current child
 
-        inline size_t Count() const { return count; } // how many children iterated so far
-        inline size_t Index() const { return index; } // index of current child
-
-    private:
-        const Operon::Span<U> nodes;
-        const size_t parentIndex; // index of parent node
-        size_t index;
-        size_t count;
-        const size_t arity;
-    };
-}
+private:
+    Operon::Span<value_type> nodes;
+    size_t parentIndex; // index of parent node
+    size_t index;       // index of current child node
+};
 
 class Tree {
 public:
-    using ChildIterator = detail::ChildIteratorImpl<false>;
-    using ConstChildIterator = detail::ChildIteratorImpl<true>;
-
     Tree() {}
     Tree(std::initializer_list<Node> list)
         : nodes(list)
@@ -194,7 +181,7 @@ public:
 
     Operon::Vector<Node>& Nodes() & { return nodes; }
     Operon::Vector<Node>&& Nodes() && { return std::move(nodes); }
-    const Operon::Vector<Node>& Nodes() const& { return nodes; }
+    Operon::Vector<Node> const& Nodes() const& { return nodes; }
 
     inline auto CoefficientsCount() const
     {
@@ -214,8 +201,8 @@ public:
 
     Operon::Hash HashValue() const { return nodes.empty() ? 0 : nodes.back().CalculatedHashValue; }
 
-    ChildIterator Children(size_t i) { return ChildIterator(*this, i); }
-    ConstChildIterator Children(size_t i) const { return ConstChildIterator(*this, i); }
+    SubtreeIterator<Tree> Children(size_t i) { return SubtreeIterator(*this, i); }
+    SubtreeIterator<Tree const> Children(size_t i) const { return SubtreeIterator(*this, i); }
 
 private:
     Operon::Vector<Node> nodes;
