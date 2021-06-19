@@ -20,7 +20,7 @@ public:
     auto operator()(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const -> Tree override;
     std::pair<size_t, size_t> FindCompatibleSwapLocations(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const;
 
-    static inline Tree Cross(const Tree& lhs, const Tree& rhs, size_t i, size_t j)
+    static inline Tree Cross(const Tree& lhs, const Tree& rhs, /* index of subtree 1 */ size_t i, /* index of subtree 2 */ size_t j)
     {
         auto const& left = lhs.Nodes();
         auto const& right = rhs.Nodes();
