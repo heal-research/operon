@@ -192,7 +192,7 @@ namespace Test {
             evaluator.SetLocalOptimizationIterations(0);
             evaluator.SetBudget(std::numeric_limits<size_t>::max());
             b.batch(totalNodes * range.Size()).run(name, [&]() {
-                return std::transform_reduce(individuals.begin(), individuals.end(), 0.0, std::plus<>{}, [&](auto& ind) { return evaluator(rd, ind); });
+                return std::transform_reduce(individuals.begin(), individuals.end(), 0.0, std::plus<>{}, [&](auto& ind) { return evaluator(rd, ind, buf); });
             });
         };
 
