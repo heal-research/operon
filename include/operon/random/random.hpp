@@ -21,11 +21,8 @@ template<typename R, typename T>
 T Uniform(R& random, T a, T b)
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
-    if constexpr(std::is_integral_v<T>) {
-        return std::uniform_int_distribution<T>(a,b)(random);
-    } else if constexpr(std::is_floating_point_v<T>) {
-        return std::uniform_real_distribution<T>(a,b)(random);
-    }
+    using Dist = std::conditional_t<std::is_integral_v<T>, std::uniform_int_distribution<T>, std::uniform_real_distribution<T>>;
+    return Dist(a,b)(random);
 }
 
 template <typename R, typename InputIterator>
