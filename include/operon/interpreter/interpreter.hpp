@@ -5,6 +5,7 @@
 #define OPERON_INTERPRETER_HPP
 
 #include <algorithm>
+#include <optional>
 
 #include "core/dataset.hpp"
 #include "core/tree.hpp"
@@ -67,23 +68,26 @@ struct Interpreter {
 
         Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> res(result.data(), result.size(), 1);
 
-        Operon::Vector<std::reference_wrapper<DispatchTable::Callable<T> const>> funcs;
-        Operon::Vector<T> params(nodes.size());
-        Operon::Vector<Operon::Span<const Operon::Scalar>> vals(nodes.size());
-        size_t idx = 0;
+        struct NodeMeta {
+            T param;
+            Operon::Span<Operon::Scalar const> values;
+            std::optional<DispatchTable::Callable<T> const> func;
+        };
 
+        Operon::Vector<NodeMeta> meta; meta.reserve(nodes.size());
+
+        size_t idx = 0;
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto const& n = nodes[i];
+
             if (n.IsLeaf()) {
                 auto v = parameters ? parameters[idx++] : T{n.Value};
-                if (n.IsConstant()) {
-                    m.col(i).setConstant(v);
-                } else if (n.IsVariable()) {
-                    params[i] = v;
-                    vals[i] = dataset.GetValues(n.HashValue);
-                }
+                Operon::Span<Operon::Scalar const> vals{};
+                if (n.IsConstant()) { m.col(i).setConstant(v); }
+                if (n.IsVariable()) { vals = dataset.GetValues(n.HashValue).subspan(range.Start(), range.Size()); }
+                meta.push_back({ v, vals, std::nullopt });
             } else {
-                funcs.push_back(std::ref(ftable.Get<T>(nodes[i].HashValue)));
+                meta.push_back({ T{}, {}, std::make_optional(ftable.Get<T>(n.HashValue)) });
             }
         }
 
@@ -93,16 +97,14 @@ struct Interpreter {
         for (int row = 0; row < numRows; row += S) {
             auto remainingRows = std::min(S, numRows - row);
 
-            idx = 0;
             for (size_t i = 0; i < nodes.size(); ++i) {
                 auto const& s = nodes[i];
-                if (s.IsConstant()) {
-                    continue; // constants already filled above
+                auto const& [ param, values, func ] = meta[i];
+                if (s.Arity) {
+                    func.value()(m, nodes, i, range.Start() + row);
                 } else if (s.IsVariable()) {
-                    Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> seg(vals[i].data() + range.Start() + row, remainingRows);
-                    m.col(i).segment(0, remainingRows) = params[i] * seg.cast<T>();
-                } else {
-                    funcs[idx++](m, nodes, i, range.Start() + row);
+                    Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> seg(values.data() + row, remainingRows);
+                    m.col(i).segment(0, remainingRows) = meta[i].param * seg.cast<T>();
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
