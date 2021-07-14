@@ -31,8 +31,9 @@ private:
     std::reference_wrapper<const OffspringGeneratorBase> generator_;
     std::reference_wrapper<const ReinserterBase> reinserter_;
 
-    std::vector<Individual> parents;
-    std::vector<Individual> offspring;
+    Operon::Vector<Individual> individuals;
+    Operon::Span<Individual> parents;
+    Operon::Span<Individual> offspring;
 
     size_t generation;
 
@@ -43,8 +44,9 @@ public:
         , initializer_(initializer)
         , generator_(generator)
         , reinserter_(reinserter)
-        , parents(config.PopulationSize)
-        , offspring(config.PoolSize)
+        , individuals(config.PopulationSize + config.PoolSize)
+        , parents(individuals.data(), config.PopulationSize)
+        , offspring(individuals.data() + config.PopulationSize, config.PoolSize)
         , generation(0UL)
     {
     }
@@ -112,7 +114,7 @@ public:
                     // make sure the worker has a large enough buffer
                     if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
                     parents[i].Genotype = initializer(rngs[i]);
-                    parents[i][idx] = evaluator(rngs[i], parents[i], slots[id]);
+                    parents[i].Fitness = evaluator(rngs[i], parents[i], slots[id]);
                 });
             }, // init
             [&]() { return terminate || generation == config.Generations; }, // loop condition

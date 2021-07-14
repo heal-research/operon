@@ -12,17 +12,21 @@ namespace Operon {
 
 struct Individual {
     Tree Genotype;
-    std::vector<Operon::Scalar> Fitness;
+    Operon::Vector<Operon::Scalar> Fitness;
+    size_t Rank;             // domination rank; used by NSGA2
+    Operon::Scalar Distance; // crowding distance; used by NSGA2
 
-    Operon::Scalar& operator[](size_t i) noexcept { return Fitness[i]; }
-    Operon::Scalar operator[](size_t i) const noexcept { return Fitness[i]; }
+    inline Operon::Scalar& operator[](size_t const i) noexcept { return Fitness[i]; }
+    inline Operon::Scalar operator[](size_t const i) const noexcept { return Fitness[i]; }
+
+    inline size_t Size() const noexcept { return Fitness.size(); }
 
     Individual()
         : Individual(1)
     {
     }
-    Individual(size_t fitDim)
-        : Fitness(fitDim, 0.0)
+    Individual(size_t nObj)
+        : Fitness(nObj, 0.0)
     {
     }
 };
@@ -49,6 +53,32 @@ struct SingleObjectiveComparison final : public Comparison {
 
 private:
     size_t objectiveIndex;
+};
+
+// TODO: use a collection of SingleObjectiveComparison functors
+struct ParetoComparison : public Comparison {
+    // assumes minimization in every dimension
+    bool operator()(Individual const& lhs, Individual const& rhs) const override
+    {
+        EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
+        bool better{false}, worse{false};
+
+        for (size_t i = 0; i < std::size(lhs.Fitness); ++i) {
+            better |= lhs[i] < rhs[i];
+            worse |= lhs[i] > rhs[i];
+        }
+
+        return better && !worse;
+    }
+};
+
+struct CrowdedComparison : public Comparison {
+
+    bool operator()(Individual const& lhs, Individual const& rhs) const override
+    {
+        EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
+        return std::tie(lhs.Rank, rhs.Distance) < std::tie(rhs.Rank, lhs.Distance);
+    }
 };
 
 using ComparisonCallback = std::function<bool(Individual const&, Individual const&)>;

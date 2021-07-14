@@ -97,7 +97,7 @@ protected:
     ComparisonCallback comp;
 };
 
-class EvaluatorBase : public OperatorBase<Operon::Scalar, Individual&, Operon::Span<Operon::Scalar>> {
+class EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
     // some fitness measures are relative to the whole population (eg. diversity)
     // and the evaluator needs to do some preparation work using the entire pop
 public:
@@ -108,14 +108,12 @@ public:
 
     EvaluatorBase(Problem& p)
         : problem(p)
-        , objIndex(0ul)
     {
     }
 
-    virtual void Prepare(const Operon::Span<const Individual> pop, size_t idx = 0)
+    virtual void Prepare(const Operon::Span<const Individual> pop)
     {
         population = pop;
-        objIndex = idx;
     }
 
     size_t TotalEvaluations() const { return fitnessEvaluations + localEvaluations; }
@@ -142,7 +140,6 @@ protected:
     mutable std::atomic_ulong localEvaluations = 0;
     size_t iterations = DefaultLocalOptimizationIterations;
     size_t budget = DefaultEvaluationBudget;
-    mutable size_t objIndex;
 };
 
 // TODO: Maybe remove all the template parameters and go for accepting references to operator bases

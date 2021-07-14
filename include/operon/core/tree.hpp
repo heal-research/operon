@@ -53,14 +53,21 @@ public:
         return t;
     }
 
-    bool operator==(const SubtreeIterator& rhs)
+    bool operator==(SubtreeIterator const& rhs)
     {
         return std::tie(index, parentIndex, nodes.data()) == std::tie(rhs.index, rhs.parentIndex, rhs.nodes.data());
     }
 
-    bool operator!=(const SubtreeIterator& rhs)
+    bool operator!=(SubtreeIterator const& rhs)
     {
         return !(*this == rhs);
+    }
+
+    bool operator<(SubtreeIterator const& rhs)
+    {
+        // this looks a little strange, but correct: we use a postfix representation and trees are iterated from right to left
+        // (thus the lower index will be the more advanced iterator)
+        return std::tie(parentIndex, nodes.data()) == std::tie(rhs.parentIndex, rhs.nodes.data()) && index > rhs.index;
     }
 
     inline bool HasNext() { return index < parentIndex && index >= (parentIndex - nodes[parentIndex].Length); }

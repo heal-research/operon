@@ -27,7 +27,7 @@ public:
         auto population = this->FemaleSelector().Population();
 
         auto first = this->femaleSelector(random);
-        Individual child(1);
+        Individual child;
 
         if (doCrossover) {
             auto second = this->maleSelector(random);
@@ -40,9 +40,10 @@ public:
                 : this->mutator(random, population[first].Genotype);
         }
 
-        auto f = this->evaluator(random, child, buf);
-        if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
-        child[0] = f;
+        child.Fitness = this->evaluator(random, child, buf);
+        for (auto& v : child.Fitness) {
+            if (!std::isfinite(v)) { v = Operon::Numeric::Max<Operon::Scalar>(); }
+        }
         return std::make_optional(child);
     }
 };

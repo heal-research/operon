@@ -5,6 +5,7 @@
 #define OS_GENERATOR_HPP
 
 #include "core/operator.hpp"
+#include "algorithms/pareto.hpp"
 
 namespace Operon {
 class OffspringSelectionGenerator : public OffspringGeneratorBase {
@@ -29,15 +30,16 @@ public:
 
         size_t first = this->femaleSelector(random);
 
-        Individual child(1);
 
-        auto f1 = population[first][0];
-        auto f2 = f1;
+        std::optional<Individual> p1{ population[first] };
+        std::optional<Individual> p2;
+
+        Individual child(p1.value().Fitness.size());
 
         if (doCrossover) {
             auto second = this->maleSelector(random);
             child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
-            f2 = population[second][0];
+            p2 = population[second];
         }
 
         if (doMutation) {
@@ -46,14 +48,22 @@ public:
                 : this->mutator(random, population[first].Genotype);
         }
 
-        auto f = this->evaluator(random, child, buf);
+        child.Fitness = this->evaluator(random, child, buf);
+        bool accept{false};
 
-        if (std::isfinite(f) && f < (std::max(f1, f2) - comparisonFactor * std::abs(f1 - f2))) {
-            child[0] = f;
-            return std::make_optional(child);
+        if (p2.has_value()) {
+            Individual q(child.Fitness.size());
+            for (size_t i = 0; i < child.Fitness.size(); ++i) {
+                auto f1 = p1.value()[i];
+                auto f2 = p2.value()[i];
+                q[i] = std::max(f1, f2) - static_cast<Operon::Scalar>(comparisonFactor) * std::abs(f1 - f2);
+                accept = DominanceCalculator::Compare(child, q) == DominanceResult::NoDomination;
+            }
+        } else {
+            accept = DominanceCalculator::Compare(child, p1.value()) == DominanceResult::NoDomination;
         }
-
-        return std::nullopt;
+        if (accept) return { child };
+        return { };
     }
 
     void MaxSelectionPressure(size_t value) { maxSelectionPressure = value; }
@@ -73,12 +83,12 @@ public:
         if (this->FemaleSelector().Population().empty()) {
             return 0;
         }
-        return (this->Evaluator().FitnessEvaluations() - lastEvaluations) / static_cast<double>(this->FemaleSelector().Population().size());
+        return static_cast<double>(this->Evaluator().FitnessEvaluations() - lastEvaluations) / static_cast<double>(this->FemaleSelector().Population().size());
     }
 
     bool Terminate() const override
     {
-        return OffspringGeneratorBase::Terminate() || SelectionPressure() > maxSelectionPressure;
+        return OffspringGeneratorBase::Terminate() || SelectionPressure() > static_cast<double>(maxSelectionPressure);
     };
 
 private:
