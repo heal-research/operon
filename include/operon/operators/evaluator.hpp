@@ -40,6 +40,7 @@ public:
     typename EvaluatorBase::ReturnType
     operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar>) const override
     {
+        ++this->fitnessEvaluations;
         return fptr ? fptr(&rng, ind) : fref(rng, ind);
     }
 
@@ -87,7 +88,8 @@ public:
                 Projection p(buf, [&](auto x) { return a * x + b; });
                 return ErrorMetric{}(p.begin(), p.end(), targetValues.begin());
             }
-            return ErrorMetric{}(buf.begin(), buf.end(), targetValues.begin());
+            auto err = ErrorMetric{}(buf.begin(), buf.end(), targetValues.begin());
+            return err;
         };
 
         if (this->iterations > 0) {
@@ -106,16 +108,46 @@ public:
             }
         }
 
-        auto fit = computeFitness();
-        if (!std::isfinite(fit)) {
-            return Operon::Numeric::Max<Operon::Scalar>();
+        auto fit = Operon::Vector<Operon::Scalar>{ computeFitness() };
+        for (auto& v : fit) {
+            if (!std::isfinite(v)) {
+                v = Operon::Numeric::Max<Operon::Scalar>();
+            }
         }
         return fit;
     }
 
-
 private:
     std::reference_wrapper<Interpreter> interpreter;
+};
+
+class MultiEvaluator : public EvaluatorBase {
+    public:
+    MultiEvaluator(Problem& problem)
+        : EvaluatorBase(problem)
+    {
+    }
+
+    void Add(EvaluatorBase const& evaluator) {
+        evaluators_.push_back(std::ref(evaluator));
+    }
+
+    typename EvaluatorBase::ReturnType
+    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar>{}) const override
+    {
+        EXPECT(evaluators_.size() > 1);
+        Operon::Vector<Operon::Scalar> fit(evaluators_.size());
+        for (size_t i = 0; i < evaluators_.size(); ++i) {
+            fit[i] = (evaluators_[i])(rng, ind, buf)[0];
+        }
+        // proxy the budget of the first evaluator (the one that actually calls the tree interpreter)
+        this->fitnessEvaluations = evaluators_[0].get().FitnessEvaluations();
+        this->localEvaluations = evaluators_[0].get().LocalEvaluations();
+        return fit;
+    }
+
+    private:
+    std::vector<std::reference_wrapper<EvaluatorBase const>> evaluators_;
 };
 
 using MeanSquaredErrorEvaluator           = Evaluator<MSE,  true>;

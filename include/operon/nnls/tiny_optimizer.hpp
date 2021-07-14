@@ -9,7 +9,7 @@
 
 #if defined(CERES_TINY_SOLVER)
 #include "tiny_solver.h"
-#else
+#elif defined(HAVE_CERES)
 #include <ceres/tiny_solver.h>
 #endif
 
