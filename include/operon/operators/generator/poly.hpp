@@ -18,19 +18,15 @@ public:
     std::optional<Individual> operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar>{}) const override
     {
         std::uniform_real_distribution<double> uniformReal;
-
         auto population = this->FemaleSelector().Population();
-
-        auto second = this->maleSelector(random);
 
         // assuming the basic generator never fails
         auto makeOffspring = [&]() {
-            Individual child(1);
-
+            auto first = this->femaleSelector(random);
+            auto second = this->maleSelector(random);
+            Individual child(population[first].Fitness.size());
             bool doCrossover = std::bernoulli_distribution(pCrossover)(random);
             bool doMutation = std::bernoulli_distribution(pMutation)(random);
-
-            auto first = this->femaleSelector(random);
 
             if (doCrossover) {
                 child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
@@ -43,8 +39,9 @@ public:
             }
 
             auto f = this->evaluator(random, child, buf);
-            if (!std::isfinite(f)) { f = Operon::Numeric::Max<Operon::Scalar>(); }
-            child[0] = f;
+            for (size_t i = 0; i < f.size(); ++i) {
+                child[i] = std::isfinite(f[i]) ? f[i] : Operon::Numeric::Max<Operon::Scalar>();
+            }
             return child;
         };
 

@@ -28,6 +28,7 @@ find_package(Python3 COMPONENTS Development Interpreter)
 find_package(pybind11)
 find_package(doctest)
 find_package(Taskflow)
+find_package(Pareto)
 
 # operon library
 set_package_properties(Git     PROPERTIES TYPE REQUIRED)
@@ -367,6 +368,35 @@ if (cxxopts_FOUND)
         target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
     else()
         target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
+    endif()
+endif()
+
+if (cxxopts_FOUND)
+    #binary for GP algorithm cli version
+    add_executable(
+        nsga2
+        src/cli/nsga2.cpp
+    )
+    target_compile_features(nsga2 PRIVATE cxx_std_17)
+    target_link_libraries(nsga2 PRIVATE operon fmt::fmt cxxopts::cxxopts ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres)
+    target_include_directories(nsga2 SYSTEM PRIVATE
+        ${PROJECT_SOURCE_DIR}/include/operon
+        ${THIRDPARTY_INCLUDE_DIRS}
+        ${EIGEN3_INCLUDE_DIR}
+        ${CMAKE_BINARY_DIR}
+        )
+    target_compile_definitions(nsga2 PRIVATE
+        "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
+        "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
+        "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
+        "$<$<BOOL:${Ceres_FOUND}>:HAVE_CERES>"
+        )
+    set_target_properties(nsga2 PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+    if(MSVC)
+        target_compile_options(nsga2 PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
+    else()
+        target_compile_options(nsga2 PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=native>")
     endif()
 endif()
 

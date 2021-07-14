@@ -178,7 +178,7 @@ int main(int argc, char** argv)
             } else if (trainingRange.End() < dataset->Rows()) {
                 testRange = { trainingRange.End(), dataset->Rows() };
             } else {
-                testRange = { 0, 1 };
+                testRange = { 0, 0 };
             }
         }
         // validate training range
@@ -272,30 +272,37 @@ int main(int argc, char** argv)
         DispatchTable ft;
         Interpreter interpreter(ft);
 
-        std::unique_ptr<EvaluatorBase> evaluator;
+        std::unique_ptr<EvaluatorBase> errorEvaluator;
         auto errorMetric = result["error-metric"].as<std::string>();
         if (errorMetric == "r2") {
-            evaluator.reset(new RSquaredEvaluator(problem, interpreter));
+            errorEvaluator.reset(new RSquaredEvaluator(problem, interpreter));
         } else if (errorMetric == "nmse") {
-            evaluator.reset(new NormalizedMeanSquaredErrorEvaluator(problem, interpreter));
+            errorEvaluator.reset(new NormalizedMeanSquaredErrorEvaluator(problem, interpreter));
         } else if (errorMetric == "mse") {
-            evaluator.reset(new MeanSquaredErrorEvaluator(problem, interpreter));
+            errorEvaluator.reset(new MeanSquaredErrorEvaluator(problem, interpreter));
         } else if (errorMetric == "rmse") {
-            evaluator.reset(new RootMeanSquaredErrorEvaluator(problem, interpreter));
+            errorEvaluator.reset(new RootMeanSquaredErrorEvaluator(problem, interpreter));
         } else if (errorMetric == "mae") {
-            evaluator.reset(new MeanAbsoluteErrorEvaluator(problem, interpreter));
+            errorEvaluator.reset(new MeanAbsoluteErrorEvaluator(problem, interpreter));
         } else if (errorMetric == "l2") {
-            evaluator.reset(new L2NormEvaluator(problem, interpreter));
+            errorEvaluator.reset(new L2NormEvaluator(problem, interpreter));
         } else {
             throw std::runtime_error(fmt::format("Unknown metric {}\n", errorMetric));
         }
+        errorEvaluator->SetLocalOptimizationIterations(config.Iterations);
 
-        evaluator->SetLocalOptimizationIterations(config.Iterations);
+
+        UserDefinedEvaluator lengthEvaluator(problem, [](Operon::RandomGenerator&, Individual& ind) { return Operon::Vector<Operon::Scalar>{ static_cast<Operon::Scalar>(ind.Genotype.Length()) }; });
+
+        std::unique_ptr<MultiEvaluator> evaluator(new MultiEvaluator(problem));
         evaluator->SetBudget(config.Evaluations);
-
+        evaluator->Add(*errorEvaluator.get());
+        evaluator->Add(lengthEvaluator);
+        
         EXPECT(problem.TrainingRange().Size() > 0);
 
-        auto comp = [](auto const& lhs, auto const& rhs) { return lhs[0] < rhs[0]; };
+        //auto comp = [](auto const& lhs, auto const& rhs) { return lhs[0] < rhs[0]; };
+        CrowdedComparison comp;
 
         auto parseSelector = [&](const std::string& name) -> SelectorBase* {
             if (result.count(name) == 0) {
@@ -423,7 +430,7 @@ int main(int argc, char** argv)
 
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        GeneticProgrammingAlgorithm gp { problem, config, initializer, *generator, *reinserter };
+        NSGA2 gp { problem, config, initializer, *generator, *reinserter };
 
         auto targetValues = problem.TargetValues();
         auto targetTrain = targetValues.subspan(trainingRange.Start(), trainingRange.Size());
@@ -431,12 +438,14 @@ int main(int argc, char** argv)
 
         // some boilerplate for reporting results
         const size_t idx { 0 };
-        auto getBest = [&](const Operon::Span<const Individual> pop) -> Individual {
+        auto getBest = [&](const Operon::Span<const Individual> pop) {
             auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
+            ENSURE(minElem->Genotype.Length() > 0);
+            ENSURE(minElem->Fitness.size() > 1);
             return *minElem;
         };
 
-        Individual best(1);
+        Individual best(2);
         //auto const& pop = gp.Parents();
 
         auto getSize = [](const Individual& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
@@ -444,10 +453,17 @@ int main(int argc, char** argv)
         tf::Executor exe(threads);
 
         auto report = [&]() {
-            auto const& pop = gp.Parents();
-            auto const& off = gp.Offspring();
+            auto pop = gp.Parents();
+            auto off = gp.Offspring();
 
-            best = getBest(pop);
+            auto bestFront = std::vector<Individual>(gp.Best().begin(), gp.Best().end());
+            std::sort(bestFront.begin(), bestFront.end(), [&](auto const& lhs, auto const& rhs) {
+                EXPECT(lhs.Fitness.size() > 1);
+                EXPECT(rhs.Fitness.size() > 1);
+                return lhs[idx] < rhs[idx]; 
+            });
+
+            best = getBest(gp.Best());
 
             Operon::Vector<Operon::Scalar> estimatedTrain, estimatedTest;
 

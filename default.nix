@@ -13,10 +13,11 @@ let
   eigen = pkgs.eigen.overrideAttrs (old: rec {
     version = "3.4";
     stdenv = pkgs.gcc11Stdenv;
-    src = builtins.fetchGit {
-      url = "https://gitlab.com/libeigen/eigen";
-      ref = "3.4";
-      rev = "972cf0c28a8d2ee0808c1277dea2c5c206591ce6";
+    src = pkgs.fetchFromGitLab {
+      repo = "eigen";
+      owner = "libeigen";
+      rev = "7b35638ddb99a0298c5d3450de506a8e8e0203d3";
+      sha256 = "sha256:1q54l3g6za6jf0iaq073bqmc9gc5w14bliacgk4zysnhk44fla39";
     };
     patches = [];
     cmakeFlags = [ "-DCMAKE_PREFIX_PATH=$out" "-DINCLUDE_INSTALL_DIR=include/eigen3" ];
@@ -31,8 +32,8 @@ let
     src = pkgs.fetchFromGitHub {
       repo   = "ceres-solver";
       owner  = "ceres-solver";
-      rev    = "ec4f2995bbde911d6861fb5c9bb7353ad796e02b";
-      sha256 = "sha256-4sWOipg90G9dufmRzSSwwmvFpkgp3KDuVsBANC5YvfU=";
+      rev    = "c036c78196c7a9f36e48e6387691e8f4979aef5d";
+      sha256 = "sha256-8YwC9lvlZe0notDUyCxvFEn185Sj4s9Rmkt82h4Xqbc=";
     };
     enableParallelBuilding = true;
     cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DCXX11=ON" "-DTBB=OFF" "-DOPENMP=OFF" "-DBUILD_SHARED_LIBS=OFF" "-DBUILD_EXAMPLES=FALSE" "-DBUILD_TESTING=FALSE" ];
@@ -40,7 +41,6 @@ let
 
   fmt = pkgs.fmt.overrideAttrs(old: rec { 
     outputs = [ "out" ];
-
     cmakeFlags = [ "-DBUILD_SHARED_LIBS=ON" "-DFMT_TEST=OFF" "-DFMT_CUDA_TEST=OFF" "-DFMT_FUZZ=OFF" ];
   });
 in
@@ -54,7 +54,7 @@ in
 
     buildInputs = with pkgs; [
         # python environment for bindings and scripting
-        (python39.withPackages (ps: with ps; [ pybind11 pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz dask sphinx recommonmark sphinx_rtd_theme ]))
+        (python39.withPackages (ps: with ps; [ pybind11 pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz sphinx recommonmark sphinx_rtd_theme ]))
         # Project dependencies and utils for profiling and debugging
         ceres-solver
         cmake
@@ -74,6 +74,7 @@ in
         mimalloc
         ninja
         openlibm
+        pareto
         pmlb
         taskflow
         valgrind
