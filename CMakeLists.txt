@@ -28,7 +28,6 @@ find_package(Python3 COMPONENTS Development Interpreter)
 find_package(pybind11)
 find_package(doctest)
 find_package(Taskflow)
-find_package(Pareto)
 
 # operon library
 set_package_properties(Git     PROPERTIES TYPE REQUIRED)

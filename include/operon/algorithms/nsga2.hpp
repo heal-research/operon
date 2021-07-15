@@ -5,7 +5,6 @@
 #define OPERON_NSGA2_HPP
 
 #include "algorithms/config.hpp"
-#include "algorithms/pareto.hpp"
 #include "core/format.hpp"
 #include "core/metrics.hpp"
 #include "core/types.hpp"
@@ -16,12 +15,32 @@
 #include "operators/mutation.hpp"
 
 #include <chrono>
-#include <pareto/archive.h>
 #include <thread>
 
 #include "taskflow/taskflow.hpp"
 
 namespace Operon {
+
+namespace detail {
+
+    template<size_t N>
+    Operon::Vector<int> ComputeRanks(Operon::Span<Individual> pop) {
+        Operon::Vector<int> ranks(pop.size(), 0);
+        for (size_t i = 0; i < pop.size() - 1; ++i) {
+            for (size_t j = i + 1; j < pop.size(); ++j) {
+                auto d = pop[i].Compare<N>(pop[j]);
+                if (d == DominanceResult::Equality) {
+                    // duplicate points are banished to the last pareto front
+                    ranks[i] = (int)pop.size();
+                    continue;
+                }
+                ranks[i] += d == DominanceResult::RightDominates;
+                ranks[j] += d == DominanceResult::LeftDominates;
+            }
+        }
+        return ranks;
+    }
+}
 
 template <typename TInitializer>
 class NSGA2 {
@@ -43,21 +62,11 @@ private:
     // best pareto front
     Operon::Vector<Individual> best;
     Operon::Vector<int> ComputeRanks(tf::Executor&, Operon::Span<Individual> pop) {
-        DominanceCalculator dc;
-        Operon::Vector<int> ranks(pop.size(), 0);
-        for (size_t i = 0; i < pop.size() - 1; ++i) {
-            for (size_t j = i + 1; j < pop.size(); ++j) {
-                auto d = dc(pop[i], pop[j]);
-                if (d == DominanceResult::Equality) {
-                    // duplicate points are banished to the last pareto front
-                    ranks[i] = (int)pop.size();
-                    continue;
-                }
-                ranks[i] += d == DominanceResult::RightDominates;
-                ranks[j] += d == DominanceResult::LeftDominates;
-            }
+        auto n = pop.front().Size();
+        if (n == 2) {
+            return detail::ComputeRanks<2>(pop);
         }
-        return ranks;
+        return detail::ComputeRanks<0>(pop);
     }
 
     void NonDominatedSort(tf::Executor& executor, Operon::Span<Individual> pop)
@@ -65,9 +74,7 @@ private:
         auto ranks = ComputeRanks(executor, pop);
         std::vector<int> indices(ranks.size());
         std::iota(indices.begin(), indices.end(), 0);
-        tf::Taskflow taskflow;
-        taskflow.sort(indices.begin(), indices.end(), [&](auto i, auto j) { return ranks[i] < ranks[j]; });
-        executor.run(taskflow).wait();
+        pdqsort(indices.begin(), indices.end(), [&](auto i, auto j) { return ranks[i] < ranks[j]; });
 
         auto r = ranks[indices.front()];
         auto it0 = indices.begin();

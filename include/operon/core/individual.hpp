@@ -10,6 +10,45 @@
 
 namespace Operon {
 
+enum class DominanceResult : int { LeftDominates = -1, NoDomination = 0, RightDominates = 1, Equality = 2 };
+
+namespace detail {
+    template<size_t N = 0>
+    inline DominanceResult Compare(Operon::Vector<Operon::Scalar> const& lhs, Operon::Vector<Operon::Scalar> const& rhs) noexcept {
+        EXPECT(lhs.size() == rhs.size());
+
+        bool better{false}, worse{false};
+        for (size_t i = 0; i < a.size(); ++i) {
+            better |= lhs[i] < rhs[i];
+            worse  |= lhs[i] > rhs[i];
+        }
+
+        if (better && worse) return DominanceResult::NoDomination;
+        if (!(better || worse)) return DominanceResult::Equality;
+
+        return better
+            ? DominanceResult::LeftDominates
+            : DominanceResult::RightDominates;
+    }
+
+    template<>
+    inline DominanceResult Compare<2>(Operon::Vector<Operon::Scalar> const& lhs, Operon::Vector<Operon::Scalar> const& rhs) noexcept {
+        auto a = lhs[0], b = lhs[1];
+        auto c = rhs[0], d = rhs[1];
+
+        if (a < c) {
+            return b > d ? DominanceResult::NoDomination : DominanceResult::LeftDominates;
+        }
+        if (a > c) {
+            return b < d ? DominanceResult::NoDomination : DominanceResult::RightDominates;
+        }
+        // a == c
+        if (b < d) return DominanceResult::LeftDominates;
+        if (b > d) return DominanceResult::RightDominates;
+        return DominanceResult::Equality;
+    }
+}
+
 struct Individual {
     Tree Genotype;
     Operon::Vector<Operon::Scalar> Fitness;
@@ -28,6 +67,11 @@ struct Individual {
     Individual(size_t nObj)
         : Fitness(nObj, 0.0)
     {
+    }
+
+    template<size_t N>
+    inline DominanceResult Compare(Individual const& other) const noexcept {
+        return detail::Compare<N>(Fitness, other.Fitness);
     }
 };
 
