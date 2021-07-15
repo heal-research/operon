@@ -18,7 +18,7 @@ namespace detail {
         EXPECT(lhs.size() == rhs.size());
 
         bool better{false}, worse{false};
-        for (size_t i = 0; i < a.size(); ++i) {
+        for (size_t i = 0; i < lhs.size(); ++i) {
             better |= lhs[i] < rhs[i];
             worse  |= lhs[i] > rhs[i];
         }
