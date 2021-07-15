@@ -5,7 +5,6 @@
 #define BROOD_GENERATOR_HPP
 
 #include "core/operator.hpp"
-#include "algorithms/pareto.hpp"
 
 namespace Operon {
 class BroodOffspringGenerator : public OffspringGeneratorBase {
