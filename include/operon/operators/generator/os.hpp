@@ -5,7 +5,6 @@
 #define OS_GENERATOR_HPP
 
 #include "core/operator.hpp"
-#include "algorithms/pareto.hpp"
 
 namespace Operon {
 class OffspringSelectionGenerator : public OffspringGeneratorBase {
@@ -57,10 +56,10 @@ public:
                 auto f1 = p1.value()[i];
                 auto f2 = p2.value()[i];
                 q[i] = std::max(f1, f2) - static_cast<Operon::Scalar>(comparisonFactor) * std::abs(f1 - f2);
-                accept = DominanceCalculator::Compare(child, q) == DominanceResult::NoDomination;
+                accept = child.Compare<0>(q) == DominanceResult::NoDomination;
             }
         } else {
-            accept = DominanceCalculator::Compare(child, p1.value()) == DominanceResult::NoDomination;
+            accept = child.Compare<0>(p1.value()) == DominanceResult::NoDomination;
         }
         if (accept) return { child };
         return { };
