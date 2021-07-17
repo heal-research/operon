@@ -463,7 +463,8 @@ int main(int argc, char** argv)
                 return lhs[idx] < rhs[idx]; 
             });
 
-            best = getBest(gp.Best());
+            auto tmp = getBest(gp.Best());
+            if (tmp[0] < best[0]) std::swap(tmp, best);
 
             Operon::Vector<Operon::Scalar> estimatedTrain, estimatedTest;
 

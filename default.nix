@@ -74,7 +74,6 @@ in
         mimalloc
         ninja
         openlibm
-        pareto
         pmlb
         taskflow
         valgrind
