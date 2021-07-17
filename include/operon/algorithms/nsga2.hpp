@@ -22,21 +22,19 @@
 namespace Operon {
 
 namespace detail {
-
     template<size_t N>
-    Operon::Vector<int> ComputeRanks(Operon::Span<Individual> pop) {
+    Operon::Vector<int> ComputeRanks(Operon::Span<Individual> pop)
+    {
         Operon::Vector<int> ranks(pop.size(), 0);
         for (size_t i = 0; i < pop.size() - 1; ++i) {
+            bool eq{false};
             for (size_t j = i + 1; j < pop.size(); ++j) {
                 auto d = pop[i].Compare<N>(pop[j]);
-                if (d == DominanceResult::Equality) {
-                    // duplicate points are banished to the last pareto front
-                    ranks[i] = (int)pop.size();
-                    continue;
-                }
-                ranks[i] += d == DominanceResult::RightDominates;
-                ranks[j] += d == DominanceResult::LeftDominates;
+                eq |= (d == DominanceResult::Equality);
+                ranks[i] += (d == DominanceResult::RightDominates);
+                ranks[j] += (d == DominanceResult::LeftDominates);
             }
+            ranks[i] += (eq * (int)pop.size());
         }
         return ranks;
     }
@@ -69,9 +67,8 @@ private:
         return detail::ComputeRanks<0>(pop);
     }
 
-    void NonDominatedSort(tf::Executor& executor, Operon::Span<Individual> pop)
+    void UpdateFronts(Operon::Vector<int> const& ranks)
     {
-        auto ranks = ComputeRanks(executor, pop);
         std::vector<int> indices(ranks.size());
         std::iota(indices.begin(), indices.end(), 0);
         pdqsort(indices.begin(), indices.end(), [&](auto i, auto j) { return ranks[i] < ranks[j]; });
@@ -89,7 +86,10 @@ private:
             it0 = it;
             r = ranks[*it];
         }
+    }
 
+    void UpdateDistance(Operon::Span<Individual> pop)
+    {
         // assign distance. each front is sorted for each objective
         size_t n = pop.front().Fitness.size();
         auto inf = Operon::Numeric::Max<Operon::Scalar>();
@@ -115,6 +115,14 @@ private:
                 }
             }
         }
+    }
+
+    void NonDominatedSort(tf::Executor& executor, Operon::Span<Individual> pop)
+    {
+        auto ranks = ComputeRanks(executor, pop);
+        UpdateFronts(ranks);
+        UpdateDistance(pop);
+
         best.clear();
         std::transform(fronts.front().begin(), fronts.front().end(), std::back_inserter(best), [&](auto i) { return pop[i]; });
     }
