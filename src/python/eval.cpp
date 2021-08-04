@@ -61,6 +61,7 @@ void init_eval(py::module_ &m)
         auto s2 = MakeConstSpan(rhs);
         auto stats = bivariate::accumulate<float>(s1.data(), s2.data(), s1.size());
         auto a = stats.covariance / stats.variance_x; // scale
+        if (!std::isfinite(a)) { a = 1; }
         auto b = stats.mean_y - a * stats.mean_x;     // offset
         return std::make_pair(a, b);
     });
@@ -70,6 +71,7 @@ void init_eval(py::module_ &m)
         auto s2 = MakeConstSpan(rhs);
         auto stats = bivariate::accumulate<float>(s1.data(), s2.data(), s1.size());
         auto a = stats.covariance / stats.variance_x; // scale
+        if (!std::isfinite(a)) { a = 1; }
         auto b = stats.mean_y - a * stats.mean_x;     // offset
         return std::make_pair(a, b);
     });
