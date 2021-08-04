@@ -83,6 +83,7 @@ public:
             if constexpr (LinearScaling) {
                 auto stats = bivariate::accumulate<double>(buf.data(), targetValues.data(), buf.size());
                 auto a = static_cast<Operon::Scalar>(stats.covariance / stats.variance_x); // scale
+                if (!std::isfinite(a)) { a = 1; }
                 auto b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x);     // offset
 
                 Projection p(buf, [&](auto x) { return a * x + b; });
@@ -136,9 +137,10 @@ class MultiEvaluator : public EvaluatorBase {
     operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar>{}) const override
     {
         EXPECT(evaluators_.size() > 1);
-        Operon::Vector<Operon::Scalar> fit(evaluators_.size());
+        Operon::Vector<Operon::Scalar> fit;
         for (size_t i = 0; i < evaluators_.size(); ++i) {
-            fit[i] = (evaluators_[i])(rng, ind, buf)[0];
+            auto fit_i = (evaluators_[i])(rng, ind, buf);
+            std::copy(fit_i.begin(), fit_i.end(), std::back_inserter(fit));
         }
         // proxy the budget of the first evaluator (the one that actually calls the tree interpreter)
         this->fitnessEvaluations = evaluators_[0].get().FitnessEvaluations();
