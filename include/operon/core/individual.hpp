@@ -4,55 +4,41 @@
 #ifndef OPERON_INDIVIDUAL_HPP
 #define OPERON_INDIVIDUAL_HPP
 
-#include <cstddef>
 #include "core/tree.hpp"
 #include "core/types.hpp"
+#include <cstddef>
 
 namespace Operon {
 
-enum class DominanceResult : int { LeftDominates = -1, NoDomination = 0, RightDominates = 1, Equality = 2 };
+enum class Dominance : int { Left = 0,
+    Equal = 1,
+    Right = 2,
+    None = 3 };
 
 namespace detail {
-    template<size_t N = 0>
-    inline DominanceResult Compare(Operon::Vector<Operon::Scalar> const& lhs, Operon::Vector<Operon::Scalar> const& rhs) noexcept {
-        EXPECT(lhs.size() == rhs.size());
+    template <size_t N = 0, typename T>
+    inline Dominance Compare(T const* lhs, T const* rhs, size_t n) noexcept
+    {
+        bool better, worse;
+        using Array = std::conditional_t<N == 0,
+            Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>,
+            Eigen::Array<T, (int)N, 1, Eigen::ColMajor>>;
 
-        bool better{false}, worse{false};
-        for (size_t i = 0; i < lhs.size(); ++i) {
-            better |= lhs[i] < rhs[i];
-            worse  |= lhs[i] > rhs[i];
-        }
+        Eigen::Map<Array const> x(lhs, n);
+        Eigen::Map<Array const> y(rhs, n);
+        better = (x < y).any();
+        worse = (x > y).any();
 
-        if (better && worse) return DominanceResult::NoDomination;
-        if (!(better || worse)) return DominanceResult::Equality;
-
-        return better
-            ? DominanceResult::LeftDominates
-            : DominanceResult::RightDominates;
-    }
-
-    template<>
-    inline DominanceResult Compare<2>(Operon::Vector<Operon::Scalar> const& lhs, Operon::Vector<Operon::Scalar> const& rhs) noexcept {
-        auto a = lhs[0], b = lhs[1];
-        auto c = rhs[0], d = rhs[1];
-
-        if (a < c) {
-            return b > d ? DominanceResult::NoDomination : DominanceResult::LeftDominates;
-        }
-        if (a > c) {
-            return b < d ? DominanceResult::NoDomination : DominanceResult::RightDominates;
-        }
-        // a == c
-        if (b < d) return DominanceResult::LeftDominates;
-        if (b > d) return DominanceResult::RightDominates;
-        return DominanceResult::Equality;
+        if (better) { return worse ? Dominance::None : Dominance::Left; }
+        if (worse) { return better ? Dominance::None : Dominance::Right; }
+        return Dominance::Equal;
     }
 }
 
 struct Individual {
     Tree Genotype;
     Operon::Vector<Operon::Scalar> Fitness;
-    size_t Rank;             // domination rank; used by NSGA2
+    size_t Rank; // domination rank; used by NSGA2
     Operon::Scalar Distance; // crowding distance; used by NSGA2
 
     inline Operon::Scalar& operator[](size_t const i) noexcept { return Fitness[i]; }
@@ -69,9 +55,19 @@ struct Individual {
     {
     }
 
-    template<size_t N>
-    inline DominanceResult Compare(Individual const& other) const noexcept {
-        return detail::Compare<N>(Fitness, other.Fitness);
+    inline bool LexicographicalCompare(Individual const& other) const noexcept
+    {
+        if (Fitness.size() != other.Fitness.size()) {
+            fmt::print("fitness size: {}, other fitness size: {}\n", Fitness.size(), other.Fitness.size());
+            ENSURE(Fitness.size() == other.Fitness.size());
+        }
+        return std::lexicographical_compare(Fitness.cbegin(), Fitness.cend(), other.Fitness.cbegin(), other.Fitness.cend());
+    }
+
+    template <size_t N>
+    inline Dominance ParetoCompare(Individual const& other) const noexcept
+    {
+        return detail::Compare<N>(Fitness.data(), other.Fitness.data(), Fitness.size());
     }
 };
 
@@ -105,7 +101,7 @@ struct ParetoComparison : public Comparison {
     bool operator()(Individual const& lhs, Individual const& rhs) const override
     {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
-        bool better{false}, worse{false};
+        bool better { false }, worse { false };
 
         for (size_t i = 0; i < std::size(lhs.Fitness); ++i) {
             better |= lhs[i] < rhs[i];
