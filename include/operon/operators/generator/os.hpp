@@ -51,15 +51,16 @@ public:
         bool accept{false};
 
         if (p2.has_value()) {
+            fmt::print(".");
             Individual q(child.Fitness.size());
             for (size_t i = 0; i < child.Fitness.size(); ++i) {
                 auto f1 = p1.value()[i];
                 auto f2 = p2.value()[i];
                 q[i] = std::max(f1, f2) - static_cast<Operon::Scalar>(comparisonFactor) * std::abs(f1 - f2);
-                accept = child.Compare<0>(q) == DominanceResult::NoDomination;
+                accept = child.ParetoCompare<0>(q) != Dominance::Right; 
             }
         } else {
-            accept = child.Compare<0>(p1.value()) == DominanceResult::NoDomination;
+            accept = child.ParetoCompare<0>(p1.value()) != Dominance::Right;
         }
         if (accept) return { child };
         return { };

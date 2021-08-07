@@ -175,6 +175,19 @@ protected:
     std::reference_wrapper<SelectorBase> maleSelector;
 };
 
+class NondominatedSorterBase : public OperatorBase<std::vector<std::vector<size_t>>, Operon::Span<Individual const>> {
+    public:
+        mutable struct {
+            size_t LexicographicalComparisons = 0; // both lexicographical and single-objective
+            size_t SingleValueComparisons = 0;
+            size_t DominanceComparisons = 0;
+            size_t RankComparisons = 0;
+            size_t InnerOps = 0;
+        } Stats;
+
+        void Reset() { Stats = {0,0,0,0,0}; }
+};
+
 template <typename T>
 class PopulationAnalyzerBase : public OperatorBase<double> {
 public:

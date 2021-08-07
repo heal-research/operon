@@ -482,7 +482,6 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/performance/hashing.cpp
         test/performance/distance.cpp
         test/performance/math.cpp
-        test/performance/nondominatedsort.cpp
         test/performance/random.cpp
         test/implementation/evaluation.cpp
         test/implementation/details.cpp
