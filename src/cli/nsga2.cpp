@@ -293,11 +293,13 @@ int main(int argc, char** argv)
 
 
         UserDefinedEvaluator lengthEvaluator(problem, [](Operon::RandomGenerator&, Individual& ind) { return Operon::Vector<Operon::Scalar>{ static_cast<Operon::Scalar>(ind.Genotype.Length()) }; });
+        UserDefinedEvaluator shapeEvaluator(problem, [](Operon::RandomGenerator&, Individual& ind) { return Operon::Vector<Operon::Scalar>{ static_cast<Operon::Scalar>(ind.Genotype.VisitationLength()) }; });
 
         std::unique_ptr<MultiEvaluator> evaluator(new MultiEvaluator(problem));
         evaluator->SetBudget(config.Evaluations);
         evaluator->Add(*errorEvaluator.get());
         evaluator->Add(lengthEvaluator);
+        evaluator->Add(shapeEvaluator);
         
         EXPECT(problem.TrainingRange().Size() > 0);
 
@@ -429,8 +431,10 @@ int main(int argc, char** argv)
         tf::Executor executor(threads);
 
         auto t0 = std::chrono::high_resolution_clock::now();
+        EfficientSorter<1> sorter;
+        //RankSorter sorter;
 
-        NSGA2 gp { problem, config, initializer, *generator, *reinserter };
+        NSGA2 gp { problem, config, initializer, *generator, *reinserter, sorter };
 
         auto targetValues = problem.TargetValues();
         auto targetTrain = targetValues.subspan(trainingRange.Start(), trainingRange.Size());
@@ -445,7 +449,7 @@ int main(int argc, char** argv)
             return *minElem;
         };
 
-        Individual best(2);
+        Individual best;
         //auto const& pop = gp.Parents();
 
         auto getSize = [](const Individual& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Node) * ind.Genotype.Nodes().capacity(); };
@@ -463,8 +467,7 @@ int main(int argc, char** argv)
                 return lhs[idx] < rhs[idx]; 
             });
 
-            auto tmp = getBest(gp.Best());
-            if (tmp[0] < best[0]) std::swap(tmp, best);
+            best = getBest(gp.Best());
 
             Operon::Vector<Operon::Scalar> estimatedTrain, estimatedTest;
 
