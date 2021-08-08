@@ -41,69 +41,33 @@ struct HierarchicalSorter : public NondominatedSorterBase {
     template <size_t N>
     inline std::vector<std::vector<size_t>> Sort(Operon::Span<Operon::Individual const> pop) const noexcept
     {
-        size_t n = pop.size();
-
-        std::deque<size_t> q(n);
-        std::iota(q.begin(), q.end(), 0ul);
-
-        std::vector<size_t> idx(n);
-        std::iota(idx.begin(), idx.end(), 0ul);
-        std::stable_sort(idx.begin(), idx.end(), [&](size_t a, size_t b) {
-            //++this->Stats.LexicographicalComparisons;
-            return pop[a].LexicographicalCompare(pop[b]);
-        });
-        std::vector<size_t> pos(n);
-        for (size_t i = 0; i < n; ++i) { pos[idx[i]] = i; }
-
-        std::vector<size_t> dominated;
-        dominated.reserve(n);
+        std::deque<size_t> q(pop.size()); std::iota(q.begin(), q.end(), 0ul);
+        std::vector<size_t> dominated; dominated.reserve(pop.size());
         std::vector<std::vector<size_t>> fronts;
         while (!q.empty()) {
-            ++this->Stats.InnerOps;
-            // initialize new empty front
             std::vector<size_t> front;
-
-            // sort solutions in q according to the first objective value
-            // optimizations:
-            // - use rank comparison as it is much faster
-            // - use timsort as it is faster than std::stable_sort
             std::stable_sort(q.begin(), q.end(), [&](size_t a, size_t b) {
-                //++this->Stats.SingleValueComparisons;
-                return pos[a] < pos[b];
+                return pop[a].LexicographicalCompare(pop[b]);
             });
-
-            while (q.size() > 1) {
-                //++this->Stats.InnerOps;
-                auto q1 = q.front();
-                q.pop_front();
+            while (!q.empty()) {
+                auto q1 = q.front(); q.pop_front();
                 front.push_back(q1);
-
                 auto nonDominatedCount = 0ul;
                 while (q.size() > nonDominatedCount) {
-                    //++this->Stats.InnerOps;
-                    auto qj = q.front();
-                    q.pop_front();
-                    //++this->Stats.DominanceComparisons;
-                    if (pop[q1].ParetoCompare<N>(pop[qj]) != Dominance::None) { 
-                        dominated.push_back(qj);
-                    } else {
+                    auto qj = q.front(); q.pop_front();
+                    if (pop[q1].ParetoCompare<N>(pop[qj]) == Dominance::None) {
                         q.push_back(qj);
                         ++nonDominatedCount;
+                    } else {
+                        dominated.push_back(qj);
                     }
                 }
-            }
-            // assign the last solution of q to F_k
-            if (!q.empty()) {
-                front.push_back(q.back());
-                q.pop_back();
             }
             std::copy(dominated.begin(), dominated.end(), std::back_inserter(q));
             dominated.clear();
             fronts.push_back(front);
         }
-
         return fronts;
-        
     }
 };
 
