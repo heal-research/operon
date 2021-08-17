@@ -36,7 +36,9 @@ public:
 
     Problem& Target(std::string const& tgt) {
         auto var = dataset.GetVariable(tgt);
-        EXPECT(var.has_value());
+        if (!var.has_value()) {
+            throw std::runtime_error(fmt::format("Error: the target name {} does not exist in the dataset.\n", tgt));
+        }
         target = var.value();
         return *this;
     }
