@@ -151,7 +151,8 @@ Operon::Span<const Operon::Scalar> Dataset::GetValues(const std::string& name) c
 Operon::Span<const Operon::Scalar> Dataset::GetValues(Operon::Hash hashValue) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
-    ENSURE(it != variables.end());
+    bool variable_exists_in_the_dataset = it != variables.end() && it->Hash == hashValue;
+    ENSURE(variable_exists_in_the_dataset);
     auto idx = static_cast<Eigen::Index>(it->Index);
     return Operon::Span<const Operon::Scalar>(map.col(idx).data(), static_cast<size_t>(map.rows()));
 }
@@ -171,7 +172,7 @@ std::optional<Variable> Dataset::GetVariable(const std::string& name) const noex
 std::optional<Variable> Dataset::GetVariable(Operon::Hash hashValue) const noexcept
 {
     auto it = std::partition_point(variables.begin(), variables.end(), [&](const auto& v) { return v.Hash < hashValue; });
-    return it < variables.end() ? std::make_optional(*it) : std::nullopt;
+    return it != variables.end() && it->Hash == hashValue ? std::make_optional(*it) : std::nullopt;
 }
 
 void Dataset::Shuffle(Operon::RandomGenerator& random)
