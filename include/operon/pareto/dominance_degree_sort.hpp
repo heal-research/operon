@@ -78,27 +78,27 @@ struct DominanceDegreeSorter : public NondominatedSorterBase {
 
         Mat idx = Vec::LinSpaced(n, 0, n-1).replicate(1, m);
         for (size_t i = 0; i < m; ++i) {
-            std::sort(idx.col(i).begin(), idx.col(i).end(), [&](auto a, auto b) { return pop[a][i] < pop[b][i]; });
+            auto data = idx.col(i).data();
+            std::sort(data, data + n, [&](auto a, auto b) { return pop[a][i] < pop[b][i]; });
         }
         Mat d = ComputeDegreeMatrix(pop, idx);
-        Vec indices = Vec::LinSpaced(n, 0, n-1);
         size_t count = 0; // number of assigned solutions
-        std::vector<size_t> remaining;
         std::vector<std::vector<size_t>> fronts;
+        std::vector<size_t> indices(n);
+        std::iota(indices.begin(), indices.end(), 0ul);
 
+        std::vector<size_t> remaining;
         while (count < n) {
             std::vector<size_t> front;
-            for (int i = 0; i < indices.size(); ++i) {
-                if (std::all_of(indices.begin(), indices.end(), [&](auto j) { return d(j, indices(i)) < m; })) {
-                    front.push_back(indices(i));
+            for (auto i : indices) {
+                if (std::all_of(indices.begin(), indices.end(), [&](auto j) { return d(j, i) < m; })) {
+                    front.push_back(i);
                 } else {
                     remaining.push_back(i);
                 }
             }
-            if (!remaining.empty()) {
-                indices = indices(remaining).eval();
-                remaining.clear();
-            }
+            indices.swap(remaining);
+            remaining.clear();
             count += front.size();
             fronts.push_back(front);
         }
