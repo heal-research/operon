@@ -218,7 +218,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
             return op.ReplaceSubtreeMutation(creator, self.max_depth, self.max_length)
 
         elif mutation_name == 'insertsubtree':
-            return op.InsertSubtreeMutation(creator, self.max_depth, self.max_length)
+            return op.InsertSubtreeMutation(creator, self.max_depth, self.max_length, pset)
 
         elif mutation_name == 'removesubtree':
             return op.RemoveSubtreeMutation(pset)
