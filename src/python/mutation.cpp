@@ -42,7 +42,7 @@ void init_mutation(py::module_ &m)
         .def("__call__", &Operon::RemoveSubtreeMutation::operator());
 
     py::class_<Operon::InsertSubtreeMutation, Operon::MutatorBase>(m, "InsertSubtreeMutation")
-        .def(py::init<Operon::CreatorBase&, size_t, size_t>())
+        .def(py::init<Operon::CreatorBase&, size_t, size_t, Operon::PrimitiveSet>())
         .def("__call__", &Operon::InsertSubtreeMutation::operator());
 
     py::class_<Operon::MultiMutation, Operon::MutatorBase>(m, "MultiMutation")
