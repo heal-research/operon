@@ -127,7 +127,9 @@ Tree InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
 
     auto& nodes = tree.Nodes();
 
-    auto test = [](auto const& node) { return static_cast<bool>(node.Type & (NodeType::Add | NodeType::Mul | NodeType::Sub | NodeType::Div)); };
+    auto test = [&](auto const& node) {
+        return static_cast<bool>(node.Type & (NodeType::Add | NodeType::Mul | NodeType::Sub | NodeType::Div)) && (node.Arity < pset_.GetMaximumArity(node.Type));
+    };
 
     auto n = std::count_if(nodes.begin(), nodes.end(), test);
 

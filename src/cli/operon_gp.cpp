@@ -258,7 +258,7 @@ int main(int argc, char** argv)
         auto changeVar = ChangeVariableMutation { problem.InputVariables() };
         auto changeFunc = ChangeFunctionMutation { problem.GetPrimitiveSet() };
         auto replaceSubtree = ReplaceSubtreeMutation { *creator, maxDepth, maxLength };
-        auto insertSubtree = InsertSubtreeMutation { *creator, maxDepth, maxLength};
+        auto insertSubtree = InsertSubtreeMutation { *creator, maxDepth, maxLength, problem.GetPrimitiveSet() };
         auto removeSubtree = RemoveSubtreeMutation { problem.GetPrimitiveSet() };
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
