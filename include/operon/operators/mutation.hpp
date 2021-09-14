@@ -65,10 +65,11 @@ private:
 };
 
 struct InsertSubtreeMutation : public MutatorBase {
-    InsertSubtreeMutation(CreatorBase& creator, size_t maxDepth, size_t maxLength) 
+    InsertSubtreeMutation(CreatorBase& creator, size_t maxDepth, size_t maxLength, PrimitiveSet pset)
         : creator_(creator)
         , maxDepth_(maxDepth)
         , maxLength_(maxLength)
+        , pset_(pset)
     {
     }
 
@@ -78,6 +79,7 @@ private:
     std::reference_wrapper<CreatorBase> creator_;
     size_t maxDepth_;
     size_t maxLength_;
+    PrimitiveSet pset_;
 };
 
 struct ReplaceSubtreeMutation : public MutatorBase {
