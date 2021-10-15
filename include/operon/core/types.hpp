@@ -21,7 +21,7 @@ using Hash = uint64_t; // at the moment, changing this will cause problems
 using RandomGenerator = Random::RomuTrio;
 
 template <typename T>
-using Vector = std::vector<T, Eigen::aligned_allocator<T>>;
+using Vector = std::vector<T>;
 
 template <typename T>
 using Span = nonstd::span<T>;
