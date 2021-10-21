@@ -16,24 +16,19 @@ enum class Dominance : int { Left = 0,
     None = 3 };
 
 namespace detail {
-    template <size_t N = 0, typename T>
+    template <typename T>
     inline Dominance Compare(T const* lhs, T const* rhs, size_t n) noexcept
     {
-        bool better, worse;
-        using Array = std::conditional_t<N == 0,
-            Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>,
-            Eigen::Array<T, (int)N, 1, Eigen::ColMajor>>;
-
-        Eigen::Map<Array const> x(lhs, n);
-        Eigen::Map<Array const> y(rhs, n);
-        better = (x < y).any();
-        worse = (x > y).any();
-
+        Eigen::Map<Eigen::Array<T, -1, 1> const> x(lhs, n), y(rhs, n);
+        auto better = (x < y).any();
+        auto worse = (x > y).any();
         if (better) { return worse ? Dominance::None : Dominance::Left; }
         if (worse) { return better ? Dominance::None : Dominance::Right; }
         return Dominance::Equal;
     }
 }
+
+struct LexicographicalComparison; // fwd def
 
 struct Individual {
     Tree Genotype;
@@ -50,24 +45,26 @@ struct Individual {
         : Individual(1)
     {
     }
-    Individual(size_t nObj)
+    explicit Individual(size_t nObj)
         : Fitness(nObj, 0.0)
     {
     }
 
-    inline bool LexicographicalCompare(Individual const& other) const noexcept
+    inline bool operator==(Individual const& other) const noexcept
     {
-        if (Fitness.size() != other.Fitness.size()) {
-            fmt::print("fitness size: {}, other fitness size: {}\n", Fitness.size(), other.Fitness.size());
-            ENSURE(Fitness.size() == other.Fitness.size());
-        }
-        return std::lexicographical_compare(Fitness.cbegin(), Fitness.cend(), other.Fitness.cbegin(), other.Fitness.cend());
+        return std::equal(Fitness.begin(), Fitness.end(), other.Fitness.begin());
     }
 
-    template <size_t N>
+    inline bool operator!=(Individual const& other) const noexcept
+    {
+        return !(*this == other);
+    }
+
+    inline bool LexicographicalCompare(Individual const& other) const noexcept;
+
     inline Dominance ParetoCompare(Individual const& other) const noexcept
     {
-        return detail::Compare<N>(Fitness.data(), other.Fitness.data(), Fitness.size());
+        return detail::Compare(Fitness.data(), other.Fitness.data(), Fitness.size());
     }
 };
 
@@ -95,7 +92,16 @@ private:
     size_t objectiveIndex;
 };
 
+struct LexicographicalComparison : public Comparison {
+    bool operator()(Individual const& lhs, Individual const& rhs) const override
+    {
+        EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
+        return std::lexicographical_compare(lhs.Fitness.cbegin(), lhs.Fitness.cend(), rhs.Fitness.cbegin(), rhs.Fitness.cend());
+    }
+};
+
 // TODO: use a collection of SingleObjectiveComparison functors
+// returns true if lhs dominates rhs
 struct ParetoComparison : public Comparison {
     // assumes minimization in every dimension
     bool operator()(Individual const& lhs, Individual const& rhs) const override
@@ -120,6 +126,11 @@ struct CrowdedComparison : public Comparison {
         return std::tie(lhs.Rank, rhs.Distance) < std::tie(rhs.Rank, lhs.Distance);
     }
 };
+
+bool Individual::LexicographicalCompare(Individual const& other) const noexcept
+{
+    return LexicographicalComparison{}(*this, other);
+}
 
 using ComparisonCallback = std::function<bool(Individual const&, Individual const&)>;
 

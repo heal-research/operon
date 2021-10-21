@@ -1,54 +1,28 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
-//
-// This implementation is a port of the original implementation in java by Moreno et al.
-// Moreno et al. - "Merge Nondominated Sorting Algorithm for Many-Objective Optimization" 
-// https://ieeexplore.ieee.org/document/9000950
-// https://github.com/jMetal/jMetal/blob/master/jmetal-core/src/main/java/org/uma/jmetal/util/ranking/impl/MergeNonDominatedSortRanking.java
-//
-// The only changes to the original version are some C++-specific optimizations (e.g. using swap at line 216 and eliminating a temporary)
-// The trailing zeros function was taken from https://graphics.stanford.edu/~seander/bithacks.html#ZerosOnRightLinear
-// Java left shift of long int uses only the six lowest-order bits, therefore (1L << x) in java is equivalent with (1L << (x & 0x3f)) in C++
 
-#ifndef OPERON_PARETO_MERGE_NONDOMINATED_SORT
-#define OPERON_PARETO_MERGE_NONDOMINATED_SORT
-
-#include <algorithm>
-#include <iterator>
-
-#include "core/individual.hpp"
-#include "core/operator.hpp"
+#include "operators/non_dominated_sorter/merge_sort.hpp"
 
 namespace Operon {
+
 namespace detail {
     constexpr int INSERTIONSORT = 7;
 
-    inline int TrailingZeros(uint64_t v)
-    {
-        int c;
-        if (v) {
-            v = (v ^ (v - 1)) >> 1; // Set v's trailing 0s to 1s and zero rest
-            for (c = 0; v; c++) {
-                v >>= 1;
-            }
-        } else {
-            c = CHAR_BIT * sizeof(v);
-        }
-        return c;
-    }
-
     class BitsetManager {
+        using word_t = uint64_t;
+
         static constexpr int FIRST_WORD_RANGE = 0;
         static constexpr int LAST_WORD_RANGE = 1;
-        static constexpr int N_BIT_ADDR = 6;
-        static constexpr int WORD_SIZE = 1 << N_BIT_ADDR;
-        static constexpr long WORD_MASK = 0xffffffffffffffffL;
+        static constexpr int N_BIT_ADDR = 6; // 2^6 = 64
+        //static constexpr long WORD_MASK = 0xffffffffffffffffL;
+        static constexpr word_t WORD_MASK = ~word_t { 0 };
+        static constexpr int WORD_SIZE = std::numeric_limits<word_t>::digits;
 
-        std::vector<std::vector<long>> bitsets;
+        std::vector<std::vector<word_t>> bitsets;
         std::vector<std::array<int, 2>> bsRanges;
         std::vector<int> wordRanking; //Ranking of each bitset word. A bitset word contains 64 solutions.
         std::vector<int> ranking, ranking0;
-        int maxRank;
+        int maxRank = 0;
         std::vector<long> incrementalBitset;
         int incBsFstWord, incBsLstWord;
 
@@ -97,19 +71,21 @@ namespace detail {
             if (fw > lw) {
                 return;
             }
-            long word;
+            word_t word;
             int i = 0, rank = 0, offset;
 
             for (; fw <= lw; fw++) {
                 word = bitsets[solutionId][fw] & incrementalBitset[fw];
                 if (word != 0) {
-                    i = (int)TrailingZeros(word);
+                    i = (int)detail::count_trailing_zeros(static_cast<word_t>(word));
                     offset = fw * WORD_SIZE;
                     do {
-                        if (ranking[offset + i] >= rank)
+                        if (ranking[offset + i] >= rank) {
                             rank = ranking[offset + i] + 1;
+                        }
                         i++;
-                        i += (int)TrailingZeros(word >> i);
+                        word_t w = static_cast<word_t>(word) >> i;
+                        i += w ? (int)detail::count_trailing_zeros(w) : (int)WORD_SIZE;
                     } while (i < WORD_SIZE && rank <= wordRanking[fw]);
                     if (rank > maxRank) {
                         maxRank = rank;
@@ -128,7 +104,9 @@ namespace detail {
         void updateIncrementalBitset(int solutionId)
         {
             int wordIndex = solutionId >> N_BIT_ADDR;
-            incrementalBitset[wordIndex] |= (1L << (solutionId & 0x3f));
+            //int shiftDistance = solutionId & 0x3f;
+            int shiftDistance = solutionId;
+            incrementalBitset[wordIndex] |= (word_t { 1 } << shiftDistance);
             if (incBsLstWord < wordIndex)
                 incBsLstWord = wordIndex;
             if (incBsFstWord > wordIndex)
@@ -137,13 +115,14 @@ namespace detail {
 
         bool initializeSolutionBitset(int solutionId)
         {
-            int const shiftDistance = solutionId & 0x3f;
+            //int const shiftDistance = solutionId & 0x3f;
+            int const shiftDistance = solutionId;
             int wordIndex = solutionId >> N_BIT_ADDR;
             if (wordIndex < incBsFstWord || 0 == solutionId) {
                 bsRanges[solutionId][FIRST_WORD_RANGE] = std::numeric_limits<int>::max();
                 return false;
             } else if (wordIndex == incBsFstWord) { //only 1 word in common
-                bitsets[solutionId] = std::vector<long>(wordIndex + 1);
+                bitsets[solutionId] = std::vector<word_t>(wordIndex + 1);
                 long intersection = incrementalBitset[incBsFstWord] & ~(WORD_MASK << shiftDistance);
                 if (intersection != 0) {
                     bsRanges[solutionId][FIRST_WORD_RANGE] = wordIndex;
@@ -156,7 +135,7 @@ namespace detail {
             int lw = incBsLstWord < wordIndex ? incBsLstWord : wordIndex;
             bsRanges[solutionId][FIRST_WORD_RANGE] = incBsFstWord;
             bsRanges[solutionId][LAST_WORD_RANGE] = lw;
-            bitsets[solutionId] = std::vector<long>(lw + 1);
+            bitsets[solutionId] = std::vector<word_t>(lw + 1);
             std::copy_n(incrementalBitset.begin() + incBsFstWord, lw - incBsFstWord + 1, bitsets[solutionId].begin() + incBsFstWord);
             if (incBsLstWord >= wordIndex) { // update (compute intersection) the last word
                 bitsets[solutionId][lw] = incrementalBitset[lw] & ~(WORD_MASK << shiftDistance);
@@ -172,6 +151,7 @@ namespace detail {
             std::fill(incrementalBitset.begin(), incrementalBitset.end(), 0ul);
             incBsLstWord = 0;
             incBsFstWord = std::numeric_limits<int>::max();
+            maxRank = 0;
         }
 
         BitsetManager() = default;
@@ -181,14 +161,15 @@ namespace detail {
         {
             int n = (int)nSolutions - 1;
             int wordIndex = static_cast<int>(static_cast<size_t>(n) >> N_BIT_ADDR);
-            ranking.resize(nSolutions);
-            ranking0.resize(nSolutions);
-            wordRanking.resize(nSolutions);
+            ranking.resize(nSolutions, 0);
+            ranking0.resize(nSolutions, 0);
+            wordRanking.resize(nSolutions, 0);
             bitsets.resize(nSolutions);
             bsRanges.resize(nSolutions);
             incrementalBitset.resize(wordIndex + 1);
             incBsLstWord = 0;
             incBsFstWord = std::numeric_limits<int>::max();
+            maxRank = 0;
         }
     };
 
@@ -209,7 +190,6 @@ namespace detail {
         int destLow = low;
         int length = high - low;
 
-        // this special case should be removed
         if (length < INSERTIONSORT) {
             bool alreadySorted { true };
             for (i = low; i < high; i++) {
@@ -243,35 +223,15 @@ namespace detail {
 
 } // namespace detail
 
-template <bool DominateOnEqual = false>
-class MergeNondominatedSorter : public NondominatedSorterBase {
-    mutable int SOL_ID;
-    mutable int SORT_INDEX;
-    mutable int m; // number of objectives
-    mutable int n; // population size
-    mutable int initialPopulationSize;
-    mutable std::vector<int> ranking;
-    mutable std::vector<std::vector<Operon::Scalar>> population;
-    mutable std::vector<std::vector<Operon::Scalar>> work;
-    mutable std::vector<std::vector<int>> duplicatedSolutions;
-    mutable detail::BitsetManager bsm;
-
-public:
-    inline std::vector<std::vector<size_t>>
-    operator()(Operon::RandomGenerator&, Operon::Span<Operon::Individual const> pop) const
-    {
-        n = pop.size();
-        m = pop.front().Fitness.size();
-        ENSURE(m > 1);
-        return Sort(pop);
-    }
-
-    inline std::vector<std::vector<size_t>>
-    Sort(Operon::Span<Operon::Individual const> pop) const noexcept
-    {
+    NondominatedSorterBase::Result
+    MergeNondominatedSorter::Sort(Operon::Span<Operon::Individual const> pop) const {
         Clear();
-        initialPopulationSize = pop.size();
-        bsm = detail::BitsetManager(n);
+        initialPopulationSize = (int)pop.size();
+        n = initialPopulationSize;
+        m = (int)pop.front().Fitness.size();
+        //detail::BitsetManager bsm(n);
+        //bsm = detail::BitsetManager(n);
+        detail::BitsetManager bsm(n);
 
         SOL_ID = m;
         SORT_INDEX = SOL_ID + 1;
@@ -279,57 +239,19 @@ public:
         work.resize(n);
         population.resize(n);
 
-        for (size_t i = 0; i < n; ++i) {
+        for (int i = 0; i < n; ++i) {
             population[i].resize(SORT_INDEX + 1);
             std::copy_n(pop[i].Fitness.begin(), m, population[i].begin());
             population[i][SOL_ID] = (Operon::Scalar)i;
+            population[i][SORT_INDEX] = (Operon::Scalar)i; // because pop is already sorted when passed to Sort
         }
 
-        ranking = Sort(); // sort population
-        auto rmax = *std::max_element(ranking.begin(), ranking.end());
-        std::vector<std::vector<size_t>> fronts(rmax + 1);
-        for (size_t i = 0; i < n; i++) {
-            fronts[ranking[i]].push_back(i);
-        }
-        return fronts;
-    }
-
-private:
-    void Clear() const {
-        ranking.clear();
-        population.clear();
-        work.clear();
-        duplicatedSolutions.clear();
-    }
-
-    bool SortFirstObjective() const
-    {
-        int p = 0;
-        std::copy_n(population.begin(), n, work.begin());
-        detail::MergeSort(population, work, 0, n, 0, m);
-        population[0] = work[0];
-        population[0][SORT_INDEX] = 0;
-        for (size_t q = 1; q < n; q++) {
-            if (0 != detail::CompareLex(population[p], work[q], 0, m)) {
-                p++;
-                population[p] = work[q];
-                population[p][SORT_INDEX] = (Operon::Scalar)p;
-            } else {
-                duplicatedSolutions.push_back(std::vector<int> { (int)population[p][SOL_ID], (int)work[q][SOL_ID] });
-            }
-        }
-        n = p + 1;
-        return n > 1;
-    }
-
-    bool SortSecondObjective() const
-    {
-        int p, solutionId;
+        int solutionId;
         bool dominance { false };
-        std::copy_n(population.begin(), n, work.begin());
+        work = population;
         detail::MergeSort(population, work, 0, n, 1, 2);
-        std::copy_n(work.begin(), n, population.begin());
-        for (p = 0; p < n; p++) {
+        population = work;
+        for (decltype(n) p = 0; p < n; p++) {
             solutionId = (int)population[p][SORT_INDEX];
             dominance |= bsm.initializeSolutionBitset(solutionId);
             bsm.updateIncrementalBitset(solutionId);
@@ -338,61 +260,46 @@ private:
                 bsm.computeSolutionRanking(solutionId, initSolId);
             }
         }
-        return dominance;
-    }
 
-    void SortRestOfObjectives() const
-    {
-        int p, solutionId, initSolId, lastObjective = m - 1;
-        bool dominance;
-        std::copy_n(population.begin(), n, work.begin());
-        for (int obj = 2; obj < m; obj++) {
-            if (detail::MergeSort(population, work, 0, n, obj, obj + 1)) { // Population has the same order as in previous objective
-                if (obj == lastObjective) {
-                    for (p = 0; p < n; p++)
-                        bsm.computeSolutionRanking((int)population[p][SORT_INDEX], (int)population[p][SOL_ID]);
-                }
-                continue;
-            }
-            std::copy_n(work.begin(), n, population.begin());
-            bsm.clearIncrementalBitset();
+        if (m > 2) {
             dominance = false;
-            for (p = 0; p < n; p++) {
-                initSolId = ((int)population[p][SOL_ID]);
-                solutionId = ((int)population[p][SORT_INDEX]);
-                if (obj < lastObjective) {
-                    dominance |= bsm.updateSolutionDominance((int)solutionId);
-                } else {
-                    bsm.computeSolutionRanking((int)solutionId, (int)initSolId);
+            decltype(m) lastObjective = m - 1;
+            work = population;
+            for (int obj = 2; obj < m; obj++) {
+                if (detail::MergeSort(population, work, 0, n, obj, obj + 1)) { 
+                    // Population has the same order as in previous objective
+                    if (obj == lastObjective) {
+                        for (decltype(n) p = 0; p < n; p++)
+                            bsm.computeSolutionRanking((int)population[p][SORT_INDEX], (int)population[p][SOL_ID]);
+                    }
+                    continue;
                 }
-                bsm.updateIncrementalBitset((int)solutionId);
-            }
-            if (!dominance) {
-                return;
+                population = work;
+                bsm.clearIncrementalBitset();
+                dominance = false;
+                for (decltype(n) p = 0; p < n; p++) {
+                    auto initSolId = (int)population[p][SOL_ID];
+                    solutionId = (int)population[p][SORT_INDEX];
+                    if (obj < lastObjective) {
+                        dominance |= bsm.updateSolutionDominance(solutionId);
+                    } else {
+                        bsm.computeSolutionRanking(solutionId, initSolId);
+                    }
+                    bsm.updateIncrementalBitset(solutionId);
+                }
             }
         }
-    }
 
-    std::vector<int> Sort() const
-    {
-        if (SortFirstObjective()) {
-            if (SortSecondObjective()) {
-                if (m > 2) { SortRestOfObjectives(); }
-            }
-        }
         ranking = bsm.getRanking();
-        // UPDATING DUPLICATED SOLUTIONS
-        for (auto const& duplicated : duplicatedSolutions) {
-            if (duplicated.empty())
-                continue;
-            ranking[duplicated[1]] = ranking[duplicated[0]]; // ranking[dup solution]=ranking[original solution]
+        n = initialPopulationSize; // equivalent to n += duplicatedSolutions.size();
+
+        auto rmax = *std::max_element(ranking.begin(), ranking.end());
+        std::vector<std::vector<size_t>> fronts(rmax + 1);
+        for (int i = 0; i < n; i++) {
+            fronts[ranking[i]].push_back(i);
         }
 
-        n = initialPopulationSize; // equivalent to n += duplicatedSolutions.size();
-        return ranking;
+        return fronts;
     }
-};
-} // namespace Operon
 
-#endif
-
+}
