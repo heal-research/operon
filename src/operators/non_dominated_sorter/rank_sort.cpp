@@ -5,6 +5,7 @@
 
 namespace Operon {
 
+#if EIGEN_VERSION_AT_LEAST(3,4,0)
     NondominatedSorterBase::Result RankSorter::SortRank(Operon::Span<Operon::Individual const> pop) const
     {
         const size_t n = pop.size();
@@ -55,6 +56,7 @@ namespace Operon {
         }
         return fronts;
     }
+#endif
 
     NondominatedSorterBase::Result RankSorter::SortBit(Operon::Span<Operon::Individual const> pop) const
     {
