@@ -150,12 +150,14 @@ int main(int argc, char** argv)
         if (showPrimitiveSet) {
             PrimitiveSet tmpSet;
             tmpSet.SetConfig(primitiveSetConfig);
-            for (auto i = 0u; i < NodeTypes::Count; ++i) {
+            fmt::print("Built-in primitives:\n");
+            fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", "Symbol", "Description", "Enabled", "Frequency");
+            for (size_t i = 0; i < NodeTypes::Count; ++i) {
                 auto type = static_cast<NodeType>(1u << i);
-                auto n = Node(type);
-                if (tmpSet.IsEnabled(type)) {
-                    fmt::print("{}\t{}\n", n.Name(), tmpSet.GetFrequency(type));
-                }
+                auto enabled = tmpSet.IsEnabled(type);
+                auto freq = enabled ? tmpSet.GetFrequency(type) : 0;
+                Node node(type);
+                fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled, freq ? std::to_string(freq) : "-");
             }
             return 0;
         }
