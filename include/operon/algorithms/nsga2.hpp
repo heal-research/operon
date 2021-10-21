@@ -13,11 +13,7 @@
 #include "operators/generator.hpp"
 #include "operators/initializer.hpp"
 #include "operators/mutation.hpp"
-#include "pareto/deductive_sort.hpp"
-#include "pareto/dominance_degree_sort.hpp"
-#include "pareto/efficient_nondominated_sort.hpp"
-#include "pareto/hierarchical_sort.hpp"
-#include "pareto/nondominated_sort.hpp"
+#include "operators/non_dominated_sorter.hpp"
 
 #include <chrono>
 #include <thread>
@@ -50,12 +46,13 @@ private:
     void UpdateDistance(Operon::Span<Individual> pop)
     {
         // assign distance. each front is sorted for each objective
-        size_t n = pop.front().Fitness.size();
+        size_t m = pop.front().Fitness.size();
         auto inf = Operon::Numeric::Max<Operon::Scalar>();
         for (size_t i = 0; i < fronts.size(); ++i) {
             auto& front = fronts[i];
-            for (size_t obj = 0; obj < n; ++obj) {
-                pdqsort(front.begin(), front.end(), [&](auto a, auto b) { return pop[a][obj] < pop[b][obj]; });
+            for (size_t obj = 0; obj < m; ++obj) {
+                SingleObjectiveComparison comp(obj);
+                std::stable_sort(front.begin(), front.end(), [&](auto a, auto b) { return comp(pop[a], pop[b]); });
                 auto min = pop.front()[obj];
                 auto max = pop.back()[obj];
                 for (size_t j = 0; j < front.size(); ++j) {
@@ -77,10 +74,24 @@ private:
         }
     }
 
-    void Sort(Operon::RandomGenerator& rng, Operon::Span<Individual> pop)
+    void Sort(Operon::Span<Individual> pop)
     {
-        fronts = sorter_(rng, pop);
-        for (auto& f : fronts) { pdqsort(f.begin(), f.end()); }
+        std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs.LexicographicalCompare(rhs); });
+        std::vector<Individual> dup; dup.reserve(pop.size());
+        auto r = std::unique(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
+            auto res = lhs == rhs;
+            if (res) { dup.push_back(rhs); }
+            return res;
+        });
+        ENSURE(std::distance(pop.begin(), r) + dup.size() == pop.size());
+        std::copy_n(std::make_move_iterator(dup.begin()), dup.size(), r);
+        Operon::Span<Individual const> s(pop.begin(), r);
+        fronts = sorter_(s);
+        for (auto& f : fronts) { std::stable_sort(f.begin(), f.end()); }
+        fronts.push_back({});
+        for (; r < pop.end(); ++r) {
+            fronts.back().push_back(std::distance(pop.begin(), r));
+        }
         UpdateDistance(pop);
         best.clear();
         std::transform(fronts.front().begin(), fronts.front().end(), std::back_inserter(best), [&](auto i) { return pop[i]; });
@@ -103,7 +114,6 @@ public:
 
     Operon::Span<Individual const> Parents() const { return { parents.data(), parents.size() }; }
     Operon::Span<Individual const> Offspring() const { return { offspring.data(), offspring.size() }; }
-
     Operon::Span<Individual const> Best() const { return { best.data(), best.size() }; }
 
     const Problem& GetProblem() const { return problem_.get(); }
@@ -172,7 +182,7 @@ public:
                     ENSURE(parents[i].Genotype.Length() > 0);
                     parents[i].Fitness = evaluator(rngs[i], parents[i], slots[id]);
                 });
-                auto updateRanks = subflow.emplace([&]() { Sort(random, parents); });
+                auto updateRanks = subflow.emplace([&]() { Sort(parents); });
                 init.precede(updateRanks);
             }, // init
             [&]() { return terminate || generation == config.Generations; }, // loop condition
@@ -188,7 +198,7 @@ public:
                         }
                     }
                 });
-                auto nonDominatedSort = subflow.emplace([&]() { Sort(random, individuals); });
+                auto nonDominatedSort = subflow.emplace([&]() { Sort(individuals); });
                 auto reinsert = subflow.emplace([&]() { reinserter.Sort(individuals); });
                 //auto reinsert = subflow.sort(individuals.begin(), individuals.end(), CrowdedComparison{});
                 auto incrementGeneration = subflow.emplace([&]() { ++generation; });

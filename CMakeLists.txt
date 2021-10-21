@@ -297,6 +297,11 @@ add_library(
     src/operators/creator/ptc2.cpp
     src/operators/selector/proportional.cpp
     src/operators/selector/tournament.cpp
+    src/operators/non_dominated_sorter/deductive_sort.cpp
+    src/operators/non_dominated_sorter/dominance_degree_sort.cpp
+    src/operators/non_dominated_sorter/hierarchical_sort.cpp
+    src/operators/non_dominated_sorter/merge_sort.cpp
+    src/operators/non_dominated_sorter/rank_sort.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres Threads::Threads)
