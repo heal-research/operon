@@ -14,7 +14,6 @@
 
 namespace Operon {
 enum class NodeType : uint32_t {
-    // terminal nodes - ordered by arity
     Add = 1u << 0,
     Mul = 1u << 1,
     Sub = 1u << 2,
@@ -67,7 +66,26 @@ inline NodeType& operator^=(NodeType& lhs, NodeType rhs)
 }
 
 namespace {
-    std::array<std::string, NodeTypes::Count> nodeNames = { "+", "*", "-", "/", "aq", "pow", "log", "exp", "sin", "cos", "tan", "tanh", "sqrt", "cbrt", "square", "dyn", "constant", "variable" };
+    std::array<std::pair<std::string, std::string>, NodeTypes::Count> nodeDesc = {
+        std::make_pair("+", "n-ary addition f(a,b,c,...) = a + b + c + ..."),
+        std::make_pair("*", "n-ary multiplication f(a,b,c,...) = a * b * c * ..." ),
+        std::make_pair("-", "n-ary subtraction f(a,b,c,...) = a - (b + c + ...)" ),
+        std::make_pair("/", "n-ary division f(a,b,c,..) = a / (b * c * ...)" ),
+        std::make_pair("aq", "analytical quotient f(a,b) = a / sqrt(1 + b^2)" ),
+        std::make_pair("pow", "raise to power f(a,b) = a^b" ),
+        std::make_pair("log", "natural (base e) logarithm f(a) = ln(a)" ),
+        std::make_pair("exp", "e raised to the given power f(a) = e^a" ),
+        std::make_pair("sin", "sine function f(a) = sin(a)" ),
+        std::make_pair("cos", "cosine function f(a) = cos(a)" ),
+        std::make_pair("tan", "tangent function f(a) = tan(a)" ),
+        std::make_pair("tanh", "hyperbolic tangent function f(a) = tanh(a)" ),
+        std::make_pair("sqrt", "square root function f(a) = sqrt(a)" ),
+        std::make_pair("cbrt", "cube root function f(a) = cbrt(a)" ),
+        std::make_pair("square", "square function f(a) = a^2" ),
+        std::make_pair("dyn", "user-defined function" ),
+        std::make_pair("constant", "a constant value" ),
+        std::make_pair("variable", "a dataset input with an associated weight" ),
+    };
 }
 
 struct Node {
@@ -108,7 +126,8 @@ struct Node {
         Value = 1.;
     }
 
-    const std::string& Name() const noexcept { return nodeNames[NodeTypes::GetIndex(Type)]; }
+    const std::string& Name() const noexcept { return nodeDesc[NodeTypes::GetIndex(Type)].first; }
+    const std::string& Desc() const noexcept { return nodeDesc[NodeTypes::GetIndex(Type)].second; }
 
     // comparison operators
     inline bool operator==(const Node& rhs) const noexcept
