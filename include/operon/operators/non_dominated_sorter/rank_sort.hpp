@@ -22,7 +22,9 @@ struct RankSorter : public NondominatedSorterBase {
         return SortBit(pop);
     }
 
+#if EIGEN_VERSION_AT_LEAST(3,4,0)
     NondominatedSorterBase::Result SortRank(Operon::Span<Operon::Individual const> pop) const;
+#endif
     NondominatedSorterBase::Result SortBit(Operon::Span<Operon::Individual const> pop) const;
 };
 
