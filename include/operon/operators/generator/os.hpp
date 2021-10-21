@@ -57,10 +57,10 @@ public:
                 auto f1 = p1.value()[i];
                 auto f2 = p2.value()[i];
                 q[i] = std::max(f1, f2) - static_cast<Operon::Scalar>(comparisonFactor) * std::abs(f1 - f2);
-                accept = child.ParetoCompare<0>(q) != Dominance::Right; 
+                accept = child.ParetoCompare(q) != Dominance::Right;
             }
         } else {
-            accept = child.ParetoCompare<0>(p1.value()) != Dominance::Right;
+            accept = child.ParetoCompare(p1.value()) != Dominance::Right;
         }
         if (accept) return { child };
         return { };

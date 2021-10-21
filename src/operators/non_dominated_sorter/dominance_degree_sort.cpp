@@ -1,36 +1,13 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
-#ifndef OPERON_PARETO_DOMINANCE_DEGREE_SORT
-#define OPERON_PARETO_DOMINANCE_DEGREE_SORT
-
-#include "core/individual.hpp"
-#include "core/operator.hpp"
-
-#include <core/types.hpp>
-
-#include <iomanip>
+#include "operators/non_dominated_sorter/dominance_degree_sort.hpp"
 
 namespace Operon {
-
-// Zhou et al. 2016 - "Ranking vectors by means of dominance degree matrix"
-// https://doi.org/10.1109/TEVC.2016.2567648
-// BB: this implementation is slow although I can't find any obvious faults,
-// it is an exact reproduction of the paper algorithm.
-template<bool DominateOnEqual = false>
-struct DominanceDegreeSorter : public NondominatedSorterBase {
-    inline std::vector<std::vector<size_t>> operator()(Operon::RandomGenerator&, Operon::Span<Operon::Individual const> pop) const
-    {
-        size_t m = pop.front().Fitness.size();
-        ENSURE(m > 1);
-        return Sort(pop);
-    }
-
-    private:
     using Vec = Eigen::Matrix<size_t, -1, 1, Eigen::ColMajor>;
     using Mat = Eigen::Matrix<size_t, -1, -1, Eigen::ColMajor>;
 
-    inline auto ComputeComparisonMatrix(Operon::Span<Operon::Individual const> pop, Mat const& idx, size_t colIdx) const noexcept
+    inline auto ComputeComparisonMatrix(Operon::Span<Operon::Individual const> pop, Mat const& idx, size_t colIdx) noexcept
     {
         size_t const n = pop.size();
         Mat c = Mat::Zero(n, n);
@@ -48,7 +25,7 @@ struct DominanceDegreeSorter : public NondominatedSorterBase {
         return c;
     }
 
-    inline auto ComparisonMatrixSum(Operon::Span<Operon::Individual const> pop, Mat const& idx) const noexcept {
+    inline auto ComparisonMatrixSum(Operon::Span<Operon::Individual const> pop, Mat const& idx) noexcept {
         Mat d = ComputeComparisonMatrix(pop, idx, 0);
         for (int i = 1; i < idx.cols(); ++i) {
             d.noalias() += ComputeComparisonMatrix(pop, idx, i);
@@ -56,7 +33,7 @@ struct DominanceDegreeSorter : public NondominatedSorterBase {
         return d;
     }
 
-    inline auto ComputeDegreeMatrix(Operon::Span<Operon::Individual const> pop, Mat const& idx) const noexcept
+    inline auto ComputeDegreeMatrix(Operon::Span<Operon::Individual const> pop, Mat const& idx) noexcept
     {
         size_t const n = pop.size();
         size_t const m = pop.front().Fitness.size();
@@ -71,7 +48,8 @@ struct DominanceDegreeSorter : public NondominatedSorterBase {
         return d;
     }
 
-    inline std::vector<std::vector<size_t>> Sort(Operon::Span<Operon::Individual const> pop) const noexcept
+
+    NondominatedSorterBase::Result DominanceDegreeSorter::Sort(Operon::Span<Operon::Individual const> pop) const
     {
         const size_t n = pop.size();
         const size_t m = pop.front().Fitness.size();
@@ -84,28 +62,24 @@ struct DominanceDegreeSorter : public NondominatedSorterBase {
         Mat d = ComputeDegreeMatrix(pop, idx);
         size_t count = 0; // number of assigned solutions
         std::vector<std::vector<size_t>> fronts;
-        std::vector<size_t> indices(n);
-        std::iota(indices.begin(), indices.end(), 0ul);
+        std::vector<size_t> tmp(n);
+        std::iota(tmp.begin(), tmp.end(), 0ul);
 
         std::vector<size_t> remaining;
         while (count < n) {
             std::vector<size_t> front;
-            for (auto i : indices) {
-                if (std::all_of(indices.begin(), indices.end(), [&](auto j) { return d(j, i) < m; })) {
+            for (auto i : tmp) {
+                if (std::all_of(tmp.begin(), tmp.end(), [&](auto j) { return d(j, i) < m; })) {
                     front.push_back(i);
                 } else {
                     remaining.push_back(i);
                 }
             }
-            indices.swap(remaining);
+            tmp.swap(remaining);
             remaining.clear();
             count += front.size();
             fronts.push_back(front);
         }
         return fronts;
     }
-};
-
-} // namespace operon
-
-#endif
+} // namespace Operon
