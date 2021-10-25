@@ -5,6 +5,16 @@
 
 namespace Operon {
 
+namespace detail {
+    template<typename T>
+    struct item {
+        T value;
+        size_t index;
+
+        bool operator<(item other) const { return value < other.value; }
+    };
+}
+
 #if EIGEN_VERSION_AT_LEAST(3,4,0)
     NondominatedSorterBase::Result RankSorter::SortRank(Operon::Span<Operon::Individual const> pop) const
     {
@@ -69,13 +79,14 @@ namespace Operon {
         size_t const block_bits = std::numeric_limits<block_type>::digits;
         size_t const num_blocks = (n / block_bits) + (n % block_bits != 0);
         block_type const block_max = std::numeric_limits<block_type>::max();
-        std::vector<size_t> indices(n);                   // vector of indices that get sorted according to each objective
-        std::vector<block_type> b(num_blocks, block_max); // this bitset will help us compute the intersections
-        b.back() >>= (block_bits * num_blocks - n);       // the bits in the last block that are over n must be set to zero
-        std::vector<bitset> bs(n);                        // vector of bitsets (one for each individual)
-        std::vector<std::pair<size_t, size_t>> br(n);     // vector of ranges keeping track of the first/last non-zero blocks
+        std::vector<block_type> b(num_blocks, block_max);   // this bitset will help us compute the intersections
+        b.back() >>= (block_bits * num_blocks - n);         // the bits in the last block that are over n must be set to zero
+        std::vector<bitset> bs(n);                          // vector of bitsets (one for each individual)
+        std::vector<std::pair<size_t, size_t>> br(n);       // vector of ranges keeping track of the first/last non-zero blocks
+        std::vector<detail::item<Operon::Scalar>> items(n); // these items hold the values to be sorted along with their associated index
+
         for (size_t i = 0; i < n; ++i) {
-            indices[i] = i;
+            items[i].index = i;
             b[i / block_bits] &= ~(block_type{1} << (i % block_bits)); // reset the bit corresponding to the current individual
             bs[i] = b;
             br[i] = {0, num_blocks-1};
@@ -86,13 +97,16 @@ namespace Operon {
         std::vector<size_t> rank(n, 0);
         std::vector<Operon::Scalar> values(n);
         for (size_t k = 1; k < m; ++k) {
-            std::transform(pop.begin(), pop.end(), values.begin(), [&](auto const& ind) { return ind[k]; });
-            std::stable_sort(indices.begin(), indices.end(), [&](auto i, auto j) { return values[i] < values[j]; });
+            for (auto i = 0ul; i < n; ++i) {
+                auto& item = items[i];
+                item.value = pop[item.index][k];
+            }
+            std::stable_sort(items.begin(), items.end());
             std::fill(b.begin(), b.end(), block_max);
             b.back() >>= (block_bits * num_blocks - n);
 
             if (k < m - 1) {
-                for (auto i : indices) {
+                for (auto [_, i] : items) {
                     b[i / block_bits] &= ~(block_type{1} << (i % block_bits));
                     auto [lo, hi] = br[i];
                     if (lo > hi) { continue; }
@@ -111,7 +125,7 @@ namespace Operon {
                     br[i] = {lo, hi};
                 }
             } else {
-                for (auto i : indices) {
+                for (auto [_, i] : items) {
                     b[i / block_bits] &= ~(block_type{1} << (i % block_bits)); // reset bit for current individual
                     auto [lo, hi] = br[i];
                     if (lo > hi) { continue; }
@@ -147,7 +161,7 @@ namespace Operon {
             }
         }
         std::vector<std::vector<size_t>> fronts(*std::max_element(rank.begin(), rank.end()) + 1);
-        for (auto i : indices) {
+        for (auto [_, i] : items) {
             fronts[rank[i]].push_back(i);
         }
         return fronts;
