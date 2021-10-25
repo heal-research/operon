@@ -206,7 +206,7 @@ Tree ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree t
     // shuffle child indices
     std::shuffle(childIndices.begin(), childIndices.end(), random);
 
-    //// write back from buffer to nodes in the shuffled order
+    // write back from buffer to nodes in the shuffled order
     auto insertionPoint = nodes.begin() + static_cast<long>(i) - s.Length;
 
     for (auto k : childIndices) {
