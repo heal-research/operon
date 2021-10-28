@@ -65,6 +65,7 @@ Selector
     We tell the selector how to compare individuals by providing a lambda function to its constructor:
 
 .. code-block:: cpp
+
     // our lambda function simply compares the fitness of the individuals
     auto comp = [](Individual const& lhs, Individual const& rhs) { 
         return lhs[0] < rhs[0]; 
