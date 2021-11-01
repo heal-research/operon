@@ -24,7 +24,8 @@ inputs                 = Operon.VariableCollection(v for v in ds.Variables if v.
 y_train                = ds.Values[0:training_range.End, target.Index]
 
 grammar                = Operon.PrimitiveSet()
-grammar.SetConfig(Operon.PrimitiveSet.Arithmetic | Operon.NodeType.Exp | Operon.NodeType.Log | Operon.NodeType.Sin | Operon.NodeType.Cos)
+#grammar.SetConfig(Operon.PrimitiveSet.Arithmetic | Operon.NodeType.Exp | Operon.NodeType.Log | Operon.NodeType.Sin | Operon.NodeType.Cos)
+grammar.SetConfig(Operon.NodeType.Add | Operon.NodeType.Mul | Operon.NodeType.Constant | Operon.NodeType.Variable)
 
 population_size        = 1000
 min_length, max_length = 1, 50
@@ -88,20 +89,21 @@ def generate(pop, fit):
 if __name__ == '__main__':
     t0 = time.time()
     pop = [btc(rng, l, 0, 0) for l in initial_lengths]
-    fit = Operon.CalculateFitness(pop, ds, training_range, target.Name, metric='rsquared')
+    interpreter = Operon.Interpreter()
+    fit = Operon.CalculateFitness(interpreter, pop, ds, training_range, target.Name, metric='rsquared')
     best = np.argmax(fit)
-    r2_test = Operon.CalculateFitness(pop[best], ds, test_range, target.Name, metric='rsquared')
+    r2_test = Operon.CalculateFitness(interpreter, pop[best], ds, test_range, target.Name, metric='rsquared')
 
     max_ticks = 50
     interval = 1 if max_generations < max_ticks else int(np.round(max_generations / max_ticks, 0))
 
     for gen in range(max_generations+1):
         pop = [pop[best] if i == best else generate(pop, fit) for i in range(population_size)]
-        fit = Operon.CalculateFitness(pop, ds, training_range, target.Name, metric='rsquared')
+        fit = Operon.CalculateFitness(interpreter, pop, ds, training_range, target.Name, metric='rsquared')
         new_best = np.argmax(fit)
         if new_best != best:
             best = new_best
-            r2_test = Operon.CalculateFitness(pop[best], ds, test_range, target.Name, metric='rsquared')
+            r2_test = Operon.CalculateFitness(interpreter, pop[best], ds, test_range, target.Name, metric='rsquared')
         
         sys.stdout.write('\r')
         cursor = int(np.round(gen / max_generations * max_ticks))
