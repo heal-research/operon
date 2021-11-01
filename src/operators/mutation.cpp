@@ -61,8 +61,8 @@ Tree ChangeFunctionMutation::operator()(Operon::RandomGenerator& random, Tree tr
     if (it == nodes.end()) 
         return tree; // no functions in the tree, nothing to do
 
-    auto minArity = std::min(static_cast<size_t>(it->Arity), pset.GetMinimumArity(it->Type));
-    auto maxArity = std::max(static_cast<size_t>(it->Arity), pset.GetMaximumArity(it->Type));
+    auto minArity = std::min(static_cast<size_t>(it->Arity), pset.GetMinimumArity(it->HashValue));
+    auto maxArity = std::max(static_cast<size_t>(it->Arity), pset.GetMaximumArity(it->HashValue));
 
     auto n = pset.SampleRandomSymbol(random, minArity, maxArity);
     it->Type = n.Type;
@@ -111,7 +111,7 @@ Tree RemoveSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
 
     auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end()-1); // -1 because we don't want to remove the tree root
     auto const& p = nodes[it->Parent];
-    if (p.Arity > pset.GetMinimumArity(p.Type)) {
+    if (p.Arity > pset.GetMinimumArity(p.HashValue)) {
         nodes[it->Parent].Arity--;
         nodes.erase(it - it->Length, it + 1);
         tree.UpdateNodes();
@@ -128,7 +128,7 @@ Tree InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
     auto& nodes = tree.Nodes();
 
     auto test = [&](auto const& node) {
-        return static_cast<bool>(node.Type & (NodeType::Add | NodeType::Mul | NodeType::Sub | NodeType::Div)) && (node.Arity < pset_.GetMaximumArity(node.Type));
+        return static_cast<bool>(node.Type & (NodeType::Add | NodeType::Mul | NodeType::Sub | NodeType::Div)) && (node.Arity < pset_.GetMaximumArity(node.HashValue));
     };
 
     auto n = std::count_if(nodes.begin(), nodes.end(), test);

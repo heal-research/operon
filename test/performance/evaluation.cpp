@@ -66,7 +66,7 @@ namespace Test {
         auto test = [&](tf::Executor& executor, nb::Bench& b, PrimitiveSetConfig cfg, const std::string& name) {
             pset.SetConfig(cfg);
             for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul }) {
-                pset.SetMinMaxArity(t, 2, 2);
+                pset.SetMinMaxArity(Node(t).HashValue, 2, 2);
             }
             std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 

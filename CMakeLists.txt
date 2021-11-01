@@ -493,7 +493,7 @@ if(doctest_FOUND AND BUILD_TESTS)
         test/implementation/details.cpp
         test/implementation/hashing.cpp
         test/implementation/infix_parser.cpp
-        #test/implementation/initialization.cpp
+        test/implementation/initialization.cpp
         test/implementation/mutation.cpp
         test/implementation/random.cpp
         test/implementation/nondominatedsort.cpp

@@ -10,54 +10,41 @@ namespace Operon {
     {
         EXPECT(minArity <= maxArity);
 
-        std::array<NodeType, NodeTypes::Count> candidates;
+        //std::array<NodeType, NodeTypes::Count> candidates;
+        std::vector<Node> candidates; candidates.reserve(_pset.size());
         size_t idx = 0;
-
-        for (size_t i = 0; i < NodeTypes::Count; ++i) {
-            auto type = static_cast<NodeType>(1u << i);
-
-            // skip symbols that are not enabled or have frequency set to zero
-            if (!IsEnabled(type) || GetFrequency(type) == 0)
-                continue;
-
-            // get the min and max arities for this symbol
-            auto [aMin, aMax] = GetMinMaxArity(type);
-
-            // skip symbols that don't fit arity requirements
-            if (minArity > aMax || maxArity < aMin)
-                continue;
-
-            candidates[idx++] = type;
+        for (auto const& [k, v] : _pset) {
+            auto [node, freq, min_arity, max_arity] = v;
+            if (!(node.IsEnabled && freq > 0)) continue;
+            if (minArity > max_arity || maxArity < min_arity) continue;
+            candidates[idx++] = node;
         }
 
         // throw an error if arity requirements are unreasonable (TODO: maybe here return optional)
         ENSURE(idx > 0);
 
-        auto sum = std::transform_reduce(candidates.begin(), candidates.begin() + idx, 0.0, std::plus{}, [&](auto& t) { return GetFrequency(t); });
+        auto sum = std::transform_reduce(candidates.begin(), candidates.begin() + idx, 0.0, std::plus{}, [&](auto& n) { return GetFrequency(n.HashValue); });
 
         auto r = std::uniform_real_distribution<double>(0., sum)(random);
         auto c = 0.0;
 
-        Node node(NodeType::Constant);
+        //Node node(NodeType::Constant);
+        Node node;
         for (size_t i = 0; i < idx; ++i) {
-            auto type = candidates[i];
-            c += (double)GetFrequency(type);
+            node = candidates[i];
+            c += (double)GetFrequency(node.HashValue);
 
             if (c > r) {
-                node = Node(type);
-
-                auto amin = std::max(minArity, GetMinimumArity(type));
-                auto amax = std::min(maxArity, GetMaximumArity(type));
-
+                auto amin = std::max(minArity, GetMinimumArity(node.HashValue));
+                auto amax = std::min(maxArity, GetMaximumArity(node.HashValue));
                 auto arity = std::uniform_int_distribution<size_t>(amin, amax)(random);
                 node.Arity = static_cast<uint16_t>(arity);
-
                 break;
             }
         }
 
-        ENSURE(IsEnabled(node.Type));
-        ENSURE(GetFrequency(node.Type) > 0);
+        ENSURE(IsEnabled(node.HashValue));
+        ENSURE(GetFrequency(node.HashValue) > 0);
 
         return node;
     }

@@ -154,8 +154,9 @@ int main(int argc, char** argv)
             fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", "Symbol", "Description", "Enabled", "Frequency");
             for (size_t i = 0; i < NodeTypes::Count; ++i) {
                 auto type = static_cast<NodeType>(1u << i);
-                auto enabled = tmpSet.IsEnabled(type);
-                auto freq = enabled ? tmpSet.GetFrequency(type) : 0;
+                auto hash = Node(type).HashValue;
+                auto enabled = tmpSet.IsEnabled(hash);
+                auto freq = enabled ? tmpSet.GetFrequency(hash) : 0;
                 Node node(type);
                 fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled, freq ? std::to_string(freq) : "-");
             }
@@ -216,8 +217,9 @@ int main(int argc, char** argv)
         problem.GetPrimitiveSet().SetConfig(primitiveSetConfig);
         // set symbol arities
         for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div }) {
-            problem.GetPrimitiveSet().SetMaximumArity(t, 2);
-            problem.GetPrimitiveSet().SetMinimumArity(t, 2);
+            auto h = Node(t).HashValue;
+            problem.GetPrimitiveSet().SetMaximumArity(h, 2);
+            problem.GetPrimitiveSet().SetMinimumArity(h, 2);
         }
 
         using Reinserter = ReinserterBase;
