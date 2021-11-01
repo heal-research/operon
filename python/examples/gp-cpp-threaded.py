@@ -22,7 +22,7 @@ y_train        = ds.Values[training_range.Start:training_range.End, target.Index
 rng            = Operon.RomuTrio(random.randint(1, 1000000))
 
 problem        = Operon.Problem(ds, inputs, target.Name, training_range, test_range)
-config         = Operon.GeneticAlgorithmConfig(generations=1000, max_evaluations=1000000, local_iterations=0, population_size=1000, pool_size=1000, p_crossover=1.0, p_mutation=0.25, seed=1)
+config         = Operon.GeneticAlgorithmConfig(generations=1000, max_evaluations=1000000, local_iterations=0, population_size=1000, pool_size=1000, p_crossover=1.0, p_mutation=0.25, seed=1, time_limit=86400)
 
 selector       = Operon.TournamentSelector(objective_index=0)
 selector.TournamentSize = 5
@@ -45,7 +45,8 @@ mutation.Add(mut_changeFunc, 1)
 mutation.Add(mut_replace, 1)
 crossover      = Operon.SubtreeCrossover(0.9, maxD, maxL)
 
-evaluator      = Operon.RSquaredEvaluator(problem)
+interpreter    = Operon.Interpreter()
+evaluator      = Operon.RSquaredEvaluator(problem, interpreter)
 evaluator.Budget = 1000 * 1000
 evaluator.LocalOptimizationIterations = 0
 
@@ -68,7 +69,7 @@ def report():
     for i in range(cursor):
         sys.stdout.write('\u2588')
     sys.stdout.write(' ' * (max_ticks-cursor))
-    sys.stdout.write(f'{100 * gen/config.Generations:.1f}%, generation {gen}/{config.Generations}, train quality: {1-bestfit:.6f}, elapsed: {time.time()-t0:.2f}s')
+    sys.stdout.write(f'{100 * gen/config.Generations:.1f}%, generation {gen}/{config.Generations}, train quality: {-bestfit:.6f}, elapsed: {time.time()-t0:.2f}s')
     sys.stdout.flush()
     gen += 1
 
