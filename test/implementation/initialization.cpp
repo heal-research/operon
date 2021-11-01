@@ -7,7 +7,6 @@
 #include "core/dataset.hpp"
 #include "core/format.hpp"
 #include "core/pset.hpp"
-#include "core/stats.hpp"
 #include "operators/creator.hpp"
 #include "operators/crossover.hpp"
 
@@ -15,13 +14,11 @@ namespace Operon::Test {
 TEST_CASE("Sample nodes from grammar")
 {
     PrimitiveSet grammar;
-    //grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
-    //grammar.Enable(NodeType::Add, 1);
     grammar.SetConfig(PrimitiveSet::Full);
     Operon::RandomGenerator rd(std::random_device {}());
 
     std::vector<double> observed(NodeTypes::Count, 0);
-    size_t r = grammar.EnabledSymbols().size() + 1;
+    size_t r = grammar.EnabledPrimitives().size() + 1;
 
     const size_t nTrials = 1'000'000;
     for (auto i = 0u; i < nTrials; ++i) {
@@ -31,19 +28,20 @@ TEST_CASE("Sample nodes from grammar")
     std::transform(observed.begin(), observed.end(), observed.begin(), [&](double v) { return v / nTrials; });
     std::vector<double> actual(NodeTypes::Count, 0);
     for (size_t i = 0; i < observed.size(); ++i) {
-        auto nodeType = static_cast<NodeType>(1u << i);
-        actual[NodeTypes::GetIndex(nodeType)] = (double)grammar.GetFrequency(nodeType);
+        auto type = static_cast<NodeType>(1u << i);
+        auto node = Node(type);
+        actual[NodeTypes::GetIndex(type)] = (double)grammar.GetFrequency(node.HashValue);
     }
     auto freqSum = std::reduce(actual.begin(), actual.end(), 0.0, std::plus {});
     std::transform(actual.begin(), actual.end(), actual.begin(), [&](double v) { return v / freqSum; });
     auto chi = 0.0;
     for (auto i = 0u; i < observed.size(); ++i) {
-        auto nodeType = static_cast<NodeType>(1u << i);
-        if (!grammar.IsEnabled(nodeType))
+        Node node(static_cast<NodeType>(1u << i));
+        if (!grammar.IsEnabled(node.HashValue))
             continue;
         auto x = observed[i];
         auto y = actual[i];
-        fmt::print("{:>8} observed {:.4f}, expected {:.4f}\n", Node(nodeType).Name(), x, y);
+        fmt::print("{:>8} observed {:.4f}, expected {:.4f}\n", node.Name(), x, y);
         chi += (x - y) * (x - y) / y;
     }
     chi *= nTrials;
@@ -103,12 +101,12 @@ TEST_CASE("GROW")
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
-    grammar.Enable(NodeType::Add, 1);
-    grammar.Enable(NodeType::Mul, 1);
-    grammar.Enable(NodeType::Sub, 1);
-    grammar.Enable(NodeType::Div, 1);
-    grammar.Enable(NodeType::Exp, 1);
-    grammar.Enable(NodeType::Log, 1);
+    grammar.SetFrequency(Node(NodeType::Add).HashValue, 1);
+    grammar.SetFrequency(Node(NodeType::Mul).HashValue, 1);
+    grammar.SetFrequency(Node(NodeType::Sub).HashValue, 1);
+    grammar.SetFrequency(Node(NodeType::Div).HashValue, 1);
+    grammar.SetFrequency(Node(NodeType::Exp).HashValue, 1);
+    grammar.SetFrequency(Node(NodeType::Log).HashValue, 1);
 
     GrowTreeCreator grow { grammar, inputs };
 
@@ -124,7 +122,7 @@ TEST_CASE("GROW")
 
         for (size_t i = 0; i < symbolFrequencies.size(); ++i) {
             auto node = Node(static_cast<NodeType>(1u << i));
-            if (!grammar.IsEnabled(node.Type))
+            if (!grammar.IsEnabled(node.HashValue))
                 continue;
             fmt::print("{}\t{:.3f} %\n", node.Name(), symbolFrequencies[i] / totalLength);
         }
@@ -180,14 +178,17 @@ TEST_CASE("BTC")
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
-    grammar.Enable(NodeType::Add, 1);
-    grammar.SetMaximumArity(NodeType::Add, 5);
-    grammar.Enable(NodeType::Mul, 1);
-    grammar.SetMaximumArity(NodeType::Mul, 5);
-    grammar.Enable(NodeType::Sub, 1);
-    grammar.SetMaximumArity(NodeType::Sub, 5);
-    grammar.Enable(NodeType::Div, 1);
-    grammar.SetMaximumArity(NodeType::Div, 5);
+    grammar.SetMaximumArity(Node(NodeType::Add), 2);
+    grammar.SetMaximumArity(Node(NodeType::Mul), 2);
+    grammar.SetMaximumArity(Node(NodeType::Sub), 2);
+    grammar.SetMaximumArity(Node(NodeType::Div), 2);
+
+    grammar.SetFrequency(Node(NodeType::Add), 4);
+    grammar.SetFrequency(Node(NodeType::Mul), 1);
+    grammar.SetFrequency(Node(NodeType::Sub), 1);
+    grammar.SetFrequency(Node(NodeType::Div), 1);
+    grammar.SetFrequency(Node(NodeType::Exp), 1);
+    grammar.SetFrequency(Node(NodeType::Log), 1);
 
     BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
 
@@ -211,9 +212,9 @@ TEST_CASE("BTC")
 
         for (size_t i = 0; i < symbolFrequencies.size(); ++i) {
             auto node = Node(static_cast<NodeType>(1u << i));
-            if (!grammar.IsEnabled(node.Type))
+            if (!grammar.Contains(node) || !grammar.IsEnabled(node))
                 continue;
-            fmt::print("{}\t{:.3f} %\n", node.Name(), symbolFrequencies[i] / totalLength);
+            fmt::print("{}\t{:.3f} %\n", node.Name(), (double)symbolFrequencies[i] / (double)totalLength);
         }
     }
 
@@ -289,10 +290,10 @@ TEST_CASE("PTC2")
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
-    grammar.Enable(NodeType::Add, 1);
-    grammar.Enable(NodeType::Mul, 1);
-    grammar.Enable(NodeType::Sub, 1);
-    grammar.Enable(NodeType::Div, 1);
+    grammar.Enable(Node(NodeType::Add).HashValue);
+    grammar.Enable(Node(NodeType::Mul).HashValue);
+    grammar.Enable(Node(NodeType::Sub).HashValue);
+    grammar.Enable(Node(NodeType::Div).HashValue);
 
     ProbabilisticTreeCreator ptc { grammar, inputs };
 
@@ -316,7 +317,7 @@ TEST_CASE("PTC2")
         fmt::print("Symbol frequencies: \n");
         for (size_t i = 0; i < symbolFrequencies.size(); ++i) {
             auto node = Node(static_cast<NodeType>(1u << i));
-            if (!grammar.IsEnabled(node.Type))
+            if (!grammar.IsEnabled(node.HashValue))
                 continue;
             fmt::print("{}\t{:.3f} %\n", node.Name(), symbolFrequencies[i] / totalLength);
         }

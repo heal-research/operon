@@ -25,10 +25,10 @@ TEST_CASE("InsertSubtreeMutation")
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
-    grammar.Enable(NodeType::Add, 1);
-    grammar.Enable(NodeType::Mul, 1);
-    grammar.Enable(NodeType::Sub, 1);
-    grammar.Enable(NodeType::Div, 1);
+    grammar.SetFrequency(Node(NodeType::Add).HashValue, 1);
+    grammar.SetFrequency(Node(NodeType::Mul).HashValue, 1);
+    grammar.SetFrequency(Node(NodeType::Sub).HashValue, 1);
+    grammar.SetFrequency(Node(NodeType::Div).HashValue, 1);
 
     BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
 

@@ -37,10 +37,10 @@ void init_eval(py::module_ &m)
 
     m.def("CalculateFitness", [](Operon::Interpreter const& i, std::vector<Operon::Tree> const& trees, Operon::Dataset const& d, Operon::Range r, std::string const& target, std::string const& metric) {
         std::add_pointer<double(Operon::Span<const Operon::Scalar>, Operon::Span<const Operon::Scalar>)>::type func;
-        if (metric == "rsquared")  func = Operon::RSquared;
-        else if (metric == "mse")  func = Operon::MeanSquaredError;
-        else if (metric == "nmse") func = Operon::NormalizedMeanSquaredError;
-        else if (metric == "rmse") func = Operon::RootMeanSquaredError;
+        if (metric == "rsquared")  func = &Operon::RSquared;
+        else if (metric == "mse")  func = &Operon::MeanSquaredError;
+        else if (metric == "nmse") func = &Operon::NormalizedMeanSquaredError;
+        else if (metric == "rmse") func = &Operon::RootMeanSquaredError;
         else throw std::runtime_error("Unsupported error metric");
 
         auto result = py::array_t<double>(static_cast<pybind11::ssize_t>(trees.size()));
