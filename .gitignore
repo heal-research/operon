@@ -5,3 +5,4 @@ tmp*
 .ycm_extra_conf.py
 .clangd/
 .cache
+*.lock
