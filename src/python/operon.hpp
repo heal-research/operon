@@ -12,6 +12,7 @@
 #include <type_traits>
 
 #include "algorithms/gp.hpp"
+#include "algorithms/nsga2.hpp"
 #include "core/constants.hpp"
 #include "core/dataset.hpp"
 #include "core/format.hpp"
@@ -26,6 +27,7 @@
 #include "operators/generator.hpp"
 #include "operators/initializer.hpp"
 #include "operators/mutation.hpp"
+#include "operators/non_dominated_sorter.hpp"
 #include "operators/selection.hpp"
 #include "operators/reinserter/replaceworst.hpp"
 
@@ -35,8 +37,8 @@ namespace py = pybind11;
 PYBIND11_MAKE_OPAQUE(std::vector<Operon::Variable>);
 PYBIND11_MAKE_OPAQUE(std::vector<Operon::Individual>);
 
-using UniformInitializer          = Operon::Initializer<std::uniform_int_distribution<size_t>>;
-using GeneticProgrammingAlgorithm = Operon::GeneticProgrammingAlgorithm<UniformInitializer>;
+using GeneticProgrammingAlgorithm = Operon::GeneticProgrammingAlgorithm<Operon::UniformInitializer>;
+using NSGA2Algorithm              = Operon::NSGA2<Operon::UniformInitializer>;
 
 template<typename T>
 py::array_t<T const> MakeView(Operon::Span<T const> view)
@@ -71,6 +73,7 @@ void init_dataset(py::module_&);
 void init_eval(py::module_&);
 void init_generator(py::module_&);
 void init_mutation(py::module_&);
+void init_non_dominated_sorter(py::module_&);
 void init_node(py::module_&);
 void init_problem(py::module_&);
 void init_pset(py::module_&);

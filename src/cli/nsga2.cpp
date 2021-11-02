@@ -253,7 +253,7 @@ int main(int argc, char** argv)
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         std::uniform_int_distribution<size_t> sizeDistribution(amin + 1, maxLength);
-        auto initializer = Initializer { *creator, sizeDistribution };
+        UniformInitializer initializer(*creator, sizeDistribution);
         initializer.MinDepth(1);
         initializer.MaxDepth(1000);
         auto crossover = SubtreeCrossover { crossoverInternalProbability, maxDepth, maxLength };
@@ -435,8 +435,7 @@ int main(int argc, char** argv)
         tf::Executor executor(threads);
 
         auto t0 = std::chrono::high_resolution_clock::now();
-        EfficientSorter<1> sorter;
-        //RankSorter sorter;
+        RankSorter sorter;
 
         NSGA2 gp { problem, config, initializer, *generator, *reinserter, sorter };
 
