@@ -24,7 +24,7 @@ void init_creator(py::module_ &m)
         .def(py::init<const Operon::PrimitiveSet&, const std::vector<Operon::Variable>>())
         .def("__call__", &Operon::GrowTreeCreator::operator());
 
-    py::class_<Operon::UniformInitializer>(m, "Operon::UniformInitializer")
+    py::class_<Operon::UniformInitializer>(m, "UniformInitializer")
         .def(py::init([](Operon::CreatorBase const& creator, size_t minLength, size_t maxLength) { 
                     std::uniform_int_distribution<size_t> dist(minLength, maxLength);
                     return Operon::UniformInitializer(creator, dist);

@@ -271,7 +271,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
 
         creator               = self.__init_creator(self.initialization_method, pset, inputs)
 
-        single_objective   = True if len(self.objectives) == 1 else False
+        single_objective      = True if len(self.objectives) == 1 else False
 
         evaluators = [] # placeholder for the evaluator(s)
 
@@ -281,14 +281,14 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
             eval_.LocalOptimizationIterations = self.local_iterations
             evaluators.append(eval_)
 
-        if single_objective == 1:
+        if single_objective:
             evaluator = evaluators[0]
         else:
             evaluator = op.MultiEvaluator(problem)
             for eval_ in evaluators:
                 evaluator.Add(eval_)
-                evaluator.LocalOptimizationIterations = self.local_iterations
-                evaluator.Budget = self.max_evaluations
+            evaluator.LocalOptimizationIterations = self.local_iterations
+            evaluator.Budget = self.max_evaluations
 
         comparison            = op.SingleObjectiveComparison(0) if single_objective else op.CrowdedComparison()
 
