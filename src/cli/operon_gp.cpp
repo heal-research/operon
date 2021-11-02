@@ -253,7 +253,7 @@ int main(int argc, char** argv)
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         std::uniform_int_distribution<size_t> sizeDistribution(amin + 1, maxLength);
-        auto initializer = Initializer { *creator, sizeDistribution };
+        UniformInitializer initializer(*creator, sizeDistribution);
         initializer.MinDepth(1);
         initializer.MaxDepth(1000);
         auto crossover = SubtreeCrossover { crossoverInternalProbability, maxDepth, maxLength };

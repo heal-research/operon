@@ -199,7 +199,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[performance]"))
         BalancedTreeCreator creator(problem.GetPrimitiveSet(), problem.InputVariables(), 0.0);
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         std::uniform_int_distribution<size_t> sizeDistribution(amin + 1, maxLength);
-        auto initializer = Initializer { creator, sizeDistribution };
+        auto initializer = UniformInitializer { creator, sizeDistribution };
         initializer.MinDepth(1);
         initializer.MaxDepth(1000);
 
