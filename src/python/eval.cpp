@@ -156,4 +156,17 @@ void init_eval(py::module_ &m)
     py::class_<Operon::UserDefinedEvaluator, Operon::EvaluatorBase>(m, "UserDefinedEvaluator")
         .def(py::init<Operon::Problem&, std::function<typename Operon::EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> const&>())
         .def("__call__", &Operon::UserDefinedEvaluator::operator());
+
+    py::class_<Operon::LengthEvaluator, Operon::EvaluatorBase>(m, "LengthEvaluator")
+        .def(py::init<Operon::Problem&>())
+        .def("__call__", &Operon::LengthEvaluator::operator());
+
+    py::class_<Operon::ShapeEvaluator, Operon::EvaluatorBase>(m, "ShapeEvaluator")
+        .def(py::init<Operon::Problem&>())
+        .def("__call__", &Operon::ShapeEvaluator::operator());
+
+    py::class_<Operon::MultiEvaluator, Operon::EvaluatorBase>(m, "MultiEvaluator")
+        .def(py::init<Operon::Problem&>())
+        .def("Add", &Operon::MultiEvaluator::Add)
+        .def("__call__", &Operon::MultiEvaluator::operator());
 }

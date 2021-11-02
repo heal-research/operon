@@ -5,10 +5,10 @@
 #define EVALUATOR_HPP
 
 #include "collections/projection.hpp"
+#include "core/format.hpp"
 #include "core/metrics.hpp"
 #include "core/operator.hpp"
 #include "core/types.hpp"
-#include "core/format.hpp"
 #include "nnls/nnls.hpp"
 #include "nnls/tiny_optimizer.hpp"
 
@@ -16,24 +16,28 @@ namespace Operon {
 
 class UserDefinedEvaluator : public EvaluatorBase {
 public:
-    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> && func)
-        : EvaluatorBase(problem), fref(std::move(func))
+    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)>&& func)
+        : EvaluatorBase(problem)
+        , fref(std::move(func))
     {
     }
 
     UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> const& func)
-        : EvaluatorBase(problem), fref(func)
+        : EvaluatorBase(problem)
+        , fref(func)
     {
     }
 
     // the func signature taking a pointer to the rng is a workaround for pybind11, since the random generator is non-copyable we have to pass a pointer
-    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> && func)
-        : EvaluatorBase(problem), fptr(std::move(func))
+    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)>&& func)
+        : EvaluatorBase(problem)
+        , fptr(std::move(func))
     {
     }
 
     UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> const& func)
-        : EvaluatorBase(problem), fptr(func)
+        : EvaluatorBase(problem)
+        , fptr(func)
     {
     }
 
@@ -49,12 +53,13 @@ private:
     std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> fptr; // workaround for pybind11
 };
 
-template<typename ErrorMetric, bool LinearScaling = false>
+template <typename ErrorMetric, bool LinearScaling = false>
 class Evaluator : public EvaluatorBase {
 
 public:
     Evaluator(Problem& problem, Interpreter& interp)
-        : EvaluatorBase(problem), interpreter(interp)
+        : EvaluatorBase(problem)
+        , interpreter(interp)
     {
     }
 
@@ -62,7 +67,7 @@ public:
     Interpreter const& GetInterpreter() const { return interpreter; }
 
     typename EvaluatorBase::ReturnType
-    operator()(Operon::RandomGenerator&, Individual& ind, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar>{}) const override
+    operator()(Operon::RandomGenerator&, Individual& ind, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar> {}) const override
     {
         ++this->fitnessEvaluations;
         auto& problem_ = this->problem.get();
@@ -83,13 +88,15 @@ public:
             if constexpr (LinearScaling) {
                 auto stats = bivariate::accumulate<double>(buf.data(), targetValues.data(), buf.size());
                 auto a = static_cast<Operon::Scalar>(stats.covariance / stats.variance_x); // scale
-                if (!std::isfinite(a)) { a = 1; }
-                auto b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x);     // offset
+                if (!std::isfinite(a)) {
+                    a = 1;
+                }
+                auto b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x); // offset
 
                 Projection p(buf, [&](auto x) { return a * x + b; });
-                return ErrorMetric{}(p.begin(), p.end(), targetValues.begin());
+                return ErrorMetric {}(p.begin(), p.end(), targetValues.begin());
             }
-            auto err = ErrorMetric{}(buf.begin(), buf.end(), targetValues.begin());
+            auto err = ErrorMetric {}(buf.begin(), buf.end(), targetValues.begin());
             return err;
         };
 
@@ -109,7 +116,7 @@ public:
             }
         }
 
-        auto fit = Operon::Vector<Operon::Scalar>{ computeFitness() };
+        auto fit = Operon::Vector<Operon::Scalar> { computeFitness() };
         for (auto& v : fit) {
             if (!std::isfinite(v)) {
                 v = Operon::Numeric::Max<Operon::Scalar>();
@@ -123,18 +130,19 @@ private:
 };
 
 class MultiEvaluator : public EvaluatorBase {
-    public:
+public:
     MultiEvaluator(Problem& problem)
         : EvaluatorBase(problem)
     {
     }
 
-    void Add(EvaluatorBase const& evaluator) {
+    void Add(EvaluatorBase const& evaluator)
+    {
         evaluators_.push_back(std::ref(evaluator));
     }
 
     typename EvaluatorBase::ReturnType
-    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar>{}) const override
+    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar> {}) const override
     {
         EXPECT(evaluators_.size() > 1);
         Operon::Vector<Operon::Scalar> fit;
@@ -148,17 +156,38 @@ class MultiEvaluator : public EvaluatorBase {
         return fit;
     }
 
-    private:
+private:
     std::vector<std::reference_wrapper<EvaluatorBase const>> evaluators_;
 };
 
-using MeanSquaredErrorEvaluator           = Evaluator<MSE,  true>;
+using MeanSquaredErrorEvaluator = Evaluator<MSE, true>;
 using NormalizedMeanSquaredErrorEvaluator = Evaluator<NMSE, true>;
-using RootMeanSquaredErrorEvaluator       = Evaluator<RMSE, true>;
-using MeanAbsoluteErrorEvaluator          = Evaluator<MAE,  true>;
-using RSquaredEvaluator                   = Evaluator<R2,   false>;
-using L2NormEvaluator                     = Evaluator<L2,   true>;
+using RootMeanSquaredErrorEvaluator = Evaluator<RMSE, true>;
+using MeanAbsoluteErrorEvaluator = Evaluator<MAE, true>;
+using RSquaredEvaluator = Evaluator<R2, false>;
+using L2NormEvaluator = Evaluator<L2, true>;
+
+// a couple of useful user-defined evaluators (mostly to avoid calling lambdas from python)
+// TODO: think about a better design
+class LengthEvaluator : public UserDefinedEvaluator {
+public:
+    LengthEvaluator(Operon::Problem& problem)
+        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator&, Operon::Individual& ind) {
+            return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.Length()) };
+        })
+    {
+    }
+};
+
+class ShapeEvaluator : public UserDefinedEvaluator {
+public:
+    ShapeEvaluator(Operon::Problem& problem)
+        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator&, Operon::Individual& ind) {
+            return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.VisitationLength()) };
+        })
+    {
+    }
+};
 
 }
 #endif
-

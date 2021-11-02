@@ -1,5 +1,6 @@
 {
   description = "Operon development environment";
+  nixConfig.bash-prompt = "\n\\e[93m\\e[1m\[operon-dev:\\e[92m\\e[1m\\w\]$\\e[0m ";
 
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.nur.url = "github:nix-community/NUR";
@@ -22,6 +23,7 @@
             nativeBuildInputs = with pkgs; [ cmake clang_12 clang-tools ];
             buildInputs = with pkgs; [
                 # python environment for bindings and scripting
+                (python39.override { stdenv = gcc11Stdenv; })
                 (python39.withPackages (ps: with ps; [ pybind11 pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz sphinx recommonmark sphinx_rtd_theme ]))
                 # Project dependencies and utils for profiling and debugging
                 pkgs.nur.repos.foolnotion.eli5
@@ -44,6 +46,10 @@
                 openlibm
                 valgrind
               ];
+
+            shellHook = ''
+              LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [ pkgs.gcc11Stdenv.cc.cc.lib ]};
+              '';
           };
         }
       );
