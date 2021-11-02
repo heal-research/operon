@@ -42,6 +42,41 @@ protected:
     const Operon::Span<const Variable> variables_;
 };
 
+template<typename Dist>
+struct InitializerBase : public OperatorBase<Tree> {
+    InitializerBase(const CreatorBase& creator, Dist& dist)
+        : creator_(creator)
+        , dist_(dist)
+        , minDepth_(1)
+        , maxDepth_(1000)
+    {
+    }
+
+    void ParameterizeDistribution(typename Dist::param_type const& params) {
+        dist_.param(params);
+    }
+
+    Tree operator()(Operon::RandomGenerator& random) const override
+    {
+        auto targetLen = std::max(size_t{1}, static_cast<size_t>(std::round(dist_(random))));
+        return creator_(random, targetLen, minDepth_, maxDepth_);
+    }
+
+    void MinDepth(size_t minDepth) { minDepth_ = minDepth; }
+    size_t MinDepth() const { return minDepth_; }
+
+    void MaxDepth(size_t maxDepth) { maxDepth_ = maxDepth; }
+    size_t MaxDepth() const { return maxDepth_; }
+
+    const CreatorBase& GetCreator() const { return creator_; }
+
+private:
+    std::reference_wrapper<const CreatorBase> creator_;
+    mutable Dist dist_;
+    size_t minDepth_;
+    size_t maxDepth_;
+};
+
 // crossover takes two parent trees and returns a child
 struct CrossoverBase : public OperatorBase<Tree, const Tree&, const Tree&> {
 };

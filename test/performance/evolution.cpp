@@ -47,7 +47,7 @@ TEST_CASE("Evolution speed") {
     std::uniform_int_distribution<size_t> treeSizeDistribution(1, maxTreeLength);
     BalancedTreeCreator creator { problem.GetPrimitiveSet(), problem.InputVariables() };
 
-    Initializer initializer { creator, treeSizeDistribution };
+    UniformInitializer initializer { creator, treeSizeDistribution };
 
     // set up crossover and mutation
     double internalNodeBias = 0.9;

@@ -24,18 +24,17 @@ void init_creator(py::module_ &m)
         .def(py::init<const Operon::PrimitiveSet&, const std::vector<Operon::Variable>>())
         .def("__call__", &Operon::GrowTreeCreator::operator());
 
-    py::class_<UniformInitializer>(m, "UniformInitializer")
+    py::class_<Operon::UniformInitializer>(m, "Operon::UniformInitializer")
         .def(py::init([](Operon::CreatorBase const& creator, size_t minLength, size_t maxLength) { 
                     std::uniform_int_distribution<size_t> dist(minLength, maxLength);
-                    return UniformInitializer(creator, dist);
+                    return Operon::UniformInitializer(creator, dist);
                     }))
-        .def("__call__", &UniformInitializer::operator())
+        .def("__call__", &Operon::UniformInitializer::operator())
         .def_property("MinDepth"
-                , py::overload_cast<>(&UniformInitializer::MinDepth, py::const_)
-                , py::overload_cast<size_t>(&UniformInitializer::MinDepth))
+                , py::overload_cast<>(&Operon::UniformInitializer::MinDepth, py::const_)
+                , py::overload_cast<size_t>(&Operon::UniformInitializer::MinDepth))
         .def_property("MaxDepth"
-                , py::overload_cast<>(&UniformInitializer::MaxDepth, py::const_)
-                , py::overload_cast<size_t>(&UniformInitializer::MaxDepth))
-        ;
+                , py::overload_cast<>(&Operon::UniformInitializer::MaxDepth, py::const_)
+                , py::overload_cast<size_t>(&Operon::UniformInitializer::MaxDepth));
 
 }
