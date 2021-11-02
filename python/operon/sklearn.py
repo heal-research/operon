@@ -34,7 +34,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         mutation_probability           = 0.25,
         offspring_generator            = 'basic',
         reinserter                     = 'replace-worst',
-        error_metric                   = 'r2',
+        objectives                     = ['r2'],
         max_length                     = 50,
         max_depth                      = 10,
         initialization_method          = 'btc',
@@ -63,7 +63,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         self.mutation_probability      = 0.25 if mutation_probability is None else mutation_probability
         self.offspring_generator       = 'basic' if offspring_generator is None else offspring_generator
         self.reinserter                = 'replace-worst' if reinserter is None else reinserter
-        self.error_metric              = 'r2' if error_metric is None else error_metric
+        self.objectives                = ['r2'] if objectives is None else objectives
         self.max_length                = 50 if max_length is None else int(max_length)
         self.max_depth                 = 10 if max_depth is None else int(max_depth)
         self.initialization_method     = 'btc' if initialization_method is None else initialization_method
@@ -132,14 +132,14 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         raise ValueError('Unknown initialization method {}'.format(initialization_method))
 
 
-    def __init_selector(self, selection_method, obj_index=0):
+    def __init_selector(self, selection_method, comp):
         if selection_method == 'tournament':
-            selector = op.TournamentSelector(obj_index)
+            selector = op.TournamentSelector(comp)
             selector.TournamentSize = self.tournament_size
             return selector
 
         elif selection_method == 'proportional':
-            selector = op.ProportionalSelector(obj_index)
+            selector = op.ProportionalSelector(comp)
             return selector
 
         elif selection_method == 'random':
@@ -149,23 +149,29 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         raise ValueError('Unknown selection method {}'.format(selection_method))
 
 
-    def __init_evaluator(self, error_metric, problem, interpreter):
-        if error_metric == 'r2':
+    def __init_evaluator(self, objective, problem, interpreter):
+        if objective == 'r2':
             return op.RSquaredEvaluator(problem, interpreter)
 
-        elif error_metric == 'nmse':
+        elif objective == 'nmse':
             return op.NormalizedMeanSquaredErrorEvaluator(problem, interpreter)
 
-        elif error_metric == 'rmse':
+        elif objective == 'rmse':
             return op.RootMeanSquaredErrorEvaluator(problem, interpreter)
 
-        elif error_metric == 'mse':
+        elif objective == 'mse':
             return op.MeanSquaredErrorEvaluator(problem, interpreter)
 
-        elif error_metric == 'mae':
+        elif objective == 'mae':
             return op.MeanAbsoluteErrorEvaluator(problem, interpreter)
 
-        raise ValueError('Unknown error metric {}'.format(error_metric))
+        elif objective == 'length':
+            return op.LengthEvaluator(problem)
+
+        elif objective == 'shape':
+            return op.ShapeEvaluator(problem)
+
+        raise ValueError('Unknown objective {}'.format(objectives))
 
 
     def __init_generator(self, generator_name, evaluator, crossover, mutator, female_selector, male_selector):
@@ -194,12 +200,12 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         raise ValueError('Unknown generator method {}'.format(generator_name))
 
 
-    def __init_reinserter(self, reinserter_name, obj_index=0):
+    def __init_reinserter(self, reinserter_name, comp):
         if reinserter_name == 'replace-worst':
-            return op.ReplaceWorstReinserter(obj_index)
+            return op.ReplaceWorstReinserter(comp)
 
         elif reinserter_name == 'keep-best':
-            return op.KeepBestReinserter(obj_index)
+            return op.KeepBestReinserter(comp)
 
         raise ValueError('Unknown reinsertion method {}'.format(reinserter_name))
 
@@ -265,13 +271,30 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
 
         creator               = self.__init_creator(self.initialization_method, pset, inputs)
 
-        evaluator             = self.__init_evaluator(self.error_metric, problem, self._interpreter)
-        evaluator.Budget      = self.max_evaluations
-        evaluator.LocalOptimizationIterations = self.local_iterations
+        single_objective   = True if len(self.objectives) == 1 else False
 
-        female_selector       = self.__init_selector(self.female_selector, 0)
-        male_selector         = self.__init_selector(self.male_selector, 0)
-        reinserter            = self.__init_reinserter(self.reinserter, 0)
+        evaluators = [] # placeholder for the evaluator(s)
+
+        for obj in self.objectives:
+            eval_         = self.__init_evaluator(obj, problem, self._interpreter)
+            eval_.Budget  = self.max_evaluations
+            eval_.LocalOptimizationIterations = self.local_iterations
+            evaluators.append(eval_)
+
+        if single_objective == 1:
+            evaluator = evaluators[0]
+        else:
+            evaluator = op.MultiEvaluator(problem)
+            for eval_ in evaluators:
+                evaluator.Add(eval_)
+                evaluator.LocalOptimizationIterations = self.local_iterations
+                evaluator.Budget = self.max_evaluations
+
+        comparison            = op.SingleObjectiveComparison(0) if single_objective else op.CrowdedComparison()
+
+        female_selector       = self.__init_selector(self.female_selector, comparison)
+        male_selector         = self.__init_selector(self.male_selector, comparison)
+        reinserter            = self.__init_reinserter(self.reinserter, comparison)
         cx                    = op.SubtreeCrossover(self.crossover_internal_probability, self.max_depth, self.max_length)
 
         mut                   = op.MultiMutation()
@@ -304,7 +327,8 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
                                     time_limit       = self.time_limit
                                     )
 
-        gp                    = op.GeneticProgrammingAlgorithm(problem, config, initializer, generator, reinserter)
+        sorter                = None if single_objective else op.RankSorter()
+        gp                    = op.GeneticProgrammingAlgorithm(problem, config, initializer, generator, reinserter) if single_objective else op.NSGA2Algorithm(problem, config, initializer, generator, reinserter, sorter) 
         rng                   = op.RomuTrio(np.uint64(config.Seed))
 
         gp.Run(rng, None, self.n_threads)
@@ -335,6 +359,7 @@ class SymbolicRegressor(BaseEstimator, RegressorMixin):
         self.is_fitted_ = True
         # `fit` should always return `self`
         return self
+
 
     def predict(self, X):
         """ A reference implementation of a predicting function.

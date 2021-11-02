@@ -24,6 +24,7 @@ PYBIND11_MODULE(_operon, m)
     init_eval(m);
     init_generator(m);
     init_mutation(m);
+    init_non_dominated_sorter(m);
     init_node(m);
     init_problem(m);
     init_pset(m);
@@ -53,6 +54,10 @@ PYBIND11_MODULE(_operon, m)
     py::class_<Operon::SingleObjectiveComparison, Operon::Comparison>(m, "SingleObjectiveComparison")
         .def(py::init<size_t>())
         .def("__call__", &Operon::SingleObjectiveComparison::operator());
+
+    py::class_<Operon::CrowdedComparison, Operon::Comparison>(m, "CrowdedComparison")
+        .def(py::init<>())
+        .def("__call__", &Operon::CrowdedComparison::operator());
 
     py::class_<Operon::Variable>(m, "Variable")
         .def_readwrite("Name", &Operon::Variable::Name)
