@@ -1,6 +1,6 @@
 {
   description = "Operon development environment";
-  nixConfig.bash-prompt = "\n\\e[93m\\e[1m\[operon-dev:\\e[92m\\e[1m\\w\]$\\e[0m ";
+  nixConfig.bash-prompt = "\\[\\e[93m\\e[1m\\][operon-dev:\\[\\e[92m\\e[1m\\]\\w]$\\[\\e[0m\\] ";
 
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.nur.url = "github:nix-community/NUR";
