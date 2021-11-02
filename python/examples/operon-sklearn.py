@@ -22,7 +22,7 @@ reg = SymbolicRegressor(
         offspring_generator='basic',
         local_iterations=10,
         n_threads=4,
-        error_metric = ['r2', 'shape'],
+        objectives = ['r2', 'shape'],
         random_state=1234
         )
 
