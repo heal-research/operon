@@ -15,13 +15,15 @@ from pmlb import fetch_data, dataset_names, classification_dataset_names, regres
 
 X, y = fetch_data('1027_ESL', return_X_y=True)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.75, test_size=0.25, shuffle=True)
+X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=0.75, test_size=0.25, shuffle=True, random_state=1234)
 
 reg = SymbolicRegressor(
         allowed_symbols='add,sub,mul,div,constant,variable',
         offspring_generator='basic',
         local_iterations=10,
         n_threads=4,
+        error_metric = ['r2', 'shape'],
+        random_state=1234
         )
 
 reg.fit(X_train, y_train)
