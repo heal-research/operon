@@ -22,7 +22,7 @@
 
 namespace Operon {
 
-template <typename TInitializer, typename TSorter>
+template <typename TInitializer>
 class NSGA2 {
 private:
     std::reference_wrapper<const Problem> problem_;
@@ -31,7 +31,7 @@ private:
     std::reference_wrapper<const TInitializer> initializer_;
     std::reference_wrapper<const OffspringGeneratorBase> generator_;
     std::reference_wrapper<const ReinserterBase> reinserter_;
-    std::reference_wrapper<const TSorter> sorter_;
+    std::reference_wrapper<const NondominatedSorterBase> sorter_;
 
     Operon::Vector<Individual> individuals;
     Operon::Span<Individual> parents;
@@ -98,7 +98,7 @@ private:
     }
 
 public:
-    explicit NSGA2(Problem const& problem, GeneticAlgorithmConfig const& config, TInitializer const& initializer, OffspringGeneratorBase const& generator, ReinserterBase const& reinserter, TSorter const& sorter)
+    explicit NSGA2(Problem const& problem, GeneticAlgorithmConfig const& config, TInitializer const& initializer, OffspringGeneratorBase const& generator, ReinserterBase const& reinserter, NondominatedSorterBase const& sorter)
         : problem_(problem)
         , config_(config)
         , initializer_(initializer)
