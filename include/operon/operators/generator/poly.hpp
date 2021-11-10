@@ -15,47 +15,7 @@ public:
     {
     }
 
-    std::optional<Individual> operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar>{}) const override
-    {
-        std::uniform_real_distribution<double> uniformReal;
-        auto population = this->FemaleSelector().Population();
-
-        // assuming the basic generator never fails
-        auto makeOffspring = [&]() {
-            auto first = this->femaleSelector(random);
-            auto second = this->maleSelector(random);
-            Individual child(population[first].Fitness.size());
-            bool doCrossover = std::bernoulli_distribution(pCrossover)(random);
-            bool doMutation = std::bernoulli_distribution(pMutation)(random);
-
-            if (doCrossover) {
-                child.Genotype = this->crossover(random, population[first].Genotype, population[second].Genotype);
-            }
-
-            if (doMutation) {
-                child.Genotype = doCrossover
-                    ? this->mutator(random, std::move(child.Genotype))
-                    : this->mutator(random, population[first].Genotype);
-            }
-
-            auto f = this->evaluator(random, child, buf);
-            for (size_t i = 0; i < f.size(); ++i) {
-                child[i] = std::isfinite(f[i]) ? f[i] : Operon::Numeric::Max<Operon::Scalar>();
-            }
-            return child;
-        };
-
-        auto best = makeOffspring();
-
-        for (size_t i = 1; i < broodSize; ++i) {
-            auto other = makeOffspring();
-            if (other[0] < best[0]) {
-                std::swap(best, other);
-            }
-        }
-
-        return std::make_optional(best);
-    }
+    std::optional<Individual> operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar>{}) const override;
 
     void PolygenicSize(size_t value) { broodSize = value; }
     size_t PolygenicSize() const { return broodSize; }
