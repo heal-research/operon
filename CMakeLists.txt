@@ -295,6 +295,10 @@ add_library(
     src/operators/creator/balanced.cpp
     src/operators/creator/koza.cpp
     src/operators/creator/ptc2.cpp
+    src/operators/generator/basic.cpp
+    src/operators/generator/brood.cpp
+    src/operators/generator/os.cpp
+    src/operators/generator/poly.cpp
     src/operators/selector/proportional.cpp
     src/operators/selector/tournament.cpp
     src/operators/non_dominated_sorter/deductive_sort.cpp
