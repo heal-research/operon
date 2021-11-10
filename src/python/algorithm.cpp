@@ -35,6 +35,9 @@ void init_algorithm(py::module_ &m)
         .def_property_readonly("Generation", &NSGA2Algorithm::Generation)
         .def_property_readonly("Parents", static_cast<Operon::Span<Operon::Individual const> (NSGA2Algorithm::*)() const>(&NSGA2Algorithm::Parents))
         .def_property_readonly("Offspring", static_cast<Operon::Span<Operon::Individual const> (NSGA2Algorithm::*)() const>(&NSGA2Algorithm::Offspring))
-        .def_property_readonly("BestFront", static_cast<Operon::Span<Operon::Individual const> (NSGA2Algorithm::*)() const>(&NSGA2Algorithm::Best))
+        .def_property_readonly("BestFront", [](NSGA2Algorithm const& self) {
+                auto best = self.Best();
+                return std::vector<Operon::Individual>(best.begin(), best.end());
+                })
         .def_property_readonly("Config", &NSGA2Algorithm::GetConfig);
 }
