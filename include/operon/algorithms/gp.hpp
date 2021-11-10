@@ -109,20 +109,22 @@ public:
         // while loop control flow
         auto [init, cond, body, back, done] = taskflow.emplace(
             [&](tf::Subflow& subflow) {
-                subflow.for_each_index(0ul, parents.size(), 1ul, [&](size_t i) {
+                auto init = subflow.for_each_index(0ul, parents.size(), 1ul, [&](size_t i) {
                     auto id = executor.this_worker_id();
                     // make sure the worker has a large enough buffer
                     if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
                     parents[i].Genotype = initializer(rngs[i]);
                     parents[i].Fitness = evaluator(rngs[i], parents[i], slots[id]);
-                });
+                }).name("initialize population");
+                auto reportProgress = subflow.emplace([&](){ if (report) std::invoke(report); }).name("report progress");
+                init.precede(reportProgress);
             }, // init
             [&]() { return terminate || generation == config.Generations; }, // loop condition
             [&](tf::Subflow& subflow) {
                 auto keepElite = subflow.emplace([&]() {
                     offspring[0] = *std::min_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; });
-                });
-                auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents); });
+                }).name("keep elite");
+                auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents); }).name("prepare generator");
                 auto generateOffspring = subflow.for_each_index(1ul, offspring.size(), 1ul, [&](size_t i) {
                     auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                     while (!(terminate = generator.Terminate())) {
@@ -131,21 +133,29 @@ public:
                             return;
                         }
                     }
-                });
-                auto reinsert = subflow.emplace([&]() { reinserter(random, parents, offspring); });
-                auto incrementGeneration = subflow.emplace([&]() { ++generation; });
-                auto reportProgress = subflow.emplace([&](){ if (report) std::invoke(report); });
+                }).name("generate offspring");
+                auto reinsert = subflow.emplace([&]() { reinserter(random, parents, offspring); }).name("reinsert");
+                auto incrementGeneration = subflow.emplace([&]() { ++generation; }).name("increment generation");
+                auto reportProgress = subflow.emplace([&](){ if (report) std::invoke(report); }).name("report progress");
 
                 // set-up subflow graph
-                reportProgress.precede(keepElite);
+                //reportProgress.precede(keepElite);
                 keepElite.precede(prepareGenerator);
                 prepareGenerator.precede(generateOffspring);
                 generateOffspring.precede(reinsert);
                 reinsert.precede(incrementGeneration);
+                incrementGeneration.precede(reportProgress);
             }, // loop body (evolutionary main loop)
             [&]() { return 0; }, // jump back to the next iteration
-            [&]() { if(report) std::invoke(report); }  // work done, report last gen and stop
+            [&]() { /* all done */ }  // work done, report last gen and stop
         ); // evolutionary loop
+
+        init.name("init");
+        cond.name("termination");
+        body.name("main loop");
+        back.name("back");
+        done.name("done");
+        taskflow.name("GP");
 
         init.precede(cond);
         cond.precede(body, done);

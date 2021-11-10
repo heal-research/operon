@@ -181,13 +181,15 @@ public:
                     parents[i].Genotype = initializer(rngs[i]);
                     ENSURE(parents[i].Genotype.Length() > 0);
                     parents[i].Fitness = evaluator(rngs[i], parents[i], slots[id]);
-                });
-                auto updateRanks = subflow.emplace([&]() { Sort(parents); });
+                }).name("initialize population");
+                auto updateRanks = subflow.emplace([&]() { Sort(parents); }).name("update ranks");
+                auto reportProgress = subflow.emplace([&]() { if (report) std::invoke(report); }).name("report progress");
                 init.precede(updateRanks);
+                updateRanks.precede(reportProgress);
             }, // init
             [&]() { return terminate || generation == config.Generations; }, // loop condition
             [&](tf::Subflow& subflow) {
-                auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents); });
+                auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents); }).name("prepare generator");
                 auto generateOffspring = subflow.for_each_index(0ul, offspring.size(), 1ul, [&](size_t i) {
                     auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                     while (!(terminate = generator.Terminate())) {
@@ -197,12 +199,11 @@ public:
                             return;
                         }
                     }
-                });
-                auto nonDominatedSort = subflow.emplace([&]() { Sort(individuals); });
-                auto reinsert = subflow.emplace([&]() { reinserter.Sort(individuals); });
-                //auto reinsert = subflow.sort(individuals.begin(), individuals.end(), CrowdedComparison{});
-                auto incrementGeneration = subflow.emplace([&]() { ++generation; });
-                auto reportProgress = subflow.emplace([&]() { if (report) std::invoke(report); });
+                }).name("generate offspring");
+                auto nonDominatedSort = subflow.emplace([&]() { Sort(individuals); }).name("non-dominated sort");
+                auto reinsert = subflow.emplace([&]() { reinserter.Sort(individuals); }).name("reinsert");
+                auto incrementGeneration = subflow.emplace([&]() { ++generation; }).name("increment generation");
+                auto reportProgress = subflow.emplace([&]() { if (report) std::invoke(report); }).name("report progress");
 
                 // set-up subflow graph
                 prepareGenerator.precede(generateOffspring);
@@ -212,8 +213,15 @@ public:
                 incrementGeneration.precede(reportProgress);
             }, // loop body (evolutionary main loop)
             [&]() { return 0; }, // jump back to the next iteration
-            [&]() { if(report) std::invoke(report); } // work done, report last gen and stop
+            [&]() { /* done nothing to do */ } // work done, report last gen and stop
         ); // evolutionary loop
+
+        init.name("init");
+        cond.name("termination");
+        body.name("main loop");
+        back.name("back");
+        done.name("done");
+        taskflow.name("NSGA2");
 
         init.precede(cond);
         cond.precede(body, done);
