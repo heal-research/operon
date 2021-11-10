@@ -215,12 +215,6 @@ int main(int argc, char** argv)
 
         auto problem = Problem(*dataset).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
         problem.GetPrimitiveSet().SetConfig(primitiveSetConfig);
-        // set symbol arities
-        for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div }) {
-            auto h = Node(t).HashValue;
-            problem.GetPrimitiveSet().SetMaximumArity(h, 2);
-            problem.GetPrimitiveSet().SetMinimumArity(h, 2);
-        }
 
         using Reinserter = ReinserterBase;
         using OffspringGenerator = OffspringGeneratorBase;
