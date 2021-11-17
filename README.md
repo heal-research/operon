@@ -4,6 +4,7 @@
 
 # Modern C++ framework for Symbolic Regression
 
+[![License](https://img.shields.io/github/license/heal-research/operon?style=flat)](https://github.com/heal-research/operon/blob/master/LICENSE)
 [![Build Status](https://dev.azure.com/heal-research/HEAL.Operon/_apis/build/status/heal-research.operon?branchName=master)](https://dev.azure.com/heal-research/HEAL.Operon/_build/latest?definitionId=4&branchName=master)
 [![Documentation Status](https://readthedocs.org/projects/operongp/badge/?version=latest)](https://operongp.readthedocs.io/en/latest/?badge=latest)
 
