@@ -200,9 +200,10 @@ endif()
 FetchContent_MakeAvailable(xxhash csv nanobench robin_hood pdqsort span-lite fast_float vectorclass)
 
 set(THIRDPARTY_INCLUDE_DIRS
-    ${PRATT_PARSER_INCLUDE_DIRS}
+    ${infix_parser_SOURCE_DIR}/include/pratt-parser
     ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     ${PROJECT_SOURCE_DIR}/thirdparty/pdqsort
+    ${PROJECT_SOURCE_DIR}/thirdparty/robin_hood
     ${Taskflow_INCLUDE_DIR}
     ${fast_float_SOURCE_DIR}/include
     ${gsl_SOURCE_DIR}/include
@@ -210,7 +211,7 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${span-lite_SOURCE_DIR}
     ${vectorclass_SOURCE_DIR}
     ${xxhash_SOURCE_DIR}
-    ${VSTAT_INCLUDE_DIRS}
+    ${vstat_SOURCE_DIR}/include/vstat
 )
 
 # populate optional content
