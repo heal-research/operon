@@ -10,6 +10,7 @@
 #include "core/tree.hpp"
 
 #include "robin_hood.h"
+#include <iostream>
 
 namespace Operon {
 using PrimitiveSetConfig = NodeType;
@@ -46,7 +47,10 @@ private:
 public:
     static const PrimitiveSetConfig Arithmetic = NodeType::Constant | NodeType::Variable | NodeType::Add | NodeType::Sub | NodeType::Mul | NodeType::Div;
     static const PrimitiveSetConfig TypeCoherent = Arithmetic | NodeType::Pow | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
-    static const PrimitiveSetConfig Full = TypeCoherent | NodeType::Aq | NodeType::Tan | NodeType::Tanh | NodeType::Sqrt | NodeType::Cbrt;
+    static const PrimitiveSetConfig Full = TypeCoherent | NodeType::Aq | NodeType::Tan |
+                                           NodeType::Asin | NodeType::Acos | NodeType::Atan |
+                                           NodeType::Sinh | NodeType::Cosh | NodeType::Tanh |
+                                           NodeType::Sqrt | NodeType::Cbrt;
 
     PrimitiveSet() {}
 

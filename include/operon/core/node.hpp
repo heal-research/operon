@@ -25,19 +25,24 @@ enum class NodeType : uint32_t {
     Sin = 1u << 8,
     Cos = 1u << 9,
     Tan = 1u << 10,
-    Tanh = 1u << 11,
-    Sqrt = 1u << 12,
-    Cbrt = 1u << 13,
-    Square = 1u << 14,
-    Dynamic = 1u << 15,
-    Constant = 1u << 16,
-    Variable = 1u << 17
+    Asin = 1u << 11,
+    Acos = 1u << 12,
+    Atan = 1u << 13,
+    Sinh = 1u << 14,
+    Cosh = 1u << 15,
+    Tanh = 1u << 16,
+    Sqrt = 1u << 17,
+    Cbrt = 1u << 18,
+    Square = 1u << 19,
+    Dynamic = 1u << 20,
+    Constant = 1u << 21,
+    Variable = 1u << 22
 };
 
 using utype = std::underlying_type_t<NodeType>;
 struct NodeTypes {
     // magic number keeping track of the number of different node types
-    static constexpr size_t Count = 18;
+    static constexpr size_t Count = 23;
     // returns the index of the given type in the NodeType enum
     static size_t GetIndex(NodeType type)
     {
@@ -78,6 +83,11 @@ namespace {
         std::make_pair("sin", "sine function f(a) = sin(a)" ),
         std::make_pair("cos", "cosine function f(a) = cos(a)" ),
         std::make_pair("tan", "tangent function f(a) = tan(a)" ),
+        std::make_pair("asin", "inverse sine function f(a) = asin(a)" ),
+        std::make_pair("acos", "inverse cosine function f(a) = acos(a)" ),
+        std::make_pair("atan", "inverse tangent function f(a) = atan(a)" ),
+        std::make_pair("sinh", "hyperbolic sine function f(a) = sinh(a)" ),
+        std::make_pair("cosh", "hyperbolic cosine function f(a) = cosh(a)" ),
         std::make_pair("tanh", "hyperbolic tangent function f(a) = tanh(a)" ),
         std::make_pair("sqrt", "square root function f(a) = sqrt(a)" ),
         std::make_pair("cbrt", "cube root function f(a) = cbrt(a)" ),
@@ -115,7 +125,7 @@ struct Node {
         if (Type < NodeType::Log) // Add, Mul, Sub, Div, Aq, Pow
         {
             Arity = 2;
-        } else if (Type < NodeType::Constant) // Log, Exp, Sin, Cos, Tan, Tanh, Sqrt, Cbrt, Square
+        } else if (Type < NodeType::Constant) // Log, Exp, Sin, Cos, Tan, Asin, Acos, Atan, Sinh, Cosh, Tanh, Sqrt, Cbrt, Square
         {
             Arity = 1;
         }
@@ -179,6 +189,11 @@ struct Node {
     inline bool IsSin() const { return Is<NodeType::Sin>(); }
     inline bool IsCos() const { return Is<NodeType::Cos>(); }
     inline bool IsTan() const { return Is<NodeType::Tan>(); }
+    inline bool IsAsin() const { return Is<NodeType::Asin>(); }
+    inline bool IsAcos() const { return Is<NodeType::Acos>(); }
+    inline bool IsAtan() const { return Is<NodeType::Atan>(); }
+    inline bool IsSinh() const { return Is<NodeType::Sinh>(); }
+    inline bool IsCosh() const { return Is<NodeType::Cosh>(); }
     inline bool IsTanh() const { return Is<NodeType::Tanh>(); }
     inline bool IsSquareRoot() const { return Is<NodeType::Sqrt>(); }
     inline bool IsCubeRoot() const { return Is<NodeType::Cbrt>(); }

@@ -49,12 +49,17 @@ struct nud {
         auto result = std::move(parser.parse_bp(bp, token_kind::eof).value);
 
         switch (tok) {
-        case token_kind::sub:    { result.push_back(Node(NodeType::Sub)); result.back().Arity = 1; break; }
+        case token_kind::sub:    { result.push_back(Node(NodeType::Sub)); result.back().Arity = 1; break; }	  
         case token_kind::exp:    { result.push_back(Node(NodeType::Exp)); break; }
         case token_kind::log:    { result.push_back(Node(NodeType::Log)); break; }
         case token_kind::sin:    { result.push_back(Node(NodeType::Sin)); break; }
         case token_kind::cos:    { result.push_back(Node(NodeType::Cos)); break; }
         case token_kind::tan:    { result.push_back(Node(NodeType::Tan)); break; }
+        case token_kind::asin:   { result.push_back(Node(NodeType::Asin)); break; }
+        case token_kind::acos:   { result.push_back(Node(NodeType::Acos)); break; }
+        case token_kind::atan:   { result.push_back(Node(NodeType::Atan)); break; }
+        case token_kind::sinh:   { result.push_back(Node(NodeType::Sinh)); break; }
+        case token_kind::cosh:   { result.push_back(Node(NodeType::Cosh)); break; }
         case token_kind::tanh:   { result.push_back(Node(NodeType::Tanh)); break; }
         case token_kind::sqrt:   { result.push_back(Node(NodeType::Sqrt)); break; }
         case token_kind::cbrt:   { result.push_back(Node(NodeType::Cbrt)); break; }
