@@ -169,7 +169,7 @@ namespace detail {
             return Callable<T>(detail::dispatch_op_nary<Type, T>);
         } else if constexpr (Type < NodeType::Log) { // binary: aq, pow
             return Callable<T>(detail::dispatch_op_binary<Type, T>);
-        } else if constexpr (Type < NodeType::Constant) { // unary: exp, log, sin, cos, tan, tanh, sqrt, cbrt, square, dynamic
+        } else if constexpr (Type < NodeType::Constant) { // unary: exp, log, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, sqrt, cbrt, square, dynamic
             return Callable<T>(detail::dispatch_op_unary<Type, T>);
         }
     }
@@ -244,7 +244,12 @@ struct DispatchTable {
             { hash(NodeType::Exp), detail::MakeDefaultTuple<NodeType::Exp>() },
             { hash(NodeType::Sin), detail::MakeDefaultTuple<NodeType::Sin>() },
             { hash(NodeType::Cos), detail::MakeDefaultTuple<NodeType::Cos>() },
+            { hash(NodeType::Asin), detail::MakeDefaultTuple<NodeType::Asin>() },
+            { hash(NodeType::Acos), detail::MakeDefaultTuple<NodeType::Acos>() },
+            { hash(NodeType::Atan), detail::MakeDefaultTuple<NodeType::Atan>() },
             { hash(NodeType::Tan), detail::MakeDefaultTuple<NodeType::Tan>() },
+            { hash(NodeType::Sinh), detail::MakeDefaultTuple<NodeType::Cosh>() },
+            { hash(NodeType::Cosh), detail::MakeDefaultTuple<NodeType::Sinh>() },
             { hash(NodeType::Tanh), detail::MakeDefaultTuple<NodeType::Tanh>() },
             { hash(NodeType::Sqrt), detail::MakeDefaultTuple<NodeType::Sqrt>() },
             { hash(NodeType::Cbrt), detail::MakeDefaultTuple<NodeType::Cbrt>() },

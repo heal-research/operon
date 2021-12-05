@@ -139,6 +139,41 @@ namespace Operon
         template<typename T>
         inline void operator()(T r, T a) { r = a.tan(); }
     };
+  
+    template<>
+    struct Function<NodeType::Asin>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.asin(); }
+    };
+
+    template<>
+    struct Function<NodeType::Acos>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.acos(); }
+    };
+
+    template<>
+    struct Function<NodeType::Atan>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.atan(); }
+    };
+
+    template<>
+    struct Function<NodeType::Sinh>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.sinh(); }
+    };
+
+    template<>
+    struct Function<NodeType::Cosh>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.cosh(); }
+    };
 
     template<>
     struct Function<NodeType::Tanh>
