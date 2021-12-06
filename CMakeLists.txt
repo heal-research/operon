@@ -174,8 +174,8 @@ FetchContent_Declare(
     vectorclass
     GIT_REPOSITORY https://github.com/vectorclass/version2
     GIT_TAG master
-    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vcl
-    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vcl
+    DOWNLOAD_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vcl/vectorclass
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/thirdparty/vcl/vectorclass
 )
 
 FetchContent_Declare(
@@ -204,12 +204,12 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${PROJECT_SOURCE_DIR}/thirdparty/CSV/include
     ${PROJECT_SOURCE_DIR}/thirdparty/pdqsort
     ${PROJECT_SOURCE_DIR}/thirdparty/robin_hood
+    ${PROJECT_SOURCE_DIR}/thirdparty/vcl
     ${Taskflow_INCLUDE_DIR}
     ${fast_float_SOURCE_DIR}/include
     ${gsl_SOURCE_DIR}/include
     ${nanobench_SOURCE_DIR}
     ${span-lite_SOURCE_DIR}
-    ${vectorclass_SOURCE_DIR}
     ${xxhash_SOURCE_DIR}
     ${vstat_SOURCE_DIR}/include/vstat
 )

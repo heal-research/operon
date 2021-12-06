@@ -23,11 +23,8 @@
             nativeBuildInputs = with pkgs; [ cmake clang_12 clang-tools ];
             buildInputs = with pkgs; [
                 # python environment for bindings and scripting
-                (python39.override { stdenv = gcc11Stdenv; })
-                (python39.withPackages (ps: with ps; [ pybind11 pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz sphinx recommonmark sphinx_rtd_theme ]))
+                (python39.withPackages (ps: with ps; [ pybind11 ]))
                 # Project dependencies and utils for profiling and debugging
-                pkgs.nur.repos.foolnotion.eli5
-                pkgs.nur.repos.foolnotion.pmlb
                 pkgs.nur.repos.foolnotion.taskflow
                 ceres-solver
                 cmake
