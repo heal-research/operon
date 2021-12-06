@@ -32,7 +32,7 @@ using namespace Operon;
 int main(int argc, char** argv)
 {
     cxxopts::Options opts("operon_cli", "C++ large-scale genetic programming");
-
+    std::string symbols = "add, sub, mul, div, exp, log, square, sqrt, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, abs, aq, ceil, floor, erf, erfc, fmin, fmax, log1p";
     opts.add_options()
         ("dataset", "Dataset file name (csv) (required)", cxxopts::value<std::string>())
         ("shuffle", "Shuffle the input data", cxxopts::value<bool>()->default_value("false"))
@@ -59,8 +59,8 @@ int main(int argc, char** argv)
         ("male-selector", "Male selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>())
         ("offspring-generator", "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)", cxxopts::value<std::string>())
         ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>())
-        ("enable-symbols", "Comma-separated list of enabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
-        ("disable-symbols", "Comma-separated list of disabled symbols (add, sub, mul, div, exp, log, sin, cos, tan, sqrt, cbrt)", cxxopts::value<std::string>())
+        ("enable-symbols", "Comma-separated list of enabled symbols ("+symbols+")", cxxopts::value<std::string>())
+        ("disable-symbols", "Comma-separated list of disabled symbols ("+symbols+")", cxxopts::value<std::string>())
         ("show-primitives", "Display the primitive set used by the algorithm")
         ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
         ("timelimit", "Time limit after which the algorithm will terminate", cxxopts::value<size_t>()->default_value(fmt::format("{}", std::numeric_limits<size_t>::max())))
@@ -170,6 +170,10 @@ int main(int argc, char** argv)
         if (result.count("target") == 0) {
             fmt::print(stderr, "{}\n{}\n", "Error: no target variable given.", opts.help());
             exit(EXIT_FAILURE);
+        }
+        else if (auto res = dataset->GetVariable(target); !res.has_value()) {
+                    fmt::print(stderr, "Target variable {} does not exist in the dataset.", target);
+                    exit(EXIT_FAILURE);
         }
         if (result.count("train") == 0) {
             trainingRange = { 0, 2 * dataset->Rows() / 3 }; // by default use 66% of the data as training
@@ -518,7 +522,7 @@ int main(int argc, char** argv)
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
             fmt::print("{:.4f}\t{:.4f}\t{:.4g}\t{:.4g}\t{:.4g}\t{:.4g}\t", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
-            fmt::print("{:.4f}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, /* shape */ 0.0, /* diversity */ 0.0, evaluator->FitnessEvaluations(), evaluator->LocalEvaluations(), evaluator->TotalEvaluations());
+            fmt::print("{:.4g}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, /* shape */ 0.0, /* diversity */ 0.0, evaluator->FitnessEvaluations(), evaluator->LocalEvaluations(), evaluator->TotalEvaluations());
             fmt::print("{}\t{}\n", totalMemory, config.Seed);
         };
 

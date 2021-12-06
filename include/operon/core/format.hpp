@@ -84,7 +84,7 @@ class InfixFormatter {
                 throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
             }
         } else {
-            if (s.Type < NodeType::Log) // add, sub, mul, div, aq, pow
+            if (s.Type < NodeType::Abs) // add, sub, mul, div, aq, fmax, fmin, pow
             {
                 if (s.Arity == 1) {
                     if (s.Type == NodeType::Sub) {
@@ -121,7 +121,7 @@ class InfixFormatter {
                     }
                 }
                 fmt::format_to(current, ")");
-            } else { // unary operators log, exp, sin, etc.
+            } else { // unary operators abs, asin, ... log, exp, sin, etc.
                 if (s.IsSquare()) {
                     // format square(a)  as a ^ 2
                     fmt::format_to(current, "(");
