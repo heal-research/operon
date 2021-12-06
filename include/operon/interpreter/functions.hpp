@@ -4,6 +4,7 @@
 #ifndef OPERON_INTERPRETER_FUNCTIONS_HPP
 #define OPERON_INTERPRETER_FUNCTIONS_HPP
 
+#include <unsupported/Eigen/SpecialFunctions>
 #include "core/node.hpp"
 
 namespace Operon
@@ -99,10 +100,31 @@ namespace Operon
     };
 
     template<>
+    struct Function<NodeType::Fmax>
+    {
+        template<typename T>
+        inline void operator()(T r, T a1, T a2) { r = a1.max(a2); };
+    };
+
+    template<>
+    struct Function<NodeType::Fmin>
+    {
+        template<typename T>
+        inline void operator()(T r, T a1, T a2) { r = a1.min(a2); };
+    };
+
+    template<>
     struct Function<NodeType::Pow>
     {
         template<typename T>
         inline void operator()(T r, T a1, T a2) { r = a1.pow(a2); };
+    };
+
+    template<>
+    struct Function<NodeType::Abs>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.abs(); }
     };
 
     template<>
@@ -113,10 +135,45 @@ namespace Operon
     };
 
     template<>
+    struct Function<NodeType::Log1p>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.log1p(); }
+    };
+
+    template<>
     struct Function<NodeType::Exp>
     {
         template<typename T>
         inline void operator()(T r, T a) { r = a.exp(); }
+    };
+
+    template<>
+    struct Function<NodeType::Ceil>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.ceil(); }
+    };
+
+    template<>
+    struct Function<NodeType::Floor>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.floor(); }
+    };
+
+    template<>
+    struct Function<NodeType::Erf>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.erf(); }
+    };
+
+    template<>
+    struct Function<NodeType::Erfc>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.erfc(); }
     };
 
     template<>
@@ -138,6 +195,41 @@ namespace Operon
     {
         template<typename T>
         inline void operator()(T r, T a) { r = a.tan(); }
+    };
+  
+    template<>
+    struct Function<NodeType::Asin>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.asin(); }
+    };
+
+    template<>
+    struct Function<NodeType::Acos>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.acos(); }
+    };
+
+    template<>
+    struct Function<NodeType::Atan>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.atan(); }
+    };
+
+    template<>
+    struct Function<NodeType::Sinh>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.sinh(); }
+    };
+
+    template<>
+    struct Function<NodeType::Cosh>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.cosh(); }
     };
 
     template<>
