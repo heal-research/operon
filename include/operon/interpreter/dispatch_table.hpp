@@ -94,7 +94,7 @@ namespace detail {
     template<NodeType Type, typename T>
     inline void dispatch_op_binary(eigen_t<T>& m, Operon::Vector<Node> const& nodes, size_t i, size_t /* row number - not used */)
     {
-        static_assert(Type < NodeType::Log && Type > NodeType::Div);
+        static_assert(Type < NodeType::Abs && Type > NodeType::Div);
         auto j = i - 1;
         auto k = j - nodes[j].Length - 1;
         Function<Type>{}(m.col(i), m.col(j), m.col(k));
@@ -167,9 +167,9 @@ namespace detail {
     {
         if constexpr (Type < NodeType::Aq) { // nary: add, sub, mul, div
             return Callable<T>(detail::dispatch_op_nary<Type, T>);
-        } else if constexpr (Type < NodeType::Log) { // binary: aq, pow
+        } else if constexpr (Type < NodeType::Abs) { // binary: aq, fmin, fmax, pow
             return Callable<T>(detail::dispatch_op_binary<Type, T>);
-        } else if constexpr (Type < NodeType::Constant) { // unary: exp, log, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, sqrt, cbrt, square, dynamic
+        } else if constexpr (Type < NodeType::Constant) { // unary: exp, log, ... square, dynamic
             return Callable<T>(detail::dispatch_op_unary<Type, T>);
         }
     }
@@ -239,21 +239,29 @@ struct DispatchTable {
             { hash(NodeType::Sub), detail::MakeDefaultTuple<NodeType::Sub>() },
             { hash(NodeType::Div), detail::MakeDefaultTuple<NodeType::Div>() },
             { hash(NodeType::Aq),  detail::MakeDefaultTuple<NodeType::Aq>() },
+            { hash(NodeType::Fmax), detail::MakeDefaultTuple<NodeType::Fmax>() },
+            { hash(NodeType::Fmin), detail::MakeDefaultTuple<NodeType::Fmin>() },
             { hash(NodeType::Pow), detail::MakeDefaultTuple<NodeType::Pow>() },
-            { hash(NodeType::Log), detail::MakeDefaultTuple<NodeType::Log>() },
-            { hash(NodeType::Exp), detail::MakeDefaultTuple<NodeType::Exp>() },
-            { hash(NodeType::Sin), detail::MakeDefaultTuple<NodeType::Sin>() },
-            { hash(NodeType::Cos), detail::MakeDefaultTuple<NodeType::Cos>() },
-            { hash(NodeType::Asin), detail::MakeDefaultTuple<NodeType::Asin>() },
+            { hash(NodeType::Abs), detail::MakeDefaultTuple<NodeType::Abs>() },
             { hash(NodeType::Acos), detail::MakeDefaultTuple<NodeType::Acos>() },
+            { hash(NodeType::Asin), detail::MakeDefaultTuple<NodeType::Asin>() },
             { hash(NodeType::Atan), detail::MakeDefaultTuple<NodeType::Atan>() },
-            { hash(NodeType::Tan), detail::MakeDefaultTuple<NodeType::Tan>() },
-            { hash(NodeType::Sinh), detail::MakeDefaultTuple<NodeType::Cosh>() },
-            { hash(NodeType::Cosh), detail::MakeDefaultTuple<NodeType::Sinh>() },
-            { hash(NodeType::Tanh), detail::MakeDefaultTuple<NodeType::Tanh>() },
-            { hash(NodeType::Sqrt), detail::MakeDefaultTuple<NodeType::Sqrt>() },
             { hash(NodeType::Cbrt), detail::MakeDefaultTuple<NodeType::Cbrt>() },
+            { hash(NodeType::Ceil), detail::MakeDefaultTuple<NodeType::Ceil>() },
+            { hash(NodeType::Cos), detail::MakeDefaultTuple<NodeType::Cos>() },
+            { hash(NodeType::Cosh), detail::MakeDefaultTuple<NodeType::Sinh>() },
+            { hash(NodeType::Erf), detail::MakeDefaultTuple<NodeType::Erf>() },
+            { hash(NodeType::Erfc), detail::MakeDefaultTuple<NodeType::Erfc>() },
+            { hash(NodeType::Exp), detail::MakeDefaultTuple<NodeType::Exp>() },
+            { hash(NodeType::Floor), detail::MakeDefaultTuple<NodeType::Floor>() },
+            { hash(NodeType::Log), detail::MakeDefaultTuple<NodeType::Log>() },
+            { hash(NodeType::Log1p), detail::MakeDefaultTuple<NodeType::Log1p>() },
+            { hash(NodeType::Sin), detail::MakeDefaultTuple<NodeType::Sin>() },
+            { hash(NodeType::Sinh), detail::MakeDefaultTuple<NodeType::Cosh>() },
+            { hash(NodeType::Sqrt), detail::MakeDefaultTuple<NodeType::Sqrt>() },
             { hash(NodeType::Square), detail::MakeDefaultTuple<NodeType::Square>() },
+            { hash(NodeType::Tan), detail::MakeDefaultTuple<NodeType::Tan>() },
+            { hash(NodeType::Tanh), detail::MakeDefaultTuple<NodeType::Tanh>() },
             /* constants and variables not needed here */
         };
     };
