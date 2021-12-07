@@ -58,8 +58,6 @@ struct nud {
         case token_kind::ceil:   { result.push_back(Node(NodeType::Ceil)); break; }
         case token_kind::cos:    { result.push_back(Node(NodeType::Cos)); break; }
         case token_kind::cosh:   { result.push_back(Node(NodeType::Cosh)); break; }
-        case token_kind::erc:    { result.push_back(Node(NodeType::Erf)); break; }
-        case token_kind::erfc:   { result.push_back(Node(NodeType::Erfc)); break; }
         case token_kind::exp:    { result.push_back(Node(NodeType::Exp)); break; }
         case token_kind::floor:  { result.push_back(Node(NodeType::Floor)); break; }
         case token_kind::log:    { result.push_back(Node(NodeType::Log)); break; }

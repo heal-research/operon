@@ -4,7 +4,6 @@
 #ifndef OPERON_INTERPRETER_FUNCTIONS_HPP
 #define OPERON_INTERPRETER_FUNCTIONS_HPP
 
-#include <unsupported/Eigen/SpecialFunctions>
 #include "core/node.hpp"
 
 namespace Operon
@@ -160,20 +159,6 @@ namespace Operon
     {
         template<typename T>
         inline void operator()(T r, T a) { r = a.floor(); }
-    };
-
-    template<>
-    struct Function<NodeType::Erf>
-    {
-        template<typename T>
-        inline void operator()(T r, T a) { r = a.erf(); }
-    };
-
-    template<>
-    struct Function<NodeType::Erfc>
-    {
-        template<typename T>
-        inline void operator()(T r, T a) { r = a.erfc(); }
     };
 
     template<>

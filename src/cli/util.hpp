@@ -84,8 +84,6 @@ static const std::unordered_map<std::string, NodeType> primitives {
     { "ceil",     NodeType::Ceil },
     { "cos",      NodeType::Cos },
     { "cosh",     NodeType::Cosh },
-    { "erf",      NodeType::Erf },
-    { "erfc",     NodeType::Erfc },
     { "exp",      NodeType::Exp },
     { "floor",    NodeType::Floor },
     { "log",      NodeType::Log },
