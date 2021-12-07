@@ -31,8 +31,6 @@ enum class NodeType : uint32_t {
     Ceil  = 1u << 13,
     Cos   = 1u << 14,
     Cosh  = 1u << 15,
-    Erf   = 1u << 16,
-    Erfc  = 1u << 17,
     Exp   = 1u << 18,
     Floor = 1u << 19,
     Log   = 1u << 20,
@@ -98,8 +96,6 @@ namespace {
         std::make_pair("ceil", "ceiling function f(a) = ceil(a)" ),	
         std::make_pair("cos", "cosine function f(a) = cos(a)" ),
         std::make_pair("cosh", "hyperbolic cosine function f(a) = cosh(a)" ),
-        std::make_pair("erf", "error function f(a) = erf(a)" ),
-        std::make_pair("erfc", "complement to the error function f(a) = 1 - erf(a)" ),
         std::make_pair("exp", "e raised to the given power f(a) = e^a" ),
         std::make_pair("floor", "floor function f(a) = floor(a)" ),
         std::make_pair("log", "natural (base e) logarithm f(a) = ln(a)" ),
@@ -212,8 +208,6 @@ struct Node {
     inline bool IsCeil() const { return Is<NodeType::Ceil>(); }
     inline bool IsCos() const { return Is<NodeType::Cos>(); }
     inline bool IsCosh() const { return Is<NodeType::Cosh>(); }
-    inline bool IsErf() const { return Is<NodeType::Erf>(); }
-    inline bool IsErfc() const { return Is<NodeType::Erfc>(); }
     inline bool IsExp() const { return Is<NodeType::Exp>(); }
     inline bool IsFloor() const { return Is<NodeType::Floor>(); }
     inline bool IsLog() const { return Is<NodeType::Log>(); }

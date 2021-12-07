@@ -250,8 +250,6 @@ struct DispatchTable {
             { hash(NodeType::Ceil), detail::MakeDefaultTuple<NodeType::Ceil>() },
             { hash(NodeType::Cos), detail::MakeDefaultTuple<NodeType::Cos>() },
             { hash(NodeType::Cosh), detail::MakeDefaultTuple<NodeType::Sinh>() },
-            { hash(NodeType::Erf), detail::MakeDefaultTuple<NodeType::Erf>() },
-            { hash(NodeType::Erfc), detail::MakeDefaultTuple<NodeType::Erfc>() },
             { hash(NodeType::Exp), detail::MakeDefaultTuple<NodeType::Exp>() },
             { hash(NodeType::Floor), detail::MakeDefaultTuple<NodeType::Floor>() },
             { hash(NodeType::Log), detail::MakeDefaultTuple<NodeType::Log>() },
