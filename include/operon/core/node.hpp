@@ -23,24 +23,26 @@ enum class NodeType : uint32_t {
     Fmin = 1u << 6,
     Pow  = 1u << 7,
 
-    Abs   = 1u << 8,
-    Acos  = 1u << 9,
-    Asin  = 1u << 10,
-    Atan  = 1u << 11,
-    Cbrt  = 1u << 12,
-    Ceil  = 1u << 13,
-    Cos   = 1u << 14,
-    Cosh  = 1u << 15,
-    Exp   = 1u << 18,
-    Floor = 1u << 19,
-    Log   = 1u << 20,
-    Log1p = 1u << 21,
-    Sin   = 1u << 22,
-    Sinh  = 1u << 23,
-    Sqrt  = 1u << 24,
-    Tan   = 1u << 25,
-    Tanh  = 1u << 26,
-    Square = 1u << 27,
+    Abs     = 1u << 8,
+    Acos    = 1u << 9,
+    Asin    = 1u << 10,
+    Atan    = 1u << 11,
+    Cbrt    = 1u << 12,
+    Ceil    = 1u << 13,
+    Cos     = 1u << 14,
+    Cosh    = 1u << 15,
+    Exp     = 1u << 16,
+    Floor   = 1u << 17,
+    Log     = 1u << 18,
+    Logabs  = 1u << 19,
+    Log1p   = 1u << 20,
+    Sin     = 1u << 21,
+    Sinh    = 1u << 22,
+    Sqrt    = 1u << 23,
+    Sqrtabs = 1u << 24,
+    Tan     = 1u << 25,
+    Tanh    = 1u << 26,
+    Square  = 1u << 27,
     
     Dynamic = 1u << 28,
     Constant = 1u << 29,
@@ -99,10 +101,12 @@ namespace {
         std::make_pair("exp", "e raised to the given power f(a) = e^a" ),
         std::make_pair("floor", "floor function f(a) = floor(a)" ),
         std::make_pair("log", "natural (base e) logarithm f(a) = ln(a)" ),
+        std::make_pair("logabs", "natural (base e) logarithm of absolute value f(a) = ln(|a|)" ),
         std::make_pair("log1p", "f(a) = ln(a + 1), accurate even when a is close to zero" ),
         std::make_pair("sin", "sine function f(a) = sin(a)" ),
         std::make_pair("sinh", "hyperbolic sine function f(a) = sinh(a)" ),
         std::make_pair("sqrt", "square root function f(a) = sqrt(a)" ),
+        std::make_pair("sqrtabs", "square root of absolute value function f(a) = sqrt(|a|)" ),
         std::make_pair("square", "square function f(a) = a^2" ),
         std::make_pair("tan", "tangent function f(a) = tan(a)" ),
         std::make_pair("tanh", "hyperbolic tangent function f(a) = tanh(a)" ),
@@ -211,10 +215,12 @@ struct Node {
     inline bool IsExp() const { return Is<NodeType::Exp>(); }
     inline bool IsFloor() const { return Is<NodeType::Floor>(); }
     inline bool IsLog() const { return Is<NodeType::Log>(); }
+    inline bool IsLogabs() const { return Is<NodeType::Logabs>(); }
     inline bool IsLog1p() const { return Is<NodeType::Log1p>(); }
     inline bool IsSin() const { return Is<NodeType::Sin>(); }
     inline bool IsSinh() const { return Is<NodeType::Sinh>(); }
     inline bool IsSquareRoot() const { return Is<NodeType::Sqrt>(); }
+    inline bool IsSquareRootAbs() const { return Is<NodeType::Sqrtabs>(); }
     inline bool IsTan() const { return Is<NodeType::Tan>(); }
     inline bool IsTanh() const { return Is<NodeType::Tanh>(); }
     inline bool IsSquare() const { return Is<NodeType::Square>(); }
