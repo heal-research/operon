@@ -127,6 +127,16 @@ class InfixFormatter {
                     fmt::format_to(current, "(");
                     FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                     fmt::format_to(current, " ^ 2)");
+                } else if (s.IsLogabs()) {
+                    // format logabs(a) as log(abs(a))
+                    fmt::format_to(current, "log(abs");
+                    FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
+                    fmt::format_to(current, ")");
+                } else if (s.IsSquareRootAbs()) {
+                    // format sqrtabs(a) as sqrt(abs(a))
+                    fmt::format_to(current, "sqrt(abs");
+                    FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
+                    fmt::format_to(current, ")");
                 } else {
                     fmt::format_to(current, "{}", s.Name());
                     fmt::format_to(current, "(");

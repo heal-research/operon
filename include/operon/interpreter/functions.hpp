@@ -134,6 +134,13 @@ namespace Operon
     };
 
     template<>
+    struct Function<NodeType::Logabs>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.abs().log(); }
+    };
+
+    template<>
     struct Function<NodeType::Log1p>
     {
         template<typename T>
@@ -229,6 +236,13 @@ namespace Operon
     {
         template<typename T>
         inline void operator()(T r, T a) { r = a.sqrt(); }
+    };
+
+    template<>
+    struct Function<NodeType::Sqrtabs>
+    {
+        template<typename T>
+        inline void operator()(T r, T a) { r = a.abs().sqrt(); }
     };
 
     template<>

@@ -61,10 +61,12 @@ struct nud {
         case token_kind::exp:    { result.push_back(Node(NodeType::Exp)); break; }
         case token_kind::floor:  { result.push_back(Node(NodeType::Floor)); break; }
         case token_kind::log:    { result.push_back(Node(NodeType::Log)); break; }
+        case token_kind::logabs: { result.push_back(Node(NodeType::Logabs)); break; }
         case token_kind::log1p:  { result.push_back(Node(NodeType::Log1p)); break; }
         case token_kind::sin:    { result.push_back(Node(NodeType::Sin)); break; }
         case token_kind::sinh:   { result.push_back(Node(NodeType::Sinh)); break; }
         case token_kind::sqrt:   { result.push_back(Node(NodeType::Sqrt)); break; }
+        case token_kind::sqrtabs:{ result.push_back(Node(NodeType::Sqrtabs)); break; }
         case token_kind::square: { result.push_back(Node(NodeType::Square)); break; }
         case token_kind::tan:    { result.push_back(Node(NodeType::Tan)); break; }
         case token_kind::tanh:   { result.push_back(Node(NodeType::Tanh)); break; }

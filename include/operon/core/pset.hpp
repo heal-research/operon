@@ -48,11 +48,11 @@ public:
     static const PrimitiveSetConfig TypeCoherent = Arithmetic | NodeType::Pow | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
     static const PrimitiveSetConfig Full = TypeCoherent | NodeType::Aq | NodeType::Fmin | NodeType::Fmax | NodeType::Tan |       
                                            NodeType::Abs | NodeType::Ceil | NodeType::Floor |
-                                           NodeType::Log1p |
+                                           NodeType::Logabs | NodeType::Log1p | 
                                            NodeType::Asin | NodeType::Acos | NodeType::Atan |
                                            NodeType::Asin | NodeType::Acos | NodeType::Atan |
                                            NodeType::Sinh | NodeType::Cosh | NodeType::Tanh |
-                                           NodeType::Sqrt | NodeType::Cbrt;
+                                           NodeType::Sqrt | NodeType::Sqrtabs | NodeType::Cbrt;
 
     PrimitiveSet() {}
 

@@ -32,7 +32,7 @@ using namespace Operon;
 int main(int argc, char** argv)
 {
     cxxopts::Options opts("operon_cli", "C++ large-scale genetic programming");
-    std::string symbols = "add, sub, mul, div, exp, log, square, sqrt, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, abs, aq, ceil, floor, fmin, fmax, log1p";
+    std::string symbols = "add, sub, mul, div, exp, log, square, sqrt, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, abs, aq, ceil, floor, fmin, fmax, log1p, logabs, sqrtabs";
     opts.add_options()
         ("dataset", "Dataset file name (csv) (required)", cxxopts::value<std::string>())
         ("shuffle", "Shuffle the input data", cxxopts::value<bool>()->default_value("false"))
