@@ -289,6 +289,7 @@ add_library(
     STATIC
     src/core/tree.cpp
     src/core/dataset.cpp
+    src/core/format.cpp
     src/core/pset.cpp
     src/hash/metrohash64.cpp
     src/operators/crossover.cpp
