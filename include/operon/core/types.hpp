@@ -10,11 +10,7 @@
 #include "random/random.hpp"
 #include "span.hpp"
 
-#if defined(HAVE_CERES)
-#include <ceres/jet.h>
-#else
 #include "jet.h"
-#endif
 
 namespace Operon {
 using Hash = uint64_t; // at the moment, changing this will cause problems
