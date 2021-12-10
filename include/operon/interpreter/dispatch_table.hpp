@@ -220,51 +220,32 @@ struct DispatchTable {
     using Map      = robin_hood::unordered_flat_map<Operon::Hash, Tuple>;
     using Pair     = robin_hood::pair<Operon::Hash, Tuple>;
 
+private:
+    Map map;
+
+    template<std::size_t I>
+    void InsertType()
+    {
+        auto const T = static_cast<NodeType>(1U << I);
+        map.insert({ Node(T).HashValue, detail::MakeDefaultTuple<T>() });
+    };
+
+    template<std::size_t... Is>
+    void InitializeMap(std::index_sequence<Is...>/* unused */)
+    {
+        (InsertType<Is>(), ...);
+    };
+
+public:
     DispatchTable()
     {
-        InitializeMap();
+        // this assumes that the NodeType indexing in contiguous
+        InitializeMap(std::make_index_sequence<NodeTypes::Count-2>{});
     }
 
     DispatchTable(DispatchTable const& other) : map(other.map) { }
     DispatchTable(DispatchTable &&other) : map(std::move(other.map)) { }
 
-    void InitializeMap()
-    {
-        const auto hash = [](auto t) { return Node(t).HashValue; };
-
-        map = Map{
-            { hash(NodeType::Add), detail::MakeDefaultTuple<NodeType::Add>() },
-            { hash(NodeType::Sub), detail::MakeDefaultTuple<NodeType::Sub>() },
-            { hash(NodeType::Mul), detail::MakeDefaultTuple<NodeType::Mul>() },
-            { hash(NodeType::Sub), detail::MakeDefaultTuple<NodeType::Sub>() },
-            { hash(NodeType::Div), detail::MakeDefaultTuple<NodeType::Div>() },
-            { hash(NodeType::Aq),  detail::MakeDefaultTuple<NodeType::Aq>() },
-            { hash(NodeType::Fmax), detail::MakeDefaultTuple<NodeType::Fmax>() },
-            { hash(NodeType::Fmin), detail::MakeDefaultTuple<NodeType::Fmin>() },
-            { hash(NodeType::Pow), detail::MakeDefaultTuple<NodeType::Pow>() },
-            { hash(NodeType::Abs), detail::MakeDefaultTuple<NodeType::Abs>() },
-            { hash(NodeType::Acos), detail::MakeDefaultTuple<NodeType::Acos>() },
-            { hash(NodeType::Asin), detail::MakeDefaultTuple<NodeType::Asin>() },
-            { hash(NodeType::Atan), detail::MakeDefaultTuple<NodeType::Atan>() },
-            { hash(NodeType::Cbrt), detail::MakeDefaultTuple<NodeType::Cbrt>() },
-            { hash(NodeType::Ceil), detail::MakeDefaultTuple<NodeType::Ceil>() },
-            { hash(NodeType::Cos), detail::MakeDefaultTuple<NodeType::Cos>() },
-            { hash(NodeType::Cosh), detail::MakeDefaultTuple<NodeType::Sinh>() },
-            { hash(NodeType::Exp), detail::MakeDefaultTuple<NodeType::Exp>() },
-            { hash(NodeType::Floor), detail::MakeDefaultTuple<NodeType::Floor>() },
-            { hash(NodeType::Log), detail::MakeDefaultTuple<NodeType::Log>() },
-            { hash(NodeType::Logabs), detail::MakeDefaultTuple<NodeType::Logabs>() },
-            { hash(NodeType::Log1p), detail::MakeDefaultTuple<NodeType::Log1p>() },
-            { hash(NodeType::Sin), detail::MakeDefaultTuple<NodeType::Sin>() },
-            { hash(NodeType::Sinh), detail::MakeDefaultTuple<NodeType::Cosh>() },
-            { hash(NodeType::Sqrt), detail::MakeDefaultTuple<NodeType::Sqrt>() },
-            { hash(NodeType::Sqrtabs), detail::MakeDefaultTuple<NodeType::Sqrtabs>() },
-            { hash(NodeType::Square), detail::MakeDefaultTuple<NodeType::Square>() },
-            { hash(NodeType::Tan), detail::MakeDefaultTuple<NodeType::Tan>() },
-            { hash(NodeType::Tanh), detail::MakeDefaultTuple<NodeType::Tanh>() },
-            /* constants and variables not needed here */
-        };
-    };
 
     template<typename T>
     inline Callable<T>& Get(Operon::Hash const h)
@@ -292,9 +273,6 @@ struct DispatchTable {
     void RegisterCallable(Operon::Hash hash, F const& f) {
         map[hash] = detail::MakeTuple<F, Operon::Scalar, Operon::Dual>(f);
     }
-
-private:
-    Map map;
 };
 
 } // namespace Operon
