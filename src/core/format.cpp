@@ -60,6 +60,7 @@ void InfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Has
     } else {
         if (s.Type < NodeType::Abs) // add, sub, mul, div, aq, fmax, fmin, pow
         {
+            fmt::format_to(current, "(");
             if (s.Arity == 1) {
                 if (s.Type == NodeType::Sub) {
                     // subtraction with a single argument is a negation -x
@@ -68,9 +69,7 @@ void InfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Has
                     // division with a single argument is an inversion 1/x
                     fmt::format_to(current, "1 / ");
                 }
-            }
-            fmt::format_to(current, "(");
-            if (s.Type == NodeType::Pow) {
+            } else if (s.Type == NodeType::Pow) {
                 // format pow(a,b) as a^b
                 auto j = i - 1;
                 auto k = j - tree[j].Length - 1;
@@ -97,7 +96,7 @@ void InfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Has
             fmt::format_to(current, ")");
         } else { // unary operators abs, asin, ... log, exp, sin, etc.
             if (s.IsSquare()) {
-                // format square(a)  as a ^ 2
+                // format square(a) as a ^ 2
                 fmt::format_to(current, "(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 fmt::format_to(current, " ^ 2)");

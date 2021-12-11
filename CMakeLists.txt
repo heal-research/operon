@@ -287,27 +287,28 @@ feature_summary(WHAT DISABLED_FEATURES DESCRIPTION "Disabled features:" QUIET_ON
 add_library(
     operon
     STATIC
-    src/core/tree.cpp
     src/core/dataset.cpp
     src/core/format.cpp
+    src/core/node.cpp
     src/core/pset.cpp
+    src/core/tree.cpp
     src/hash/metrohash64.cpp
-    src/operators/crossover.cpp
-    src/operators/mutation.cpp
     src/operators/creator/balanced.cpp
     src/operators/creator/koza.cpp
     src/operators/creator/ptc2.cpp
+    src/operators/crossover.cpp
     src/operators/generator/basic.cpp
     src/operators/generator/brood.cpp
     src/operators/generator/os.cpp
     src/operators/generator/poly.cpp
-    src/operators/selector/proportional.cpp
-    src/operators/selector/tournament.cpp
+    src/operators/mutation.cpp
     src/operators/non_dominated_sorter/deductive_sort.cpp
     src/operators/non_dominated_sorter/dominance_degree_sort.cpp
     src/operators/non_dominated_sorter/hierarchical_sort.cpp
     src/operators/non_dominated_sorter/merge_sort.cpp
     src/operators/non_dominated_sorter/rank_sort.cpp
+    src/operators/selector/proportional.cpp
+    src/operators/selector/tournament.cpp
 )
 target_compile_features(operon PRIVATE cxx_std_17)
 target_link_libraries(operon PRIVATE fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres Threads::Threads)
@@ -348,8 +349,8 @@ if(MSVC)
     include_directories(${FMT_INCLUDE_DIR})
 else()
     set(MYFLAGS -Wall -Werror -Wextra -Wshadow -Wsign-compare -Wshadow -Wwrite-strings -Wpointer-arith -Winit-self -Wconversion -Wno-sign-conversion)
-    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma>;-fPIC")
-    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma>")
+    target_compile_options(operon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma;-fno-math-errno>;-fPIC")
+    target_compile_options(operon-example-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma;-fno-math-errno>")
 endif(MSVC)
 
 if (cxxopts_FOUND)
@@ -377,7 +378,7 @@ if (cxxopts_FOUND)
     if(MSVC)
         target_compile_options(operon-gp PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
     else()
-        target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma>")
+        target_compile_options(operon-gp PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma;-fno-math-errno>")
     endif()
 endif()
 
@@ -406,7 +407,7 @@ if (cxxopts_FOUND)
     if(MSVC)
         target_compile_options(nsga2 PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
     else()
-        target_compile_options(nsga2 PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma>")
+        target_compile_options(nsga2 PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma;-fno-math-errno>")
     endif()
 endif()
 
@@ -436,7 +437,7 @@ if(Python3_FOUND AND pybind11_FOUND AND BUILD_PYBIND)
     if(MSVC)
         target_compile_options(pyoperon PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
     else()
-        target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=x86-64;-mavx2;-mfma>")
+        target_compile_options(pyoperon PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g;-fPIC>$<$<CONFIG:Release>:-O3;-g;-fPIC;-march=x86-64;-mavx2;-mfma;-fno-math-errno>")
     endif()
     target_include_directories(pyoperon PRIVATE ${PROJECT_SOURCE_DIR}/python)
     target_include_directories(
@@ -511,7 +512,7 @@ if(doctest_FOUND AND BUILD_TESTS)
     if(MSVC)
         target_compile_options(operon-test PRIVATE /W4 "$<$<CONFIG:Release>:/O3;/std:c++latest>")
     else()
-        target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma>")
+        target_compile_options(operon-test PRIVATE ${MYFLAGS} "$<$<CONFIG:Debug>:-g>$<$<CONFIG:Release>:-O3;-g;-march=x86-64;-mavx2;-mfma;-fno-math-errno>")
     endif(MSVC)
     target_link_libraries(operon-test PRIVATE operon fmt::fmt ${OPENLIBM} ${MALLOC_LIB} Ceres::ceres doctest::doctest)
     target_include_directories(
