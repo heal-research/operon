@@ -43,7 +43,7 @@ enum class NodeType : uint32_t {
     Tan     = 1u << 25,
     Tanh    = 1u << 26,
     Square  = 1u << 27,
-    
+
     Dynamic = 1u << 28,
     Constant = 1u << 29,
     Variable = 1u << 30
@@ -80,42 +80,6 @@ inline NodeType& operator^=(NodeType& lhs, NodeType rhs)
     return lhs;
 }
 
-namespace {
-    std::array<std::pair<std::string, std::string>, NodeTypes::Count> nodeDesc = {
-        std::make_pair("+", "n-ary addition f(a,b,c,...) = a + b + c + ..."),
-        std::make_pair("*", "n-ary multiplication f(a,b,c,...) = a * b * c * ..." ),
-        std::make_pair("-", "n-ary subtraction f(a,b,c,...) = a - (b + c + ...)" ),
-        std::make_pair("/", "n-ary division f(a,b,c,..) = a / (b * c * ...)" ),
-        std::make_pair("aq", "analytical quotient f(a,b) = a / sqrt(1 + b^2)" ),
-        std::make_pair("fmax", "maximum function f(a,b) = max(a,b)" ),
-        std::make_pair("fmin", "minimum function f(a,b) = min(a,b)" ),
-        std::make_pair("pow", "raise to power f(a,b) = a^b" ),
-        std::make_pair("abs", "absolute value function f(a) = abs(a)" ),	
-        std::make_pair("acos", "inverse cosine function f(a) = acos(a)" ),
-        std::make_pair("asin", "inverse sine function f(a) = asin(a)" ),
-        std::make_pair("atan", "inverse tangent function f(a) = atan(a)" ),
-        std::make_pair("cbrt", "cube root function f(a) = cbrt(a)" ),
-        std::make_pair("ceil", "ceiling function f(a) = ceil(a)" ),	
-        std::make_pair("cos", "cosine function f(a) = cos(a)" ),
-        std::make_pair("cosh", "hyperbolic cosine function f(a) = cosh(a)" ),
-        std::make_pair("exp", "e raised to the given power f(a) = e^a" ),
-        std::make_pair("floor", "floor function f(a) = floor(a)" ),
-        std::make_pair("log", "natural (base e) logarithm f(a) = ln(a)" ),
-        std::make_pair("logabs", "natural (base e) logarithm of absolute value f(a) = ln(|a|)" ),
-        std::make_pair("log1p", "f(a) = ln(a + 1), accurate even when a is close to zero" ),
-        std::make_pair("sin", "sine function f(a) = sin(a)" ),
-        std::make_pair("sinh", "hyperbolic sine function f(a) = sinh(a)" ),
-        std::make_pair("sqrt", "square root function f(a) = sqrt(a)" ),
-        std::make_pair("sqrtabs", "square root of absolute value function f(a) = sqrt(|a|)" ),
-        std::make_pair("square", "square function f(a) = a^2" ),
-        std::make_pair("tan", "tangent function f(a) = tan(a)" ),
-        std::make_pair("tanh", "hyperbolic tangent function f(a) = tanh(a)" ),
-        std::make_pair("dyn", "user-defined function" ),
-        std::make_pair("constant", "a constant value" ),
-        std::make_pair("variable", "a dataset input with an associated weight" ),
-    };
-}
-
 struct Node {
     Operon::Hash HashValue;
     Operon::Hash CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
@@ -128,7 +92,7 @@ struct Node {
     NodeType Type;
     bool IsEnabled;
 
-    Node() = default; 
+    Node() = default;
 
     explicit Node(NodeType type) noexcept
         : Node(type, static_cast<Operon::Hash>(type))
@@ -154,8 +118,8 @@ struct Node {
         Value = 1.;
     }
 
-    const std::string& Name() const noexcept { return nodeDesc[NodeTypes::GetIndex(Type)].first; }
-    const std::string& Desc() const noexcept { return nodeDesc[NodeTypes::GetIndex(Type)].second; }
+    const std::string& Name() const noexcept;
+    const std::string& Desc() const noexcept;
 
     // comparison operators
     inline bool operator==(const Node& rhs) const noexcept

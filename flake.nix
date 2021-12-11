@@ -20,7 +20,7 @@
             name = "operon-env";
             hardeningDisable = [ "all" ];
             impureUseNativeOptimizations = true;
-            nativeBuildInputs = with pkgs; [ cmake clang_12 clang-tools ];
+            nativeBuildInputs = with pkgs; [ cmake clang_13 clang-tools ];
             buildInputs = with pkgs; [
                 # python environment for bindings and scripting
                 (python39.withPackages (ps: with ps; [ pybind11 ]))
