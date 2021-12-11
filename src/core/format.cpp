@@ -105,12 +105,12 @@ void InfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Has
                 // format logabs(a) as log(abs(a))
                 fmt::format_to(current, "log(abs(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
-                fmt::format_to(current, ")");
+                fmt::format_to(current, "))");
             } else if (s.IsSquareRootAbs()) {
                 // format sqrtabs(a) as sqrt(abs(a))
                 fmt::format_to(current, "sqrt(abs(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
-                fmt::format_to(current, ")");
+                fmt::format_to(current, "))");
             } else {
                 fmt::format_to(current, "{}", s.Name());
                 fmt::format_to(current, "(");
