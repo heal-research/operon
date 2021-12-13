@@ -14,104 +14,195 @@
 namespace Operon {
 
 namespace ParserBlocks {
-using TokenKind = pratt::token_kind;
-using Token = pratt::token<Operon::Vector<Node>>;
+    using TokenKind = pratt::token_kind;
+    using Token = pratt::token<Operon::Vector<Node>>;
 
-struct Conv {
-    Token::value_t operator()(double val) const noexcept {
-        Node node(NodeType::Constant);
-        node.Value = static_cast<Operon::Scalar>(val);
-        return Token::value_t { node };
-    }
-};
-
-struct Nud {
-    using token_t = Token;
-    using value_t = Token::value_t;
-
-    template<typename Parser>
-    value_t operator()(Parser& parser, token_t const& tok, token_t const& left) const {
-        if (tok.kind() == TokenKind::constant) {
-            return left.value();
+    struct Conv {
+        Token::value_t operator()(double val) const noexcept
+        {
+            Node node(NodeType::Constant);
+            node.Value = static_cast<Operon::Scalar>(val);
+            return Token::value_t { node };
         }
+    };
 
-        if (tok.kind() == TokenKind::variable) {
-            auto hash = parser.template get_desc<Operon::Hash>(left.name());
-            if (!hash.has_value()) {
-                throw std::invalid_argument(fmt::format("unknown variable name {}\n", left.name()));
+    struct Nud {
+        using token_t = Token;
+        using value_t = Token::value_t;
+
+        template <typename Parser>
+        value_t operator()(Parser& parser, token_t const& tok, token_t const& left) const
+        {
+            if (tok.kind() == TokenKind::constant) {
+                return left.value();
             }
-            return value_t { Node(NodeType::Variable, hash.value()) };
+
+            if (tok.kind() == TokenKind::variable) {
+                auto hash = parser.template get_desc<Operon::Hash>(left.name());
+                if (!hash.has_value()) {
+                    throw std::invalid_argument(fmt::format("unknown variable name {}\n", left.name()));
+                }
+                return value_t { Node(NodeType::Variable, hash.value()) };
+            }
+
+            auto bp = tok.precedence(); // binding power
+            if (tok.kind() == TokenKind::lparen) {
+                return parser.parse_bp(bp, TokenKind::rparen).value();
+            }
+            auto result = std::move(parser.parse_bp(bp, TokenKind::eof).value());
+
+            if (tok.kind() == TokenKind::dynamic) {
+                switch (tok.opcode()) {
+                case static_cast<size_t>(NodeType::Sub): {
+                    result.push_back(Node(NodeType::Sub));
+                    result.back().Arity = 1;
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Abs): {
+                    result.push_back(Node(NodeType::Abs));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Acos): {
+                    result.push_back(Node(NodeType::Acos));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Asin): {
+                    result.push_back(Node(NodeType::Asin));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Atan): {
+                    result.push_back(Node(NodeType::Atan));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Cbrt): {
+                    result.push_back(Node(NodeType::Cbrt));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Ceil): {
+                    result.push_back(Node(NodeType::Ceil));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Cos): {
+                    result.push_back(Node(NodeType::Cos));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Cosh): {
+                    result.push_back(Node(NodeType::Cosh));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Exp): {
+                    result.push_back(Node(NodeType::Exp));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Floor): {
+                    result.push_back(Node(NodeType::Floor));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Log): {
+                    result.push_back(Node(NodeType::Log));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Logabs): {
+                    result.push_back(Node(NodeType::Logabs));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Log1p): {
+                    result.push_back(Node(NodeType::Log1p));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Sin): {
+                    result.push_back(Node(NodeType::Sin));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Sinh): {
+                    result.push_back(Node(NodeType::Sinh));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Sqrt): {
+                    result.push_back(Node(NodeType::Sqrt));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Sqrtabs): {
+                    result.push_back(Node(NodeType::Sqrtabs));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Square): {
+                    result.push_back(Node(NodeType::Square));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Tan): {
+                    result.push_back(Node(NodeType::Tan));
+                    break;
+                }
+                case static_cast<size_t>(NodeType::Tanh): {
+                    result.push_back(Node(NodeType::Tanh));
+                    break;
+                }
+                default: {
+                    throw std::runtime_error(fmt::format("nud: unsupported token {}\n", tok.name()));
+                };
+                }
+            }
+
+            return result;
         }
+    };
 
-        auto bp = tok.precedence(); // binding power
-        if (tok.kind() == TokenKind::lparen) {
-            return parser.parse_bp(bp, TokenKind::rparen).value();
+    struct Led {
+        using token_t = Token;
+        using value_t = Token::value_t;
+
+        template <typename Parser>
+        value_t operator()(Parser&, Token const& tok, token_t const& left, token_t& right) const
+        {
+            auto const& lhs = left.value();
+            auto& rhs = right.value();
+
+            rhs.reserve(lhs.size() + rhs.size() + 1);
+            std::copy(lhs.begin(), lhs.end(), std::back_inserter(rhs));
+
+            ENSURE(tok.kind() == TokenKind::dynamic);
+            switch (tok.opcode()) {
+            case static_cast<size_t>(NodeType::Add): {
+                rhs.push_back(Node(NodeType::Add));
+                break;
+            }
+            case static_cast<size_t>(NodeType::Sub): {
+                rhs.push_back(Node(NodeType::Sub));
+                break;
+            }
+            case static_cast<size_t>(NodeType::Mul): {
+                rhs.push_back(Node(NodeType::Mul));
+                break;
+            }
+            case static_cast<size_t>(NodeType::Div): {
+                rhs.push_back(Node(NodeType::Div));
+                break;
+            }
+            case static_cast<size_t>(NodeType::Aq): {
+                rhs.push_back(Node(NodeType::Aq));
+                break;
+            }
+            case static_cast<size_t>(NodeType::Fmax): {
+                rhs.push_back(Node(NodeType::Fmax));
+                break;
+            }
+            case static_cast<size_t>(NodeType::Fmin): {
+                rhs.push_back(Node(NodeType::Fmin));
+                break;
+            }
+            case static_cast<size_t>(NodeType::Pow): {
+                rhs.push_back(Node(NodeType::Pow));
+                break;
+            }
+            default: {
+                throw std::runtime_error(fmt::format("led: unsupported token ", tok.name()));
+            }
+            };
+
+            return rhs;
         }
-        auto result = std::move(parser.parse_bp(bp, TokenKind::eof).value());
-
-        if (tok.kind() == TokenKind::dynamic) {
-        switch (tok.opcode()) {
-            case static_cast<size_t>(NodeType::Sub):     { result.push_back(Node(NodeType::Sub)); result.back().Arity = 1; break; }
-            case static_cast<size_t>(NodeType::Abs):     { result.push_back(Node(NodeType::Abs)); break; }
-            case static_cast<size_t>(NodeType::Acos):    { result.push_back(Node(NodeType::Acos)); break; }
-            case static_cast<size_t>(NodeType::Asin):    { result.push_back(Node(NodeType::Asin)); break; }
-            case static_cast<size_t>(NodeType::Atan):    { result.push_back(Node(NodeType::Atan)); break; }
-            case static_cast<size_t>(NodeType::Cbrt):    { result.push_back(Node(NodeType::Cbrt)); break; }
-            case static_cast<size_t>(NodeType::Ceil):    { result.push_back(Node(NodeType::Ceil)); break; }
-            case static_cast<size_t>(NodeType::Cos):     { result.push_back(Node(NodeType::Cos)); break; }
-            case static_cast<size_t>(NodeType::Cosh):    { result.push_back(Node(NodeType::Cosh)); break; }
-            case static_cast<size_t>(NodeType::Exp):     { result.push_back(Node(NodeType::Exp)); break; }
-            case static_cast<size_t>(NodeType::Floor):   { result.push_back(Node(NodeType::Floor)); break; }
-            case static_cast<size_t>(NodeType::Log):     { result.push_back(Node(NodeType::Log)); break; }
-            case static_cast<size_t>(NodeType::Logabs):  { result.push_back(Node(NodeType::Logabs)); break; }
-            case static_cast<size_t>(NodeType::Log1p):   { result.push_back(Node(NodeType::Log1p)); break; }
-            case static_cast<size_t>(NodeType::Sin):     { result.push_back(Node(NodeType::Sin)); break; }
-            case static_cast<size_t>(NodeType::Sinh):    { result.push_back(Node(NodeType::Sinh)); break; }
-            case static_cast<size_t>(NodeType::Sqrt):    { result.push_back(Node(NodeType::Sqrt)); break; }
-            case static_cast<size_t>(NodeType::Sqrtabs): { result.push_back(Node(NodeType::Sqrtabs)); break; }
-            case static_cast<size_t>(NodeType::Square):  { result.push_back(Node(NodeType::Square)); break; }
-            case static_cast<size_t>(NodeType::Tan):     { result.push_back(Node(NodeType::Tan)); break; }
-            case static_cast<size_t>(NodeType::Tanh):    { result.push_back(Node(NodeType::Tanh)); break; }
-        default: {
-            throw std::runtime_error(fmt::format("nud: unsupported token {}\n", tok.name()));
-        };
-        }
-        }
-
-        return result;
-    }
-};
-
-struct Led {
-    using token_t = Token;
-    using value_t = Token::value_t;
-
-    template<typename Parser>
-    value_t operator()(Parser&, Token const& tok, token_t const& left, token_t& right) const {
-        auto const& lhs = left.value();
-        auto &rhs = right.value();
-
-        rhs.reserve(lhs.size() + rhs.size() + 1);
-        std::copy(lhs.begin(), lhs.end(), std::back_inserter(rhs));
-
-        ENSURE(tok.kind() == TokenKind::dynamic);
-        switch (tok.opcode()) {
-        case static_cast<size_t>(NodeType::Add): { rhs.push_back(Node(NodeType::Add)); break; }
-        case static_cast<size_t>(NodeType::Sub): { rhs.push_back(Node(NodeType::Sub)); break; }
-        case static_cast<size_t>(NodeType::Mul): { rhs.push_back(Node(NodeType::Mul)); break; }
-        case static_cast<size_t>(NodeType::Div): { rhs.push_back(Node(NodeType::Div)); break; }
-        case static_cast<size_t>(NodeType::Aq): { rhs.push_back(Node(NodeType::Aq)); break; }
-        case static_cast<size_t>(NodeType::Fmax): { rhs.push_back(Node(NodeType::Fmax)); break; }
-        case static_cast<size_t>(NodeType::Fmin): { rhs.push_back(Node(NodeType::Fmin)); break; }
-        case static_cast<size_t>(NodeType::Pow): { rhs.push_back(Node(NodeType::Pow)); break; }
-        default: {
-            throw std::runtime_error(fmt::format("led: unsupported token ", tok.name()));
-        }
-        };
-
-        return rhs;
-    }
-};
+    };
 
 } // namespace ParserBlocks
 
@@ -122,13 +213,15 @@ struct InfixParser {
     using Token = ParserBlocks::Token;
     using TokenKind = ParserBlocks::TokenKind;
 
-    template<typename T, typename U>
-    static Tree Parse(std::string const& infix, T const& toks, U const& vars) {
+    template <typename T, typename U>
+    static Tree Parse(std::string const& infix, T const& toks, U const& vars)
+    {
         auto nodes = pratt::parser<Nud, Led, Conv, T, U>(infix, toks, vars).parse();
         return Tree(nodes).UpdateNodes();
     }
 
-    static auto DefaultTokens() {
+    static auto DefaultTokens()
+    {
         return robin_hood::unordered_flat_map<std::string_view, Token> {
             { "+", Token(TokenKind::dynamic, "add", static_cast<size_t>(NodeType::Add), 10, pratt::associativity::left) },
             { "-", Token(TokenKind::dynamic, "sub", static_cast<size_t>(NodeType::Sub), 10, pratt::associativity::left) },
