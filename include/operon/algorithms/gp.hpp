@@ -109,7 +109,7 @@ public:
         // while loop control flow
         auto [init, cond, body, back, done] = taskflow.emplace(
             [&](tf::Subflow& subflow) {
-                auto init = subflow.for_each_index(0ul, parents.size(), 1ul, [&](size_t i) {
+                auto initialize_population = subflow.for_each_index(0ul, parents.size(), 1ul, [&](size_t i) {
                     auto id = executor.this_worker_id();
                     // make sure the worker has a large enough buffer
                     if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
@@ -117,7 +117,7 @@ public:
                     parents[i].Fitness = evaluator(rngs[i], parents[i], slots[id]);
                 }).name("initialize population");
                 auto reportProgress = subflow.emplace([&](){ if (report) std::invoke(report); }).name("report progress");
-                init.precede(reportProgress);
+                initialize_population.precede(reportProgress);
             }, // init
             [&]() { return terminate || generation == config.Generations; }, // loop condition
             [&](tf::Subflow& subflow) {

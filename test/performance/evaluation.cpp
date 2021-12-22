@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 #include <interpreter/dispatch_table.hpp>
 #include <thread>
+#include <chrono>
 
 #include "core/dataset.hpp"
 #include "interpreter/interpreter.hpp"
@@ -31,10 +32,14 @@ namespace Test {
     template <typename T>
     void Evaluate(tf::Executor& executor, std::vector<Tree> const& trees, Dataset const& ds, Range range)
     {
-        DispatchTable ft;
-        Interpreter interpreter(ft);
+        Interpreter interpreter;
         tf::Taskflow taskflow;
-        taskflow.for_each(trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
+        std::vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
+        taskflow.for_each(trees.begin(), trees.end(), [&](auto const& tree) {
+            auto id = executor.this_worker_id();
+            if (slots[id].size() < range.Size()) { slots[id].resize(range.Size()); }
+            interpreter.Evaluate<T>(tree, ds, range, slots[id]);
+        });
         executor.run(taskflow).wait();
     }
 
@@ -69,10 +74,15 @@ namespace Test {
                 pset.SetMinMaxArity(Node(t).HashValue, 2, 2);
             }
             std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
-
             auto totalOps = TotalNodes(trees) * range.Size();
             b.batch(totalOps);
-            b.run(name, [&]() { Evaluate<Operon::Scalar>(executor, trees, ds, range); });
+            auto start = std::chrono::high_resolution_clock::now();
+            // we fix the epochs and epoch iterations here so we can use them to approximate the elapsed time manually 
+            b.epochs(10).epochIterations(100).run(name, [&]() { Evaluate<Operon::Scalar>(executor, trees, ds, range); });
+            auto stop = std::chrono::high_resolution_clock::now();
+            auto duration = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count()) / 1e6;
+            double node_evals_psec = b.batch() * static_cast<double>(b.epochs() * b.epochIterations()) / duration;
+            fmt::print("node evals / s: {:L}\n", node_evals_psec);
         };
 
         SUBCASE("arithmetic") {
@@ -151,7 +161,7 @@ namespace Test {
 
     TEST_CASE("Evaluator performance")
     {
-        const size_t n         = 100;
+        const size_t n         = 1000;
         const size_t maxLength = 100;
         const size_t maxDepth  = 1000;
 
@@ -173,29 +183,46 @@ namespace Test {
         std::vector<Tree> trees(n);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
-        std::vector<Individual> individuals(n);
-        for (size_t i = 0; i < individuals.size(); ++i) {
-            individuals[i].Genotype = trees[i];
-        }
-
-        DispatchTable dt;
-        Interpreter interpreter(dt);
+        std::vector<Individual> individuals;
+        individuals.reserve(n);
+        std::transform(trees.begin(), trees.end(), std::back_inserter(individuals), [](auto const& tree) {
+            Operon::Individual ind;
+            ind.Genotype = tree;
+            return ind;
+        });
 
         nb::Bench b;
         b.title("Evaluator performance").relative(true).performanceCounters(true).minEpochIterations(10);
 
         auto totalNodes = TotalNodes(trees);
 
-        Operon::Vector<Operon::Scalar> buf(range.Size());
-
         auto test = [&](std::string const& name, EvaluatorBase&& evaluator) {
             evaluator.SetLocalOptimizationIterations(0);
             evaluator.SetBudget(std::numeric_limits<size_t>::max());
-            b.batch(totalNodes * range.Size()).run(name, [&]() {
-                return std::transform_reduce(individuals.begin(), individuals.end(), 0.0, std::plus<>{}, [&](auto& ind) { return evaluator(rd, ind, buf).front(); });
+            tf::Executor executor(std::thread::hardware_concurrency());
+            tf::Taskflow taskflow;
+
+            std::vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
+            double sum{0};
+            taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{}, [&](Operon::Individual& ind) {
+                auto id = executor.this_worker_id();
+                if (slots[id].size() < range.Size()) { slots[id].resize(range.Size()); } 
+                return evaluator(rd, ind, slots[id]).front();
             });
+
+            auto start = std::chrono::high_resolution_clock::now();
+            b.batch(totalNodes * range.Size()).epochs(10).epochIterations(100).run(name, [&]() {
+                sum = 0;
+                executor.run(taskflow).wait();
+                return sum;
+            });
+            auto stop = std::chrono::high_resolution_clock::now();
+            auto duration = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count()) / 1e6;
+            double node_evals_psec = b.batch() * static_cast<double>(b.epochs() * b.epochIterations()) / duration;
+            fmt::print("node evals / s: {:L}\n", node_evals_psec);
         };
 
+        Interpreter interpreter;
         test("r-squared",      Operon::Evaluator<Operon::R2, false>(problem, interpreter));
         test("r-squared + ls", Operon::Evaluator<Operon::R2, true>(problem, interpreter));
         test("nmse",           Operon::Evaluator<Operon::NMSE, false>(problem, interpreter));
