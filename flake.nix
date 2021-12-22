@@ -23,9 +23,10 @@
             nativeBuildInputs = with pkgs; [ cmake clang_13 clang-tools ];
             buildInputs = with pkgs; [
                 # python environment for bindings and scripting
-                (python39.withPackages (ps: with ps; [ pybind11 ]))
+                (python39.withPackages (ps: with ps; [ pybind11 numpy pandas scikit-learn requests ]))
                 # Project dependencies and utils for profiling and debugging
                 pkgs.nur.repos.foolnotion.taskflow
+                pkgs.nur.repos.foolnotion.pmlb
                 ceres-solver
                 cmake
                 cxxopts
