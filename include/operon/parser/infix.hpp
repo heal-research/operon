@@ -227,6 +227,7 @@ struct InfixParser {
             { "-", Token(TokenKind::dynamic, "sub", static_cast<size_t>(NodeType::Sub), 10, pratt::associativity::left) },
             { "*", Token(TokenKind::dynamic, "mul", static_cast<size_t>(NodeType::Mul), 20, pratt::associativity::left) },
             { "/", Token(TokenKind::dynamic, "div", static_cast<size_t>(NodeType::Div), 20, pratt::associativity::left) },
+            { "aq", Token(TokenKind::dynamic, "aq", static_cast<size_t>(NodeType::Aq), 20, pratt::associativity::left) },
             { "^", Token(TokenKind::dynamic, "pow", static_cast<size_t>(NodeType::Pow), 30, pratt::associativity::right) },
             { "max", Token(TokenKind::dynamic, "max", static_cast<size_t>(NodeType::Fmax), 30, pratt::associativity::left) },
             { "min", Token(TokenKind::dynamic, "min", static_cast<size_t>(NodeType::Fmin), 30, pratt::associativity::left) },
