@@ -5,6 +5,7 @@
 #define PROBLEM_HPP
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "dataset.hpp"
@@ -15,116 +16,117 @@ namespace Operon {
 
 class Problem {
 public:
-    Problem(Dataset const& ds) 
-        : dataset(ds)
+    explicit Problem(Dataset const& ds) 
+        : dataset_(ds)
     {
-        std::copy(ds.Variables().begin(), ds.Variables().end()-1, std::back_inserter(inputVariables));
-        training = Range{0, ds.Rows() / 2};
-        test = Range{ds.Rows() / 2, ds.Rows()};
-        target = dataset.Variables().back();
+        std::copy(ds.Variables().begin(), ds.Variables().end()-1, std::back_inserter(inputVariables_));
+        training_ = Range{0, ds.Rows() / 2};
+        test_ = Range{ds.Rows() / 2, ds.Rows()};
+        target_ = dataset_.Variables().back();
     }
 
-    Problem(Dataset const& ds, Operon::Span<const Variable> inputs, Variable const& targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 })
-        : dataset(ds)
-        , training(trainingRange)
-        , test(testRange)
-        , validation(validationRange)
-        , target(targetVariable)
-        , inputVariables(inputs.begin(), inputs.end())
+    Problem(Dataset ds, Operon::Span<const Variable> inputs, Variable targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 }) // NOLINT(bugprone-easily-swappable-parameters)
+        : dataset_(std::move(ds))
+        , training_(std::move(trainingRange))
+        , test_(std::move(testRange))
+        , validation_(std::move(validationRange))
+        , target_(std::move(targetVariable))
+        , inputVariables_(inputs.begin(), inputs.end())
     {
     }
 
-    Problem& Target(std::string const& tgt) {
-        auto var = dataset.GetVariable(tgt);
+    auto Target(std::string const& tgt) -> Problem& {
+        auto var = dataset_.GetVariable(tgt);
         if (!var.has_value()) {
             throw std::runtime_error(fmt::format("Error: the target name {} does not exist in the dataset.\n", tgt));
         }
-        target = var.value();
+        target_ = var.value();
         return *this;
     }
 
-    Problem& Target(Variable const& tgt) {
-        auto var = dataset.GetVariable(tgt.Hash);
+    auto Target(Variable const& tgt) -> Problem& {
+        auto var = dataset_.GetVariable(tgt.Hash);
         EXPECT(var.has_value());
-        this->target = tgt;
+        this->target_ = tgt;
         return *this;
     }
 
-    Problem& TrainingRange(Range range) {
-        training = range;
+    auto TrainingRange(Range range) -> Problem& {
+        training_ = range;
         return *this;
     }
 
-    Problem& TestRange(Range range) {
-        test = range;
+    auto TestRange(Range range) -> Problem& {
+        test_ = range;
         return *this;
     }
 
-    Problem& ValidationRange(Range range) {
-        validation = range;
+    auto ValidationRange(Range range) -> Problem& {
+        validation_ = range;
         return *this;
     }
 
-    Problem& Inputs(std::vector<Variable> const& inputs) {
-        inputVariables.clear();
-        std::copy(inputs.begin(), inputs.end(), std::back_inserter(inputVariables));
+    auto Inputs(std::vector<Variable> const& inputs) -> Problem& {
+        inputVariables_.clear();
+        std::copy(inputs.begin(), inputs.end(), std::back_inserter(inputVariables_));
         return *this;
     }
 
-    Problem& Inputs(Operon::Span<const Variable> inputs) {
-        inputVariables.clear();
-        std::copy(inputs.begin(), inputs.end(), std::back_inserter(inputVariables));
+    auto Inputs(Operon::Span<const Variable> inputs) -> Problem& {
+        inputVariables_.clear();
+        std::copy(inputs.begin(), inputs.end(), std::back_inserter(inputVariables_));
         return *this;
     }
 
-    Problem& Inputs(std::vector<std::string> const& inputs) {
+    auto Inputs(std::vector<std::string> const& inputs) -> Problem& {
         std::vector<Variable> tmp;
         for (auto const& s : inputs) {
-            auto res = dataset.GetVariable(s);
+            auto res = dataset_.GetVariable(s);
             if (!res.has_value()) {
                 throw std::runtime_error(fmt::format("The input {} does not exist in the dataset.\n", s));
             }
             tmp.push_back(res.value());
         }
-        inputVariables.swap(tmp);
+        inputVariables_.swap(tmp);
         return *this;
     }
 
-    Range TrainingRange() const { return training; }
-    Range TestRange() const { return test; }
-    Range ValidationRange() const { return validation; }
+    [[nodiscard]] auto TrainingRange() const -> Range { return training_; }
+    [[nodiscard]] auto TestRange() const -> Range { return test_; }
+    [[nodiscard]] auto ValidationRange() const -> Range { return validation_; }
 
-    const Variable& TargetVariable() const { return target; }
-    const PrimitiveSet& GetPrimitiveSet() const { return pset; }
-    PrimitiveSet& GetPrimitiveSet() { return pset; }
-    const Dataset& GetDataset() const { return dataset; }
-    Dataset& GetDataset() { return dataset; }
+    [[nodiscard]] auto TargetVariable() const -> Variable const& { return target_; }
+    [[nodiscard]] auto GetPrimitiveSet() const -> PrimitiveSet const& { return pset_; }
+    auto GetPrimitiveSet() -> PrimitiveSet& { return pset_; }
+    [[nodiscard]] auto GetDataset() const -> Dataset const& { return dataset_; }
+    auto GetDataset() -> Dataset& { return dataset_; }
 
-    const Operon::Span<const Variable> InputVariables() const { return inputVariables; }
-    const Operon::Span<const Operon::Scalar> TargetValues() { return dataset.GetValues(target.Hash); }
+    [[nodiscard]]  auto InputVariables() const -> Operon::Span<const Variable> { return inputVariables_; }
+    auto TargetValues() -> Operon::Span<const Operon::Scalar> { return dataset_.GetValues(target_.Hash); }
 
     void StandardizeData(Range range)
     {
-        for (auto const& var : inputVariables) {
-            dataset.Standardize(var.Index, range);
+        for (auto const& var : inputVariables_) {
+            dataset_.Standardize(var.Index, range);
         }
     }
 
     void NormalizeData(Range range) {
-        for (auto const& var : inputVariables) {
-            dataset.Normalize(var.Index, range);
+        for (auto const& var : inputVariables_) {
+            dataset_.Normalize(var.Index, range);
         }
     }
 
 private:
-    Dataset dataset;
-    PrimitiveSet pset;
-    Range training;
-    Range test;
-    Range validation;
-    Variable target;
-    std::vector<Variable> inputVariables;
+    Dataset dataset_;
+    PrimitiveSet pset_;
+    Range training_;
+    Range test_;
+    Range validation_;
+    Variable target_;
+    std::vector<Variable> inputVariables_;
 };
-}
+} // namespace Operon
 
 #endif
+

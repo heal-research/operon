@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
-#ifndef CONFIG_HPP
-#define CONFIG_HPP
+#ifndef OPERON_ALGORITHM_CONFIG_HPP
+#define OPERON_ALGORITHM_CONFIG_HPP
 
 #include <cstddef>
 

@@ -4,11 +4,14 @@
 #ifndef OPERON_NNLS_HPP
 #define OPERON_NNLS_HPP
 
-#include "core/types.hpp"
-#include "tiny_optimizer.hpp"
+#include <ceres/tiny_solver.h>
+
+#include "operon/core/types.hpp"
+#include "residual_evaluator.hpp"
+#include "tiny_cost_function.hpp"
 
 #if defined(HAVE_CERES)
-#include "ceres_optimizer.hpp"
+#include "dynamic_cost_function.hpp"
 #endif
 
 namespace Operon {
@@ -32,29 +35,33 @@ struct OptimizerBase {
     {
     }
 
-protected:
+    [[nodiscard]] auto GetInterpreter() const -> Interpreter const& { return interpreter_.get(); }
+    [[nodiscard]] auto GetTree() const -> Tree& { return tree_.get(); }
+    [[nodiscard]] auto GetDataset() const -> Dataset const& { return dataset_.get(); }
+
+private:
     std::reference_wrapper<Interpreter const> interpreter_;
     std::reference_wrapper<Tree> tree_;
     std::reference_wrapper<Dataset const> dataset_;
 };
 
-template<OptimizerType = OptimizerType::TINY>
+template <OptimizerType = OptimizerType::TINY>
 struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
     NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree& tree, Dataset const& dataset)
         : OptimizerBase(interpreter, tree, dataset)
     {
     }
 
-    template<DerivativeMethod D = DerivativeMethod::AUTODIFF>
-    OptimizerSummary Optimize(Operon::Span<const Operon::Scalar> const target, Range range, size_t iterations, bool writeCoefficients = true, bool = false /* not used */)
+    template <DerivativeMethod D = DerivativeMethod::AUTODIFF>
+    auto Optimize(Operon::Span<const Operon::Scalar> const target, Range range, size_t iterations, bool writeCoefficients = true, bool /*unused*/ = false /* not used */) -> OptimizerSummary
     {
         static_assert(D == DerivativeMethod::AUTODIFF, "The tiny optimizer only supports autodiff.");
-        ResidualEvaluator re(this->interpreter_, tree_, dataset_, target, range);
+        ResidualEvaluator re(GetInterpreter(), GetTree(), GetDataset(), target, range);
         Operon::TinyCostFunction<ResidualEvaluator, Dual, Eigen::ColMajor> cf(re);
         ceres::TinySolver<decltype(cf)> solver;
         solver.options.max_num_iterations = static_cast<int>(iterations);
 
-        auto& tree = this->tree_.get();
+        auto& tree = GetTree();
         auto x0 = tree.GetCoefficients();
         if (!x0.empty()) {
             decltype(solver)::Parameters params = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size()).cast<typename decltype(cf)::Scalar>();
@@ -63,51 +70,56 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
                 tree.SetCoefficients({ params.data(), x0.size() });
             }
         }
-        OptimizerSummary summary;
-        summary.InitialCost = solver.summary.initial_cost;
-        summary.FinalCost = solver.summary.final_cost;
-        summary.Iterations = solver.summary.iterations;
-        return summary;
-    };
+        OptimizerSummary sum {};
+        sum.InitialCost = solver.summary.initial_cost;
+        sum.FinalCost = solver.summary.final_cost;
+        sum.Iterations = solver.summary.iterations;
+        return sum;
+    }
 };
 
-template<>
+template <>
 struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBase {
     NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree& tree, Dataset const& dataset)
         : OptimizerBase(interpreter, tree, dataset)
     {
     }
 
-    template<DerivativeMethod D = DerivativeMethod::AUTODIFF>
-    OptimizerSummary Optimize(Operon::Span<const Operon::Scalar> const target, Range range, size_t iterations, bool writeCoefficients = true, bool report = false)
+    template <DerivativeMethod D = DerivativeMethod::AUTODIFF>
+    auto Optimize(Operon::Span<const Operon::Scalar> const target, Range range, size_t iterations, bool writeCoefficients = true, bool report = false) -> OptimizerSummary
     {
-        auto& tree = this->tree_.get();
+        auto& tree = GetTree();
         auto coef = tree.GetCoefficients();
 
+        auto const& interpreter = GetInterpreter();
+        auto const& dataset = GetDataset();
+
         if (coef.empty()) {
-            return OptimizerSummary{};
+            return OptimizerSummary {};
         }
 
         if (report) {
             fmt::print("x_0: ");
-            for (auto c : coef)
+            for (auto c : coef) {
                 fmt::print("{} ", c);
+            }
             fmt::print("\n");
         }
 
-        ceres::DynamicCostFunction* costFunction;
+        ceres::DynamicCostFunction* costFunction = nullptr;
         if constexpr (D == DerivativeMethod::AUTODIFF) {
-            ResidualEvaluator re(this->interpreter_, tree_, this->dataset_, target, range);
+            ResidualEvaluator re(interpreter, tree, dataset, target, range);
             TinyCostFunction<ResidualEvaluator, Operon::Dual, Eigen::RowMajor> f(re);
             costFunction = new Operon::DynamicCostFunction<decltype(f)>(f);
         } else {
-            auto eval = new ResidualEvaluator(this->interpreter_, tree_, dataset_, target, range);
+            auto* eval = new ResidualEvaluator(interpreter, tree, dataset, target, range); // NOLINT
             costFunction = new ceres::DynamicNumericDiffCostFunction(eval);
             costFunction->AddParameterBlock(static_cast<int>(coef.size()));
             costFunction->SetNumResiduals(static_cast<int>(target.size()));
         }
 
-        Eigen::MatrixXd params = Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>>(coef.data(), coef.size()).template cast<double>();
+        auto sz = static_cast<Eigen::Index>(coef.size());
+        Eigen::MatrixXd params = Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>>(coef.data(), sz).template cast<double>();
         ceres::Problem problem;
         problem.AddResidualBlock(costFunction, nullptr, params.data());
 
@@ -124,15 +136,16 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBa
         if (report) {
             fmt::print("{}\n", summary.BriefReport());
             fmt::print("x_final: ");
-            for (auto c : coef)
+            for (auto c : coef) {
                 fmt::print("{} ", c);
+            }
             fmt::print("\n");
         }
         if (writeCoefficients) {
-            std::copy(params.data(), params.data()+params.size(), coef.begin());
+            std::copy(params.data(), params.data() + params.size(), coef.begin());
             tree.SetCoefficients(coef);
         }
-        OptimizerSummary sum;
+        OptimizerSummary sum {};
         sum.InitialCost = summary.initial_cost;
         sum.FinalCost = summary.final_cost;
         sum.Iterations = static_cast<int>(summary.iterations.size());

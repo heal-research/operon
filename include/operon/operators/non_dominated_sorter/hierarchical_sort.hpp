@@ -5,18 +5,16 @@
 #define OPERON_PARETO_HIERARCHICAL_SORT
 
 #include "sorter_base.hpp"
-#include "robin_hood.h"
-
 #include <deque>
 
 namespace Operon {
 
-class HierarchicalSorter : public NondominatedSorterBase {
-    NondominatedSorterBase::Result Sort(Operon::Span<Operon::Individual const> pop) const override;
+class OPERON_EXPORT HierarchicalSorter : public NondominatedSorterBase {
+    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
 };
 
 namespace hidden {
-    inline std::vector<std::vector<size_t>> HSortV1(Operon::Span<Operon::Individual> pop)
+    inline auto HSortV1(Operon::Span<Operon::Individual> pop) -> std::vector<std::vector<size_t>>
     {
         std::deque<size_t> q(pop.size());
         std::iota(q.begin(), q.end(), 0ul);
@@ -38,7 +36,7 @@ namespace hidden {
                 q.pop_front();
                 front.push_back(q1);
 
-                while (q.size() > 0) {
+                while (!q.empty()) {
                     auto qj = q.front();
                     q.pop_front();
                     auto d = pop[q1].ParetoCompare(pop[qj]);
@@ -62,6 +60,6 @@ namespace hidden {
         return fronts;
     }
 } // namespace hidden 
-} // namespace operon
+} // namespace Operon
 
 #endif

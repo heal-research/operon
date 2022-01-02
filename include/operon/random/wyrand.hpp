@@ -1,55 +1,55 @@
-// SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
-
-#ifndef OPERON_RANDOM_WYRAND_HPP
-#define OPERON_RANDOM_WYRAND_HPP
-
-#include <cstddef>
-#include <cstdint>
-#include <limits>
-#include <memory>
-
-namespace Operon {
-namespace Random {
-    namespace detail {
-        static inline uint64_t wyrand_stateless(uint64_t *s) {
-            *s += UINT64_C(0xa0761d6478bd642f);
-            __uint128_t t = (__uint128_t)*s * (*s ^ UINT64_C(0xe7037ed1a0b428db));
-            return static_cast<uint64_t>((t >> 64) ^ t);
-        }
-    }
-
-    class Wyrand final {
-    public:
-        using result_type = uint64_t;
-
-        static inline constexpr uint64_t(min)() { return result_type { 0 }; }
-        static inline constexpr uint64_t(max)() { return std::numeric_limits<result_type>::max(); }
-
-        explicit Wyrand(uint64_t seed) noexcept
-            : state({seed}) {}
-
-        // forbid copy and copy-assignment
-        Wyrand(Wyrand const&) = delete;
-        Wyrand& operator=(Wyrand const&) = delete;
-
-        Wyrand(Wyrand&&) noexcept = default;
-        Wyrand& operator=(Wyrand&&) noexcept = default;
-
-        ~Wyrand() noexcept = default;
-
-        inline uint64_t operator()() noexcept {
-            return detail::wyrand_stateless(&state.x);
-        }
-
-    private:
-        struct state {
-            uint64_t x;
-        } state;
-    };
-
-} // namespace Random
-} // namespace Operon
-
-#endif
+// SPDX-License-Identifier: MIT // NOLINT
+// SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research // NOLINT
+ // NOLINT
+#ifndef OPERON_RANDOM_WYRAND_HPP // NOLINT
+#define OPERON_RANDOM_WYRAND_HPP // NOLINT
+ // NOLINT
+#include <cstdint> // NOLINT
+#include <limits> // NOLINT
+#include <memory> // NOLINT
+ // NOLINT
+namespace Operon { // NOLINT
+namespace Random { // NOLINT
+    namespace detail { // NOLINT
+        static inline uint64_t wyrand_stateless(uint64_t *s) { // NOLINT
+            *s += UINT64_C(0xa0761d6478bd642f); // NOLINT
+            __uint128_t t = (__uint128_t)*s * (*s ^ UINT64_C(0xe7037ed1a0b428db)); // NOLINT
+            return static_cast<uint64_t>((t >> 64) ^ t); // NOLINT
+        } // NOLINT
+    } // NOLINT
+ // NOLINT
+    class Wyrand final { // NOLINT
+    public: // NOLINT
+        using result_type = uint64_t; // NOLINT
+ // NOLINT
+        static inline constexpr uint64_t(min)() { return result_type { 0 }; } // NOLINT
+        static inline constexpr uint64_t(max)() { return std::numeric_limits<result_type>::max(); } // NOLINT
+ // NOLINT
+        explicit Wyrand(uint64_t seed) noexcept // NOLINT
+            : state({seed}) {} // NOLINT
+ // NOLINT
+        // forbid copy and copy-assignment // NOLINT
+        Wyrand(Wyrand const&) = delete; // NOLINT
+        Wyrand& operator=(Wyrand const&) = delete; // NOLINT
+ // NOLINT
+        Wyrand(Wyrand&&) noexcept = default; // NOLINT
+        Wyrand& operator=(Wyrand&&) noexcept = default; // NOLINT
+ // NOLINT
+        ~Wyrand() noexcept = default; // NOLINT
+ // NOLINT
+        inline uint64_t operator()() noexcept { // NOLINT
+            return detail::wyrand_stateless(&state.x); // NOLINT
+        } // NOLINT
+ // NOLINT
+    private: // NOLINT
+        struct state { // NOLINT
+            uint64_t x; // NOLINT
+        } state; // NOLINT
+    }; // NOLINT
+ // NOLINT
+} // namespace Random // NOLINT
+} // namespace Operon // NOLINT
+ // NOLINT
+#endif // NOLINT
+ // NOLINT
 

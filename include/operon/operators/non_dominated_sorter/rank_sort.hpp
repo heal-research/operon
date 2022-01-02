@@ -6,26 +6,25 @@
 
 #include <algorithm>
 #include <iterator>
+#include <robin_hood.h>
 
-#include "core/operator.hpp"
-#include "robin_hood.h"
 #include "sorter_base.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
+struct OPERON_EXPORT RankSorter : public NondominatedSorterBase {
+    using Vec = Eigen::Array<Eigen::Index, -1, 1>;
+    using Mat = Eigen::Array<Eigen::Index, -1, -1>;
 
-struct RankSorter : public NondominatedSorterBase {
-    using Vec = Eigen::Array<size_t, -1, 1>;
-    using Mat = Eigen::Array<size_t, -1, -1>;
-
-    inline NondominatedSorterBase::Result Sort(Operon::Span<Operon::Individual const> pop) const override
+    inline auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override
     {
         return SortBit(pop);
     }
 
 #if EIGEN_VERSION_AT_LEAST(3,4,0)
-    NondominatedSorterBase::Result SortRank(Operon::Span<Operon::Individual const> pop) const;
+    static auto SortRank(Operon::Span<Operon::Individual const> pop) -> NondominatedSorterBase::Result;
 #endif
-    NondominatedSorterBase::Result SortBit(Operon::Span<Operon::Individual const> pop) const;
+    static auto SortBit(Operon::Span<Operon::Individual const> pop) -> NondominatedSorterBase::Result;
 };
 
 } // namespace Operon

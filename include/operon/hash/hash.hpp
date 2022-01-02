@@ -4,7 +4,7 @@
 #ifndef OPERON_HASH_HPP
 #define OPERON_HASH_HPP
 
-#include "core/constants.hpp"
+#include "operon/core/constants.hpp"
 #include "metrohash64.hpp"
 
 #define XXH_INLINE_ALL
@@ -14,7 +14,7 @@ namespace Operon {
 
 template <HashFunction F = HashFunction::XXHash>
 struct Hasher {
-    uint64_t operator()(const uint8_t* key, size_t len) noexcept
+    auto operator()(const uint8_t* key, size_t len) noexcept -> uint64_t
     {
         return XXH3_64bits(key, len);
     }
@@ -22,27 +22,27 @@ struct Hasher {
 
 template<>
 struct Hasher<HashFunction::MetroHash> {
-    uint64_t operator()(const uint8_t* key, size_t len) noexcept
+    auto operator()(const uint8_t* key, size_t len) noexcept -> uint64_t
     {
-        uint64_t h;
-        HashUtil::MetroHash64::Hash(key, len, reinterpret_cast<uint8_t*>(&h));
+        uint64_t h = 0;
+        HashUtil::MetroHash64::Hash(key, len, reinterpret_cast<uint8_t*>(&h)); // NOLINT
         return h;
     }
 };
 
 template<>
 struct Hasher<HashFunction::FNV1Hash> {
-    uint64_t operator()(const uint8_t* key, size_t len) noexcept
+    auto operator()(const uint8_t* key, size_t len) noexcept -> uint64_t
     {
-        uint64_t h = 14695981039346656037ull;
+        uint64_t h = 14695981039346656037ull; // NOLINT
 
         for(size_t i = 0; i < len; ++i) {
             h ^= *(key+i);
-            h *= 1099511628211ull;
+            h *= 1099511628211ull; // NOLINT
         }
         return h;
     }
 };
-} // namespace
+} // namespace Operon
 #endif
 

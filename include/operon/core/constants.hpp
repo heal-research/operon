@@ -18,6 +18,8 @@ namespace Operon {
         MetroHash,
         FNV1Hash,
     };
-}
+
+    static constexpr auto Align64 = 64U;
+} // namespace Operon
 
 #endif

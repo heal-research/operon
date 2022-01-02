@@ -4,17 +4,13 @@
 #ifndef OPERON_TYPES_HPP
 #define OPERON_TYPES_HPP
 
-#include <cstdint>
-#include <Eigen/StdVector>
-
-#include "random/random.hpp"
-#include "span.hpp"
-
-#if defined(HAVE_CERES)
 #include <ceres/jet.h>
-#else
-#include "jet.h"
-#endif
+#include <cstddef>
+#include <cstdint>
+#include <nonstd/span.hpp>
+
+#include "constants.hpp"
+#include "operon/random/random.hpp"
 
 namespace Operon {
 using Hash = uint64_t; // at the moment, changing this will cause problems
@@ -38,18 +34,14 @@ using Dual = ceres::Jet<double, 4>;
 using Dual = ceres::Jet<Scalar, 4 * sizeof(double) / sizeof(Scalar)>;
 #endif
 
-// Operon::Vector is just an aligned std::vector
-// alignment can be controlled with the EIGEN_MAX_ALIGN_BYTES macro
-// https://eigen.tuxfamily.org/dox/TopicPreprocessorDirectives.html#TopicPreprocessorDirectivesPerformance
-
 namespace Numeric {
     template <typename T>
-    static constexpr inline T Max()
+    static constexpr inline auto Max() -> T
     {
         return std::numeric_limits<T>::max();
     }
     template <typename T>
-    static constexpr inline T Min()
+    static constexpr inline auto Min() -> T
     {
         if constexpr (std::is_floating_point_v<T>) {
             return std::numeric_limits<T>::lowest();
@@ -59,7 +51,7 @@ namespace Numeric {
             return std::numeric_limits<T>::min();
         }
     }
-}
-} // namespace operon
+} // namespace Numeric
+} // namespace Operon
 
 #endif

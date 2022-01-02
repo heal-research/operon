@@ -4,17 +4,13 @@
 #ifndef OPERON_PARETO_DOMINANCE_DEGREE_SORT
 #define OPERON_PARETO_DOMINANCE_DEGREE_SORT
 
-#include "core/individual.hpp"
-#include "core/operator.hpp"
-#include "core/types.hpp"
-
 #include "sorter_base.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 
-class DominanceDegreeSorter : public NondominatedSorterBase {
-    private:
-    NondominatedSorterBase::Result Sort(Operon::Span<Operon::Individual const> pop) const override;
+class OPERON_EXPORT DominanceDegreeSorter : public NondominatedSorterBase {
+    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
 };
 
 } // namespace operon

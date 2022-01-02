@@ -28,7 +28,7 @@ namespace {
 template <typename T, Operon::HashFunction F = Operon::HashFunction::XXHash>
 class PopulationDiversityAnalyzer final : PopulationAnalyzerBase<T> {
 public:
-    double operator()(Operon::RandomGenerator&) const
+    auto operator()(Operon::RandomGenerator&) const -> double
     {
         return diversity;
     }

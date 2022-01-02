@@ -5,14 +5,13 @@
 #define OPERON_PARETO_EFFICIENT_NONDOMINATED_SORT
 
 #include "sorter_base.hpp"
-
-#include "robin_hood.h"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 
 template<bool BinarySearch = true>
-struct EfficientSorter : public NondominatedSorterBase {
-    inline NondominatedSorterBase::Result Sort(Operon::Span<Operon::Individual const> pop) const override 
+struct OPERON_EXPORT EfficientSorter : public NondominatedSorterBase {
+    inline auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override 
     {
         // check if individual i is dominated by any individual in the front f
         auto dominated = [&](auto const& f, size_t i) {

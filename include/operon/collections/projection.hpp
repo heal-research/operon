@@ -11,118 +11,118 @@
 namespace Operon {
 
 namespace detail {
-    struct identity {
+    struct Identity {
         template <typename T>
         constexpr auto operator()(T&& v) const noexcept -> decltype(std::forward<T>(v))
         {
             return std::forward<T>(v);
         }
     };
-};
+} // namespace detail
 
-template<typename InputIt, typename Func = detail::identity>
+template<typename InputIt, typename Func = detail::Identity>
 struct ProjectionIterator {
     using T = typename std::iterator_traits<InputIt>::value_type;
     using R = std::result_of_t<Func(T)>;
 
     // projection iterator traits
-    using value_type = std::remove_reference_t<R>;
-    using pointer = void;
-    using reference = value_type&;
-    using difference_type = typename std::iterator_traits<InputIt>::difference_type;
-    using iterator_category = typename std::iterator_traits<InputIt>::iterator_category;
+    using value_type = std::remove_reference_t<R>; // NOLINT
+    using pointer = void; //NOLINT
+    using reference = value_type&; // NOLINT
+    using difference_type = typename std::iterator_traits<InputIt>::difference_type; // NOLINT
+    using iterator_category = typename std::iterator_traits<InputIt>::iterator_category; // NOLINT
 
     explicit ProjectionIterator(InputIt it, Func const& f) : it_(it), pr_(f) { }
     explicit ProjectionIterator(InputIt it, Func&& f) : it_(it), pr_(std::move(f)) { }
 
-    inline value_type operator*() const noexcept { return std::invoke(pr_, std::forward<typename std::iterator_traits<InputIt>::reference>(*it_)); }
+    inline auto operator*() const noexcept -> value_type { return std::invoke(pr_, std::forward<typename std::iterator_traits<InputIt>::reference>(*it_)); }
 
-    inline bool operator==(ProjectionIterator const& rhs) const noexcept
+    inline auto operator==(ProjectionIterator const& rhs) const noexcept -> bool
     {
         return it_ == rhs.it_;
     }
 
-    inline bool operator!=(ProjectionIterator const& rhs) const noexcept
+    inline auto operator!=(ProjectionIterator const& rhs) const noexcept -> bool
     {
         return !(*this == rhs);
     }
 
-    inline bool operator<(ProjectionIterator const& rhs) const noexcept
+    inline auto operator<(ProjectionIterator const& rhs) const noexcept -> bool
     {
         return it_ < rhs.it_;
     }
 
-    inline bool operator>(ProjectionIterator const& rhs) const noexcept
+    inline auto operator>(ProjectionIterator const& rhs) const noexcept -> bool
     {
         return rhs < *this;
     }
 
-    inline bool operator<=(ProjectionIterator const& rhs) const noexcept
+    inline auto operator<=(ProjectionIterator const& rhs) const noexcept -> bool
     {
         return !(*this > rhs);
     }
 
-    inline bool operator>=(ProjectionIterator const& rhs) const noexcept
+    inline auto operator>=(ProjectionIterator const& rhs) const noexcept -> bool
     {
         return !(rhs < *this);
     }
 
-    inline difference_type operator+(ProjectionIterator const& rhs) const noexcept
+    inline auto operator+(ProjectionIterator const& rhs) const noexcept -> difference_type
     {
         return it_ + rhs.it_;
     }
 
-    inline difference_type operator-(ProjectionIterator const& rhs) const noexcept
+    inline auto operator-(ProjectionIterator const& rhs) const noexcept -> difference_type
     {
         return it_ - rhs.it_;
     }
 
-    inline ProjectionIterator& operator++() noexcept
+    inline auto operator++() noexcept -> ProjectionIterator&
     {
         ++it_;
         return *this;
     }
 
-    inline ProjectionIterator operator++(int) noexcept
+    inline auto operator++(int) noexcept -> ProjectionIterator
     {
         auto ret = *this;
         ++*this;
         return ret;
     }
 
-    inline ProjectionIterator& operator--() noexcept
+    inline auto operator--() noexcept -> ProjectionIterator&
     {
         --it_;
         return *this;
     }
 
-    inline ProjectionIterator operator--(int) noexcept
+    inline auto operator--(int) noexcept -> ProjectionIterator
     {
         auto ret = *this;
         --*this;
         return ret;
     }
 
-    inline ProjectionIterator& operator+=(int n) noexcept
+    inline auto operator+=(int n) noexcept -> ProjectionIterator&
     {
         it_ += n;
         return *this;
     }
 
-    inline ProjectionIterator operator+(int n) noexcept
+    inline auto operator+(int n) const noexcept -> ProjectionIterator
     {
         auto ret = *this;
         ret += n;
         return ret;
     }
 
-    inline ProjectionIterator& operator-=(int n) noexcept
+    inline auto operator-=(int n) noexcept -> ProjectionIterator&
     {
         it_ -= n;
         return *this;
     }
 
-    inline ProjectionIterator operator-(int n) noexcept
+    inline auto operator-(int n) const noexcept -> ProjectionIterator
     {
         auto ret = *this;
         ret -= n;
@@ -134,7 +134,7 @@ struct ProjectionIterator {
     Func pr_;
 };
 
-template<typename Container, typename Func = detail::identity>
+template<typename Container, typename Func = detail::Identity>
 struct Projection {
     using InputIt = ProjectionIterator<typename Container::const_iterator, Func>;
 
@@ -143,10 +143,9 @@ struct Projection {
     {
     }
 
-    InputIt begin() const { return beg_; }
-    InputIt end() const { return end_; }
-
-    bool empty() const noexcept { return beg_ == end_; }
+    auto begin() const -> InputIt { return beg_; } // NOLINT
+    auto end() const -> InputIt { return end_; } // NOLINT
+    bool empty() const noexcept { return beg_ == end_; } // NOLINT
 
     private:
         InputIt beg_;
