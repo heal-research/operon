@@ -1,5 +1,5 @@
-#ifndef OPERON_NON_DOMINATED_SORTER
-#define OPERON_NON_DOMINATED_SORTER
+#ifndef OPERON_NON_DOMINATED_SORTER_HPP
+#define OPERON_NON_DOMINATED_SORTER_HPP
 
 #include "non_dominated_sorter/deductive_sort.hpp"
 #include "non_dominated_sorter/dominance_degree_sort.hpp"

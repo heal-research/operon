@@ -10,139 +10,143 @@
 #include <random>
 #include <vector>
 
-#include "hash/hash.hpp"
-#include "node.hpp"
-
-#include "pdqsort.h"
+#include "operon/core/node.hpp"
+#include "operon/operon_export.hpp"
+#include "operon/hash/hash.hpp"
+#include "contracts.hpp"
 
 namespace Operon {
-class Tree;
 
 template<typename T>
 class SubtreeIterator {
 public:
-    using value_type = std::conditional_t<std::is_const_v<T>, Node const, Node>;
-    using difference_type = std::ptrdiff_t;
-    using pointer = value_type*;
-    using reference = value_type&;
-    using iterator_category = std::forward_iterator_tag;
+    // iterator traits
+    using value_type = std::conditional_t<std::is_const_v<T>, Node const, Node>;// NOLINT
+    using difference_type = std::ptrdiff_t;// NOLINT
+    using pointer = value_type*;// NOLINT
+    using reference = value_type&;// NOLINT
+    using iterator_category = std::forward_iterator_tag;// NOLINT
 
     explicit SubtreeIterator(T& tree, size_t i)
-        : nodes(tree.Nodes())
-        , parentIndex(i)
-        , index(i - 1)
+        : nodes_(tree.Nodes())
+        , parentIndex_(i)
+        , index_(i - 1)
     {
         EXPECT(i > 0);
     }
 
-    inline value_type& operator*() { return nodes[index]; }
-    inline value_type const& operator*() const { return nodes[index]; }
-    inline value_type* operator->() { return &**this; }
-    inline value_type const* operator->() const { return &**this; }
+    inline auto operator*() -> value_type& { return nodes_[index_]; }
+    inline auto operator*() const -> value_type const& { return nodes_[index_]; }
+    inline auto operator->() -> value_type* { return &**this; }
+    inline auto operator->() const -> value_type const* { return &**this; }
 
-    SubtreeIterator& operator++() // pre-increment
+    auto operator++() -> SubtreeIterator& // pre-increment
     {
-        index -= nodes[index].Length + 1ul;
+        index_ -= nodes_[index_].Length + 1UL;
         return *this;
     }
 
-    SubtreeIterator operator++(int) // post-increment
+    auto operator++(int) -> SubtreeIterator // post-increment
     {
         auto t = *this;
         ++t;
         return t;
     }
 
-    bool operator==(SubtreeIterator const& rhs)
+    auto operator==(SubtreeIterator const& rhs) -> bool
     {
-        return std::tie(index, parentIndex, nodes.data()) == std::tie(rhs.index, rhs.parentIndex, rhs.nodes.data());
+        return std::tie(index_, parentIndex_, nodes_.data()) == std::tie(rhs.index_, rhs.parentIndex_, rhs.nodes_.data());
     }
 
-    bool operator!=(SubtreeIterator const& rhs)
+    auto operator!=(SubtreeIterator const& rhs) -> bool
     {
         return !(*this == rhs);
     }
 
-    bool operator<(SubtreeIterator const& rhs)
+    auto operator<(SubtreeIterator const& rhs) -> bool
     {
         // this looks a little strange, but correct: we use a postfix representation and trees are iterated from right to left
         // (thus the lower index will be the more advanced iterator)
-        return std::tie(parentIndex, nodes.data()) == std::tie(rhs.parentIndex, rhs.nodes.data()) && index > rhs.index;
+        return std::tie(parentIndex_, nodes_.data()) == std::tie(rhs.parentIndex_, rhs.nodes_.data()) && index_ > rhs.index_;
     }
 
-    inline bool HasNext() { return index < parentIndex && index >= (parentIndex - nodes[parentIndex].Length); }
-    inline size_t Index() const { return index; } // index of current child
+    inline auto HasNext() -> bool { return index_ < parentIndex_ && index_ >= (parentIndex_ - nodes_[parentIndex_].Length); }
+    [[nodiscard]] inline auto Index() const -> size_t { return index_; } // index of current child
 
 private:
-    Operon::Span<value_type> nodes;
-    size_t parentIndex; // index of parent node
-    size_t index;       // index of current child node
+    Operon::Span<value_type> nodes_;
+    size_t parentIndex_; // index of parent node
+    size_t index_;       // index of current child node
 };
 
-class Tree {
+class OPERON_EXPORT Tree { // NOLINT
 public:
-    Tree() {}
+    Tree() = default;
     Tree(std::initializer_list<Node> list)
-        : nodes(list)
+        : nodes_(list)
     {
     }
-    Tree(Operon::Vector<Node> vec)
-        : nodes(std::move(vec))
+    explicit Tree(Operon::Vector<Node> vec)
+        : nodes_(std::move(vec))
     {
     }
-    Tree(const Tree& rhs)
-        : nodes(rhs.nodes)
+    Tree(Tree const& rhs) // NOLINT
+        : nodes_(rhs.nodes_)
     {
     }
     Tree(Tree&& rhs) noexcept
-        : nodes(std::move(rhs.nodes))
+        : nodes_(std::move(rhs.nodes_))
     {
     }
 
-    Tree& operator=(Tree rhs)
+    ~Tree() = default;
+
+    auto operator=(Tree rhs) -> Tree&
     {
-        swap(rhs);
+        Swap(*this, rhs);
         return *this;
     }
+    // no need for move assignment operator because we use the copy-swap idiom
 
-    void swap(Tree& rhs) noexcept
+    friend void Swap(Tree& lhs, Tree& rhs) noexcept
     {
-        std::swap(nodes, rhs.nodes);
+        std::swap(lhs.nodes_, rhs.nodes_);
     }
 
-    Tree& UpdateNodes();
-    Tree& Sort();
-    Tree& Reduce();
-    Tree& Simplify();
+    auto UpdateNodes() -> Tree&;
+    auto Sort() -> Tree&;
+    auto Reduce() -> Tree&;
+    auto Simplify() -> Tree&;
 
     // convenience method to make it easier to call from the Python side
-    Tree& Hash(Operon::HashFunction f, Operon::HashMode m);
+    auto Hash(Operon::HashFunction f, Operon::HashMode m) -> Tree&;
 
     // performs hashing in a manner similar to Merkle trees
     // aggregating hash values from the leafs towards the root node
     template <Operon::HashFunction H>
-    Tree& Hash(Operon::HashMode mode) noexcept
+    auto Hash(Operon::HashMode mode) noexcept -> Tree&
     {
         std::vector<size_t> childIndices;
-        childIndices.reserve(nodes.size());
+        childIndices.reserve(nodes_.size());
 
         std::vector<Operon::Hash> hashes;
-        hashes.reserve(nodes.size());
+        hashes.reserve(nodes_.size());
 
         Operon::Hasher<H> hasher;
 
-        for (size_t i = 0; i < nodes.size(); ++i) {
-            auto& n = nodes[i];
+        for (size_t i = 0; i < nodes_.size(); ++i) {
+            auto& n = nodes_[i];
 
             if (n.IsLeaf()) {
                 n.CalculatedHashValue = n.HashValue;
                 if (mode == Operon::HashMode::Strict) {
                     const size_t s1 = sizeof(Operon::Hash);
                     const size_t s2 = sizeof(Operon::Scalar);
-                    uint8_t key[s1 + s2];
-                    std::memcpy(key, &n.HashValue, s1);
-                    std::memcpy(key + s1, &n.Value, s2);
-                    n.CalculatedHashValue = hasher(key, sizeof(key));
+                    std::array<uint8_t, s1 + s2> key{};
+                    auto* ptr = key.data();
+                    std::memcpy(ptr, &n.HashValue, s1);
+                    std::memcpy(ptr + s1, &n.Value, s2);
+                    n.CalculatedHashValue = hasher(key.data(), key.size());
                 } else {
                     n.CalculatedHashValue = n.HashValue;
                 }
@@ -157,12 +161,12 @@ public:
             auto end = begin + n.Arity;
 
             if (n.IsCommutative()) {
-                pdqsort(begin, end, [&](auto a, auto b) { return nodes[a] < nodes[b]; });
+                std::stable_sort(begin, end, [&](auto a, auto b) { return nodes_[a] < nodes_[b]; });
             }
-            std::transform(begin, end, std::back_inserter(hashes), [&](auto j) { return nodes[j].CalculatedHashValue; });
+            std::transform(begin, end, std::back_inserter(hashes), [&](auto j) { return nodes_[j].CalculatedHashValue; });
             hashes.push_back(n.HashValue);
 
-            n.CalculatedHashValue = hasher(reinterpret_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size());
+            n.CalculatedHashValue = hasher(reinterpret_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); // NOLINT
             childIndices.clear();
             hashes.clear();
         }
@@ -170,50 +174,50 @@ public:
         return *this;
     }
 
-    Tree Subtree(size_t i) {
-        auto const& n = nodes[i];
+    auto Subtree(size_t i) -> Tree {
+        auto const& n = nodes_[i];
         Operon::Vector<Node> subtree;
         subtree.reserve(n.Length);
-        std::copy_n(nodes.begin() + i - n.Length, n.Length, std::back_inserter(subtree));
+        std::copy_n(nodes_.begin() + std::make_signed_t<size_t>(i) - n.Length, n.Length, std::back_inserter(subtree));
         return Tree(subtree).UpdateNodes();
     }
 
-    std::vector<size_t> ChildIndices(size_t i) const;
+    [[nodiscard]] auto ChildIndices(size_t i) const -> std::vector<size_t>;
     inline void SetEnabled(size_t i, bool enabled)
     {
-        for (auto j = i - nodes[i].Length; j <= i; ++j) {
-            nodes[j].IsEnabled = enabled;
+        for (auto j = i - nodes_[i].Length; j <= i; ++j) {
+            nodes_[j].IsEnabled = enabled;
         }
     }
 
-    Operon::Vector<Node>& Nodes() & { return nodes; }
-    Operon::Vector<Node>&& Nodes() && { return std::move(nodes); }
-    Operon::Vector<Node> const& Nodes() const& { return nodes; }
+    auto Nodes() & -> Operon::Vector<Node>& { return nodes_; }
+    auto Nodes() && -> Operon::Vector<Node>&& { return std::move(nodes_); }
+    [[nodiscard]] auto Nodes() const& -> Operon::Vector<Node> const& { return nodes_; }
 
-    inline auto CoefficientsCount() const
+    [[nodiscard]] inline auto CoefficientsCount() const
     {
-        return std::count_if(nodes.cbegin(), nodes.cend(), [](auto const& s) { return s.IsLeaf(); });
+        return std::count_if(nodes_.cbegin(), nodes_.cend(), [](auto const& s) { return s.IsLeaf(); });
     }
 
-    void SetCoefficients(const Operon::Span<const Operon::Scalar> coefficients);
-    std::vector<Operon::Scalar> GetCoefficients() const;
+    void SetCoefficients(Operon::Span<Operon::Scalar const> coefficients);
+    [[nodiscard]] auto GetCoefficients() const -> std::vector<Operon::Scalar>;
 
-    inline Node& operator[](size_t i) noexcept { return nodes[i]; }
-    inline const Node& operator[](size_t i) const noexcept { return nodes[i]; }
+    inline auto operator[](size_t i) noexcept -> Node& { return nodes_[i]; }
+    inline auto operator[](size_t i) const noexcept -> Node const& { return nodes_[i]; }
 
-    size_t Length() const noexcept { return nodes.size(); }
-    size_t VisitationLength() const noexcept;
-    size_t Depth() const noexcept;
-    bool Empty() const noexcept { return nodes.empty(); }
+    [[nodiscard]] auto Length() const noexcept -> size_t { return nodes_.size(); }
+    [[nodiscard]] auto VisitationLength() const noexcept -> size_t;
+    [[nodiscard]] auto Depth() const noexcept -> size_t;
+    [[nodiscard]] auto Empty() const noexcept -> bool { return nodes_.empty(); }
 
-    Operon::Hash HashValue() const { return nodes.empty() ? 0 : nodes.back().CalculatedHashValue; }
+    [[nodiscard]] auto HashValue() const -> Operon::Hash { return nodes_.empty() ? 0 : nodes_.back().CalculatedHashValue; }
 
-    SubtreeIterator<Tree> Children(size_t i) { return SubtreeIterator(*this, i); }
-    SubtreeIterator<Tree const> Children(size_t i) const { return SubtreeIterator(*this, i); }
+    auto Children(size_t i) -> SubtreeIterator<Tree> { return SubtreeIterator(*this, i); }
+    [[nodiscard]] auto Children(size_t i) const -> SubtreeIterator<Tree const> { return SubtreeIterator(*this, i); }
 
 private:
-    Operon::Vector<Node> nodes;
+    Operon::Vector<Node> nodes_;
 };
-}
+} // namespace Operon
 #endif // TREE_H
 

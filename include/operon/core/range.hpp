@@ -4,36 +4,34 @@
 #ifndef OPERON_RANGE_HPP
 #define OPERON_RANGE_HPP
 
-#include "core/contracts.hpp"
-
 #include <tuple>
 
 namespace Operon {
 class Range {
     public:
-        inline std::size_t Start() const noexcept { return range_.first; }
-        inline std::size_t End() const noexcept { return range_.second; }
-        inline std::size_t Size() const noexcept { return range_.second - range_.first; }
-        std::pair<std::size_t, std::size_t> Bounds() const noexcept { return range_; }
+        [[nodiscard]] inline auto Start() const noexcept -> std::size_t { return range_.first; }
+        [[nodiscard]] inline auto End() const noexcept -> std::size_t { return range_.second; }
+        [[nodiscard]] inline auto Size() const noexcept -> std::size_t { return range_.second - range_.first; }
+        [[nodiscard]] auto Bounds() const noexcept -> std::pair<std::size_t, std::size_t> { return range_; }
 
-        Range() {}
+        Range() = default;
         Range(std::size_t start, std::size_t end)
             : range_(CheckRange(start, end))
         {
         }
-        Range(std::pair<std::size_t, std::size_t> range)
+        explicit Range(std::pair<std::size_t, std::size_t> range)
             : range_(CheckRange(range.first, range.second))
         {
         }
 
     private:
-        static std::pair<std::size_t, std::size_t> CheckRange(std::size_t start, std::size_t end)
+        static auto CheckRange(std::size_t start, std::size_t end) -> std::pair<std::size_t, std::size_t>
         {
             EXPECT(start <= end);
             return { start, end };
         }
         std::pair<std::size_t, std::size_t> range_;
 };
-}
+} // namespace Operon
 
 #endif

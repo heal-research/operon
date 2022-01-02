@@ -5,14 +5,13 @@
 #define OPERON_PARETO_DEDUCTIVE_SORT
 
 #include "sorter_base.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 
-class DeductiveSorter : public NondominatedSorterBase {
-    private:
-
-    NondominatedSorterBase::Result
-    Sort(Operon::Span<Operon::Individual const> pop) const override; 
+class OPERON_EXPORT DeductiveSorter : public NondominatedSorterBase {
+    auto
+    Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override; 
 };
 } // namespace operon
 

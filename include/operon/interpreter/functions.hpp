@@ -4,7 +4,8 @@
 #ifndef OPERON_INTERPRETER_FUNCTIONS_HPP
 #define OPERON_INTERPRETER_FUNCTIONS_HPP
 
-#include "core/node.hpp"
+#include "operon/core/node.hpp"
+#include <ceres/jet.h>
 
 namespace Operon
 {
@@ -95,14 +96,14 @@ namespace Operon
     struct Function<NodeType::Aq>
     {
         template<typename T>
-        inline void operator()(T r, T a1, T a2) { r = a1 / (typename T::Scalar{1.0} + a2.square()).sqrt(); };
+        inline void operator()(T r, T a1, T a2) { r = a1 / (typename T::Scalar{1.0} + a2.square()).sqrt(); }
     };
 
     template<>
     struct Function<NodeType::Pow>
     {
         template<typename T>
-        inline void operator()(T r, T a1, T a2) { r = a1.pow(a2); };
+        inline void operator()(T r, T a1, T a2) { r = a1.pow(a2); }
     };
 
     template<>
@@ -158,7 +159,7 @@ namespace Operon
     struct Function<NodeType::Cbrt>
     {
         template<typename T>
-        inline void operator()(T r, T a) { r = a.unaryExpr([](auto&& v) { return ceres::cbrt(v); }); }
+        inline void operator()(T r, T a) { r = a.unaryExpr([](typename T::Scalar const& v) { return ceres::cbrt(v); }); }
     };
 
     template<>
@@ -172,8 +173,8 @@ namespace Operon
     struct Function<NodeType::Dynamic>
     {
         template<typename T>
-        inline void operator()(T, T) { /* do nothing */ }
+        inline void operator()(T /*unused*/, T /*unused*/) { /* do nothing */ }
     };
-}
+} // namespace Operon
 
 #endif

@@ -4,13 +4,20 @@
 #ifndef OPERON_PARETO_NONDOMINATED_SORTER_BASE
 #define OPERON_PARETO_NONDOMINATED_SORTER_BASE
 
-#include "core/individual.hpp"
+#include <cstddef>
+#include <numeric>
+#include <type_traits>
+#include <vector>
+#include "operon/core/types.hpp"
+#include "operon/core/individual.hpp"
 
 namespace Operon {
 
+struct Individual;
+
 namespace detail {
     template <typename T, std::enable_if_t<std::is_integral_v<T> && std::is_unsigned_v<T>, bool> = true>
-    static inline size_t count_trailing_zeros(T block)
+    static inline size_t count_trailing_zeros(T block) // NOLINT
     {
         assert(block != T{0}); // output is undefined for 0!
 
@@ -87,15 +94,15 @@ class NondominatedSorterBase {
 
         void Reset() { Stats = {0, 0, 0, 0, 0, 0., 0.}; }
 
-        virtual Result Sort(Operon::Span<Operon::Individual const>) const = 0;
+        virtual auto Sort(Operon::Span<Operon::Individual const>) const -> Result = 0;
 
-        // if indices are provided, they are assumed to be sorted
-        // if the span is empty, then indices are generated and sorted on the fly
-        Result operator()(Operon::Span<Operon::Individual const> pop) const {
+        auto operator()(Operon::Span<Operon::Individual const> pop) const -> Result {
             size_t m = pop.front().Fitness.size();
             ENSURE(m > 1);
             return Sort(pop);
         }
+
+        virtual ~NondominatedSorterBase() = default;
 };
 
 } // namespace Operon

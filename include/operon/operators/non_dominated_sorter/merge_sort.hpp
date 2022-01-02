@@ -14,32 +14,11 @@
 #include <algorithm>
 
 #include "sorter_base.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
-class MergeNondominatedSorter : public NondominatedSorterBase {
-    mutable int SOL_ID;
-    mutable int SORT_INDEX;
-    mutable int m; // number of objectives
-    mutable int n; // population size
-    mutable int initialPopulationSize;
-    mutable std::vector<int> ranking;
-    mutable std::vector<std::vector<Operon::Scalar>> population;
-    mutable std::vector<std::vector<Operon::Scalar>> work;
-    mutable std::vector<std::pair<int, int>> duplicatedSolutions;
-    //mutable detail::BitsetManager bsm;
-
-    NondominatedSorterBase::Result
-    Sort(Operon::Span<Operon::Individual const> pop) const override;
-
-private:
-    void Clear() const
-    {
-        ranking.clear();
-        population.clear();
-        work.clear();
-        duplicatedSolutions.clear();
-    }
-
+class OPERON_EXPORT MergeNondominatedSorter : public NondominatedSorterBase {
+    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
 };
 } // namespace Operon
 

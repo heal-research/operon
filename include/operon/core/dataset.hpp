@@ -4,136 +4,131 @@
 #ifndef DATASET_H
 #define DATASET_H
 
-#include <algorithm>
-#include <Eigen/Dense>
-#include <exception>
-#include <numeric>
-#include <vector>
-#include <optional>
+#include <Eigen/Core>
 
-#include "core/contracts.hpp"
-#include "core/range.hpp"
-#include "core/types.hpp"
+#include "operon/operon_export.hpp"
+#include "contracts.hpp"
+#include "range.hpp"
+#include "types.hpp"
+#include "variable.hpp"
 
 namespace Operon {
 
 // a dataset variable described by: name, hash value (for hashing), data column index
-struct Variable {
-    std::string Name = "";
-    Operon::Hash Hash = Operon::Hash { 0 };
-    size_t Index = size_t { 0 };
 
-    constexpr bool operator==(Variable const& rhs) const noexcept {
-        return std::tie(Name, Hash, Index) == std::tie(rhs.Name, rhs.Hash, rhs.Index);
-    }
-
-    constexpr bool operator!=(Variable const& rhs) const noexcept {
-        return !(*this == rhs);
-    }
-};
-
-class Dataset {
+class OPERON_EXPORT Dataset {
 public:
     // some useful aliases
     using Matrix = Eigen::Array<Operon::Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
     using Map = Eigen::Map<Matrix const>;
 
 private:
-    std::vector<Variable> variables;
-    Matrix values;
-    Map map;
+    std::vector<Variable> variables_;
+    Matrix values_;
+    Map map_;
 
     Dataset();
 
     // read data from a csv file and return a map (view of the data)
-    Matrix ReadCsv(std::string const& path, bool hasHeader);
+    auto ReadCsv(std::string const& path, bool hasHeader) -> Matrix;
 
     // this method ensures the same ordering of variables in the variables vector
     // based on index, name, hash value
     void InitializeVariables(std::vector<std::string> const&);
 
 public:
-    Dataset(const std::string& file, bool hasHeader = false);
+    explicit Dataset(const std::string& path, bool hasHeader = false);
 
     Dataset(Dataset const& rhs)
-        : variables(rhs.variables)
-        , values(rhs.values)
-        , map(values.data(), values.rows(), values.cols())
+        : variables_(rhs.variables_)
+        , values_(rhs.values_)
+        , map_(values_.data(), values_.rows(), values_.cols())
     {
     }
 
     Dataset(Dataset&& rhs) noexcept
-        : variables(rhs.variables)
-        , values(std::move(rhs.values))
-        , map(std::move(rhs.map))
+        : variables_(std::move(rhs.variables_))
+        , values_(std::move(rhs.values_))
+        , map_(rhs.map_)
     {
     }
 
-    Dataset(std::vector<Variable> const& vars, std::vector<std::vector<Operon::Scalar>> const& vals)
-        : variables(vars)
-        , map(nullptr, static_cast<Eigen::Index>(vals[0].size()), static_cast<Eigen::Index>(vals.size()))
+    Dataset(std::vector<Variable> vars, std::vector<std::vector<Operon::Scalar>> const& vals)
+        : variables_(std::move(vars))
+        , map_(nullptr, static_cast<Eigen::Index>(vals[0].size()), static_cast<Eigen::Index>(vals.size()))
     {
-        values = Matrix(map.rows(), map.cols());
+        values_ = Matrix(map_.rows(), map_.cols());
 
-        for (Eigen::Index i = 0; i < values.cols(); ++i) {
-            auto m = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor> const>(vals[(size_t)i].data(), map.rows());
-            values.col(i) = m;
+        for (Eigen::Index i = 0; i < values_.cols(); ++i) {
+            auto m = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor> const>(vals[static_cast<size_t>(i)].data(), map_.rows());
+            values_.col(i) = m;
         }
-        new (&map) Map(values.data(), values.rows(), values.cols()); // we use placement new (no allocation)
+        new (&map_) Map(values_.data(), values_.rows(), values_.cols()); // we use placement new (no allocation)
     }
 
-    Dataset(std::vector<std::vector<Operon::Scalar>> const& vals);
+    explicit Dataset(std::vector<std::vector<Operon::Scalar>> const& vals);
 
-    Dataset(Eigen::Ref<Matrix const> ref);
+    //explicit Dataset(Eigen::Ref<Matrix const> ref);
+    Dataset(Matrix::Scalar const* data, Eigen::Index rows, Eigen::Index cols);
 
-    Dataset(Matrix const& vals);
+    explicit Dataset(Matrix vals);
 
-    Dataset(Matrix&& vals);
+    ~Dataset() = default;
 
-    Dataset& operator=(Dataset rhs)
+    auto operator=(Dataset rhs) -> Dataset&
     {
-        swap(rhs);
+        Swap(rhs);
         return *this;
     }
 
-    void swap(Dataset& rhs) noexcept
+    auto operator=(Dataset&& rhs) noexcept -> Dataset&
     {
-        variables.swap(rhs.variables);
-        values.swap(rhs.values);
-        new (&map) Map(values.data(), values.rows(), values.cols()); // we use placement new (no allocation)
+        if (this != &rhs) {
+            variables_ = std::move(rhs.variables_);
+            values_ = std::move(rhs.values_);
+            new (&map_) Map(rhs.map_.data(), rhs.map_.rows(), rhs.map_.cols()); // we use placement new (no allocation)
+        }
+        return *this;
     }
 
-    bool operator==(Dataset const& rhs) const noexcept
+    void Swap(Dataset& rhs) noexcept
+    {
+        variables_.swap(rhs.variables_);
+        values_.swap(rhs.values_);
+        new (&map_) Map(values_.data(), values_.rows(), values_.cols()); // we use placement new (no allocation)
+    }
+
+    auto operator==(Dataset const& rhs) const noexcept -> bool
     {
         return
             Rows() == rhs.Rows() &&
             Cols() == rhs.Cols() &&
-            variables.size() == rhs.variables.size() &&
-            std::equal(variables.begin(), variables.end(), rhs.variables.begin()) &&
-            values.isApprox(rhs.values);
+            variables_.size() == rhs.variables_.size() &&
+            std::equal(variables_.begin(), variables_.end(), rhs.variables_.begin()) &&
+            values_.isApprox(rhs.values_);
     }
 
     // check if we own the data or if we are a view over someone else's data
-    bool IsView() const noexcept { return values.data() != map.data(); }
+    [[nodiscard]] auto IsView() const noexcept -> bool { return values_.data() != map_.data(); }
 
-    size_t Rows() const { return (size_t)map.rows(); }
-    size_t Cols() const { return (size_t)map.cols(); }
-    std::pair<size_t, size_t> Dimensions() const { return { Rows(), Cols() }; }
+    [[nodiscard]] auto Rows() const -> size_t { return static_cast<size_t>(map_.rows()); }
+    [[nodiscard]] auto Cols() const -> size_t { return static_cast<size_t>(map_.cols()); }
+    [[nodiscard]] auto Dimensions() const -> std::pair<size_t, size_t> { return { Rows(), Cols() }; }
 
-    Eigen::Ref<Matrix const> Values() const { return map; }
+    [[nodiscard]] auto Values() const -> Eigen::Ref<Matrix const> { return map_; }
 
-    std::vector<std::string> VariableNames();
-    void SetVariableNames(std::vector<std::string> const&);
+    auto VariableNames() -> std::vector<std::string>;
+    void SetVariableNames(std::vector<std::string> const& names);
 
-    Operon::Span<const Operon::Scalar> GetValues(const std::string& name) const noexcept;
-    Operon::Span<const Operon::Scalar> GetValues(Operon::Hash hashValue) const noexcept;
-    Operon::Span<const Operon::Scalar> GetValues(int index) const noexcept;
-    Operon::Span<const Operon::Scalar> GetValues(Variable const& variable) const noexcept { return GetValues(variable.Hash); }
+    [[nodiscard]] auto GetValues(const std::string& name) const noexcept -> Operon::Span<const Operon::Scalar>;
+    [[nodiscard]] auto GetValues(Operon::Hash hashValue) const noexcept -> Operon::Span<const Operon::Scalar>;
+    [[nodiscard]] auto GetValues(int index) const noexcept -> Operon::Span<const Operon::Scalar>;
+    [[nodiscard]] auto GetValues(Variable const& variable) const noexcept -> Operon::Span<const Operon::Scalar> { return GetValues(variable.Hash); }
 
-    std::optional<Variable> GetVariable(const std::string& name) const noexcept;
-    std::optional<Variable> GetVariable(Operon::Hash hashValue) const noexcept;
+    [[nodiscard]] auto GetVariable(const std::string& name) const noexcept -> std::optional<Variable>;
+    [[nodiscard]] auto GetVariable(Operon::Hash hashValue) const noexcept -> std::optional<Variable>;
 
-    Operon::Span<const Variable> Variables() const noexcept { return Operon::Span<const Variable>(variables.data(), variables.size()); }
+    [[nodiscard]] auto Variables() const noexcept -> Operon::Span<const Variable> { return {variables_.data(), variables_.size()}; }
 
     void Shuffle(Operon::RandomGenerator& random);
 
@@ -142,6 +137,6 @@ public:
     // standardize column i using mean and stddev calculated over the specified range
     void Standardize(size_t i, Range range);
 };
-}
+} // namespace Operon
 
 #endif
