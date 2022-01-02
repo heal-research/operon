@@ -4,84 +4,77 @@
 #ifndef OPERON_PSET_HPP
 #define OPERON_PSET_HPP
 
-#include <algorithm>
+#include <robin_hood.h>
+#include "contracts.hpp"
+#include "node.hpp"
 
-#include "core/contracts.hpp"
-#include "core/tree.hpp"
-
-#include "robin_hood.h"
 
 namespace Operon {
+
 using PrimitiveSetConfig = NodeType;
 
-namespace {
-    enum { NODE = 0,
-        FREQUENCY = 1,
-        MIN_ARITY = 2,
-        MAX_ARITY = 3 };
-}
-
 class PrimitiveSet {
-private:
     using Primitive = std::tuple<
         Node,
         size_t, // 1: frequency
         size_t, // 2: min arity
         size_t  // 3: max arity
         >;
-    robin_hood::unordered_flat_map<Operon::Hash, Primitive> _pset;
+    enum { NODE = 0, FREQUENCY = 1, MINARITY = 2, MAXARITY = 3}; // for accessing tuple elements more easily
 
-    Primitive const& GetPrimitive(Operon::Hash hash) const {
-        auto it = _pset.find(hash);
-        if (it == _pset.end()) {
+    robin_hood::unordered_flat_map<Operon::Hash, Primitive> pset_;
+
+    [[nodiscard]] auto GetPrimitive(Operon::Hash hash) const -> Primitive const& {
+        auto it = pset_.find(hash);
+        if (it == pset_.end()) {
             throw std::runtime_error(fmt::format("Unknown node hash {}\n", hash));
         }
         return it->second;
     }
 
-    Primitive& GetPrimitive(Operon::Hash hash) {
-        return const_cast<Primitive&>(const_cast<PrimitiveSet const*>(this)->GetPrimitive(hash));
+    auto GetPrimitive(Operon::Hash hash) -> Primitive& {
+        return const_cast<Primitive&>(const_cast<PrimitiveSet const*>(this)->GetPrimitive(hash)); // NOLINT
     }
 
 public:
-    static const PrimitiveSetConfig Arithmetic = NodeType::Constant | NodeType::Variable | NodeType::Add | NodeType::Sub | NodeType::Mul | NodeType::Div;
-    static const PrimitiveSetConfig TypeCoherent = Arithmetic | NodeType::Pow | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
-    static const PrimitiveSetConfig Full = TypeCoherent | NodeType::Aq | NodeType::Tan | NodeType::Tanh | NodeType::Sqrt | NodeType::Cbrt;
+    static constexpr PrimitiveSetConfig Arithmetic = NodeType::Constant | NodeType::Variable | NodeType::Add | NodeType::Sub | NodeType::Mul | NodeType::Div;
+    static constexpr PrimitiveSetConfig TypeCoherent = Arithmetic | NodeType::Pow | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
+    static constexpr PrimitiveSetConfig Full = TypeCoherent | NodeType::Aq | NodeType::Tan | NodeType::Tanh | NodeType::Sqrt | NodeType::Cbrt;
 
-    PrimitiveSet() {}
+    PrimitiveSet() = default;
 
-    PrimitiveSet(PrimitiveSetConfig config)
+    explicit PrimitiveSet(PrimitiveSetConfig config)
     {
         SetConfig(config);
     }
 
-    decltype(_pset) const& Primitives() const { return _pset; }
+    [[nodiscard]] auto Primitives() const -> decltype(pset_) const& { return pset_; }
 
-    bool AddPrimitive(Operon::Node node, size_t frequency, size_t min_arity, size_t max_arity)
+    auto AddPrimitive(Operon::Node node, size_t frequency, size_t minArity, size_t maxArity) -> bool
     {
-        auto [_, ok] = _pset.insert({ node.HashValue, Primitive { node, frequency, min_arity, max_arity } });
+        auto [_, ok] = pset_.insert({ node.HashValue, Primitive { node, frequency, minArity, maxArity } });
         return ok;
     }
-    void RemovePrimitive(Operon::Node node) { _pset.erase(node.HashValue); }
+    void RemovePrimitive(Operon::Node node) { pset_.erase(node.HashValue); }
 
-    void RemovePrimitive(Operon::Hash hash) { _pset.erase(hash); }
+    void RemovePrimitive(Operon::Hash hash) { pset_.erase(hash); }
 
     void SetConfig(PrimitiveSetConfig config)
     {
-        _pset.clear();
+        pset_.clear();
         for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
-            NodeType t = static_cast<Operon::NodeType>(1u << i);
+            auto t = static_cast<Operon::NodeType>(1U << i);
             Operon::Node n(t);
 
-            if ((1u << i) & (uint32_t)config) {
-                _pset[n.HashValue] = { n, 1, n.Arity, n.Arity };
+            if (((1U << i) & static_cast<uint32_t>(config)) != 0U) {
+                pset_[n.HashValue] = { n, 1, n.Arity, n.Arity };
             }
         }
     }
 
-    std::vector<Node> EnabledPrimitives() const {
+    [[nodiscard]] auto EnabledPrimitives() const -> std::vector<Node> {
         std::vector<Node> nodes;
-        for (auto const& [k, v] : _pset) {
+        for (auto const& [k, v] : pset_) {
             auto [node, freq, min_arity, max_arity] = v;
             if (node.IsEnabled && freq > 0) {
                 nodes.push_back(node);
@@ -90,10 +83,10 @@ public:
         return nodes;
     }
 
-    PrimitiveSetConfig GetConfig() const
+    [[nodiscard]] auto Config() const -> PrimitiveSetConfig
     {
         PrimitiveSetConfig conf { static_cast<PrimitiveSetConfig>(0) };
-        for (auto [k, v] : _pset) {
+        for (auto [k, v] : pset_) {
             auto const& [node, freq, min_arity, max_arity] = v;
             if (node.IsEnabled && freq > 0) {
                 conf |= node.Type;
@@ -102,21 +95,21 @@ public:
         return conf;
     }
 
-    size_t GetFrequency(Operon::Hash hash) const
+    [[nodiscard]] auto Frequency(Operon::Hash hash) const -> size_t
     {
         auto const& p = GetPrimitive(hash);
         return std::get<FREQUENCY>(p);
     }
 
-    void SetFrequency(Operon::Hash hash, size_t frequency)
+    void SetFrequency(Operon::Hash hash, size_t frequency) 
     {
         auto& p = GetPrimitive(hash);
         std::get<FREQUENCY>(p) = frequency;
     }
 
-    bool Contains(Operon::Hash hash) const { return _pset.contains(hash); }
+    [[nodiscard]] auto Contains(Operon::Hash hash) const -> bool { return pset_.contains(hash); }
 
-    bool IsEnabled(Operon::Hash hash) const
+    [[nodiscard]] auto IsEnabled(Operon::Hash hash) const -> bool
     {
         auto const& p = GetPrimitive(hash);
         return std::get<NODE>(p).IsEnabled;
@@ -130,93 +123,93 @@ public:
 
     void Enable(Operon::Hash hash)
     {
-        SetEnabled(hash, true);
+        SetEnabled(hash, /*enabled=*/true);
     }
 
     void Disable(Operon::Hash hash)
     {
-        SetEnabled(hash, false);
+        SetEnabled(hash, /*enabled=*/false);
     }
 
-    std::pair<size_t, size_t> FunctionArityLimits() const
+    [[nodiscard]] auto FunctionArityLimits() const -> std::pair<size_t, size_t>
     {
-        auto min_arity = std::numeric_limits<size_t>::max();
-        auto max_arity = std::numeric_limits<size_t>::min();
-        for (auto const& [key, val] : _pset) {
-            min_arity = std::min(min_arity, std::get<MIN_ARITY>(val));
-            max_arity = std::max(max_arity, std::get<MAX_ARITY>(val));
+        auto minArity = std::numeric_limits<size_t>::max();
+        auto maxArity = std::numeric_limits<size_t>::min();
+        for (auto const& [key, val] : pset_) {
+            minArity = std::min(minArity, std::get<MINARITY>(val));
+            maxArity = std::max(maxArity, std::get<MAXARITY>(val));
         }
-        return { min_arity, max_arity };
+        return { minArity, maxArity };
     }
 
-    Operon::Node SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const;
+    OPERON_EXPORT auto SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const -> Operon::Node;
 
     void SetMinimumArity(Operon::Hash hash, size_t minArity)
     {
-        EXPECT(minArity <= GetMaximumArity(hash));
+        EXPECT(minArity <= MaximumArity(hash));
         auto& p = GetPrimitive(hash);
-        std::get<MIN_ARITY>(p) = minArity;
+        std::get<MINARITY>(p) = minArity;
     }
 
-    size_t GetMinimumArity(Operon::Hash hash) const
+    [[nodiscard]] auto MinimumArity(Operon::Hash hash) const -> size_t
     {
         auto const& p = GetPrimitive(hash);
-        return std::get<MIN_ARITY>(p);
+        return std::get<MINARITY>(p);
     }
 
     void SetMaximumArity(Operon::Hash hash, size_t maxArity)
     {
-        EXPECT(maxArity >= GetMinimumArity(hash));
+        EXPECT(maxArity >= MinimumArity(hash));
         auto& p = GetPrimitive(hash);
-        std::get<MAX_ARITY>(p) = maxArity;
+        std::get<MAXARITY>(p) = maxArity;
     }
 
-    size_t GetMaximumArity(Operon::Hash hash) const
+    [[nodiscard]] auto MaximumArity(Operon::Hash hash) const -> size_t
     {
         auto const& p = GetPrimitive(hash);
-        return std::get<MAX_ARITY>(p);
+        return std::get<MAXARITY>(p);
     }
 
-    std::tuple<size_t, size_t> GetMinMaxArity(Operon::Hash hash) const
+    [[nodiscard]] auto MinMaxArity(Operon::Hash hash) const -> std::tuple<size_t, size_t>
     {
         auto const& p = GetPrimitive(hash);
-        return { std::get<MIN_ARITY>(p), std::get<MAX_ARITY>(p) };
+        return { std::get<MINARITY>(p), std::get<MAXARITY>(p) };
     }
 
     void SetMinMaxArity(Operon::Hash hash, size_t minArity, size_t maxArity)
     {
         EXPECT(maxArity >= minArity);
         auto& p = GetPrimitive(hash);
-        std::get<MIN_ARITY>(p) = minArity;
-        std::get<MAX_ARITY>(p) = maxArity;
+        std::get<MINARITY>(p) = minArity;
+        std::get<MAXARITY>(p) = maxArity;
     }
 
     // convenience overloads
     void SetFrequency(Operon::Node node, size_t frequency) { SetFrequency(node.HashValue, frequency); }
-    size_t GetFrequency(Operon::Node node) const { return GetFrequency(node.HashValue); }
+    [[nodiscard]] auto Frequency(Operon::Node node) const -> size_t { return Frequency(node.HashValue); }
 
-    bool Contains(Operon::Node node) const { return Contains(node.HashValue); }
-    bool IsEnabled(Operon::Node node) const { return IsEnabled(node.HashValue); }
+    [[nodiscard]] auto Contains(Operon::Node node) const -> bool { return Contains(node.HashValue); }
+    [[nodiscard]] auto IsEnabled(Operon::Node node) const -> bool { return IsEnabled(node.HashValue); }
 
     void SetEnabled(Operon::Node node, bool enabled) { SetEnabled(node.HashValue, enabled); }
-    void Enable(Operon::Node node) { SetEnabled(node, true); }
-    void Disable(Operon::Node node) { SetEnabled(node, false); }
+    void Enable(Operon::Node node) { SetEnabled(node, /*enabled=*/true); }
+    void Disable(Operon::Node node) { SetEnabled(node, /*enabled=*/false); }
 
     void SetMinimumArity(Operon::Node node, size_t minArity)
     {
         SetMinimumArity(node.HashValue, minArity);
     }
-    size_t GetMinimumArity(Operon::Node node) const { return GetMinimumArity(node.HashValue); }
+    [[nodiscard]] auto MinimumArity(Operon::Node node) const -> size_t { return MinimumArity(node.HashValue); }
 
-    void SetMaximumArity(Operon::Node node, size_t minArity)
+    void SetMaximumArity(Operon::Node node, size_t maxArity)
     {
-        SetMaximumArity(node.HashValue, minArity);
+        SetMaximumArity(node.HashValue, maxArity);
     }
-    size_t GetMaximumArity(Operon::Node node) const { return GetMaximumArity(node.HashValue); }
+    [[nodiscard]] auto MaximumArity(Operon::Node node) const -> size_t { return MaximumArity(node.HashValue); }
 
-    std::tuple<size_t, size_t> GetMinMaxArity(Operon::Node node) const
+    [[nodiscard]] auto MinMaxArity(Operon::Node node) const -> std::tuple<size_t, size_t>
     {
-        return GetMinMaxArity(node.HashValue);
+        return MinMaxArity(node.HashValue);
     }
     void SetMinMaxArity(Operon::Node node, size_t minArity, size_t maxArity)
     {

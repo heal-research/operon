@@ -1,56 +1,105 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
-#ifndef EVALUATOR_HPP
-#define EVALUATOR_HPP
+#ifndef OPERON_EVALUATOR_HPP
+#define OPERON_EVALUATOR_HPP
 
-#include "collections/projection.hpp"
-#include "core/format.hpp"
-#include "core/metrics.hpp"
-#include "core/operator.hpp"
-#include "core/types.hpp"
-#include "nnls/nnls.hpp"
-#include "nnls/tiny_optimizer.hpp"
+#include <utility>
+
+#include "operon/collections/projection.hpp"
+#include "operon/core/individual.hpp"
+#include "operon/core/metrics.hpp"
+#include "operon/core/operator.hpp"
+#include "operon/core/problem.hpp"
+#include "operon/core/types.hpp"
+#include "operon/nnls/nnls.hpp"
 
 namespace Operon {
 
-class UserDefinedEvaluator : public EvaluatorBase {
+class EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
+    // some fitness measures are relative to the whole population (eg. diversity)
+    // and the evaluator needs to do some preparation work using the entire pop
 public:
-    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)>&& func)
-        : EvaluatorBase(problem)
-        , fref(std::move(func))
+    static constexpr size_t DefaultLocalOptimizationIterations = 50;
+    static constexpr size_t DefaultEvaluationBudget = 100'000;
+
+    using ReturnType = OperatorBase::ReturnType;
+
+    explicit EvaluatorBase(Problem& p)
+        : problem_(p)
     {
     }
 
-    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> const& func)
+    virtual void Prepare(const Operon::Span<const Individual> pop)
+    {
+        population_ = pop;
+    }
+
+    // TODO: there should be a better way to do this!
+    auto TotalEvaluations() const -> size_t { return fitnessEvaluations_ + localEvaluations_; }
+    auto FitnessEvaluations() const -> size_t { return fitnessEvaluations_; }
+    auto LocalEvaluations() const -> size_t { return localEvaluations_; }
+
+    void SetFitnessEvaluations(size_t value) const { fitnessEvaluations_ = value; }
+    void SetLocalEvaluations(size_t value) const { localEvaluations_ = value; }
+
+    void IncrementFitnessEvaluations() const { ++fitnessEvaluations_; }
+    void IncrementLocalEvaluations() const { ++localEvaluations_; }
+
+    void IncrementFitnessEvaluations(size_t inc) const { fitnessEvaluations_ += inc; }
+    void IncrementLocalEvaluations(size_t inc) const { localEvaluations_ += inc; }
+
+    void SetLocalOptimizationIterations(size_t value) { iterations_ = value; }
+    auto LocalOptimizationIterations() const -> size_t { return iterations_; }
+
+    void SetBudget(size_t value) { budget_ = value; }
+    auto Budget() const -> size_t { return budget_; }
+    auto BudgetExhausted() const -> bool { return TotalEvaluations() > Budget(); }
+
+    auto Population() const -> Operon::Span<Individual const> { return population_; }
+    auto GetProblem() const -> Problem const& { return problem_; }
+
+    void Reset()
+    {
+        fitnessEvaluations_ = 0;
+        localEvaluations_ = 0;
+    }
+
+private:
+    Operon::Span<const Individual> population_;
+    std::reference_wrapper<const class Problem> problem_;
+    mutable std::atomic_ulong fitnessEvaluations_ = 0;
+    mutable std::atomic_ulong localEvaluations_ = 0;
+    size_t iterations_ = DefaultLocalOptimizationIterations;
+    size_t budget_ = DefaultEvaluationBudget;
+};
+
+class UserDefinedEvaluator : public EvaluatorBase {
+public:
+    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> func)
         : EvaluatorBase(problem)
-        , fref(func)
+        , fref_(std::move(func))
     {
     }
 
     // the func signature taking a pointer to the rng is a workaround for pybind11, since the random generator is non-copyable we have to pass a pointer
-    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)>&& func)
+    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> func)
         : EvaluatorBase(problem)
-        , fptr(std::move(func))
+        , fptr_(std::move(func))
     {
     }
 
-    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> const& func)
-        : EvaluatorBase(problem)
-        , fptr(func)
+    auto
+    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> /*args*/) const -> typename EvaluatorBase::ReturnType override
     {
-    }
-
-    typename EvaluatorBase::ReturnType
-    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar>) const override
-    {
-        ++this->fitnessEvaluations;
-        return fptr ? fptr(&rng, ind) : fref(rng, ind);
+        //++this->FitnessEvaluations();
+        IncrementFitnessEvaluations();
+        return fptr_ ? fptr_(&rng, ind) : fref_(rng, ind);
     }
 
 private:
-    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> fref;
-    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> fptr; // workaround for pybind11
+    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> fref_;
+    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> fptr_; // workaround for pybind11
 };
 
 template <typename ErrorMetric, bool LinearScaling = false>
@@ -59,23 +108,23 @@ class Evaluator : public EvaluatorBase {
 public:
     Evaluator(Problem& problem, Interpreter& interp)
         : EvaluatorBase(problem)
-        , interpreter(interp)
+        , interpreter_(interp)
     {
     }
 
-    Interpreter& GetInterpreter() { return interpreter; }
-    Interpreter const& GetInterpreter() const { return interpreter; }
+    auto GetInterpreter() -> Interpreter& { return interpreter_; }
+    auto GetInterpreter() const -> Interpreter const& { return interpreter_; }
 
-    typename EvaluatorBase::ReturnType
-    operator()(Operon::RandomGenerator&, Individual& ind, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar> {}) const override
+    auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
     {
-        ++this->fitnessEvaluations;
-        auto& problem_ = this->problem.get();
-        auto& dataset = problem_.GetDataset();
+        IncrementFitnessEvaluations();
+        auto& problem = GetProblem();
+        auto& dataset = problem.GetDataset();
         auto& genotype = ind.Genotype;
 
-        auto trainingRange = problem_.TrainingRange();
-        auto targetValues = dataset.GetValues(problem_.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
+        auto trainingRange = problem.TrainingRange();
+        auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         auto computeFitness = [&]() {
             Operon::Vector<Operon::Scalar> estimatedValues;
@@ -100,15 +149,18 @@ public:
             return err;
         };
 
-        if (this->iterations > 0) {
+        auto const iter = LocalOptimizationIterations();
+
+        if (iter > 0) {
 #if defined(CERES_TINY_SOLVER) || !defined(HAVE_CERES)
-            NonlinearLeastSquaresOptimizer<OptimizerType::TINY> opt(interpreter.get(), genotype, dataset);
+            NonlinearLeastSquaresOptimizer<OptimizerType::TINY> opt(interpreter_.get(), genotype, dataset);
 #else
             NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter.get(), genotype, dataset);
 #endif
             auto coeff = genotype.GetCoefficients();
-            auto summary = opt.Optimize(targetValues, trainingRange, this->iterations);
-            this->localEvaluations += summary.Iterations;
+            auto summary = opt.Optimize(targetValues, trainingRange, iter);
+            //this->localEvaluations += summary.Iterations;
+            IncrementLocalEvaluations(summary.Iterations);
 
             if (summary.InitialCost < summary.FinalCost) {
                 // if optimization failed, restore the original coefficients
@@ -116,7 +168,7 @@ public:
             }
         }
 
-        auto fit = Operon::Vector<Operon::Scalar> { computeFitness() };
+        auto fit = Operon::Vector<Operon::Scalar> { static_cast<Operon::Scalar>(computeFitness()) };
         for (auto& v : fit) {
             if (!std::isfinite(v)) {
                 v = Operon::Numeric::Max<Operon::Scalar>();
@@ -126,12 +178,12 @@ public:
     }
 
 private:
-    std::reference_wrapper<Interpreter> interpreter;
+    std::reference_wrapper<Interpreter> interpreter_;
 };
 
 class MultiEvaluator : public EvaluatorBase {
 public:
-    MultiEvaluator(Problem& problem)
+    explicit MultiEvaluator(Problem& problem)
         : EvaluatorBase(problem)
     {
     }
@@ -141,18 +193,18 @@ public:
         evaluators_.push_back(std::ref(evaluator));
     }
 
-    typename EvaluatorBase::ReturnType
-    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf = Operon::Span<Operon::Scalar> {}) const override
+    auto
+    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
     {
         EXPECT(evaluators_.size() > 1);
         Operon::Vector<Operon::Scalar> fit;
-        for (size_t i = 0; i < evaluators_.size(); ++i) {
-            auto fit_i = (evaluators_[i])(rng, ind, buf);
-            std::copy(fit_i.begin(), fit_i.end(), std::back_inserter(fit));
+        for (auto const& evaluator : evaluators_) {
+            auto fitI = evaluator(rng, ind, buf);
+            std::copy(fitI.begin(), fitI.end(), std::back_inserter(fit));
         }
         // proxy the budget of the first evaluator (the one that actually calls the tree interpreter)
-        this->fitnessEvaluations = evaluators_[0].get().FitnessEvaluations();
-        this->localEvaluations = evaluators_[0].get().LocalEvaluations();
+        SetFitnessEvaluations(evaluators_[0].get().FitnessEvaluations());
+        SetLocalEvaluations(evaluators_[0].get().LocalEvaluations());
         return fit;
     }
 
@@ -171,8 +223,8 @@ using L2NormEvaluator = Evaluator<L2, true>;
 // TODO: think about a better design
 class LengthEvaluator : public UserDefinedEvaluator {
 public:
-    LengthEvaluator(Operon::Problem& problem)
-        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator&, Operon::Individual& ind) {
+    explicit LengthEvaluator(Operon::Problem& problem)
+        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator& /*unused*/, Operon::Individual& ind) {
             return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.Length()) };
         })
     {
@@ -181,13 +233,12 @@ public:
 
 class ShapeEvaluator : public UserDefinedEvaluator {
 public:
-    ShapeEvaluator(Operon::Problem& problem)
-        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator&, Operon::Individual& ind) {
+    explicit ShapeEvaluator(Operon::Problem& problem)
+        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator& /*unused*/, Operon::Individual& ind) {
             return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.VisitationLength()) };
         })
     {
     }
 };
-
-}
+} // namespace Operon
 #endif

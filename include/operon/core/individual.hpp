@@ -4,8 +4,8 @@
 #ifndef OPERON_INDIVIDUAL_HPP
 #define OPERON_INDIVIDUAL_HPP
 
-#include "core/tree.hpp"
-#include "core/types.hpp"
+#include "tree.hpp" 
+#include "types.hpp" 
 #include <cstddef>
 
 namespace Operon {
@@ -17,29 +17,30 @@ enum class Dominance : int { Left = 0,
 
 namespace detail {
     template <typename T>
-    inline Dominance Compare(T const* lhs, T const* rhs, size_t n) noexcept
+    inline auto Compare(T const* lhs, T const* rhs, size_t n) noexcept -> Dominance
     {
-        Eigen::Map<Eigen::Array<T, -1, 1> const> x(lhs, n), y(rhs, n);
+        Eigen::Map<Eigen::Array<T, -1, 1> const> x(lhs, n);
+        Eigen::Map<Eigen::Array<T, -1, 1> const> y(rhs, n);
         auto better = (x < y).any();
         auto worse = (x > y).any();
         if (better) { return worse ? Dominance::None : Dominance::Left; }
         if (worse) { return better ? Dominance::None : Dominance::Right; }
         return Dominance::Equal;
     }
-}
+} // namespace detail
 
 struct LexicographicalComparison; // fwd def
 
 struct Individual {
     Tree Genotype;
     Operon::Vector<Operon::Scalar> Fitness;
-    size_t Rank; // domination rank; used by NSGA2
-    Operon::Scalar Distance; // crowding distance; used by NSGA2
+    size_t Rank{}; // domination rank; used by NSGA2
+    Operon::Scalar Distance{}; // crowding distance; used by NSGA2
 
-    inline Operon::Scalar& operator[](size_t const i) noexcept { return Fitness[i]; }
-    inline Operon::Scalar operator[](size_t const i) const noexcept { return Fitness[i]; }
+    inline auto operator[](size_t const i) noexcept -> Operon::Scalar& { return Fitness[i]; }
+    inline auto operator[](size_t const i) const noexcept -> Operon::Scalar { return Fitness[i]; }
 
-    inline size_t Size() const noexcept { return Fitness.size(); }
+    [[nodiscard]] inline auto Size() const noexcept -> size_t { return Fitness.size(); }
 
     Individual()
         : Individual(1)
@@ -50,32 +51,37 @@ struct Individual {
     {
     }
 
-    inline bool operator==(Individual const& other) const noexcept
+    inline auto operator==(Individual const& other) const noexcept -> bool
     {
         return std::equal(Fitness.begin(), Fitness.end(), other.Fitness.begin());
     }
 
-    inline bool operator!=(Individual const& other) const noexcept
+    inline auto operator!=(Individual const& other) const noexcept -> bool
     {
         return !(*this == other);
     }
 
-    inline bool LexicographicalCompare(Individual const& other) const noexcept;
+    [[nodiscard]] inline auto LexicographicalCompare(Individual const& other) const noexcept -> bool;
 
-    inline Dominance ParetoCompare(Individual const& other) const noexcept
+    [[nodiscard]] inline auto ParetoCompare(Individual const& other) const noexcept -> Dominance
     {
         return detail::Compare(Fitness.data(), other.Fitness.data(), Fitness.size());
     }
 };
 
 struct Comparison {
-    virtual bool operator()(Individual const&, Individual const&) const = 0;
+    virtual auto operator()(Individual const&, Individual const&) const -> bool = 0;
     virtual ~Comparison() noexcept = default;
+    Comparison() = default;
+    Comparison(Comparison const&) = default;
+    Comparison(Comparison&&) = default;
+    auto operator=(Comparison const&) -> Comparison& = default;
+    auto operator=(Comparison&&) -> Comparison& = default;
 };
 
 struct SingleObjectiveComparison final : public Comparison {
-    SingleObjectiveComparison(size_t idx)
-        : objectiveIndex(idx)
+    explicit SingleObjectiveComparison(size_t idx)
+        : objectiveIndex_(idx)
     {
     }
     SingleObjectiveComparison()
@@ -83,17 +89,20 @@ struct SingleObjectiveComparison final : public Comparison {
     {
     }
 
-    bool operator()(Individual const& lhs, Individual const& rhs) const override
+    auto operator()(Individual const& lhs, Individual const& rhs) const -> bool override
     {
-        return lhs[objectiveIndex] < rhs[objectiveIndex];
+        return lhs[objectiveIndex_] < rhs[objectiveIndex_];
     }
 
+    [[nodiscard]] auto GetObjectiveIndex() const -> size_t { return objectiveIndex_; }
+    void SetObjectiveIndex(size_t objIdx) { objectiveIndex_ = objIdx; }
+
 private:
-    size_t objectiveIndex;
+    size_t objectiveIndex_;
 };
 
 struct LexicographicalComparison : public Comparison {
-    bool operator()(Individual const& lhs, Individual const& rhs) const override
+    auto operator()(Individual const& lhs, Individual const& rhs) const -> bool override
     {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
         return std::lexicographical_compare(lhs.Fitness.cbegin(), lhs.Fitness.cend(), rhs.Fitness.cbegin(), rhs.Fitness.cend());
@@ -104,10 +113,11 @@ struct LexicographicalComparison : public Comparison {
 // returns true if lhs dominates rhs
 struct ParetoComparison : public Comparison {
     // assumes minimization in every dimension
-    bool operator()(Individual const& lhs, Individual const& rhs) const override
+    auto operator()(Individual const& lhs, Individual const& rhs) const -> bool override
     {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
-        bool better { false }, worse { false };
+        bool better { false };
+        bool worse { false };
 
         for (size_t i = 0; i < std::size(lhs.Fitness); ++i) {
             better |= lhs[i] < rhs[i];
@@ -120,20 +130,20 @@ struct ParetoComparison : public Comparison {
 
 struct CrowdedComparison : public Comparison {
 
-    bool operator()(Individual const& lhs, Individual const& rhs) const override
+    auto operator()(Individual const& lhs, Individual const& rhs) const -> bool override
     {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
         return std::tie(lhs.Rank, rhs.Distance) < std::tie(rhs.Rank, lhs.Distance);
     }
 };
 
-bool Individual::LexicographicalCompare(Individual const& other) const noexcept
+auto Individual::LexicographicalCompare(Individual const& other) const noexcept -> bool
 {
     return LexicographicalComparison{}(*this, other);
 }
 
 using ComparisonCallback = std::function<bool(Individual const&, Individual const&)>;
 
-} // namespace
+} // namespace Operon
 
 #endif
