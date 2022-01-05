@@ -1,6 +1,5 @@
 {
   description = "Operon development environment";
-  nixConfig.bash-prompt = "\n\\[\\e[93m\\e[1m\\][operon-dev:\\[\\e[92m\\e[1m\\]\\w]$\\[\\e[0m\\] ";
 
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.nur.url = "github:nix-community/NUR";
@@ -15,17 +14,27 @@
             overlays = [ nur.overlay ];
           };
           repo = pkgs.nur.repos.foolnotion;
+
+          # ceres has to be compiled from git due to a bug in tiny solver
+          ceres-solver = pkgs.ceres-solver.overrideAttrs(old: rec {
+              src = pkgs.fetchFromGitHub {
+                repo   = "ceres-solver";
+                owner  = "ceres-solver";
+                rev    = "ce1537030b69cf9a4149d25fd7375dadef3e1f09";
+                sha256 = "sha256-V3CGRilX5US8vx1cB2A5EQ7sqiIX82ARVNbeO3hkKk4=";
+              };
+          });
         in
         {
           devShell = pkgs.gcc11Stdenv.mkDerivation {
             name = "operon-env";
             hardeningDisable = [ "all" ];
             impureUseNativeOptimizations = true;
-            nativeBuildInputs = with pkgs; [ bear cmake clang_12 clang-tools cppcheck ];
+            nativeBuildInputs = with pkgs; [ bear cmake clang_13 clang-tools cppcheck include-what-you-use ];
             buildInputs = with pkgs; [
                 # python environment for bindings and scripting
                 (python39.override { stdenv = gcc11Stdenv; })
-                (python39.withPackages (ps: with ps; [ pybind11 pytest pip numpy scipy scikitlearn pandas sympy pyperf colorama coloredlogs seaborn cython jupyterlab ipywidgets grip livereload joblib graphviz sphinx recommonmark sphinx_rtd_theme ]))
+                (python39.withPackages (ps: with ps; [ pybind11 pytest pip pyperf colorama coloredlogs grip livereload joblib graphviz sphinx recommonmark sphinx_rtd_theme ]))
                 # Project dependencies and utils for profiling and debugging
                 ceres-solver
                 cxxopts
@@ -46,10 +55,14 @@
                 valgrind
                 xxHash
 
+                boost
+                tbb
+
                 # Some dependencies are provided by a NUR repo
                 repo.aria-csv
                 repo.autodiff
                 repo.cmake-init
+                repo.cmaketools
                 repo.cpp-sort
                 repo.fast_float
                 repo.eli5
