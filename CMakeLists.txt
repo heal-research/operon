@@ -45,7 +45,7 @@ set_package_properties(pybind11 PROPERTIES TYPE OPTIONAL)
 
 # get revision information from git
 if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
-    INCLUDE(GetGitRevisionDescription)
+    INCLUDE(get-git-revision)
     EXECUTE_PROCESS(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD OUTPUT_VARIABLE SHORT_SHA OUTPUT_STRIP_TRAILING_WHITESPACE)
     SET(REVISION ${SHORT_SHA} CACHE STRING "git short sha" FORCE)
 
