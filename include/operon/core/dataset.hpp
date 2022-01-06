@@ -6,6 +6,8 @@
 
 #include <Eigen/Core>
 
+#include <optional>
+
 #include "operon/operon_export.hpp"
 #include "contracts.hpp"
 #include "range.hpp"
