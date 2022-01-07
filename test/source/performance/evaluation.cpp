@@ -24,9 +24,8 @@
 
 #include <autodiff/forward/dual.hpp>
 
-namespace Operon {
-namespace Test {
-    std::size_t TotalNodes(const std::vector<Tree>& trees) {
+namespace Operon::Test {
+    auto TotalNodes(const std::vector<Tree>& trees) -> std::size_t {
 #ifdef _MSC_VER
         auto totalNodes = std::reduce(trees.begin(), trees.end(), 0UL, [](size_t partial, const auto& t) { return partial + t.Length(); });
 #else
@@ -268,14 +267,14 @@ namespace Test {
         initializer.SetMaxDepth(maxDepth);
 
         UniformCoefficientInitializer coeffInit;
-        initializer.ParameterizeDistribution(0, 1);
+        initializer.ParameterizeDistribution(0UL, 1UL);
 
         const double crossoverInternalProbability = 0.9;
 
         auto crossover = SubtreeCrossover { crossoverInternalProbability, maxDepth, maxLength };
         auto mutator = MultiMutation {};
         auto onePoint = OnePointMutation<std::uniform_real_distribution<Operon::Scalar>> {};
-        onePoint.ParameterizeDistribution(-2, 2);
+        onePoint.ParameterizeDistribution(Operon::Scalar{-2}, Operon::Scalar{+2});
         auto changeVar = ChangeVariableMutation { problem.InputVariables() };
         auto changeFunc = ChangeFunctionMutation { problem.GetPrimitiveSet() };
         auto replaceSubtree = ReplaceSubtreeMutation { creator, maxDepth, maxLength };
@@ -325,6 +324,5 @@ namespace Test {
 
         gp.Run(random, report, 10);
     }
-} // namespace Test
 } // namespace Operon
 
