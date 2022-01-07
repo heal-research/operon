@@ -24,7 +24,7 @@ add_executable(operon_test
     source/performance/evaluation.cpp
     source/performance/nondominatedsort.cpp
     )
-target_link_libraries(operon_test PRIVATE operon::operon doctest::doctest Ceres::ceres autodiff::autodiff)
+target_link_libraries(operon_test PRIVATE operon::operon doctest::doctest Ceres::ceres)
 target_compile_features(operon_test PRIVATE cxx_std_17)
 target_include_directories(operon_test PRIVATE ${PROJECT_SOURCE_DIR}/source/thirdparty)
 target_compile_options(operon_test PRIVATE "-march=x86-64;-mavx2;-mfma")
