@@ -10,6 +10,7 @@
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include <pratt-parser/parser.hpp>
+#include <robin_hood.h>
 
 namespace Operon {
 
