@@ -39,7 +39,7 @@ struct OPERON_EXPORT CoefficientInitializer : public CoefficientInitializerBase 
     template <typename... Args>
     auto ParameterizeDistribution(Args... args) const -> void
     {
-        typename Dist::param_type params { static_cast<typename Dist::result_type>(args)... };
+        typename Dist::param_type params { std::forward<Args&&>(args)... };
         dist_.param(params);
     }
 
@@ -64,7 +64,7 @@ struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
     template <typename... Args>
     auto ParameterizeDistribution(Args... args) const -> void
     {
-        typename Dist::param_type params { static_cast<typename Dist::result_type>(args)... };
+        typename Dist::param_type params { std::forward<Args&&>(args)... };
         dist_.param(params);
     }
 

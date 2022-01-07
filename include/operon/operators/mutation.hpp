@@ -8,9 +8,7 @@
 
 #include "operon/core/operator.hpp"
 #include "operon/core/pset.hpp"
-//#include "operon/operators/creator.hpp"
 #include "operon/core/tree.hpp"
-//#include "operon/core/pset.hpp"
 
 namespace Operon {
 
@@ -37,7 +35,7 @@ struct OPERON_EXPORT OnePointMutation : public MutatorBase {
     template <typename... Args>
     auto ParameterizeDistribution(Args... args) const -> void
     {
-        typename Dist::param_type params { static_cast<typename Dist::result_type>(args)... };
+        typename Dist::param_type params { std::forward<Args&&>(args)... };
         dist_.param(params);
     }
 
@@ -60,7 +58,7 @@ struct OPERON_EXPORT MultiPointMutation : public MutatorBase {
     template <typename... Args>
     auto ParameterizeDistribution(Args... args) const -> void
     {
-        typename Dist::param_type params { static_cast<typename Dist::result_type>(args)... };
+        typename Dist::param_type params { std::forward<Args&&>(args)... };
         dist_.param(params);
     }
 
