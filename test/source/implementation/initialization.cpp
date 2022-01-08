@@ -59,10 +59,10 @@ auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator
     std::vector<Tree> trees;
     trees.reserve(lengths.size());
     UniformTreeInitializer treeInit(creator);
-    treeInit.ParameterizeDistribution(1, 100);
+    treeInit.ParameterizeDistribution(1UL, 100UL);
     treeInit.SetMaxDepth(maxDepth);
     UniformCoefficientInitializer coeffInit;
-    coeffInit.ParameterizeDistribution(-1.0, 1.0);
+    coeffInit.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
     std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t /*not used*/) {
         //auto tree = creator(random, len, 0, maxDepth);
