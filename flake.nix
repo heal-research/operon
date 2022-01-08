@@ -73,6 +73,7 @@
                 repo.taskflow
                 repo.vectorclass
                 repo.vstat
+                repo.xxhash
               ];
 
             shellHook = ''
