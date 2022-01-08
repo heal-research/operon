@@ -21,32 +21,8 @@ docs_early_return()
 include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
-# ---- Required dependencies ----
-
-find_package(Eigen3 REQUIRED)
-find_package(FastFloat REQUIRED)
-find_package(PkgConfig REQUIRED)
-find_package(Taskflow REQUIRED)
-find_package(Threads REQUIRED)
-find_package(cpp-sort REQUIRED)
-find_package(fmt REQUIRED)
-find_package(pratt-parser REQUIRED)
-find_package(robin_hood REQUIRED)
-find_package(vstat REQUIRED)
-find_package(vectorclass REQUIRED)
-find_package(xxHash CONFIG REQUIRED)
-find_package(aria-csv CONFIG)
-if (NOT aria-csv_FOUND)
-    find_path(ARIA_CSV_INCLUDE_DIRS "aria-csv/parser.hpp")
-    target_include_directories(main PRIVATE ${ARIA_CSV_INCLUDE_DIRS})
-endif()
-
-# ---- Optional dependencies
-find_package(Git)     # retrieve revision number for version info
-find_package(Ceres)   # use the Ceres optimizer for coefficients tuning
-find_package(doctest) # unit tests
-
 # ---- Attempt to get revision information from git
+find_package(Git)     # retrieve revision number for version info
 if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
     include(cmake/get-git-revision.cmake)
     EXECUTE_PROCESS(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD OUTPUT_VARIABLE SHORT_SHA OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -92,6 +68,32 @@ add_library(
 )
 add_library(operon::operon ALIAS operon_operon)
 
+# ---- Required dependencies ----
+
+find_package(Eigen3 REQUIRED)
+find_package(FastFloat REQUIRED)
+find_package(PkgConfig REQUIRED)
+find_package(Taskflow REQUIRED)
+find_package(Threads REQUIRED)
+find_package(cpp-sort REQUIRED)
+find_package(fmt REQUIRED)
+find_package(pratt-parser REQUIRED)
+find_package(robin_hood REQUIRED)
+find_package(vstat REQUIRED)
+find_package(vectorclass REQUIRED)
+find_package(xxHash CONFIG REQUIRED)
+find_package(aria-csv CONFIG)
+if (NOT aria-csv_FOUND)
+    find_path(ARIA_CSV_INCLUDE_DIRS "aria-csv/parser.hpp")
+    target_include_directories(operon_operon PRIVATE "${ARIA_CSV_INCLUDE_DIRS}")
+else()
+    target_link_libraries(operon_operon PUBLIC aria-csv::aria-csv)
+endif()
+
+# ---- Optional dependencies
+find_package(Ceres)   # use the Ceres optimizer for coefficients tuning
+find_package(doctest) # unit tests
+
 include(GenerateExportHeader)
 generate_export_header(
     operon_operon
@@ -118,7 +120,6 @@ target_include_directories(
     operon_operon ${operon_warning_guard}
     PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
-    "${ARIA_CSV_INCLUDE_DIRS}"
 )
 
 target_include_directories(
@@ -132,7 +133,6 @@ target_link_libraries(operon_operon PUBLIC
     Threads::Threads
     vstat::vstat
     pratt-parser::pratt-parser
-    aria-csv::aria-csv
     vectorclass::vectorclass
     xxHash::xxhash
     "$<${Ceres_FOUND}:Ceres::ceres>")
