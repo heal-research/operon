@@ -6,10 +6,7 @@
 #include <atomic>                            // for atomic_bool
 #include <memory>                            // for allocator, allocator_tra...
 #include <optional>                          // for optional
-#include <taskflow/algorithm/for_each.hpp>   // for FlowBuilder::for_each_index
-#include <taskflow/core/flow_builder.hpp>    // for Subflow
-#include <taskflow/core/task.hpp>            // for Task
-#include <taskflow/core/taskflow.hpp>        // for Taskflow
+#include <taskflow/taskflow.hpp>             // for taskflow, subflow
 #include <vector>                            // for vector, vector::size_type
 #include "operon/core/contracts.hpp"         // for ENSURE
 #include "operon/core/operator.hpp"          // for OperatorBase
