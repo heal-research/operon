@@ -10,6 +10,7 @@
         "fmt",
         "pratt-parser",
         "robin-hood-hashing",
+        "span-lite",
         "taskflow",
         "vectorclass",
         "vstat",
