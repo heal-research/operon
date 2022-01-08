@@ -33,12 +33,15 @@ find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(robin_hood REQUIRED)
 find_package(vstat REQUIRED)
-pkg_search_module(VCL vectorclass REQUIRED)
-pkg_search_module(XXH libxxhash REQUIRED)
-pkg_search_module(CSV aria-csv REQUIRED)
+find_package(vectorclass REQUIRED)
+find_package(xxHash CONFIG REQUIRED)
+find_package(aria-csv CONFIG)
+if (NOT aria-csv_FOUND)
+    find_path(ARIA_CSV_INCLUDE_DIRS "aria-csv/parser.hpp")
+    target_include_directories(main PRIVATE ${ARIA_CSV_INCLUDE_DIRS})
+endif()
 
 # ---- Optional dependencies
-
 find_package(Git)     # retrieve revision number for version info
 find_package(Ceres)   # use the Ceres optimizer for coefficients tuning
 find_package(doctest) # unit tests
@@ -115,6 +118,7 @@ target_include_directories(
     operon_operon ${operon_warning_guard}
     PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+    "${ARIA_CSV_INCLUDE_DIRS}"
 )
 
 target_include_directories(
@@ -123,7 +127,15 @@ target_include_directories(
     "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export>"
 )
 
-target_link_libraries(operon_operon PUBLIC fmt::fmt Threads::Threads vstat::vstat pratt-parser::pratt-parser "$<${Ceres_FOUND}:Ceres::ceres>" ${XXH_LIBRARIES} ${VCL_LIBRARIES} ${CSV_LIBRARIES})
+target_link_libraries(operon_operon PUBLIC
+    fmt::fmt
+    Threads::Threads
+    vstat::vstat
+    pratt-parser::pratt-parser
+    aria-csv::aria-csv
+    vectorclass::vectorclass
+    xxHash::xxhash
+    "$<${Ceres_FOUND}:Ceres::ceres>")
 
 target_compile_features(operon_operon PUBLIC cxx_std_17)
 
