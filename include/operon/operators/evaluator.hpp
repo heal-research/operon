@@ -4,6 +4,7 @@
 #ifndef OPERON_EVALUATOR_HPP
 #define OPERON_EVALUATOR_HPP
 
+#include <atomic>
 #include <utility>
 
 #include "operon/collections/projection.hpp"
@@ -17,16 +18,21 @@
 namespace Operon {
 
 class EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
-    // some fitness measures are relative to the whole population (eg. diversity)
-    // and the evaluator needs to do some preparation work using the entire pop
+    Operon::Span<const Individual> population_;
+    std::reference_wrapper<const class Problem> problem_;
+    mutable std::atomic_ulong fitnessEvaluations_ = 0;
+    mutable std::atomic_ulong localEvaluations_ = 0;
+    size_t iterations_ = DefaultLocalOptimizationIterations;
+    size_t budget_ = DefaultEvaluationBudget;
+
 public:
     static constexpr size_t DefaultLocalOptimizationIterations = 50;
     static constexpr size_t DefaultEvaluationBudget = 100'000;
 
     using ReturnType = OperatorBase::ReturnType;
 
-    explicit EvaluatorBase(Problem& p)
-        : problem_(p)
+    explicit EvaluatorBase(Problem& problem)
+        : problem_(problem)
     {
     }
 
@@ -35,7 +41,6 @@ public:
         population_ = pop;
     }
 
-    // TODO: there should be a better way to do this!
     auto TotalEvaluations() const -> size_t { return fitnessEvaluations_ + localEvaluations_; }
     auto FitnessEvaluations() const -> size_t { return fitnessEvaluations_; }
     auto LocalEvaluations() const -> size_t { return localEvaluations_; }
@@ -64,14 +69,6 @@ public:
         fitnessEvaluations_ = 0;
         localEvaluations_ = 0;
     }
-
-private:
-    Operon::Span<const Individual> population_;
-    std::reference_wrapper<const class Problem> problem_;
-    mutable std::atomic_ulong fitnessEvaluations_ = 0;
-    mutable std::atomic_ulong localEvaluations_ = 0;
-    size_t iterations_ = DefaultLocalOptimizationIterations;
-    size_t budget_ = DefaultEvaluationBudget;
 };
 
 class UserDefinedEvaluator : public EvaluatorBase {
@@ -155,7 +152,7 @@ public:
 #if defined(CERES_TINY_SOLVER) || !defined(HAVE_CERES)
             NonlinearLeastSquaresOptimizer<OptimizerType::TINY> opt(interpreter_.get(), genotype, dataset);
 #else
-            NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter.get(), genotype, dataset);
+            NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter_.get(), genotype, dataset);
 #endif
             auto coeff = genotype.GetCoefficients();
             auto summary = opt.Optimize(targetValues, trainingRange, iter);
