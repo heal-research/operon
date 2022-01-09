@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
-#include <core/types.hpp>
+#include "operon/core/types.hpp" 
 #include <doctest/doctest.h>
 #include <random>
-#include <stat/meanvariance.hpp>
+#include <vstat/vstat.hpp>
 
 #include "operon/core/dataset.hpp"
-#include "operon/core/eval.hpp"
 #include "operon/core/format.hpp"
 #include "operon/core/pset.hpp"
-#include "operon/core/stats.hpp"
 #include "operon/core/variable.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"
@@ -20,7 +18,7 @@ namespace Operon::Test {
 TEST_CASE("Crossover")
 {
     auto target = "Y";
-    auto ds = Operon::Dataset("../data/Poly-10.csv", true);
+    auto ds = Operon::Dataset("./data/Poly-10.csv", true);
     auto variables = ds.Variables();
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
@@ -37,10 +35,12 @@ TEST_CASE("Crossover")
     SUBCASE("Simple swap")
     {
         Operon::RandomGenerator rng(std::random_device{}());
-        size_t maxDepth{1000}, maxLength{100};
-        Operon::SubtreeCrossover cx(0.9, maxDepth, maxLength);
-        auto p1 = btc(rng, 7, 1, maxDepth);
-        auto p2 = btc(rng, 5, 1, maxDepth);
+        constexpr size_t maxDepth{1000};
+        constexpr size_t maxLength{100};
+        constexpr double internalNodeProbability{0.9};
+        Operon::SubtreeCrossover cx(internalNodeProbability, maxDepth, maxLength);
+        auto p1 = btc(rng, 7, 1, maxDepth); // NOLINT
+        auto p2 = btc(rng, 5, 1, maxDepth); // NOLINT
         auto child = cx(rng, p1, p2); 
 
         fmt::print("parent 1\n{}\n", TreeFormatter::Format(p1, ds, 2));
@@ -89,23 +89,27 @@ TEST_CASE("Crossover")
     SUBCASE("Child size") {
         const int n = 100000;
         std::vector<Tree> trees;
-        size_t maxDepth{1000}, maxLength{100};
+        constexpr size_t maxDepth{1000};
+        constexpr size_t maxLength{100};
         auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
-        for (int i = 0; i < n; ++i) trees.push_back(btc(random, sizeDistribution(random), 1, maxDepth));
+        for (int i = 0; i < n; ++i) {
+            trees.push_back(btc(random, sizeDistribution(random), 1UL, maxDepth));
+        }
+        std::vector<std::array<size_t, 3>> sizes;
 
         std::uniform_int_distribution<size_t> dist(0, n-1);
         for (auto p : { 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0 }) {
-            PearsonsRCalculator calc;
-            MeanVarianceCalculator mv;
             Operon::SubtreeCrossover cx(p, maxDepth, maxLength);
             for (int i = 0; i < n; ++i) {
                 auto p1 = dist(random);
-                //auto p2 = dist(random);
+                auto p2 = dist(random);
                 auto c = cx(random, trees[p1], trees[p1]);
-                calc.Add(trees[p1].Length(), trees[p1].Length());
-                mv.Add((double)c.Length());
+                sizes.push_back({trees[p1].Length(), trees[p2].Length(), c.Length()});
             }
-            fmt::print("p: {:.1f}, parent1: {:.2f}, parent2: {:.2f}, child: {:.2f}\n", p, calc.MeanX(), calc.MeanY(), mv.Mean());
+            double m1 = univariate::accumulate<double>(sizes.begin(), sizes.end(), [](auto const& arr) { return arr[0]; }).mean;
+            double m2 = univariate::accumulate<double>(sizes.begin(), sizes.end(), [](auto const& arr) { return arr[1]; }).mean;
+            double m3 = univariate::accumulate<double>(sizes.begin(), sizes.end(), [](auto const& arr) { return arr[2]; }).mean;
+            fmt::print("p: {:.1f}, parent1: {:.2f}, parent2: {:.2f}, child: {:.2f}\n", p, m1, m2, m3);
         }
     }
 }
