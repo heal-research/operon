@@ -33,40 +33,19 @@
             nativeBuildInputs = with pkgs; [ bear cmake clang_13 clang-tools cppcheck include-what-you-use ];
             buildInputs = with pkgs; [
                 # python environment for bindings and scripting
-                (python39.override { stdenv = gcc11Stdenv; })
-                (python39.withPackages (ps: with ps; [ pybind11 pytest pip pyperf colorama coloredlogs grip livereload joblib graphviz sphinx recommonmark sphinx_rtd_theme ]))
-                # Project dependencies and utils for profiling and debugging
                 ceres-solver
                 cxxopts
-                diff-so-fancy
                 doctest
                 eigen
                 fmt
                 gdb
                 glog
-                hotspot
-                hyperfine
-                jemalloc
-                linuxPackages.perf
-                mimalloc
-                ninja
-                openlibm
-                pkg-config
-                valgrind
-                xxHash
-
-                boost
-                tbb
 
                 # Some dependencies are provided by a NUR repo
                 repo.aria-csv
                 repo.autodiff
-                repo.cmake-init
-                repo.cmaketools
                 repo.cpp-sort
                 repo.fast_float
-                repo.eli5
-                repo.pmlb
                 repo.pratt-parser
                 repo.robin-hood-hashing
                 repo.span-lite
