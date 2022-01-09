@@ -72,7 +72,6 @@ add_library(operon::operon ALIAS operon_operon)
 
 find_package(Eigen3 REQUIRED)
 find_package(FastFloat REQUIRED)
-find_package(PkgConfig REQUIRED)
 find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
 find_package(cpp-sort REQUIRED)
