@@ -13,14 +13,15 @@ endif()
 
 add_executable(operon_test
     source/operon_test.cpp
-    source/implementation/evaluation.cpp
     source/implementation/details.cpp
+    source/implementation/evaluation.cpp
     source/implementation/hashing.cpp
     source/implementation/infix_parser.cpp
     source/implementation/initialization.cpp
+    source/implementation/metrics.cpp
     source/implementation/mutation.cpp
-    source/implementation/random.cpp
     source/implementation/nondominatedsort.cpp
+    source/implementation/random.cpp
     source/performance/evaluation.cpp
     source/performance/nondominatedsort.cpp
     )

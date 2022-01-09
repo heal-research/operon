@@ -213,7 +213,8 @@ using MeanSquaredErrorEvaluator = Evaluator<MSE, true>;
 using NormalizedMeanSquaredErrorEvaluator = Evaluator<NMSE, true>;
 using RootMeanSquaredErrorEvaluator = Evaluator<RMSE, true>;
 using MeanAbsoluteErrorEvaluator = Evaluator<MAE, true>;
-using RSquaredEvaluator = Evaluator<R2, false>;
+using SquaredCorrelationEvaluator = Evaluator<C2, false>;
+using R2Evaluator = Evaluator<R2, true>;
 using L2NormEvaluator = Evaluator<L2, true>;
 
 // a couple of useful user-defined evaluators (mostly to avoid calling lambdas from python)
