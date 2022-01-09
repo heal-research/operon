@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 #include <thread>
 #include <taskflow/taskflow.hpp>
+#include <taskflow/algorithm/reduce.hpp>
 
 #include "operon/algorithms/config.hpp"
 #include "operon/algorithms/nsga2.hpp"
@@ -216,27 +217,24 @@ namespace Operon::Test {
                 return evaluator(rd, ind, slots[id]).front();
             });
 
-            auto start = std::chrono::high_resolution_clock::now();
             b.batch(totalNodes * range.Size()).epochs(10).epochIterations(100).run(name, [&]() {
                 sum = 0;
                 executor.run(taskflow).wait();
                 return sum;
             });
-            auto stop = std::chrono::high_resolution_clock::now();
-            auto duration = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count()) / 1e6;
-            double node_evals_psec = b.batch() * static_cast<double>(b.epochs() * b.epochIterations()) / duration;
-            fmt::print("node evals / s: {:L}\n", node_evals_psec);
         };
 
         Interpreter interpreter;
-        test("r-squared",      Operon::Evaluator<Operon::R2, false>(problem, interpreter));
-        test("r-squared + ls", Operon::Evaluator<Operon::R2, true>(problem, interpreter));
-        test("nmse",           Operon::Evaluator<Operon::NMSE, false>(problem, interpreter));
-        test("nmse + ls",      Operon::Evaluator<Operon::NMSE, true>(problem, interpreter));
-        test("mae",            Operon::Evaluator<Operon::MAE, false>(problem, interpreter));
-        test("mae + ls",       Operon::Evaluator<Operon::MAE, true>(problem, interpreter));
-        test("mse",            Operon::Evaluator<Operon::MSE, false>(problem, interpreter));
-        test("mse + ls",       Operon::Evaluator<Operon::MSE, true>(problem, interpreter));
+        test("c2",        Operon::Evaluator<Operon::C2, false>(problem, interpreter));
+        test("c2 + ls",   Operon::Evaluator<Operon::C2, true>(problem, interpreter));
+        test("r2",        Operon::Evaluator<Operon::R2, false>(problem, interpreter));
+        test("r2 + ls",   Operon::Evaluator<Operon::R2, true>(problem, interpreter));
+        test("nmse",      Operon::Evaluator<Operon::NMSE, false>(problem, interpreter));
+        test("nmse + ls", Operon::Evaluator<Operon::NMSE, true>(problem, interpreter));
+        test("mae",       Operon::Evaluator<Operon::MAE, false>(problem, interpreter));
+        test("mae + ls",  Operon::Evaluator<Operon::MAE, true>(problem, interpreter));
+        test("mse",       Operon::Evaluator<Operon::MSE, false>(problem, interpreter));
+        test("mse + ls",  Operon::Evaluator<Operon::MSE, true>(problem, interpreter));
     }
 
     TEST_CASE("NSGA2")
@@ -288,11 +286,11 @@ namespace Operon::Test {
         mutator.Add(removeSubtree, 1.0);
 
         Interpreter interpreter;
-        RSquaredEvaluator r2eval(problem, interpreter);
+        SquaredCorrelationEvaluator c2eval(problem, interpreter);
         LengthEvaluator lenEval(problem);
 
         MultiEvaluator evaluator(problem);
-        evaluator.Add(r2eval);
+        evaluator.Add(c2eval);
         evaluator.Add(lenEval);
 
         CrowdedComparison comp;
