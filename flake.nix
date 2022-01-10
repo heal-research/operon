@@ -25,8 +25,17 @@
                 sha256 = "sha256-V3CGRilX5US8vx1cB2A5EQ7sqiIX82ARVNbeO3hkKk4=";
               };
           });
+        in rec
+        {
+          defaultPackage = pkgs.gcc11Stdenv.mkDerivation {
+            name = "operon";
+            src = self;
 
-          buildInputs_ = with pkgs; [
+            cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" ];
+
+            nativeBuildInputs = with pkgs; [ cmake ];
+
+            buildInputs = with pkgs; [
               ceres-solver
               cxxopts
               doctest
@@ -41,34 +50,25 @@
               repo.fast_float
               repo.pratt-parser
               repo.robin-hood-hashing
+              repo.scnlib
               repo.span-lite
               repo.taskflow
               repo.vectorclass
               repo.vstat
               repo.xxhash
-          ];
-        in
-        {
+            ];
+          };
+
           devShell = pkgs.gcc11Stdenv.mkDerivation {
             name = "operon-env";
             hardeningDisable = [ "all" ];
             impureUseNativeOptimizations = true;
             nativeBuildInputs = with pkgs; [ bear cmake clang_13 clang-tools cppcheck include-what-you-use ];
-            buildInputs = buildInputs_ ++ (with pkgs; [ jemalloc linuxPackages.perf openlibm ]);
+            buildInputs = defaultPackage.buildInputs ++ (with pkgs; [ jemalloc linuxPackages.perf openlibm ]);
 
             shellHook = ''
               LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [ pkgs.gcc11Stdenv.cc.cc.lib ]};
               '';
-          };
-
-          defaultPackage = pkgs.gcc11Stdenv.mkDerivation {
-            name = "operon";
-            src = self;
-
-            cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" ];
-
-            nativeBuildInputs = with pkgs; [ cmake ];
-            buildInputs = buildInputs_;
           };
         }
       );
