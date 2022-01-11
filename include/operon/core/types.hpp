@@ -13,7 +13,7 @@
 #include "operon/random/random.hpp"
 
 namespace Operon {
-using Hash = uint64_t; // at the moment, changing this will cause problems
+using Hash = uint64_t;
 using RandomGenerator = Random::RomuTrio;
 
 template <typename T>
@@ -28,25 +28,17 @@ using Scalar = float;
 using Scalar = double;
 #endif
 
-#if defined(CERES_ALWAYS_DOUBLE)
-using Dual = ceres::Jet<double, 4>;
-#else
-using Dual = ceres::Jet<Scalar, 4 * sizeof(double) / sizeof(Scalar)>;
-#endif
-
 namespace Numeric {
-    template <typename T>
+    template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
     static constexpr inline auto Max() -> T
     {
         return std::numeric_limits<T>::max();
     }
-    template <typename T>
+    template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
     static constexpr inline auto Min() -> T
     {
         if constexpr (std::is_floating_point_v<T>) {
             return std::numeric_limits<T>::lowest();
-        } else if constexpr (std::is_same_v<T, Dual>) {
-            return T { std::numeric_limits<typename Dual::Scalar>::lowest() };
         } else {
             return std::numeric_limits<T>::min();
         }

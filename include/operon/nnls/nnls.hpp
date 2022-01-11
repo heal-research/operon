@@ -6,7 +6,7 @@
 
 #include <ceres/tiny_solver.h>
 
-#include "operon/core/types.hpp"
+#include "operon/core/dual.hpp"
 #include "residual_evaluator.hpp"
 #include "tiny_cost_function.hpp"
 
