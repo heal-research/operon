@@ -153,13 +153,13 @@ namespace detail {
     template<typename X, typename... T>
     class tuple_index<X, std::tuple<T...>> {
         template<std::size_t... Idx>
-        static constexpr auto FindIdx(std::index_sequence<Idx...> /*unused*/) -> ssize_t
+        static constexpr auto FindIdx(std::index_sequence<Idx...> /*unused*/) -> int64_t
         {
             return -1 + ((std::is_same<X, T>::value ? Idx + 1 : 0) + ...);
         }
 
     public:
-        static constexpr ssize_t value = FindIdx(std::index_sequence_for<T...>{});
+        static constexpr int64_t value = FindIdx(std::index_sequence_for<T...>{});
     };
 
     template<typename T>
@@ -247,7 +247,7 @@ public:
     template<typename T>
     inline auto Get(Operon::Hash const h) -> Callable<T>&
     {
-        constexpr ssize_t idx = detail::tuple_index<Callable<T>, Tuple>::value;
+        constexpr int64_t idx = detail::tuple_index<Callable<T>, Tuple>::value;
         static_assert(idx >= 0, "Tuple does not contain type T");
         if (auto it = map_.find(h); it != map_.end()) {
             return std::get<static_cast<size_t>(idx)>(it->second);
@@ -258,7 +258,7 @@ public:
     template<typename T>
     inline auto Get(Operon::Hash const h) const -> Callable<T> const&
     {
-        constexpr ssize_t idx = detail::tuple_index<Callable<T>, Tuple>::value;
+        constexpr int64_t idx = detail::tuple_index<Callable<T>, Tuple>::value;
         static_assert(idx >= 0, "Tuple does not contain type T");
         if (auto it = map_.find(h); it != map_.end()) {
             return std::get<static_cast<size_t>(idx)>(it->second);

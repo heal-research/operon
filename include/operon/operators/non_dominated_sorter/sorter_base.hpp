@@ -11,6 +11,14 @@
 #include "operon/core/types.hpp"
 #include "operon/core/individual.hpp"
 
+#if defined(_M_IX86) || defined(_M_ARM) || defined(_M_X64) || defined(_M_ARM64)
+#include <intrin.h>
+#pragma intrinsic(_BitScanForward)
+#endif
+#if (defined(_M_X64) || defined(_M_ARM64))
+#pragma intrinsic(_BitScanForward64)
+#endif
+
 namespace Operon {
 
 struct Individual;
@@ -35,13 +43,6 @@ namespace detail {
             return static_cast<size_t>(__builtin_ctzll(static_cast<unsigned long long>(block)));
         }
 #elif defined(_MSC_VER)
-#if defined(_M_IX86) || defined(_M_ARM) || defined(_M_X64) || defined(_M_ARM64)
-#include <intrin.h>
-#pragma intrinsic(_BitScanForward)
-#endif
-#if (defined(_M_X64) || defined(_M_ARM64))
-#pragma intrinsic(_BitScanForward64)
-#endif
         constexpr size_t ul_bits_number = std::numeric_limits<unsigned long>::digits;
         constexpr size_t ui64_bits_number = std::numeric_limits<unsigned __int64>::digits;
         if constexpr (bits_per_block <= ul_bits_number) {
@@ -49,7 +50,7 @@ namespace detail {
             _BitScanForward(&index, static_cast<unsigned long>(block));
             return static_cast<size_type>(index);
         } else if constexpr (bits_per_block <= ui64_bits_number) {
-#if DYNAMIC_BITSET_CAN_USE_MSVC_BUILTIN_BITSCANFORWARD64
+#if (defined(_M_X64) || defined(_M_ARM64))
             unsigned long index = std::numeric_limits<unsigned long>::max();
             _BitScanForward64(&index, static_cast<unsigned __int64>(block));
             return static_cast<size_type>(index);
@@ -101,8 +102,6 @@ class NondominatedSorterBase {
             ENSURE(m > 1);
             return Sort(pop);
         }
-
-        virtual ~NondominatedSorterBase() = default;
 };
 
 } // namespace Operon
