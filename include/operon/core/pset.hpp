@@ -11,8 +11,6 @@
 
 namespace Operon {
 
-using PrimitiveSetConfig = NodeType;
-
 class PrimitiveSet {
     using Primitive = std::tuple<
         Node,
