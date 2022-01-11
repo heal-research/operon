@@ -32,6 +32,8 @@ enum class NodeType : uint32_t {
     Variable = 1U << 17U
 };
 
+using PrimitiveSetConfig = NodeType;
+
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 struct NodeTypes {
     // magic number keeping track of the number of different node types
