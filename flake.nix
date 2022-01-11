@@ -31,7 +31,7 @@
             name = "operon";
             src = self;
 
-            cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" ];
+            cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DBUILD_CLI_PROGRAMS=OFF" "-DBUILD_TESTING=OFF" ];
 
             nativeBuildInputs = with pkgs; [ cmake ];
 
@@ -62,7 +62,7 @@
             hardeningDisable = [ "all" ];
             impureUseNativeOptimizations = true;
             nativeBuildInputs = with pkgs; [ bear cmake clang_13 clang-tools cppcheck include-what-you-use ];
-            buildInputs = defaultPackage.buildInputs ++ (with pkgs; [ gdb valgrind jemalloc linuxPackages.perf openlibm ]);
+            buildInputs = defaultPackage.buildInputs ++ (with pkgs; [ gdb valgrind jemalloc linuxPackages.perf ]);
 
             shellHook = ''
               LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [ pkgs.gcc11Stdenv.cc.cc.lib ]};
