@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 //
 // This implementation is a port of the original implementation in java by Moreno et al.
 // Moreno et al. - "Merge Nondominated Sorting Algorithm for Many-Objective Optimization"

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #ifndef TREE_HPP
 #define TREE_HPP
