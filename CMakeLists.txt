@@ -151,12 +151,14 @@ target_link_libraries(operon_operon PUBLIC
     "$<${Ceres_FOUND}:Ceres::ceres>")
 
 target_compile_features(operon_operon PUBLIC cxx_std_17)
-
-target_compile_options(operon_operon PUBLIC "-march=x86-64;-mavx2;-mfma")
-
 set_target_properties(operon_operon PROPERTIES POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})
 
-target_link_options(operon_operon PUBLIC "-Wl,--no-undefined")
+if(MSVC)
+    target_compile_options(operon_operon PUBLIC "/std:c++latest")
+else()
+    target_compile_options(operon_operon PUBLIC "-march=x86-64;-mavx2;-mfma")
+    target_link_options(operon_operon PUBLIC "-Wl,--no-undefined")
+endif()
 
 target_compile_definitions(operon_operon PUBLIC 
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
