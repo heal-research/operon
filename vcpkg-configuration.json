@@ -8,7 +8,7 @@
     {
       "kind": "git",
       "repository": "https://github.com/foolnotion/vcpkg-registry",
-      "baseline": "f6fb82fe44309a628920b39135249f332e8c032e",
+      "baseline": "2460e32829eff88c166907893fa1e6ace090bdef",
       "packages": [ "aria-csv", "cpp-sort", "pratt-parser", "vstat" ]
     }
   ]
