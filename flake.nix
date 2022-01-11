@@ -41,11 +41,9 @@
               doctest
               eigen
               fmt
-              gdb
               glog
               # Some dependencies are provided by a NUR repo
               repo.aria-csv
-              repo.autodiff
               repo.cpp-sort
               repo.fast_float
               repo.pratt-parser
@@ -64,7 +62,7 @@
             hardeningDisable = [ "all" ];
             impureUseNativeOptimizations = true;
             nativeBuildInputs = with pkgs; [ bear cmake clang_13 clang-tools cppcheck include-what-you-use ];
-            buildInputs = defaultPackage.buildInputs ++ (with pkgs; [ jemalloc linuxPackages.perf openlibm ]);
+            buildInputs = defaultPackage.buildInputs ++ (with pkgs; [ gdb valgrind jemalloc linuxPackages.perf openlibm ]);
 
             shellHook = ''
               LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [ pkgs.gcc11Stdenv.cc.cc.lib ]};

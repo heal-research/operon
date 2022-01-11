@@ -23,8 +23,6 @@
 #include "operon/operators/non_dominated_sorter/rank_sort.hpp"
 #include "operon/operators/reinserter.hpp"
 
-#include <autodiff/forward/dual.hpp>
-
 namespace Operon::Test {
     auto TotalNodes(const std::vector<Tree>& trees) -> std::size_t {
 #ifdef _MSC_VER
