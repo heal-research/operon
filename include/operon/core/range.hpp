@@ -5,6 +5,7 @@
 #define OPERON_RANGE_HPP
 
 #include <tuple>
+#include "contracts.hpp"
 
 namespace Operon {
 class Range {
@@ -19,9 +20,17 @@ class Range {
             : range_(CheckRange(start, end))
         {
         }
+
         explicit Range(std::pair<std::size_t, std::size_t> range)
             : range_(CheckRange(range.first, range.second))
         {
+        }
+
+        auto operator=(std::pair<std::size_t, std::size_t> p) -> Range&
+        {
+            auto [start, end] = p;
+            range_ = CheckRange(start, end);
+            return *this;
         }
 
     private:
