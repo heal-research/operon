@@ -21,7 +21,7 @@ docs_early_return()
 include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
-# ---- Attempt to get revision information from git
+# ---- Attempt to get revision information from git ----
 find_package(Git)     # retrieve revision number for version info
 if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
     include(cmake/get-git-revision.cmake)
@@ -47,6 +47,7 @@ add_library(
     source/core/node.cpp
     source/core/pset.cpp
     source/core/tree.cpp
+    source/core/version.cpp
     source/hash/metrohash64.cpp
     source/operators/creator/balanced.cpp
     source/operators/creator/koza.cpp
@@ -101,6 +102,14 @@ generate_export_header(
     CUSTOM_CONTENT_FROM_VARIABLE pragma_suppress_c4251
 )
 
+# ---- Timestamp the current build ----
+string(TIMESTAMP OPERON_BUILD_TIMESTAMP "%Y-%m-%dT%H:%M:%SZ")
+
+# ---- Add build information ----
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/operon/core/buildinfo.hpp.in
+               ${CMAKE_BINARY_DIR}/buildinfo.hpp)
+
+
 if(NOT BUILD_SHARED_LIBS)
   target_compile_definitions(operon_operon PUBLIC OPERON_STATIC_DEFINE)
 endif()
@@ -125,6 +134,11 @@ target_include_directories(
     operon_operon SYSTEM
     PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export>"
+)
+
+target_include_directories(
+    operon_operon PRIVATE
+    "${PROJECT_BINARY_DIR}"
 )
 
 target_link_libraries(operon_operon PUBLIC
@@ -155,6 +169,15 @@ target_compile_definitions(operon_operon PUBLIC
 
 if(NOT CMAKE_SKIP_INSTALL_RULES)
   include(cmake/install-rules.cmake)
+endif()
+
+# ---- Command-line programs ----
+
+if(PROJECT_IS_TOP_LEVEL)
+  option(BUILD_CLI_PROGRAMS "Build command-line programs." TRUE)
+  if (BUILD_CLI_PROGRAMS)
+    add_subdirectory(cli)
+  endif()
 endif()
 
 # ---- Examples ----
