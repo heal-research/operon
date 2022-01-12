@@ -7,9 +7,10 @@ include(../cmake/windows-set-path.cmake)
 
 if(PROJECT_IS_TOP_LEVEL)
   find_package(operon REQUIRED)
-  find_package(doctest REQUIRED)
   enable_testing()
 endif()
+
+find_package(doctest REQUIRED)
 
 add_executable(operon_test
     source/operon_test.cpp
