@@ -12,7 +12,7 @@
 #include "jsf.hpp" // NOLINT
 #include "romu.hpp" // NOLINT
 #include "sfc64.hpp" // NOLINT
-#include "wyrand.hpp" // NOLINT
+//#include "wyrand.hpp" // NOLINT
 
 namespace Operon::Random { // NOLINT
 template<typename R, typename T> // NOLINT
