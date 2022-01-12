@@ -112,7 +112,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     // while loop control flow
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&](tf::Subflow& subflow) {
-            auto init = subflow.for_each_index(0ul, parents_.size(), 1ul, [&](size_t i) {
+            auto init = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
                 auto id = executor.this_worker_id();
                 // make sure the worker has a large enough buffer
                 if (slots[id].size() < trainSize) {
@@ -133,7 +133,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
         [&]() { return terminate || generation_ == config.Generations; }, // loop condition
         [&](tf::Subflow& subflow) {
             auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents_); }).name("prepare generator");
-            auto generateOffspring = subflow.for_each_index(0ul, offspring_.size(), 1ul, [&](size_t i) {
+            auto generateOffspring = subflow.for_each_index(size_t{0}, offspring_.size(), size_t{1}, [&](size_t i) {
                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                 while (!(terminate = generator.Terminate())) {
                     if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, buf); result.has_value()) {

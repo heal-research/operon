@@ -50,7 +50,7 @@ namespace Operon {
         // while loop control flow
         auto [init, cond, body, back, done] = taskflow.emplace(
             [&](tf::Subflow& subflow) {
-                auto init = subflow.for_each_index(0UL, parents_.size(), 1UL, [&](size_t i) {
+                auto init = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
                     auto id = executor.this_worker_id();
                     // make sure the worker has a large enough buffer
                     if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
@@ -67,7 +67,7 @@ namespace Operon {
                     offspring_[0] = *std::min_element(parents_.begin(), parents_.end(), [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; });
                 }).name("keep elite");
                 auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents_); }).name("prepare generator");
-                auto generateOffspring = subflow.for_each_index(1UL, offspring_.size(), 1UL, [&](size_t i) {
+                auto generateOffspring = subflow.for_each_index(size_t{1}, offspring_.size(), size_t{1}, [&](size_t i) {
                     auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                     while (!(terminate = generator.Terminate())) {
                         if (auto resULt = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, buf); resULt.has_value()) {
