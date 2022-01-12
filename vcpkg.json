@@ -4,7 +4,6 @@
     "dependencies": [
         "aria-csv",
         "ceres",
-        "cpp-sort",
         "eigen3",
         "fast-float",
         "fmt",
