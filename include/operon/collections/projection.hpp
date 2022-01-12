@@ -23,7 +23,7 @@ namespace detail {
 template<typename InputIt, typename Func = detail::Identity>
 struct ProjectionIterator {
     using T = typename std::iterator_traits<InputIt>::value_type;
-    using R = std::result_of_t<Func(T)>;
+    using R = std::invoke_result_t<Func, T>;
 
     // projection iterator traits
     using value_type = std::remove_reference_t<R>; // NOLINT
