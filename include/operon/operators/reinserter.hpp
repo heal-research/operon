@@ -4,8 +4,9 @@
 #ifndef OPERON_REINSERTER_HPP
 #define OPERON_REINSERTER_HPP
 
-#include <cpp-sort/sorters/merge_sorter.h>
+#include <algorithm>
 #include "operon/core/operator.hpp"
+#include "operon/core/individual.hpp"
 
 namespace Operon {
 class ReinserterBase : public OperatorBase<void, Operon::Span<Individual>, Operon::Span<Individual>> {
@@ -20,7 +21,7 @@ public:
     {
     }
 
-    inline void Sort(Operon::Span<Individual> inds) const { cppsort::merge_sorter{}(inds, comp_); }
+    inline void Sort(Operon::Span<Individual> inds) const { std::stable_sort(inds.begin(), inds.end(), comp_); }
 
     [[nodiscard]] inline auto Compare(Individual const& lhs, Individual const& rhs) const -> bool
     {

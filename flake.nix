@@ -44,7 +44,6 @@
               glog
               # Some dependencies are provided by a NUR repo
               repo.aria-csv
-              repo.cpp-sort
               repo.fast_float
               repo.pratt-parser
               repo.robin-hood-hashing
