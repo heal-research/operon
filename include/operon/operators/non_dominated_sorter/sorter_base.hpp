@@ -43,7 +43,6 @@ namespace detail {
             return static_cast<size_t>(__builtin_ctzll(static_cast<unsigned long long>(block)));
         }
 #elif defined(_MSC_VER)
-        constexpr size_t ul_bits_number = std::numeric_limits<unsigned long>::digits;
         constexpr size_t ui64_bits_number = std::numeric_limits<unsigned __int64>::digits;
         if constexpr (bits_per_block <= ul_bits_number) {
             unsigned long index = std::numeric_limits<unsigned long>::max();
