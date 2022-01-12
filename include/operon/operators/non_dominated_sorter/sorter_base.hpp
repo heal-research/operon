@@ -48,24 +48,24 @@ namespace detail {
         if constexpr (bits_per_block <= ul_bits_number) {
             unsigned long index = std::numeric_limits<unsigned long>::max();
             _BitScanForward(&index, static_cast<unsigned long>(block));
-            return static_cast<size_type>(index);
+            return static_cast<size_t>(index);
         } else if constexpr (bits_per_block <= ui64_bits_number) {
 #if (defined(_M_X64) || defined(_M_ARM64))
             unsigned long index = std::numeric_limits<unsigned long>::max();
             _BitScanForward64(&index, static_cast<unsigned __int64>(block));
-            return static_cast<size_type>(index);
+            return static_cast<size_t>(index);
 #else
             constexpr unsigned long max_ul = std::numeric_limits<unsigned long>::max();
             unsigned long low = block & max_ul;
             if (low != 0) {
                 unsigned long index = std::numeric_limits<unsigned long>::max();
                 _BitScanForward(&index, low);
-                return static_cast<size_type>(index);
+                return static_cast<size_t>(index);
             }
             unsigned long high = block >> ul_bits_number;
             unsigned long index = std::numeric_limits<unsigned long>::max();
             _BitScanForward(&index, high);
-            return static_cast<size_type>(ul_bits_number + index);
+            return static_cast<size_t>(ul_bits_number + index);
 #endif
         }
 #endif
