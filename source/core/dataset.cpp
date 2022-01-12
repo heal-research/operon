@@ -200,7 +200,7 @@ void Dataset::Standardize(size_t i, Range range)
     auto n = static_cast<Eigen::Index>(range.Size());
     auto seg = values_.col(j).segment(start, n);
     auto stats = univariate::accumulate<Matrix::Scalar>(seg.data(), seg.size());
-    auto stddev = stats.variance * stats.variance;
+    auto stddev = std::sqrt(stats.variance);
     values_.col(j) = (values_.col(j).array() - stats.mean) / stddev;
 }
 } // namespace Operon
