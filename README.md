@@ -1,11 +1,12 @@
 <p align="left">
-    <img src="./docs/_static/logo_mini.png" height="80px" />
+    <img src="./rtd/_static/logo_mini.png" height="80px" />
 </p>
 
 # Modern C++ framework for Symbolic Regression
 
 [![License](https://img.shields.io/github/license/heal-research/operon?style=flat)](https://github.com/heal-research/operon/blob/master/LICENSE)
-![Build](https://github.com/heal-research/operon/actions/workflows/build.yml/badge.svg)
+[![build-linux](https://github.com/heal-research/operon/actions/workflows/build-linux.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-linux.yml)
+[![build-windows](https://github.com/heal-research/operon/actions/workflows/build-windows.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-windows.yml)
 [![Documentation Status](https://readthedocs.org/projects/operongp/badge/?version=latest)](https://operongp.readthedocs.io/en/latest/?badge=latest)
 
 *Operon* is a modern C++ framework for [symbolic regression](https://en.wikipedia.org/wiki/Symbolic_regression) that uses [genetic programming](https://en.wikipedia.org/wiki/Genetic_programming) to explore a hypothesis space of possible mathematical expressions in order to find the best-fitting model for a given [regression target](https://en.wikipedia.org/wiki/Regression_analysis).
@@ -18,37 +19,32 @@ Broadly speaking, genetic programming (GP) is said to evolve a population of "co
 In symbolic regression, the programs represent mathematical expressions typically encoded as [expression trees](https://en.wikipedia.org/wiki/Binary_expression_tree). Fitness is usually defined as [goodness of fit](https://en.wikipedia.org/wiki/Goodness_of_fit) between the dependent variable and the prediction of a tree-encoded model. Iterative selection of best-scoring models followed by random recombination leads naturally to a self-improving process that is able to uncover patterns in the data:
 
 <p align="center">
-    <img src="./docs/_static/evo.gif"  />
+    <img src="./rtd/_static/evo.gif"  />
 </p>
 
 # Build instructions
 
-The project requires CMake and a C++17 compliant compiler. On Windows we recommend building with `MinGW` or with your `WSL` distro. We recommend using the latest versions of `Eigen` and `Ceres`.
+The project requires CMake and a C++17 compliant compiler. The recommended way to build Operon is via either [nix](https://github.com/NixOS/nix) or [vcpkg](https://github.com/microsoft/vcpkg).
 
 ### Required dependencies
-- [Taskflow](https://taskflow.github.io/)
-- [Eigen](http://eigen.tuxfamily.org)
+- [ceres-solver](http://ceres-solver.org/)
+- [taskflow](https://taskflow.github.io/)
+- [eigen](http://eigen.tuxfamily.org)
 - [{fmt}](https://fmt.dev/latest/index.html)
-
-### Optional dependencies
-- [Ceres](http://ceres-solver.org/) required to use the fully-featured solvers for bounds constrained robustified non-linear least squares problems
-- [cxxopts](https://github.com/jarro2783/cxxopts) required for the cli app.
-- [doctest](https://github.com/onqtam/doctest) required for unit tests.
-- [python](https://www.python.org/) and [pybind11](https://github.com/pybind/pybind11) required to build the python bindings.
-
-These libraries are well-known and should be available in your distribution's package repository. They can also be easily managed using [conda](https://docs.conda.io/en/latest/) or [vcpkg](https://github.com/Microsoft/vcpkg).
-
-Additionally, CMake will download the following libraries during the build generation phase: 
-- [cpp-sort](https://github.com/Morwenn/cpp-sort)
 - [fast-float](https://github.com/fastfloat/fast_float)
-- [robin-hood](https://github.com/martinus/robin-hood-hashing)
-- [infix-parser](https://github.com/foolnotion/pratt-parser-calculator)
-- [nanobench](https://github.com/martinus/nanobench)
+- [pratt-parser](https://github.com/foolnotion/pratt-parser-calculator)
+- [robin-hood-hashing](https://github.com/martinus/robin-hood-hashing)
+- [xxhash](https://github.com/Cyan4973/xxHash)
 - [rapidcsv](https://github.com/d99kris/rapidcsv)
 - [span-lite](https://github.com/martinmoene/span-lite)
 - [vectorclass](https://github.com/vectorclass/version2)
 - [vstat](https://github.com/heal-research/vstat)
-- [xxhash](https://github.com/Cyan4973/xxHash)
+
+### Optional dependencies
+
+- [cxxopts](https://github.com/jarro2783/cxxopts) required for the cli app.
+- [doctest](https://github.com/onqtam/doctest) required for unit tests.
+- [nanobench](https://github.com/martinus/nanobench) required for unit tests.
 
 ### Build options
 The following options can be passed to CMake:
@@ -142,3 +138,4 @@ _Operon_ was also featured in a recent survey of symbolic regression methods, wh
       primaryClass={cs.NE}
 }
 ```
+
