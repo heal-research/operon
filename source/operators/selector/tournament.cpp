@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
+#include <numeric>
 #include "operon/operators/selector.hpp"
 
 namespace Operon {
