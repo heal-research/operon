@@ -3,8 +3,10 @@ cmake_minimum_required(VERSION 3.14)
 project(operonCli LANGUAGES CXX)
 
 include(../cmake/windows-set-path.cmake)
+if (PROJECT_IS_TOP_LEVEL)
+    find_package(operon REQUIRED)
+endif()
 
-find_package(operon REQUIRED)
 find_package(cxxopts REQUIRED)
 find_package(scn REQUIRED)
 
