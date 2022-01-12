@@ -86,7 +86,7 @@ if (NOT aria-csv_FOUND)
     find_path(ARIA_CSV_INCLUDE_DIRS "aria-csv/parser.hpp")
     target_include_directories(operon_operon PRIVATE "${ARIA_CSV_INCLUDE_DIRS}")
 else()
-    target_link_libraries(operon_operon PUBLIC aria-csv::aria-csv)
+    target_link_libraries(operon_operon PRIVATE aria-csv::aria-csv)
 endif()
 
 # ---- Optional dependencies
@@ -140,8 +140,9 @@ target_include_directories(
     "${PROJECT_BINARY_DIR}"
 )
 
-target_link_libraries(operon_operon PUBLIC
-    fmt::fmt
+target_link_libraries(operon_operon PUBLIC fmt::fmt)
+
+target_link_libraries(operon_operon PRIVATE
     Threads::Threads
     vstat::vstat
     pratt-parser::pratt-parser
