@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#include <cpp-sort/sorters.h>
 #include "operon/operators/non_dominated_sorter/rank_sort.hpp"
 
 namespace Operon {
@@ -166,13 +165,12 @@ namespace detail {
         std::vector<size_t> rank(n, 0);
         std::vector<Operon::Scalar> values(n);
 
-        cppsort::merge_sorter sorter;
         for (size_t k = 1; k < m; ++k) {
             for (size_t i = 0; i < n; ++i) {
                 auto& item = items[i];
                 item.Value = pop[item.Index][k];
             }
-            sorter(items);
+            std::stable_sort(items.begin(), items.end());
             b.Fill(Bitset::OneBlock);
 
             for (auto [_, i] : items) {
