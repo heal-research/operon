@@ -8,6 +8,7 @@
 [![build-linux](https://github.com/heal-research/operon/actions/workflows/build-linux.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-linux.yml)
 [![build-windows](https://github.com/heal-research/operon/actions/workflows/build-windows.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-windows.yml)
 [![Documentation Status](https://readthedocs.org/projects/operongp/badge/?version=latest)](https://operongp.readthedocs.io/en/latest/?badge=latest)
+[![Gitter chat](https://badges.gitter.im/operongp/gitter.png)](https://gitter.im/operongp/community)
 
 *Operon* is a modern C++ framework for [symbolic regression](https://en.wikipedia.org/wiki/Symbolic_regression) that uses [genetic programming](https://en.wikipedia.org/wiki/Genetic_programming) to explore a hypothesis space of possible mathematical expressions in order to find the best-fitting model for a given [regression target](https://en.wikipedia.org/wiki/Regression_analysis).
 Its main purpose is to help develop accurate and interpretable white-box models in the area of [system identification](https://en.wikipedia.org/wiki/System_identification). More in-depth documentation available at https://operongp.readthedocs.io/.
@@ -28,17 +29,18 @@ The project requires CMake and a C++17 compliant compiler. The recommended way t
 
 ### Required dependencies
 - [ceres-solver](http://ceres-solver.org/)
-- [taskflow](https://taskflow.github.io/)
 - [eigen](http://eigen.tuxfamily.org)
-- [{fmt}](https://fmt.dev/latest/index.html)
 - [fast-float](https://github.com/fastfloat/fast_float)
 - [pratt-parser](https://github.com/foolnotion/pratt-parser-calculator)
-- [robin-hood-hashing](https://github.com/martinus/robin-hood-hashing)
-- [xxhash](https://github.com/Cyan4973/xxHash)
 - [rapidcsv](https://github.com/d99kris/rapidcsv)
+- [robin-hood-hashing](https://github.com/martinus/robin-hood-hashing)
+* [scnlib](https://github.com/eliaskosunen/scnlib)
 - [span-lite](https://github.com/martinmoene/span-lite)
+- [taskflow](https://taskflow.github.io/)
 - [vectorclass](https://github.com/vectorclass/version2)
 - [vstat](https://github.com/heal-research/vstat)
+- [xxhash](https://github.com/Cyan4973/xxHash)
+- [{fmt}](https://fmt.dev/latest/index.html)
 
 ### Optional dependencies
 
@@ -58,51 +60,6 @@ The following options can be passed to CMake:
 | `-DUSE_JEMALLOC=ON`         | Link against [jemalloc](http://jemalloc.net/), a general purpose `malloc(3)` implementation that emphasizes fragmentation avoidance and scalable concurrency support (mutually exclusive with `tcmalloc`).           |
 | `-DUSE_TCMALLOC=ON`         | Link against [tcmalloc](https://google.github.io/tcmalloc/) (thread-caching malloc), a `malloc(3)` implementation that reduces lock contention for multi-threaded programs (mutually exclusive with `jemalloc`).          |
 | `-DUSE_MIMALLOC=ON`         | Link against [mimalloc](https://github.com/microsoft/mimalloc) a compact general purpose `malloc(3)` implementation with excellent performance (mutually exclusive with `jemalloc` or `tcmalloc`).          |
-
-## Windows / VCPKG
-
-- Install [vcpkg](https://github.com/Microsoft/vcpkg) following the instructions from https://github.com/Microsoft/vcpkg
-- Install the required dependencies: `vcpkg install <deps>`
-- `cd <path/to/operon>`
-- `mkdir build && cd build`
-- `cmake .. -G"Your Visual Studio Version" -DCMAKE_TOOLCHAIN_FILE=[vcpkg root]\scripts\buildsystems\vcpkg.cmake`
-- `cmake --build . --config Release`
-
-## GNU/Linux
-
-- Install the required dependencies
-- `mkdir build && cd build`
-- `cmake .. -DCMAKE_BUILD_TYPE=Release`. Use `Debug` for a debug build, or use `CC=clang CXX=clang++` to build with a different compiler.
-- `make`. Add `VERBOSE=1` to get the full compilation output or `-j` for parallel compilation.
-
-# Usage
-
-* Run `operon-gp --help` to see the usage of the console client. This is the easiest way to just start modeling some data. The program expects a csv input file and assumes that the file has a header.
-* The Python script provided under `scripts` wraps the `operon-gp` binary and can be used to run bigger experiments. Data can be provided as `csv` or `json` files containing metadata (see `data` folder for examples). The script will run a grid search over a parameter space defined by the user.
-* Several examples (C++ and Python) are available  [here](https://github.com/foolnotion/operon/blob/master/examples)
-
-# Installing the Python bindings
-
-Operon comes with Python bindings as well as a scikit learn estimator. To build the bindings the option `-DBUILD_PYBIND=TRUE` must be passed to CMake. The desired install path can be specified using the `CMAKE_INSTALL_PREFIX` variable (for example, `-DCMAKE_INSTALL_PREFIX=/usr/local/lib/python3.8/site-packages`). If an install prefix is not provided CMake will try to detect the default path as reported by Python.
-
-Then, the Python module and package can be installed with `cmake --install .` or `make install` (with `sudo` if needed).
-
-## Usage
-
-### Sklearn estimator
-```python
-from operon.sklearn import SymbolicRegressor
-
-reg = SymbolicRegressor()
-
-# usual sklearn stuff
-reg.fit(X, y)
-```
-
-### Operon library
-```python
-from operon import Dataset, RSquared, etc.
-```
 
 # Publications
 
