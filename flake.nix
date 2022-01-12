@@ -42,6 +42,7 @@
               eigen
               fmt
               glog
+              gitFull
               # Some dependencies are provided by a NUR repo
               repo.aria-csv
               repo.fast_float
