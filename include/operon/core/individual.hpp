@@ -7,6 +7,7 @@
 #include "tree.hpp" 
 #include "types.hpp" 
 #include <cstddef>
+#include <Eigen/Core>
 
 namespace Operon {
 

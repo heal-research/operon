@@ -4,7 +4,6 @@
 #ifndef OPERON_TYPES_HPP
 #define OPERON_TYPES_HPP
 
-#include <ceres/jet.h>
 #include <cstddef>
 #include <cstdint>
 #include <nonstd/span.hpp>
