@@ -31,9 +31,9 @@
             name = "operon";
             src = self;
 
-            cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DBUILD_CLI_PROGRAMS=OFF" "-DBUILD_TESTING=OFF" ];
+            cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DBUILD_CLI_PROGRAMS=ON" "-DBUILD_TESTING=OFF" "-DBUILD_SHARED_LIBS=ON" ];
 
-            nativeBuildInputs = with pkgs; [ cmake ];
+            nativeBuildInputs = with pkgs; [ git cmake ];
 
             buildInputs = with pkgs; [
               ceres-solver
@@ -42,7 +42,6 @@
               eigen
               fmt
               glog
-              gitFull
               # Some dependencies are provided by a NUR repo
               repo.aria-csv
               repo.fast_float
