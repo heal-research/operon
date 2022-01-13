@@ -5,7 +5,6 @@
 #define OPERON_CORE_DUAL_HPP
 
 #include <ceres/jet.h>
-
 #include "types.hpp"
 
 namespace Operon {
