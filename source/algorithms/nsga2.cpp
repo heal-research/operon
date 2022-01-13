@@ -171,7 +171,6 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     body.precede(back);
     back.precede(cond);
 
-    fmt::print("run\n");
     executor.run(taskflow);
     executor.wait_for_all();
 }
