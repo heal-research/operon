@@ -102,5 +102,43 @@ auto PrintPrimitives(NodeType config) -> void
     }
 }
 
+auto InitOptions(cxxopts::Options& opts) -> void
+{
+    std::string const symbols = "add, sub, mul, div, exp, log, square, sqrt, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, abs, aq, ceil, floor, fmin, fmax, log1p, logabs, sqrtabs";
+    opts.add_options()
+        ("dataset", "Dataset file name (csv) (required)", cxxopts::value<std::string>())
+        ("shuffle", "Shuffle the input data", cxxopts::value<bool>()->default_value("false"))
+        ("standardize", "Standardize the training partition (zero mean, unit variance)", cxxopts::value<bool>()->default_value("false"))
+        ("train", "Training range specified as start:end (required)", cxxopts::value<std::string>())
+        ("test", "Test range specified as start:end", cxxopts::value<std::string>())
+        ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
+        ("inputs", "Comma-separated list of input variables", cxxopts::value<std::string>())
+        ("error-metric", "The error metric used for calculating fitness", cxxopts::value<std::string>()->default_value("r2"))
+        ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))
+        ("pool-size", "Recombination pool size (how many generated offspring per generation)", cxxopts::value<size_t>()->default_value("1000"))
+        ("seed", "Random number seed", cxxopts::value<Operon::RandomGenerator::result_type>()->default_value("0"))
+        ("generations", "Number of generations", cxxopts::value<size_t>()->default_value("1000"))
+        ("evaluations", "Evaluation budget", cxxopts::value<size_t>()->default_value("1000000"))
+        ("iterations", "Local optimization iterations", cxxopts::value<size_t>()->default_value("0"))
+        ("selection-pressure", "Selection pressure", cxxopts::value<size_t>()->default_value("100"))
+        ("maxlength", "Maximum length", cxxopts::value<size_t>()->default_value("50"))
+        ("maxdepth", "Maximum depth", cxxopts::value<size_t>()->default_value("10"))
+        ("crossover-probability", "The probability to apply crossover", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
+        ("crossover-internal-probability", "Crossover bias towards swapping function nodes", cxxopts::value<Operon::Scalar>()->default_value("0.9"))
+        ("mutation-probability", "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))
+        ("tree-creator", "Tree creator operator to initialize the population with.", cxxopts::value<std::string>()->default_value("btc"))
+        ("female-selector", "Female selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>()->default_value("tournament"))
+        ("male-selector", "Male selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>()->default_value("tournament"))
+        ("offspring-generator", "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)", cxxopts::value<std::string>()->default_value("basic"))
+        ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>()->default_value("keep-best"))
+        ("enable-symbols", "Comma-separated list of enabled symbols ("+symbols+")", cxxopts::value<std::string>())
+        ("disable-symbols", "Comma-separated list of disabled symbols ("+symbols+")", cxxopts::value<std::string>())
+        ("show-primitives", "Display the primitive set used by the algorithm")
+        ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
+        ("timelimit", "Time limit after which the algorithm will terminate", cxxopts::value<size_t>()->default_value(std::to_string(std::numeric_limits<size_t>::max())))
+        ("debug", "Debug mode (more information displayed)")
+        ("help", "Print help")
+        ("version", "Print version and program information");
+}
 
 } // namespace Operon

@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+#include <cxxopts.hpp>
+
 #include "operon/core/node.hpp"
 
 namespace Operon {
@@ -20,6 +22,8 @@ auto FormatBytes(size_t bytes) -> std::string;
 auto FormatDuration(std::chrono::duration<double> d) -> std::string;
 auto ParsePrimitiveSetConfig(const std::string& options) -> NodeType;
 auto PrintPrimitives(PrimitiveSetConfig config) -> void;
+
+auto InitOptions(cxxopts::Options& opts) -> void;
 
 } // namespace Operon
 

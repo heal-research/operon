@@ -5,13 +5,12 @@
 #include <cmath>
 #include <cstdlib>
 
-#include <cxxopts.hpp>
 #include <fmt/core.h>
 
 #include <memory>
 #include <thread>
 #include <taskflow/algorithm/reduce.hpp>
-#include "operon/algorithms/gp.hpp"
+#include "operon/algorithms/nsga2.hpp"
 #include "operon/core/format.hpp"
 #include "operon/core/metrics.hpp"
 #include "operon/core/version.hpp"
@@ -23,6 +22,7 @@
 #include "operon/operators/generator.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/mutation.hpp"
+#include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
 
@@ -31,7 +31,7 @@
 
 auto main(int argc, char** argv) -> int
 {
-    cxxopts::Options opts("operon_gp", "Genetic programming symbolic regression");
+    cxxopts::Options opts("operon_nsgp", "Non-dominated sorting genetic programming symbolic regression");
     Operon::InitOptions(opts);
 
     auto result = opts.parse(argc, argv);
@@ -46,7 +46,7 @@ auto main(int argc, char** argv) -> int
     }
 
     // parse and set default values
-    Operon::GeneticAlgorithmConfig config;
+    Operon::GeneticAlgorithmConfig config{};
     config.Generations = result["generations"].as<size_t>();
     config.PopulationSize = result["population-size"].as<size_t>();
     config.PoolSize = result["pool-size"].as<size_t>();
@@ -199,19 +199,26 @@ auto main(int argc, char** argv) -> int
         mutator.Add(removeSubtree, 1.0);
 
         Operon::Interpreter interpreter;
-        auto evaluator = Operon::ParseEvaluator(result["error-metric"].as<std::string>(), problem, interpreter);
 
-        evaluator->SetLocalOptimizationIterations(config.Iterations);
-        evaluator->SetBudget(config.Evaluations);
+        auto errorEvaluator = Operon::ParseEvaluator(result["error-metric"].as<std::string>(), problem, interpreter);
+        errorEvaluator->SetLocalOptimizationIterations(config.Iterations);
+        errorEvaluator->SetBudget(config.Evaluations);
+
+        Operon::LengthEvaluator lengthEvaluator(problem);
+
+        Operon::MultiEvaluator evaluator(problem);
+        evaluator.SetBudget(config.Evaluations);
+        evaluator.Add(*errorEvaluator);
+        evaluator.Add(lengthEvaluator);
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
-        auto comp = [](auto const& lhs, auto const& rhs) { return lhs[0] < rhs[0]; };
+        Operon::CrowdedComparison comp;
 
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *evaluator, crossover, mutator, *femaleSelector, *maleSelector);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
 
         Operon::RandomGenerator random(config.Seed);
@@ -226,7 +233,8 @@ auto main(int argc, char** argv) -> int
 
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        Operon::GeneticProgrammingAlgorithm gp { problem, config, treeInitializer, coeffInitializer, *generator, *reinserter };
+        Operon::RankSorter sorter;
+        Operon::NSGA2 gp { problem, config, treeInitializer, coeffInitializer, *generator, *reinserter, sorter };
 
         auto targetValues = problem.TargetValues();
         auto targetTrain = targetValues.subspan(trainingRange.Start(), trainingRange.Size());
@@ -330,7 +338,7 @@ auto main(int argc, char** argv) -> int
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
             fmt::print("{:.4f}\t{:.4f}\t{:.4g}\t{:.4g}\t{:.4g}\t{:.4g}\t", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
-            fmt::print("{:.4g}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, /* shape */ 0.0, /* diversity */ 0.0, evaluator->FitnessEvaluations(), evaluator->LocalEvaluations(), evaluator->TotalEvaluations());
+            fmt::print("{:.4g}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, /* shape */ 0.0, /* diversity */ 0.0, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
             fmt::print("{}\t{}\n", totalMemory, config.Seed);
         };
 
