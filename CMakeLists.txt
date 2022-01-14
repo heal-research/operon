@@ -140,15 +140,14 @@ target_include_directories(
     "${PROJECT_BINARY_DIR}"
 )
 
-target_link_libraries(operon_operon PUBLIC fmt::fmt)
+target_link_libraries(operon_operon PUBLIC fmt::fmt "$<${Ceres_FOUND}:Ceres::ceres>")
 
 target_link_libraries(operon_operon PRIVATE
     Threads::Threads
     vstat::vstat
     pratt-parser::pratt-parser
     vectorclass::vectorclass
-    xxHash::xxhash
-    "$<${Ceres_FOUND}:Ceres::ceres>")
+    xxHash::xxhash)
 
 target_compile_features(operon_operon PUBLIC cxx_std_17)
 set_target_properties(operon_operon PROPERTIES POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})

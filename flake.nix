@@ -33,7 +33,7 @@
 
             cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DBUILD_CLI_PROGRAMS=ON" "-DBUILD_TESTING=OFF" "-DBUILD_SHARED_LIBS=ON" ];
 
-            nativeBuildInputs = with pkgs; [ git cmake ];
+            nativeBuildInputs = with pkgs; [ cmake ];
 
             buildInputs = with pkgs; [
               ceres-solver
@@ -41,6 +41,7 @@
               doctest
               eigen
               fmt
+              git
               glog
               # Some dependencies are provided by a NUR repo
               repo.aria-csv
@@ -61,7 +62,7 @@
             hardeningDisable = [ "all" ];
             impureUseNativeOptimizations = true;
             nativeBuildInputs = with pkgs; [ bear cmake clang_13 clang-tools cppcheck include-what-you-use ];
-            buildInputs = defaultPackage.buildInputs ++ (with pkgs; [ gdb valgrind jemalloc linuxPackages.perf ]);
+            buildInputs = defaultPackage.buildInputs ++ (with pkgs; [ gdb hotspot valgrind jemalloc linuxPackages.perf ]);
 
             shellHook = ''
               LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [ pkgs.gcc11Stdenv.cc.cc.lib ]};
