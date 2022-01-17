@@ -17,7 +17,7 @@
 
 namespace Operon {
 
-struct ErrorMetric {
+struct OPERON_EXPORT ErrorMetric {
     using Iterator = Operon::Span<Operon::Scalar const>::const_iterator;
     using ProjIterator = ProjectionIterator<Iterator>;
 
