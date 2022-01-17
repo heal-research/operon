@@ -108,4 +108,11 @@ namespace Operon {
         executor.wait_for_all();
     }
 
+    auto GeneticProgrammingAlgorithm::Run(Operon::RandomGenerator& random, std::function<void()> report, size_t threads) -> void {
+        if (threads == 0) {
+            threads = std::thread::hardware_concurrency();
+        }
+        tf::Executor executor(threads);
+        Run(executor, random, std::move(report));
+    }
 } // namespace Operon

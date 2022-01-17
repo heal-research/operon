@@ -8,7 +8,6 @@
 #include <functional>                      // for reference_wrapper, function
 #include <nonstd/span.hpp>                 // for span<>::pointer
 #include <operon/operon_export.hpp>        // for OPERON_EXPORT
-#include <taskflow/core/executor.hpp>      // for Executor
 #include <thread>                          // for thread
 #include <utility>                         // for move
 #include "operon/algorithms/config.hpp"    // for GeneticAlgorithmConfig
@@ -16,6 +15,9 @@
 #include "operon/core/types.hpp"           // for Span, Vector, RandomGenerator
 #include "operon/operators/evaluator.hpp"  // for EvaluatorBase
 #include "operon/operators/generator.hpp"  // for OffspringGeneratorBase
+
+// forward declaration
+namespace tf { class Executor; }
 
 namespace Operon {
 
@@ -73,15 +75,8 @@ public:
         generator_.get().Evaluator().Reset();
     }
 
-    void Run(Operon::RandomGenerator& random, std::function<void()> report = nullptr, size_t threads = 0) {
-        if (threads == 0) {
-            threads = std::thread::hardware_concurrency();
-        }
-        tf::Executor executor(threads);
-        Run(executor, random, std::move(report));
-    }
-
-    auto Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report) -> void;
+    auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator&/*rng*/, std::function<void()> /*report*/ = nullptr) -> void;
+    auto Run(Operon::RandomGenerator& /*rng*/, std::function<void()> /*report*/ = nullptr, size_t /*threads*/= 0) -> void;
 };
 } // namespace Operon
 
