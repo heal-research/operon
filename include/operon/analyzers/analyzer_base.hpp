@@ -4,13 +4,13 @@
 #ifndef OPERON_ANALYZER_BASE_HPP
 #define OPERON_ANALYZER_BASE_HPP
 
-#include "operon/core/operators.hpp"
+#include "operon/core/operator.hpp"
 
 namespace Operon {
 template <typename T>
 class PopulationAnalyzerBase : public OperatorBase<double> {
 public:
-    virtual void Prepare(Operon::Span<const T> pop) = 0;
+    virtual void Prepare(Operon::Span<T> pop) = 0;
 };
 } // namespace Operon
 

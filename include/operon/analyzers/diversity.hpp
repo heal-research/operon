@@ -4,73 +4,61 @@
 #ifndef DIVERSITY_HPP
 #define DIVERSITY_HPP
 
+#include <algorithm>
 #include <unordered_set>
-#include <mutex>
+#include <vstat/vstat.hpp>
 
-#include "pdqsort.h"
-#include "vstat.hpp"
-
-#include "core/operator.hpp"
-#include "core/distance.hpp"
+#include "operon/analyzers/analyzer_base.hpp"
+#include "operon/core/operator.hpp"
+#include "operon/core/distance.hpp"
+#include "operon/core/tree.hpp"
 
 namespace Operon {
 namespace {
-    template<Operon::HashFunction F>
-    static inline Operon::Vector<Operon::Hash> MakeHashes(Tree& tree, Operon::HashMode mode) {
+    static inline auto MakeHashes(Tree& tree, Operon::HashMode m) -> Operon::Vector<Operon::Hash> {
         Operon::Vector<Operon::Hash> hashes(tree.Length());
-        tree.Hash<F>(mode);
+        tree.Hash(m);
         std::transform(tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
-        pdqsort(hashes.begin(), hashes.end());
+        std::stable_sort(hashes.begin(), hashes.end());
         return hashes;
     }
-}
+} // namespace
 
-template <typename T, Operon::HashFunction F = Operon::HashFunction::XXHash>
+template <typename T, Operon::HashMode M = Operon::HashMode::Strict>
 class PopulationDiversityAnalyzer final : PopulationAnalyzerBase<T> {
 public:
-    auto operator()(Operon::RandomGenerator&) const -> double
+    auto operator()(Operon::RandomGenerator& /*unused*/) const -> double
     {
-        return diversity;
+        return diversity_;
     }
 
-    void Prepare(Operon::Span<const T> pop, Operon::HashMode mode = Operon::HashMode::Strict)
+    void Prepare(Operon::Span<T> pop)
     {
-        hashes.clear();
-        hashes.resize(pop.size());
-
         std::vector<size_t> indices(pop.size());
         std::iota(indices.begin(), indices.end(), 0);
 
-        // hybrid (strict) hashing
-        std::for_each(indices.begin(), indices.end(), [&](size_t i) {
-            hashes[i] = MakeHashes<F>(pop[i].Genotype, mode);
-        });
+        std::vector<Operon::Vector<Operon::Hash>> hashes;
+        hashes.reserve(pop.size());
 
-        std::vector<std::pair<size_t, size_t>> pairs(hashes.size());
-        std::vector<Operon::Scalar> distances(hashes.size());
-        size_t k = 0;
-        size_t c = 0;
-        size_t n = (hashes.size()-1) * hashes.size() / 2;
+        std::transform(indices.begin(), indices.end(), std::back_inserter(hashes),
+                [&](auto i) { return MakeHashes(pop[i], M); });
 
-        for (size_t i = 0; i < hashes.size() - 1; ++i) {
-            for(size_t j = i+1; j < hashes.size(); ++j) {
-                pairs[k++] = { i, j }; ++c;
+        univariate_accumulator<double> acc(Operon::Distance::Jaccard(hashes[0], hashes[1]));
+        for (auto j = 2UL; j < pop.size(); ++j) {
+            acc(Operon::Distance::Jaccard(hashes[0], hashes[j]));
+        }
 
-                if (k == distances.size() || c == n) {
-                    k = 0;
-                    std::for_each(indices.begin(), indices.end(), [&](size_t idx) {
-                        auto [a, b] = pairs[idx];
-                        distances[idx] = Operon::Distance::Jaccard(hashes[a], hashes[b]);
-                    });
-                }
+        for (auto i = 1UL; i < pop.size() - 1; ++i) {
+            for (auto j = i+1; j < pop.size(); ++j) {
+                acc(Operon::Distance::Jaccard(hashes[i], hashes[j]));
             }
         }
-        diversity = univariate::accumulate<Operon::Scalar>(distances.data(), distances.size()).mean;
+
+        diversity_ = univariate_statistics(acc).mean;
     }
 
     private:
-        double diversity;
-        std::vector<Operon::Vector<Operon::Hash>> hashes;
+        double diversity_{};
     };
 } // namespace Operon
 
