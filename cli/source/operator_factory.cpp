@@ -4,6 +4,7 @@
 #include "operator_factory.hpp"
 #include <stdexcept>                       // for runtime_error
 #include <fmt/format.h>                        // for format
+#include <tuple>
 #include "operon/operators/creator.hpp"    // for CreatorBase, BalancedTreeC...
 #include "operon/operators/evaluator.hpp"  // for Evaluator, EvaluatorBase
 #include "operon/operators/generator.hpp"  // for OffspringGeneratorBase
@@ -38,23 +39,44 @@ auto ParseEvaluator(std::string const& str, Problem& problem, Interpreter& inter
 {
     std::unique_ptr<EvaluatorBase> evaluator;
     if (str == "r2") {
-        evaluator = std::make_unique<Operon::R2Evaluator>(problem, interpreter);
+        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::R2{}, true);
     } else if (str == "c2") {
-        evaluator = std::make_unique<Operon::SquaredCorrelationEvaluator>(problem, interpreter);
+        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::C2{}, false);
     } else if (str == "nmse") {
-        evaluator = std::make_unique<Operon::NormalizedMeanSquaredErrorEvaluator>(problem, interpreter);
+        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::NMSE{}, true);
     } else if (str == "mse") {
-        evaluator = std::make_unique<Operon::MeanSquaredErrorEvaluator>(problem, interpreter);
+        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::MSE{}, true);
     } else if (str == "rmse") {
-        evaluator = std::make_unique<Operon::RootMeanSquaredErrorEvaluator>(problem, interpreter);
+        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::RMSE{}, true);
     } else if (str == "mae") {
-        evaluator = std::make_unique<Operon::MeanAbsoluteErrorEvaluator>(problem, interpreter);
-    } else if (str == "l2") {
-        evaluator = std::make_unique<Operon::L2NormEvaluator>(problem, interpreter);
+        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::MAE{}, true);
     } else {
         throw std::runtime_error(fmt::format("Unknown metric {}\n", str));
     }
     return evaluator;
+}
+
+auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<ErrorMetric>, bool>
+{
+    std::unique_ptr<ErrorMetric> error;
+    bool scale{true};
+    if (str == "r2") {
+        error = std::make_unique<Operon::R2>();
+    } else if (str == "c2") {
+        scale = false;
+        error = std::make_unique<Operon::R2>();
+    } else if (str == "nmse") {
+        error = std::make_unique<Operon::NMSE>();
+    } else if (str == "mse") {
+        error = std::make_unique<Operon::MSE>();
+    } else if (str == "rmse") {
+        error = std::make_unique<Operon::RMSE>();
+    } else if (str == "mae") {
+        error = std::make_unique<Operon::MAE>();
+    } else {
+        throw std::runtime_error(fmt::format("Unknown metric {}\n", str));
+    }
+    return std::make_tuple(std::move(error), scale);
 }
 
 auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel) -> std::unique_ptr<OffspringGeneratorBase>

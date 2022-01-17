@@ -9,17 +9,55 @@
 
 #include "operon/collections/projection.hpp"
 #include "operon/core/individual.hpp"
-#include "operon/core/metrics.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/types.hpp"
 #include "operon/nnls/nnls.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
 
+struct ErrorMetric {
+    using Iterator = Operon::Span<Operon::Scalar const>::const_iterator;
+    using ProjIterator = ProjectionIterator<Iterator>;
+
+    virtual auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double = 0;
+    virtual auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double = 0;
+};
+
+struct OPERON_EXPORT MSE : public ErrorMetric {
+    auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double override;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
+};
+
+struct OPERON_EXPORT NMSE : public ErrorMetric {
+    auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double override;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
+};
+
+struct OPERON_EXPORT RMSE : public ErrorMetric {
+    auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double override;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
+};
+
+struct OPERON_EXPORT MAE : public ErrorMetric {
+    auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double override;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
+};
+
+struct OPERON_EXPORT R2 : public ErrorMetric {
+    auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double override;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
+};
+
+struct OPERON_EXPORT C2 : public ErrorMetric {
+    auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double override;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
+};
+
 class EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
-    Operon::Span<const Individual> population_;
-    std::reference_wrapper<const class Problem> problem_;
+    Operon::Span<Operon::Individual const> population_;
+    std::reference_wrapper<Problem const> problem_;
     mutable std::atomic_ulong fitnessEvaluations_ = 0;
     mutable std::atomic_ulong localEvaluations_ = 0;
     size_t iterations_ = DefaultLocalOptimizationIterations;
@@ -99,13 +137,14 @@ private:
     std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> fptr_; // workaround for pybind11
 };
 
-template <typename ErrorMetric, bool LinearScaling = false>
-class Evaluator : public EvaluatorBase {
+class OPERON_EXPORT Evaluator : public EvaluatorBase {
 
 public:
-    Evaluator(Problem& problem, Interpreter& interp)
+    Evaluator(Problem& problem, Interpreter& interp, ErrorMetric const& error = MSE{}, bool linearScaling = true)
         : EvaluatorBase(problem)
         , interpreter_(interp)
+        , error_(error)
+        , scaling_(linearScaling)
     {
     }
 
@@ -113,69 +152,12 @@ public:
     auto GetInterpreter() const -> Interpreter const& { return interpreter_; }
 
     auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
-    {
-        IncrementFitnessEvaluations();
-        auto& problem = GetProblem();
-        auto& dataset = problem.GetDataset();
-        auto& genotype = ind.Genotype;
-
-        auto trainingRange = problem.TrainingRange();
-        auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
-
-        auto computeFitness = [&]() {
-            Operon::Vector<Operon::Scalar> estimatedValues;
-            if (buf.size() < trainingRange.Size()) {
-                estimatedValues.resize(trainingRange.Size());
-                buf = Operon::Span<Operon::Scalar>(estimatedValues.data(), estimatedValues.size());
-            }
-            GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange, buf);
-
-            if constexpr (LinearScaling) {
-                auto stats = bivariate::accumulate<double>(buf.data(), targetValues.data(), buf.size());
-                auto a = static_cast<Operon::Scalar>(stats.covariance / stats.variance_x); // scale
-                if (!std::isfinite(a)) {
-                    a = 1;
-                }
-                auto b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x); // offset
-
-                Projection p(buf, [&](auto x) { return a * x + b; });
-                return ErrorMetric {}(p.begin(), p.end(), targetValues.begin());
-            }
-            auto err = ErrorMetric {}(buf.begin(), buf.end(), targetValues.begin());
-            return err;
-        };
-
-        auto const iter = LocalOptimizationIterations();
-
-        if (iter > 0) {
-#if defined(CERES_TINY_SOLVER) || !defined(HAVE_CERES)
-            NonlinearLeastSquaresOptimizer<OptimizerType::TINY> opt(interpreter_.get(), genotype, dataset);
-#else
-            NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter_.get(), genotype, dataset);
-#endif
-            auto coeff = genotype.GetCoefficients();
-            auto summary = opt.Optimize(targetValues, trainingRange, iter);
-            //this->localEvaluations += summary.Iterations;
-            IncrementLocalEvaluations(summary.Iterations);
-
-            if (summary.InitialCost < summary.FinalCost) {
-                // if optimization failed, restore the original coefficients
-                genotype.SetCoefficients(coeff);
-            }
-        }
-
-        auto fit = Operon::Vector<Operon::Scalar> { static_cast<Operon::Scalar>(computeFitness()) };
-        for (auto& v : fit) {
-            if (!std::isfinite(v)) {
-                v = Operon::Numeric::Max<Operon::Scalar>();
-            }
-        }
-        return fit;
-    }
+    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
     std::reference_wrapper<Interpreter> interpreter_;
+    std::reference_wrapper<ErrorMetric const> error_;
+    bool scaling_{false};
 };
 
 class MultiEvaluator : public EvaluatorBase {
@@ -208,14 +190,6 @@ public:
 private:
     std::vector<std::reference_wrapper<EvaluatorBase const>> evaluators_;
 };
-
-using MeanSquaredErrorEvaluator = Evaluator<MSE, true>;
-using NormalizedMeanSquaredErrorEvaluator = Evaluator<NMSE, true>;
-using RootMeanSquaredErrorEvaluator = Evaluator<RMSE, true>;
-using MeanAbsoluteErrorEvaluator = Evaluator<MAE, true>;
-using SquaredCorrelationEvaluator = Evaluator<C2, false>;
-using R2Evaluator = Evaluator<R2, true>;
-using L2NormEvaluator = Evaluator<L2, true>;
 
 // a couple of useful user-defined evaluators (mostly to avoid calling lambdas from python)
 // TODO: think about a better design
