@@ -13,9 +13,9 @@
 #include <taskflow/algorithm/reduce.hpp>
 #include "operon/algorithms/gp.hpp"
 #include "operon/core/format.hpp"
-#include "operon/core/metrics.hpp"
 #include "operon/core/version.hpp"
 #include "operon/core/problem.hpp"
+#include "operon/error_metrics/error_metrics.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"
@@ -198,11 +198,13 @@ auto main(int argc, char** argv) -> int
         mutator.Add(insertSubtree, 1.0);
         mutator.Add(removeSubtree, 1.0);
 
-        Operon::Interpreter interpreter;
-        auto evaluator = Operon::ParseEvaluator(result["error-metric"].as<std::string>(), problem, interpreter);
+        auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
 
-        evaluator->SetLocalOptimizationIterations(config.Iterations);
-        evaluator->SetBudget(config.Evaluations);
+        Operon::Interpreter interpreter;
+        Operon::Evaluator evaluator(problem, interpreter, *error, scale);
+
+        evaluator.SetLocalOptimizationIterations(config.Iterations);
+        evaluator.SetBudget(config.Evaluations);
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
@@ -211,7 +213,7 @@ auto main(int argc, char** argv) -> int
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *evaluator, crossover, mutator, *femaleSelector, *maleSelector);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
 
         Operon::RandomGenerator random(config.Seed);
@@ -293,8 +295,8 @@ auto main(int argc, char** argv) -> int
             });
 
             auto calcStats = taskflow.emplace([&]() {
-                r2Train = Operon::CoefficientOfDetermination<Operon::Scalar>(estimatedTrain, targetTrain);
-                r2Test = Operon::CoefficientOfDetermination<Operon::Scalar>(estimatedTest, targetTest);
+                r2Train = Operon::R2Score<Operon::Scalar>(estimatedTrain, targetTrain);
+                r2Test = Operon::R2Score<Operon::Scalar>(estimatedTest, targetTest);
 
                 nmseTrain = Operon::NormalizedMeanSquaredError<Operon::Scalar>(estimatedTrain, targetTrain);
                 nmseTest = Operon::NormalizedMeanSquaredError<Operon::Scalar>(estimatedTest, targetTest);
@@ -330,7 +332,7 @@ auto main(int argc, char** argv) -> int
 
             fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
             fmt::print("{:.4f}\t{:.4f}\t{:.4g}\t{:.4g}\t{:.4g}\t{:.4g}\t", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
-            fmt::print("{:.4g}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, /* shape */ 0.0, /* diversity */ 0.0, evaluator->FitnessEvaluations(), evaluator->LocalEvaluations(), evaluator->TotalEvaluations());
+            fmt::print("{:.4g}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, /* shape */ 0.0, /* diversity */ 0.0, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
             fmt::print("{}\t{}\n", totalMemory, config.Seed);
         };
 
