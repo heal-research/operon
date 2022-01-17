@@ -26,6 +26,8 @@ struct OptimizerSummary {
     double InitialCost;
     double FinalCost;
     int Iterations;
+    int FunctionEvaluations;
+    int JacobianEvaluations;
 };
 
 struct OptimizerBase {
@@ -93,7 +95,7 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> : public OptimizerBa
         ResidualEvaluator re(GetInterpreter(), GetTree(), GetDataset(), target, range);
         Operon::TinyCostFunction<ResidualEvaluator, Operon::Dual, Operon::Scalar, Eigen::ColMajor> cf(re);
         Eigen::LevenbergMarquardt<decltype(cf), Operon::Scalar> lm(cf);
-        lm.parameters.maxfev = static_cast<int>(iterations);
+        lm.parameters.maxfev = static_cast<int>(iterations+1);
 
         auto& tree = GetTree();
         auto coeff = tree.GetCoefficients();
@@ -108,7 +110,9 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> : public OptimizerBa
         OptimizerSummary sum {};
         sum.InitialCost = -1;
         sum.FinalCost = -1;
-        sum.Iterations = static_cast<int>(iterations);
+        sum.Iterations = static_cast<int>(lm.iter);
+        sum.FunctionEvaluations = static_cast<int>(lm.nfev);
+        sum.JacobianEvaluations = static_cast<int>(lm.njev);
         return sum;
     }
 };
