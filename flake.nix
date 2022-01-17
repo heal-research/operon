@@ -6,7 +6,6 @@
   inputs.nixpkgs.url = "github:nixos/nixpkgs/master";
 
   outputs = { self, flake-utils, nixpkgs, nur }:
-
     flake-utils.lib.eachDefaultSystem
       (system:
         let
@@ -15,16 +14,6 @@
             overlays = [ nur.overlay ];
           };
           repo = pkgs.nur.repos.foolnotion;
-
-          # ceres has to be compiled from git due to a bug in tiny solver
-          ceres-solver = pkgs.ceres-solver.overrideAttrs(old: rec {
-              src = pkgs.fetchFromGitHub {
-                repo   = "ceres-solver";
-                owner  = "ceres-solver";
-                rev    = "ce1537030b69cf9a4149d25fd7375dadef3e1f09";
-                sha256 = "sha256-V3CGRilX5US8vx1cB2A5EQ7sqiIX82ARVNbeO3hkKk4=";
-              };
-          });
         in rec
         {
           defaultPackage = pkgs.gcc11Stdenv.mkDerivation {
