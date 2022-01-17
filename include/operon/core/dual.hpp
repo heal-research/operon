@@ -4,27 +4,33 @@
 #ifndef OPERON_CORE_DUAL_HPP
 #define OPERON_CORE_DUAL_HPP
 
-#include <ceres/jet.h>
 #include "types.hpp"
 
-namespace Operon {
-#if defined(CERES_ALWAYS_DOUBLE)
-using Dual = ceres::Jet<double, 4>;
+#if defined(HAVE_CERES)
+#include <ceres/jet.h>
 #else
-using Dual = ceres::Jet<Scalar, 4 * sizeof(double) / sizeof(Scalar)>;
+#include "ceres/jet.h"
 #endif
+
+namespace Operon {
+
+using Dual = ceres::Jet<Operon::Scalar, 4 * sizeof(double) / sizeof(Scalar)>;
 
 namespace Numeric {
     template<typename T, std::enable_if_t<std::is_same_v<T, Dual>> = true>
-    static constexpr inline auto Max() -> typename Dual::Scalar
+    static constexpr inline auto Max() -> Operon::Scalar
     {
-        return std::numeric_limits<typename Dual::Scalar>::max();
+        return std::numeric_limits<Operon::Scalar>::max();
     }
 
     template<typename T, std::enable_if_t<std::is_same_v<T, Dual>> = true>
-    static constexpr inline auto Min() -> typename Dual::Scalar
+    static constexpr inline auto Min() -> Operon::Scalar
     {
-        return std::numeric_limits<typename Dual::Scalar>::min();
+        if constexpr (std::is_floating_point_v<Operon::Scalar>) {
+            return std::numeric_limits<T>::lowest();
+        } else {
+            return std::numeric_limits<T>::min();
+        }
     }
 } // namespace Numeric
 } // namespace Operon
