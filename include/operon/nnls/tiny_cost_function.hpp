@@ -12,14 +12,14 @@ namespace Operon {
 // this cost function is adapted to work with both solvers from Ceres: the normal one and the tiny solver
 // for this, a number of template parameters are necessary:
 // - the CostFunctor is the actual functor for computing the residuals
-// - the JetT type represents a dual number, the user can specify the type for the Scalar part (float, double) and the Stride (Ceres-specific)
+// - the Dual type represents a dual number, the user can specify the type for the Scalar part (float, double) and the Stride (Ceres-specific)
 // - the StorageOrder specifies the format of the jacobian (row-major for the big Ceres solver, column-major for the tiny solver)
 
-template <typename CostFunctor, typename JetT, int StorageOrder = Eigen::RowMajor>
+template <typename CostFunctor, typename DualType, typename ScalarType = typename DualType::Scalar, int StorageOrder = Eigen::RowMajor>
 struct TinyCostFunction {
-    using Scalar = typename JetT::Scalar;
-    static constexpr int Stride = JetT::DIMENSION;
+    static constexpr int Stride = DualType::DIMENSION;
     static constexpr int Storage = StorageOrder;
+    using Scalar = ScalarType;
 
     enum {
         NUM_RESIDUALS = Eigen::Dynamic,  // NOLINT
@@ -33,7 +33,7 @@ struct TinyCostFunction {
 
     auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
     {
-        if (jacobian == nullptr) {
+        if (residuals != nullptr && jacobian == nullptr) {
             return functor_(&parameters, residuals);
         }
 
@@ -41,8 +41,8 @@ struct TinyCostFunction {
         auto numResiduals = NumResiduals();
 
         // Allocate scratch space for the strided evaluation.
-        Operon::Vector<JetT> inputJets(numParameters);
-        Operon::Vector<JetT> outputJets(numResiduals);
+        Operon::Vector<Dual> inputJets(numParameters);
+        Operon::Vector<Dual> outputJets(numResiduals);
 
         auto ptr = &inputJets[0];
 
@@ -96,8 +96,10 @@ struct TinyCostFunction {
             }
 
             // Only copy the residuals over once (even though we compute them on every loop).
-            if (pass == numStrides - 1) {
-                std::transform(outputJets.begin(), outputJets.end(), residuals, [](auto const& jet) { return jet.a; });
+            if (residuals != nullptr) {
+                if (pass == numStrides - 1) {
+                    std::transform(outputJets.begin(), outputJets.end(), residuals, [](auto const& jet) { return jet.a; });
+                }
             }
         }
         return true;
@@ -111,6 +113,21 @@ struct TinyCostFunction {
 
     [[nodiscard]] auto NumResiduals() const -> int { return functor_.NumResiduals(); }
     [[nodiscard]] auto NumParameters() const -> int { return functor_.NumParameters(); }
+
+    // required by Eigen::LevenbergMarquardt
+    auto operator()(Eigen::Matrix<Operon::Scalar, -1, 1> const& input, Eigen::Matrix<Operon::Scalar, -1, 1> &residual) -> int
+    {
+        return Evaluate(input.data(), residual.data(), nullptr);
+    }
+
+    auto df(Eigen::Matrix<Operon::Scalar, -1, 1> const& input, Eigen::Matrix<Operon::Scalar, -1, -1> &jacobian) -> int // NOLINT
+    {
+        static_assert(StorageOrder == Eigen::ColMajor, "Eigen::LevenbergMarquardt requires the Jacobian to be stored in column-major format.");
+        return Evaluate(input.data(), nullptr, jacobian.data());
+    }
+
+    [[nodiscard]] auto values() const -> int { return NumResiduals(); }
+    [[nodiscard]] auto inputs() const -> int { return NumParameters(); }
 
 private:
     CostFunctor functor_;
