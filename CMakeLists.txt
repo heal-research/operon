@@ -7,7 +7,7 @@ include(cmake/prelude.cmake)
 
 project(
     operon
-    VERSION 0.3.0
+    VERSION 0.3.1
     DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
     HOMEPAGE_URL "https://operongp.readthedocs.io/en/latest/"
     LANGUAGES CXX
