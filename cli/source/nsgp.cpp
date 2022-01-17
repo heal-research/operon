@@ -12,7 +12,7 @@
 #include <taskflow/algorithm/reduce.hpp>
 #include "operon/algorithms/nsga2.hpp"
 #include "operon/core/format.hpp"
-#include "operon/core/metrics.hpp"
+#include "operon/error_metrics/error_metrics.hpp"
 #include "operon/core/version.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/interpreter/interpreter.hpp"
@@ -198,17 +198,17 @@ auto main(int argc, char** argv) -> int
         mutator.Add(insertSubtree, 1.0);
         mutator.Add(removeSubtree, 1.0);
 
+        auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
         Operon::Interpreter interpreter;
-
-        auto errorEvaluator = Operon::ParseEvaluator(result["error-metric"].as<std::string>(), problem, interpreter);
-        errorEvaluator->SetLocalOptimizationIterations(config.Iterations);
-        errorEvaluator->SetBudget(config.Evaluations);
+        Operon::Evaluator errorEvaluator(problem, interpreter, *error, scale);
+        errorEvaluator.SetLocalOptimizationIterations(config.Iterations);
+        errorEvaluator.SetBudget(config.Evaluations);
 
         Operon::LengthEvaluator lengthEvaluator(problem);
 
         Operon::MultiEvaluator evaluator(problem);
         evaluator.SetBudget(config.Evaluations);
-        evaluator.Add(*errorEvaluator);
+        evaluator.Add(errorEvaluator);
         evaluator.Add(lengthEvaluator);
 
         EXPECT(problem.TrainingRange().Size() > 0);
@@ -301,8 +301,8 @@ auto main(int argc, char** argv) -> int
             });
 
             auto calcStats = taskflow.emplace([&]() {
-                r2Train = Operon::CoefficientOfDetermination<Operon::Scalar>(estimatedTrain, targetTrain);
-                r2Test = Operon::CoefficientOfDetermination<Operon::Scalar>(estimatedTest, targetTest);
+                r2Train = Operon::R2Score<Operon::Scalar>(estimatedTrain, targetTrain);
+                r2Test = Operon::R2Score<Operon::Scalar>(estimatedTest, targetTest);
 
                 nmseTrain = Operon::NormalizedMeanSquaredError<Operon::Scalar>(estimatedTrain, targetTrain);
                 nmseTest = Operon::NormalizedMeanSquaredError<Operon::Scalar>(estimatedTest, targetTest);

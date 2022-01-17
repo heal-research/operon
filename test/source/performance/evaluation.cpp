@@ -223,16 +223,16 @@ namespace Operon::Test {
         };
 
         Interpreter interpreter;
-        test("c2",        Operon::Evaluator<Operon::C2, false>(problem, interpreter));
-        test("c2 + ls",   Operon::Evaluator<Operon::C2, true>(problem, interpreter));
-        test("r2",        Operon::Evaluator<Operon::R2, false>(problem, interpreter));
-        test("r2 + ls",   Operon::Evaluator<Operon::R2, true>(problem, interpreter));
-        test("nmse",      Operon::Evaluator<Operon::NMSE, false>(problem, interpreter));
-        test("nmse + ls", Operon::Evaluator<Operon::NMSE, true>(problem, interpreter));
-        test("mae",       Operon::Evaluator<Operon::MAE, false>(problem, interpreter));
-        test("mae + ls",  Operon::Evaluator<Operon::MAE, true>(problem, interpreter));
-        test("mse",       Operon::Evaluator<Operon::MSE, false>(problem, interpreter));
-        test("mse + ls",  Operon::Evaluator<Operon::MSE, true>(problem, interpreter));
+        test("c2",        Operon::Evaluator(problem, interpreter, Operon::C2{}, /*linearScaling=*/false));
+        test("c2 + ls",   Operon::Evaluator(problem, interpreter, Operon::C2{}, /*linearScaling=*/true));
+        test("r2",        Operon::Evaluator(problem, interpreter, Operon::R2{}, /*linearScaling=*/false));
+        test("r2 + ls",   Operon::Evaluator(problem, interpreter, Operon::R2{}, /*linearScaling=*/true));
+        test("nmse",      Operon::Evaluator(problem, interpreter, Operon::NMSE{}, /*linearScaling=*/false));
+        test("nmse + ls", Operon::Evaluator(problem, interpreter, Operon::NMSE{}, /*linearScaling=*/true));
+        test("mae",       Operon::Evaluator(problem, interpreter, Operon::MAE{}, /*linearScaling=*/false));
+        test("mae + ls",  Operon::Evaluator(problem, interpreter, Operon::MAE{}, /*linearScaling=*/true));
+        test("mse",       Operon::Evaluator(problem, interpreter, Operon::MSE{}, /*linearScaling=*/false));
+        test("mse + ls",  Operon::Evaluator(problem, interpreter, Operon::MSE{}, /*linearScaling=*/true));
     }
 
     TEST_CASE("NSGA2")
@@ -284,7 +284,7 @@ namespace Operon::Test {
         mutator.Add(removeSubtree, 1.0);
 
         Interpreter interpreter;
-        SquaredCorrelationEvaluator c2eval(problem, interpreter);
+        Evaluator c2eval(problem, interpreter, Operon::C2{}, /*linearScaling=*/false);
         LengthEvaluator lenEval(problem);
 
         MultiEvaluator evaluator(problem);

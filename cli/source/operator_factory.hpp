@@ -23,6 +23,7 @@ namespace Operon { class ReinserterBase; }
 namespace Operon { class ReplaceWorstReinserter; }
 namespace Operon { struct CreatorBase; }
 namespace Operon { struct CrossoverBase; }
+namespace Operon { struct ErrorMetric; }
 namespace Operon { struct MutatorBase; }
 namespace Operon { struct Variable; }
 
@@ -70,6 +71,8 @@ auto ParseSelector(std::string const& str, Comp&& comp) -> std::unique_ptr<Opero
 auto ParseCreator(std::string const& str, PrimitiveSet const& pset, Operon::Span<Variable const> inputs) -> std::unique_ptr<CreatorBase>;
 
 auto ParseEvaluator(std::string const& str, Problem& problem, Interpreter& interpreter) -> std::unique_ptr<EvaluatorBase>;
+
+auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>;
 
 auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel) -> std::unique_ptr<OffspringGeneratorBase>;
 

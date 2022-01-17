@@ -14,8 +14,7 @@ if(PROJECT_IS_TOP_LEVEL)
   set(TCMALLOC_DESCRIPTION             "Link against tcmalloc (thread-caching malloc), a malloc(3) implementation that reduces lock contention for multi-threaded programs [default=OFF].")
   set(MIMALLOC_DESCRIPTION             "Link against mimalloc, a general purpose allocator with excellent performance characteristics [default=OFF].")
   set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes [default=OFF].")
-  set(CERES_TINY_SOLVER_DESCRIPTION    "Use the tiny solver included in Ceres, intended for solving small dense problems with low latency and low overhead [default=OFF].")
-  set(CERES_ALWAYS_DOUBLE_DESCRIPTION  "Always use double-precision for the scalar part of a jet. If not set then the value of USE_SINGLE_PRECISION is used [default=ON].")
+  set(USE_CERES_NNLS_DESCRIPTION       "Use the non-linear least squares optimizer from Ceres solver to tune model coefficients (if OFF, Eigen::LevenbergMarquardt will be used instead).")
   
   # option descriptions
   option(USE_OPENLIBM         ${OPENLIBM_DESCRIPTION}             OFF)
@@ -23,8 +22,7 @@ if(PROJECT_IS_TOP_LEVEL)
   option(USE_TCMALLOC         ${TCMALLOC_DESCRIPTION}             OFF)
   option(USE_MIMALLOC         ${MIMALLOC_DESCRIPTION}             OFF)
   option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION} OFF)
-  option(CERES_TINY_SOLVER    ${CERES_TINY_SOLVER_DESCRIPTION}    OFF)
-  option(CERES_ALWAYS_DOUBLE  ${CERES_ALWAYS_DOUBLE_DESCRIPTION}  OFF)
+  option(USE_CERES_NNLS       ${USE_CERES_NNLS_DESCRIPTION}       OFF)
   
   # provide a summary of configured options
   #include(FeatureSummary)

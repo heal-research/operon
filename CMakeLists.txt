@@ -43,16 +43,19 @@ add_library(
     source/algorithms/gp.cpp
     source/algorithms/nsga2.cpp
     source/core/dataset.cpp
+    source/core/distance.cpp
     source/core/format.cpp
     source/core/node.cpp
     source/core/pset.cpp
     source/core/tree.cpp
     source/core/version.cpp
+    source/hash/hash.cpp
     source/hash/metrohash64.cpp
     source/operators/creator/balanced.cpp
     source/operators/creator/koza.cpp
     source/operators/creator/ptc2.cpp
     source/operators/crossover.cpp
+    source/operators/evaluator.cpp
     source/operators/generator/basic.cpp
     source/operators/generator/brood.cpp
     source/operators/generator/os.cpp
@@ -78,6 +81,7 @@ find_package(Threads REQUIRED)
 find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(robin_hood REQUIRED)
+find_package(span-lite REQUIRED)
 find_package(vstat REQUIRED)
 find_package(vectorclass REQUIRED)
 find_package(xxHash CONFIG REQUIRED)
@@ -90,8 +94,11 @@ else()
 endif()
 
 # ---- Optional dependencies
-find_package(Ceres)   # use the Ceres optimizer for coefficients tuning
-find_package(doctest) # unit tests
+if (USE_CERES_NNLS)
+    find_package(Ceres)   # use the Ceres optimizer for coefficients tuning
+else()
+    set(Ceres_VERSION "n/a")
+endif()
 
 include(GenerateExportHeader)
 generate_export_header(
@@ -140,14 +147,28 @@ target_include_directories(
     "${PROJECT_BINARY_DIR}"
 )
 
-target_link_libraries(operon_operon PUBLIC fmt::fmt "$<${Ceres_FOUND}:Ceres::ceres>")
+set(HAVE_CERES FALSE)
+if(Ceres_FOUND AND USE_CERES_NNLS)
+    set(HAVE_CERES TRUE)
+endif()
+
+target_link_libraries(operon_operon PUBLIC
+    "$<$<BOOL:${HAVE_CERES}>:Ceres::ceres>"
+    Eigen3::Eigen
+    Threads::Threads
+    fmt::fmt
+    nonstd::span-lite
+    pratt-parser::pratt-parser
+    robin_hood::robin_hood
+    )
 
 target_link_libraries(operon_operon PRIVATE
-    Threads::Threads
-    vstat::vstat
-    pratt-parser::pratt-parser
+    FastFloat::fast_float
+    Taskflow::Taskflow
     vectorclass::vectorclass
-    xxHash::xxhash)
+    xxHash::xxhash
+    vstat::vstat
+    )
 
 target_compile_features(operon_operon PUBLIC cxx_std_17)
 set_target_properties(operon_operon PROPERTIES POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})
@@ -161,9 +182,7 @@ endif()
 
 target_compile_definitions(operon_operon PUBLIC 
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
-    "$<$<BOOL:${CERES_TINY_SOLVER}>:CERES_TINY_SOLVER>"
-    "$<$<BOOL:${CERES_ALWAYS_DOUBLE}>:CERES_ALWAYS_DOUBLE>"
-    "$<$<BOOL:${Ceres_FOUND}>:HAVE_CERES>"
+    "$<$<BOOL:${HAVE_CERES}>:HAVE_CERES>"
     )
 
 # ---- Install rules ----

@@ -6,7 +6,6 @@
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/format.hpp"
-#include "operon/core/metrics.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/nnls/nnls.hpp"
 #include "operon/parser/infix.hpp"
