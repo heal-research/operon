@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 #include <robin_hood.h>
 
+#include "operon/hash/hash.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/core/format.hpp"
 #include "operon/core/pset.hpp"
@@ -128,7 +129,7 @@ TEST_SUITE("[implementation]")
         auto tokens_map = InfixParser::DefaultTokens();
         robin_hood::unordered_flat_map<std::string, Operon::Hash> vars_map;
         std::unordered_map<Operon::Hash, std::string> vars_names;
-        Hasher<HashFunction::XXHash> hasher;
+        Hasher hasher;
         for (int i = 0; i < 10; ++i) {
             auto name = fmt::format("X{}", i);
             auto hash = hasher(reinterpret_cast<uint8_t const*>(name.data()), name.size() * sizeof(char) / sizeof(uint8_t));
@@ -190,7 +191,7 @@ TEST_SUITE("[implementation]")
     {
         auto model_str = "(((((((((-0.24762082099914550781) * X60) - ((-0.24762082099914550781) * X51)) - ((0.29588320851325988770 * X5) - ((-0.04808991029858589172) * X0))) + ((-0.34331262111663818359) / ((-0.11882954835891723633) * X23))) / ((-1.08731400966644287109) - ((-0.24762082099914550781) * X68))) + ((((-0.51293206214904785156) / ((-0.11882954835891723633) * X60)) * ((-0.24762082099914550781) * X42)) - ((-0.83979696035385131836) * X23))) * ((((-0.32350099086761474609) * X1) - ((-0.24762082099914550781) * X51)) * (0.53106397390365600586 * X38))) * ((((0.92230170965194702148 * X72) * ((-1.08731400966644287109) - ((-0.34331262111663818359) * (1.06355786323547363281 * X1)))) * ((-1.08731400966644287109) - ((-0.24762082099914550781) * X42))) + (((-0.33695843815803527832) / ((-0.11888219416141510010) * X43)) / ((-1.08523952960968017578) - ((-0.24762082099914550781) * X51)))))";
 
-        Hasher<HashFunction::XXHash> hasher;
+        Hasher hasher;
 
         robin_hood::unordered_flat_map<std::string, Operon::Hash> vars_map;
         std::unordered_map<Operon::Hash, std::string> vars_names;

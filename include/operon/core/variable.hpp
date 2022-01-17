@@ -9,8 +9,8 @@
 namespace Operon {
 struct Variable {
     std::string Name;
-    Operon::Hash Hash = Operon::Hash { 0 };
-    size_t Index = size_t { 0 };
+    Operon::Hash Hash{0};
+    size_t Index = size_t{0};
 
     constexpr auto operator==(Variable const& rhs) const noexcept -> bool {
         return std::tie(Name, Hash, Index) == std::tie(rhs.Name, rhs.Hash, rhs.Index);

@@ -12,7 +12,6 @@
 
 #include "operon/core/node.hpp"
 #include "operon/operon_export.hpp"
-#include "operon/hash/hash.hpp"
 #include "contracts.hpp"
 
 namespace Operon {
@@ -118,63 +117,11 @@ public:
     auto Reduce() -> Tree&;
     auto Simplify() -> Tree&;
 
-    // convenience method to make it easier to call from the Python side
-    auto Hash(Operon::HashFunction f, Operon::HashMode m) -> Tree&;
-
     // performs hashing in a manner similar to Merkle trees
     // aggregating hash values from the leafs towards the root node
-    template <Operon::HashFunction H>
-    auto Hash(Operon::HashMode mode) noexcept -> Tree&
-    {
-        std::vector<size_t> childIndices;
-        childIndices.reserve(nodes_.size());
+    auto Hash(Operon::HashMode mode) noexcept -> Tree&;
 
-        std::vector<Operon::Hash> hashes;
-        hashes.reserve(nodes_.size());
-
-        Operon::Hasher<H> hasher;
-
-        for (size_t i = 0; i < nodes_.size(); ++i) {
-            auto& n = nodes_[i];
-
-            if (n.IsLeaf()) {
-                n.CalculatedHashValue = n.HashValue;
-                if (mode == Operon::HashMode::Strict) {
-                    const size_t s1 = sizeof(Operon::Hash);
-                    const size_t s2 = sizeof(Operon::Scalar);
-                    std::array<uint8_t, s1 + s2> key{};
-                    auto* ptr = key.data();
-                    std::memcpy(ptr, &n.HashValue, s1);
-                    std::memcpy(ptr + s1, &n.Value, s2);
-                    n.CalculatedHashValue = hasher(key.data(), key.size());
-                } else {
-                    n.CalculatedHashValue = n.HashValue;
-                }
-                continue;
-            }
-
-            for (auto it = Children(i); it.HasNext(); ++it) {
-                childIndices.push_back(it.Index());
-            }
-
-            auto begin = childIndices.begin();
-            auto end = begin + n.Arity;
-
-            if (n.IsCommutative()) {
-                std::stable_sort(begin, end, [&](auto a, auto b) { return nodes_[a] < nodes_[b]; });
-            }
-            std::transform(begin, end, std::back_inserter(hashes), [&](auto j) { return nodes_[j].CalculatedHashValue; });
-            hashes.push_back(n.HashValue);
-
-            n.CalculatedHashValue = hasher(reinterpret_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); // NOLINT
-            childIndices.clear();
-            hashes.clear();
-        }
-
-        return *this;
-    }
-
-    auto Subtree(size_t i) -> Tree {
+    [[nodiscard]] auto Subtree(size_t i) const -> Tree {
         auto const& n = nodes_[i];
         Operon::Vector<Node> subtree;
         subtree.reserve(n.Length);
