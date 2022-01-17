@@ -5,6 +5,7 @@
 #include <numeric>
 
 #include "operon/core/tree.hpp"
+#include "operon/hash/hash.hpp"
 
 namespace Operon {
 auto Tree::UpdateNodes() -> Tree&
@@ -19,7 +20,7 @@ auto Tree::UpdateNodes() -> Tree&
         }
         auto j = i - 1;
         for (size_t k = 0; k < s.Arity; ++k) {
-            auto &p = nodes_[j];
+            auto& p = nodes_[j];
             s.Length = static_cast<uint16_t>(s.Length + p.Length);
             s.Depth = std::max(s.Depth, p.Depth);
             p.Parent = static_cast<uint16_t>(i);
@@ -112,7 +113,7 @@ auto Tree::Sort() -> Tree&
 auto Tree::ChildIndices(size_t i) const -> std::vector<size_t>
 {
     if (nodes_[i].IsLeaf()) {
-        return std::vector<size_t>{};
+        return std::vector<size_t> {};
     }
     std::vector<size_t> indices(nodes_[i].Arity);
     size_t j = 0;
@@ -153,19 +154,54 @@ auto Tree::VisitationLength() const noexcept -> size_t
     return std::transform_reduce(nodes_.begin(), nodes_.end(), 0UL, std::plus<> {}, [](const auto& node) { return node.Length + 1; });
 }
 
-auto Tree::Hash(Operon::HashFunction f, Operon::HashMode m) -> Tree&
+auto Tree::Hash(Operon::HashMode mode) noexcept -> Tree&
 {
-    switch (f) {
-    case Operon::HashFunction::XXHash: {
-        return Hash<Operon::HashFunction::XXHash>(m);
+    std::vector<size_t> childIndices;
+    childIndices.reserve(nodes_.size());
+
+    std::vector<Operon::Hash> hashes;
+    hashes.reserve(nodes_.size());
+
+    Operon::Hasher hasher;
+
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        auto& n = nodes_[i];
+
+        if (n.IsLeaf()) {
+            n.CalculatedHashValue = n.HashValue;
+            if (mode == Operon::HashMode::Strict) {
+                const size_t s1 = sizeof(Operon::Hash);
+                const size_t s2 = sizeof(Operon::Scalar);
+                std::array<uint8_t, s1 + s2> key {};
+                auto* ptr = key.data();
+                std::memcpy(ptr, &n.HashValue, s1);
+                std::memcpy(ptr + s1, &n.Value, s2);
+                n.CalculatedHashValue = hasher(key.data(), key.size());
+            } else {
+                n.CalculatedHashValue = n.HashValue;
+            }
+            continue;
+        }
+
+        for (auto it = Children(i); it.HasNext(); ++it) {
+            childIndices.push_back(it.Index());
+        }
+
+        auto begin = childIndices.begin();
+        auto end = begin + n.Arity;
+
+        if (n.IsCommutative()) {
+            std::stable_sort(begin, end, [&](auto a, auto b) { return nodes_[a] < nodes_[b]; });
+        }
+        std::transform(begin, end, std::back_inserter(hashes), [&](auto j) { return nodes_[j].CalculatedHashValue; });
+        hashes.push_back(n.HashValue);
+
+        n.CalculatedHashValue = hasher(reinterpret_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); // NOLINT
+        childIndices.clear();
+        hashes.clear();
     }
-    case Operon::HashFunction::MetroHash: {
-        return Hash<Operon::HashFunction::MetroHash>(m);
-    }
-    case Operon::HashFunction::FNV1Hash: {
-        return Hash<Operon::HashFunction::FNV1Hash>(m);
-    }
-    }
+
     return *this;
 }
+
 } // namespace Operon

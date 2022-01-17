@@ -15,7 +15,7 @@ namespace Operon {
 // internal implementation details
 namespace {
     const auto DefaultVariables = [](size_t count) {
-        Hasher<HashFunction::XXHash> hash;
+        Hasher hash;
 
         std::vector<Variable> vars(count);
         for (size_t i = 0; i < vars.size(); ++i) {
@@ -40,7 +40,7 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
 
     auto ncol{0UL};
 
-    Hasher<HashFunction::XXHash> hash;
+    Hasher hash;
     Matrix m;
 
     if (hasHeader) {
@@ -118,7 +118,7 @@ void Dataset::SetVariableNames(std::vector<std::string> const& names)
     auto ncol = static_cast<size_t>(map_.cols());
 
     for (size_t i = 0; i < ncol; ++i) {
-        auto h = Hasher<HashFunction::XXHash>{}(reinterpret_cast<uint8_t const*>(names[i].c_str()), names[i].size()); // NOLINT
+        auto h = Hasher{}(reinterpret_cast<uint8_t const*>(names[i].c_str()), names[i].size()); // NOLINT
         Variable v { names[i], h, i };
         variables_[i] = v;
     }
@@ -135,7 +135,7 @@ auto Dataset::VariableNames() -> std::vector<std::string>
 
 auto Dataset::GetValues(const std::string& name) const noexcept -> Operon::Span<const Operon::Scalar>
 {
-    auto hashValue = Hasher<HashFunction::XXHash>{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size()); // NOLINT
+    auto hashValue = Hasher{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size()); // NOLINT
     return GetValues(hashValue);
 }
 
@@ -145,18 +145,18 @@ auto Dataset::GetValues(Operon::Hash hashValue) const noexcept -> Operon::Span<c
     bool variableExists = it != variables_.end() && it->Hash == hashValue;
     ENSURE(variableExists);
     auto idx = static_cast<Eigen::Index>(it->Index);
-    return Operon::Span<const Operon::Scalar>(map_.col(idx).data(), static_cast<size_t>(map_.rows()));
+    return {map_.col(idx).data(), static_cast<size_t>(map_.rows())};
 }
 
 // this method needs to take an int argument to differentiate it from GetValues(Operon::Hash)
 auto Dataset::GetValues(int index) const noexcept -> Operon::Span<const Operon::Scalar>
 {
-    return Operon::Span<const Operon::Scalar>(map_.col(index).data(), static_cast<size_t>(map_.rows()));
+    return {map_.col(index).data(), static_cast<size_t>(map_.rows())};
 }
 
 auto Dataset::GetVariable(const std::string& name) const noexcept -> std::optional<Variable>
 {
-    auto hashValue = Hasher<HashFunction::XXHash>{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size()); // NOLINT
+    auto hashValue = Hasher{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size()); // NOLINT
     return GetVariable(hashValue);
 }
 
