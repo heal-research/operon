@@ -2,21 +2,21 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include "operon/algorithms/nsga2.hpp"
-#include <algorithm>                         // for stable_sort, copy_n, max
-#include <atomic>                            // for atomic_bool
-#include <cmath>                             // for isfinite
-#include <iterator>                          // for move_iterator, back_inse...
-#include <memory>                            // for allocator, allocator_tra...
-#include <optional>                          // for optional
-#include <taskflow/taskflow.hpp>             // for taskflow, subflow
-#include "operon/core/contracts.hpp"         // for ENSURE
-#include "operon/core/operator.hpp"          // for OperatorBase
-#include "operon/core/problem.hpp"           // for Problem
-#include "operon/core/range.hpp"             // for Range
-#include "operon/core/tree.hpp"              // for Tree
-#include "operon/operators/initializer.hpp"  // for CoefficientInitializerBase
-#include "operon/operators/reinserter.hpp"   // for ReinserterBase
+#include "operon/core/contracts.hpp"                 // for ENSURE
+#include "operon/core/operator.hpp"                  // for OperatorBase
+#include "operon/core/problem.hpp"                   // for Problem
+#include "operon/core/range.hpp"                     // for Range
+#include "operon/core/tree.hpp"                      // for Tree
+#include "operon/operators/initializer.hpp"          // for CoefficientInitializerBase
 #include "operon/operators/non_dominated_sorter.hpp"
+#include "operon/operators/reinserter.hpp"           // for ReinserterBase
+#include <algorithm>                                 // for stable_sort, copy_n, max
+#include <atomic>                                    // for atomic_bool
+#include <cmath>                                     // for isfinite
+#include <iterator>                                  // for move_iterator, back_inse...
+#include <memory>                                    // for allocator, allocator_tra...
+#include <optional>                                  // for optional
+#include <taskflow/taskflow.hpp>                     // for taskflow, subflow
 
 namespace Operon {
 
@@ -96,7 +96,6 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
         rngs.emplace_back(random());
     }
 
-    //auto idx = 0;
     auto const& evaluator = generator.Evaluator();
 
     // we want to allocate all the memory that will be necessary for evaluation (e.g. for storing model responses)
@@ -173,5 +172,14 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
 
     executor.run(taskflow);
     executor.wait_for_all();
+}
+
+auto NSGA2::Run(Operon::RandomGenerator& random, std::function<void()> report, size_t threads) -> void
+{
+    if (threads == 0U) {
+        threads = std::thread::hardware_concurrency();
+    }
+    tf::Executor executor(threads);
+    Run(executor, random, std::move(report));
 }
 } // namespace Operon
