@@ -4,11 +4,12 @@
 #ifndef OPERON_NNLS_HPP
 #define OPERON_NNLS_HPP
 
-#include <ceres/tiny_solver.h>
+#include <unsupported/Eigen/NonLinearOptimization>
 
 #include "operon/core/dual.hpp"
 #include "residual_evaluator.hpp"
 #include "tiny_cost_function.hpp"
+#include "ceres/tiny_solver.h"
 
 #if defined(HAVE_CERES)
 #include "dynamic_cost_function.hpp"
@@ -16,7 +17,7 @@
 
 namespace Operon {
 
-enum class OptimizerType : int { TINY,
+enum class OptimizerType : int { TINY, EIGEN,
     CERES };
 enum class DerivativeMethod : int { NUMERIC,
     AUTODIFF };
@@ -57,7 +58,7 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
     {
         static_assert(D == DerivativeMethod::AUTODIFF, "The tiny optimizer only supports autodiff.");
         ResidualEvaluator re(GetInterpreter(), GetTree(), GetDataset(), target, range);
-        Operon::TinyCostFunction<ResidualEvaluator, Dual, Eigen::ColMajor> cf(re);
+        Operon::TinyCostFunction<ResidualEvaluator, Operon::Dual, Operon::Scalar, Eigen::ColMajor> cf(re);
         ceres::TinySolver<decltype(cf)> solver;
         solver.options.max_num_iterations = static_cast<int>(iterations);
 
@@ -78,6 +79,41 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
     }
 };
 
+template <>
+struct NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> : public OptimizerBase {
+    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree& tree, Dataset const& dataset)
+        : OptimizerBase(interpreter, tree, dataset)
+    {
+    }
+
+    template <DerivativeMethod D = DerivativeMethod::AUTODIFF>
+    auto Optimize(Operon::Span<const Operon::Scalar> const target, Range range, size_t iterations, bool writeCoefficients = true, bool /*unused*/ = false) -> OptimizerSummary
+    {
+        static_assert(D == DerivativeMethod::AUTODIFF, "Eigen::LevenbergMarquardt only supports autodiff.");
+        ResidualEvaluator re(GetInterpreter(), GetTree(), GetDataset(), target, range);
+        Operon::TinyCostFunction<ResidualEvaluator, Operon::Dual, Operon::Scalar, Eigen::ColMajor> cf(re);
+        Eigen::LevenbergMarquardt<decltype(cf), Operon::Scalar> lm(cf);
+        lm.parameters.maxfev = static_cast<int>(iterations);
+
+        auto& tree = GetTree();
+        auto coeff = tree.GetCoefficients();
+        if (!coeff.empty()) {
+            Eigen::Matrix<Operon::Scalar, -1, 1> x0;
+            x0 = Eigen::Map<decltype(x0)>(coeff.data(), static_cast<int>(coeff.size()));
+            lm.minimize(x0);
+            if (writeCoefficients) {
+                tree.SetCoefficients({ x0.data(), static_cast<size_t>(x0.size()) });
+            }
+        }
+        OptimizerSummary sum {};
+        sum.InitialCost = -1;
+        sum.FinalCost = -1;
+        sum.Iterations = static_cast<int>(iterations);
+        return sum;
+    }
+};
+
+#if HAVE_CERES
 template <>
 struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBase {
     NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree& tree, Dataset const& dataset)
@@ -109,7 +145,7 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBa
         ceres::DynamicCostFunction* costFunction = nullptr;
         if constexpr (D == DerivativeMethod::AUTODIFF) {
             ResidualEvaluator re(interpreter, tree, dataset, target, range);
-            TinyCostFunction<ResidualEvaluator, Operon::Dual, Eigen::RowMajor> f(re);
+            TinyCostFunction<ResidualEvaluator, Operon::Dual, Operon::Scalar, Eigen::RowMajor> f(re);
             costFunction = new Operon::DynamicCostFunction<decltype(f)>(f);
         } else {
             auto* eval = new ResidualEvaluator(interpreter, tree, dataset, target, range); // NOLINT
@@ -152,6 +188,7 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBa
         return sum;
     }
 };
+#endif
 
 } // namespace Operon
 #endif
