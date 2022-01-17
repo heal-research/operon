@@ -71,6 +71,25 @@ namespace Operon {
         return r * r;
     }
 
+    template<typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
+    auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target) -> std::pair<double, double> {
+        auto stats = bivariate::accumulate<T>(estimated.data(), target.data(), estimated.size());
+        auto a = stats.covariance / stats.variance_x; // scale
+        if (!std::isfinite(a)) {
+            a = 1;
+        }
+        auto b = stats.mean_y - a * stats.mean_x; // offset
+        return {a, b};
+    }
+
+    auto FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept {
+        return FitLeastSquaresImpl<float>(estimated, target);
+    }
+
+    auto FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target) noexcept {
+        return FitLeastSquaresImpl<double>(estimated, target);
+    }
+
     auto
     Evaluator::operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
@@ -91,13 +110,8 @@ namespace Operon {
             GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange, buf);
 
             if (scaling_) {
-                auto stats = bivariate::accumulate<double>(buf.data(), targetValues.data(), buf.size());
-                auto a = static_cast<Operon::Scalar>(stats.covariance / stats.variance_x); // scale
-                if (!std::isfinite(a)) {
-                    a = 1;
-                }
-                auto b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x); // offset
-                std::transform(buf.begin(), buf.end(), buf.begin(), [&](auto x) { return a * x + b; });
+                auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
+                std::transform(buf.begin(), buf.end(), buf.begin(), [a=a,b=b](auto x) { return a * x + b; });
             }
             return error_(buf.begin(), buf.end(), targetValues.begin());
         };
@@ -108,7 +122,7 @@ namespace Operon {
 #if defined(HAVE_CERES)
             NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter_.get(), genotype, dataset);
 #else
-            NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> opt(interpreter_.get(), genotype, dataset);
+            NonlinearLeastSquaresOptimizer<OptimizerType::TINY> opt(interpreter_.get(), genotype, dataset);
 #endif
             auto coeff = genotype.GetCoefficients();
             auto summary = opt.Optimize(targetValues, trainingRange, iter);

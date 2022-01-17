@@ -55,6 +55,9 @@ struct OPERON_EXPORT C2 : public ErrorMetric {
     auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
 };
 
+auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept;
+auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target) noexcept;
+
 class EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
     Operon::Span<Operon::Individual const> population_;
     std::reference_wrapper<Problem const> problem_;
