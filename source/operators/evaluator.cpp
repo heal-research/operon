@@ -82,11 +82,11 @@ namespace Operon {
         return {a, b};
     }
 
-    auto FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept {
+    auto FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept -> std::pair<double, double> {
         return FitLeastSquaresImpl<float>(estimated, target);
     }
 
-    auto FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target) noexcept {
+    auto FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target) noexcept -> std::pair<double, double> {
         return FitLeastSquaresImpl<double>(estimated, target);
     }
 
