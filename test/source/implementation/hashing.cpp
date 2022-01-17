@@ -18,13 +18,13 @@
 
 namespace Operon::Test {
 
-void CalculateDistance(std::vector<Tree>& trees, Operon::HashFunction f, const std::string& name) {
+void CalculateDistance(std::vector<Tree>& trees, const std::string& name) {
     std::vector<Operon::Vector<Operon::Hash>> treeHashes;
     treeHashes.reserve(trees.size());
 
     for (auto& t : trees) {
         Operon::Vector<Operon::Hash> hh(t.Length());
-        t.Hash(f, Operon::HashMode::Strict);
+        t.Hash(Operon::HashMode::Strict);
         std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
         std::sort(hh.begin(), hh.end());
         treeHashes.push_back(hh);
@@ -109,7 +109,7 @@ TEST_CASE("Hash-based distance") {
     };
 
     for (const auto& [f, name] : hashFunctions) {
-        CalculateDistance(trees, f, name);
+        CalculateDistance(trees, name);
     }
 }
 
@@ -143,7 +143,7 @@ TEST_CASE("Hash collisions") {
     std::transform(indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::RandomGenerator rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
-        tree.Hash<Operon::HashFunction::FNV1Hash>(Operon::HashMode::Strict);
+        tree.Hash(Operon::HashMode::Strict);
         return tree;
     });
 

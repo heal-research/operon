@@ -13,6 +13,8 @@
 
 namespace Operon {
 using Hash = uint64_t;
+constexpr HashFunction HashFunc = HashFunction::XXHash;
+
 using RandomGenerator = Random::RomuTrio;
 
 template <typename T>
