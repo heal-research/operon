@@ -6,7 +6,6 @@
 #include <memory>
 #include <scn/scn.h>
 
-#include "operon/operators/selector.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
 
@@ -19,17 +18,30 @@ static const std::unordered_map<std::string, NodeType> Primitives {
     { "mul",      NodeType::Mul },
     { "sub",      NodeType::Sub },
     { "div",      NodeType::Div },
+    { "fmin",     NodeType::Fmin },
+    { "fmax",     NodeType::Fmax },
     { "aq",       NodeType::Aq },
     { "pow",      NodeType::Pow },
+    { "abs",      NodeType::Abs },
+    { "acos",     NodeType::Acos },
+    { "asin",     NodeType::Asin },
+    { "atan",     NodeType::Atan },
     { "cbrt",     NodeType::Cbrt },
+    { "ceil",     NodeType::Ceil },
     { "cos",      NodeType::Cos },
+    { "cosh",     NodeType::Cosh },
     { "exp",      NodeType::Exp },
+    { "floor",    NodeType::Floor },
     { "log",      NodeType::Log },
+    { "logabs",   NodeType::Logabs },
+    { "log1p",    NodeType::Log1p },
     { "sin",      NodeType::Sin },
+    { "sinh",     NodeType::Sinh },
     { "sqrt",     NodeType::Sqrt },
-    { "square",   NodeType::Square },
+    { "sqrtabs",  NodeType::Sqrtabs },
     { "tan",      NodeType::Tan },
     { "tanh",     NodeType::Tanh },
+    { "square",   NodeType::Square },
     { "dyn",      NodeType::Dynamic },
     { "constant", NodeType::Constant },
     { "variable", NodeType::Variable }
