@@ -8,6 +8,9 @@
 #include "operon/operators/creator.hpp"    // for CreatorBase, BalancedTreeC...
 #include "operon/operators/evaluator.hpp"  // for Evaluator, EvaluatorBase
 #include "operon/operators/generator.hpp"  // for OffspringGeneratorBase
+#include "operon/operators/reinserter.hpp"  // for OffspringGeneratorBase
+#include "operon/operators/selector.hpp"
+
 namespace Operon { class PrimitiveSet; }
 namespace Operon { class Problem; }
 namespace Operon { struct CrossoverBase; }
@@ -15,6 +18,43 @@ namespace Operon { struct MutatorBase; }
 namespace Operon { struct Variable; }
 
 namespace Operon {
+auto ParseReinserter(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<ReinserterBase>
+{
+    std::unique_ptr<ReinserterBase> reinserter;
+    if (str == "keep-best") {
+        reinserter = std::make_unique<KeepBestReinserter>(std::move(comp));
+    } else if (str == "replace-worst") {
+        reinserter = std::make_unique<ReplaceWorstReinserter>(std::move(comp));
+    }
+    return reinserter;
+}
+
+auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<Operon::SelectorBase>
+{
+    auto tok = Split(str, ':');
+    auto name = tok[0];
+    std::unique_ptr<Operon::SelectorBase> selector;
+    constexpr size_t defaultTournamentSize{5};
+    if (name == "tournament") {
+        selector = std::make_unique<Operon::TournamentSelector>(std::move(comp));
+        size_t tournamentSize{defaultTournamentSize};
+        if (tok.size() > 1) { scn::scan(tok[1], "{}", tournamentSize); }
+        dynamic_cast<Operon::TournamentSelector*>(selector.get())->SetTournamentSize(tournamentSize);
+    } else if (name == "proportional") {
+        selector = std::make_unique<Operon::ProportionalSelector>(std::move(comp));
+        dynamic_cast<Operon::ProportionalSelector*>(selector.get())->SetObjIndex(0);
+    } else if (name == "rank") {
+        selector = std::make_unique<Operon::RankTournamentSelector>(std::move(comp));
+        size_t tournamentSize{defaultTournamentSize};
+        if (tok.size() > 1) { scn::scan(tok[1], "{}", tournamentSize); }
+        dynamic_cast<Operon::RankTournamentSelector*>(selector.get())->SetTournamentSize(tournamentSize);
+    } else if (name == "random") {
+        selector = std::make_unique<Operon::RandomSelector>();
+    }
+        
+    return selector;
+}
+
 auto ParseCreator(std::string const& str, PrimitiveSet const& pset, Operon::Span<Variable const> inputs) -> std::unique_ptr<CreatorBase>
 {
     std::unique_ptr<CreatorBase> creator;
