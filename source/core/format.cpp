@@ -8,10 +8,13 @@ namespace Operon {
 
 void TreeFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> variableNames, size_t i, std::string& current, std::string indent, bool isLast, bool initialMarker, int decimalPrecision)
 {
+    std::string const last{"└── "};
+    std::string const notLast{"├── "};
+
     current += indent;
 
     if (initialMarker) {
-        current += isLast ? "└── " : "├── ";
+        current += isLast ? last : notLast;
     }
 
     const auto& s = tree[i];
@@ -41,7 +44,7 @@ void TreeFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Hash
 
     size_t count = 0;
     for (auto it = tree.Children(i); it.HasNext(); ++it) {
-        FormatNode(tree, variableNames, it.Index(), current, indent, ++count == s.Arity, true, decimalPrecision);
+        FormatNode(tree, variableNames, it.Index(), current, indent, ++count == s.Arity, /*initialMarker=*/true, decimalPrecision);
     }
 }
 
@@ -78,7 +81,7 @@ void InfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Has
             throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
         }
     } else {
-        if (s.Type < NodeType::Log) // add, sub, mul, div, aq, fmax, fmin, pow
+        if (s.Type < NodeType::Abs) // add, sub, mul, div, aq, fmax, fmin, pow
         {
             fmt::format_to(current, "(");
             if (s.Arity == 1) {
@@ -115,11 +118,26 @@ void InfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Has
             }
             fmt::format_to(current, ")");
         } else { // unary operators abs, asin, ... log, exp, sin, etc.
-            if (s.IsSquare()) {
+            if (s.Type == NodeType::Square) {
                 // format square(a) as a ^ 2
                 fmt::format_to(current, "(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 fmt::format_to(current, " ^ 2)");
+            } else if (s.Type == NodeType::Logabs) {
+                // format logabs(a) as log(abs(a))
+                fmt::format_to(current, "log(abs(");
+                FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
+                fmt::format_to(current, "))");
+            } else if (s.Type == NodeType::Log1p) {
+                // format log1p(a) as log(a+1)
+                fmt::format_to(current, "log(");
+                FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
+                fmt::format_to(current, "+1)");
+            } else if (s.Type == NodeType::Sqrtabs) {
+                // format sqrtabs(a) as sqrt(abs(a))
+                fmt::format_to(current, "sqrt(abs(");
+                FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
+                fmt::format_to(current, "))");
             } else {
                 fmt::format_to(current, "{}", s.Name());
                 fmt::format_to(current, "(");
@@ -138,14 +156,14 @@ auto InfixFormatter::Format(Tree const& tree, Dataset const& dataset, int decima
     }
     fmt::memory_buffer result;
     FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
-    return std::string(result.begin(), result.end());
+    return { result.begin(), result.end() };
 }
 
 auto InfixFormatter::Format(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
 {
     fmt::memory_buffer result;
     FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
-    return std::string(result.begin(), result.end());
+    return { result.begin(), result.end() };
 }
 
 } // namespace Operon

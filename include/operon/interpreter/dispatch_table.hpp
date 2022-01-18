@@ -90,14 +90,14 @@ namespace detail {
     template<NodeType Type, typename T>
     inline void DispatchOpUnary(Array<T>& m, Operon::Vector<Node> const& /*unused*/, size_t i, size_t /* row number - not used */)
     {
-        static_assert(Type < NodeType::Constant && Type > NodeType::Pow);
+        static_assert(Type < NodeType::Dynamic && Type > NodeType::Pow);
         Function<Type>{}(m.col(i), m.col(i - 1));
     }
 
     template<NodeType Type, typename T>
     inline void DispatchOpBinary(Array<T>& m, Operon::Vector<Node> const& nodes, size_t i, size_t /* row number - not used */)
     {
-        static_assert(Type < NodeType::Log && Type > NodeType::Div);
+        static_assert(Type < NodeType::Abs && Type > NodeType::Fmax);
         auto j = i - 1;
         auto k = j - nodes[j].Length - 1;
         Function<Type>{}(m.col(i), m.col(j), m.col(k));
@@ -168,11 +168,11 @@ namespace detail {
     template<NodeType Type, typename T>
     static constexpr auto MakeCall() -> Callable<T>
     {
-        if constexpr (Type < NodeType::Aq) { // nary: add, sub, mul, div
+        if constexpr (Type < NodeType::Aq) { // nary: add, sub, mul, div, fmin, fmax
             return Callable<T>(detail::DispatchOpNary<Type, T>);
-        } else if constexpr (Type < NodeType::Log) { // binary: aq, pow
+        } else if constexpr (Type < NodeType::Abs) { // binary: aq, pow
             return Callable<T>(detail::DispatchOpBinary<Type, T>);
-        } else if constexpr (Type < NodeType::Constant) { // unary: exp, log, sin, cos, tan, tanh, sqrt, cbrt, square, dynamic
+        } else if constexpr (Type < NodeType::Dynamic) { // unary: exp, log, sin, cos, tan, tanh, sqrt, cbrt, square 
             return Callable<T>(detail::DispatchOpUnary<Type, T>);
         }
     }
@@ -224,7 +224,7 @@ private:
 public:
     DispatchTable()
     {
-        InitMap(std::make_index_sequence<NodeTypes::Count-2>{});
+        InitMap(std::make_index_sequence<NodeTypes::Count-3>{}); // exclude constant, variable, dynamic
     }
 
     ~DispatchTable() = default;

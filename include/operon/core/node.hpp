@@ -12,24 +12,39 @@
 
 namespace Operon {
 enum class NodeType : uint32_t {
-    Add = 1U << 0U,
-    Mul = 1U << 1U,
-    Sub = 1U << 2U,
-    Div = 1U << 3U,
-    Aq  = 1U << 4U,
-    Pow = 1U << 5U,
-    Log = 1U << 6U,
-    Exp = 1U << 7U,
-    Sin = 1U << 8U,
-    Cos = 1U << 9U,
-    Tan = 1U << 10U,
-    Tanh = 1U << 11U,
-    Sqrt = 1U << 12U,
-    Cbrt = 1U << 13U,
-    Square = 1U << 14U,
-    Dynamic = 1U << 15U,
-    Constant = 1U << 16U,
-    Variable = 1U << 17U
+    Add      = 1U << 0U,
+    Mul      = 1U << 1U,
+    Sub      = 1U << 2U,
+    Div      = 1U << 3U,
+    Fmin     = 1U << 4U,
+    Fmax     = 1U << 5U,
+    Aq       = 1U << 6U,
+    Pow      = 1U << 7U,
+
+    Abs      = 1U << 8U,
+    Acos     = 1U << 9U,
+    Asin     = 1U << 10U,
+    Atan     = 1U << 11U,
+    Cbrt     = 1U << 12U,
+    Ceil     = 1U << 13U,
+    Cos      = 1U << 14U,
+    Cosh     = 1U << 15U,
+    Exp      = 1U << 16U,
+    Floor    = 1U << 17U,
+    Log      = 1U << 18U,
+    Logabs   = 1U << 19U,
+    Log1p    = 1U << 20U,
+    Sin      = 1U << 21U,
+    Sinh     = 1U << 22U,
+    Sqrt     = 1U << 23U,
+    Sqrtabs  = 1U << 24U,
+    Tan      = 1U << 25U,
+    Tanh     = 1U << 26U,
+    Square   = 1U << 27U,
+
+    Dynamic  = 1U << 28U,
+    Constant = 1U << 29U,
+    Variable = 1U << 30U
 };
 
 using PrimitiveSetConfig = NodeType;
@@ -37,7 +52,7 @@ using PrimitiveSetConfig = NodeType;
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 struct NodeTypes {
     // magic number keeping track of the number of different node types
-    static constexpr size_t Count = 18;
+    static constexpr size_t Count = 31;
 
     // returns the index of the given type in the NodeType enum
     static auto GetIndex(NodeType type) -> size_t
@@ -94,7 +109,7 @@ struct Node {
         , Parent(0UL)
         , Type(type)
     {
-        if (Type < NodeType::Log) // Add, Mul, Sub, Div, Aq, Pow
+        if (Type < NodeType::Abs) // Add, Mul, Sub, Div, Aq, Pow
         {
             Arity = 2;
         } else if (Type < NodeType::Constant) // Log, Exp, Sin, Cos, Tan, Tanh, Sqrt, Cbrt, Square
