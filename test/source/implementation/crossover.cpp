@@ -106,9 +106,9 @@ TEST_CASE("Crossover")
                 auto c = cx(random, trees[p1], trees[p1]);
                 sizes.push_back({trees[p1].Length(), trees[p2].Length(), c.Length()});
             }
-            double m1 = univariate::accumulate<double>(sizes.begin(), sizes.end(), [](auto const& arr) { return arr[0]; }).mean;
-            double m2 = univariate::accumulate<double>(sizes.begin(), sizes.end(), [](auto const& arr) { return arr[1]; }).mean;
-            double m3 = univariate::accumulate<double>(sizes.begin(), sizes.end(), [](auto const& arr) { return arr[2]; }).mean;
+            double m1 = vstat::univariate::accumulate<double>(sizes.begin(), sizes.end(), [](auto const& arr) { return arr[0]; }).mean;
+            double m2 = vstat::univariate::accumulate<double>(sizes.begin(), sizes.end(), [](auto const& arr) { return arr[1]; }).mean;
+            double m3 = vstat::univariate::accumulate<double>(sizes.begin(), sizes.end(), [](auto const& arr) { return arr[2]; }).mean;
             fmt::print("p: {:.1f}, parent1: {:.2f}, parent2: {:.2f}, child: {:.2f}\n", p, m1, m2, m3);
         }
     }

@@ -22,7 +22,7 @@ inline auto NormalizedMeanSquaredError(InputIt1 begin1, InputIt1 end1, InputIt2 
     static_assert(std::is_same_v<V1, V2>, "The types must be the same");
 
     constexpr double eps{1e-12};
-    auto varY = univariate::accumulate<V1>(begin2, begin2 + std::distance(begin1, end1)).variance;
+    auto varY = vstat::univariate::accumulate<V1>(begin2, begin2 + std::distance(begin1, end1)).variance;
     if (std::abs(varY) < eps) {
         return varY;
     }

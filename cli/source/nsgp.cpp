@@ -277,7 +277,7 @@ auto main(int argc, char** argv) -> int
             Operon::Scalar a{};
             Operon::Scalar b{};
             auto linearScaling = taskflow.emplace([&]() {
-                auto stats = bivariate::accumulate<double>(estimatedTrain.data(), targetTrain.data(), estimatedTrain.size());
+                auto stats = vstat::bivariate::accumulate<double>(estimatedTrain.data(), targetTrain.data(), estimatedTrain.size());
                 a = static_cast<Operon::Scalar>(stats.covariance / stats.variance_x);
                 if (!std::isfinite(a)) { a = 1; }
                 b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x);
