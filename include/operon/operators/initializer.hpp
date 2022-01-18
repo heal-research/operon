@@ -31,7 +31,7 @@ struct OPERON_EXPORT CoefficientInitializer : public CoefficientInitializerBase 
     {
         for (auto& node : tree.Nodes()) {
             if (callback_(node)) {
-                node.Value = dist_(random);
+                node.Value = Dist(params_)(random);
             }
         }
     }
@@ -39,12 +39,11 @@ struct OPERON_EXPORT CoefficientInitializer : public CoefficientInitializerBase 
     template <typename... Args>
     auto ParameterizeDistribution(Args... args) const -> void
     {
-        typename Dist::param_type params { std::forward<Args&&>(args)... };
-        dist_.param(params);
+        params_ = typename Dist::param_type { std::forward<Args&&>(args)... };
     }
 
 private:
-    mutable Dist dist_;
+    mutable typename Dist::param_type params_;
     NodeCheckCallback callback_;
 };
 
@@ -57,15 +56,15 @@ struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
 
     auto operator()(Operon::RandomGenerator& random) const -> Operon::Tree override
     {
-        auto targetLen = std::max(size_t { 1 }, static_cast<size_t>(std::round(dist_(random))));
+        auto targetLen = std::max(size_t { 1 }, static_cast<size_t>(std::round(Dist(params_)(random))));
         return creator_(random, targetLen, minDepth_, maxDepth_); // initialize tree
     }
 
     template <typename... Args>
     auto ParameterizeDistribution(Args... args) const -> void
     {
-        typename Dist::param_type params { std::forward<Args&&>(args)... };
-        dist_.param(params);
+        params_ = typename Dist::param_type { std::forward<Args&&>(args)... };
+        //dist_.param(params);
     }
 
     void SetMinDepth(size_t minDepth) { minDepth_ = minDepth; }
@@ -80,7 +79,7 @@ struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
     static constexpr size_t DefaultMaxDepth { 1000 }; // we don't want a depth restriction to limit the achievable shapes/lengths
 
 private:
-    mutable Dist dist_;
+    mutable typename Dist::param_type params_;
     Operon::CreatorBase& creator_;
     size_t minDepth_ { 1 };
     size_t maxDepth_ { DefaultMaxDepth };
