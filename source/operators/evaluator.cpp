@@ -122,7 +122,7 @@ namespace Operon {
 #if defined(HAVE_CERES)
             NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter_.get(), genotype, dataset);
 #else
-            NonlinearLeastSquaresOptimizer<OptimizerType::TINY> opt(interpreter_.get(), genotype, dataset);
+            NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> opt(interpreter_.get(), genotype, dataset);
 #endif
             auto coeff = genotype.GetCoefficients();
             auto summary = opt.Optimize(targetValues, trainingRange, iter);
