@@ -1,6 +1,6 @@
 {
     "name": "operon",
-    "version-string": "0.3.0",
+    "version-string": "0.3.1",
     "dependencies": [
         "aria-csv",
         "ceres",
