@@ -112,14 +112,12 @@ struct Node {
         if (Type < NodeType::Abs) // Add, Mul, Sub, Div, Aq, Pow
         {
             Arity = 2;
-        } else if (Type < NodeType::Constant) // Log, Exp, Sin, Cos, Tan, Tanh, Sqrt, Cbrt, Square
+        } else if (Type < NodeType::Dynamic) // Log, Exp, Sin, Cos, Tan, Tanh, Sqrt, Cbrt, Square
         {
             Arity = 1;
         }
         Length = Arity;
-
         IsEnabled = true;
-
         Value = 1.;
     }
 
