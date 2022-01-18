@@ -73,7 +73,7 @@ namespace Operon {
 
     template<typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
     auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target) -> std::pair<double, double> {
-        auto stats = bivariate::accumulate<T>(estimated.data(), target.data(), estimated.size());
+        auto stats = vstat::bivariate::accumulate<T>(estimated.data(), target.data(), estimated.size());
         auto a = stats.covariance / stats.variance_x; // scale
         if (!std::isfinite(a)) {
             a = 1;
