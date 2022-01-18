@@ -100,6 +100,10 @@ else()
     set(Ceres_VERSION "n/a")
 endif()
 
+# print summary of enabled/disabled features
+feature_summary(WHAT ENABLED_FEATURES DESCRIPTION "Enabled features:" QUIET_ON_EMPTY)
+feature_summary(WHAT DISABLED_FEATURES DESCRIPTION "Disabled features:" QUIET_ON_EMPTY)
+
 include(GenerateExportHeader)
 generate_export_header(
     operon_operon
