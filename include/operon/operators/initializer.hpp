@@ -64,7 +64,6 @@ struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
     auto ParameterizeDistribution(Args... args) const -> void
     {
         params_ = typename Dist::param_type { std::forward<Args&&>(args)... };
-        //dist_.param(params);
     }
 
     void SetMinDepth(size_t minDepth) { minDepth_ = minDepth; }
