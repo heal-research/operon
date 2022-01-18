@@ -11,11 +11,6 @@
 namespace Operon {
 class ReinserterBase : public OperatorBase<void, Operon::Span<Individual>, Operon::Span<Individual>> {
 public:
-    explicit ReinserterBase(ComparisonCallback&& cb)
-        : comp_(std::move(cb))
-    {
-    }
-
     explicit ReinserterBase(ComparisonCallback cb)
         : comp_(std::move(cb))
     {
@@ -34,10 +29,6 @@ private:
 
 class OPERON_EXPORT KeepBestReinserter : public ReinserterBase {
 public:
-    explicit KeepBestReinserter(ComparisonCallback&& cb)
-        : ReinserterBase(cb)
-    {
-    }
     explicit KeepBestReinserter(ComparisonCallback const& cb)
         : ReinserterBase(cb)
     {
@@ -64,10 +55,6 @@ public:
 
 class OPERON_EXPORT ReplaceWorstReinserter : public ReinserterBase {
 public:
-    explicit ReplaceWorstReinserter(ComparisonCallback&& cb)
-        : ReinserterBase(cb)
-    {
-    }
     explicit ReplaceWorstReinserter(ComparisonCallback const& cb)
         : ReinserterBase(cb)
     {
