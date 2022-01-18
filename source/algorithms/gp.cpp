@@ -50,7 +50,7 @@ namespace Operon {
         // while loop control flow
         auto [init, cond, body, back, done] = taskflow.emplace(
             [&](tf::Subflow& subflow) {
-                auto init = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
+                auto initializePopulation = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
                     auto id = executor.this_worker_id();
                     // make sure the worker has a large enough buffer
                     if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
@@ -59,7 +59,7 @@ namespace Operon {
                     parents_[i].Fitness = evaluator(rngs[i], parents_[i], slots[id]);
                 }).name("initialize population");
                 auto reportProgress = subflow.emplace([&](){ if (report) { std::invoke(report); } }).name("report progress");
-                init.precede(reportProgress);
+                initializePopulation.precede(reportProgress);
             }, // init
             [&]() { return terminate || generation_ == config.Generations; }, // loop condition
             [&](tf::Subflow& subflow) {
@@ -70,8 +70,8 @@ namespace Operon {
                 auto generateOffspring = subflow.for_each_index(size_t{1}, offspring_.size(), size_t{1}, [&](size_t i) {
                     auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                     while (!(terminate = generator.Terminate())) {
-                        if (auto resULt = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, buf); resULt.has_value()) {
-                            offspring_[i] = std::move(resULt.value());
+                        if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, buf); result.has_value()) {
+                            offspring_[i] = std::move(result.value());
                             return;
                         }
                     }
@@ -81,7 +81,6 @@ namespace Operon {
                 auto reportProgress = subflow.emplace([&](){ if (report) { std::invoke(report); } }).name("report progress");
 
                 // set-up subflow graph
-                //reportProgress.precede(keepElite);
                 keepElite.precede(prepareGenerator);
                 prepareGenerator.precede(generateOffspring);
                 generateOffspring.precede(reinsert);
