@@ -10,12 +10,14 @@
 
 #include <memory>
 #include <thread>
+#include <taskflow/taskflow.hpp>
+#if TF_MINOR_VERSION > 2
 #include <taskflow/algorithm/reduce.hpp>
+#endif
 #include "operon/algorithms/gp.hpp"
 #include "operon/core/format.hpp"
 #include "operon/core/version.hpp"
 #include "operon/core/problem.hpp"
-#include "operon/error_metrics/error_metrics.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"
@@ -271,10 +273,9 @@ auto main(int argc, char** argv) -> int
             Operon::Scalar a{};
             Operon::Scalar b{};
             auto linearScaling = taskflow.emplace([&]() {
-                auto stats = vstat::bivariate::accumulate<double>(estimatedTrain.data(), targetTrain.data(), estimatedTrain.size());
-                a = static_cast<Operon::Scalar>(stats.covariance / stats.variance_x);
-                if (!std::isfinite(a)) { a = 1; }
-                b = static_cast<Operon::Scalar>(stats.mean_y - a * stats.mean_x);
+                auto [a_, b_] = Operon::FitLeastSquares(estimatedTrain, targetTrain);
+                a = a_;
+                b = b_;
             });
 
             double r2Train{};
@@ -295,14 +296,15 @@ auto main(int argc, char** argv) -> int
             });
 
             auto calcStats = taskflow.emplace([&]() {
-                r2Train = Operon::R2Score<Operon::Scalar>(estimatedTrain, targetTrain);
-                r2Test = Operon::R2Score<Operon::Scalar>(estimatedTest, targetTest);
+                // negate the R2 because this is an internal fitness measure (minimization) which we here repurpose
+                r2Train = -Operon::R2{}(estimatedTrain, targetTrain);
+                r2Test = -Operon::R2{}(estimatedTest, targetTest);
 
-                nmseTrain = Operon::NormalizedMeanSquaredError<Operon::Scalar>(estimatedTrain, targetTrain);
-                nmseTest = Operon::NormalizedMeanSquaredError<Operon::Scalar>(estimatedTest, targetTest);
+                nmseTrain = Operon::NMSE{}(estimatedTrain, targetTrain);
+                nmseTest = Operon::NMSE{}(estimatedTest, targetTest);
 
-                maeTrain = Operon::MeanAbsoluteError<Operon::Scalar>(estimatedTrain, targetTrain);
-                maeTest = Operon::MeanAbsoluteError<Operon::Scalar>(estimatedTest, targetTest);
+                maeTrain = Operon::MAE{}(estimatedTrain, targetTrain);
+                maeTest = Operon::MAE{}(estimatedTest, targetTest);
             });
 
             double avgLength = 0;
