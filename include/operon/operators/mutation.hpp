@@ -27,7 +27,7 @@ struct OPERON_EXPORT OnePointMutation : public MutatorBase {
         // sample a random leaf
         auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsLeaf(); });
         EXPECT(it < nodes.end());
-        it->Value += dist_(random);
+        it->Value += Dist(params_)(random);
 
         return tree;
     }
@@ -35,12 +35,11 @@ struct OPERON_EXPORT OnePointMutation : public MutatorBase {
     template <typename... Args>
     auto ParameterizeDistribution(Args... args) const -> void
     {
-        typename Dist::param_type params { std::forward<Args&&>(args)... };
-        dist_.param(params);
+        params_ = typename Dist::param_type { std::forward<Args&&>(args)... };
     }
 
     private:
-    mutable Dist dist_;
+    mutable typename Dist::param_type params_;
 };
 
 template<typename Dist>
@@ -49,7 +48,7 @@ struct OPERON_EXPORT MultiPointMutation : public MutatorBase {
     {
         for (auto& node : tree.Nodes()) {
             if (node.IsLeaf()) {
-                node.Value += dist_(random);
+                node.Value += Dist(params_)(random);
             }
         }
         return tree;
@@ -58,12 +57,11 @@ struct OPERON_EXPORT MultiPointMutation : public MutatorBase {
     template <typename... Args>
     auto ParameterizeDistribution(Args... args) const -> void
     {
-        typename Dist::param_type params { std::forward<Args&&>(args)... };
-        dist_.param(params);
+        params_ = typename Dist::param_type { std::forward<Args&&>(args)... };
     }
 
     private:
-    mutable Dist dist_;
+    mutable typename Dist::param_type params_;
 };
 
 struct OPERON_EXPORT MultiMutation : public MutatorBase {
