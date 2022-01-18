@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.14)
 project(operonExamples CXX)
 
 include(../cmake/project-is-top-level.cmake)
+include(../cmake/project-is-top-level.cmake)
 
 if(PROJECT_IS_TOP_LEVEL)
   find_package(operon REQUIRED)
