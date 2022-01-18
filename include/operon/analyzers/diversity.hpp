@@ -43,7 +43,7 @@ public:
         std::transform(indices.begin(), indices.end(), std::back_inserter(hashes),
                 [&](auto i) { return MakeHashes(pop[i], M); });
 
-        univariate_accumulator<double> acc(Operon::Distance::Jaccard(hashes[0], hashes[1]));
+        vstat::univariate_accumulator<double> acc(Operon::Distance::Jaccard(hashes[0], hashes[1]));
         for (auto j = 2UL; j < pop.size(); ++j) {
             acc(Operon::Distance::Jaccard(hashes[0], hashes[j]));
         }
@@ -54,7 +54,7 @@ public:
             }
         }
 
-        diversity_ = univariate_statistics(acc).mean;
+        diversity_ = vstat::univariate_statistics(acc).mean;
     }
 
     private:
