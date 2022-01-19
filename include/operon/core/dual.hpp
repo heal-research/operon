@@ -9,7 +9,7 @@
 #if defined(HAVE_CERES)
 #include <ceres/jet.h>
 #else
-#include "ceres/jet.h"
+#include "operon/ceres/jet.h"
 #endif
 
 namespace Operon {
