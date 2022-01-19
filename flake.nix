@@ -20,7 +20,7 @@
             name = "operon";
             src = self;
 
-            cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DBUILD_CLI_PROGRAMS=ON" "-DBUILD_TESTING=OFF" "-DBUILD_SHARED_LIBS=ON" ];
+            cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DUSE_SINGLE_PRECISION=ON" "-DBUILD_CLI_PROGRAMS=ON" "-DBUILD_TESTING=OFF" "-DBUILD_SHARED_LIBS=ON" ];
 
             nativeBuildInputs = with pkgs; [ cmake ];
 
