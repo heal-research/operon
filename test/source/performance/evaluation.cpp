@@ -4,7 +4,9 @@
 #include <doctest/doctest.h>
 #include <thread>
 #include <taskflow/taskflow.hpp>
+#if TF_MINOR_VERSION > 2
 #include <taskflow/algorithm/reduce.hpp>
+#endif
 
 #include "operon/algorithms/config.hpp"
 #include "operon/algorithms/nsga2.hpp"

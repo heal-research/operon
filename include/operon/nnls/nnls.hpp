@@ -9,7 +9,7 @@
 #include "operon/core/dual.hpp"
 #include "residual_evaluator.hpp"
 #include "tiny_cost_function.hpp"
-#include "ceres/tiny_solver.h"
+#include "operon/ceres/tiny_solver.h"
 
 #if defined(HAVE_CERES)
 #include "dynamic_cost_function.hpp"
