@@ -94,10 +94,31 @@ else()
 endif()
 
 # ---- Optional dependencies
+set(HAVE_CERES FALSE)
 if (USE_CERES_NNLS)
     find_package(Ceres)   # use the Ceres optimizer for coefficients tuning
+    if (Ceres_FOUND)
+        set(HAVE_CERES TRUE)
+        target_link_libraries(operon_operon PRIVATE Ceres::ceres)
+    endif()
 else()
     set(Ceres_VERSION "n/a")
+endif()
+
+if (USE_OPENLIBM)
+    include(FindPkgConfig)
+    pkg_search_module(openlibm openlibm)
+    if (openlibm_FOUND)
+        target_link_libraries(operon_operon PRIVATE openlibm)
+    endif()
+endif()
+
+if (USE_JEMALLOC)
+    include(FindPkgConfig)
+    pkg_search_module(jemalloc jemalloc)
+    if (jemalloc_FOUND)
+        target_link_libraries(operon_operon PRIVATE jemalloc)
+    endif()
 endif()
 
 # print summary of enabled/disabled features
@@ -151,13 +172,10 @@ target_include_directories(
     "${PROJECT_BINARY_DIR}"
 )
 
-set(HAVE_CERES FALSE)
 if(Ceres_FOUND AND USE_CERES_NNLS)
-    set(HAVE_CERES TRUE)
 endif()
 
 target_link_libraries(operon_operon PUBLIC
-    "$<$<BOOL:${HAVE_CERES}>:Ceres::ceres>"
     Eigen3::Eigen
     Threads::Threads
     fmt::fmt
