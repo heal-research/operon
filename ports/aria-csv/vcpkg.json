@@ -1,0 +1,7 @@
+{
+    "name": "aria-csv",
+    "version": "1.0.0",
+    "description": "Fast, header-only, C++11 CSV parser.",
+    "homepage": "https://github.com/AriaFallah/csv-parser"
+}
+
