@@ -12,7 +12,7 @@
 #include "operon/core/operator.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/types.hpp"
-#include "operon/nnls/nnls.hpp"
+#include "operon/interpreter/interpreter.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon {

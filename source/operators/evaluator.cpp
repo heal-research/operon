@@ -7,6 +7,7 @@
 #include "operon/error_metrics/r2_score.hpp"
 #include "operon/error_metrics/correlation_coefficient.hpp"
 #include "operon/error_metrics/mean_absolute_error.hpp"
+#include "operon/nnls/nnls.hpp"
 
 namespace Operon {
     auto MSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
