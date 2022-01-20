@@ -83,14 +83,31 @@ find_package(pratt-parser REQUIRED)
 find_package(robin_hood REQUIRED)
 find_package(span-lite REQUIRED)
 find_package(vstat REQUIRED)
-find_package(vectorclass REQUIRED)
-find_package(xxHash CONFIG REQUIRED)
-find_package(aria-csv CONFIG)
-if (NOT aria-csv_FOUND)
+
+find_package(vectorclass)
+if (vectorclass_FOUND)
+    target_link_libraries(operon_operon PRIVATE vectorclass::vectorclass)
+else ()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(vectorclass REQUIRED IMPORTED_TARGET vectorclass)
+    target_link_libraries(operon_operon PRIVATE PkgConfig::vectorclass)
+endif ()
+
+find_package(xxHash)
+if (xxHash_FOUND)
+    target_link_libraries(operon_operon PRIVATE xxHash::xxhash)
+else ()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(xxHash REQUIRED IMPORTED_TARGET xxhash)
+    target_link_libraries(operon_operon PRIVATE PkgConfig::xxhash)
+endif ()
+
+find_package(aria-csv)
+if (aria-csv_FOUND)
+    target_link_libraries(operon_operon PRIVATE aria-csv::aria-csv)
+else()
     find_path(ARIA_CSV_INCLUDE_DIRS "aria-csv/parser.hpp")
     target_include_directories(operon_operon PRIVATE "${ARIA_CSV_INCLUDE_DIRS}")
-else()
-    target_link_libraries(operon_operon PRIVATE aria-csv::aria-csv)
 endif()
 
 # ---- Optional dependencies
@@ -106,18 +123,22 @@ else()
 endif()
 
 if (USE_OPENLIBM)
-    include(FindPkgConfig)
-    pkg_search_module(openlibm openlibm)
-    if (openlibm_FOUND)
-        target_link_libraries(operon_operon PRIVATE openlibm)
+    find_package(PkgConfig)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(openlibm IMPORTED_TARGET openlibm)
+        if (openlibm_FOUND)
+            target_link_libraries(operon_operon PRIVATE PkgConfig::openlibm)
+        endif()
     endif()
 endif()
 
 if (USE_JEMALLOC)
-    include(FindPkgConfig)
-    pkg_search_module(jemalloc jemalloc)
-    if (jemalloc_FOUND)
-        target_link_libraries(operon_operon PRIVATE jemalloc)
+    find_package(PkgConfig)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(jemalloc IMPORTED_TARGET jemalloc)
+        if (jemalloc_FOUND)
+            target_link_libraries(operon_operon PRIVATE PkgConfig::jemalloc)
+        endif()
     endif()
 endif()
 
@@ -187,8 +208,6 @@ target_link_libraries(operon_operon PUBLIC
 target_link_libraries(operon_operon PRIVATE
     FastFloat::fast_float
     Taskflow::Taskflow
-    vectorclass::vectorclass
-    xxHash::xxhash
     vstat::vstat
     )
 
