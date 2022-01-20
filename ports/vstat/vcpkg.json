@@ -1,0 +1,10 @@
+{
+    "name": "vstat",
+    "version-string": "1.0.0-beta",
+    "description": "C++17 library of SIMD-enabled sample statistics (mean, variance, covariance, correlation).",
+    "dependencies": [
+        {
+            "name": "vectorclass"
+        }
+    ]
+}
