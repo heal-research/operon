@@ -97,6 +97,14 @@
       }
     },
     {
+      "name": "vcpkg",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/ports"
+      }
+    },
+    {
       "name": "ci-coverage",
       "inherits": ["coverage-unix", "dev-mode"],
       "cacheVariables": {
@@ -128,6 +136,22 @@
     {
       "name": "ci-windows",
       "inherits": ["ci-build", "ci-win64", "dev-mode"]
+    },
+    {
+      "name": "build-ubuntu",
+      "inherits": ["ci-build", "ci-unix"]
+    },
+    {
+      "name": "build-ubuntu-vcpkg",
+      "inherits": ["ci-build", "ci-unix", "vcpkg"]
+    },
+    {
+      "name": "build-windows",
+      "inherits": ["ci-build", "ci-win64"]
+    },
+    {
+      "name": "build-windows-vcpkg",
+      "inherits": ["ci-build", "ci-win64", "vcpkg"]
     }
   ]
 }

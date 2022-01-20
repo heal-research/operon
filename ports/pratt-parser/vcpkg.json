@@ -1,0 +1,5 @@
+{
+    "name": "pratt-parser",
+    "version-string": "0.1.0",
+    "description": "C++17 parser library for mathematical expressions."
+}
