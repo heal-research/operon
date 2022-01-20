@@ -13,17 +13,19 @@
           overlays = [ nur.overlay ];
         };
         repo = pkgs.nur.repos.foolnotion;
+
       in rec {
         defaultPackage = pkgs.gcc11Stdenv.mkDerivation {
           name = "operon";
           src = self;
 
           cmakeFlags = [
-            "-DCMAKE_BUILD_TYPE=Release"
-            "-DUSE_SINGLE_PRECISION=ON"
             "-DBUILD_CLI_PROGRAMS=ON"
-            "-DBUILD_TESTING=OFF"
             "-DBUILD_SHARED_LIBS=ON"
+            "-DBUILD_TESTING=OFF"
+            "-DCMAKE_BUILD_TYPE=Release"
+            "-DUSE_OPENLIBM=ON"
+            "-DUSE_SINGLE_PRECISION=ON"
           ];
 
           nativeBuildInputs = with pkgs; [ cmake ];
