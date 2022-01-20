@@ -15,9 +15,9 @@ if(PROJECT_IS_TOP_LEVEL)
   set(USE_CERES_NNLS_DESCRIPTION       "Use the non-linear least squares optimizer from Ceres solver to tune model coefficients (if OFF, Eigen::LevenbergMarquardt will be used instead).")
   
   # option descriptions
-  option(USE_OPENLIBM         ${OPENLIBM_DESCRIPTION}             OFF)
+  option(USE_OPENLIBM         ${OPENLIBM_DESCRIPTION}             ON)
   option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
-  option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION} OFF)
+  option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION} ON)
   option(USE_CERES_NNLS       ${USE_CERES_NNLS_DESCRIPTION}       OFF)
   
   # provide a summary of configured options
