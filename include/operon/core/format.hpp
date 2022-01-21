@@ -4,6 +4,8 @@
 #ifndef OPERON_FORMAT_HPP
 #define OPERON_FORMAT_HPP
 
+#include <unordered_map>
+
 #include "tree.hpp"
 
 namespace Operon {
