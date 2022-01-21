@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
+#include <algorithm>                                 // for stable_sort, copy_n, max
+#include <atomic>                                    // for atomic_bool
+#include <chrono>                                    // for steady_clock
+#include <cmath>                                     // for isfinite
+#include <iterator>                                  // for move_iterator, back_inse...
+#include <memory>                                    // for allocator, allocator_tra...
+#include <optional>                                  // for optional
+#include <taskflow/taskflow.hpp>                     // for taskflow, subflow
+#include <vector>                                    // for vector, vector::size_type
+
 #include "operon/algorithms/nsga2.hpp"
 #include "operon/core/contracts.hpp"                 // for ENSURE
 #include "operon/core/operator.hpp"                  // for OperatorBase
@@ -8,15 +18,8 @@
 #include "operon/core/range.hpp"                     // for Range
 #include "operon/core/tree.hpp"                      // for Tree
 #include "operon/operators/initializer.hpp"          // for CoefficientInitializerBase
-#include "operon/operators/non_dominated_sorter.hpp"
+#include "operon/operators/non_dominated_sorter.hpp" // for RankSorter
 #include "operon/operators/reinserter.hpp"           // for ReinserterBase
-#include <algorithm>                                 // for stable_sort, copy_n, max
-#include <atomic>                                    // for atomic_bool
-#include <cmath>                                     // for isfinite
-#include <iterator>                                  // for move_iterator, back_inse...
-#include <memory>                                    // for allocator, allocator_tra...
-#include <optional>                                  // for optional
-#include <taskflow/taskflow.hpp>                     // for taskflow, subflow
 
 namespace Operon {
 
@@ -89,6 +92,13 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     const auto& reinserter = GetReinserter();
     const auto& problem = GetProblem();
 
+    auto t0 = std::chrono::steady_clock::now();
+    auto elapsed = [t0]() {
+        auto t1 = std::chrono::steady_clock::now();
+        constexpr double ms{1e3};
+        return static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()) / ms;
+    };
+
     // random seeds for each thread
     size_t s = std::max(config.PopulationSize, config.PoolSize);
     std::vector<Operon::RandomGenerator> rngs;
@@ -129,7 +139,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
             init.precede(updateRanks);
             updateRanks.precede(reportProgress);
         }, // init
-        [&]() { return terminate || generation_ == config.Generations; }, // loop condition
+        [&]() { return terminate || generation_ == config.Generations || elapsed() > static_cast<double>(config.TimeLimit); }, // loop condition
         [&](tf::Subflow& subflow) {
             auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents_); }).name("prepare generator");
             auto generateOffspring = subflow.for_each_index(size_t{0}, offspring_.size(), size_t{1}, [&](size_t i) {
