@@ -63,13 +63,13 @@ namespace Operon {
     auto C2::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
     {
         auto r = CorrelationCoefficient(estimated.begin(), estimated.end(), target.begin());
-        return r * r;
+        return -(r * r);
     }
     
     auto C2::operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double
     {
         auto r = CorrelationCoefficient(beg1, end1, beg2);
-        return r * r;
+        return -(r * r);
     }
 
     template<typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
