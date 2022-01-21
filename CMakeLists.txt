@@ -105,7 +105,7 @@ else ()
     if(xxhash_FOUND)
         target_link_libraries(operon_operon PRIVATE PkgConfig::xxhash)
     else()
-	message(FATAL_ERROR "xxHash dependency could not be found.")
+        message(FATAL_ERROR "xxHash dependency could not be found.")
     endif()
 endif ()
 
