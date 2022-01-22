@@ -8,6 +8,7 @@
 
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
+#include "operon/core/version.hpp"
 
 using Operon::NodeType;
 
@@ -114,9 +115,13 @@ auto PrintPrimitives(NodeType config) -> void
     }
 }
 
-auto InitOptions(cxxopts::Options& opts) -> void
+auto InitOptions(std::string const& name, std::string const& desc, int width) -> cxxopts::Options
 {
+    cxxopts::Options opts(name, desc);
+    opts.set_width(width);
+
     std::string const symbols = "add, sub, mul, div, exp, log, square, sqrt, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, abs, aq, ceil, floor, fmin, fmax, log1p, logabs, sqrtabs";
+
     opts.add_options()
         ("dataset", "Dataset file name (csv) (required)", cxxopts::value<std::string>())
         ("shuffle", "Shuffle the input data", cxxopts::value<bool>()->default_value("false"))
@@ -151,6 +156,33 @@ auto InitOptions(cxxopts::Options& opts) -> void
         ("debug", "Debug mode (more information displayed)")
         ("help", "Print help")
         ("version", "Print version and program information");
+    return opts;
 }
 
+auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult {
+    cxxopts::ParseResult result;
+    try {
+        result = opts.parse(argc, argv);
+    } catch (cxxopts::OptionParseException const& ex) {
+        fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
+        std::exit(EXIT_FAILURE);
+    }
+    if (result.arguments().empty() || result.count("help") > 0) {
+        fmt::print("{}\n", opts.help());
+        std::exit(EXIT_SUCCESS);
+    }
+    if (result.count("version") > 0) {
+        fmt::print("{}\n", Operon::Version());
+        std::exit(EXIT_SUCCESS);
+    }
+    if (result.count("target") == 0) {
+        fmt::print(stderr, "error: no target variable was specified.\n");
+        std::exit(EXIT_FAILURE);
+    }
+    if (result.count("dataset") == 0) {
+        fmt::print(stderr, "error: no dataset was specified.\n");
+        std::exit(EXIT_FAILURE);
+    }
+    return result;
+}
 } // namespace Operon
