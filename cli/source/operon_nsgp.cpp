@@ -33,19 +33,8 @@
 
 auto main(int argc, char** argv) -> int
 {
-    cxxopts::Options opts("operon_nsgp", "Non-dominated sorting genetic programming symbolic regression");
-    Operon::InitOptions(opts);
-
-    auto result = opts.parse(argc, argv);
-    if (result.arguments().empty() || result.count("help") > 0) {
-        fmt::print("{}\n", opts.help());
-        return 0;
-    }
-
-    if (result.count("version") > 0) {
-        fmt::print("{}\n", Operon::Version());
-        return 0;
-    }
+    auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
+    auto result = Operon::ParseOptions(std::move(opts), argc, argv);
 
     // parse and set default values
     Operon::GeneticAlgorithmConfig config{};
@@ -119,15 +108,9 @@ auto main(int argc, char** argv) -> int
             Operon::PrintPrimitives(primitiveSetConfig);
             return 0;
         }
-
-        if (!dataset) {
-            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no dataset given.", opts.help()));
-        }
-        if (result.count("target") == 0) {
-            throw std::runtime_error(fmt::format("{}\n{}\n", "Error: no target variable given.", opts.help()));
-        }
         if (auto res = dataset->GetVariable(target); !res.has_value()) {
-            throw std::runtime_error(fmt::format("Target variable {} does not exist in the dataset.", target));
+            fmt::print(stderr, "error: target variable {} does not exist in the dataset.", target);
+            return EXIT_FAILURE;
         }
         if (result.count("train") == 0) {
             trainingRange = Operon::Range{ 0, 2 * dataset->Rows() / 3 }; // by default use 66% of the data as training
@@ -144,11 +127,13 @@ auto main(int argc, char** argv) -> int
         }
         // validate training range
         if (trainingRange.Start() >= dataset->Rows() || trainingRange.End() > dataset->Rows()) {
-            throw std::runtime_error(fmt::format("The training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start(), trainingRange.End(), dataset->Rows()));
+            fmt::print(stderr, "error: the training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start(), trainingRange.End(), dataset->Rows());
+            return EXIT_FAILURE;
         }
 
         if (trainingRange.Start() > trainingRange.End()) {
-            throw std::runtime_error(fmt::format("Invalid training range {}:{}\n", trainingRange.Start(), trainingRange.End()));
+            fmt::print(stderr, "error: invalid training range {}:{}\n", trainingRange.Start(), trainingRange.End());
+            return EXIT_FAILURE;
         }
 
         std::vector<Operon::Variable> inputs;
@@ -163,7 +148,8 @@ auto main(int argc, char** argv) -> int
                 if (auto res = dataset->GetVariable(tok); res.has_value()) {
                     inputs.push_back(res.value());
                 } else {
-                    throw std::runtime_error(fmt::format("Variable {} does not exist in the dataset.", tok));
+                    fmt::print(stderr, "error: variable {} does not exist in the dataset.", tok);
+                    return EXIT_FAILURE;
                 }
             }
         }
@@ -317,8 +303,6 @@ auto main(int argc, char** argv) -> int
             double avgQuality = 0;
             double totalMemory = 0;
 
-            EXPECT(std::all_of(pop.begin(), pop.end(), [](auto const& ind) { return ind.Genotype.Length() > 0; }));
-
             auto calculateLength = taskflow.transform_reduce(pop.begin(), pop.end(), avgLength, std::plus<double>{}, [](auto const& ind) { return ind.Genotype.Length(); });
             auto calculateQuality = taskflow.transform_reduce(pop.begin(), pop.end(), avgQuality, std::plus<double>{}, [idx=idx](auto const& ind) { return ind[idx]; });
             auto calculatePopMemory = taskflow.transform_reduce(pop.begin(), pop.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); });
@@ -347,7 +331,8 @@ auto main(int argc, char** argv) -> int
         gp.Run(executor, random, report);
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 20));
     } catch (std::exception& e) {
-        throw std::runtime_error(fmt::format("{}", e.what()));
+        fmt::print(stderr, "error: {}\n", e.what());
+        return EXIT_FAILURE;
     }
 
     return 0;
