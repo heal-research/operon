@@ -208,17 +208,11 @@ struct DispatchTable {
 private:
     Map map_;
 
-    template<size_t I>
-    constexpr void InsertType()
-    {
-        constexpr auto T = static_cast<NodeType>(1U << I);
-        map_.insert({ Node(T).HashValue, detail::MakeTuple<T, Ts...>() });
-    }
-
     template<std::size_t... Is>
     void InitMap(std::index_sequence<Is...> /*unused*/)
     {
-        (InsertType<Is>(), ...);
+        auto f = [](auto i) { return static_cast<NodeType>(1U << i); };
+        (map_.insert({ Node(f(Is)).HashValue, detail::MakeTuple<f(Is), Ts...>() }), ...);
     }
 
 public:
