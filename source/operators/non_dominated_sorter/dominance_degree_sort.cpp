@@ -3,6 +3,8 @@
 
 #include "operon/operators/non_dominated_sorter/dominance_degree_sort.hpp"
 
+#include <algorithm>
+
 namespace Operon {
     using Vec = Eigen::Matrix<int64_t, -1, 1, Eigen::ColMajor>;
     using Mat = Eigen::Matrix<int64_t, -1, -1, Eigen::ColMajor>;
