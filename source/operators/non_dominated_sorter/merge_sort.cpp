@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include "operon/operators/non_dominated_sorter/merge_sort.hpp"
+#include "operon/collections/bitset.hpp"
 
 namespace Operon {
 
@@ -78,7 +79,7 @@ namespace detail {
             for (; fw <= lw; fw++) {
                 word = bitsets_[solutionId][fw] & incrementalBitset_[fw];
                 if (word != 0) {
-                    i = static_cast<int>(detail::count_trailing_zeros(static_cast<word_t>(word)));
+                    i = static_cast<int>(Bitset<>::CountTrailingZeros(static_cast<word_t>(word)));
                     offset = static_cast<size_t>(fw) * WORD_SIZE;
                     do {
                         if (ranking_[offset + i] >= rank) {
@@ -86,7 +87,7 @@ namespace detail {
                         }
                         i++;
                         word_t w = word >> i; // NOLINT
-                        i += static_cast<bool>(w) ? detail::count_trailing_zeros(w) : WORD_SIZE;
+                        i += static_cast<bool>(w) ? Bitset<>::CountTrailingZeros(w) : WORD_SIZE;
                     } while (i < WORD_SIZE && rank <= wordRanking_[fw]);
                     if (rank > maxRank_) {
                         maxRank_ = rank;

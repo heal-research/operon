@@ -9,7 +9,7 @@
 
 namespace Operon {
 
-class OPERON_EXPORT DominanceDegreeSorter : public NondominatedSorterBase {
+struct OPERON_EXPORT DominanceDegreeSorter : public NondominatedSorterBase {
     auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
 };
 

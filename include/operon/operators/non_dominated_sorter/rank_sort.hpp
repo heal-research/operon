@@ -18,13 +18,13 @@ struct OPERON_EXPORT RankSorter : public NondominatedSorterBase {
 
     inline auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override
     {
-        return SortBit(pop);
+        return RankIntersect(pop);
     }
 
 #if EIGEN_VERSION_AT_LEAST(3,4,0)
-    static auto SortRank(Operon::Span<Operon::Individual const> pop) -> NondominatedSorterBase::Result;
+    static auto RankOrdinal(Operon::Span<Operon::Individual const> pop) -> NondominatedSorterBase::Result;
 #endif
-    static auto SortBit(Operon::Span<Operon::Individual const> pop) -> NondominatedSorterBase::Result;
+    static auto RankIntersect(Operon::Span<Operon::Individual const> pop) -> NondominatedSorterBase::Result;
 };
 
 } // namespace Operon
