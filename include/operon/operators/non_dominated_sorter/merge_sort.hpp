@@ -17,7 +17,7 @@
 #include "operon/operon_export.hpp"
 
 namespace Operon {
-class OPERON_EXPORT MergeNondominatedSorter : public NondominatedSorterBase {
+struct OPERON_EXPORT MergeNondominatedSorter : public NondominatedSorterBase {
     auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
 };
 } // namespace Operon

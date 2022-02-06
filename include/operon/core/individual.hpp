@@ -82,7 +82,7 @@ struct Comparison {
 
 struct SingleObjectiveComparison final : public Comparison {
     explicit SingleObjectiveComparison(size_t idx)
-        : objectiveIndex_(idx)
+        : obj_(idx)
     {
     }
     SingleObjectiveComparison()
@@ -92,14 +92,14 @@ struct SingleObjectiveComparison final : public Comparison {
 
     auto operator()(Individual const& lhs, Individual const& rhs) const -> bool override
     {
-        return lhs[objectiveIndex_] < rhs[objectiveIndex_];
+        return lhs[obj_] < rhs[obj_];
     }
 
-    [[nodiscard]] auto GetObjectiveIndex() const -> size_t { return objectiveIndex_; }
-    void SetObjectiveIndex(size_t objIdx) { objectiveIndex_ = objIdx; }
+    [[nodiscard]] auto GetObjectiveIndex() const -> size_t { return obj_; }
+    void SetObjectiveIndex(size_t obj) { obj_ = obj; }
 
 private:
-    size_t objectiveIndex_;
+    size_t obj_; // objective index
 };
 
 struct LexicographicalComparison : public Comparison {

@@ -9,10 +9,9 @@
 
 namespace Operon {
 
-class OPERON_EXPORT DeductiveSorter : public NondominatedSorterBase {
-    auto
-    Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override; 
+struct OPERON_EXPORT DeductiveSorter : public NondominatedSorterBase {
+    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
 };
-} // namespace operon
+} // namespace Operon
 
 #endif
