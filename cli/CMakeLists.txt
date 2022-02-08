@@ -20,7 +20,14 @@ function(add_operon_cli NAME)
 
     target_link_libraries(${NAME} PRIVATE operon::operon cxxopts::cxxopts scn::scn)
     target_compile_features(${NAME} PRIVATE cxx_std_17)
-    target_compile_options(${NAME} PRIVATE "-march=x86-64;-mavx2;-mfma")
+
+    if(MSVC)
+        target_compile_options(${NAME} PUBLIC "/std:c++latest")
+    else()
+        target_compile_options(${NAME} PUBLIC "-march=x86-64;-mavx2;-mfma")
+        target_link_options(${NAME} PUBLIC "-Wl,--no-undefined")
+    endif()
+
     target_link_options(${NAME} PUBLIC "-Wl,--no-undefined")
 
     install(TARGETS ${NAME}

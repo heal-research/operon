@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
+#include <numeric>
 #include "operon/operators/non_dominated_sorter/dominance_degree_sort.hpp"
-
-#include <algorithm>
 
 namespace Operon {
     using Vec = Eigen::Matrix<int64_t, -1, 1, Eigen::ColMajor>;
