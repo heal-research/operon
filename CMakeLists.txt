@@ -66,7 +66,8 @@ add_library(
     source/operators/non_dominated_sorter/efficient_sort.cpp
     source/operators/non_dominated_sorter/hierarchical_sort.cpp
     source/operators/non_dominated_sorter/merge_sort.cpp
-    source/operators/non_dominated_sorter/rank_sort.cpp
+    source/operators/non_dominated_sorter/rank_intersect.cpp
+    source/operators/non_dominated_sorter/rank_ordinal.cpp
     source/operators/selector/proportional.cpp
     source/operators/selector/tournament.cpp
 )

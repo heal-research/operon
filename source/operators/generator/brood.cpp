@@ -43,7 +43,7 @@ namespace Operon {
             offspring.push_back(makeOffspring());
         }
         SingleObjectiveComparison comp{0};
-        RankSorter sorter;
+        RankIntersectSorter sorter;
 
         if (population[first].Size() > 1) {
             std::stable_sort(offspring.begin(), offspring.end(), LexicographicalComparison{});

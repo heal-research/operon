@@ -22,7 +22,7 @@
 #include "operon/operators/generator.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/mutation.hpp"
-#include "operon/operators/non_dominated_sorter/rank_sort.hpp"
+#include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
 
 namespace Operon::Test {
@@ -300,7 +300,7 @@ namespace Operon::Test {
         BasicOffspringGenerator generator(evaluator, crossover, mutator, selector, selector);
         Operon::RandomGenerator random(1234);
 
-        RankSorter sorter;
+        RankIntersectSorter sorter;
 
         GeneticAlgorithmConfig config{};
         config.Generations = 100;

@@ -6,6 +6,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <climits>
 #include <functional>
 #include <limits>
 #include <numeric>
