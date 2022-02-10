@@ -5,8 +5,6 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/core/individual.hpp"
 
-#include <cpp-sort/sorters.h>
-
 namespace Operon {
     auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result
     {
@@ -24,12 +22,9 @@ namespace Operon {
         p.col(0) = Vec::LinSpaced(n, 0, n-1);
         r(0, p.col(0)) = Vec::LinSpaced(n, 0, n-1);
 
-        cppsort::spin_sorter sorter;
-
         for (auto i = 1; i < m; ++i) {
             p.col(i) = p.col(i - 1); // this is a critical part of the approach
-            sorter(p.col(i), [&](auto idx) { return pop[idx][i]; });
-            //std::stable_sort(p.col(i).begin(), p.col(i).end(), [&](auto a, auto b) { return pop[a][i] < pop[b][i]; });
+            std::stable_sort(p.col(i).begin(), p.col(i).end(), [&](auto a, auto b) { return pop[a][i] < pop[b][i]; });
             r(i, p.col(i)) = Vec::LinSpaced(n, 0, n - 1);
         }
         // 2) save min and max positions as well as the column index for the max position
