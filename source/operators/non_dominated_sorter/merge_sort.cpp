@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#include "operon/operators/non_dominated_sorter/merge_sort.hpp"
+#include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/collections/bitset.hpp"
+#include "operon/core/individual.hpp"
 
 namespace Operon {
 
@@ -234,7 +235,7 @@ namespace detail {
 } // namespace detail
 
     auto
-    MergeNondominatedSorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result {
+    MergeSorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result {
         auto n = pop.size();
         auto m = pop.front().Size(); 
         detail::BitsetManager bsm(n);

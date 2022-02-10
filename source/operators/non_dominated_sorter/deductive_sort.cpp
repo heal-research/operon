@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#include "operon/operators/non_dominated_sorter/deductive_sort.hpp"
+#include "operon/operators/non_dominated_sorter.hpp"
+#include "operon/core/individual.hpp"
 
 namespace Operon {
 
