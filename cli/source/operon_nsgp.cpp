@@ -166,20 +166,23 @@ auto main(int argc, char** argv) -> int
         treeInitializer.SetMinDepth(1);
         treeInitializer.SetMaxDepth(1000); // NOLINT
 
-        Operon::NormalCoefficientInitializer coeffInitializer;
-        coeffInitializer.ParameterizeDistribution(Operon::Scalar{0.0}, Operon::Scalar{1.0});
+        Operon::CoefficientInitializer<std::uniform_int_distribution<size_t>> coeffInitializer;
+        coeffInitializer.ParameterizeDistribution(1UL, 1UL);
+
+        //Operon::NormalCoefficientInitializer coeffInitializer;
+        //coeffInitializer.ParameterizeDistribution(Operon::Scalar{0.0}, Operon::Scalar{1.0});
 
         auto crossover = Operon::SubtreeCrossover { crossoverInternalProbability, maxDepth, maxLength };
         auto mutator = Operon::MultiMutation {};
-        Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> onePoint;
-        onePoint.ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
+        //Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> onePoint;
+        //onePoint.ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
 
         auto changeVar = Operon::ChangeVariableMutation { problem.InputVariables() };
         auto changeFunc = Operon::ChangeFunctionMutation { problem.GetPrimitiveSet() };
         auto replaceSubtree = Operon::ReplaceSubtreeMutation { *creator, maxDepth, maxLength };
         auto insertSubtree = Operon::InsertSubtreeMutation { *creator, maxDepth, maxLength, problem.GetPrimitiveSet() };
         auto removeSubtree = Operon::RemoveSubtreeMutation { problem.GetPrimitiveSet() };
-        mutator.Add(onePoint, 1.0);
+        //mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
         mutator.Add(replaceSubtree, 1.0);
@@ -221,7 +224,9 @@ auto main(int argc, char** argv) -> int
 
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        Operon::RankSorter sorter;
+        Operon::RankIntersectSorter sorter;
+        //Operon::MergeNondominatedSorter sorter;
+        //Operon::DeductiveSorter sorter;
         Operon::NSGA2 gp { problem, config, treeInitializer, coeffInitializer, *generator, *reinserter, sorter };
 
         auto targetValues = problem.TargetValues();
@@ -329,7 +334,7 @@ auto main(int argc, char** argv) -> int
         };
 
         gp.Run(executor, random, report);
-        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 20));
+        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 4));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;

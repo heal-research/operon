@@ -44,7 +44,7 @@ namespace Operon {
 
         if (population.front().Size() > 1) {
             std::stable_sort(offspring.begin(), offspring.end(), LexicographicalComparison{});
-            auto fronts = RankSorter {}(offspring);
+            auto fronts = RankIntersectSorter{}(offspring);
             auto best = *std::min_element(fronts[0].begin(), fronts[0].end(), [&](auto i, auto j) { return comp(offspring[i], offspring[j]); });
             return std::make_optional(offspring[best]);
         }
