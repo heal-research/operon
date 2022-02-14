@@ -6,7 +6,7 @@
 #include <Eigen/Core>
 
 namespace Operon {
-auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result
+auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
 {
 #if EIGEN_VERSION_AT_LEAST(3, 4, 0)
     using Vec = Eigen::Array<Eigen::Index, -1, 1>;
@@ -22,14 +22,14 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop) const -
     p.col(0) = Vec::LinSpaced(n, 0, n - 1);
     r(0, p.col(0)) = Vec::LinSpaced(n, 0, n - 1);
 
+    Operon::Less cmp;
     for (auto i = 1; i < m; ++i) {
         p.col(i) = p.col(i - 1); // this is a critical part of the approach
-        std::stable_sort(p.col(i).begin(), p.col(i).end(), [&](auto a, auto b) { return pop[a][i] < pop[b][i]; });
+        std::stable_sort(p.col(i).begin(), p.col(i).end(), [&](auto a, auto b) { return cmp(pop[a][i], pop[b][i], eps); });
         r(i, p.col(i)) = Vec::LinSpaced(n, 0, n - 1);
     }
     // 2) save min and max positions as well as the column index for the max position
     Vec maxc(n);
-    Vec minp(n);
     Vec maxp(n);
     for (auto i = 0; i < n; ++i) {
         auto c = r.col(i);

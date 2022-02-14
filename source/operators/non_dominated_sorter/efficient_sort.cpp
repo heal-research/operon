@@ -7,13 +7,13 @@
 namespace Operon {
 
     template<EfficientSortStrategy S>
-    static auto EfficientSortImpl(Operon::Span<Operon::Individual const> pop) -> NondominatedSorterBase::Result
+    static auto EfficientSortImpl(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) -> NondominatedSorterBase::Result
     {
         // check if individual i is dominated by any individual in the front f
         auto dominated = [&](auto const& f, size_t i) {
             return std::any_of(f.rbegin(), f.rend(), [&](size_t j) {
-                    return pop[j].ParetoCompare(pop[i]) == Dominance::Left;
-                    });
+                return ParetoDominance{}(pop[j].Fitness, pop[i].Fitness, eps) == Dominance::Left;
+            });
         };
 
         std::vector<std::vector<size_t>> fronts;
@@ -36,14 +36,14 @@ namespace Operon {
     }
 
     template<>
-    auto EfficientBinarySorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result
+    auto EfficientBinarySorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
     {
-        return EfficientSortImpl<EfficientSortStrategy::Binary>(pop);
+        return EfficientSortImpl<EfficientSortStrategy::Binary>(pop, eps);
     }
 
     template<>
-    auto EfficientSequentialSorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result
+    auto EfficientSequentialSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
     {
-        return EfficientSortImpl<EfficientSortStrategy::Sequential>(pop);
+        return EfficientSortImpl<EfficientSortStrategy::Sequential>(pop, eps);
     }
 } // namespace Operon

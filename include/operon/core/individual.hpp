@@ -4,31 +4,12 @@
 #ifndef OPERON_INDIVIDUAL_HPP
 #define OPERON_INDIVIDUAL_HPP
 
+#include "comparison.hpp"
 #include "tree.hpp" 
 #include "types.hpp" 
 #include <cstddef>
-#include <Eigen/Core>
 
 namespace Operon {
-
-enum class Dominance : int { Left = 0,
-    Equal = 1,
-    Right = 2,
-    None = 3 };
-
-namespace detail {
-    template <typename T>
-    inline auto Compare(T const* lhs, T const* rhs, size_t n) noexcept -> Dominance
-    {
-        Eigen::Map<Eigen::Array<T, -1, 1> const> x(lhs, n);
-        Eigen::Map<Eigen::Array<T, -1, 1> const> y(rhs, n);
-        auto better = (x < y).any();
-        auto worse = (x > y).any();
-        if (better) { return worse ? Dominance::None : Dominance::Left; }
-        if (worse) { return better ? Dominance::None : Dominance::Right; }
-        return Dominance::Equal;
-    }
-} // namespace detail
 
 struct LexicographicalComparison; // fwd def
 
@@ -51,36 +32,9 @@ struct Individual {
         : Fitness(nObj, 0.0)
     {
     }
-
-    inline auto operator==(Individual const& other) const noexcept -> bool
-    {
-        return std::equal(Fitness.begin(), Fitness.end(), other.Fitness.begin());
-    }
-
-    inline auto operator!=(Individual const& other) const noexcept -> bool
-    {
-        return !(*this == other);
-    }
-
-    [[nodiscard]] inline auto LexicographicalCompare(Individual const& other) const noexcept -> bool;
-
-    [[nodiscard]] inline auto ParetoCompare(Individual const& other) const noexcept -> Dominance
-    {
-        return detail::Compare(Fitness.data(), other.Fitness.data(), Fitness.size());
-    }
 };
 
-struct Comparison {
-    virtual auto operator()(Individual const&, Individual const&) const -> bool = 0;
-    virtual ~Comparison() noexcept = default;
-    Comparison() = default;
-    Comparison(Comparison const&) = default;
-    Comparison(Comparison&&) = default;
-    auto operator=(Comparison const&) -> Comparison& = default;
-    auto operator=(Comparison&&) -> Comparison& = default;
-};
-
-struct SingleObjectiveComparison final : public Comparison {
+struct SingleObjectiveComparison {
     explicit SingleObjectiveComparison(size_t idx)
         : obj_(idx)
     {
@@ -90,9 +44,9 @@ struct SingleObjectiveComparison final : public Comparison {
     {
     }
 
-    auto operator()(Individual const& lhs, Individual const& rhs) const -> bool override
+    auto operator()(Individual const& lhs, Individual const& rhs, Operon::Scalar eps = 0) const -> bool
     {
-        return lhs[obj_] < rhs[obj_];
+        return Operon::Less{}(lhs[obj_], rhs[obj_], eps);
     }
 
     [[nodiscard]] auto GetObjectiveIndex() const -> size_t { return obj_; }
@@ -102,46 +56,39 @@ private:
     size_t obj_; // objective index
 };
 
-struct LexicographicalComparison : public Comparison {
-    auto operator()(Individual const& lhs, Individual const& rhs) const -> bool override
+struct LexicographicalComparison {
+    auto operator()(Individual const& lhs, Individual const& rhs, Operon::Scalar eps = 0) const -> bool
     {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
-        return std::lexicographical_compare(lhs.Fitness.cbegin(), lhs.Fitness.cend(), rhs.Fitness.cbegin(), rhs.Fitness.cend());
+        auto const& fit1 = lhs.Fitness;
+        auto const& fit2 = rhs.Fitness;
+        return Less{}(fit1.cbegin(), fit1.cend(), fit2.cbegin(), fit2.cend(), eps);
     }
 };
 
 // TODO: use a collection of SingleObjectiveComparison functors
 // returns true if lhs dominates rhs
-struct ParetoComparison : public Comparison {
+struct ParetoComparison {
     // assumes minimization in every dimension
-    auto operator()(Individual const& lhs, Individual const& rhs) const -> bool override
+    auto operator()(Individual const& lhs, Individual const& rhs, Operon::Scalar eps = 0) const -> bool
     {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
-        bool better { false };
-        bool worse { false };
-
-        for (size_t i = 0; i < std::size(lhs.Fitness); ++i) {
-            better |= lhs[i] < rhs[i];
-            worse |= lhs[i] > rhs[i];
-        }
-
-        return better && !worse;
+        auto const& fit1 = lhs.Fitness;
+        auto const& fit2 = rhs.Fitness;
+        return ParetoDominance{}(fit1.cbegin(), fit1.cend(), fit2.cbegin(), fit2.cend(), eps) == Dominance::Left;
     }
 };
 
-struct CrowdedComparison : public Comparison {
-
-    auto operator()(Individual const& lhs, Individual const& rhs) const -> bool override
+struct CrowdedComparison {
+    auto operator()(Individual const& lhs, Individual const& rhs, Operon::Scalar eps = 0) const -> bool
     {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
-        return std::tie(lhs.Rank, rhs.Distance) < std::tie(rhs.Rank, lhs.Distance);
+        Operon::Less cmp;
+        return lhs.Rank == rhs.Rank
+            ? cmp(rhs.Distance, lhs.Distance, eps)
+            : lhs.Rank < rhs.Rank;
     }
 };
-
-auto Individual::LexicographicalCompare(Individual const& other) const noexcept -> bool
-{
-    return LexicographicalComparison{}(*this, other);
-}
 
 using ComparisonCallback = std::function<bool(Individual const&, Individual const&)>;
 

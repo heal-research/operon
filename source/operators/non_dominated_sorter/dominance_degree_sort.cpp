@@ -4,6 +4,7 @@
 #include <numeric>
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/core/individual.hpp"
+#include <Eigen/Core>
 
 namespace Operon {
     using Vec = Eigen::Matrix<int64_t, -1, 1, Eigen::ColMajor>;
@@ -51,15 +52,16 @@ namespace Operon {
     }
 
 
-    auto DominanceDegreeSorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result
+    auto DominanceDegreeSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
     {
         auto const n = static_cast<Eigen::Index>(pop.size());
         auto const m = static_cast<Eigen::Index>(pop.front().Fitness.size());
 
+        Operon::Less cmp;
         Mat idx = Vec::LinSpaced(n, 0, n-1).replicate(1, m);
         for (auto i = 0; i < m; ++i) {
             auto *data = idx.col(i).data();
-            std::sort(data, data + n, [&](auto a, auto b) { return pop[a][i] < pop[b][i]; });
+            std::sort(data, data + n, [&](auto a, auto b) { return cmp(pop[a][i], pop[b][i], eps); });
         }
         Mat d = ComputeDegreeMatrix(pop, idx);
         auto count = 0L; // number of assigned solutions

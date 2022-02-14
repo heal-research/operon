@@ -6,8 +6,7 @@
 
 namespace Operon {
 
-    NondominatedSorterBase::Result
-    DeductiveSorter::Sort(Operon::Span<Operon::Individual const> pop) const
+    auto DeductiveSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
     {
         size_t n = 0; // total number of sorted solutions
         std::vector<std::vector<size_t>> fronts;
@@ -27,7 +26,7 @@ namespace Operon {
                             ++Stats.DominanceComparisons;
                             auto const& lhs = pop[i];
                             auto const& rhs = pop[j];
-                            auto res = lhs.ParetoCompare(rhs);
+                            auto res = ParetoDominance{}(lhs.Fitness, rhs.Fitness, eps);
 
                             dominated[i] = (res == Dominance::Right);
                             dominated[j] = (res == Dominance::Left);

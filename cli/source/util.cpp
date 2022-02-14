@@ -130,6 +130,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("test", "Test range specified as start:end", cxxopts::value<std::string>())
         ("target", "Name of the target variable (required)", cxxopts::value<std::string>())
         ("inputs", "Comma-separated list of input variables", cxxopts::value<std::string>())
+        ("epsilon", "Tolerance for fitness comparison (needed e.g. for eps-dominance)", cxxopts::value<Operon::Scalar>()->default_value("1e-6"))
         ("error-metric", "The error metric used for calculating fitness", cxxopts::value<std::string>()->default_value("r2"))
         ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))
         ("pool-size", "Recombination pool size (how many generated offspring per generation)", cxxopts::value<size_t>()->default_value("1000"))

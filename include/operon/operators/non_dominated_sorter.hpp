@@ -16,11 +16,6 @@ class NondominatedSorterBase {
 public:
     using Result = std::vector<std::vector<size_t>>;
 
-    explicit NondominatedSorterBase(Operon::Scalar eps = 0)
-        : eps_(eps)
-    {
-    }
-
     mutable struct {
         size_t LexicographicalComparisons = 0; // both lexicographical and single-objective
         size_t SingleValueComparisons = 0;
@@ -33,46 +28,41 @@ public:
 
     void Reset() { Stats = { 0, 0, 0, 0, 0, 0., 0. }; }
 
-    virtual auto Sort(Operon::Span<Operon::Individual const>) const -> Result = 0;
+    virtual auto Sort(Operon::Span<Operon::Individual const>, Operon::Scalar) const -> Result = 0;
 
-    auto operator()(Operon::Span<Operon::Individual const> pop) const -> Result
+    auto operator()(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps = 0) const -> Result
     {
-        return Sort(pop);
+        return Sort(pop, eps);
     }
-
-    auto Epsilon() const -> Operon::Scalar { return eps_; }
-
-private:
-    Operon::Scalar eps_;
 };
 
 struct OPERON_EXPORT DeductiveSorter : public NondominatedSorterBase {
-    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
+    auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
 
 struct OPERON_EXPORT DominanceDegreeSorter : public NondominatedSorterBase {
-    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
+    auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
 
 struct OPERON_EXPORT HierarchicalSorter : public NondominatedSorterBase {
-    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
+    auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
 
 template<EfficientSortStrategy>
 struct OPERON_EXPORT EfficientSorter : public NondominatedSorterBase {
-    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
+    auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
 
 struct OPERON_EXPORT MergeSorter : public NondominatedSorterBase {
-    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
+    auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
 
 struct OPERON_EXPORT RankOrdinalSorter : public NondominatedSorterBase {
-    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
+    auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
 
 struct OPERON_EXPORT RankIntersectSorter : public NondominatedSorterBase {
-    auto Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result override;
+    auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
 
 using EfficientBinarySorter = EfficientSorter<EfficientSortStrategy::Binary>;
