@@ -273,10 +273,10 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
         auto pop = initializePop(rd, dist, n, m);
 
-        std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs.LexicographicalCompare(rhs); });
+        std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return Operon::Less{}(lhs.Fitness, rhs.Fitness); });
         std::vector<Individual> dup; dup.reserve(pop.size());
         auto r = std::unique(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
-            auto res = lhs == rhs;
+            auto res = Operon::Equal{}(lhs.Fitness, rhs.Fitness);
             if (res) { dup.push_back(rhs); }
             return res;
         });

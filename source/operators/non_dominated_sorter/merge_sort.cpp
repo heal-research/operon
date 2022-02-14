@@ -164,7 +164,7 @@ namespace detail {
         BitsetManager() = default;
 
         // constructor
-        explicit BitsetManager(size_t nSolutions)
+        explicit BitsetManager(size_t nSolutions) : incBsFstWord_(std::numeric_limits<int>::max())
         {
             auto n = nSolutions - 1;
             size_t wordIndex = static_cast<int>(n >> N_BIT_ADDR);
@@ -174,26 +174,24 @@ namespace detail {
             bitsets_.resize(nSolutions);
             bsRanges_.resize(nSolutions);
             incrementalBitset_.resize(wordIndex + 1);
-            incBsLstWord_ = 0;
-            incBsFstWord_ = std::numeric_limits<int>::max();
-            maxRank_ = 0;
         }
     };
 
-    inline auto CompareLex(std::vector<Operon::Scalar> const& s1, std::vector<Operon::Scalar> const& s2, size_t fromObj, size_t toObj) -> int
+    inline auto CompareLex(std::vector<Operon::Scalar> const& s1, std::vector<Operon::Scalar> const& s2, size_t fromObj, size_t toObj, Operon::Scalar eps) -> int
     {
+        Operon::Less cmp;
         for (; fromObj < toObj; fromObj++) {
-            if (s1[fromObj] < s2[fromObj]) {
+            if (cmp(s1[fromObj], s2[fromObj], eps)) {
                 return -1;
             }
-            if (s1[fromObj] > s2[fromObj]) {
+            if (cmp(s2[fromObj], s1[fromObj], eps)) {
                 return 1;
             }
         }
         return 0;
     }
 
-    inline auto MergeSort(std::vector<std::vector<Operon::Scalar>>& src, std::vector<std::vector<Operon::Scalar>>& dest, size_t low, size_t high, size_t obj, size_t toObj) -> bool
+    inline auto MergeSort(std::vector<std::vector<Operon::Scalar>>& src, std::vector<std::vector<Operon::Scalar>>& dest, size_t low, size_t high, size_t obj, size_t toObj, Operon::Scalar eps) -> bool
     {
         size_t i{0};
         size_t j{0};
@@ -204,7 +202,7 @@ namespace detail {
         if (length < INSERTIONSORT) {
             bool alreadySorted { true };
             for (i = low; i < high; i++) {
-                for (j = i; j > low && CompareLex(dest[j - 1], dest[j], obj, toObj) > 0; j--) {
+                for (j = i; j > low && CompareLex(dest[j - 1], dest[j], obj, toObj, eps) > 0; j--) {
                     alreadySorted = false;
                     dest[j].swap(dest[j - 1]);
                 }
@@ -212,7 +210,7 @@ namespace detail {
             return alreadySorted; // if temp==null, src is already sorted
         }
         size_t mid = (low + high) / 2;
-        bool isSorted = MergeSort(dest, src, low, mid, obj, toObj) & MergeSort(dest, src, mid, high, obj, toObj); // NOLINT
+        bool isSorted = MergeSort(dest, src, low, mid, obj, toObj, eps) & MergeSort(dest, src, mid, high, obj, toObj, eps); // NOLINT
 
         // If list is already sorted, just copy from src to dest.
         if (src[mid - 1][obj] <= src[mid][obj]) {
@@ -223,7 +221,7 @@ namespace detail {
         for (s = low, i = low, j = mid; s < high; s++) {
             if (j >= high) { // NOLINT
                 dest[s] = src[i++];
-            } else if (i < mid && CompareLex(src[i], src[j], obj, toObj) <= 0) {
+            } else if (i < mid && CompareLex(src[i], src[j], obj, toObj, eps) <= 0) {
                 dest[s] = src[i++];
             } else {
                 dest[s] = src[j++];
@@ -235,7 +233,7 @@ namespace detail {
 } // namespace detail
 
     auto
-    MergeSorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result {
+    MergeSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result {
         auto n = pop.size();
         auto m = pop.front().Size(); 
         detail::BitsetManager bsm(n);
@@ -259,9 +257,9 @@ namespace detail {
         }
 
         size_t solutionId{0};
-        bool dominance{ false };
+        bool dominance{false};
         work = population;
-        detail::MergeSort(population, work, 0, n, 1, 2);
+        detail::MergeSort(population, work, 0, n, 1, 2, eps);
         population = work;
         for (decltype(n) p = 0; p < n; p++) {
             solutionId = static_cast<size_t>(population[p][sortIndex]);
@@ -278,7 +276,7 @@ namespace detail {
             decltype(m) lastObjective = m - 1;
             work = population;
             for (auto obj = 2UL; obj < m; obj++) {
-                if (detail::MergeSort(population, work, 0, n, obj, obj + 1UL)) { 
+                if (detail::MergeSort(population, work, 0, n, obj, obj + 1UL, eps)) {
                     // Population has the same order as in previous objective
                     if (obj == lastObjective) {
                         for (decltype(n) p = 0; p < n; p++) {

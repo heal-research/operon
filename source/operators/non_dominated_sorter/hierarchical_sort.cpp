@@ -8,7 +8,7 @@
 
 namespace Operon {
     auto
-    HierarchicalSorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result
+    HierarchicalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
     {
         std::deque<size_t> q(pop.size());
         std::iota(q.begin(), q.end(), 0UL);
@@ -26,7 +26,7 @@ namespace Operon {
                 auto nonDominatedCount = 0UL;
                 while (q.size() > nonDominatedCount) {
                     auto qj = q.front(); q.pop_front();
-                    if (pop[q1].ParetoCompare(pop[qj]) == Dominance::None) { 
+                    if (ParetoDominance{}(pop[q1].Fitness, pop[qj].Fitness, eps) == Dominance::None) {
                         q.push_back(qj);
                         ++nonDominatedCount;
                     } else {

@@ -41,6 +41,7 @@ auto main(int argc, char** argv) -> int
     config.Generations = result["generations"].as<size_t>();
     config.PopulationSize = result["population-size"].as<size_t>();
     config.PoolSize = result["pool-size"].as<size_t>();
+    config.Epsilon = result["epsilon"].as<Operon::Scalar>();
     config.Evaluations = result["evaluations"].as<size_t>();
     config.Iterations = result["iterations"].as<size_t>();
     config.CrossoverProbability = result["crossover-probability"].as<Operon::Scalar>();
@@ -223,7 +224,6 @@ auto main(int argc, char** argv) -> int
         tf::Executor executor(threads);
 
         auto t0 = std::chrono::high_resolution_clock::now();
-
         Operon::RankIntersectSorter sorter;
         //Operon::MergeNondominatedSorter sorter;
         //Operon::DeductiveSorter sorter;

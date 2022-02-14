@@ -11,12 +11,10 @@ namespace detail {
     struct Item {
         T Value;
         size_t Index;
-
-        auto operator<(Item other) const -> bool { return Value < other.Value; }
     };
 } // namespace detail
 
-auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop) const -> NondominatedSorterBase::Result
+auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
 {
     size_t const n = pop.size();
     size_t const m = pop.front().Fitness.size();
@@ -40,11 +38,13 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop) const
 
     std::vector<size_t> rank(n, 0);
 
+    auto cmp = [eps](auto a, auto b) { return Operon::Less{}(a.Value, b.Value, eps); };
+
     for (size_t k = 1; k < m; ++k) {
         for (auto& item : items) {
             item.Value = pop[item.Index][k];
         }
-        std::stable_sort(items.begin(), items.end());
+        std::stable_sort(items.begin(), items.end(), cmp);
         b.Fill(Bitset::OneBlock);
 
         for (auto [_, i] : items) {

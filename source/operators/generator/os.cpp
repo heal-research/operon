@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include "operon/operators/generator.hpp"
+#include "operon/core/comparison.hpp"
 
 namespace Operon {
 
@@ -46,10 +47,10 @@ namespace Operon {
                 auto f1 = p1.value()[i];
                 auto f2 = p2.value()[i];
                 q[i] = std::max(f1, f2) - static_cast<Operon::Scalar>(comparisonFactor_) * std::abs(f1 - f2);
-                accept = child.ParetoCompare(q) != Dominance::Right;
+                accept = Operon::ParetoDominance{}(child.Fitness, q.Fitness) != Dominance::Right;
             }
         } else {
-            accept = child.ParetoCompare(p1.value()) != Dominance::Right;
+            accept = Operon::ParetoDominance{}(child.Fitness, p1.value().Fitness) != Dominance::Right;
         }
         return accept ? std::make_optional(child) : std::nullopt;
     }

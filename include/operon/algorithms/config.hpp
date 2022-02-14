@@ -13,10 +13,11 @@ struct GeneticAlgorithmConfig {
     size_t Iterations;  // local search iterations
     size_t PopulationSize;
     size_t PoolSize;
-    double CrossoverProbability;
-    double MutationProbability;
     size_t Seed;        // random seed
     size_t TimeLimit;   // time limit
+    double CrossoverProbability;
+    double MutationProbability;
+    double Epsilon;     // used when comparing fitness values
 };
 } // namespace Operon
 
