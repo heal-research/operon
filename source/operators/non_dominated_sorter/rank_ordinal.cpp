@@ -23,9 +23,11 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
     r(0, p.col(0)) = Vec::LinSpaced(n, 0, n - 1);
 
     Operon::Less cmp;
+    std::vector<Operon::Scalar> buf(n); // buffer to store fitness values to avoid pointer indirections during sorting
     for (auto i = 1; i < m; ++i) {
+        std::transform(pop.begin(), pop.end(), buf.begin(), [i](auto const& ind) { return ind[i]; });
         p.col(i) = p.col(i - 1); // this is a critical part of the approach
-        std::stable_sort(p.col(i).begin(), p.col(i).end(), [&](auto a, auto b) { return cmp(pop[a][i], pop[b][i], eps); });
+        std::stable_sort(p.col(i).begin(), p.col(i).end(), [&](auto a, auto b) { return cmp(buf[a], buf[b], eps); });
         r(i, p.col(i)) = Vec::LinSpaced(n, 0, n - 1);
     }
     // 2) save min and max positions as well as the column index for the max position
