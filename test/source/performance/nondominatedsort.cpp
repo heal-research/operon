@@ -48,11 +48,11 @@ void Test(std::string const& str, nb::Bench& bench, Func&& func, Operon::RandomG
         for (auto n : ns) {
             auto pop = InitializePop(rd, dist, n, m);
             bench.run(fmt::format("{}: n = {}, m = {}", str, n, m), [&] {
-                std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs.LexicographicalCompare(rhs); });
+                std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return Operon::Less{}(lhs.Fitness, rhs.Fitness); });
                 std::vector<Individual> dup;
                 dup.reserve(pop.size());
                 auto r = std::unique(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
-                    auto res = lhs == rhs;
+                    auto res = Operon::Equal{}(lhs.Fitness, rhs.Fitness);
                     if (res) {
                         dup.push_back(rhs);
                     }
@@ -110,13 +110,13 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[performance]"))
     SUBCASE("point cloud all")
     {
         bench.minEpochIterations(10);
-        //Test("RS", bench, [&](auto pop) { return rs.Sort(pop); }, rd, dist, ns, ms);
-        Test("RO", bench, [&](auto pop) { return ro.Sort(pop); }, rd, dist, ns, ms);
+        Test("RS", bench, [&](auto pop) { return rs(pop); }, rd, dist, ns, ms);
+        Test("RO", bench, [&](auto pop) { return ro(pop); }, rd, dist, ns, ms);
         //Test("DS", bench, [&](auto pop){ return ds.Sort(pop); }, rd, dist, ns, ms);
         //Test("HS", bench, [&](auto pop){ return ds.Sort(pop); }, rd, dist, ns, ms);
         //Test("ENS-BS", bench, [&](auto pop){ return ds.Sort(pop); }, rd, dist, ns, ms);
         //Test("ENS-SS", bench, [&](auto pop){ return ds.Sort(pop); }, rd, dist, ns, ms);
-        //Test("MNDS", bench, [&](auto pop){ return ms_.Sort(pop); }, rd, dist, ns, ms);
+        Test("MNDS", bench, [&](auto pop){ return ms_(pop); }, rd, dist, ns, ms);
 
         std::ofstream of("./synthetic_point_cloud.csv");
 

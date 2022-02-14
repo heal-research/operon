@@ -57,15 +57,23 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
 
 auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 {
-    std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs.LexicographicalCompare(rhs); });
+    auto eps = GetConfig().Epsilon;
+
+    std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
+        auto const& fit1 = lhs.Fitness;
+        auto const& fit2 = rhs.Fitness;
+        return Less{}(fit1.cbegin(), fit1.cend(), fit2.cbegin(), fit2.cend(), eps);
+    });
     std::vector<Individual> dup;
     dup.reserve(pop.size());
     auto* r = std::unique(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
-        auto res = lhs == rhs;
-        if (res) {
+        auto const& fit1 = lhs.Fitness;
+        auto const& fit2 = rhs.Fitness;
+        if (Operon::Equal{}(fit1, fit2, eps)) {
             dup.push_back(rhs);
+            return true;
         }
-        return res;
+        return false;
     });
     ENSURE(std::distance(pop.begin(), r) + dup.size() == pop.size());
     std::copy_n(std::make_move_iterator(dup.begin()), dup.size(), r); // r points to the end of the unique section
