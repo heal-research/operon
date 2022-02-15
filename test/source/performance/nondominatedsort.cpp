@@ -129,6 +129,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[performance]"))
         tf::Taskflow tf;
 
         nb::Bench b;
+        b.output(nullptr);
         for (size_t i = 0; i < 16; ++i) {
             tf.emplace([&] {
                 b = bench;
