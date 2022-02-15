@@ -21,8 +21,15 @@ struct OPERON_EXPORT ErrorMetric {
     using Iterator = Operon::Span<Operon::Scalar const>::const_iterator;
     using ProjIterator = ProjectionIterator<Iterator>;
 
+    ErrorMetric() = default;
+    ErrorMetric(ErrorMetric const&) = default;
+    ErrorMetric(ErrorMetric&&) = default;
+    auto operator=(ErrorMetric const&) -> ErrorMetric& = default;
+    auto operator=(ErrorMetric&&) -> ErrorMetric& = default;
+
     virtual auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double = 0;
     virtual auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double = 0;
+    virtual ~ErrorMetric() = default;
 };
 
 struct OPERON_EXPORT MSE : public ErrorMetric {
