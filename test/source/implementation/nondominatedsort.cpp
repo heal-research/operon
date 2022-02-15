@@ -92,12 +92,12 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         print(fronts);
 
         fmt::print("ENS-SS\n");
-        EfficientSorter<EfficientSortStrategy::Sequential> es;
+        EfficientSequentialSorter es;
         fronts = es(pop);
         print(fronts);
 
         fmt::print("ENS-BS\n");
-        EfficientSorter<EfficientSortStrategy::Binary> eb;
+        EfficientBinarySorter eb;
         fronts = eb(pop);
         print(fronts);
 
@@ -136,12 +136,12 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         print(fronts);
 
         fmt::print("ENS-SS\n");
-        EfficientSorter<EfficientSortStrategy::Sequential> es;
+        EfficientSequentialSorter es;
         fronts = es(pop);
         print(fronts);
 
         fmt::print("ENS-BS\n");
-        EfficientSorter<EfficientSortStrategy::Binary> eb;
+        EfficientBinarySorter eb;
         fronts = eb(pop);
         print(fronts);
 
@@ -234,12 +234,12 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         fmt::print("HS: {}\n", hs.Stats.DominanceComparisons);
         print(fronts);
 
-        EfficientSorter<EfficientSortStrategy::Sequential> es;
+        EfficientSequentialSorter es;
         fronts = es(pop);
         fmt::print("ENS-SS: {}\n", es.Stats.DominanceComparisons);
         print(fronts);
 
-        EfficientSorter<EfficientSortStrategy::Binary> eb;
+        EfficientBinarySorter eb;
         fronts = eb(pop);
         fmt::print("ENS-BS: {}\n", eb.Stats.DominanceComparisons);
         print(fronts);

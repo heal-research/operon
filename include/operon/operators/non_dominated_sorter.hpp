@@ -48,8 +48,11 @@ struct OPERON_EXPORT HierarchicalSorter : public NondominatedSorterBase {
     auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
 
-template<EfficientSortStrategy>
-struct OPERON_EXPORT EfficientSorter : public NondominatedSorterBase {
+struct OPERON_EXPORT EfficientBinarySorter : public NondominatedSorterBase {
+    auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
+};
+
+struct OPERON_EXPORT EfficientSequentialSorter : public NondominatedSorterBase {
     auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
 
@@ -64,9 +67,6 @@ struct OPERON_EXPORT RankOrdinalSorter : public NondominatedSorterBase {
 struct OPERON_EXPORT RankIntersectSorter : public NondominatedSorterBase {
     auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
-
-using EfficientBinarySorter = EfficientSorter<EfficientSortStrategy::Binary>;
-using EfficientSequentialSorter = EfficientSorter<EfficientSortStrategy::Sequential>;
 
 } // namespace Operon
 #endif
