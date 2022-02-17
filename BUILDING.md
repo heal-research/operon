@@ -5,6 +5,12 @@
 This project doesn't require any special command-line flags to build to keep
 things simple.
 
+You require cmake version >= 3.20 because we are using vcpkg ports.
+You can install a recent cmake version via vckpg:
+```sh
+./vcpkg install vcpkg-cmake
+```
+
 Here are the steps for building in release mode with a single-configuration
 generator, like the Unix Makefiles one:
 
@@ -20,6 +26,15 @@ generator, like the Visual Studio ones:
 cmake -S . -B build
 cmake --build build --config Release
 ```
+
+If the above steps do not succeed you can try the following from the operon directory:
+```sh
+.<vcpkg-dir>/downloads/tools/cmake-3.21.1-linux/cmake-3.21.1-linux-x86_64/bin/cmake \
+  --preset build-ubuntu-vcpkg -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake
+```
+
+Additional build flags such as ```-DBUILD_CLI_PROGRAMS=ON -DUSE_SINGLE_PRECISION=ON``` may be added to the command.
 
 ## Install
 
