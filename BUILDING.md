@@ -5,11 +5,12 @@
 This project doesn't require any special command-line flags to build to keep
 things simple.
 
-You require cmake version >= 3.20 because we are using vcpkg ports.
-You can install a recent cmake version via vckpg:
+### Using nix
+The recommended way to build operon is to use nix package manager.
 ```sh
-./vcpkg install vcpkg-cmake
+nix develop --extra-experimental-features nix-command --extra-experimental-features flakes
 ```
+It downloads the required packages in the correct version (as specified in flake.nix) and starts a 'nix develop' shell.
 
 Here are the steps for building in release mode with a single-configuration
 generator, like the Unix Makefiles one:
@@ -27,14 +28,22 @@ cmake -S . -B build
 cmake --build build --config Release
 ```
 
-If the above steps do not succeed you can try the following from the operon directory:
+### Using vcpkg
+Alternatively you can use vcpkg.
+You require cmake version >= 3.20 because we are using vcpkg ports.
+You can install a recent cmake version via vckpg:
+```sh
+./vcpkg install vcpkg-cmake
+```
+
+After installation of this cmake version you can use it with the following options:
 ```sh
 .<vcpkg-dir>/downloads/tools/cmake-3.21.1-linux/cmake-3.21.1-linux-x86_64/bin/cmake \
   --preset build-ubuntu-vcpkg -S . -B build -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_TOOLCHAIN_FILE=../vcpkg/scripts/buildsystems/vcpkg.cmake
 ```
 
-Additional build flags such as ```-DBUILD_CLI_PROGRAMS=ON -DUSE_SINGLE_PRECISION=ON``` may be added to the command.
+Additional build flags such as ```-DBUILD_CLI_PROGRAMS=ON -DUSE_SINGLE_PRECISION=ON -DUSE_OPENLIBM=ON``` may be added to the command.
 
 ## Install
 
