@@ -122,11 +122,10 @@ public:
     auto Hash(Operon::HashMode mode) noexcept -> Tree&;
 
     [[nodiscard]] auto Subtree(size_t i) const -> Tree {
+        EXPECT(i < Length());
         auto const& n = nodes_[i];
-        Operon::Vector<Node> subtree;
-        subtree.reserve(n.Length);
-        std::copy_n(nodes_.begin() + std::make_signed_t<size_t>(i) - n.Length, n.Length, std::back_inserter(subtree));
-        return Tree(subtree).UpdateNodes();
+        auto it = nodes_.begin() + std::make_signed_t<size_t>(i);
+        return Tree({it - n.Length, it + 1}).UpdateNodes();
     }
 
     [[nodiscard]] auto ChildIndices(size_t i) const -> std::vector<size_t>;

@@ -12,7 +12,7 @@ namespace Operon::Test {
 
 TEST_CASE("Evaluation correctness")
 {
-    auto ds = Dataset("../data/Poly-10.csv", /*hasHeader=*/true);
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto range = Range { 0, ds.Rows() };
 
     //auto decimals = [](auto v) {
@@ -42,16 +42,22 @@ TEST_CASE("Evaluation correctness")
     {
         const auto eps = 1e-6;
 
-        auto tree = InfixParser::Parse("X1 + X2", tmap, map);
+        auto tree = InfixParser::Parse("X1 + X2 + X3", tmap, map);
         auto estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
-        auto res1 = X.col(0) + X.col(1);
+        auto res1 = X.col(0) + X.col(1) + X.col(2);
 
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res1(i)) < eps; }));
 
-        tree = InfixParser::Parse("X1 - X2", tmap, map);
+        tree = InfixParser::Parse("X1 - X2 + X3", tmap, map);
         estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
-        auto res2 = X.col(0) - X.col(1);
+        auto res2 = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res2(i)) < eps; }));
+
+        tree = tree.Subtree(tree.Length() - 1);
+        fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
+        estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
+        auto res3 = X.col(0) - X.col(1) + X.col(2);
+        CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res3(i)) < eps; }));
     }
 }
 
