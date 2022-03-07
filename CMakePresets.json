@@ -61,6 +61,13 @@
       }
     },
     {
+      "name": "flags-unix-icc",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-Wall -Wextra"
+      }
+    },
+    {
       "name": "flags-windows",
       "hidden": true,
       "cacheVariables": {
@@ -77,9 +84,18 @@
       }
     },
     {
+      "name": "ci-unix-icc",
+      "generator": "Unix Makefiles",
+      "hidden": true,
+      "inherits": ["flags-unix-icc", "ci-std"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
       "name": "ci-win64",
       "inherits": ["flags-windows", "ci-std"],
-      "generator": "Visual Studio 16 2019",
+      "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "hidden": true
     },
@@ -140,6 +156,10 @@
     {
       "name": "build-ubuntu",
       "inherits": ["ci-build", "ci-unix"]
+    },
+    {
+      "name": "build-ubuntu-icc",
+      "inherits": ["ci-build", "ci-unix-icc"]
     },
     {
       "name": "build-ubuntu-vcpkg",
