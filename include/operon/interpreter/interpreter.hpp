@@ -55,23 +55,24 @@ struct GenericInterpreter {
         return result;
     }
 
-    template <typename T, typename C = typename DTable::template Callable<T>>
+    template <typename T>
     void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T> result, T const* const parameters = nullptr) const noexcept
     {
+        using Callable = typename DTable::template Callable<T>;
         const auto& nodes = tree.Nodes();
         EXPECT(!nodes.empty());
 
-        constexpr int S = static_cast<int>(detail::BatchSize<T>::Value);
+        constexpr int S = static_cast<Eigen::Index>(detail::BatchSize<T>::Value);
+        Operon::Vector<detail::Array<T>> m(nodes.size());
 
-        using M = Eigen::Array<T, S, -1>;
-        M m = M::Zero(S, nodes.size());
+        using P = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>;
 
         Eigen::Map<Eigen::Array<T, -1, 1>> res(result.data(), result.size(), 1);
 
         struct NodeMeta {
             T Param;
-            Operon::Span<Operon::Scalar const> Values;
-            std::optional<C const> Func;
+            P Values;
+            std::optional<Callable const> Func;
         };
 
         Operon::Vector<NodeMeta> meta; meta.reserve(nodes.size());
@@ -83,16 +84,16 @@ struct GenericInterpreter {
             if (n.IsLeaf()) {
                 auto v = parameters ? parameters[idx++] : T{n.Value};
                 Operon::Span<Operon::Scalar const> vals{};
-                if (n.IsConstant()) { m.col(i).setConstant(v); }
+                if (n.IsConstant()) { m[i].setConstant(v); }
                 if (n.IsVariable()) { vals = dataset.GetValues(n.HashValue).subspan(range.Start(), range.Size()); }
                 auto call = n.IsDynamic() ? std::make_optional(ftable_.template Get<T>(n.HashValue)) : std::nullopt;
-                meta.push_back({ v, vals, call });
+                meta.push_back({ v, P(vals.data(), static_cast<Eigen::Index>(vals.size())), call });
             } else {
-                meta.push_back({ T{}, {}, std::make_optional(ftable_.template Get<T>(n.HashValue)) });
+                meta.push_back({ T{}, P(nullptr, 0L), std::make_optional(ftable_.template Get<T>(n.HashValue)) });
             }
         }
 
-        auto lastCol = m.col(nodes.size() - 1);
+        auto& lastCol = m[nodes.size() - 1];
 
         int numRows = static_cast<int>(range.Size());
         for (int row = 0; row < numRows; row += S) {
@@ -104,8 +105,7 @@ struct GenericInterpreter {
                 if (func) {
                     func.value()(m, nodes, i, range.Start() + row);
                 } else if (s.IsVariable()) {
-                    Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> seg(values.data() + row, remainingRows);
-                    m.col(i).segment(0, remainingRows) = meta[i].Param * seg.cast<T>();
+                    m[i].segment(0, remainingRows) = meta[i].Param * values.segment(row, remainingRows).template cast<T>();
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node

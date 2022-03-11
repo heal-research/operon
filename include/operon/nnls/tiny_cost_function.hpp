@@ -44,7 +44,7 @@ struct TinyCostFunction {
         Operon::Vector<Dual> inputJets(numParameters);
         Operon::Vector<Dual> outputJets(numResiduals);
 
-        auto *ptr = &inputJets[0];
+        auto *ptr = inputJets.data();
 
         for (int j = 0; j < numParameters; ++j) {
             inputJets[j].a = parameters[j];
@@ -74,7 +74,7 @@ struct TinyCostFunction {
                 }
             }
 
-            if (!functor_(&ptr, &outputJets[0])) {
+            if (!functor_(&ptr, outputJets.data())) {
                 return false;
             }
 
