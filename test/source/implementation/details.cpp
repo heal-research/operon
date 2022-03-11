@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#include <ceres/ceres.h>
 #include <doctest/doctest.h>
 
 #include "operon/core/individual.hpp"
