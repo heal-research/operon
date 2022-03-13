@@ -34,69 +34,45 @@ struct TinyCostFunction {
     auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
     {
         if (residuals != nullptr && jacobian == nullptr) {
-            return functor_(&parameters, residuals);
+            return functor_(parameters, residuals);
         }
 
-        auto numParameters = NumParameters();
-        auto numResiduals = NumResiduals();
+        auto np = NumParameters();
+        auto nr = NumResiduals();
 
-        // Allocate scratch space for the strided evaluation.
-        Operon::Vector<Dual> inputJets(numParameters);
-        Operon::Vector<Dual> outputJets(numResiduals);
+        Operon::Vector<Dual> inputs(np);
+        Operon::Vector<Dual> outputs(nr);
 
-        auto *ptr = inputJets.data();
-
-        for (int j = 0; j < numParameters; ++j) {
-            inputJets[j].a = parameters[j];
+        for (int i = 0; i < np; ++i) {
+            inputs[i].a = parameters[i];
+            inputs[i].v.setZero();
         }
-
-        int currentDerivativeSection = 0;
-        int currentDerivativeSectionCursor = 0;
-
-        Eigen::Map<Eigen::Matrix<Scalar, -1, -1, StorageOrder>> jMap(jacobian, numResiduals, numParameters);
+        Eigen::Map<Eigen::Matrix<Scalar, -1, -1, StorageOrder>> jmap(jacobian, nr, np);
 
         // Evaluate all of the strides. Each stride is a chunk of the derivative to evaluate,
         // typically some size proportional to the size of the SIMD registers of the CPU.
-        int numStrides = static_cast<int>(
-            std::ceil(static_cast<float>(numParameters) / static_cast<float>(Stride)));
+        int ns = static_cast<int>(std::ceil(static_cast<float>(np) / static_cast<float>(Stride)));
 
-        for (int pass = 0; pass < numStrides; ++pass) {
+        for (int s = 0; s < ns * Stride; s += Stride) {
             // Set most of the jet components to zero, except for non-constant #Stride parameters.
-            const int initialDerivativeSection = currentDerivativeSection;
-            const int initialDerivativeSectionCursor = currentDerivativeSectionCursor;
+            int r = std::min(np, s + Stride); // remaining parameters
 
-            int activeParameterCount = 0;
-            for (int j = 0; j < numParameters; ++j) {
-                inputJets[j].v.setZero();
-                if (activeParameterCount < Stride && j >= currentDerivativeSectionCursor) {
-                    inputJets[j].v[activeParameterCount] = 1.0;
-                    ++activeParameterCount;
-                }
+            for (int i = s; i < r; ++i) {
+                inputs[i].v[i - s] = 1.0;
             }
 
-            if (!functor_(&ptr, outputJets.data())) {
+            if (!functor_(inputs.data(), outputs.data())) {
                 return false;
             }
 
-            activeParameterCount = 0;
-            currentDerivativeSection = initialDerivativeSection;
-            currentDerivativeSectionCursor = initialDerivativeSectionCursor;
-
-            // Copy the pieces of the jacobians into their final place.
-            for (int j = currentDerivativeSectionCursor; j < numParameters; ++j) {
-                if (activeParameterCount < Stride) {
-                    for (int k = 0; k < numResiduals; ++k) {
-                        jMap(k, j) = outputJets[k].v[activeParameterCount];
-                    }
-                    ++activeParameterCount;
-                    ++currentDerivativeSectionCursor;
-                }
+            for (int i = s; i < r; ++i) {
+                inputs[i].v[i - s] = 0.0;
+                std::transform(outputs.begin(), outputs.end(), jmap.col(i).data(), [&](auto const& jet) { return jet.v[i - s]; });
             }
+        }
 
-            // Only copy the residuals over once (even though we compute them on every loop).
-            if (residuals != nullptr && pass == numStrides - 1) {
-                std::transform(outputJets.begin(), outputJets.end(), residuals, [](auto const& jet) { return jet.a; });
-            }
+        if (residuals != nullptr) {
+            std::transform(outputs.begin(), outputs.end(), residuals, [](auto const& jet) { return jet.a; });
         }
         return true;
     }
