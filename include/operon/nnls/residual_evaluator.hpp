@@ -21,10 +21,10 @@ struct ResidualEvaluator {
     }
 
     template <typename T>
-    auto operator()(T const* const* parameters, T* residuals) const -> bool
+    auto operator()(T const* parameters, T* residuals) const -> bool
     {
         Operon::Span<T> result(residuals, target_.size());
-        GetInterpreter().Evaluate<T>(tree_.get(), dataset_.get(), range_, result, parameters[0]);
+        GetInterpreter().Evaluate<T>(tree_.get(), dataset_.get(), range_, result, parameters);
         Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1, Eigen::ColMajor>> resMap(residuals, target_.size());
         Eigen::Map<const Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor>> targetMap(target_.data(), static_cast<Eigen::Index>(target_.size()));
         resMap -= targetMap.cast<T>();
