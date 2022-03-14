@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2019 Google Inc. All rights reserved.
+// Copyright 2022 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -167,13 +167,9 @@
 #include <type_traits>
 
 #include "Eigen/Core"
-
-namespace ceres {
-// Jet foward declaration necessary for the following partial specialization of
-// std::common_type.
-template <typename T, int N>
-struct Jet;
-}  // namespace ceres
+#include "jet_traits.h"
+#include "jet_fwd.h"
+#include "port.h"
 
 // Here we provide partial specializations of std::common_type for the Jet class
 // to allow determining a Jet type with a common underlying arithmetic type.
@@ -214,7 +210,7 @@ namespace ceres {
 template <typename T, int N>
 struct Jet {
   enum { DIMENSION = N };
-  typedef T Scalar;
+  using Scalar = T;
 
   // Default-construct "a" because otherwise this can lead to false errors about
   // uninitialized uses when other classes relying on default constructed T
@@ -395,32 +391,21 @@ inline Jet<T, N> operator/(const Jet<T, N>& f, T s) {
   return Jet<T, N>(f.a * s_inverse, f.v * s_inverse);
 }
 
-// Binary comparison operators for both scalars and jets. std::common_type_t is
-// used as an SFINAE constraint to selectively enable compatible operand types.
-// This allows comparison, for instance, against int literals without implicit
-// conversion. In case the Jet arithmetic type is a Jet itself, a recursive
-// expansion of Jet value is performed.
-#define CERES_DEFINE_JET_COMPARISON_OPERATOR(op)                               \
-  template <typename T, int N>                                                 \
-  constexpr bool operator op(                                                  \
-      const Jet<T, N>& f, const Jet<T, N>& g) noexcept(noexcept(f.a op g.a)) { \
-    return f.a op g.a;                                                         \
-  }                                                                            \
-  template <typename T,                                                        \
-            int N,                                                             \
-            typename U,                                                        \
-            std::common_type_t<T, U>* = nullptr>                               \
-  constexpr bool operator op(                                                  \
-      const U& s, const Jet<T, N>& g) noexcept(noexcept(s op g.a)) {           \
-    return s op g.a;                                                           \
-  }                                                                            \
-  template <typename T,                                                        \
-            int N,                                                             \
-            typename U,                                                        \
-            std::common_type_t<T, U>* = nullptr>                               \
-  constexpr bool operator op(const Jet<T, N>& f,                               \
-                             const U& s) noexcept(noexcept(f.a op s)) {        \
-    return f.a op s;                                                           \
+// Binary comparison operators for both scalars and jets. At least one of the
+// operands must be a Jet. Promotable scalars (e.g., int, float, double etc.)
+// can appear on either side of the operator. std::common_type_t is used as an
+// SFINAE constraint to selectively enable compatible operand types. This allows
+// comparison, for instance, against int literals without implicit conversion.
+// In case the Jet arithmetic type is a Jet itself, a recursive expansion of Jet
+// value is performed.
+#define CERES_DEFINE_JET_COMPARISON_OPERATOR(op)                            \
+  template <typename Lhs,                                                   \
+            typename Rhs,                                                   \
+            std::enable_if_t<PromotableJetOperands_v<Lhs, Rhs>>* = nullptr> \
+  constexpr bool operator op(const Lhs& f, const Rhs& g) noexcept(          \
+      noexcept(internal::AsScalar(f) op internal::AsScalar(g))) {           \
+    using internal::AsScalar;                                               \
+    return AsScalar(f) op AsScalar(g);                                      \
   }
 CERES_DEFINE_JET_COMPARISON_OPERATOR(<)   // NOLINT
 CERES_DEFINE_JET_COMPARISON_OPERATOR(<=)  // NOLINT
@@ -450,9 +435,12 @@ using std::erfc;
 using std::exp;
 using std::exp2;
 using std::expm1;
+using std::fdim;
 using std::floor;
+using std::fma;
 using std::fmax;
 using std::fmin;
+using std::fpclassify;
 using std::hypot;
 using std::isfinite;
 using std::isinf;
@@ -464,11 +452,53 @@ using std::log1p;
 using std::log2;
 using std::norm;
 using std::pow;
+using std::signbit;
 using std::sin;
 using std::sinh;
 using std::sqrt;
 using std::tan;
 using std::tanh;
+
+// MSVC (up to 1930) defines quiet comparison functions as template functions
+// which causes compilation errors due to ambiguity in the template parameter
+// type resolution for using declarations in the ceres namespace. Workaround the
+// issue by defining specific overload and bypass MSVC standard library
+// definitions.
+#if defined(_MSC_VER)
+inline bool isgreater(double lhs,
+                      double rhs) noexcept(noexcept(std::isgreater(lhs, rhs))) {
+  return std::isgreater(lhs, rhs);
+}
+inline bool isless(double lhs,
+                   double rhs) noexcept(noexcept(std::isless(lhs, rhs))) {
+  return std::isless(lhs, rhs);
+}
+inline bool islessequal(double lhs,
+                        double rhs) noexcept(noexcept(std::islessequal(lhs,
+                                                                       rhs))) {
+  return std::islessequal(lhs, rhs);
+}
+inline bool isgreaterequal(double lhs, double rhs) noexcept(
+    noexcept(std::isgreaterequal(lhs, rhs))) {
+  return std::isgreaterequal(lhs, rhs);
+}
+inline bool islessgreater(double lhs, double rhs) noexcept(
+    noexcept(std::islessgreater(lhs, rhs))) {
+  return std::islessgreater(lhs, rhs);
+}
+inline bool isunordered(double lhs,
+                        double rhs) noexcept(noexcept(std::isunordered(lhs,
+                                                                       rhs))) {
+  return std::isunordered(lhs, rhs);
+}
+#else
+using std::isgreater;
+using std::isgreaterequal;
+using std::isless;
+using std::islessequal;
+using std::islessgreater;
+using std::isunordered;
+#endif
 
 #ifdef CERES_HAS_CPP20
 using std::lerp;
@@ -477,9 +507,13 @@ using std::midpoint;
 
 // Legacy names from pre-C++11 days.
 // clang-format off
+CERES_DEPRECATED_WITH_MSG("ceres::IsFinite will be removed in a future Ceres Solver release. Please use ceres::isfinite.")
 inline bool IsFinite(double x)   { return std::isfinite(x); }
+CERES_DEPRECATED_WITH_MSG("ceres::IsInfinite will be removed in a future Ceres Solver release. Please use ceres::isinf.")
 inline bool IsInfinite(double x) { return std::isinf(x);    }
+CERES_DEPRECATED_WITH_MSG("ceres::IsNaN will be removed in a future Ceres Solver release. Please use ceres::isnan.")
 inline bool IsNaN(double x)      { return std::isnan(x);    }
+CERES_DEPRECATED_WITH_MSG("ceres::IsNormal will be removed in a future Ceres Solver release. Please use ceres::isnormal.")
 inline bool IsNormal(double x)   { return std::isnormal(x); }
 // clang-format on
 
@@ -516,7 +550,7 @@ template <typename T, int N>
 inline Jet<T, N> copysign(const Jet<T, N>& f, const Jet<T, N> g) {
   // The Dirac delta function  δ(b) is undefined at b=0 (here it's
   // infinite) and 0 everywhere else.
-  T d = g.a == T(0) ? std::numeric_limits<T>::infinity() : T(0);
+  T d = fpclassify(g) == FP_ZERO ? std::numeric_limits<T>::infinity() : T(0);
   T sa = copysign(T(1), f.a);  // sgn(a)
   T sb = copysign(T(1), g.a);  // sgn(b)
   // The second part of the infinitesimal is 2|a|δ(b) which is either infinity
@@ -712,36 +746,55 @@ inline Jet<T, N> hypot(const Jet<T, N>& x,
 }
 #endif  // defined(CERES_HAS_CPP17)
 
+// Like x * y + z but rounded only once.
 template <typename T, int N>
-inline Jet<T, N> fmax(const Jet<T, N>& x, const Jet<T, N>& y) {
-  using std::isgreater;
-  return isnan(y.a) || isgreater(x.a, y.a) ? x : y;
+inline Jet<T, N> fma(const Jet<T, N>& x,
+                     const Jet<T, N>& y,
+                     const Jet<T, N>& z) {
+  // d/dx fma(x, y, z) = y
+  // d/dy fma(x, y, z) = x
+  // d/dz fma(x, y, z) = 1
+  return Jet<T, N>(fma(x.a, y.a, z.a), y.a * x.v + x.a * y.v + z.v);
 }
 
-template <typename T, int N>
-inline Jet<T, N> fmax(const Jet<T, N>& x, const T& y) {
-  return fmax(x, Jet<T, N>{y});
+// Returns the larger of the two arguments. NaNs are treated as missing data.
+//
+// NOTE: This function is NOT subject to any of the error conditions specified
+// in `math_errhandling`.
+template <typename Lhs,
+          typename Rhs,
+          std::enable_if_t<CompatibleJetOperands_v<Lhs, Rhs>>* = nullptr>
+inline decltype(auto) fmax(const Lhs& f, const Rhs& g) {
+  using J = std::common_type_t<Lhs, Rhs>;
+  return (isnan(g) || isgreater(f, g)) ? J{f} : J{g};
 }
 
-template <typename T, int N>
-inline Jet<T, N> fmax(const T& x, const Jet<T, N>& y) {
-  return fmax(Jet<T, N>{x}, y);
+// Returns the smaller of the two arguments. NaNs are treated as missing data.
+//
+// NOTE: This function is NOT subject to any of the error conditions specified
+// in `math_errhandling`.
+template <typename Lhs,
+          typename Rhs,
+          std::enable_if_t<CompatibleJetOperands_v<Lhs, Rhs>>* = nullptr>
+inline decltype(auto) fmin(const Lhs& f, const Rhs& g) {
+  using J = std::common_type_t<Lhs, Rhs>;
+  return (isnan(f) || isless(g, f)) ? J{g} : J{f};
 }
 
-template <typename T, int N>
-inline Jet<T, N> fmin(const Jet<T, N>& x, const Jet<T, N>& y) {
-  using std::isless;
-  return isnan(x.a) || isless(y.a, x.a) ? y : x;
-}
-
-template <typename T, int N>
-inline Jet<T, N> fmin(const Jet<T, N>& x, const T& y) {
-  return fmin(x, Jet<T, N>{y});
-}
-
-template <typename T, int N>
-inline Jet<T, N> fmin(const T& x, const Jet<T, N>& y) {
-  return fmin(Jet<T, N>{x}, y);
+// Returns the positive difference (f - g) of two arguments and zero if f <= g.
+// If at least one argument is NaN, a NaN is return.
+//
+// NOTE At least one of the argument types must be a Jet, the other one can be a
+// scalar. In case both arguments are Jets, their dimensionality must match.
+template <typename Lhs,
+          typename Rhs,
+          std::enable_if_t<CompatibleJetOperands_v<Lhs, Rhs>>* = nullptr>
+inline decltype(auto) fdim(const Lhs& f, const Rhs& g) {
+  using J = std::common_type_t<Lhs, Rhs>;
+  if (isnan(f) || isnan(g)) {
+    return std::numeric_limits<J>::quiet_NaN();
+  }
+  return isgreater(f, g) ? J{f - g} : J{};
 }
 
 // erf is defined as an integral that cannot be expressed analytically
@@ -826,76 +879,161 @@ inline Jet<T, N> BesselJn(int n, const Jet<T, N>& f) {
       T(0.5) * (BesselJn(n - 1, f.a) - BesselJn(n + 1, f.a)) * f.v);
 }
 
-// Jet Classification. It is not clear what the appropriate semantics are for
-// these classifications. This picks that std::isfinite and std::isnormal are
-// "all" operations, i.e. all elements of the jet must be finite for the jet
-// itself to be finite (or normal). For IsNaN and IsInfinite, the answer is less
-// clear. This takes a "any" approach for IsNaN and IsInfinite such that if any
-// part of a jet is nan or inf, then the entire jet is nan or inf. This leads
-// to strange situations like a jet can be both IsInfinite and IsNaN, but in
-// practice the "any" semantics are the most useful for e.g. checking that
-// derivatives are sane.
+// Classification and comparison functionality referencing only the scalar part
+// of a Jet. To classify the derivatives (e.g., for sanity checks), the dual
+// part should be referenced explicitly. For instance, to check whether the
+// derivatives of a Jet 'f' are reasonable, one can use
+//
+//  isfinite(f.v.array()).all()
+//  !isnan(f.v.array()).any()
+//
+// etc., depending on the desired semantics.
+//
+// NOTE: Floating-point classification and comparison functions and operators
+// should be used with care as no derivatives can be propagated by such
+// functions directly but only by expressions resulting from corresponding
+// conditional statements. At the same time, conditional statements can possibly
+// introduce a discontinuity in the cost function making it impossible to
+// evaluate its derivative and thus the optimization problem intractable.
 
-// The jet is finite if all parts of the jet are finite.
+// Determines whether the scalar part of the Jet is finite.
 template <typename T, int N>
 inline bool isfinite(const Jet<T, N>& f) {
-  // Branchless implementation. This is more efficient for the false-case and
-  // works with the codegen system.
-  auto result = isfinite(f.a);
-  for (int i = 0; i < N; ++i) {
-    result = result & isfinite(f.v[i]);
-  }
-  return result;
+  return isfinite(f.a);
 }
 
-// The jet is infinite if any part of the Jet is infinite.
+// Determines whether the scalar part of the Jet is infinite.
 template <typename T, int N>
 inline bool isinf(const Jet<T, N>& f) {
-  auto result = isinf(f.a);
-  for (int i = 0; i < N; ++i) {
-    result = result | isinf(f.v[i]);
-  }
-  return result;
+  return isinf(f.a);
 }
 
-// The jet is NaN if any part of the jet is NaN.
+// Determines whether the scalar part of the Jet is NaN.
 template <typename T, int N>
 inline bool isnan(const Jet<T, N>& f) {
-  auto result = isnan(f.a);
-  for (int i = 0; i < N; ++i) {
-    result = result | isnan(f.v[i]);
-  }
-  return result;
+  return isnan(f.a);
 }
 
-// The jet is normal if all parts of the jet are normal.
+// Determines whether the scalar part of the Jet is neither zero, subnormal,
+// infinite, nor NaN.
 template <typename T, int N>
 inline bool isnormal(const Jet<T, N>& f) {
-  auto result = isnormal(f.a);
-  for (int i = 0; i < N; ++i) {
-    result = result & isnormal(f.v[i]);
-  }
-  return result;
+  return isnormal(f.a);
+}
+
+// Determines whether the scalar part of the Jet f is less than the scalar
+// part of g.
+//
+// NOTE: This function does NOT set any floating-point exceptions.
+template <typename Lhs,
+          typename Rhs,
+          std::enable_if_t<CompatibleJetOperands_v<Lhs, Rhs>>* = nullptr>
+inline bool isless(const Lhs& f, const Rhs& g) {
+  using internal::AsScalar;
+  return isless(AsScalar(f), AsScalar(g));
+}
+
+// Determines whether the scalar part of the Jet f is greater than the scalar
+// part of g.
+//
+// NOTE: This function does NOT set any floating-point exceptions.
+template <typename Lhs,
+          typename Rhs,
+          std::enable_if_t<CompatibleJetOperands_v<Lhs, Rhs>>* = nullptr>
+inline bool isgreater(const Lhs& f, const Rhs& g) {
+  using internal::AsScalar;
+  return isgreater(AsScalar(f), AsScalar(g));
+}
+
+// Determines whether the scalar part of the Jet f is less than or equal to the
+// scalar part of g.
+//
+// NOTE: This function does NOT set any floating-point exceptions.
+template <typename Lhs,
+          typename Rhs,
+          std::enable_if_t<CompatibleJetOperands_v<Lhs, Rhs>>* = nullptr>
+inline bool islessequal(const Lhs& f, const Rhs& g) {
+  using internal::AsScalar;
+  return islessequal(AsScalar(f), AsScalar(g));
+}
+
+// Determines whether the scalar part of the Jet f is less than or greater than
+// (f < g || f > g) the scalar part of g.
+//
+// NOTE: This function does NOT set any floating-point exceptions.
+template <typename Lhs,
+          typename Rhs,
+          std::enable_if_t<CompatibleJetOperands_v<Lhs, Rhs>>* = nullptr>
+inline bool islessgreater(const Lhs& f, const Rhs& g) {
+  using internal::AsScalar;
+  return islessgreater(AsScalar(f), AsScalar(g));
+}
+
+// Determines whether the scalar part of the Jet f is greater than or equal to
+// the scalar part of g.
+//
+// NOTE: This function does NOT set any floating-point exceptions.
+template <typename Lhs,
+          typename Rhs,
+          std::enable_if_t<CompatibleJetOperands_v<Lhs, Rhs>>* = nullptr>
+inline bool isgreaterequal(const Lhs& f, const Rhs& g) {
+  using internal::AsScalar;
+  return isgreaterequal(AsScalar(f), AsScalar(g));
+}
+
+// Determines if either of the scalar parts of the arguments are NaN and
+// thus cannot be ordered with respect to each other.
+template <typename Lhs,
+          typename Rhs,
+          std::enable_if_t<CompatibleJetOperands_v<Lhs, Rhs>>* = nullptr>
+inline bool isunordered(const Lhs& f, const Rhs& g) {
+  using internal::AsScalar;
+  return isunordered(AsScalar(f), AsScalar(g));
+}
+
+// Categorize scalar part as zero, subnormal, normal, infinite, NaN, or
+// implementation-defined.
+template <typename T, int N>
+inline int fpclassify(const Jet<T, N>& f) {
+  return fpclassify(f.a);
+}
+
+// Determines whether the scalar part of the argument is negative.
+template <typename T, int N>
+inline bool signbit(const Jet<T, N>& f) {
+  return signbit(f.a);
 }
 
 // Legacy functions from the pre-C++11 days.
 template <typename T, int N>
+CERES_DEPRECATED_WITH_MSG(
+    "ceres::IsFinite will be removed in a future Ceres Solver release. Please "
+    "use ceres::isfinite.")
 inline bool IsFinite(const Jet<T, N>& f) {
   return isfinite(f);
 }
 
 template <typename T, int N>
+CERES_DEPRECATED_WITH_MSG(
+    "ceres::IsNaN will be removed in a future Ceres Solver release. Please use "
+    "ceres::isnan.")
 inline bool IsNaN(const Jet<T, N>& f) {
   return isnan(f);
 }
 
 template <typename T, int N>
+CERES_DEPRECATED_WITH_MSG(
+    "ceres::IsNormal will be removed in a future Ceres Solver release. Please "
+    "use ceres::isnormal.")
 inline bool IsNormal(const Jet<T, N>& f) {
   return isnormal(f);
 }
 
 // The jet is infinite if any part of the jet is infinite.
 template <typename T, int N>
+CERES_DEPRECATED_WITH_MSG(
+    "ceres::IsInfinite will be removed in a future Ceres Solver release. "
+    "Please use ceres::isinf.")
 inline bool IsInfinite(const Jet<T, N>& f) {
   return isinf(f);
 }
@@ -963,9 +1101,9 @@ inline Jet<T, N> atan2(const Jet<T, N>& g, const Jet<T, N>& f) {
 // Computes the square x^2 of a real number x (not the Euclidean L^2 norm as
 // the name might suggest).
 //
-// NOTE While std::norm is primarly intended for computing the squared magnitude
-// of a std::complex<> number, the current Jet implementation does not support
-// mixing a scalar T in its real part and std::complex<T> and in the
+// NOTE: While std::norm is primarily intended for computing the squared
+// magnitude of a std::complex<> number, the current Jet implementation does not
+// support mixing a scalar T in its real part and std::complex<T> and in the
 // infinitesimal. Mixed Jet support is necessary for the type decay from
 // std::complex<T> to T (the squared magnitude of a complex number is always
 // real) performed by std::norm.
@@ -999,14 +1137,14 @@ template <typename T, int N>
 inline Jet<T, N> pow(T f, const Jet<T, N>& g) {
   Jet<T, N> result;
 
-  if (f == T(0) && g.a > T(0)) {
+  if (fpclassify(f) == FP_ZERO && g > 0) {
     // Handle case 2.
     result = Jet<T, N>(T(0.0));
   } else {
-    if (f < 0 && g.a == floor(g.a)) {  // Handle case 3.
+    if (f < 0 && g == floor(g.a)) {  // Handle case 3.
       result = Jet<T, N>(pow(f, g.a));
       for (int i = 0; i < N; i++) {
-        if (g.v[i] != T(0.0)) {
+        if (fpclassify(g.v[i]) != FP_ZERO) {
           // Return a NaN when g.v != 0.
           result.v[i] = std::numeric_limits<T>::quiet_NaN();
         }
@@ -1061,21 +1199,21 @@ template <typename T, int N>
 inline Jet<T, N> pow(const Jet<T, N>& f, const Jet<T, N>& g) {
   Jet<T, N> result;
 
-  if (f.a == T(0) && g.a >= T(1)) {
+  if (fpclassify(f) == FP_ZERO && g >= 1) {
     // Handle cases 2 and 3.
-    if (g.a > T(1)) {
+    if (g > 1) {
       result = Jet<T, N>(T(0.0));
     } else {
       result = f;
     }
 
   } else {
-    if (f.a < T(0) && g.a == floor(g.a)) {
+    if (f < 0 && g == floor(g.a)) {
       // Handle cases 7 and 8.
       T const tmp = g.a * pow(f.a, g.a - T(1.0));
       result = Jet<T, N>(pow(f.a, g.a), tmp * f.v);
       for (int i = 0; i < N; i++) {
-        if (g.v[i] != T(0.0)) {
+        if (fpclassify(g.v[i]) != FP_ZERO) {
           // Return a NaN when g.v != 0.
           result.v[i] = T(std::numeric_limits<double>::quiet_NaN());
         }
@@ -1143,8 +1281,9 @@ struct numeric_limits<ceres::Jet<T, N>> {
   static constexpr bool tinyness_before =
       std::numeric_limits<T>::tinyness_before;
 
-  static constexpr ceres::Jet<T, N> min() noexcept {
-    return ceres::Jet<T, N>(std::numeric_limits<T>::min());
+  static constexpr ceres::Jet<T, N> min
+  CERES_PREVENT_MACRO_SUBSTITUTION() noexcept {
+    return ceres::Jet<T, N>((std::numeric_limits<T>::min)());
   }
   static constexpr ceres::Jet<T, N> lowest() noexcept {
     return ceres::Jet<T, N>(std::numeric_limits<T>::lowest());
@@ -1168,8 +1307,9 @@ struct numeric_limits<ceres::Jet<T, N>> {
     return ceres::Jet<T, N>(std::numeric_limits<T>::denorm_min());
   }
 
-  static constexpr ceres::Jet<T, N> max() noexcept {
-    return ceres::Jet<T, N>(std::numeric_limits<T>::max());
+  static constexpr ceres::Jet<T, N> max
+  CERES_PREVENT_MACRO_SUBSTITUTION() noexcept {
+    return ceres::Jet<T, N>((std::numeric_limits<T>::max)());
   }
 };
 
@@ -1181,10 +1321,10 @@ namespace Eigen {
 // Eigen arrays, getting all the goodness of Eigen combined with autodiff.
 template <typename T, int N>
 struct NumTraits<ceres::Jet<T, N>> {
-  typedef ceres::Jet<T, N> Real;
-  typedef ceres::Jet<T, N> NonInteger;
-  typedef ceres::Jet<T, N> Nested;
-  typedef ceres::Jet<T, N> Literal;
+  using Real = ceres::Jet<T, N>;
+  using NonInteger = ceres::Jet<T, N>;
+  using Nested = ceres::Jet<T, N>;
+  using Literal = ceres::Jet<T, N>;
 
   static typename ceres::Jet<T, N> dummy_precision() {
     return ceres::Jet<T, N>(1e-12);
@@ -1223,8 +1363,8 @@ struct NumTraits<ceres::Jet<T, N>> {
     };
   };
 
-  static inline Real highest() { return Real(std::numeric_limits<T>::max()); }
-  static inline Real lowest() { return Real(-std::numeric_limits<T>::max()); }
+  static inline Real highest() { return Real((std::numeric_limits<T>::max)()); }
+  static inline Real lowest() { return Real(-(std::numeric_limits<T>::max)()); }
 };
 
 // Specifying the return type of binary operations between Jets and scalar types
@@ -1235,11 +1375,11 @@ struct NumTraits<ceres::Jet<T, N>> {
 // is only available on Eigen versions >= 3.3
 template <typename BinaryOp, typename T, int N>
 struct ScalarBinaryOpTraits<ceres::Jet<T, N>, T, BinaryOp> {
-  typedef ceres::Jet<T, N> ReturnType;
+  using ReturnType = ceres::Jet<T, N>;
 };
 template <typename BinaryOp, typename T, int N>
 struct ScalarBinaryOpTraits<T, ceres::Jet<T, N>, BinaryOp> {
-  typedef ceres::Jet<T, N> ReturnType;
+  using ReturnType = ceres::Jet<T, N>;
 };
 
 }  // namespace Eigen
