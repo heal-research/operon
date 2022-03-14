@@ -80,6 +80,7 @@ struct TinyCostFunction {
     // required by tiny solver
     auto operator()(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
     {
+        static_assert(Storage == Eigen::ColMajor, "Ceres::TinySolver requires the Jacobian to be stored in column-major format.");
         return Evaluate(parameters, residuals, jacobian);
     }
 
