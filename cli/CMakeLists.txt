@@ -28,8 +28,6 @@ function(add_operon_cli NAME)
         target_link_options(${NAME} PUBLIC "-Wl,--no-undefined")
     endif()
 
-    target_link_options(${NAME} PUBLIC "-Wl,--no-undefined")
-
     install(TARGETS ${NAME}
         RUNTIME
         COMPONENT operonCli_Runtime
