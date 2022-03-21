@@ -8,6 +8,7 @@
 #include "tree.hpp" 
 #include "types.hpp" 
 #include <cstddef>
+#include <functional>
 
 namespace Operon {
 
