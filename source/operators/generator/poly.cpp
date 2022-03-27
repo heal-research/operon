@@ -30,7 +30,7 @@ namespace Operon {
 
             auto f = Evaluator()(random, child, buf);
             for (size_t i = 0; i < f.size(); ++i) {
-                child[i] = std::isfinite(f[i]) ? f[i] : Operon::Numeric::Max<Operon::Scalar>();
+                child[i] = std::isfinite(f[i]) ? f[i] : std::numeric_limits<Operon::Scalar>::max();
             }
             return child;
         };

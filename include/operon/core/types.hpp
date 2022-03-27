@@ -28,23 +28,6 @@ using Scalar = float;
 #else
 using Scalar = double;
 #endif
-
-namespace Numeric {
-    template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
-    static constexpr inline auto Max() -> T
-    {
-        return std::numeric_limits<T>::max();
-    }
-    template <typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
-    static constexpr inline auto Min() -> T
-    {
-        if constexpr (std::is_floating_point_v<T>) {
-            return std::numeric_limits<T>::lowest();
-        } else {
-            return std::numeric_limits<T>::min();
-        }
-    }
-} // namespace Numeric
 } // namespace Operon
 
 #endif

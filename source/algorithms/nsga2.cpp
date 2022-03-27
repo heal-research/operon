@@ -6,6 +6,7 @@
 #include <chrono>                                    // for steady_clock
 #include <cmath>                                     // for isfinite
 #include <iterator>                                  // for move_iterator, back_inse...
+#include <limits>                                    // for numeric_limits
 #include <memory>                                    // for allocator, allocator_tra...
 #include <optional>                                  // for optional
 #include <taskflow/taskflow.hpp>                     // for taskflow, subflow
@@ -27,7 +28,7 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
 {
     // assign distance. each front is sorted for each objective
     size_t m = pop.front().Fitness.size();
-    auto inf = Operon::Numeric::Max<Operon::Scalar>();
+    auto inf = std::numeric_limits<Operon::Scalar>::max();
     for (size_t i = 0; i < fronts_.size(); ++i) {
         auto& front = fronts_[i];
         for (size_t obj = 0; obj < m; ++obj) {
