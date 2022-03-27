@@ -20,6 +20,12 @@ struct ResidualEvaluator {
     {
     }
 
+    template<typename T>
+    auto operator()(Eigen::DenseBase<T>& parameters, Eigen::DenseBase<T>& residuals) const noexcept -> void
+    {
+        return (*this)(parameters.data(), residuals.data());
+    }
+
     template <typename T>
     auto operator()(T const* parameters, T* residuals) const -> bool
     {
