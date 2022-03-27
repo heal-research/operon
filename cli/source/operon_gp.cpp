@@ -61,6 +61,8 @@ auto main(int argc, char** argv) -> int
     auto maxDepth = result["maxdepth"].as<size_t>();
     auto crossoverInternalProbability = result["crossover-internal-probability"].as<Operon::Scalar>();
 
+    bool symbolic = result["symbolic"].as<bool>();
+
     try {
         for (const auto& kv : result.arguments()) {
             const auto& key = kv.key();
@@ -165,26 +167,44 @@ auto main(int argc, char** argv) -> int
         treeInitializer.ParameterizeDistribution(amin+1, maxLength);
         treeInitializer.SetMinDepth(1);
         treeInitializer.SetMaxDepth(1000); // NOLINT
+                                           //
+        std::unique_ptr<Operon::CoefficientInitializerBase> coeffInitializer;
+        std::unique_ptr<Operon::MutatorBase> onePoint;
+        if (symbolic) {
+            using Dist = std::uniform_int_distribution<int>;
+            coeffInitializer = std::make_unique<Operon::CoefficientInitializer<Dist>>();
+            dynamic_cast<Operon::CoefficientInitializer<Dist>*>(coeffInitializer.get())->ParameterizeDistribution(1, 5);
 
-        Operon::NormalCoefficientInitializer coeffInitializer;
-        coeffInitializer.ParameterizeDistribution(Operon::Scalar{0.0}, Operon::Scalar{1.0});
+            onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
+            dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(1, 2);
+        } else {
+            coeffInitializer = std::make_unique<Operon::NormalCoefficientInitializer>();
+            dynamic_cast<Operon::NormalCoefficientInitializer*>(coeffInitializer.get())->ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
+
+            using Dist = std::normal_distribution<Operon::Scalar>;
+            onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
+            dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
+        }
 
         auto crossover = Operon::SubtreeCrossover { crossoverInternalProbability, maxDepth, maxLength };
         auto mutator = Operon::MultiMutation {};
-        Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> onePoint;
-        onePoint.ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
 
-        auto changeVar = Operon::ChangeVariableMutation { problem.InputVariables() };
-        auto changeFunc = Operon::ChangeFunctionMutation { problem.GetPrimitiveSet() };
-        auto replaceSubtree = Operon::ReplaceSubtreeMutation { *creator, coeffInitializer, maxDepth, maxLength };
-        auto insertSubtree = Operon::InsertSubtreeMutation { *creator, coeffInitializer, maxDepth, maxLength, problem.GetPrimitiveSet() };
-        auto removeSubtree = Operon::RemoveSubtreeMutation { problem.GetPrimitiveSet() };
-        mutator.Add(onePoint, 1.0);
+        Operon::ChangeVariableMutation changeVar { problem.InputVariables() };
+        Operon::ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
+        Operon::ReplaceSubtreeMutation replaceSubtree { *creator, *coeffInitializer, maxDepth, maxLength };
+        Operon::InsertSubtreeMutation insertSubtree { *creator, *coeffInitializer, maxDepth, maxLength, problem.GetPrimitiveSet() };
+        Operon::RemoveSubtreeMutation removeSubtree { problem.GetPrimitiveSet() };
+        Operon::DiscretePointMutation discretePoint;
+        for (auto v : Operon::Math::Constants) {
+            discretePoint.Add(static_cast<Operon::Scalar>(v), 1);
+        }
+        mutator.Add(*onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
         mutator.Add(changeFunc, 1.0);
         mutator.Add(replaceSubtree, 1.0);
         mutator.Add(insertSubtree, 1.0);
         mutator.Add(removeSubtree, 1.0);
+        mutator.Add(discretePoint, 1.0);
 
         auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
 
@@ -216,7 +236,7 @@ auto main(int argc, char** argv) -> int
 
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        Operon::GeneticProgrammingAlgorithm gp { problem, config, treeInitializer, coeffInitializer, *generator, *reinserter };
+        Operon::GeneticProgrammingAlgorithm gp { problem, config, treeInitializer, *coeffInitializer, *generator, *reinserter };
 
         auto targetValues = problem.TargetValues();
         auto targetTrain = targetValues.subspan(trainingRange.Start(), trainingRange.Size());
