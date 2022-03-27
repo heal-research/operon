@@ -32,7 +32,7 @@ namespace Operon {
 
         child.Fitness = this->Evaluator()(random, child, buf);
         for (auto& v : child.Fitness) {
-            if (!std::isfinite(v)) { v = Operon::Numeric::Max<Operon::Scalar>(); }
+            if (!std::isfinite(v)) { v = std::numeric_limits<Operon::Scalar>::max(); }
         }
         return std::make_optional(child);
     }

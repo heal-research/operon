@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
+#include <limits>
+
 #include "operon/operators/evaluator.hpp"
 #include "operon/error_metrics/mean_squared_error.hpp"
 #include "operon/error_metrics/normalized_mean_squared_error.hpp"
@@ -139,7 +141,7 @@ namespace Operon {
         auto fit = Operon::Vector<Operon::Scalar> { static_cast<Operon::Scalar>(computeFitness()) };
         for (auto& v : fit) {
             if (!std::isfinite(v)) {
-                v = Operon::Numeric::Max<Operon::Scalar>();
+                v = std::numeric_limits<Operon::Scalar>::max();
             }
         }
         return fit;
