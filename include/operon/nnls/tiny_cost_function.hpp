@@ -15,6 +15,63 @@ namespace Operon {
 // - the Dual type represents a dual number, the user can specify the type for the Scalar part (float, double) and the Stride (Ceres-specific)
 // - the StorageOrder specifies the format of the jacobian (row-major for the big Ceres solver, column-major for the tiny solver)
 
+namespace detail {
+    template<typename CostFunctor, typename Dual, typename Scalar, int JacobianLayout = Eigen::ColMajor>
+    inline auto Autodiff(CostFunctor const& function, Scalar const* parameters, Scalar* residuals, Scalar* jacobian) -> bool
+    {
+        static_assert(std::is_convertible_v<typename Dual::Scalar, Scalar>, "The chosen Jet and Scalar types are not compatible.");
+        static_assert(std::is_convertible_v<Scalar, typename Dual::Scalar>, "The chosen Jet and Scalar types are not compatible.");
+
+        EXPECT(parameters != nullptr);
+        EXPECT(residuals != nullptr || jacobian != nullptr);
+
+        if (jacobian == nullptr) {
+            return function(parameters, residuals);
+        }
+
+        std::vector<Dual> inputs(function.NumParameters());
+        for (size_t i = 0; i < inputs.size(); ++i) {
+            inputs[i].a = parameters[i];
+            inputs[i].v.setZero();
+        }
+        std::vector<Dual> outputs(function.NumResiduals());
+
+        static auto constexpr D{Dual::DIMENSION};
+        Eigen::Map<Eigen::Matrix<Scalar, -1, -1, JacobianLayout>> jmap(jacobian, outputs.size(), inputs.size());
+
+        for (int s = 0; s < inputs.size(); s += D) {
+            int r = std::min(static_cast<int>(inputs.size()), s + D); // remaining parameters
+
+            for (int i = s; i < r; ++i) {
+                inputs[i].v[i - s] = 1.0;
+            }
+
+            if (!function(inputs.data(), outputs.data())) {
+                return false;
+            }
+
+            for (int i = s; i < r; ++i) {
+                inputs[i].v[i - s] = 0.0;
+            }
+
+            // fill in the jacobian trying to exploit its layout for efficiency
+            if constexpr (JacobianLayout == Eigen::ColMajor) {
+                for (int i = s; i < r; ++i) {
+                    std::transform(outputs.cbegin(), outputs.cend(), jmap.col(i).data(), [&](auto const& jet) { return jet.v[i - s]; });
+                }
+            } else {
+                for (auto i = 0; i < outputs.size(); ++i) {
+                    std::copy_n(outputs[i].v.data(), r - s, jmap.row(i).data() + s);
+                }
+            }
+        }
+        if (residuals != nullptr) {
+            std::transform(std::cbegin(outputs), std::cend(outputs), residuals, [](auto const& jet) { return jet.a; });
+        }
+        return true;
+    }
+} // namespace detail
+
 template <typename CostFunctor, typename DualType, typename ScalarType, int StorageOrder = Eigen::RowMajor>
 struct TinyCostFunction {
     static constexpr int Stride = DualType::DIMENSION;
@@ -33,54 +90,13 @@ struct TinyCostFunction {
 
     auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
     {
-        if (residuals != nullptr && jacobian == nullptr) {
-            return functor_(parameters, residuals);
-        }
-
-        auto np = NumParameters();
-        auto nr = NumResiduals();
-
-        Operon::Vector<Dual> inputs(np);
-        Operon::Vector<Dual> outputs(nr);
-
-        for (int i = 0; i < np; ++i) {
-            inputs[i].a = parameters[i];
-            inputs[i].v.setZero();
-        }
-        Eigen::Map<Eigen::Matrix<Scalar, -1, -1, StorageOrder>> jmap(jacobian, nr, np);
-
-        // Evaluate all of the strides. Each stride is a chunk of the derivative to evaluate,
-        // typically some size proportional to the size of the SIMD registers of the CPU.
-        int ns = static_cast<int>(std::ceil(static_cast<float>(np) / static_cast<float>(Stride)));
-
-        for (int s = 0; s < ns * Stride; s += Stride) {
-            // Set most of the jet components to zero, except for non-constant #Stride parameters.
-            int r = std::min(np, s + Stride); // remaining parameters
-
-            for (int i = s; i < r; ++i) {
-                inputs[i].v[i - s] = 1.0;
-            }
-
-            if (!functor_(inputs.data(), outputs.data())) {
-                return false;
-            }
-
-            for (int i = s; i < r; ++i) {
-                inputs[i].v[i - s] = 0.0;
-                std::transform(outputs.begin(), outputs.end(), jmap.col(i).data(), [&](auto const& jet) { return jet.v[i - s]; });
-            }
-        }
-
-        if (residuals != nullptr) {
-            std::transform(outputs.begin(), outputs.end(), residuals, [](auto const& jet) { return jet.a; });
-        }
-        return true;
+        return detail::Autodiff<CostFunctor, DualType, ScalarType, StorageOrder>(functor_, parameters, residuals, jacobian);
     }
 
-    // required by tiny solver
+    // ceres solver - jacobian must be in row-major format
+    // ceres tiny solver - jacobian must be in col-major format
     auto operator()(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
     {
-        static_assert(Storage == Eigen::ColMajor, "Ceres::TinySolver requires the Jacobian to be stored in column-major format.");
         return Evaluate(parameters, residuals, jacobian);
     }
 
@@ -88,15 +104,22 @@ struct TinyCostFunction {
     [[nodiscard]] auto NumParameters() const -> int { return functor_.NumParameters(); }
 
     // required by Eigen::LevenbergMarquardt
+    using JacobianType = Eigen::Matrix<Operon::Scalar, -1, -1>;
+    using QRSolver     = Eigen::ColPivHouseholderQR<JacobianType>;
+
+    // there is no real documentation but looking at Eigen unit tests, these functions should return zero
+    // see: https://gitlab.com/libeigen/eigen/-/blob/master/unsupported/test/NonLinearOptimization.cpp
     auto operator()(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, 1> &residual) -> int
     {
-        return Evaluate(input.data(), residual.data(), nullptr);
+        Evaluate(input.data(), residual.data(), nullptr);
+        return 0;
     }
 
     auto df(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, -1> &jacobian) -> int // NOLINT
     {
         static_assert(StorageOrder == Eigen::ColMajor, "Eigen::LevenbergMarquardt requires the Jacobian to be stored in column-major format.");
-        return Evaluate(input.data(), nullptr, jacobian.data());
+        Evaluate(input.data(), nullptr, jacobian.data());
+        return 0;
     }
 
     [[nodiscard]] auto values() const -> int { return NumResiduals(); }  // NOLINT

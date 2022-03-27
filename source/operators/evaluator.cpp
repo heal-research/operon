@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#include <limits>
-
 #include "operon/operators/evaluator.hpp"
 #include "operon/error_metrics/mean_squared_error.hpp"
 #include "operon/error_metrics/normalized_mean_squared_error.hpp"
@@ -129,11 +127,9 @@ namespace Operon {
 #endif
             auto coeff = genotype.GetCoefficients();
             auto summary = opt.Optimize(targetValues, trainingRange, iter);
-            //this->localEvaluations += summary.Iterations;
-            IncrementLocalEvaluations(summary.Iterations);
+            IncrementLocalEvaluations(summary.FunctionEvaluations);
 
-            if (summary.InitialCost < summary.FinalCost) {
-                // if optimization failed, restore the original coefficients
+            if (summary.Success) {
                 genotype.SetCoefficients(coeff);
             }
         }

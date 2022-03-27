@@ -4,7 +4,7 @@
 #ifndef OPERON_NNLS_HPP
 #define OPERON_NNLS_HPP
 
-#include <unsupported/Eigen/NonLinearOptimization>
+#include <unsupported/Eigen/LevenbergMarquardt>
 
 #include "operon/core/dual.hpp"
 #include "residual_evaluator.hpp"
@@ -28,6 +28,7 @@ struct OptimizerSummary {
     int Iterations;
     int FunctionEvaluations;
     int JacobianEvaluations;
+    bool Success;
 };
 
 struct OptimizerBase {
@@ -77,6 +78,8 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
         sum.InitialCost = solver.summary.initial_cost;
         sum.FinalCost = solver.summary.final_cost;
         sum.Iterations = solver.summary.iterations;
+        sum.FunctionEvaluations = solver.summary.iterations;
+        sum.Success = sum.InitialCost > sum.FinalCost;
         return sum;
     }
 };
@@ -94,15 +97,18 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> : public OptimizerBa
         static_assert(D == DerivativeMethod::AUTODIFF, "Eigen::LevenbergMarquardt only supports autodiff.");
         ResidualEvaluator re(GetInterpreter(), GetTree(), GetDataset(), target, range);
         Operon::TinyCostFunction<ResidualEvaluator, Operon::Dual, Operon::Scalar, Eigen::ColMajor> cf(re);
-        Eigen::LevenbergMarquardt<decltype(cf), Operon::Scalar> lm(cf);
-        lm.parameters.maxfev = static_cast<int>(iterations+1);
+        Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
+        lm.setMaxfev(static_cast<int>(iterations+1));
 
         auto& tree = GetTree();
         auto coeff = tree.GetCoefficients();
+
+        Eigen::ComputationInfo info{};
         if (!coeff.empty()) {
             Eigen::Matrix<Operon::Scalar, -1, 1> x0;
             x0 = Eigen::Map<decltype(x0)>(coeff.data(), static_cast<int>(coeff.size()));
             lm.minimize(x0);
+            info = lm.info();
             if (writeCoefficients) {
                 tree.SetCoefficients({ x0.data(), static_cast<size_t>(x0.size()) });
             }
@@ -110,9 +116,10 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> : public OptimizerBa
         OptimizerSummary sum {};
         sum.InitialCost = -1;
         sum.FinalCost = -1;
-        sum.Iterations = static_cast<int>(lm.iter);
-        sum.FunctionEvaluations = static_cast<int>(lm.nfev);
-        sum.JacobianEvaluations = static_cast<int>(lm.njev);
+        sum.Iterations = static_cast<int>(lm.iterations());
+        sum.FunctionEvaluations = static_cast<int>(lm.nfev());
+        sum.JacobianEvaluations = static_cast<int>(lm.njev());
+        sum.Success = info == Eigen::ComputationInfo::Success;
         return sum;
     }
 };
@@ -189,6 +196,9 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBa
         sum.InitialCost = summary.initial_cost;
         sum.FinalCost = summary.final_cost;
         sum.Iterations = static_cast<int>(summary.iterations.size());
+        sum.FunctionEvaluations = summary.num_residual_evaluations;
+        sum.JacobianEvaluations = summary.num_jacobian_evaluations;
+        sum.Success = sum.InitialCost > sum.FinalCost;
         return sum;
     }
 };
