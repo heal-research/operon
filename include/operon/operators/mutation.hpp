@@ -12,6 +12,7 @@
 
 namespace Operon {
 
+struct CoefficientInitializerBase;
 struct CreatorBase;
 struct Variable;
 
@@ -64,6 +65,19 @@ struct OPERON_EXPORT MultiPointMutation : public MutatorBase {
     mutable typename Dist::param_type params_;
 };
 
+struct OPERON_EXPORT DiscretePointMutation : public MutatorBase {
+    auto operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree override;
+
+    auto Add(Operon::Scalar value, Operon::Scalar weight = 1.0) -> void {
+        values_.push_back(value);
+        weights_.push_back(weight);
+    }
+
+    private:
+        std::vector<Operon::Scalar> weights_;
+        std::vector<Operon::Scalar> values_;
+};
+
 struct OPERON_EXPORT MultiMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 
@@ -114,8 +128,9 @@ private:
 };
 
 struct OPERON_EXPORT InsertSubtreeMutation final : public MutatorBase {
-    InsertSubtreeMutation(CreatorBase& creator, size_t maxDepth, size_t maxLength, PrimitiveSet pset)
+    InsertSubtreeMutation(CreatorBase& creator, CoefficientInitializerBase& coeffInit, size_t maxDepth, size_t maxLength, PrimitiveSet pset)
         : creator_(creator)
+        , coefficientInitializer_(coeffInit)
         , maxDepth_(maxDepth)
         , maxLength_(maxLength)
         , pset_(std::move(pset))
@@ -126,14 +141,16 @@ struct OPERON_EXPORT InsertSubtreeMutation final : public MutatorBase {
 
 private:
     std::reference_wrapper<CreatorBase> creator_;
+    std::reference_wrapper<CoefficientInitializerBase> coefficientInitializer_;
     size_t maxDepth_;
     size_t maxLength_;
     PrimitiveSet pset_;
 };
 
 struct OPERON_EXPORT ReplaceSubtreeMutation : public MutatorBase {
-    ReplaceSubtreeMutation(CreatorBase& creator, size_t maxDepth, size_t maxLength) 
+    ReplaceSubtreeMutation(CreatorBase& creator, CoefficientInitializerBase& coeffInit, size_t maxDepth, size_t maxLength)
         : creator_(creator) 
+        , coefficientInitializer_(coeffInit)
         , maxDepth_(maxDepth)
         , maxLength_(maxLength)
     {
@@ -143,6 +160,7 @@ struct OPERON_EXPORT ReplaceSubtreeMutation : public MutatorBase {
 
 private:
     std::reference_wrapper<CreatorBase> creator_;
+    std::reference_wrapper<CoefficientInitializerBase> coefficientInitializer_;
     size_t maxDepth_;
     size_t maxLength_;
 };
