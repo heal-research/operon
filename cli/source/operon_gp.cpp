@@ -176,8 +176,8 @@ auto main(int argc, char** argv) -> int
 
         auto changeVar = Operon::ChangeVariableMutation { problem.InputVariables() };
         auto changeFunc = Operon::ChangeFunctionMutation { problem.GetPrimitiveSet() };
-        auto replaceSubtree = Operon::ReplaceSubtreeMutation { *creator, maxDepth, maxLength };
-        auto insertSubtree = Operon::InsertSubtreeMutation { *creator, maxDepth, maxLength, problem.GetPrimitiveSet() };
+        auto replaceSubtree = Operon::ReplaceSubtreeMutation { *creator, coeffInitializer, maxDepth, maxLength };
+        auto insertSubtree = Operon::InsertSubtreeMutation { *creator, coeffInitializer, maxDepth, maxLength, problem.GetPrimitiveSet() };
         auto removeSubtree = Operon::RemoveSubtreeMutation { problem.GetPrimitiveSet() };
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);
