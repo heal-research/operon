@@ -9,6 +9,7 @@
 #include "operon/core/variable.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"
+#include "operon/operators/initializer.hpp"
 #include "operon/operators/mutation.hpp"
 
 namespace Operon::Test {
@@ -32,6 +33,7 @@ TEST_CASE("InsertSubtreeMutation")
     grammar.SetFrequency(Node(NodeType::Div).HashValue, 1);
 
     BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
+    UniformCoefficientInitializer cfi;
 
     Operon::RandomGenerator random(std::random_device {}());
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
@@ -40,7 +42,7 @@ TEST_CASE("InsertSubtreeMutation")
     auto tree = btc(random, targetLen, 1, maxDepth);
     fmt::print("{}\n", TreeFormatter::Format(tree, ds));
 
-    InsertSubtreeMutation mut(btc, 2 * targetLen, maxDepth, grammar);
+    InsertSubtreeMutation mut(btc, cfi, 2 * targetLen, maxDepth, grammar);
     auto child = mut(random, tree);
     fmt::print("{}\n", TreeFormatter::Format(child, ds));
 }
