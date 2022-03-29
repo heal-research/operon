@@ -68,8 +68,9 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon:
 class EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
     Operon::Span<Operon::Individual const> population_;
     std::reference_wrapper<Problem const> problem_;
-    mutable std::atomic_ulong fitnessEvaluations_ = 0;
-    mutable std::atomic_ulong localEvaluations_ = 0;
+    mutable std::atomic_ulong residualEvaluations_ = 0;
+    mutable std::atomic_ulong jacobianEvaluations_ = 0;
+    mutable std::atomic_ulong evaluationCounter_ = 0;
     size_t iterations_ = DefaultLocalOptimizationIterations;
     size_t budget_ = DefaultEvaluationBudget;
 
@@ -89,18 +90,22 @@ public:
         population_ = pop;
     }
 
-    auto TotalEvaluations() const -> size_t { return fitnessEvaluations_ + localEvaluations_; }
-    auto FitnessEvaluations() const -> size_t { return fitnessEvaluations_; }
-    auto LocalEvaluations() const -> size_t { return localEvaluations_; }
+    auto TotalEvaluations() const -> size_t { return residualEvaluations_ + jacobianEvaluations_; }
+    auto ResidualEvaluations() const -> size_t { return residualEvaluations_; }
+    auto JacobianEvaluations() const -> size_t { return jacobianEvaluations_; }
+    auto EvaluationCount() const -> size_t { return evaluationCounter_; }
 
-    void SetFitnessEvaluations(size_t value) const { fitnessEvaluations_ = value; }
-    void SetLocalEvaluations(size_t value) const { localEvaluations_ = value; }
+    void SetResidualEvaluations(size_t value) const { residualEvaluations_ = value; }
+    void SetJacobianEvaluations(size_t value) const { jacobianEvaluations_ = value; }
+    void SetEvaluationCounter(size_t value) const { evaluationCounter_ = value; }
 
-    void IncrementFitnessEvaluations() const { ++fitnessEvaluations_; }
-    void IncrementLocalEvaluations() const { ++localEvaluations_; }
+    void IncrementResidualEvaluations() const { ++residualEvaluations_; }
+    void IncrementLocalEvaluations() const { ++residualEvaluations_; }
+    void IncrementEvaluationCounter() const { ++evaluationCounter_; }
 
-    void IncrementFitnessEvaluations(size_t inc) const { fitnessEvaluations_ += inc; }
-    void IncrementLocalEvaluations(size_t inc) const { localEvaluations_ += inc; }
+    void IncrementResidualEvaluations(size_t inc) const { residualEvaluations_ += inc; }
+    void IncrementJacobianEvaluations(size_t inc) const { jacobianEvaluations_ += inc; }
+    void IncrementEvaluationCounter(size_t inc) const { evaluationCounter_ += inc; }
 
     void SetLocalOptimizationIterations(size_t value) { iterations_ = value; }
     auto LocalOptimizationIterations() const -> size_t { return iterations_; }
@@ -114,8 +119,9 @@ public:
 
     void Reset()
     {
-        fitnessEvaluations_ = 0;
-        localEvaluations_ = 0;
+        residualEvaluations_ = 0;
+        jacobianEvaluations_ = 0;
+        evaluationCounter_ = 0;
     }
 };
 
@@ -137,8 +143,7 @@ public:
     auto
     operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> /*args*/) const -> typename EvaluatorBase::ReturnType override
     {
-        //++this->FitnessEvaluations();
-        IncrementFitnessEvaluations();
+        IncrementEvaluationCounter();
         return fptr_ ? fptr_(&rng, ind) : fref_(rng, ind);
     }
 
@@ -192,8 +197,14 @@ public:
             std::copy(fitI.begin(), fitI.end(), std::back_inserter(fit));
         }
         // proxy the budget of the first evaluator (the one that actually calls the tree interpreter)
-        SetFitnessEvaluations(evaluators_[0].get().FitnessEvaluations());
-        SetLocalEvaluations(evaluators_[0].get().LocalEvaluations());
+        auto totalResidualEvaluations{0UL};
+        auto totalJacobianEvaluations{0UL};
+        auto totalEvaluationCount{0UL};
+        for (auto const& ev : evaluators_) {
+            totalResidualEvaluations += ev.get().ResidualEvaluations();
+            totalJacobianEvaluations += ev.get().JacobianEvaluations();
+            totalEvaluationCount += ev.get().EvaluationCount();
+        }
         return fit;
     }
 
