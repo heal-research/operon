@@ -276,7 +276,7 @@ namespace Operon::Test {
         auto changeVar = ChangeVariableMutation { problem.InputVariables() };
         auto changeFunc = ChangeFunctionMutation { problem.GetPrimitiveSet() };
         auto replaceSubtree = ReplaceSubtreeMutation { creator, coeffInit, maxDepth, maxLength };
-        auto insertSubtree = InsertSubtreeMutation { creator, coeffInit, maxDepth, maxLength, problem.GetPrimitiveSet() };
+        auto insertSubtree = InsertSubtreeMutation { creator, coeffInit, maxDepth, maxLength };
         auto removeSubtree = RemoveSubtreeMutation { problem.GetPrimitiveSet() };
         mutator.Add(onePoint, 1.0);
         mutator.Add(changeVar, 1.0);

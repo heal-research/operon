@@ -42,7 +42,7 @@ TEST_CASE("InsertSubtreeMutation")
     auto tree = btc(random, targetLen, 1, maxDepth);
     fmt::print("{}\n", TreeFormatter::Format(tree, ds));
 
-    InsertSubtreeMutation mut(btc, cfi, 2 * targetLen, maxDepth, grammar);
+    InsertSubtreeMutation mut(btc, cfi, 2 * targetLen, maxDepth);
     auto child = mut(random, tree);
     fmt::print("{}\n", TreeFormatter::Format(child, ds));
 }
