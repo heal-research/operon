@@ -94,7 +94,7 @@ namespace Operon {
     auto
     Evaluator::operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
-        IncrementFitnessEvaluations();
+        IncrementEvaluationCounter();
         auto const& problem = GetProblem();
         auto const& dataset = problem.GetDataset();
         auto& genotype = ind.Genotype;
@@ -103,6 +103,7 @@ namespace Operon {
         auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         auto computeFitness = [&]() {
+            IncrementResidualEvaluations();
             Operon::Vector<Operon::Scalar> estimatedValues;
             if (buf.size() < trainingRange.Size()) {
                 estimatedValues.resize(trainingRange.Size());
@@ -127,7 +128,8 @@ namespace Operon {
 #endif
             auto coeff = genotype.GetCoefficients();
             auto summary = opt.Optimize(targetValues, trainingRange, iter);
-            IncrementLocalEvaluations(summary.FunctionEvaluations);
+            IncrementResidualEvaluations(summary.FunctionEvaluations);
+            IncrementJacobianEvaluations(summary.JacobianEvaluations);
 
             if (summary.Success) {
                 genotype.SetCoefficients(coeff);
