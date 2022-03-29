@@ -126,7 +126,7 @@ public:
     void Prepare(const Operon::Span<const Individual> pop) const override
     {
         OffspringGeneratorBase::Prepare(pop);
-        lastEvaluations_ = this->Evaluator().FitnessEvaluations();
+        lastEvaluations_ = this->Evaluator().EvaluationCount();
     }
 
     auto SelectionPressure() const -> double
@@ -135,7 +135,7 @@ public:
         if (n == 0U) {
             return 0;
         }
-        auto e = this->Evaluator().FitnessEvaluations() - lastEvaluations_;
+        auto e = this->Evaluator().EvaluationCount() - lastEvaluations_;
         return static_cast<double>(e) / static_cast<double>(n);
     }
 
