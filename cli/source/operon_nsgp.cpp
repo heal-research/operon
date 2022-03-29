@@ -345,14 +345,20 @@ auto main(int argc, char** argv) -> int
             auto t1 = std::chrono::high_resolution_clock::now();
             auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
 
-            fmt::print("{:.4f}\t{}\t", elapsed, gp.Generation());
-            fmt::print("{:.4f}\t{:.4f}\t{:.4g}\t{:.4g}\t{:.4g}\t{:.4g}\t", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
-            fmt::print("{:.4g}\t{:.1f}\t{:.3f}\t{:.3f}\t{}\t{}\t{}\t", avgQuality, avgLength, /* shape */ 0.0, /* diversity */ 0.0, evaluator.FitnessEvaluations(), evaluator.LocalEvaluations(), evaluator.TotalEvaluations());
-            fmt::print("{}\t{}\n", totalMemory, config.Seed);
+            size_t const seedw = std::max(std::to_string(config.Seed).size(), std::string("random seed").size());
+            if (gp.Generation() == 0) {
+                fmt::print("     elapsed\tgeneration\t  r2 train\t   r2 test\t mae train\t  mae test\tnmse train\t nmse test\t   avg fit\t   avg len\teval count\t  res eval\t  jac eval\t{}\n",
+                    fmt::format("{:>{}}", "random seed", seedw)
+                );
+            }
+            fmt::print("{}\t{}\t", fmt::format("{:>12.3f}", elapsed), fmt::format("{:>{}d}", gp.Generation(), std::max(std::to_string(config.Generations).size(), std::string("generation").size()) ));
+            fmt::print("{:>10.4f}\t{:>10.4f}\t{:>10.4g}\t{:>10.4g}\t{:>10.4g}\t{:>10.4g}\t", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
+            fmt::print("{:>10.4g}\t{:>10.4g}\t{:>10d}\t{:>10d}\t{:>10d}\t", avgQuality, avgLength, evaluator.EvaluationCount(), evaluator.ResidualEvaluations(), evaluator.JacobianEvaluations());
+            fmt::print("{:>{}}\n", config.Seed, seedw);
         };
 
         gp.Run(executor, random, report);
-        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 4));
+        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 6));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;
