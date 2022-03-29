@@ -192,7 +192,7 @@ auto main(int argc, char** argv) -> int
         Operon::ChangeVariableMutation changeVar { problem.InputVariables() };
         Operon::ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
         Operon::ReplaceSubtreeMutation replaceSubtree { *creator, *coeffInitializer, maxDepth, maxLength };
-        Operon::InsertSubtreeMutation insertSubtree { *creator, *coeffInitializer, maxDepth, maxLength, problem.GetPrimitiveSet() };
+        Operon::InsertSubtreeMutation insertSubtree { *creator, *coeffInitializer, maxDepth, maxLength };
         Operon::RemoveSubtreeMutation removeSubtree { problem.GetPrimitiveSet() };
         Operon::DiscretePointMutation discretePoint;
         for (auto v : Operon::Math::Constants) {

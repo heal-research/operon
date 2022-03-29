@@ -128,12 +128,11 @@ private:
 };
 
 struct OPERON_EXPORT InsertSubtreeMutation final : public MutatorBase {
-    InsertSubtreeMutation(CreatorBase& creator, CoefficientInitializerBase& coeffInit, size_t maxDepth, size_t maxLength, PrimitiveSet pset)
+    InsertSubtreeMutation(CreatorBase& creator, CoefficientInitializerBase& coeffInit, size_t maxDepth, size_t maxLength)
         : creator_(creator)
         , coefficientInitializer_(coeffInit)
         , maxDepth_(maxDepth)
         , maxLength_(maxLength)
-        , pset_(std::move(pset))
     {
     }
 
@@ -144,7 +143,6 @@ private:
     std::reference_wrapper<CoefficientInitializerBase> coefficientInitializer_;
     size_t maxDepth_;
     size_t maxLength_;
-    PrimitiveSet pset_;
 };
 
 struct OPERON_EXPORT ReplaceSubtreeMutation : public MutatorBase {
