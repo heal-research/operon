@@ -205,6 +205,9 @@ public:
             totalJacobianEvaluations += ev.get().JacobianEvaluations();
             totalEvaluationCount += ev.get().EvaluationCount();
         }
+        SetResidualEvaluations(totalResidualEvaluations);
+        SetJacobianEvaluations(totalJacobianEvaluations);
+        SetEvaluationCounter(totalEvaluationCount);
         return fit;
     }
 
