@@ -24,7 +24,7 @@ auto main(int argc, char** argv) -> int
         ("range", "Data range [A:B)", cxxopts::value<std::string>())
         ("scale", "Linear scaling slope:intercept", cxxopts::value<std::string>())
         ("debug", "Show some debugging information", cxxopts::value<bool>()->default_value("false"))
-        ("format", "Format string (see https://fmt.dev/latest/syntax.html)", cxxopts::value<std::string>()->default_value(">8.2g"))
+        ("format", "Format string (see https://fmt.dev/latest/syntax.html)", cxxopts::value<std::string>()->default_value(":>#8.4g"))
         ("help", "Print help");
 
     opts.allow_unrecognised_options();
@@ -32,7 +32,7 @@ auto main(int argc, char** argv) -> int
     cxxopts::ParseResult result;
     try {
         result = opts.parse(argc, argv);
-    }  catch (cxxopts::OptionParseException const& ex) {
+    } catch (cxxopts::OptionParseException const& ex) {
         fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
         return EXIT_FAILURE;
     };
@@ -70,9 +70,10 @@ auto main(int argc, char** argv) -> int
         range = Operon::Range{a, b};
     }
 
+    int constexpr defaultPrecision{6};
     if (result["debug"].as<bool>()) {
         fmt::print("\nInput string:\n{}\n", infix);
-        fmt::print("Parsed tree:\n{}\n", Operon::InfixFormatter::Format(model, ds, 6));
+        fmt::print("Parsed tree:\n{}\n", Operon::InfixFormatter::Format(model, ds, defaultPrecision));
         fmt::print("Data range: {}:{}\n", range.Start(), range.End());
         fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
     }
@@ -115,7 +116,7 @@ auto main(int argc, char** argv) -> int
     } else {
         auto out = fmt::memory_buffer();
         for (auto v : est) {
-            fmt::format_to(out, fmt::format("{{:{}}}\n", format), v);
+            fmt::format_to(out, fmt::format("{{{}}}\n", format), v);
         }
         fmt::print("{}", fmt::to_string(out));
     }
