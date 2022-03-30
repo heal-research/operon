@@ -24,6 +24,7 @@ auto FormatBytes(size_t bytes) -> std::string;
 auto FormatDuration(std::chrono::duration<double> d) -> std::string;
 auto ParsePrimitiveSetConfig(const std::string& options) -> NodeType;
 auto PrintPrimitives(PrimitiveSetConfig config) -> void;
+auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const& stats) -> void;
 
 auto InitOptions(std::string const& name, std::string const& desc, int width = optionsWidth) -> cxxopts::Options;
 auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult;
