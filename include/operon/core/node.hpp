@@ -99,6 +99,7 @@ struct Node {
         : Node(type, static_cast<Operon::Hash>(type))
     {
     }
+
     explicit Node(NodeType type, Operon::Hash hashValue) noexcept
         : HashValue(hashValue)
         , CalculatedHashValue(hashValue)
@@ -119,6 +120,13 @@ struct Node {
         Length = Arity;
         IsEnabled = true;
         Value = 1.;
+    }
+
+    static auto Constant(double value)
+    {
+        Node node(NodeType::Constant);
+        node.Value = static_cast<Operon::Scalar>(value);
+        return node;
     }
 
     [[nodiscard]] OPERON_EXPORT auto Name() const noexcept -> std::string const&;

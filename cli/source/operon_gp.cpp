@@ -282,6 +282,13 @@ auto main(int argc, char** argv) -> int
                 auto [a_, b_] = Operon::FitLeastSquares(estimatedTrain, targetTrain);
                 a = static_cast<Operon::Scalar>(a_);
                 b = static_cast<Operon::Scalar>(b_);
+                // add scaling terms to the tree
+                auto& nodes = best.Genotype.Nodes();
+                nodes.emplace_back(Operon::Node::Constant(a));
+                nodes.emplace_back(Operon::Node(Operon::NodeType::Mul));
+                nodes.emplace_back(Operon::Node::Constant(b));
+                nodes.emplace_back(Operon::Node(Operon::NodeType::Add));
+                best.Genotype.UpdateNodes();
             });
 
             double r2Train{};

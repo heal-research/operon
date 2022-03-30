@@ -150,11 +150,11 @@ namespace ParserBlocks {
     };
 
     struct Led {
-        using token_t = Token;
-        using value_t = Token::value_t;
+        using token_t = Token;          // NOLINT
+        using value_t = Token::value_t; // NOLINT
 
         template <typename Parser>
-        value_t operator()(Parser& /*unused*/, Token const& tok, token_t const& left, token_t& right) const
+        auto operator()(Parser& /*unused*/, Token const& tok, token_t const& left, token_t& right) const -> value_t
         {
             auto const& lhs = left.value();
             auto& rhs = right.value();
