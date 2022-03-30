@@ -345,16 +345,16 @@ auto main(int argc, char** argv) -> int
             auto t1 = std::chrono::high_resolution_clock::now();
             auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
 
-            size_t const seedw = std::max(std::to_string(config.Seed).size(), std::string("random seed").size());
+            size_t const seedw = std::max(std::to_string(config.Seed).size(), std::string("seed").size());
             if (gp.Generation() == 0) {
-                fmt::print("     elapsed\tgeneration\t  r2 train\t   r2 test\t mae train\t  mae test\tnmse train\t nmse test\t   avg fit\t   avg len\teval count\t  res eval\t  jac eval\t{}\n",
-                    fmt::format("{:>{}}", "random seed", seedw)
+                fmt::print("iter     r2_tr     r2_te    mae_tr    mae_te   nmse_tr   nmse_te   avg_fit   avg_len  eval_cnt  res_eval  jac_eval {}  elapsed\n",
+                    fmt::format("{:>{}}", "seed", seedw)
                 );
             }
-            fmt::print("{}\t{}\t", fmt::format("{:>12.3f}", elapsed), fmt::format("{:>{}d}", gp.Generation(), std::max(std::to_string(config.Generations).size(), std::string("generation").size()) ));
-            fmt::print("{:>10.4f}\t{:>10.4f}\t{:>10.4g}\t{:>10.4g}\t{:>10.4g}\t{:>10.4g}\t", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
-            fmt::print("{:>10.4g}\t{:>10.4g}\t{:>10d}\t{:>10d}\t{:>10d}\t", avgQuality, avgLength, evaluator.EvaluationCount(), evaluator.ResidualEvaluations(), evaluator.JacobianEvaluations());
-            fmt::print("{:>{}}\n", config.Seed, seedw);
+            fmt::print("{} ", fmt::format("{:>{}d}", gp.Generation(), std::max(std::to_string(config.Generations).size(), std::string("iter").size()) ));
+            fmt::print("{:>9.4f} {:>9.4f} {:>9.4g} {:>9.4g} {:>9.4g} {:>9.4g} ", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
+            fmt::print("{:>9.4g} {:>9.4g} {:>9d} {:>9d} {:>9d} ", avgQuality, avgLength, evaluator.EvaluationCount(), evaluator.ResidualEvaluations(), evaluator.JacobianEvaluations());
+            fmt::print("{:>{}} {:>8.3f}\n", config.Seed, seedw, elapsed);
         };
 
         gp.Run(executor, random, report);
