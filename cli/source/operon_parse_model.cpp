@@ -22,6 +22,8 @@ auto main(int argc, char** argv) -> int
         ("target", "Name of the target variable (if none provided, model output will be printed)", cxxopts::value<std::string>())
         ("range", "Data range [A:B)", cxxopts::value<std::string>())
         ("scale", "Linear scaling slope:intercept", cxxopts::value<std::string>())
+        ("debug", "Show some debugging information", cxxopts::value<bool>()->default_value("false"))
+        ("format", "Format string (see https://fmt.dev/latest/syntax.html)", cxxopts::value<std::string>()->default_value(">8.2g"))
         ("help", "Print help");
 
     opts.allow_unrecognised_options();
@@ -57,6 +59,7 @@ auto main(int argc, char** argv) -> int
         vmap.insert({ v.Name, v.Hash });
     }
     auto model = Operon::InfixParser::Parse(infix, tmap, vmap);
+
     Operon::Interpreter interpreter;
     Operon::Range range{0, ds.Rows()};
     if (result["range"].count() > 0) {
@@ -64,11 +67,18 @@ auto main(int argc, char** argv) -> int
         size_t b{0};
         scn::scan(result["range"].as<std::string>(), "{}:{}", a, b);
         range = Operon::Range{a, b};
-        fmt::print("range = {}:{}\n", a, b);
+    }
+
+    if (result["debug"].as<bool>()) {
+        fmt::print("\nInput string:\n{}\n", infix);
+        fmt::print("Parsed tree:\n{}\n", Operon::InfixFormatter::Format(model, ds, 6));
+        fmt::print("Data range: {}:{}\n", range.Start(), range.End());
+        fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
     }
 
     auto est = interpreter.Evaluate<Operon::Scalar>(model, ds, range);
 
+    std::string format = result["format"].as<std::string>();
     if (result["target"].count() > 0) {
         auto tgt = ds.GetValues(result["target"].as<std::string>()).subspan(range.Start(), range.Size());
 
@@ -83,19 +93,48 @@ auto main(int argc, char** argv) -> int
         }
 
         std::transform(est.begin(), est.end(), est.begin(), [&](auto v) { return v * a + b; });
-
         auto r2 = -Operon::R2{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto rs = -Operon::C2{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto mae = Operon::MAE{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto mse = Operon::MSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto rmse = Operon::RMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto nmse = Operon::NMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
-        fmt::print("   slope intercept       r2       rs      mae      mse     rmse     nmse\n");
-        fmt::print("{:>8.4g} {:>8.4g} {:>8.4g} {:>8.4g} {:>8.4g} {:>8.4g} {:>8.4g} {:>8.4g}\n", a, b, r2, rs, mae, mse, rmse, nmse);
-    } else {
-        for (auto v : est) {
-            fmt::print("{:.6f}\n", v);
+
+        std::vector<std::pair<std::string, double>> stats{
+            {"slope", a},
+            {"intercept", b},
+            {"r2", r2},
+            {"rs", rs},
+            {"mae", mae},
+            {"mse", mse},
+            {"rmse", rmse},
+            {"nmse", nmse},
+        };
+
+        std::vector<size_t> widths;
+        auto out = fmt::memory_buffer();
+        for (auto const& [name, value] : stats) {
+            fmt::format_to(out, fmt::format("{{:{}}}", format), value);
+            auto width = std::max(name.size(), fmt::to_string(out).size());
+            widths.push_back(width);
+            out.clear();
         }
+        for (auto i = 0UL; i < stats.size(); ++i) {
+            fmt::print("{} ", fmt::format("{:>{}}", stats[i].first, widths[i]));
+        }
+        fmt::print("\n");
+        for (auto i = 0UL; i < stats.size(); ++i) {
+            fmt::format_to(out, fmt::format("{{:{}}}", format), stats[i].second);
+            fmt::print("{} ", fmt::format("{:>{}}", fmt::to_string(out), widths[i]));
+            out.clear();
+        }
+        fmt::print("\n");
+    } else {
+        auto out = fmt::memory_buffer();
+        for (auto v : est) {
+            fmt::format_to(out, fmt::format("{{:{}}}\n", format), v);
+        }
+        fmt::print("{}", fmt::to_string(out));
     }
 
     return EXIT_SUCCESS;
