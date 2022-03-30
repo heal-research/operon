@@ -284,11 +284,18 @@ auto main(int argc, char** argv) -> int
                 b = static_cast<Operon::Scalar>(b_);
                 // add scaling terms to the tree
                 auto& nodes = best.Genotype.Nodes();
-                nodes.emplace_back(Operon::Node::Constant(a));
-                nodes.emplace_back(Operon::Node(Operon::NodeType::Mul));
-                nodes.emplace_back(Operon::Node::Constant(b));
-                nodes.emplace_back(Operon::Node(Operon::NodeType::Add));
-                best.Genotype.UpdateNodes();
+                auto const sz = nodes.size();
+                if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
+                    nodes.emplace_back(Operon::Node::Constant(a));
+                    nodes.emplace_back(Operon::Node(Operon::NodeType::Mul));
+                }
+                if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
+                    nodes.emplace_back(Operon::Node::Constant(b));
+                    nodes.emplace_back(Operon::Node(Operon::NodeType::Add));
+                }
+                if (nodes.size() > sz) {
+                    best.Genotype.UpdateNodes();
+                }
             });
 
             double r2Train{};
@@ -343,16 +350,25 @@ auto main(int argc, char** argv) -> int
             auto t1 = std::chrono::high_resolution_clock::now();
             auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
 
-            size_t const seedw = std::max(std::to_string(config.Seed).size(), std::string("seed").size());
-            if (gp.Generation() == 0) {
-                fmt::print("iter     r2_tr     r2_te    mae_tr    mae_te   nmse_tr   nmse_te   avg_fit   avg_len  eval_cnt  res_eval  jac_eval {}  elapsed\n",
-                    fmt::format("{:>{}}", "seed", seedw)
-                );
-            }
-            fmt::print("{} ", fmt::format("{:>{}d}", gp.Generation(), std::max(std::to_string(config.Generations).size(), std::string("iter").size()) ));
-            fmt::print("{:>9.4f} {:>9.4f} {:>9.4g} {:>9.4g} {:>9.4g} {:>9.4g} ", r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest);
-            fmt::print("{:>9.4g} {:>9.4g} {:>9d} {:>9d} {:>9d} ", avgQuality, avgLength, evaluator.EvaluationCount(), evaluator.ResidualEvaluations(), evaluator.JacobianEvaluations());
-            fmt::print("{:>{}} {:>8.3f}\n", config.Seed, seedw, elapsed);
+            using T = std::tuple<std::string, double, std::string>;
+            auto const* format = ":>#8.4g";
+            std::array stats {
+                T{ "iteration", gp.Generation(), ":>" },
+                T{ "r2_tr", r2Train, format },
+                T{ "r2_te", r2Test, format },
+                T{ "mae_tr", maeTrain, format },
+                T{ "mae_te", maeTest, format },
+                T{ "nmse_tr", nmseTrain, format },
+                T{ "nmse_te", nmseTest, format },
+                T{ "avg_fit", avgQuality, format },
+                T{ "avg_len", avgLength, format },
+                T{ "eval_cnt", evaluator.EvaluationCount() , ":>" },
+                T{ "res_eval", evaluator.ResidualEvaluations(), ":>" },
+                T{ "jac_eval", evaluator.JacobianEvaluations(), ":>" },
+                T{ "seed", config.Seed, ":>" },
+                T{ "elapsed", elapsed, ":>"},
+            };
+            Operon::PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
         };
 
         gp.Run(executor, random, report);

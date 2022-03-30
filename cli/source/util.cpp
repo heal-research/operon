@@ -115,22 +115,24 @@ auto PrintPrimitives(NodeType config) -> void
     }
 }
 
-auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const& stats) -> void
+auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const& stats, bool printHeader) -> void
 {
     std::vector<size_t> widths;
     auto out = fmt::memory_buffer();
     for (auto const& [name, value, format] : stats) {
-        fmt::format_to(out, fmt::format("{{:{}}}", format), value);
+        fmt::format_to(out, fmt::format("{{{}}}", format), value);
         auto width = std::max(name.size(), fmt::to_string(out).size());
         widths.push_back(width);
         out.clear();
     }
-    for (auto i = 0UL; i < stats.size(); ++i) {
-        fmt::print("{} ", fmt::format("{:>{}}", std::get<0>(stats[i]), widths[i]));
+    if (printHeader) {
+        for (auto i = 0UL; i < stats.size(); ++i) {
+            fmt::print("{} ", fmt::format("{:>{}}", std::get<0>(stats[i]), widths[i]));
+        }
+        fmt::print("\n");
     }
-    fmt::print("\n");
     for (auto i = 0UL; i < stats.size(); ++i) {
-        fmt::format_to(out, fmt::format("{{:{}}}", std::get<2>(stats[i])), std::get<1>(stats[i]));
+        fmt::format_to(out, fmt::format("{{{}}}", std::get<2>(stats[i])), std::get<1>(stats[i]));
         fmt::print("{} ", fmt::format("{:>{}}", fmt::to_string(out), widths[i]));
         out.clear();
     }
