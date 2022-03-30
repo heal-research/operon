@@ -12,6 +12,7 @@
 #include "operon/parser/infix.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "util.hpp"
 
 auto main(int argc, char** argv) -> int
 {
@@ -100,35 +101,17 @@ auto main(int argc, char** argv) -> int
         auto rmse = Operon::RMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto nmse = Operon::NMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
 
-        std::vector<std::pair<std::string, double>> stats{
-            {"slope", a},
-            {"intercept", b},
-            {"r2", r2},
-            {"rs", rs},
-            {"mae", mae},
-            {"mse", mse},
-            {"rmse", rmse},
-            {"nmse", nmse},
+        std::vector<std::tuple<std::string, double, std::string>> stats{
+            {"slope", a, format},
+            {"intercept", b, format},
+            {"r2", r2, format},
+            {"rs", rs, format},
+            {"mae", mae, format},
+            {"mse", mse, format},
+            {"rmse", rmse, format},
+            {"nmse", nmse, format},
         };
-
-        std::vector<size_t> widths;
-        auto out = fmt::memory_buffer();
-        for (auto const& [name, value] : stats) {
-            fmt::format_to(out, fmt::format("{{:{}}}", format), value);
-            auto width = std::max(name.size(), fmt::to_string(out).size());
-            widths.push_back(width);
-            out.clear();
-        }
-        for (auto i = 0UL; i < stats.size(); ++i) {
-            fmt::print("{} ", fmt::format("{:>{}}", stats[i].first, widths[i]));
-        }
-        fmt::print("\n");
-        for (auto i = 0UL; i < stats.size(); ++i) {
-            fmt::format_to(out, fmt::format("{{:{}}}", format), stats[i].second);
-            fmt::print("{} ", fmt::format("{:>{}}", fmt::to_string(out), widths[i]));
-            out.clear();
-        }
-        fmt::print("\n");
+        Operon::PrintStats(stats);
     } else {
         auto out = fmt::memory_buffer();
         for (auto v : est) {
