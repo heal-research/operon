@@ -24,10 +24,10 @@ void TreeFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Hash
     } else if (s.IsVariable()) {
         auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}", decimalPrecision);
 
-        if (auto it = variableNames.find(s.CalculatedHashValue); it != variableNames.end()) {
+        if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
             fmt::format_to(std::back_inserter(current), formatString, s.Value, it->second);
         } else {
-            throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
+            throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.HashValue));
         }
     } else {
         fmt::format_to(std::back_inserter(current), "{}", s.Name());
@@ -75,10 +75,10 @@ void InfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Has
         fmt::format_to(std::back_inserter(current), formatString, s.Value);
     } else if (s.IsVariable()) {
         auto formatString = fmt::format(s.Value < 0 ? "(({{:.{}f}}) * {{}})" : "({{:.{}f}} * {{}})", decimalPrecision);
-        if (auto it = variableNames.find(s.CalculatedHashValue); it != variableNames.end()) {
+        if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
             fmt::format_to(std::back_inserter(current), formatString, s.Value, it->second);
         } else {
-            throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.CalculatedHashValue));
+            throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.HashValue));
         }
     } else {
         if (s.Type < NodeType::Abs) // add, sub, mul, div, aq, fmax, fmin, pow
