@@ -60,6 +60,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 {
     auto eps = GetConfig().Epsilon;
 
+    // sort the population lexicographically
     std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
         auto const& fit1 = lhs.Fitness;
         auto const& fit2 = rhs.Fitness;
@@ -131,21 +132,26 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&](tf::Subflow& subflow) {
             auto init = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
-                auto id = executor.this_worker_id();
-                // make sure the worker has a large enough buffer
-                if (slots[id].size() < trainSize) {
-                    slots[id].resize(trainSize);
-                }
                 // initialize tree
                 parents_[i].Genotype = treeInit(rngs[i]);
                 ENSURE(parents_[i].Genotype.Length() > 0);
                 // initialize tree coefficients
                 coeffInit(rngs[i], parents_[i].Genotype);
-                parents_[i].Fitness = evaluator(rngs[i], parents_[i], slots[id]);
             }).name("initialize population");
+            auto prepareEval = subflow.emplace([&]() { evaluator.Prepare(parents_); }).name("prepare evaluator");
+            auto eval = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
+                auto id = executor.this_worker_id();
+                // make sure the worker has a large enough buffer
+                if (slots[id].size() < trainSize) {
+                    slots[id].resize(trainSize);
+                }
+                parents_[i].Fitness = evaluator(rngs[i], parents_[i], slots[id]);
+            }).name("evaluate population");
             auto updateRanks = subflow.emplace([&]() { Sort(parents_); }).name("update ranks");
             auto reportProgress = subflow.emplace([&]() { if (report) { std::invoke(report); } }).name("report progress");
-            init.precede(updateRanks);
+            init.precede(prepareEval);
+            prepareEval.precede(eval);
+            eval.precede(updateRanks);
             updateRanks.precede(reportProgress);
         }, // init
         [&]() { return terminate || generation_ == config.Generations || elapsed() > static_cast<double>(config.TimeLimit); }, // loop condition
