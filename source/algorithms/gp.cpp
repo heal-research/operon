@@ -67,8 +67,19 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                 coeffInit(rngs[i], parents_[i].Genotype);
                 parents_[i].Fitness = evaluator(rngs[i], parents_[i], slots[id]);
             }).name("initialize population");
+            auto prepareEval = subflow.emplace([&]() { evaluator.Prepare(parents_); }).name("prepare evaluator");
+            auto eval = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
+                auto id = executor.this_worker_id();
+                // make sure the worker has a large enough buffer
+                if (slots[id].size() < trainSize) {
+                    slots[id].resize(trainSize);
+                }
+                parents_[i].Fitness = evaluator(rngs[i], parents_[i], slots[id]);
+            }).name("evaluate population");
             auto reportProgress = subflow.emplace([&](){ if (report) { std::invoke(report); } }).name("report progress");
-            initializePopulation.precede(reportProgress);
+            initializePopulation.precede(prepareEval);
+            prepareEval.precede(eval);
+            eval.precede(reportProgress);
         }, // init
         [&]() { return terminate || generation_ == config.Generations || elapsed() > static_cast<double>(config.TimeLimit); }, // loop condition
         [&](tf::Subflow& subflow) {
