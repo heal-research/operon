@@ -83,7 +83,7 @@ inline auto operator^=(NodeType& lhs, NodeType rhs) -> NodeType&
 
 struct Node {
     Operon::Hash HashValue; // needs to be unique for each node type
-    Operon::Hash CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
+    Operon::Hash mutable CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
     Operon::Scalar Value; // value for constants or weighting factor for variables
     uint16_t Arity; // 0-65535
     uint16_t Length; // 0-65535
