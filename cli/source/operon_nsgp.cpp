@@ -174,24 +174,20 @@ auto main(int argc, char** argv) -> int
         if (symbolic) {
             using Dist = std::uniform_int_distribution<int>;
             coeffInitializer = std::make_unique<Operon::CoefficientInitializer<Dist>>();
-            dynamic_cast<Operon::CoefficientInitializer<Dist>*>(coeffInitializer.get())->ParameterizeDistribution(1, 5);
-
+            int constexpr range{5};
+            dynamic_cast<Operon::CoefficientInitializer<Dist>*>(coeffInitializer.get())->ParameterizeDistribution(-range, +range);
             onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
-            dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(1, 2);
+            dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(-range, +range);
         } else {
-            coeffInitializer = std::make_unique<Operon::NormalCoefficientInitializer>();
-            dynamic_cast<Operon::NormalCoefficientInitializer*>(coeffInitializer.get())->ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
-
             using Dist = std::normal_distribution<Operon::Scalar>;
+            coeffInitializer = std::make_unique<Operon::CoefficientInitializer<Dist>>();
+            dynamic_cast<Operon::NormalCoefficientInitializer*>(coeffInitializer.get())->ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
             onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
             dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
         }
 
-        auto crossover = Operon::SubtreeCrossover { crossoverInternalProbability, maxDepth, maxLength };
-        auto mutator = Operon::MultiMutation {};
-
-        //Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> onePoint;
-        //onePoint.ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
+        Operon::SubtreeCrossover crossover{ crossoverInternalProbability, maxDepth, maxLength };
+        Operon::MultiMutation mutator{};
 
         Operon::ChangeVariableMutation changeVar { problem.InputVariables() };
         Operon::ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
