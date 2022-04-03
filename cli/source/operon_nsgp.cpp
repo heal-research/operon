@@ -215,7 +215,6 @@ auto main(int argc, char** argv) -> int
         Operon::Evaluator errorEvaluator(problem, interpreter, *error, scale);
         errorEvaluator.SetLocalOptimizationIterations(config.Iterations);
         errorEvaluator.SetBudget(config.Evaluations);
-
         Operon::LengthEvaluator lengthEvaluator(problem);
 
         Operon::MultiEvaluator evaluator(problem);
@@ -360,7 +359,7 @@ auto main(int argc, char** argv) -> int
             auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
 
             using T = std::tuple<std::string, double, std::string>;
-            auto const* format = ":>#8.4g";
+            auto const* format = ":>#8.3g"; // see https://fmt.dev/latest/syntax.html
             std::array stats {
                 T{ "iteration", gp.Generation(), ":>" },
                 T{ "r2_tr", r2Train, format },
