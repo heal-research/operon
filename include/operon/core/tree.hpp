@@ -119,7 +119,7 @@ public:
 
     // performs hashing in a manner similar to Merkle trees
     // aggregating hash values from the leafs towards the root node
-    auto Hash(Operon::HashMode mode) noexcept -> Tree&;
+    [[nodiscard]] auto Hash(Operon::HashMode mode) const -> Tree const&;
 
     [[nodiscard]] auto Subtree(size_t i) const -> Tree {
         EXPECT(i < Length());

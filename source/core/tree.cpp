@@ -154,7 +154,7 @@ auto Tree::VisitationLength() const noexcept -> size_t
     return std::transform_reduce(nodes_.begin(), nodes_.end(), 0UL, std::plus<> {}, [](const auto& node) { return node.Length + 1; });
 }
 
-auto Tree::Hash(Operon::HashMode mode) noexcept -> Tree&
+auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
 {
     std::vector<size_t> childIndices;
     childIndices.reserve(nodes_.size());
@@ -165,7 +165,7 @@ auto Tree::Hash(Operon::HashMode mode) noexcept -> Tree&
     Operon::Hasher hasher;
 
     for (size_t i = 0; i < nodes_.size(); ++i) {
-        auto& n = nodes_[i];
+        auto const& n = nodes_[i];
 
         if (n.IsLeaf()) {
             n.CalculatedHashValue = n.HashValue;
@@ -177,8 +177,6 @@ auto Tree::Hash(Operon::HashMode mode) noexcept -> Tree&
                 std::memcpy(ptr, &n.HashValue, s1);
                 std::memcpy(ptr + s1, &n.Value, s2);
                 n.CalculatedHashValue = hasher(key.data(), key.size());
-            } else {
-                n.CalculatedHashValue = n.HashValue;
             }
             continue;
         }
