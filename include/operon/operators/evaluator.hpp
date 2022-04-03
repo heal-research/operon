@@ -85,9 +85,8 @@ public:
     {
     }
 
-    virtual void Prepare(const Operon::Span<const Individual> pop)
+    virtual void Prepare(Operon::Span<Individual const> pop) const
     {
-        population_ = pop;
     }
 
     auto TotalEvaluations() const -> size_t { return residualEvaluations_ + jacobianEvaluations_; }
@@ -187,20 +186,24 @@ public:
         evaluators_.push_back(std::ref(evaluator));
     }
 
+    auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override
+    {
+        for (auto const& e : evaluators_) {
+            e.get().Prepare(pop);
+        }
+    }
+
     auto
     operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
     {
-        EXPECT(evaluators_.size() > 1);
         Operon::Vector<Operon::Scalar> fit;
-        for (auto const& evaluator : evaluators_) {
-            auto fitI = evaluator(rng, ind, buf);
-            std::copy(fitI.begin(), fitI.end(), std::back_inserter(fit));
-        }
-        // proxy the budget of the first evaluator (the one that actually calls the tree interpreter)
         auto totalResidualEvaluations{0UL};
         auto totalJacobianEvaluations{0UL};
         auto totalEvaluationCount{0UL};
         for (auto const& ev : evaluators_) {
+            auto fitI = ev(rng, ind, buf);
+            std::copy(fitI.begin(), fitI.end(), std::back_inserter(fit));
+
             totalResidualEvaluations += ev.get().ResidualEvaluations();
             totalJacobianEvaluations += ev.get().JacobianEvaluations();
             totalEvaluationCount += ev.get().EvaluationCount();
@@ -236,5 +239,23 @@ public:
     {
     }
 };
+
+class DiversityEvaluator : public EvaluatorBase {
+public:
+    explicit DiversityEvaluator(Operon::Problem& problem)
+        : EvaluatorBase(problem)
+    {
+    }
+
+    auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+    auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
+
+private:
+    mutable robin_hood::unordered_flat_map<size_t, Operon::Scalar> divmap_;
+    mutable std::vector<std::vector<Operon::Hash>> hashes_;
+};
+
 } // namespace Operon
 #endif
