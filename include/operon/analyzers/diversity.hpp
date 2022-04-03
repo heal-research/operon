@@ -15,9 +15,9 @@
 
 namespace Operon {
 namespace {
-    static inline auto MakeHashes(Tree& tree, Operon::HashMode m) -> Operon::Vector<Operon::Hash> {
+    inline auto MakeHashes(Tree& tree, Operon::HashMode m) -> Operon::Vector<Operon::Hash> {
         Operon::Vector<Operon::Hash> hashes(tree.Length());
-        tree.Hash(m);
+        [[maybe_unused]] auto h = tree.Hash(m);
         std::transform(tree.Nodes().begin(), tree.Nodes().end(), hashes.begin(), [](const auto& node) { return node.CalculatedHashValue; });
         std::stable_sort(hashes.begin(), hashes.end());
         return hashes;
