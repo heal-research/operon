@@ -61,7 +61,7 @@ auto main(int argc, char** argv) -> int
     auto maxDepth = result["maxdepth"].as<size_t>();
     auto crossoverInternalProbability = result["crossover-internal-probability"].as<Operon::Scalar>();
 
-    bool symbolic = result["symbolic"].as<bool>();
+    auto symbolic = result["symbolic"].as<bool>();
 
     try {
         for (const auto& kv : result.arguments()) {
@@ -250,8 +250,6 @@ auto main(int argc, char** argv) -> int
         };
 
         Operon::Individual best(1);
-        //auto const& pop = gp.Parents();
-
         auto getSize = [](Operon::Individual const& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Operon::Node) * ind.Genotype.Nodes().capacity(); };
 
         tf::Executor exe(threads);
