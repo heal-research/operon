@@ -42,10 +42,11 @@ public:
         return (*base)(random, pCrossover, pMutation, buf);
     };
 
-    virtual void Prepare(Operon::Span<const Individual> pop) const
+    virtual auto Prepare(Operon::Span<Individual const> pop) const -> void
     {
         this->FemaleSelector().Prepare(pop);
         this->MaleSelector().Prepare(pop);
+        this->Evaluator().Prepare(pop);
     }
     [[nodiscard]] virtual auto Terminate() const -> bool { return evaluator_.get().BudgetExhausted(); }
 
