@@ -25,6 +25,7 @@ namespace Operon {
     // M_PI, M_PI_2, M_PI_4, M_1_PI, M_2_PI, M_2_SQRTPI, M_SQRT2, M_SQRT1_2, M_E, M_LOG2E, M_LOG10E, M_LN2, M_LN10
     struct Math {
         static double constexpr Pi       = 3.141592653589793115997963468544185161590576171875;
+        static double constexpr Tau      = 2 * Pi;
         static double constexpr InvPi    = 0.318309886183790691216444201927515678107738494873046875;
         static double constexpr SqrtPi   = 1.772453850905515881919427556567825376987457275390625;
         static double constexpr E        = 2.718281828459045090795598298427648842334747314453125;
@@ -35,7 +36,7 @@ namespace Operon {
         static double constexpr Sqrt2    = 1.4142135623730951454746218587388284504413604736328125;
         static double constexpr InvSqrt2 = 0.707106781186547461715008466853760182857513427734375;
 
-        static std::array<double, 10> constexpr Constants { Pi, InvPi, SqrtPi, E, Log2E, Log10E, LogE2, LogE10, Sqrt2, InvSqrt2 };
+        static std::array<double, 11> constexpr Constants { Pi, Tau, InvPi, SqrtPi, E, Log2E, Log10E, LogE2, LogE10, Sqrt2, InvSqrt2 };
     };
 
     static constexpr auto Align64 = 64U;
