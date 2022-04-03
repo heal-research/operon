@@ -34,7 +34,7 @@ public:
         this->population_ = Operon::Span<const Individual>(pop);
     };
 
-    auto Population() const -> Operon::Span<const Individual> { return population_; }
+    auto Population() const -> Operon::Span<Individual const> { return population_; }
 
     [[nodiscard]] inline auto Compare(Individual const& lhs, Individual const& rhs) const -> bool
     {
