@@ -6,7 +6,6 @@
 
 #include <cstddef>                         // for size_t
 #include <functional>                      // for reference_wrapper, function
-#include <nonstd/span.hpp>                 // for span<>::pointer
 #include <operon/operon_export.hpp>        // for OPERON_EXPORT
 #include <thread>                          // for thread
 #include <utility>                         // for move
