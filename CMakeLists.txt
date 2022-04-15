@@ -13,7 +13,7 @@ project(
     LANGUAGES CXX
 )
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 docs_early_return()
@@ -82,7 +82,6 @@ find_package(Threads REQUIRED)
 find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(robin_hood REQUIRED)
-find_package(span-lite REQUIRED)
 find_package(vstat REQUIRED)
 
 find_package(vectorclass)
@@ -117,6 +116,10 @@ else()
     find_path(ARIA_CSV_INCLUDE_DIRS "aria-csv/parser.hpp")
     target_include_directories(operon_operon PRIVATE "${ARIA_CSV_INCLUDE_DIRS}")
 endif()
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(eve REQUIRED IMPORTED_TARGET eve)
+target_link_libraries(operon_operon INTERFACE PkgConfig::eve)
 
 # ---- Optional dependencies
 set(HAVE_CERES FALSE)
@@ -208,7 +211,6 @@ target_link_libraries(operon_operon PUBLIC
     Eigen3::Eigen
     Threads::Threads
     fmt::fmt
-    nonstd::span-lite
     pratt-parser::pratt-parser
     robin_hood::robin_hood
     )
@@ -225,7 +227,6 @@ set_target_properties(operon_operon PROPERTIES POSITION_INDEPENDENT_CODE ${BUILD
 if(MSVC)
     target_compile_options(operon_operon PUBLIC "/std:c++latest")
 else()
-    target_compile_options(operon_operon PUBLIC "-march=x86-64;-mavx2;-mfma")
     target_link_options(operon_operon PUBLIC "-Wl,--no-undefined")
 endif()
 

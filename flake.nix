@@ -4,8 +4,10 @@
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.nur.url = "github:nix-community/NUR";
   inputs.nixpkgs.url = "github:nixos/nixpkgs/master";
+  inputs.pratt-parser.url = "github:foolnotion/pratt-parser-calculator";
+  inputs.vstat.url = "github:heal-research/vstat/cpp20-eve";
 
-  outputs = { self, flake-utils, nixpkgs, nur }:
+  outputs = { self, flake-utils, nixpkgs, nur, pratt-parser, vstat }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -41,16 +43,18 @@
             jemalloc
             openlibm
             pkg-config
+            # flakes
+            pratt-parser.defaultPackage.${system}
+            vstat.defaultPackage.${system}
             # Some dependencies are provided by a NUR repo
             repo.aria-csv
+            repo.eve
             repo.fast_float
-            repo.pratt-parser
             repo.robin-hood-hashing
             repo.scnlib
             repo.span-lite
             repo.taskflow
             repo.vectorclass
-            repo.vstat
             repo.xxhash
           ];
         };
@@ -69,7 +73,9 @@
           ];
           buildInputs = defaultPackage.buildInputs ++ (with pkgs; [
             gdb
+            gdbgui
             hotspot
+            hyperfine
             valgrind
             jemalloc
             linuxPackages.perf

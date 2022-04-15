@@ -116,7 +116,7 @@ namespace Operon {
                 auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
                 std::transform(buf.begin(), buf.end(), buf.begin(), [a=a,b=b](auto x) { return a * x + b; });
             }
-            return error_(buf.begin(), buf.end(), targetValues.begin());
+            return error_(buf, targetValues);
         };
 
         auto const iter = LocalOptimizationIterations();

@@ -4,11 +4,11 @@
 #ifndef OPERON_OPERATORS_NONDOMINATED_SORTER_HPP
 #define OPERON_OPERATORS_NONDOMINATED_SORTER_HPP
 
+#include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon {
-struct Individual;
 
 enum EfficientSortStrategy : int { Binary, Sequential };
 

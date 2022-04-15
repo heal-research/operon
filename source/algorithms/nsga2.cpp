@@ -68,7 +68,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     });
     std::vector<Individual> dup;
     dup.reserve(pop.size());
-    auto* r = std::unique(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
+    auto r = std::unique(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
         auto const& fit1 = lhs.Fitness;
         auto const& fit2 = rhs.Fitness;
         if (Operon::Equal{}(fit1, fit2, eps)) {
