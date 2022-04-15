@@ -6,7 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <nonstd/span.hpp>
+#include <span>
 
 #include "constants.hpp"
 #include "operon/random/random.hpp"
@@ -21,7 +21,7 @@ template <typename T>
 using Vector = std::vector<T>;
 
 template <typename T>
-using Span = nonstd::span<T>;
+using Span = std::span<T>;
 
 #if defined(USE_SINGLE_PRECISION)
 using Scalar = float;

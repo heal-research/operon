@@ -2,31 +2,26 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include "operon/core/distance.hpp"
-#include <vectorclass/vectorclass.h>
+
+#include <eve/wide.hpp>
+#include <eve/function/any.hpp>
+#include <eve/function/reduce.hpp>
 
 namespace Operon::Distance {
     namespace detail {
-        template<typename T, size_t I = 0>
-        auto Check(T const* lhs, T const* rhs) {
-            using Vec = std::conditional_t<sizeof(T) == sizeof(uint32_t), Vec8ui, Vec4uq>;
-            static_assert(I >= 0 && I < Vec::size());
-            if constexpr(I == Vec::size() - 1) {
-                return Vec().load(lhs) == rhs[I];
-            } else {
-                return (Vec().load(lhs) == rhs[I]) | Check<T, I+1>(lhs, rhs);
-            }
-        }
-
-        template<typename T, std::enable_if_t<std::is_integral_v<T> && (sizeof(T) == sizeof(uint32_t) || sizeof(T) == sizeof(uint64_t)), bool> = true>
-        constexpr inline auto Intersect(T const* lhs, T const* rhs) noexcept -> bool
-        {
-            return horizontal_add(Check(lhs, rhs));
+        template<typename T>
+        auto Intersect(T const* lhs, T const* rhs) {
+            eve::wide<T> const a(eve::as_aligned(lhs));
+            return [&]<std::size_t ...i>(std::index_sequence<i...>){
+                return eve::any(((a == rhs[i]) || ...));
+            }(std::make_index_sequence<eve::wide<T>::size()>{});
         }
 
         // this method only works when the hash vectors are sorted
-        template<typename T, size_t S = 4 * sizeof(uint64_t) / sizeof(T)>
-        inline auto CountIntersect(Operon::Span<T> lhs, Operon::Span<T> rhs) noexcept -> size_t
+        template<typename T>
+        inline auto CountIntersect(Operon::Span<T const> lhs, Operon::Span<T const> rhs) noexcept -> size_t
         {
+            size_t constexpr S = eve::wide<T>::size();
             T const *p0 = lhs.data();
             T const *pS = p0 + (lhs.size() & (-S));
             T const *pN = p0 + lhs.size();
@@ -38,10 +33,7 @@ namespace Operon::Distance {
             T const *p = p0;
             T const *q = q0;
 
-            while(p < pS && q < qS) {
-                if (Intersect(p, q)) {
-                    break;
-                }
+            while(p < pS && q < qS && !Intersect(p, q)) {
                 auto const a = *(p + S - 1);
                 auto const b = *(q + S - 1);
                 if (a < b) { p += S; }

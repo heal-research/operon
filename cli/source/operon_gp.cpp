@@ -244,7 +244,7 @@ auto main(int argc, char** argv) -> int
         // some boilerplate for reporting results
         const size_t idx { 0 };
         auto getBest = [&](Operon::Span<Operon::Individual const> pop) -> Operon::Individual {
-            const auto *minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
+            const auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
             return *minElem;
         };
 
