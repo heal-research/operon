@@ -52,7 +52,6 @@
             repo.fast_float
             repo.robin-hood-hashing
             repo.scnlib
-            repo.span-lite
             repo.taskflow
             repo.vectorclass
             repo.xxhash
