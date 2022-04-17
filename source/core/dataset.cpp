@@ -21,7 +21,7 @@ namespace {
         for (size_t i = 0; i < vars.size(); ++i) {
             vars[i].Name = fmt::format("X{}", i+1);
             vars[i].Index = i;
-            vars[i].Hash = hash(reinterpret_cast<uint8_t const*>(vars[i].Name.c_str()), vars[i].Name.size()); // NOLINT
+            vars[i].Hash = hash(vars[i].Name); // NOLINT
         }
         std::sort(vars.begin(), vars.end(), [](auto &a, auto &b) { return a.Hash < b.Hash; });
         return vars;
@@ -47,8 +47,7 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
         --nrow; // for matrix allocation, don't care about column names
         for (auto const& row : parser) {
             for (auto const& field : row) {
-                auto h = hash(reinterpret_cast<uint8_t const*>(field.c_str()), field.size()); // NOLINT
-                Variable v { field, h, ncol++ };
+                Variable v { field, hash(field), ncol++ };
                 variables_.push_back(v);
             }
             break; // read only the first row
@@ -118,8 +117,7 @@ void Dataset::SetVariableNames(std::vector<std::string> const& names)
     auto ncol = static_cast<size_t>(map_.cols());
 
     for (size_t i = 0; i < ncol; ++i) {
-        auto h = Hasher{}(reinterpret_cast<uint8_t const*>(names[i].c_str()), names[i].size()); // NOLINT
-        Variable v { names[i], h, i };
+        Variable v { names[i], Hasher{}(names[i]), i };
         variables_[i] = v;
     }
 
@@ -133,10 +131,9 @@ auto Dataset::VariableNames() -> std::vector<std::string>
     return names;
 }
 
-auto Dataset::GetValues(const std::string& name) const noexcept -> Operon::Span<const Operon::Scalar>
+auto Dataset::GetValues(std::string const& name) const noexcept -> Operon::Span<const Operon::Scalar>
 {
-    auto hashValue = Hasher{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size()); // NOLINT
-    return GetValues(hashValue);
+    return GetValues(Hasher{}(name));
 }
 
 auto Dataset::GetValues(Operon::Hash hashValue) const noexcept -> Operon::Span<const Operon::Scalar>
@@ -154,10 +151,9 @@ auto Dataset::GetValues(int index) const noexcept -> Operon::Span<const Operon::
     return {map_.col(index).data(), static_cast<size_t>(map_.rows())};
 }
 
-auto Dataset::GetVariable(const std::string& name) const noexcept -> std::optional<Variable>
+auto Dataset::GetVariable(std::string const& name) const noexcept -> std::optional<Variable>
 {
-    auto hashValue = Hasher{}(reinterpret_cast<uint8_t const*>(name.c_str()), name.size()); // NOLINT
-    return GetVariable(hashValue);
+    return GetVariable(Hasher{}(name));
 }
 
 auto Dataset::GetVariable(Operon::Hash hashValue) const noexcept -> std::optional<Variable>
