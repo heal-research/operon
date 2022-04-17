@@ -53,7 +53,6 @@
             repo.robin-hood-hashing
             repo.scnlib
             repo.taskflow
-            repo.vectorclass
             repo.xxhash
           ];
         };
@@ -72,7 +71,6 @@
           ];
           buildInputs = defaultPackage.buildInputs ++ (with pkgs; [
             gdb
-            gdbgui
             hotspot
             hyperfine
             valgrind
