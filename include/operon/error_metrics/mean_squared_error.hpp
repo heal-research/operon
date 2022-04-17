@@ -33,7 +33,7 @@ inline auto MeanSquaredError(Operon::Span<T const> x, Operon::Span<T const> y) n
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
-    EXPECT(x.size() > 0);
+    EXPECT(!x.empty());
     return vstat::univariate::accumulate<T>(x.data(), y.data(), x.size(), [](auto a, auto b) { auto e = a - b; return e * e; }).mean;
 }
 
