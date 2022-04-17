@@ -27,7 +27,7 @@ inline auto CorrelationCoefficient(Operon::Span<T const> x, Operon::Span<T const
 {
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
-    EXPECT(x.size() > 0);
+    EXPECT(!x.empty());
     return vstat::bivariate::accumulate<T>(x.data(), y.data(), x.size()).correlation;
 }
 } // namespace Operon

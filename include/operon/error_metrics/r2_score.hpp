@@ -25,7 +25,7 @@ inline auto R2Score(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept ->
     auto meanY = vstat::univariate::accumulate<V2>(begin2, end2).mean;
     auto sst = vstat::univariate::accumulate<V2>(begin2, end2, [&](auto v) { auto e = v - meanY; return e * e;} ).sum;
     if (sst < eps) {
-        return std::numeric_limits<double>::min();
+        return std::numeric_limits<double>::lowest();
     }
     return 1.0 - ssr / sst;
 }
