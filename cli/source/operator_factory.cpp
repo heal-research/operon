@@ -104,7 +104,7 @@ auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Erro
         error = std::make_unique<Operon::R2>();
     } else if (str == "c2") {
         scale = false;
-        error = std::make_unique<Operon::R2>();
+        error = std::make_unique<Operon::C2>();
     } else if (str == "nmse") {
         error = std::make_unique<Operon::NMSE>();
     } else if (str == "mse") {
