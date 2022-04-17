@@ -29,4 +29,9 @@ auto Hasher::operator()(uint8_t const* key, size_t len) noexcept -> uint64_t
     }
     return 0; // unreachable
 }
+
+auto Hasher::operator()(std::string const& key) noexcept -> uint64_t
+{
+    return (*this)(reinterpret_cast<uint8_t const*>(key.c_str()), key.size());
+}
 } // namespace Operon
