@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Copyright 2019-2021 Heal Research
 
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.20)
 
 include(cmake/prelude.cmake)
 
@@ -118,7 +118,7 @@ if (USE_CERES_NNLS)
     find_package(Ceres)   # use the Ceres optimizer for coefficients tuning
     if (Ceres_FOUND)
         set(HAVE_CERES TRUE)
-        target_link_libraries(operon_operon PRIVATE Ceres::ceres)
+        target_link_libraries(operon_operon PUBLIC Ceres::ceres)
     endif()
 else()
     set(Ceres_VERSION "n/a")
@@ -129,7 +129,7 @@ if (USE_OPENLIBM)
     if(PkgConfig_FOUND)
         pkg_check_modules(openlibm IMPORTED_TARGET openlibm)
         if (openlibm_FOUND)
-            target_link_libraries(operon_operon PRIVATE PkgConfig::openlibm)
+            target_link_libraries(operon_operon PUBLIC PkgConfig::openlibm)
         endif()
     endif()
 endif()
@@ -139,7 +139,7 @@ if (USE_JEMALLOC)
     if(PkgConfig_FOUND)
         pkg_check_modules(jemalloc IMPORTED_TARGET jemalloc)
         if (jemalloc_FOUND)
-            target_link_libraries(operon_operon PRIVATE PkgConfig::jemalloc)
+            target_link_libraries(operon_operon PUBLIC PkgConfig::jemalloc)
         endif()
     endif()
 endif()
@@ -212,7 +212,7 @@ target_link_libraries(operon_operon PRIVATE
     vstat::vstat
     )
 
-target_compile_features(operon_operon PUBLIC cxx_std_17)
+target_compile_features(operon_operon PUBLIC cxx_std_20)
 set_target_properties(operon_operon PROPERTIES POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})
 
 if(MSVC)

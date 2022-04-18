@@ -28,19 +28,17 @@
             "-DCMAKE_BUILD_TYPE=Release"
             "-DUSE_OPENLIBM=ON"
             "-DUSE_SINGLE_PRECISION=ON"
+            "-DCMAKE_CXX_FLAGS=${if pkgs.targetPlatform.isx86_64 then "-march=haswell" else ""}"
           ];
 
           nativeBuildInputs = with pkgs; [ cmake ];
 
           buildInputs = with pkgs; [
-            ceres-solver
             cxxopts
             doctest
             eigen
             fmt
             git
-            glog
-            jemalloc
             openlibm
             pkg-config
             # flakes
@@ -59,12 +57,11 @@
 
         devShell = pkgs.gcc11Stdenv.mkDerivation {
           name = "operon-env";
-          hardeningDisable = [ "all" ];
-          impureUseNativeOptimizations = true;
+
           nativeBuildInputs = with pkgs; [
             bear
             cmake
-            clang_13
+            clang_14
             clang-tools
             cppcheck
             include-what-you-use
@@ -74,7 +71,6 @@
             hotspot
             hyperfine
             valgrind
-            jemalloc
             linuxPackages.perf
           ]);
 

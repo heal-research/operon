@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.20)
 
 project(operonCli LANGUAGES CXX)
 
@@ -19,12 +19,12 @@ function(add_operon_cli NAME)
         )
 
     target_link_libraries(${NAME} PRIVATE operon::operon cxxopts::cxxopts scn::scn)
-    target_compile_features(${NAME} PRIVATE cxx_std_17)
+    target_compile_features(${NAME} PRIVATE cxx_std_20)
 
     if(MSVC)
-        target_compile_options(${NAME} PUBLIC "/std:c++latest")
+        target_compile_options(${NAME} PRIVATE "/std:c++latest")
     else()
-        target_link_options(${NAME} PUBLIC "-Wl,--no-undefined")
+        target_link_options(${NAME} PRIVATE "-Wl,--no-undefined")
     endif()
 
     install(TARGETS ${NAME}
