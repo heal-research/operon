@@ -4,6 +4,7 @@
 #include "operator_factory.hpp"
 #include <stdexcept>                       // for runtime_error
 #include <fmt/format.h>                        // for format
+#include <scn/scn.h>                   // for scan
 #include <tuple>
 #include "operon/operators/creator.hpp"    // for CreatorBase, BalancedTreeC...
 #include "operon/operators/evaluator.hpp"  // for Evaluator, EvaluatorBase

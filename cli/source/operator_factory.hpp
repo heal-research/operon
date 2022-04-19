@@ -4,7 +4,6 @@
 #ifndef OPERON_CLI_OPERATOR_FACTORY_HPP
 #define OPERON_CLI_OPERATOR_FACTORY_HPP
 
-#include <scn/detail/scan.h>                   // for scan
 #include <stddef.h>                            // for size_t
 #include <memory>                              // for unique_ptr, make_unique
 #include <string>                              // for operator==, string
