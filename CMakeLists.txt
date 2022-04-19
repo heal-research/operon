@@ -223,10 +223,9 @@ target_compile_features(operon_operon PUBLIC cxx_std_17)
 set_target_properties(operon_operon PROPERTIES POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})
 
 if(MSVC)
-    target_compile_options(operon_operon PUBLIC "/std:c++latest")
+    target_compile_options(operon_operon PRIVATE "/std:c++latest")
 else()
-    target_compile_options(operon_operon PUBLIC "-march=x86-64;-mavx2;-mfma")
-    target_link_options(operon_operon PUBLIC "-Wl,--no-undefined")
+    target_link_options(operon_operon PRIVATE "-Wl,--no-undefined")
 endif()
 
 target_compile_definitions(operon_operon PUBLIC 
