@@ -110,7 +110,7 @@ endif()
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(eve REQUIRED IMPORTED_TARGET eve)
-target_link_libraries(operon_operon INTERFACE PkgConfig::eve)
+target_link_libraries(operon_operon PRIVATE PkgConfig::eve)
 
 # ---- Optional dependencies
 set(HAVE_CERES FALSE)
