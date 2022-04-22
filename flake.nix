@@ -31,7 +31,7 @@
             "-DCMAKE_CXX_FLAGS=${if pkgs.targetPlatform.isx86_64 then "-march=haswell" else ""}"
           ];
 
-          nativeBuildInputs = with pkgs; [ cmake ];
+          nativeBuildInputs = with pkgs; [ cmake pkg-config ];
 
           buildInputs = with pkgs; [
             cxxopts
@@ -40,7 +40,6 @@
             fmt
             git
             openlibm
-            pkg-config
             # flakes
             pratt-parser.defaultPackage.${system}
             vstat.defaultPackage.${system}
