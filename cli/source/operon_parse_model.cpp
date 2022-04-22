@@ -66,7 +66,7 @@ auto main(int argc, char** argv) -> int
     if (result["range"].count() > 0) {
         size_t a{0};
         size_t b{0};
-        scn::scan(result["range"].as<std::string>(), "{}:{}", a, b);
+        [[maybe_unused]] auto s = scn::scan(result["range"].as<std::string>(), "{}:{}", a, b);
         range = Operon::Range{a, b};
     }
 
@@ -87,7 +87,7 @@ auto main(int argc, char** argv) -> int
         Operon::Scalar a{0};
         Operon::Scalar b{0};
         if (result["scale"].count() > 0) {
-            scn::scan(result["scale"].as<std::string>(), "{}:{}", a, b);
+            [[maybe_unused]] auto s = scn::scan(result["scale"].as<std::string>(), "{}:{}", a, b);
         } else {
             auto [a_, b_] = Operon::FitLeastSquares(est, tgt);
             a = static_cast<Operon::Scalar>(a_);
