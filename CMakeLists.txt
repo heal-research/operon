@@ -83,6 +83,7 @@ find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(robin_hood REQUIRED)
 find_package(vstat REQUIRED)
+find_package(FastFloat REQUIRED)
 
 find_package(xxHash)
 if (xxHash_FOUND)
