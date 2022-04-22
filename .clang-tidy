@@ -3,6 +3,7 @@
 # misc-non-private-member-variables-in-classes: the options don't do anything
 Checks: "*,\
   -google-readability-todo,\
+  -readability-identifier-length,\
   -altera-unroll-loops,\
   -fuchsia-*,\
   fuchsia-multiple-inheritance,\

@@ -203,14 +203,14 @@ target_link_libraries(operon_operon PUBLIC
     Threads::Threads
     fmt::fmt
     pratt-parser::pratt-parser
-    robin_hood::robin_hood
     )
 
 target_link_libraries(operon_operon PRIVATE
     FastFloat::fast_float
     Taskflow::Taskflow
     vstat::vstat
-    )
+    robin_hood::robin_hood
+)
 
 target_compile_features(operon_operon PUBLIC cxx_std_20)
 set_target_properties(operon_operon PROPERTIES POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})
