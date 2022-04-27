@@ -69,24 +69,27 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     std::vector<Individual> dup;
     dup.reserve(pop.size());
     auto r = std::unique(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
-        auto const& fit1 = lhs.Fitness;
-        auto const& fit2 = rhs.Fitness;
-        if (Operon::Equal{}(fit1, fit2, eps)) {
-            dup.push_back(rhs);
-            return true;
-        }
-        return false;
+        auto p = Operon::Equal{}(lhs.Fitness, rhs.Fitness, eps);
+        if (p) { dup.push_back(std::move(rhs)); }
+        return p;
     });
-    ENSURE(std::distance(pop.begin(), r) + dup.size() == pop.size());
-    std::copy_n(std::make_move_iterator(dup.begin()), dup.size(), r); // r points to the end of the unique section
-    Operon::Span<Individual const> s(pop.begin(), r); // create a span looking into the unique section
-    fronts_ = sorter_(s); // non-dominated sorting of the unique
+
+    if (dup.empty()) {
+        fronts_ = sorter_(pop);
+    } else {
+        ENSURE(std::distance(pop.begin(), r) + dup.size() == pop.size());
+        std::copy_n(std::make_move_iterator(dup.begin()), dup.size(), r); // r points to the end of the unique section
+        Operon::Span<Individual const> s(pop.begin(), r); // create a span looking into the unique section
+        fronts_ = sorter_(s); // non-dominated sorting of the unique
+        // add the duplicates into a separate front
+        std::vector<size_t> lastFront(dup.size());
+        std::iota(lastFront.begin(), lastFront.end(), s.size());
+        fronts_.push_back(lastFront);
+    }
+
+    // sort the fronts for consistency between sorting algos
     for (auto& f : fronts_) {
         std::stable_sort(f.begin(), f.end());
-    } // sort the fronts for consistency between sorting algos
-    fronts_.emplace_back(); // put the duplicates in the last front
-    for (; r < pop.end(); ++r) {
-        fronts_.back().push_back(std::distance(pop.begin(), r)); // copy duplicates in the last front
     }
     UpdateDistance(pop); // calculate crowding distance
     best_.clear();
@@ -126,16 +129,16 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     std::vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
 
     tf::Taskflow taskflow;
-    std::atomic_bool terminate { false }; // flag to signal algorithm termination
+
+    auto stop = [&]() {
+        return generator.Terminate() || generation_ == config.Generations || elapsed() > static_cast<double>(config.TimeLimit);
+    };
 
     // while loop control flow
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&](tf::Subflow& subflow) {
             auto init = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
-                // initialize tree
                 parents_[i].Genotype = treeInit(rngs[i]);
-                ENSURE(parents_[i].Genotype.Length() > 0);
-                // initialize tree coefficients
                 coeffInit(rngs[i], parents_[i].Genotype);
             }).name("initialize population");
             auto prepareEval = subflow.emplace([&]() { evaluator.Prepare(parents_); }).name("prepare evaluator");
@@ -154,12 +157,12 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
             eval.precede(updateRanks);
             updateRanks.precede(reportProgress);
         }, // init
-        [&]() { return terminate || generation_ == config.Generations || elapsed() > static_cast<double>(config.TimeLimit); }, // loop condition
+        stop, // loop condition
         [&](tf::Subflow& subflow) {
             auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents_); }).name("prepare generator");
             auto generateOffspring = subflow.for_each_index(size_t{0}, offspring_.size(), size_t{1}, [&](size_t i) {
                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
-                while (!(terminate = generator.Terminate())) {
+                while (!stop()) {
                     if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, buf); result.has_value()) {
                         offspring_[i] = std::move(result.value());
                         ENSURE(offspring_[i].Genotype.Length() > 0);
