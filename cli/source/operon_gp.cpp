@@ -303,12 +303,12 @@ auto main(int argc, char** argv) -> int
             double maeTest{};
 
             auto scaleTrain = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), estimatedTrain.size());
+                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), static_cast<int64_t>(estimatedTrain.size()));
                 estimated = estimated * a + b;
             });
 
             auto scaleTest = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), estimatedTest.size());
+                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), static_cast<int64_t>(estimatedTest.size()));
                 estimated = estimated * a + b;
             });
 
