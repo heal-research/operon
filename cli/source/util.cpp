@@ -82,7 +82,7 @@ auto ParseRange(std::string const& str) -> std::pair<size_t, size_t>
 {
     size_t a{0};
     size_t b{0};
-    scn::scan(str, "{}:{}", a, b);
+    (void) scn::scan(str, "{}:{}", a, b);
     return std::make_pair(a, b);
 }
 
