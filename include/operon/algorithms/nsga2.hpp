@@ -40,7 +40,7 @@ class OPERON_EXPORT NSGA2 {
     Operon::Span<Individual> parents_;
     Operon::Span<Individual> offspring_;
 
-    size_t generation_;
+    size_t generation_{0};
     std::vector<std::vector<size_t>> fronts_;
 
     // best pareto front
@@ -61,7 +61,6 @@ public:
         , individuals_(config.PopulationSize + config.PoolSize)
         , parents_(individuals_.data(), config.PopulationSize)
         , offspring_(individuals_.data() + config.PopulationSize, config.PoolSize)
-        , generation_(0UL)
     {
     }
 
@@ -79,7 +78,7 @@ public:
 
     [[nodiscard]] auto Generation() const -> size_t { return generation_; }
 
-    void Reset()
+    auto Reset() -> void
     {
         generation_ = 0;
         GetGenerator().Evaluator().Reset();
