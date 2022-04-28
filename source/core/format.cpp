@@ -19,10 +19,10 @@ void TreeFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Hash
 
     const auto& s = tree[i];
     if (s.IsConstant()) {
-        auto formatString = fmt::format("{{:.{}f}}", decimalPrecision);
+        auto formatString = fmt::format("{{:.{}g}}", decimalPrecision);
         fmt::format_to(std::back_inserter(current), formatString, s.Value);
     } else if (s.IsVariable()) {
-        auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}", decimalPrecision);
+        auto formatString = fmt::format(s.Value < 0 ? "({{:.{}g}}) * {{}}" : "{{:.{}g}} * {{}}", decimalPrecision);
 
         if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
             fmt::format_to(std::back_inserter(current), formatString, s.Value, it->second);
@@ -71,10 +71,10 @@ void InfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Has
 {
     const auto& s = tree[i];
     if (s.IsConstant()) {
-        auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}f}}", decimalPrecision);
+        auto formatString = fmt::format(s.Value < 0 ? "({{:.{}g}})" : "{{:.{}g}}", decimalPrecision);
         fmt::format_to(std::back_inserter(current), formatString, s.Value);
     } else if (s.IsVariable()) {
-        auto formatString = fmt::format(s.Value < 0 ? "(({{:.{}f}}) * {{}})" : "({{:.{}f}} * {{}})", decimalPrecision);
+        auto formatString = fmt::format(s.Value < 0 ? "(({{:.{}g}}) * {{}})" : "({{:.{}g}} * {{}})", decimalPrecision);
         if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
             fmt::format_to(std::back_inserter(current), formatString, s.Value, it->second);
         } else {
