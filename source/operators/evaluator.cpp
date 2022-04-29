@@ -157,8 +157,9 @@ namespace Operon {
         }
         total_ = 0;
         for (auto const& [_, count] : divmap_) {
-            total_ += count;
+            total_ += static_cast<double>(count);
         }
+        total_ /= static_cast<double>(pop.size());
     }
 
     auto
