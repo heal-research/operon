@@ -58,39 +58,38 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
 
 auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 {
-    auto eps = GetConfig().Epsilon;
+    auto eps = static_cast<Operon::Scalar>(GetConfig().Epsilon);
+
+    Operon::Less less;
+    Operon::Equal eq;
 
     // sort the population lexicographically
-    std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
-        auto const& fit1 = lhs.Fitness;
-        auto const& fit2 = rhs.Fitness;
-        return Less{}(fit1.cbegin(), fit1.cend(), fit2.cbegin(), fit2.cend(), eps);
+    std::stable_sort(pop.begin(), pop.end(), [&](auto& lhs, auto& rhs) {
+        return Operon::Less{}(lhs.Fitness, rhs.Fitness, eps);
     });
-    std::vector<Individual> dup;
-    dup.reserve(pop.size());
-    auto r = std::unique(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
-        auto p = Operon::Equal{}(lhs.Fitness, rhs.Fitness, eps);
-        if (p) { dup.push_back(std::move(rhs)); }
-        return p;
-    });
-
-    if (dup.empty()) {
-        fronts_ = sorter_(pop);
-    } else {
-        ENSURE(std::distance(pop.begin(), r) + dup.size() == pop.size());
-        std::copy_n(std::make_move_iterator(dup.begin()), dup.size(), r); // r points to the end of the unique section
-        Operon::Span<Individual const> s(pop.begin(), r); // create a span looking into the unique section
-        fronts_ = sorter_(s); // non-dominated sorting of the unique
-        // add the duplicates into a separate front
-        std::vector<size_t> lastFront(dup.size());
-        std::iota(lastFront.begin(), lastFront.end(), s.size());
-        fronts_.push_back(lastFront);
+    // mark the duplicates for stable_partition
+    for(auto i = pop.begin(); i < pop.end(); ) {
+        i->Rank = 0;
+        auto j = i + 1;
+        for (; j < pop.end() && eq(i->Fitness, j->Fitness, eps); ++j) {
+            j->Rank = 1;
+        }
+        i = j;
     }
-
+    auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) { return ind.Rank == 0; });
+    Operon::Span<Operon::Individual const> uniq(pop.begin(), r);
+    fronts_ = sorter_(uniq);
     // sort the fronts for consistency between sorting algos
     for (auto& f : fronts_) {
         std::stable_sort(f.begin(), f.end());
     }
+    // banish the duplicates into the last front
+    if (r < pop.end()) {
+        std::vector<size_t> last(pop.size() - uniq.size());
+        std::iota(last.begin(), last.end(), uniq.size());
+        fronts_.push_back(last);
+    }
+
     UpdateDistance(pop); // calculate crowding distance
     best_.clear();
     std::transform(fronts_.front().begin(), fronts_.front().end(), std::back_inserter(best_), [&](auto i) { return pop[i]; }); // update best front
