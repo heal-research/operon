@@ -64,9 +64,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     Operon::Equal eq;
 
     // sort the population lexicographically
-    std::stable_sort(pop.begin(), pop.end(), [&](auto& lhs, auto& rhs) {
-        return Operon::Less{}(lhs.Fitness, rhs.Fitness, eps);
-    });
+    std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return less(lhs.Fitness, rhs.Fitness, eps); });
     // mark the duplicates for stable_partition
     for(auto i = pop.begin(); i < pop.end(); ) {
         i->Rank = 0;
@@ -76,7 +74,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
         }
         i = j;
     }
-    auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) { return ind.Rank == 0; });
+    auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) { return !ind.Rank; });
     Operon::Span<Operon::Individual const> uniq(pop.begin(), r);
     fronts_ = sorter_(uniq);
     // sort the fronts for consistency between sorting algos
