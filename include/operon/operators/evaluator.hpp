@@ -111,7 +111,7 @@ public:
 
     void SetBudget(size_t value) { budget_ = value; }
     auto Budget() const -> size_t { return budget_; }
-    auto BudgetExhausted() const -> bool { return TotalEvaluations() > Budget(); }
+    auto BudgetExhausted() const -> bool { return TotalEvaluations() >= Budget(); }
 
     auto Population() const -> Operon::Span<Individual const> { return population_; }
     auto GetProblem() const -> Problem const& { return problem_; }
@@ -240,10 +240,10 @@ public:
     }
 };
 
-class DiversityEvaluator : public EvaluatorBase {
+class OPERON_EXPORT DiversityEvaluator : public EvaluatorBase {
 public:
-    explicit DiversityEvaluator(Operon::Problem& problem)
-        : EvaluatorBase(problem)
+    explicit DiversityEvaluator(Operon::Problem& problem, Operon::HashMode hashmode = Operon::HashMode::Strict)
+        : EvaluatorBase(problem), hashmode_(hashmode)
     {
     }
 
@@ -253,8 +253,9 @@ public:
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
 
 private:
-    mutable robin_hood::unordered_flat_map<size_t, Operon::Scalar> divmap_;
-    mutable std::vector<std::vector<Operon::Hash>> hashes_;
+    mutable robin_hood::unordered_flat_map<size_t, size_t> divmap_;
+    mutable size_t total_{0}; // total count
+    Operon::HashMode hashmode_;
 };
 
 } // namespace Operon
