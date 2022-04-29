@@ -254,7 +254,7 @@ public:
 
 private:
     mutable robin_hood::unordered_flat_map<size_t, size_t> divmap_;
-    mutable size_t total_{0}; // total count
+    mutable double total_{0}; // total count
     Operon::HashMode hashmode_;
 };
 
