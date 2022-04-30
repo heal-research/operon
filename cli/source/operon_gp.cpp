@@ -359,9 +359,9 @@ auto main(int argc, char** argv) -> int
                 T{ "nmse_te", nmseTest, format },
                 T{ "avg_fit", avgQuality, format },
                 T{ "avg_len", avgLength, format },
-                T{ "eval_cnt", evaluator.EvaluationCount() , ":>" },
-                T{ "res_eval", evaluator.ResidualEvaluations(), ":>" },
-                T{ "jac_eval", evaluator.JacobianEvaluations(), ":>" },
+                T{ "eval_cnt", evaluator.CallCount , ":>" },
+                T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
+                T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
                 T{ "seed", config.Seed, ":>" },
                 T{ "elapsed", elapsed, ":>"},
             };
