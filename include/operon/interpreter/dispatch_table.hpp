@@ -251,8 +251,8 @@ public:
     }
 
     template<typename F>
-    void RegisterCallable(Operon::Hash hash, F const& f) {
-        map_[hash] = detail::MakeTuple<F, Ts...>(f);
+    void RegisterCallable(Operon::Hash hash, F&& f) {
+        map_[hash] = detail::MakeTuple<F, Ts...>(std::forward<F&&>(f));
     }
 };
 
