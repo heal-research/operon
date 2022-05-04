@@ -92,6 +92,7 @@ void InfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Has
                     // division with a single argument is an inversion 1/x
                     fmt::format_to(std::back_inserter(current), "1 / ");
                 }
+                FormatNode(tree, variableNames, i-1, current, decimalPrecision);
             } else if (s.Type == NodeType::Pow) {
                 // format pow(a,b) as a^b
                 auto j = i - 1;
