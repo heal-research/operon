@@ -21,7 +21,7 @@ jobs:
     - uses: actions/checkout@v2
     - uses: lukka/run-vcpkg@v10
       with:
-        vcpkgGitCommitId: '5568f110b509a9fd90711978a7cb76bae75bb092'
+        vcpkgGitCommitId: '43e35945783d078d1216927b85447b2eba34a7cc'
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
