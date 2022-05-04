@@ -136,6 +136,8 @@ public:
 
     void Normalize(size_t i, Range range);
 
+    void PermuteRows(std::vector<Eigen::Index> const& indices);
+
     // standardize column i using mean and stddev calculated over the specified range
     void Standardize(size_t i, Range range);
 };
