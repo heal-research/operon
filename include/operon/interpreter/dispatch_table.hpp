@@ -186,7 +186,7 @@ namespace detail {
         return std::make_tuple(MakeCall<Type, Ts>()...);
     };
 
-    template<typename F, typename... Ts, std::enable_if_t<sizeof...(Ts) != 0 && (std::is_invocable_r_v<void, F, detail::Array<Ts>&, Vector<Node> const&, size_t, size_t> && ...), bool> = true>
+    template<typename F, typename... Ts, std::enable_if_t<sizeof...(Ts) != 0 && (std::is_invocable_r_v<void, F, detail::Array<Ts>&, Vector<Node> const&, size_t, Operon::Range> && ...), bool> = true>
     static constexpr auto MakeTuple(F&& f)
     {
         return std::make_tuple(Callable<Ts>(std::forward<F&&>(f))...);
