@@ -95,6 +95,8 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
 
     auto Population() const -> Operon::Span<Individual const> { return population_; }
     auto GetProblem() const -> Problem const& { return problem_; }
+    auto GetProblem() -> Problem& { return problem_; }
+    auto SetProblem(Problem& problem) { problem_ = problem; }
 
     void Reset()
     {
@@ -105,7 +107,7 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
 
     private:
     Operon::Span<Operon::Individual const> population_;
-    std::reference_wrapper<Problem const> problem_;
+    std::reference_wrapper<Problem> problem_;
     size_t iterations_ = DefaultLocalOptimizationIterations;
     size_t budget_ = DefaultEvaluationBudget;
 };
