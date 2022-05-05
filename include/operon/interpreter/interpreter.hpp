@@ -98,12 +98,13 @@ struct GenericInterpreter {
         int numRows = static_cast<int>(range.Size());
         for (int row = 0; row < numRows; row += S) {
             auto remainingRows = std::min(S, numRows - row);
+            Operon::Range rg(range.Start() + row, range.Start() + row + remainingRows);
 
             for (size_t i = 0; i < nodes.size(); ++i) {
                 auto const& s = nodes[i];
                 auto const& [ param, values, func ] = meta[i];
                 if (func) {
-                    func.value()(m, nodes, i, range.Start() + row);
+                    func.value()(m, nodes, i, rg);
                 } else if (s.IsVariable()) {
                     m[i].segment(0, remainingRows) = meta[i].Param * values.segment(row, remainingRows).template cast<T>();
                 }
