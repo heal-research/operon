@@ -11,6 +11,7 @@
 #include <tuple>
 
 #include "operon/core/node.hpp"
+#include "operon/core/range.hpp"
 #include "operon/core/types.hpp"
 #include "functions.hpp"
 
@@ -35,7 +36,7 @@ namespace detail {
     // 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
     //    if arity > 4, one accumulation is performed every 4 args
     template<NodeType Type, typename T>
-    inline void DispatchOpNary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, size_t /* row number - not used */)
+    inline void DispatchOpNary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, Operon::Range /* not used here - provided for dynamic symbols */)
     {
         static_assert(Type < NodeType::Aq);
         auto result = Ref<T>(m[parentIndex]);
@@ -90,14 +91,14 @@ namespace detail {
     }
 
     template<NodeType Type, typename T>
-    inline void DispatchOpUnary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& /*unused*/, size_t i, size_t /* row number - not used */)
+    inline void DispatchOpUnary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& /*unused*/, size_t i, Operon::Range /* not used here - provided for dynamic symbols */)
     {
         static_assert(Type < NodeType::Dynamic && Type > NodeType::Pow);
         Function<Type>{}(Ref<T>(m[i]), Ref<T>(m[i-1]));
     }
 
     template<NodeType Type, typename T>
-    inline void DispatchOpBinary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t i, size_t /* row number - not used */)
+    inline void DispatchOpBinary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t i, Operon::Range /* not used here - provided for dynamic symbols */)
     {
         static_assert(Type < NodeType::Abs && Type > NodeType::Fmax);
         auto j = i - 1;
@@ -106,7 +107,7 @@ namespace detail {
     }
 
     template<NodeType Type, typename T>
-    inline void DispatchOpSimpleUnaryOrBinary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, size_t /* row number - not used */)
+    inline void DispatchOpSimpleUnaryOrBinary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, Operon::Range /* not used here - provided for dynamic symbols */)
     {
         auto r = Ref<T>(m[parentIndex]);
         size_t i = parentIndex - 1;
@@ -123,7 +124,7 @@ namespace detail {
     }
 
     template<NodeType Type, typename T>
-    inline void DispatchOpSimpleNary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, size_t /* row number - not used */)
+    inline void DispatchOpSimpleNary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, Operon::Range /* not used here - provided for dynamic symbols */)
     {
         auto r = Ref<T>(m[parentIndex]);
         size_t arity = nodes[parentIndex].Arity;
@@ -165,7 +166,7 @@ namespace detail {
     };
 
     template<typename T>
-    using Callable = typename std::function<void(Operon::Vector<Array<T>>&, Operon::Vector<Node> const&, size_t, size_t)>;
+    using Callable = typename std::function<void(Operon::Vector<Array<T>>&, Operon::Vector<Node> const&, size_t, Operon::Range)>;
 
     template<NodeType Type, typename T>
     static constexpr auto MakeCall() -> Callable<T>
