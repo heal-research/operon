@@ -92,6 +92,7 @@ struct Node {
     uint16_t Parent; // index of parent node
     NodeType Type;
     bool IsEnabled;
+    bool Optimize;
 
     Node() = default; 
 
@@ -119,6 +120,7 @@ struct Node {
         }
         Length = Arity;
         IsEnabled = true;
+        Optimize = IsLeaf(); // we only optimize leaf nodes
         Value = 1.;
     }
 
@@ -164,7 +166,7 @@ struct Node {
     }
 
     [[nodiscard]] inline constexpr auto IsLeaf() const noexcept -> bool { return Arity == 0; }
-    [[nodiscard]] inline constexpr auto IsCommutative() const noexcept -> bool { return Type < NodeType::Sub; }
+    [[nodiscard]] inline constexpr auto IsCommutative() const noexcept -> bool { return Is<NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax>(); }
 
     template <NodeType... T>
     [[nodiscard]] inline auto Is() const -> bool { return ((Type == T) || ...); }
