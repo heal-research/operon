@@ -82,7 +82,7 @@ struct GenericInterpreter {
             auto const& n = nodes[i];
 
             if (n.IsLeaf()) {
-                auto v = parameters ? parameters[idx++] : T{n.Value};
+                auto v = (n.Optimize && parameters) ? parameters[idx++] : T{n.Value};
                 Operon::Span<Operon::Scalar const> vals{};
                 if (n.IsConstant()) { m[i].setConstant(v); }
                 if (n.IsVariable()) { vals = dataset.GetValues(n.HashValue).subspan(range.Start(), range.Size()); }
