@@ -64,14 +64,11 @@ struct GenericInterpreter {
 
         constexpr int S = static_cast<Eigen::Index>(detail::BatchSize<T>::Value);
         Operon::Vector<detail::Array<T>> m(nodes.size());
-
-        using P = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>;
-
         Eigen::Map<Eigen::Array<T, -1, 1>> res(result.data(), result.size(), 1);
 
         struct NodeMeta {
             T Param;
-            P Values;
+            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> Values;
             std::optional<Callable const> Func;
         };
 
@@ -81,16 +78,14 @@ struct GenericInterpreter {
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto const& n = nodes[i];
 
-            if (n.IsLeaf()) {
-                auto v = (n.Optimize && parameters) ? parameters[idx++] : T{n.Value};
-                Operon::Span<Operon::Scalar const> vals{};
-                if (n.IsConstant()) { m[i].setConstant(v); }
-                if (n.IsVariable()) { vals = dataset.GetValues(n.HashValue).subspan(range.Start(), range.Size()); }
-                auto call = n.IsDynamic() ? std::make_optional(ftable_.template Get<T>(n.HashValue)) : std::nullopt;
-                meta.push_back({ v, P(vals.data(), static_cast<Eigen::Index>(vals.size())), call });
-            } else {
-                meta.push_back({ T{}, P(nullptr, 0L), std::make_optional(ftable_.template Get<T>(n.HashValue)) });
-            }
+            const auto *ptr = n.IsVariable() ? dataset.GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
+            const auto sz = ptr ? range.Size() : 0UL;
+            meta.emplace_back(
+                (parameters && n.Optimize) ? parameters[idx++] : T{n.Value},
+                decltype(NodeMeta::Values)(ptr, static_cast<int64_t>(sz)),
+                ftable_.template TryGet<T>(n.HashValue)
+            );
+            if (n.IsConstant()) { m[i].setConstant(meta.back().Param); }
         }
 
         auto& lastCol = m[nodes.size() - 1];
