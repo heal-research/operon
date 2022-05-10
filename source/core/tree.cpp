@@ -128,7 +128,7 @@ auto Tree::GetCoefficients() const -> std::vector<Operon::Scalar>
 {
     std::vector<Operon::Scalar> coefficients;
     for (auto const& s : nodes_) {
-        if (s.IsLeaf()) {
+        if (s.Optimize) {
             coefficients.push_back(s.Value);
         }
     }
@@ -139,7 +139,7 @@ void Tree::SetCoefficients(Operon::Span<Operon::Scalar const> coefficients)
 {
     size_t idx = 0;
     for (auto& s : nodes_) {
-        if (s.IsLeaf()) {
+        if (s.Optimize) {
             s.Value = static_cast<Operon::Scalar>(coefficients[idx++]);
         }
     }
