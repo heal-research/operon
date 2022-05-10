@@ -84,10 +84,8 @@ struct CrowdedComparison {
     auto operator()(Individual const& lhs, Individual const& rhs, Operon::Scalar eps = 0) const -> bool
     {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
-        Operon::Less cmp;
-        return lhs.Rank == rhs.Rank
-            ? cmp(rhs.Distance, lhs.Distance, eps)
-            : lhs.Rank < rhs.Rank;
+        if (lhs.Rank != rhs.Rank) { return lhs.Rank < rhs.Rank; }
+        return Operon::Less{}(rhs.Distance, lhs.Distance, eps);
     }
 };
 
