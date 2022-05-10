@@ -147,12 +147,12 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
                 }
                 parents_[i].Fitness = evaluator(rngs[i], parents_[i], slots[id]);
             }).name("evaluate population");
-            auto updateRanks = subflow.emplace([&]() { Sort(parents_); }).name("update ranks");
+            auto nonDominatedSort = subflow.emplace([&]() { Sort(parents_); }).name("non-dominated sort");
             auto reportProgress = subflow.emplace([&]() { if (report) { std::invoke(report); } }).name("report progress");
             init.precede(prepareEval);
             prepareEval.precede(eval);
-            eval.precede(updateRanks);
-            updateRanks.precede(reportProgress);
+            eval.precede(nonDominatedSort);
+            nonDominatedSort.precede(reportProgress);
         }, // init
         stop, // loop condition
         [&](tf::Subflow& subflow) {
