@@ -165,8 +165,8 @@ struct Node {
         return !((*this) < rhs);
     }
 
-    [[nodiscard]] inline constexpr auto IsLeaf() const noexcept -> bool { return Arity == 0; }
-    [[nodiscard]] inline constexpr auto IsCommutative() const noexcept -> bool { return Is<NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax>(); }
+    [[nodiscard]] inline auto IsLeaf() const noexcept -> bool { return Arity == 0; }
+    [[nodiscard]] inline auto IsCommutative() const noexcept -> bool { return Is<NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax>(); }
 
     template <NodeType... T>
     [[nodiscard]] inline auto Is() const -> bool { return ((Type == T) || ...); }
