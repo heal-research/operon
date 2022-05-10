@@ -36,11 +36,12 @@ namespace Operon::Test {
         auto szDepth = sizeof(node->Depth);
         auto szLevel = sizeof(node->Level);
         auto szEnabled = sizeof(node->IsEnabled);
+        auto szOptimize = sizeof(node->Optimize);
         auto szHashValue = sizeof(node->HashValue);
         auto szCalculatedHashValue = sizeof(node->CalculatedHashValue);
         auto szValue = sizeof(node->Value);
         auto szParent = sizeof(node->Parent);
-        auto szTotal = szType + szArity + szLength + szDepth + szLevel + szEnabled + szHashValue + szParent + szCalculatedHashValue + szValue;
+        auto szTotal = szType + szArity + szLength + szDepth + szLevel + szEnabled + szOptimize + szHashValue + szParent + szCalculatedHashValue + szValue;
         fmt::print("Size breakdown of the Node class:\n");
         fmt::print("Type                {:>2}\n", szType);
         fmt::print("Arity               {:>2}\n", szArity);
@@ -49,6 +50,7 @@ namespace Operon::Test {
         fmt::print("Level               {:>2}\n", szLevel);
         fmt::print("Parent              {:>2}\n", szParent);
         fmt::print("Enabled             {:>2}\n", szEnabled);
+        fmt::print("Optimize            {:>2}\n", szOptimize);
         fmt::print("Value               {:>2}\n", szValue);
         fmt::print("HashValue           {:>2}\n", szHashValue);
         fmt::print("CalculatedHashValue {:>2}\n", szCalculatedHashValue);
