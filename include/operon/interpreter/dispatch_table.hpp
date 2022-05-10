@@ -6,6 +6,7 @@
 
 #include <Eigen/Dense>
 #include <fmt/core.h>
+#include <optional>
 #include <robin_hood.h>
 #include <cstddef>
 #include <tuple>
@@ -175,7 +176,7 @@ namespace detail {
             return Callable<T>(detail::DispatchOpNary<Type, T>);
         } else if constexpr (Type < NodeType::Abs) { // binary: aq, pow
             return Callable<T>(detail::DispatchOpBinary<Type, T>);
-        } else if constexpr (Type < NodeType::Dynamic) { // unary: exp, log, sin, cos, tan, tanh, sqrt, cbrt, square 
+        } else if constexpr (Type < NodeType::Dynamic) { // unary: exp, log, sin, cos, tan, tanh, sqrt, cbrt, square
             return Callable<T>(detail::DispatchOpUnary<Type, T>);
         }
     }
@@ -255,6 +256,19 @@ public:
     void RegisterCallable(Operon::Hash hash, F&& f) {
         map_[hash] = detail::MakeTuple<F, Ts...>(std::forward<F&&>(f));
     }
+
+    template<typename T>
+    [[nodiscard]] inline auto TryGet(Operon::Hash const h) const noexcept -> std::optional<Callable<T>>
+    {
+        constexpr int64_t idx = detail::tuple_index<Callable<T>, Tuple>::value;
+        static_assert(idx >= 0, "Tuple does not contain type T");
+        if (auto it = map_.find(h); it != map_.end()) {
+            return { std::get<static_cast<size_t>(idx)>(it->second) };
+        }
+        return {};
+    }
+
+    [[nodiscard]] auto Contains(Operon::Hash hash) const noexcept -> bool { return map_.contains(hash); }
 };
 
 } // namespace Operon
