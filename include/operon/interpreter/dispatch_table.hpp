@@ -205,17 +205,13 @@ struct DispatchTable {
 private:
     Map map_;
 
-    template<std::size_t... Is>
-    void InitMap(std::index_sequence<Is...> /*unused*/)
-    {
-        auto f = [](auto i) { return static_cast<NodeType>(1U << i); };
-        (map_.insert({ Node(f(Is)).HashValue, detail::MakeTuple<f(Is), Ts...>() }), ...);
-    }
-
 public:
     DispatchTable()
     {
-        InitMap(std::make_index_sequence<NodeTypes::Count-3>{}); // exclude constant, variable, dynamic
+        auto constexpr f = [](auto i) { return static_cast<NodeType>(1U << i); };
+        [&]<auto ...I>(std::index_sequence<I...>){
+            (map_.insert({ Node(f(I)).HashValue, detail::MakeTuple<f(I), Ts...>() }), ...);
+        }(std::make_index_sequence<NodeTypes::Count-3>{});
     }
 
     ~DispatchTable() = default;
