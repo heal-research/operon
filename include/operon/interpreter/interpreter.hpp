@@ -93,8 +93,6 @@ struct GenericInterpreter {
             }
         }
 
-        auto& lastCol = m[nodes.size() - 1];
-
         int numRows = static_cast<int>(range.Size());
         for (int row = 0; row < numRows; row += S) {
             auto remainingRows = std::min(S, numRows - row);
@@ -104,13 +102,13 @@ struct GenericInterpreter {
                 auto const& s = nodes[i];
                 auto const& [ param, values, func ] = meta[i];
                 if (func) {
-                    func.value()(m, nodes, i, rg);
+                    std::invoke(func.value(), m, nodes, i, rg);
                 } else if (s.IsVariable()) {
                     m[i].segment(0, remainingRows) = meta[i].Param * values.segment(row, remainingRows).template cast<T>();
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
-            res.segment(row, remainingRows) = lastCol.segment(0, remainingRows);
+            res.segment(row, remainingRows) = m.back().segment(0, remainingRows);
         }
     }
 
