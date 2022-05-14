@@ -15,6 +15,7 @@ auto Tree::UpdateNodes() -> Tree&
 
         s.Depth = 1;
         s.Length = s.Arity;
+        s.Parent = 0;
         if (s.IsLeaf()) {
             continue;
         }
