@@ -95,7 +95,7 @@ namespace Operon {
     auto
     Evaluator::operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
-        IncrementEvaluationCounter();
+        ++CallCount;
         auto const& problem = GetProblem();
         auto const& dataset = problem.GetDataset();
         auto& genotype = ind.Genotype;
@@ -104,7 +104,7 @@ namespace Operon {
         auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
         auto computeFitness = [&]() {
-            IncrementResidualEvaluations();
+            ++ResidualEvaluations;
             Operon::Vector<Operon::Scalar> estimatedValues;
             if (buf.size() < trainingRange.Size()) {
                 estimatedValues.resize(trainingRange.Size());
@@ -116,7 +116,7 @@ namespace Operon {
                 auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
                 std::transform(buf.begin(), buf.end(), buf.begin(), [a=a,b=b](auto x) { return a * x + b; });
             }
-            return error_(buf.begin(), buf.end(), targetValues.begin());
+            return error_(buf, targetValues);
         };
 
         auto const iter = LocalOptimizationIterations();
@@ -129,8 +129,8 @@ namespace Operon {
 #endif
             auto coeff = genotype.GetCoefficients();
             auto summary = opt.Optimize(targetValues, trainingRange, iter);
-            IncrementResidualEvaluations(summary.FunctionEvaluations);
-            IncrementJacobianEvaluations(summary.JacobianEvaluations);
+            ResidualEvaluations += summary.FunctionEvaluations;
+            JacobianEvaluations += summary.JacobianEvaluations;
 
             if (summary.Success) {
                 genotype.SetCoefficients(coeff);
@@ -147,51 +147,29 @@ namespace Operon {
     }
 
     auto DiversityEvaluator::Prepare(Operon::Span<Operon::Individual const> pop) const -> void {
-        if (hashes_.size() < pop.size()) {
-            hashes_.resize(pop.size());
-        }
-
-        // hash the trees
-        for (size_t i = 0; i < pop.size(); ++i) {
-            auto const& nodes = pop[i].Genotype.Hash(Operon::HashMode::Strict).Nodes();
-            hashes_[i].reserve(nodes.size());
-            std::transform(std::begin(nodes), std::end(nodes), std::back_inserter(hashes_[i]), [](auto const& n) { return n.CalculatedHashValue; });
-            std::stable_sort(std::begin(hashes_[i]), std::end(hashes_[i]));
-        }
-
-        std::vector<vstat::univariate_accumulator<Operon::Scalar>> stats;
-        stats.reserve(pop.size());
-        for (auto i = 0UL; i < pop.size(); ++i) {
-            stats.emplace_back(Operon::Scalar{0});
-        }
-
-        auto const n = pop.size() * (pop.size() - 1) / 2;
-
-        for (auto i = 0UL; i < pop.size() - 1; ++i) {
-            for (auto j = i+1; j < pop.size(); ++j) {
-                auto d = Operon::Distance::Jaccard(hashes_[i], hashes_[j]);
-                stats[i](static_cast<Operon::Scalar>(d));
-                stats[j](static_cast<Operon::Scalar>(d));
-            }
-        }
-
         divmap_.clear();
-        for (auto i = 0UL; i < pop.size(); ++i) {
-            [[maybe_unused]] auto [it, ok] = divmap_.insert({
-                pop[i].Genotype.HashValue(),
-                static_cast<Operon::Scalar>(vstat::univariate_statistics(stats[i]).mean)
-            });
+        total_ = 0;
+        for (auto const& ind : pop) {
+            auto const& nodes = ind.Genotype.Hash(hashmode_).Nodes();
+            for (auto const& node : nodes) {
+                auto [it, _] = divmap_.insert({ node.CalculatedHashValue, 0 });
+                ++it->second;
+            }
+            total_ += ind.Genotype.Length();
         }
+        //total_ = 0;
+        //for (auto const& [_, count] : divmap_) {
+        //    total_ += static_cast<double>(count);
+        //}
+        //total_ /= static_cast<double>(pop.size());
     }
 
     auto
     DiversityEvaluator::operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar>  /*buf*/) const -> typename EvaluatorBase::ReturnType
     {
-        Operon::Scalar f{std::numeric_limits<Operon::Scalar>::max()};
-        if (auto it = divmap_.find(ind.Genotype.HashValue()); it != divmap_.end()) {
-             f = it->second;
-        }
-        return EvaluatorBase::ReturnType { f };
+        auto const& nodes = ind.Genotype.Nodes();
+        auto sum = std::transform_reduce(nodes.begin(), nodes.end(), Operon::Scalar{0}, std::plus{}, [&](auto const& n) { auto it = divmap_.find(n.CalculatedHashValue); return it == divmap_.end() ? 0 : it->second; });
+        return { sum / static_cast<Operon::Scalar>(total_) };
     }
 
 } // namespace Operon
