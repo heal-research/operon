@@ -24,7 +24,6 @@ function(add_operon_cli NAME)
     if(MSVC)
         target_compile_options(${NAME} PUBLIC "/std:c++latest")
     else()
-        target_compile_options(${NAME} PUBLIC "-march=x86-64;-mavx2;-mfma")
         target_link_options(${NAME} PUBLIC "-Wl,--no-undefined")
     endif()
 
