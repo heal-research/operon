@@ -244,7 +244,7 @@ auto main(int argc, char** argv) -> int
         // some boilerplate for reporting results
         const size_t idx { 0 };
         auto getBest = [&](Operon::Span<Operon::Individual const> pop) -> Operon::Individual {
-            const auto *minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
+            const auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
             return *minElem;
         };
 
@@ -359,9 +359,9 @@ auto main(int argc, char** argv) -> int
                 T{ "nmse_te", nmseTest, format },
                 T{ "avg_fit", avgQuality, format },
                 T{ "avg_len", avgLength, format },
-                T{ "eval_cnt", evaluator.EvaluationCount() , ":>" },
-                T{ "res_eval", evaluator.ResidualEvaluations(), ":>" },
-                T{ "jac_eval", evaluator.JacobianEvaluations(), ":>" },
+                T{ "eval_cnt", evaluator.CallCount , ":>" },
+                T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
+                T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
                 T{ "seed", config.Seed, ":>" },
                 T{ "elapsed", elapsed, ":>"},
             };
