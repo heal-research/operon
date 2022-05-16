@@ -24,7 +24,6 @@ add_executable(operon_test
     source/implementation/mutation.cpp
     source/implementation/nondominatedsort.cpp
     source/implementation/random.cpp
-    source/implementation/stats.cpp
     source/performance/distance.cpp
     source/performance/evaluation.cpp
     source/performance/nondominatedsort.cpp
