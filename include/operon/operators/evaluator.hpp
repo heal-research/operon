@@ -18,7 +18,7 @@
 namespace Operon {
 
 struct OPERON_EXPORT ErrorMetric {
-    using Iterator = Operon::Span<Operon::Scalar const>::const_iterator;
+    using Iterator = Operon::Span<Operon::Scalar const>::iterator;
     using ProjIterator = ProjectionIterator<Iterator>;
 
     ErrorMetric() = default;
@@ -65,16 +65,11 @@ struct OPERON_EXPORT C2 : public ErrorMetric {
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept -> std::pair<double, double>;
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target) noexcept -> std::pair<double, double>;
 
-class EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
-    Operon::Span<Operon::Individual const> population_;
-    std::reference_wrapper<Problem const> problem_;
-    mutable std::atomic_ulong residualEvaluations_ = 0;
-    mutable std::atomic_ulong jacobianEvaluations_ = 0;
-    mutable std::atomic_ulong evaluationCounter_ = 0;
-    size_t iterations_ = DefaultLocalOptimizationIterations;
-    size_t budget_ = DefaultEvaluationBudget;
+struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
+    mutable std::atomic_ulong ResidualEvaluations{0}; // NOLINT
+    mutable std::atomic_ulong JacobianEvaluations{0}; // NOLINT
+    mutable std::atomic_ulong CallCount{0};         // NOLINT
 
-public:
     static constexpr size_t DefaultLocalOptimizationIterations = 50;
     static constexpr size_t DefaultEvaluationBudget = 100'000;
 
@@ -89,39 +84,32 @@ public:
     {
     }
 
-    auto TotalEvaluations() const -> size_t { return residualEvaluations_ + jacobianEvaluations_; }
-    auto ResidualEvaluations() const -> size_t { return residualEvaluations_; }
-    auto JacobianEvaluations() const -> size_t { return jacobianEvaluations_; }
-    auto EvaluationCount() const -> size_t { return evaluationCounter_; }
-
-    void SetResidualEvaluations(size_t value) const { residualEvaluations_ = value; }
-    void SetJacobianEvaluations(size_t value) const { jacobianEvaluations_ = value; }
-    void SetEvaluationCounter(size_t value) const { evaluationCounter_ = value; }
-
-    void IncrementResidualEvaluations() const { ++residualEvaluations_; }
-    void IncrementLocalEvaluations() const { ++residualEvaluations_; }
-    void IncrementEvaluationCounter() const { ++evaluationCounter_; }
-
-    void IncrementResidualEvaluations(size_t inc) const { residualEvaluations_ += inc; }
-    void IncrementJacobianEvaluations(size_t inc) const { jacobianEvaluations_ += inc; }
-    void IncrementEvaluationCounter(size_t inc) const { evaluationCounter_ += inc; }
+    auto TotalEvaluations() const -> size_t { return ResidualEvaluations + JacobianEvaluations; }
 
     void SetLocalOptimizationIterations(size_t value) { iterations_ = value; }
     auto LocalOptimizationIterations() const -> size_t { return iterations_; }
 
     void SetBudget(size_t value) { budget_ = value; }
     auto Budget() const -> size_t { return budget_; }
-    auto BudgetExhausted() const -> bool { return TotalEvaluations() > Budget(); }
+    auto BudgetExhausted() const -> bool { return TotalEvaluations() >= Budget(); }
 
     auto Population() const -> Operon::Span<Individual const> { return population_; }
     auto GetProblem() const -> Problem const& { return problem_; }
+    auto GetProblem() -> Problem& { return problem_; }
+    auto SetProblem(Problem& problem) { problem_ = problem; }
 
     void Reset()
     {
-        residualEvaluations_ = 0;
-        jacobianEvaluations_ = 0;
-        evaluationCounter_ = 0;
+        ResidualEvaluations = 0;
+        JacobianEvaluations = 0;
+        CallCount = 0;
     }
+
+    private:
+    Operon::Span<Operon::Individual const> population_;
+    std::reference_wrapper<Problem> problem_;
+    size_t iterations_ = DefaultLocalOptimizationIterations;
+    size_t budget_ = DefaultEvaluationBudget;
 };
 
 class UserDefinedEvaluator : public EvaluatorBase {
@@ -142,7 +130,7 @@ public:
     auto
     operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> /*args*/) const -> typename EvaluatorBase::ReturnType override
     {
-        IncrementEvaluationCounter();
+        ++this->CallCount;
         return fptr_ ? fptr_(&rng, ind) : fref_(rng, ind);
     }
 
@@ -197,20 +185,20 @@ public:
     operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
     {
         Operon::Vector<Operon::Scalar> fit;
-        auto totalResidualEvaluations{0UL};
-        auto totalJacobianEvaluations{0UL};
-        auto totalEvaluationCount{0UL};
+        auto resEval{0UL};
+        auto jacEval{0UL};
+        auto eval{0UL};
         for (auto const& ev : evaluators_) {
             auto fitI = ev(rng, ind, buf);
             std::copy(fitI.begin(), fitI.end(), std::back_inserter(fit));
 
-            totalResidualEvaluations += ev.get().ResidualEvaluations();
-            totalJacobianEvaluations += ev.get().JacobianEvaluations();
-            totalEvaluationCount += ev.get().EvaluationCount();
+            resEval += ev.get().ResidualEvaluations;
+            jacEval += ev.get().JacobianEvaluations;
+            eval += ev.get().CallCount;
         }
-        SetResidualEvaluations(totalResidualEvaluations);
-        SetJacobianEvaluations(totalJacobianEvaluations);
-        SetEvaluationCounter(totalEvaluationCount);
+        ResidualEvaluations = resEval;
+        JacobianEvaluations = jacEval;
+        CallCount = eval;
         return fit;
     }
 
@@ -222,9 +210,9 @@ private:
 // TODO: think about a better design
 class LengthEvaluator : public UserDefinedEvaluator {
 public:
-    explicit LengthEvaluator(Operon::Problem& problem)
-        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator& /*unused*/, Operon::Individual& ind) {
-            return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.Length()) };
+    explicit LengthEvaluator(Operon::Problem& problem, size_t maxlength = 1)
+        : UserDefinedEvaluator(problem, [maxlength](Operon::RandomGenerator& /*unused*/, Operon::Individual& ind) {
+            return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.Length()) / static_cast<Operon::Scalar>(maxlength) };
         })
     {
     }
@@ -240,10 +228,10 @@ public:
     }
 };
 
-class DiversityEvaluator : public EvaluatorBase {
+class OPERON_EXPORT DiversityEvaluator : public EvaluatorBase {
 public:
-    explicit DiversityEvaluator(Operon::Problem& problem)
-        : EvaluatorBase(problem)
+    explicit DiversityEvaluator(Operon::Problem& problem, Operon::HashMode hashmode = Operon::HashMode::Strict)
+        : EvaluatorBase(problem), hashmode_(hashmode)
     {
     }
 
@@ -253,8 +241,9 @@ public:
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
 
 private:
-    mutable robin_hood::unordered_flat_map<size_t, Operon::Scalar> divmap_;
-    mutable std::vector<std::vector<Operon::Hash>> hashes_;
+    mutable robin_hood::unordered_flat_map<size_t, size_t> divmap_;
+    mutable double total_{0}; // total count
+    Operon::HashMode hashmode_;
 };
 
 } // namespace Operon

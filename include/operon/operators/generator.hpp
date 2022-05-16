@@ -110,9 +110,6 @@ class OPERON_EXPORT OffspringSelectionGenerator : public OffspringGeneratorBase 
 public:
     explicit OffspringSelectionGenerator(EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel)
         : OffspringGeneratorBase(eval, cx, mut, femSel, maleSel)
-        , lastEvaluations_(0)
-        , maxSelectionPressure_(DefaultMaxSelectionPressure)
-        , comparisonFactor_(1.0)
     {
     }
 
@@ -127,7 +124,7 @@ public:
     void Prepare(const Operon::Span<const Individual> pop) const override
     {
         OffspringGeneratorBase::Prepare(pop);
-        lastEvaluations_ = this->Evaluator().EvaluationCount();
+        lastEvaluations_ = this->Evaluator().TotalEvaluations();
     }
 
     auto SelectionPressure() const -> double
@@ -136,7 +133,7 @@ public:
         if (n == 0U) {
             return 0;
         }
-        auto e = this->Evaluator().EvaluationCount() - lastEvaluations_;
+        auto e = this->Evaluator().TotalEvaluations() - lastEvaluations_;
         return static_cast<double>(e) / static_cast<double>(n);
     }
 
@@ -149,9 +146,9 @@ public:
     static constexpr double DefaultComparisonFactor { 1.0 };
 
 private:
-    mutable size_t lastEvaluations_;
-    size_t maxSelectionPressure_;
-    double comparisonFactor_;
+    mutable size_t lastEvaluations_{0};
+    size_t maxSelectionPressure_{DefaultMaxSelectionPressure};
+    double comparisonFactor_{0};
 };
 
 } // namespace Operon

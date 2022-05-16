@@ -70,6 +70,11 @@ struct GenericInterpreter {
             T Param;
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> Values;
             std::optional<Callable const> Func;
+
+            NodeMeta(T param, decltype(Values) values, decltype(Func) func)
+                : Param(param), Values(values), Func(func)
+            {
+            }
         };
 
         Operon::Vector<NodeMeta> meta; meta.reserve(nodes.size());
