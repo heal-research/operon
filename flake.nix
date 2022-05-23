@@ -17,7 +17,7 @@
         repo = pkgs.nur.repos.foolnotion;
 
       in rec {
-        defaultPackage = pkgs.gcc11Stdenv.mkDerivation {
+        defaultPackage = pkgs.gcc12Stdenv.mkDerivation {
           name = "operon";
           src = self;
 
@@ -55,7 +55,7 @@
           ];
         };
 
-        devShell = pkgs.gcc11Stdenv.mkDerivation {
+        devShell = pkgs.gcc12Stdenv.mkDerivation {
           name = "operon-env";
 
           nativeBuildInputs = with pkgs; [
@@ -77,7 +77,7 @@
 
           shellHook = ''
             LD_LIBRARY_PATH=${
-              pkgs.lib.makeLibraryPath [ pkgs.gcc11Stdenv.cc.cc.lib ]
+              pkgs.lib.makeLibraryPath [ pkgs.gcc12Stdenv.cc.cc.lib ]
             };
           '';
         };
