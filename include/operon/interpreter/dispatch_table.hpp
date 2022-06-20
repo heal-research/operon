@@ -228,8 +228,15 @@ public:
         return *this;
     }
 
+    DispatchTable(Map const& map) : map_(map) { }
+    DispatchTable(Map&& map) : map_(std::move(map)) { }
+    DispatchTable(std::unordered_map<Operon::Hash, Tuple> const& map) : map_(map.begin(), map.end()) { }
+
     DispatchTable(DispatchTable const& other) : map_(other.map_) { }
     DispatchTable(DispatchTable &&other) noexcept : map_(std::move(other.map_)) { }
+
+    auto GetMap() -> Map& { return map_; }
+    auto GetMap() const -> Map const& { return map_; }
 
     template<typename T>
     inline auto Get(Operon::Hash const h) -> Callable<T>&
