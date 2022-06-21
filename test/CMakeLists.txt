@@ -16,6 +16,7 @@ add_executable(operon_test
     source/operon_test.cpp
     source/implementation/crossover.cpp
     source/implementation/details.cpp
+    source/implementation/dispatch_table.cpp
     source/implementation/diversity.cpp
     source/implementation/evaluation.cpp
     source/implementation/hashing.cpp
