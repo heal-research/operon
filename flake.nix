@@ -28,6 +28,7 @@
             "-DCMAKE_BUILD_TYPE=Release"
             "-DUSE_OPENLIBM=ON"
             "-DUSE_SINGLE_PRECISION=ON"
+            "-DCMAKE_CXX_FLAGS=${if pkgs.targetPlatform.isx86_64 then "-march=haswell" else ""}"
           ];
 
           nativeBuildInputs = with pkgs; [ cmake ];
