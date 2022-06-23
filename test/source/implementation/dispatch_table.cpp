@@ -25,6 +25,7 @@ namespace Operon::Test {
             std::unordered_map<std::string, Operon::Hash> vars;
             auto t = InfixParser::ParseDefault(expr, vars);
             fmt::print("Check expression {} == {}\n", InfixFormatter::Format(t, ds), expected);
+            fmt::print("Tree representation:\n{}\n", TreeFormatter::Format(t, ds));
             Interpreter interp(dt);
             auto r = interp.Evaluate<Operon::Scalar>(t, ds, Operon::Range{0, 1});
             CHECK(r[0] == expected);
@@ -33,6 +34,8 @@ namespace Operon::Test {
         // default ctor
         DispatchTable dt;
         check(dt, "1 + 2 + 3", 6);
+        check(dt, "1 - 2 - 3", -4);
+        check(dt, "6 / 3 / 2", 1);
 
         // copy ctor
         DispatchTable dt1(dt);
