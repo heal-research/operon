@@ -71,7 +71,7 @@ struct GenericInterpreter {
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> Values;
             std::optional<Callable const> Func;
 
-            NodeMeta(T param, decltype(Values) values, decltype(Func) func)
+            NodeMeta(T param, decltype(Values) values, decltype(Func) func) // NOLINT
                 : Param(param), Values(values), Func(func)
             {
             }
@@ -120,6 +120,9 @@ private:
 };
 
 using Interpreter = GenericInterpreter<Operon::Scalar, Operon::Dual>;
+
+// convenience method to interpret many trees in parallel (mostly useful from the python wrapper)
+auto OPERON_EXPORT Evaluate(Interpreter const& interpreter, std::vector<Operon::Tree> const& trees, Dataset const& dataset, Range range, Operon::Span<Operon::Scalar> result, size_t nthreads = 1) noexcept -> void;
 } // namespace Operon
 
 
