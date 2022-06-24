@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#ifndef OPERON_NNLS_RESIDUAL_EVALUATOR_HPP
-#define OPERON_NNLS_RESIDUAL_EVALUATOR_HPP
+#ifndef OPERON_OPTIMIZER_RESIDUAL_EVALUATOR_HPP
+#define OPERON_OPTIMIZER_RESIDUAL_EVALUATOR_HPP
 
 #include <Eigen/Core>
 #include "operon/interpreter/interpreter.hpp"
