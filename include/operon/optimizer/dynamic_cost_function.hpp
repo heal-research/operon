@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#ifndef OPERON_NNLS_CERES_OPTIMIZER
-#define OPERON_NNLS_CERES_OPTIMIZER
+#ifndef OPERON_OPTIMIZER_COST_FUNCTION_HPP
+#define OPERON_OPTIMIZER_COST_FUNCTION_HPP
 
 #include <ceres/dynamic_autodiff_cost_function.h>
 #include <ceres/dynamic_numeric_diff_cost_function.h>

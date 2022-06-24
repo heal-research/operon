@@ -68,7 +68,7 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon:
 struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
     mutable std::atomic_ulong ResidualEvaluations{0}; // NOLINT
     mutable std::atomic_ulong JacobianEvaluations{0}; // NOLINT
-    mutable std::atomic_ulong CallCount{0};         // NOLINT
+    mutable std::atomic_ulong CallCount{0};           // NOLINT
 
     static constexpr size_t DefaultLocalOptimizationIterations = 50;
     static constexpr size_t DefaultEvaluationBudget = 100'000;
