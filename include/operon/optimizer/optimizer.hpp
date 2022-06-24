@@ -35,11 +35,11 @@ struct OptimizerSummary {
 struct OptimizerBase {
 private:
     std::reference_wrapper<Interpreter const> interpreter_;
-    std::reference_wrapper<Tree> tree_;
+    std::reference_wrapper<Tree const> tree_;
     std::reference_wrapper<Dataset const> dataset_;
 
 public:
-    OptimizerBase(Interpreter const& interpreter, Tree& tree, Dataset const& dataset)
+    OptimizerBase(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset)
         : interpreter_(interpreter)
         , tree_(tree)
         , dataset_(dataset)
@@ -47,7 +47,7 @@ public:
     }
 
     [[nodiscard]] auto GetInterpreter() const -> Interpreter const& { return interpreter_.get(); }
-    [[nodiscard]] auto GetTree() const -> Tree& { return tree_.get(); }
+    [[nodiscard]] auto GetTree() const -> Tree const& { return tree_.get(); }
     [[nodiscard]] auto GetDataset() const -> Dataset const& { return dataset_.get(); }
     [[nodiscard]] auto GetCoefficients() const -> std::vector<Operon::Scalar> { return GetTree().GetCoefficients(); }
 };
