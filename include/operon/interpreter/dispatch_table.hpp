@@ -120,7 +120,7 @@ namespace detail {
             f(r, Ref<T>(m[i]));
         } else {
             auto j = i - (nodes[i].Length + 1);
-            f(r, Ref<T>(m[j]));
+            f(r, Ref<T>(m[i]), Ref<T>(m[j]));
         }
     }
 
