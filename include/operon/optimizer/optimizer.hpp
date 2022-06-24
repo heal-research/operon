@@ -61,7 +61,7 @@ namespace detail {
 
 template <OptimizerType = OptimizerType::TINY>
 struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
-    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree& tree, Dataset const& dataset)
+    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset)
         : OptimizerBase(interpreter, tree, dataset)
     {
     }
@@ -93,7 +93,7 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
 
 template <>
 struct NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> : public OptimizerBase {
-    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree& tree, Dataset const& dataset)
+    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset)
         : OptimizerBase(interpreter, tree, dataset)
     {
     }
@@ -135,7 +135,7 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> : public OptimizerBa
 #if HAVE_CERES
 template <>
 struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBase {
-    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree& tree, Dataset const& dataset)
+    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset)
         : OptimizerBase(interpreter, tree, dataset)
     {
     }
