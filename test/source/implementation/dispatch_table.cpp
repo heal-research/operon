@@ -36,6 +36,7 @@ namespace Operon::Test {
         check(dt, "1 + 2 + 3", 6);
         check(dt, "1 - 2 - 3", -4);
         check(dt, "6 / 3 / 2", 1);
+        check(dt, "6 / 3 * 2", 4);
 
         // copy ctor
         DispatchTable dt1(dt);

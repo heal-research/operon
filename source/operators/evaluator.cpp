@@ -8,7 +8,9 @@
 #include "operon/error_metrics/r2_score.hpp"
 #include "operon/error_metrics/correlation_coefficient.hpp"
 #include "operon/error_metrics/mean_absolute_error.hpp"
-#include "operon/nnls/nnls.hpp"
+#include "operon/optimizer/optimizer.hpp"
+
+#include <taskflow/taskflow.hpp>
 
 namespace Operon {
     auto MSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
@@ -123,17 +125,18 @@ namespace Operon {
 
         if (iter > 0) {
 #if defined(HAVE_CERES)
-            NonlinearLeastSquaresOptimizer<OptimizerType::CERES> opt(interpreter_.get(), genotype, dataset);
+            constexpr OptimizerType TYPE = OptimizerType::CERES;
 #else
-            NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> opt(interpreter_.get(), genotype, dataset);
+            constexpr OptimizerType TYPE = OptimizerType::EIGEN;
 #endif
-            auto coeff = genotype.GetCoefficients();
-            auto summary = opt.Optimize(targetValues, trainingRange, iter);
+            NonlinearLeastSquaresOptimizer<TYPE> opt(interpreter_.get(), genotype, dataset);
+            OptimizerSummary summary;
+            auto coefficients = opt.Optimize(targetValues, trainingRange, iter, summary);
             ResidualEvaluations += summary.FunctionEvaluations;
             JacobianEvaluations += summary.JacobianEvaluations;
 
             if (summary.Success) {
-                genotype.SetCoefficients(coeff);
+                genotype.SetCoefficients(coefficients);
             }
         }
 
@@ -157,11 +160,6 @@ namespace Operon {
             }
             total_ += ind.Genotype.Length();
         }
-        //total_ = 0;
-        //for (auto const& [_, count] : divmap_) {
-        //    total_ += static_cast<double>(count);
-        //}
-        //total_ /= static_cast<double>(pop.size());
     }
 
     auto
@@ -171,5 +169,4 @@ namespace Operon {
         auto sum = std::transform_reduce(nodes.begin(), nodes.end(), Operon::Scalar{0}, std::plus{}, [&](auto const& n) { auto it = divmap_.find(n.CalculatedHashValue); return it == divmap_.end() ? 0 : it->second; });
         return { sum / static_cast<Operon::Scalar>(total_) };
     }
-
 } // namespace Operon

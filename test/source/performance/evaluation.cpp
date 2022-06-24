@@ -41,8 +41,22 @@ namespace Operon::Test {
     void Evaluate(tf::Executor& executor, Interpreter const& interpreter, std::vector<Tree> const& trees, Dataset const& ds, Range range)
     {
         tf::Taskflow taskflow;
-        taskflow.for_each(trees.begin(), trees.end(), [&](auto const& tree) { interpreter.Evaluate<T>(tree, ds, range); });
+        taskflow.for_each(trees.begin(), trees.end(), [&](auto const& tree) {
+            std::unique_ptr<T> buf(new (std::align_val_t{32}) T[range.Size()]);
+            interpreter.Evaluate<T>(tree, ds, range, Operon::Span<T>{buf.get(), range.Size()});
+        });
         executor.run(taskflow).wait();
+    }
+
+    auto RandomDataset(Operon::RandomGenerator& rng, int rows, int cols) -> Operon::Dataset {
+        fmt::print("rows: {}, cols: {}\n", rows, cols);
+        std::uniform_real_distribution<Operon::Scalar> dist(-1.f, +1.f);
+        Eigen::Matrix<decltype(dist)::result_type, -1, -1> data(rows, cols);
+        //std::generate(data.data(), data.data() + rows * cols, [&](){ return dist(rng); });
+        for (auto& v : data.reshaped()) { v = dist(rng); }
+        Operon::Dataset ds(data);
+        fmt::print("rows: {}, cols: {}\n", ds.Rows(), ds.Cols());
+        return ds;
     }
 
     // used by some Langdon & Banzhaf papers as benchmark for measuring GPops/s
@@ -55,11 +69,9 @@ namespace Operon::Test {
         constexpr size_t ncol = 10;
 
         constexpr size_t minEpochIterations = 5;
-
-        Eigen::Matrix<Operon::Scalar, -1, -1> data = decltype(data)::Random(nrow, ncol);
         Operon::RandomGenerator rd(1234);
-        auto ds = Dataset(data);
-
+        auto ds = RandomDataset(rd, nrow, ncol); 
+        fmt::print("dataset rows: {}, cols: {}\n", nrow, ncol);
         auto target = "Y";
         auto variables = ds.Variables();
         std::vector<Variable> inputs;
@@ -173,8 +185,7 @@ namespace Operon::Test {
         constexpr size_t ncol = 10;
 
         Operon::RandomGenerator rd(1234);
-        Eigen::Matrix<Operon::Scalar, -1, -1> data = decltype(data)::Random(nrow, ncol);
-        auto ds = Dataset(data);
+        auto ds = RandomDataset(rd, nrow, ncol); 
 
         auto variables = ds.Variables();
         auto target = variables.back().Name;
@@ -235,6 +246,48 @@ namespace Operon::Test {
         test("mae + ls",  Operon::Evaluator(problem, interpreter, Operon::MAE{}, /*linearScaling=*/true));
         test("mse",       Operon::Evaluator(problem, interpreter, Operon::MSE{}, /*linearScaling=*/false));
         test("mse + ls",  Operon::Evaluator(problem, interpreter, Operon::MSE{}, /*linearScaling=*/true));
+    }
+
+    TEST_CASE("Parallel interpreter")
+    {
+        const size_t n         = 1000;
+        const size_t maxLength = 100;
+        const size_t maxDepth  = 1000;
+
+        constexpr size_t nrow = 10000;
+        constexpr size_t ncol = 10;
+
+        Operon::RandomGenerator rd(1234);
+        auto ds = RandomDataset(rd, nrow, ncol); 
+
+        auto variables = ds.Variables();
+        auto target = variables.back().Name;
+        std::vector<Variable> inputs;
+        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target; });
+        Range range = { 0, ds.Rows() };
+
+        auto problem = Problem(ds).Inputs(inputs).Target(target).TrainingRange(range).TestRange(range);
+        problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
+
+        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+        auto creator = BalancedTreeCreator { problem.GetPrimitiveSet(), inputs };
+
+        std::vector<Tree> trees(n);
+        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+
+        std::vector<Individual> individuals(n);
+        for (size_t i = 0; i < individuals.size(); ++i) {
+            individuals[i].Genotype = trees[i];
+        }
+
+        nb::Bench b;
+        b.relative(true).epochs(10).minEpochIterations(100).performanceCounters(true);
+        std::unique_ptr<Operon::Scalar> buf(new (std::align_val_t{32}) Operon::Scalar[range.Size() * n]);
+        //std::vector<Operon::Scalar> buf(range.Size() * n);
+
+        Operon::Interpreter interpreter;
+        size_t const threads = 16UL;
+        b.batch(TotalNodes(trees) * range.Size()).run("parallel interpreter", [&]() { Evaluate(interpreter, trees, ds, range, {buf.get(), range.Size() * n}, threads); });
     }
 
     TEST_CASE("NSGA2")
