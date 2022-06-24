@@ -17,10 +17,10 @@ enum class Dominance : int { Left = 0,
 
 template <bool CheckNan = false>
 struct Less {
-    template <typename T, std::enable_if_t<std::is_floating_point_v<T>, bool> = true>
+    template <typename T>
+    requires std::is_floating_point_v<T>
     auto operator()(T a, T b, T eps = 0.0) const noexcept -> bool
     {
-        static_assert(std::is_floating_point_v<T>, "T must be a floating-point type");
         if constexpr (CheckNan) {
             if (std::isnan(a)) {
                 return false;
@@ -46,7 +46,8 @@ struct Less {
 
 template <bool CheckNan = false>
 struct LessEqual {
-    template <typename T, std::enable_if_t<std::is_floating_point_v<T>, bool> = true>
+    template <typename T>
+    requires std::is_floating_point_v<T>
     auto operator()(T a, T b, T eps = 0.0) const noexcept -> bool
     {
         static_assert(std::is_floating_point_v<T>, "T must be a floating-point type");
@@ -58,15 +59,16 @@ struct LessEqual {
                 return true;
             }
         }
-        return a <= b && b - a > eps;
+        return a <= b && b - a >= eps;
     }
 };
 
 struct Equal {
-    template <typename T, std::enable_if_t<std::is_floating_point_v<T>, bool> = true>
+    template <typename T>
+    requires std::is_floating_point_v<T>
     auto operator()(T a, T b, T eps = 0.0) const noexcept -> bool
     {
-        return std::abs(a - b) <= eps;
+        return std::abs(a - b) < eps;
     }
 
     template<typename Input1, typename Input2>
