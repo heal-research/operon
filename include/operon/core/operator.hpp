@@ -12,7 +12,7 @@ struct OperatorBase {
     using ReturnType = Ret;
     using ArgumentType = std::tuple<Args...>;
     // all operators take a random device (source of randomness) as the first parameter
-    virtual auto operator()(Operon::RandomGenerator& random, Args... args) const -> Ret = 0;
+    virtual auto operator()(Operon::RandomGenerator& /*random*/, Args... /*args*/) const -> Ret = 0;
     virtual ~OperatorBase() = default;
 
     OperatorBase() = default;
