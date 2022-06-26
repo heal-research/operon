@@ -15,9 +15,9 @@
 #include <taskflow/algorithm/reduce.hpp>
 #endif
 #include "operon/algorithms/gp.hpp"
-#include "operon/core/format.hpp"
 #include "operon/core/version.hpp"
 #include "operon/core/problem.hpp"
+#include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"

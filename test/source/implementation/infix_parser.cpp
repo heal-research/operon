@@ -6,7 +6,7 @@
 
 #include "operon/hash/hash.hpp"
 #include "operon/interpreter/interpreter.hpp"
-#include "operon/core/format.hpp"
+#include "operon/formatter/formatter.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/parser/infix.hpp"
@@ -36,15 +36,22 @@ TEST_SUITE("[implementation]")
         }
     }
 
-    TEST_CASE("Parser")
+    TEST_CASE("Parser correctness")
     {
         constexpr int nTrees = 1'000'000;
         constexpr int nNodes = 20;
 
-        Operon::Dataset ds("./data/Poly-10.csv", true);
+        constexpr int nrow = 1;
+        constexpr int ncol = 10;
+
+        Operon::RandomGenerator rng(1234);
+
+        Eigen::Matrix<Operon::Scalar, -1, -1> values(nrow, ncol);
+        for (auto& v : values.reshaped()) { v = Operon::Random::Uniform(rng, -1.f, +1.f); }
+        Operon::Dataset ds(values);
+
         Operon::PrimitiveSet pset;
         pset.SetConfig((PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log) & ~NodeType::Variable);
-        Operon::RandomGenerator rng(1234);
         Operon::BalancedTreeCreator btc(pset, ds.Variables());
 
         // generate trees
@@ -138,7 +145,6 @@ TEST_SUITE("[implementation]")
         }
 
         SUBCASE("Tokenize") {
-
             pratt::lexer<InfixParser::Token, InfixParser::Conv, decltype(tokens_map)> lex(model_str, tokens_map);
             auto tokens = lex.tokenize();
             std::cout << "tokens:\n";
@@ -187,7 +193,7 @@ TEST_SUITE("[implementation]")
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, variableNames, 2));
     }
 
-    TEST_CASE("Parser Expr")
+    TEST_CASE("Parser Expr 4")
     {
         auto model_str = "(((((((((-0.24762082099914550781) * X60) - ((-0.24762082099914550781) * X51)) - ((0.29588320851325988770 * X5) - ((-0.04808991029858589172) * X0))) + ((-0.34331262111663818359) / ((-0.11882954835891723633) * X23))) / ((-1.08731400966644287109) - ((-0.24762082099914550781) * X68))) + ((((-0.51293206214904785156) / ((-0.11882954835891723633) * X60)) * ((-0.24762082099914550781) * X42)) - ((-0.83979696035385131836) * X23))) * ((((-0.32350099086761474609) * X1) - ((-0.24762082099914550781) * X51)) * (0.53106397390365600586 * X38))) * ((((0.92230170965194702148 * X72) * ((-1.08731400966644287109) - ((-0.34331262111663818359) * (1.06355786323547363281 * X1)))) * ((-1.08731400966644287109) - ((-0.24762082099914550781) * X42))) + (((-0.33695843815803527832) / ((-0.11888219416141510010) * X43)) / ((-1.08523952960968017578) - ((-0.24762082099914550781) * X51)))))";
 
@@ -205,6 +211,21 @@ TEST_SUITE("[implementation]")
         auto tokens_map = InfixParser::DefaultTokens();
         auto tree = Operon::InfixParser::Parse(model_str, tokens_map, vars_map);
         fmt::print("{}\n", Operon::InfixFormatter::Format(tree, vars_names));
+    }
+
+    TEST_CASE("Parser Expr 5")
+    {
+        auto model_str = "1 + 2 + 3 + 4";
+
+        Hasher hasher;
+
+        robin_hood::unordered_flat_map<std::string, Operon::Hash> vars_map;
+        std::unordered_map<Operon::Hash, std::string> vars_names;
+
+        auto tokens_map = InfixParser::DefaultTokens();
+        auto tree = Operon::InfixParser::Parse(model_str, tokens_map, vars_map);
+        fmt::print("{}\n", Operon::InfixFormatter::Format(tree, vars_names));
+        fmt::print("{}\n", Operon::PostfixFormatter::Format(tree, vars_names));
     }
 
     TEST_CASE("Formatter")

@@ -3,7 +3,7 @@
 //
 #include <doctest/doctest.h>
 #include "operon/core/dataset.hpp"
-#include "operon/core/format.hpp"
+#include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/operators/evaluator.hpp"
