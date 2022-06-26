@@ -6,7 +6,7 @@
 
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/parser/infix.hpp"
-#include "operon/core/format.hpp"
+#include "operon/formatter/formatter.hpp"
 
 namespace dt = doctest;
 
