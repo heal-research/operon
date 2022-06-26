@@ -4,7 +4,7 @@
 #include <doctest/doctest.h>
 
 #include "operon/core/dataset.hpp"
-#include "operon/core/format.hpp"
+#include "operon/formatter/formatter.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/variable.hpp"
 #include "operon/operators/creator.hpp"

@@ -8,7 +8,7 @@
 #include <scn/scn.h>
 
 #include "operon/core/dataset.hpp"
-#include "operon/core/format.hpp"
+#include "operon/formatter/formatter.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"

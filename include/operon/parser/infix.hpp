@@ -141,18 +141,20 @@ struct InfixParser {
     }
 
     template <typename T, typename U>
-    static auto Parse(std::string const& infix, T const& toks, U const& vars) -> Tree
+    static auto Parse(std::string const& infix, T const& toks, U const& vars, bool reduce = false) -> Tree
     {
         auto nodes = pratt::parser<Nud, Led, Conv, T, U>(infix, toks, vars).parse();
-        return Tree(nodes).UpdateNodes();
+        auto tree = Tree(nodes).UpdateNodes();
+        return reduce ? tree.Reduce() : tree;
     }
 
     template<typename U>
-    static auto ParseDefault(std::string const& infix, U const& vars) -> Tree
+    static auto ParseDefault(std::string const& infix, U const& vars, bool reduce = false) -> Tree
     {
         auto toks = DefaultTokens();
         auto nodes = pratt::parser<Nud, Led, Conv, decltype(toks), U>(infix, toks, vars).parse();
-        return Tree(nodes).UpdateNodes();
+        auto tree = Tree(nodes).UpdateNodes();
+        return reduce ? tree.Reduce() : tree;
     }
 };
 } // namespace Operon

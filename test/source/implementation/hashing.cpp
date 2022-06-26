@@ -9,7 +9,7 @@
 #include "operon/core/dataset.hpp"
 #include "operon/core/distance.hpp"
 #include "operon/core/operator.hpp"
-#include "operon/core/format.hpp"
+#include "operon/formatter/formatter.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/variable.hpp"
 #include "operon/hash/hash.hpp"
