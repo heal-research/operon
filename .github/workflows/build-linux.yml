@@ -2,9 +2,9 @@ name: build-linux
 
 on:
   push:
-    branches: [ master ]
+    branches: [ cpp20 ]
   pull_request:
-    branches: [ master ]
+    branches: [ cpp20 ]
 
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
