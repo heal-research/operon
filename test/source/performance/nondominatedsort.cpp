@@ -37,132 +37,138 @@ auto InitializePop(Operon::RandomGenerator& random, Dist& dist, size_t n, size_t
         }
         ENSURE(individual.Fitness.size() == m);
     }
-
     return individuals;
 };
 
-template <typename Func, typename Dist>
-void Test(std::string const& str, nb::Bench& bench, Func&& func, Operon::RandomGenerator& rd, Dist& dist, std::vector<size_t> const& ns, std::vector<size_t> const& ms)
+TEST_CASE("non-dominated sort performance")
 {
-    for (auto m : ms) {
-        for (auto n : ns) {
-            auto pop = InitializePop(rd, dist, n, m);
-            bench.run(fmt::format("{}: n = {}, m = {}", str, n, m), [&] {
-                std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return Operon::Less{}(lhs.Fitness, rhs.Fitness); });
-                std::vector<Individual> dup;
-                dup.reserve(pop.size());
-                auto r = std::unique(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) {
-                    auto res = Operon::Equal{}(lhs.Fitness, rhs.Fitness);
-                    if (res) {
-                        dup.push_back(rhs);
-                    }
-                    return res;
+    Operon::RandomGenerator rd{0};
+    constexpr int reps{16};
+
+    auto run_sorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m, int t)
+    {
+        std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
+        auto pop = InitializePop(rd, dist, n, m);
+        bench.batch(t).run(fmt::format("{};{};{};{}", name, n, m, t), [&]() {
+            tf::Executor ex(t);
+            tf::Taskflow f;
+            for (auto i = 0; i < reps; ++i) {
+                f.emplace([&]() {
+                    auto fronts = sorter(pop);
+                    return fronts.size();
                 });
-                std::copy_n(std::make_move_iterator(dup.begin()), dup.size(), r);
-                Operon::Span<Individual const> s(pop.begin(), r);
-                return func(s).size();
-            });
-        }
-    }
-    //bench.render(ankerl::nanobench::templates::csv(), std::cout);
-}
-
-TEST_CASE("non-dominated sort" * doctest::test_suite("[performance]"))
-{
-    auto initializePop = [](Operon::RandomGenerator& random, auto& dist, size_t n, size_t m) {
-        std::vector<Individual> individuals(n);
-        for (auto& individual : individuals) {
-            individual.Fitness.resize(m);
-
-            for (size_t j = 0; j < m; ++j) {
-                individual[j] = dist(random);
             }
-            ENSURE(individual.Fitness.size() == m);
-        }
-
-        return individuals;
+            ex.run(f).wait();
+        });
     };
 
-    Operon::RandomGenerator rd(1234);
-    //std::vector<size_t> ms;
-    //for (size_t i = 2; i <= 20; ++i) { ms.push_back(i); }
-    //std::vector<size_t> ns { 100, 500 };
-    //for (size_t i = 1000; i <= 20000; i += 1000) { ns.push_back(i); }
-    std::vector<size_t> ms { 2, 3, 4, 5, 6, 7, 8, 9, 10 };
-    std::vector<size_t> ns { 10000 };
-    std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
-    std::uniform_int_distribution<size_t> integerDist(0, 10);
+    constexpr int N{20000};
+    constexpr int M{20};
+    constexpr int T{32};
 
-    nb::Bench bench;
-    bench.relative(true).performanceCounters(true).minEpochIterations(10);
-    //bench.output(nullptr);
+    std::vector<int> ns { 1000, 2500, 5000, 7500, 10000, 12500, 15000, 17500, 20000 }; // NOLINT
 
-    // A: dominate on equal
-    // B: no dominate on equal
-    DeductiveSorter ds;
-    HierarchicalSorter hs;
-    EfficientBinarySorter ensBs;
-    EfficientSequentialSorter ensSs;
-    RankOrdinalSorter ro;
-    RankIntersectSorter rs;
-    MergeSorter ms_;
+    std::vector<int> ms;
+    for (auto i = 2; i <= M; ++i) { ms.push_back(i); }
 
-    SUBCASE("point cloud all")
-    {
-        bench.minEpochIterations(10);
-        Test("RS", bench, [&](auto pop) { return rs(pop); }, rd, dist, ns, ms);
-        Test("RO", bench, [&](auto pop) { return ro(pop); }, rd, dist, ns, ms);
-        //Test("DS", bench, [&](auto pop){ return ds.Sort(pop); }, rd, dist, ns, ms);
-        //Test("HS", bench, [&](auto pop){ return ds.Sort(pop); }, rd, dist, ns, ms);
-        //Test("ENS-BS", bench, [&](auto pop){ return ds.Sort(pop); }, rd, dist, ns, ms);
-        //Test("ENS-SS", bench, [&](auto pop){ return ds.Sort(pop); }, rd, dist, ns, ms);
-        Test("MNDS", bench, [&](auto pop){ return ms_(pop); }, rd, dist, ns, ms);
+    std::vector<int> ts{ 1, 2, 4, 8, 12, 16 };
 
-        std::ofstream of("./synthetic_point_cloud.csv");
-
-        bench.render(ankerl::nanobench::templates::csv(), of);
-    }
-
-    SUBCASE("point cloud threaded RS")
-    {
-        tf::Executor ex;
-        tf::Taskflow tf;
-
-        nb::Bench b;
-        b.output(nullptr);
-        for (size_t i = 0; i < 16; ++i) {
-            tf.emplace([&] {
-                b = bench;
-                b.minEpochIterations(10);
-                Test("RS", b, rs, rd, dist, ns, ms);
-            });
+    auto test = [&](auto& bench, auto&& name, auto&& sorter) {
+        for (auto n : ns) {
+            for (auto m : ms) {
+                for (auto t : ts) {
+                    run_sorter(bench, name, sorter, n, m, t);
+                }
+            }
         }
-        ex.run(tf).wait();
-        b.render(ankerl::nanobench::templates::csv(), std::cout);
-    }
+    };
 
-    SUBCASE("statics vs dynamic M")
+    SUBCASE("RS")
     {
-        auto pop = InitializePop(rd, dist, 5000, 2);
-        bench.run("static M", [&]() { return RankIntersectSorter {}(pop).size(); });
-        bench.run("dynamic M", [&]() { return RankIntersectSorter {}(pop).size(); });
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        test(bench, "RS", Operon::RankIntersectSorter{});
+        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
     }
 
-    SUBCASE("point cloud RS") { Test("RS", bench, rs, rd, dist, ns, ms); }
-    SUBCASE("point cloud DS") { Test("DS", bench, ds, rd, dist, ns, ms); }
-    SUBCASE("point cloud HS") { Test("HS", bench, hs, rd, dist, ns, ms); }
-    SUBCASE("point cloud ENS-BS") { Test("ENS-BS", bench, ensBs, rd, dist, ns, ms); }
-    SUBCASE("point cloud ENS-SS") { Test("ENS-SS", bench, ensSs, rd, dist, ns, ms); }
-    SUBCASE("point cloud MS") { Test("MNDS", bench, ms_, rd, dist, ns, ms); }
+    SUBCASE("MNDS")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        test(bench, "MNDS", Operon::MergeSorter{});
+        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
+    }
 
+    SUBCASE("RS N=15000 M=5")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        run_sorter(bench, "RS", Operon::RankIntersectSorter{}, 15000, 5, 1);
+    }
+
+    SUBCASE("RS N=17500 M=5")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        run_sorter(bench, "RS", Operon::RankIntersectSorter{}, 17500, 5, 1);
+    }
+
+    SUBCASE("RS N=20000 M=10 T=4")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        run_sorter(bench, "RS", Operon::RankIntersectSorter{}, 20000, 10, 4);
+    }
+
+    SUBCASE("RS N=50000 M=10 T=4")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        run_sorter(bench, "RS", Operon::RankIntersectSorter{}, 50000, 10, 4);
+    }
+
+    SUBCASE("MNDS N=15000 M=5")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        run_sorter(bench, "MNDS", Operon::MergeSorter{}, 15000, 5, 1);
+    }
+
+    SUBCASE("MNDS N=17500 M=5")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        run_sorter(bench, "MNDS", Operon::MergeSorter{}, 17500, 5, 1);
+    }
+
+    SUBCASE("MNDS N=20000 M=10 T=4")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        run_sorter(bench, "MNDS", Operon::MergeSorter{}, 20000, 10, 4);
+    }
+
+    SUBCASE("MNDS N=50000 M=10 T=4")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        run_sorter(bench, "MNDS", Operon::MergeSorter{}, 50000, 10, 4);
+    }
+}
+
+TEST_CASE("non-dominated sort complexity")
+{
+    Operon::RandomGenerator rd{0};
+    std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
     //using F = std::function<std::vector<std::vector<size_t>>(Operon::Span<Operon::Individual const>)>;
     auto check_complexity = [&](size_t m, auto&& sorter) {
         std::vector<size_t> sizes { 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000 };
+        nb::Bench bench;
         bench.minEpochIterations(10);
         //Operon::RandomGenerator rd(1234);
 
         for (auto s : sizes) {
-            auto pop = initializePop(rd, dist, s, m);
+            auto pop = InitializePop(rd, dist, s, m);
             bench.complexityN(s).run(fmt::format("n = {}", s), [&]() { return sorter(pop).size(); });
         }
         std::cout << bench.complexityBigO() << "\n";
@@ -180,8 +186,8 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[performance]"))
     {
         check_complexity(3, DeductiveSorter {});
         check_complexity(3, HierarchicalSorter {});
-        check_complexity(2, RankIntersectSorter {});
-        check_complexity(2, RankOrdinalSorter {});
+        check_complexity(3, RankIntersectSorter {});
+        check_complexity(3, RankOrdinalSorter {});
     }
 }
 } // namespace Operon::Test
