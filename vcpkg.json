@@ -1,10 +1,12 @@
 {
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
     "name": "operon",
     "version-string": "0.3.1",
     "dependencies": [
         "aria-csv",
         "cxxopts",
         "eigen3",
+        "eve",
         "fast-float",
         "fmt",
         "pratt-parser",
