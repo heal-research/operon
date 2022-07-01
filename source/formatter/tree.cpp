@@ -20,12 +20,12 @@ auto TreeFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Hash
     const auto& s = tree[i];
     if (s.IsConstant()) {
         auto formatString = fmt::format("{{:.{}f}}", decimalPrecision);
-        fmt::format_to(std::back_inserter(current), formatString, s.Value);
+        fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
     } else if (s.IsVariable()) {
-        auto formatString = fmt::format(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}", decimalPrecision);
+        auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}"), decimalPrecision);
 
         if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
-            fmt::format_to(std::back_inserter(current), formatString, s.Value, it->second);
+            fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value, it->second);
         } else {
             throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.HashValue));
         }
