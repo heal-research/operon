@@ -11,6 +11,7 @@
 #include <optional>                                  // for optional
 #include <taskflow/taskflow.hpp>                     // for taskflow, subflow
 #include <vector>                                    // for vector, vector::size_type
+#include <fmt/ranges.h>
 
 #include "operon/algorithms/nsga2.hpp"
 #include "operon/core/contracts.hpp"                 // for ENSURE
@@ -59,24 +60,23 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
 auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 {
     auto eps = static_cast<Operon::Scalar>(GetConfig().Epsilon);
-
-    Operon::Less less;
-    Operon::Equal eq;
-
+    auto less = [eps](auto const& lhs, auto const& rhs) { return Operon::Less{}(lhs.Fitness, rhs.Fitness, eps); };
+    auto eq = [eps](auto const& lhs, auto const& rhs) { return Operon::Equal{}(lhs.Fitness, rhs.Fitness, eps); };
     // sort the population lexicographically
-    std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return less(lhs.Fitness, rhs.Fitness, eps); });
+    std::stable_sort(pop.begin(), pop.end(), less);
     // mark the duplicates for stable_partition
     for(auto i = pop.begin(); i < pop.end(); ) {
         i->Rank = 0;
         auto j = i + 1;
-        for (; j < pop.end() && eq(i->Fitness, j->Fitness, eps); ++j) {
+        for (; j < pop.end() && eq(*i, *j); ++j) {
             j->Rank = 1;
         }
         i = j;
     }
     auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) { return !ind.Rank; });
     Operon::Span<Operon::Individual const> uniq(pop.begin(), r);
-    fronts_ = sorter_(uniq);
+    // do the sorting
+    fronts_ = sorter_(uniq, eps);
     // sort the fronts for consistency between sorting algos
     for (auto& f : fronts_) {
         std::stable_sort(f.begin(), f.end());
@@ -87,10 +87,11 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
         std::iota(last.begin(), last.end(), uniq.size());
         fronts_.push_back(last);
     }
-
-    UpdateDistance(pop); // calculate crowding distance
+    // calculate crowding distance
+    UpdateDistance(pop);
+    // update best front
     best_.clear();
-    std::transform(fronts_.front().begin(), fronts_.front().end(), std::back_inserter(best_), [&](auto i) { return pop[i]; }); // update best front
+    std::transform(fronts_.front().begin(), fronts_.front().end(), std::back_inserter(best_), [&](auto i) { return pop[i]; });
 }
 
 auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report) -> void

@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include "operon/operators/non_dominated_sorter.hpp"
-#include "operon/collections/bitset.hpp"
 #include "operon/core/individual.hpp"
 
 namespace Operon {
@@ -80,7 +79,7 @@ namespace detail {
             for (; fw <= lw; fw++) {
                 word = bitsets_[solutionId][fw] & incrementalBitset_[fw];
                 if (word != 0) {
-                    i = static_cast<int>(Bitset<>::CountTrailingZeros(static_cast<word_t>(word)));
+                    i = std::countr_zero(static_cast<word_t>(word));
                     offset = static_cast<size_t>(fw) * WORD_SIZE;
                     do {
                         if (ranking_[offset + i] >= rank) {
@@ -88,7 +87,7 @@ namespace detail {
                         }
                         i++;
                         word_t w = word >> i; // NOLINT
-                        i += static_cast<bool>(w) ? Bitset<>::CountTrailingZeros(w) : WORD_SIZE;
+                        i += static_cast<bool>(w) ? std::countr_zero(w) : WORD_SIZE;
                     } while (i < WORD_SIZE && rank <= wordRanking_[fw]);
                     if (rank > maxRank_) {
                         maxRank_ = rank;
@@ -126,7 +125,7 @@ namespace detail {
             if (wordIndex < incBsFstWord_ || 0 == solutionId) {
                 bsRanges_[solutionId][FIRST_WORD_RANGE] = std::numeric_limits<int>::max();
                 return false;
-            } 
+            }
             if (wordIndex == incBsFstWord_) { //only 1 word in common
                 bitsets_[solutionId] = std::vector<word_t>(wordIndex + 1);
                 auto intersection = incrementalBitset_[incBsFstWord_] & ~(WORD_MASK << shiftDistance);
@@ -235,7 +234,7 @@ namespace detail {
     auto
     MergeSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result {
         auto n = pop.size();
-        auto m = pop.front().Size(); 
+        auto m = pop.front().Size();
         detail::BitsetManager bsm(n);
 
         std::vector<int> ranking;
