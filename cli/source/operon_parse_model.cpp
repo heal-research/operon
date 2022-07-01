@@ -116,7 +116,7 @@ auto main(int argc, char** argv) -> int
     } else {
         auto out = fmt::memory_buffer();
         for (auto v : est) {
-            fmt::format_to(out, fmt::format("{{{}}}\n", format), v);
+            fmt::format_to(std::back_inserter(out), fmt::runtime(fmt::format("{{{}}}\n", format)), v);
         }
         fmt::print("{}", fmt::to_string(out));
     }
