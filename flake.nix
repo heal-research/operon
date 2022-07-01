@@ -37,8 +37,9 @@
             cxxopts
             doctest
             eigen
-            fmt
+            fmt_8
             git
+            jemalloc
             openlibm
             pkg-config
             # flakes
@@ -79,6 +80,7 @@
             LD_LIBRARY_PATH=${
               pkgs.lib.makeLibraryPath [ pkgs.gcc12Stdenv.cc.cc.lib ]
             };
+            alias bb="cmake --build build -j"
           '';
         };
       });
