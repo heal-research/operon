@@ -5,8 +5,8 @@
 # Modern C++ framework for Symbolic Regression
 
 [![License](https://img.shields.io/github/license/heal-research/operon?style=flat)](https://github.com/heal-research/operon/blob/master/LICENSE)
-[![build-linux](https://github.com/heal-research/operon/actions/workflows/build-linux.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-linux.yml)
-[![build-windows](https://github.com/heal-research/operon/actions/workflows/build-windows.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-windows.yml)
+[![build-linux](https://github.com/heal-research/operon/actions/workflows/build-linux.yml/badge.svg?branch=cpp20)](https://github.com/heal-research/operon/actions/workflows/build-linux.yml)
+[![build-windows](https://github.com/heal-research/operon/actions/workflows/build-windows.yml/badge.svg?branch=cpp20)](https://github.com/heal-research/operon/actions/workflows/build-windows.yml)
 [![Documentation Status](https://readthedocs.org/projects/operongp/badge/?version=latest)](https://operongp.readthedocs.io/en/latest/?badge=latest)
 [![Gitter chat](https://badges.gitter.im/operongp/gitter.png)](https://gitter.im/operongp/community)
 
@@ -23,45 +23,45 @@ In symbolic regression, the programs represent mathematical expressions typicall
     <img src="./rtd/_static/evo.gif"  />
 </p>
 
-# Build instructions
+## Build instructions
 
-The project requires CMake and a C++17 compliant compiler. The recommended way to build Operon is via either [nix](https://github.com/NixOS/nix) or [vcpkg](https://github.com/microsoft/vcpkg).
+The project requires CMake and a C++17 compliant compiler (C++20 if you're on the `cpp20` branch). The recommended way to build Operon is via either [nix](https://github.com/NixOS/nix) or [vcpkg](https://github.com/microsoft/vcpkg).
 
-### Required dependencies
-- [ceres-solver](http://ceres-solver.org/)
-- [eigen](http://eigen.tuxfamily.org)
-- [fast-float](https://github.com/fastfloat/fast_float)
-- [pratt-parser](https://github.com/foolnotion/pratt-parser-calculator)
-- [rapidcsv](https://github.com/d99kris/rapidcsv)
-- [robin-hood-hashing](https://github.com/martinus/robin-hood-hashing)
-* [scnlib](https://github.com/eliaskosunen/scnlib)
-- [span-lite](https://github.com/martinmoene/span-lite)
-- [taskflow](https://taskflow.github.io/)
-- [vectorclass](https://github.com/vectorclass/version2)
-- [vstat](https://github.com/heal-research/vstat)
-- [xxhash](https://github.com/Cyan4973/xxHash)
-- [{fmt}](https://fmt.dev/latest/index.html)
+Check out [https://github.com/heal-research/operon/blob/master/BUILDING.md](BUILD.md) for detailed build instructions and how to enable/disable certain features. 
 
-### Optional dependencies
+### Nix 
 
-- [cxxopts](https://github.com/jarro2783/cxxopts) required for the cli app.
-- [doctest](https://github.com/onqtam/doctest) required for unit tests.
-- [nanobench](https://github.com/martinus/nanobench) required for unit tests.
+First, you have to [install nix](https://nixos.org/download.html) and [enable flakes](https://nixos.wiki/wiki/Flakes).
+For a portable install, see [nix-portable](https://github.com/DavHau/nix-portable).
 
-### Build options
-The following options can be passed to CMake:
-| Option                      | Description |
-|:----------------------------|:------------|
-| `-DCERES_TINY_SOLVER=ON` | Use the very small and self-contained tiny solver from the Ceres suite for solving non-linear least squares problem. |
-| `-DUSE_SINGLE_PRECISION=ON` | Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes.           |
-| `-DUSE_OPENLIBM=ON`         | Link against Julia's openlibm, a high performance mathematical library (recommended to improve consistency across compilers and operating systems).            |
-| `-DBUILD_TESTS=ON` | Build the unit tests. |
-| `-DBUILD_PYBIND=ON` | Build the Python bindings. |
-| `-DUSE_JEMALLOC=ON`         | Link against [jemalloc](http://jemalloc.net/), a general purpose `malloc(3)` implementation that emphasizes fragmentation avoidance and scalable concurrency support (mutually exclusive with `tcmalloc`).           |
-| `-DUSE_TCMALLOC=ON`         | Link against [tcmalloc](https://google.github.io/tcmalloc/) (thread-caching malloc), a `malloc(3)` implementation that reduces lock contention for multi-threaded programs (mutually exclusive with `jemalloc`).          |
-| `-DUSE_MIMALLOC=ON`         | Link against [mimalloc](https://github.com/microsoft/mimalloc) a compact general purpose `malloc(3)` implementation with excellent performance (mutually exclusive with `jemalloc` or `tcmalloc`).          |
+To create a development shell:
+```
+nix develop github:heal-research/operon --no-write-lock-file
+```
 
-# Publications
+To build Operon (a symlink to the nix store called `result` will be created).
+```
+nix build github:heal-research/operon --no-write-lock-file
+```
+
+
+### Vcpkg 
+
+Select the build generator appropriate for your system and point CMake to the `vcpkg.cmake` toolchain file
+
+```
+cmake -S . -B build -G "Visual Studio 16 2019" -A x64 \
+-DCMAKE_TOOLCHAIN_FILE=..\vcpkg\scripts\buildsystems\vcpkg.cmake \
+-DVCPKG_OVERLAY_PORTS=.\ports
+```
+
+The file `CMakePresets.json` contains some presets that you may find useful. For using `clang-cl` instead of `cl`, pass `-TClangCL` to the above ([official documentation](https://docs.microsoft.com/en-us/cpp/build/clang-support-cmake?view=msvc-170)).
+
+## Python wrapper
+
+Python bindings for the Operon library are available as a separate project: [PyOperon](https://github.com/heal-research/pyoperon), which also includes a [scikit-learn](https://scikit-learn.org/stable/index.html) compatible regressor.
+
+## Bibtex info 
 
 If you find _Operon_ useful you can cite our work as:
 ```
@@ -86,13 +86,26 @@ If you find _Operon_ useful you can cite our work as:
 _Operon_ was also featured in a recent survey of symbolic regression methods, where it showed good results:
 
 ```
-@misc{lacava2021contemporary,
-      title={Contemporary Symbolic Regression Methods and their Relative Performance}, 
-      author={William La Cava and Patryk Orzechowski and Bogdan Burlacu and Fabrício Olivetti de França and Marco Virgolin and Ying Jin and Michael Kommenda and Jason H. Moore},
-      year={2021},
-      eprint={2107.14351},
-      archivePrefix={arXiv},
-      primaryClass={cs.NE}
+@article{DBLP:journals/corr/abs-2107-14351,
+    author    = {William G. La Cava and
+                 Patryk Orzechowski and
+                 Bogdan Burlacu and
+                 Fabr{\'{\i}}cio Olivetti de Fran{\c{c}}a and
+                 Marco Virgolin and
+                 Ying Jin and
+                 Michael Kommenda and
+                 Jason H. Moore},
+    title     = {Contemporary Symbolic Regression Methods and their Relative Performance},
+    journal   = {CoRR},
+    volume    = {abs/2107.14351},
+    year      = {2021},
+    url       = {https://arxiv.org/abs/2107.14351},
+    eprinttype = {arXiv},
+    eprint    = {2107.14351},
+    timestamp = {Tue, 03 Aug 2021 14:53:34 +0200},
+    biburl    = {https://dblp.org/rec/journals/corr/abs-2107-14351.bib},
+    bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 ```
 
