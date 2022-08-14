@@ -43,12 +43,9 @@ public:
         std::transform(indices.begin(), indices.end(), std::back_inserter(hashes),
                 [&](auto i) { return MakeHashes(pop[i], M); });
 
-        vstat::univariate_accumulator<double> acc(Operon::Distance::Jaccard(hashes[0], hashes[1]));
-        for (auto j = 2UL; j < pop.size(); ++j) {
-            acc(Operon::Distance::Jaccard(hashes[0], hashes[j]));
-        }
+        vstat::univariate_accumulator<double> acc;
 
-        for (auto i = 1UL; i < pop.size() - 1; ++i) {
+        for (auto i = 0UL; i < pop.size() - 1; ++i) {
             for (auto j = i+1; j < pop.size(); ++j) {
                 acc(Operon::Distance::Jaccard(hashes[i], hashes[j]));
             }

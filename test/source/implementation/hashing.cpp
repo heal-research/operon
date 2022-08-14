@@ -30,7 +30,7 @@ void CalculateDistance(std::vector<Tree>& trees, const std::string& name) {
         treeHashes.push_back(hh);
     }
 
-    vstat::univariate_accumulator<double> acc(0.0);
+    vstat::univariate_accumulator<double> acc;
 
     for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
         for (size_t j = i + 1; j < treeHashes.size(); ++j) {
@@ -54,7 +54,7 @@ void CalculateDistanceWithSort(std::vector<Tree>& trees, const std::string& name
         treeHashes.push_back(hh);
     }
 
-    vstat::univariate_accumulator<double> acc(0.0);
+    vstat::univariate_accumulator<double> acc;
 
     for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
         for (size_t j = i + 1; j < treeHashes.size(); ++j) {
