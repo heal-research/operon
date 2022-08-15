@@ -25,7 +25,7 @@
             "-DCMAKE_BUILD_TYPE=Release"
             "-DUSE_OPENLIBM=ON"
             "-DUSE_SINGLE_PRECISION=ON"
-            "-DCMAKE_CXX_FLAGS=${if pkgs.targetPlatform.isx86_64 then "-march=x86-64-v3" else ""}"
+            "-DCMAKE_CXX_FLAGS=${if pkgs.hostPlatform.isx86_64 then "-march=x86-64-v3" else ""}"
           ];
 
           nativeBuildInputs = with pkgs; [ cmake ];
