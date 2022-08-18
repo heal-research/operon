@@ -1,85 +1,98 @@
 {
   description = "Operon development environment";
 
-  inputs.flake-utils.url = "github:numtide/flake-utils";
-  inputs.nur.url = "github:nix-community/NUR";
-  inputs.nixpkgs.url = "github:nixos/nixpkgs/master";
-  inputs.pratt-parser.url = "github:foolnotion/pratt-parser-calculator";
-  inputs.vstat.url = "github:heal-research/vstat/cpp20-eve";
+  inputs = {
+    flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "github:nixos/nixpkgs/master";
+    pratt-parser.url = "github:foolnotion/pratt-parser-calculator";
+    vstat.url = "github:heal-research/vstat/cpp20-eve";
+    foolnotion.url = "github:foolnotion/nur-pkg";
+  };
 
-  outputs = { self, flake-utils, nixpkgs, nur, pratt-parser, vstat }:
+  outputs = { self, flake-utils, nixpkgs, foolnotion, pratt-parser, vstat }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ nur.overlay ];
+          overlays = [ foolnotion.overlay ];
         };
-        repo = pkgs.nur.repos.foolnotion;
 
-      in rec {
-        defaultPackage = pkgs.gcc12Stdenv.mkDerivation {
+        operon = pkgs.stdenv.mkDerivation {
           name = "operon";
           src = self;
 
           cmakeFlags = [
             "-DBUILD_CLI_PROGRAMS=ON"
-            "-DBUILD_SHARED_LIBS=ON"
+            "-DBUILD_SHARED_LIBS=${if pkgs.stdenv.hostPlatform.isStatic then "OFF" else "ON"}"
             "-DBUILD_TESTING=OFF"
             "-DCMAKE_BUILD_TYPE=Release"
             "-DUSE_OPENLIBM=ON"
             "-DUSE_SINGLE_PRECISION=ON"
-            "-DCMAKE_CXX_FLAGS=${if pkgs.targetPlatform.isx86_64 then "-march=haswell" else ""}"
           ];
 
           nativeBuildInputs = with pkgs; [ cmake ];
 
-          buildInputs = with pkgs; [
+          buildInputs = (with pkgs; [
             cxxopts
             doctest
             eigen
             fmt_8
             git
-            jemalloc
             openlibm
             pkg-config
-            # flakes
+            xxHash
+            taskflow
             pratt-parser.defaultPackage.${system}
             vstat.defaultPackage.${system}
-            # Some dependencies are provided by a NUR repo
-            repo.aria-csv
-            repo.eve
-            repo.fast_float
-            repo.robin-hood-hashing
-            repo.scnlib
-            repo.taskflow
-            repo.xxhash
-          ];
+            # foolnotion overlay
+            aria-csv
+            cpp-sort
+            eve
+            fast_float
+            robin-hood-hashing
+            scnlib
+          ]);
         };
 
-        devShell = pkgs.gcc12Stdenv.mkDerivation {
-          name = "operon-env";
+      in rec {
+        packages = {
+          default = operon.overrideAttrs(old: {
+            cmakeFlags = old.cmakeFlags ++ [
+              "-DCMAKE_CXX_FLAGS=${
+                if pkgs.stdenv.hostPlatform.isx86_64 then "-march=x86-64-v3" else ""
+              }"
+            ];
+          });
 
-          nativeBuildInputs = with pkgs; [
+          operon-generic = operon.overrideAttrs(old: {
+            cmakeFlags = old.cmakeFlags ++ [
+              "-DCMAKE_CXX_FLAGS=${
+                if pkgs.stdenv.hostPlatform.isx86_64 then "-march=x86-64" else ""
+              }"
+            ];
+          });
+        };
+
+        devShells.default = pkgs.mkShell {
+          nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
             bear
-            cmake
             clang_14
             clang-tools
             cppcheck
             include-what-you-use
-          ];
-          buildInputs = defaultPackage.buildInputs ++ (with pkgs; [
+          ]);
+
+          buildInputs = operon.buildInputs ++ (with pkgs; [
             gdb
             hotspot
             hyperfine
             valgrind
             linuxPackages.perf
             graphviz
+            seer
           ]);
 
           shellHook = ''
-            LD_LIBRARY_PATH=${
-              pkgs.lib.makeLibraryPath [ pkgs.gcc12Stdenv.cc.cc.lib ]
-            };
             alias bb="cmake --build build -j"
           '';
         };
