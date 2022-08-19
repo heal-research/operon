@@ -78,7 +78,7 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
         auto x0 = GetCoefficients();
         auto m0 = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size()); 
         if (!x0.empty()) {
-            decltype(solver)::Parameters p= m0.cast<typename decltype(cf)::Scalar>();
+            decltype(solver)::Parameters p = m0.cast<typename decltype(cf)::Scalar>();
             solver.Solve(cf, &p);
             m0 = p.cast<Operon::Scalar>();
         }
