@@ -43,7 +43,7 @@
             xxHash
             taskflow
             pratt-parser.defaultPackage.${system}
-            vstat.defaultPackage.${system}
+            vstat.packages.${system}.default
             # foolnotion overlay
             aria-csv
             cpp-sort
@@ -83,13 +83,15 @@
           ]);
 
           buildInputs = operon.buildInputs ++ (with pkgs; [
+            #hotspot
             gdb
-            hotspot
-            hyperfine
-            valgrind
-            linuxPackages.perf
             graphviz
+            hyperfine
+            linuxPackages.perf
+            pyprof2calltree
+            qcachegrind
             seer
+            valgrind
           ]);
 
           shellHook = ''
