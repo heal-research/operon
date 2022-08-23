@@ -87,6 +87,7 @@ find_package(pratt-parser REQUIRED)
 find_package(robin_hood REQUIRED)
 find_package(vstat REQUIRED)
 find_package(FastFloat REQUIRED)
+find_package(cpp-sort REQUIRED)
 
 find_package(xxHash)
 if (xxHash_FOUND)
@@ -214,6 +215,7 @@ target_link_libraries(operon_operon PRIVATE
     Taskflow::Taskflow
     vstat::vstat
     robin_hood::robin_hood
+    cpp-sort::cpp-sort
 )
 
 target_compile_features(operon_operon PUBLIC cxx_std_20)
