@@ -20,18 +20,18 @@ enum class Dominance : int { Left = 0,
 
 struct Equal {
     template <std::floating_point T>
-    auto operator()(T a, T b, T eps = 0.0) const noexcept -> bool
+    inline auto operator()(T a, T b, T eps = 0.0) const noexcept -> bool
     {
         return std::abs(a - b) <= eps;
     }
 
     template<std::forward_iterator Input1, std::forward_iterator Input2>
-    auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2, typename std::iterator_traits<Input1>::value_type eps = 0.0) const noexcept -> bool {
+    inline auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2, typename std::iterator_traits<Input1>::value_type eps = 0.0) const noexcept -> bool {
         return std::equal(first1, last1, first2, last2, [&](auto a, auto b) { return (*this)(a, b, eps); });
     }
 
     template<std::ranges::forward_range R1, std::ranges::forward_range R2>
-    auto operator()(R1&& r1, R2&& r2, Operon::Scalar eps = 0.0) const noexcept -> bool
+    inline auto operator()(R1&& r1, R2&& r2, Operon::Scalar eps = 0.0) const noexcept -> bool
     {
         return (*this)(std::begin(r1), std::end(r1), std::begin(r2), std::end(r2), eps);
     }
@@ -40,7 +40,7 @@ struct Equal {
 template <bool CheckNan = false>
 struct Less {
     template <std::floating_point T>
-    auto operator()(T a, T b, T eps = 0.0) const noexcept -> bool
+    inline auto operator()(T a, T b, T eps = 0.0) const noexcept -> bool
     {
         if constexpr (CheckNan) {
             if (std::isnan(a)) {
@@ -54,12 +54,12 @@ struct Less {
     }
 
     template<std::forward_iterator Input1, std::forward_iterator Input2>
-    auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2, typename std::iterator_traits<Input1>::value_type eps = 0.0) const noexcept -> bool {
+    inline auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2, typename std::iterator_traits<Input1>::value_type eps = 0.0) const noexcept -> bool {
         return std::lexicographical_compare(first1, last1, first2, last2, [&](auto a, auto b) { return (*this)(a, b, eps); });
     }
 
     template<std::ranges::forward_range R1, std::ranges::forward_range R2>
-    auto operator()(R1&& r1, R2&& r2, Operon::Scalar eps = 0.0) const noexcept -> bool
+    inline auto operator()(R1&& r1, R2&& r2, Operon::Scalar eps = 0.0) const noexcept -> bool
     {
         return (*this)(std::begin(r1), std::end(r1), std::begin(r2), std::end(r2), eps);
     }
@@ -77,7 +77,7 @@ struct LessEqual {
 template <bool CheckNan = false>
 struct ParetoDominance {
     template<std::forward_iterator Input1, std::forward_iterator Input2>
-    auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2, typename std::iterator_traits<Input1>::value_type eps = 0.0) const noexcept -> Dominance
+    inline auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2, typename std::iterator_traits<Input1>::value_type eps = 0.0) const noexcept -> Dominance
     {
         bool better { false };
         bool worse { false };
@@ -96,7 +96,7 @@ struct ParetoDominance {
     }
 
     template<std::ranges::forward_range R1, std::ranges::forward_range R2>
-    auto operator()(R1&& r1, R2&& r2, Operon::Scalar eps = 0.0) const noexcept -> Dominance
+    inline auto operator()(R1&& r1, R2&& r2, Operon::Scalar eps = 0.0) const noexcept -> Dominance
     {
         return (*this)(std::begin(r1), std::end(r1), std::begin(r2), std::end(r2), eps);
     }
