@@ -53,7 +53,7 @@ public:
 };
 
 namespace detail {
-    auto CheckSuccess(double initialCost, double finalCost) {
+    inline auto CheckSuccess(double initialCost, double finalCost) {
         constexpr auto CHECK_NAN{true};
         return Operon::Less<CHECK_NAN>{}(finalCost, initialCost);
     }
