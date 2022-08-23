@@ -286,8 +286,10 @@ namespace Operon::Test {
         //std::vector<Operon::Scalar> buf(range.Size() * n);
 
         Operon::Interpreter interpreter;
-        size_t const threads = 16UL;
-        b.batch(TotalNodes(trees) * range.Size()).run("parallel interpreter", [&]() { Evaluate(interpreter, trees, ds, range, {buf.get(), range.Size() * n}, threads); });
+        std::vector<size_t> threads{ 1UL, 8UL, 16UL };
+        for (auto t : threads) {
+            b.batch(TotalNodes(trees) * range.Size()).run("parallel interpreter", [&]() { Evaluate(interpreter, trees, ds, range, {buf.get(), range.Size() * n}, t); });
+        }
     }
 
     TEST_CASE("NSGA2")
