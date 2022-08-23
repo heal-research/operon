@@ -2,8 +2,6 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include <doctest/doctest.h>
-#include <taskflow/taskflow.hpp>
-#include <thread>
 
 #include "nanobench.h"
 #include "operon/core/dataset.hpp"
@@ -45,40 +43,28 @@ TEST_CASE("non-dominated sort performance")
     Operon::RandomGenerator rd{0};
     constexpr int reps{16};
 
-    auto run_sorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m, int t)
+    auto run_sorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m)
     {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
         auto pop = InitializePop(rd, dist, n, m);
-        bench.batch(t).run(fmt::format("{};{};{};{}", name, n, m, t), [&]() {
-            tf::Executor ex(t);
-            tf::Taskflow f;
-            for (auto i = 0; i < reps; ++i) {
-                f.emplace([&]() {
-                    auto fronts = sorter(pop);
-                    return fronts.size();
-                });
-            }
-            ex.run(f).wait();
+        bench.run(fmt::format("{};{};{}", name, n, m), [&]() {
+            auto fronts = sorter(pop);
+            return fronts.size();
         });
     };
 
     constexpr int N{20000};
     constexpr int M{20};
-    constexpr int T{32};
 
-    std::vector<int> ns { 1000, 2500, 5000, 7500, 10000, 12500, 15000, 17500, 20000 }; // NOLINT
+    std::vector<int> ns { 1000, 2500, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000 }; // NOLINT
 
     std::vector<int> ms;
     for (auto i = 2; i <= M; ++i) { ms.push_back(i); }
 
-    std::vector<int> ts{ 1, 2, 4, 8, 12, 16 };
-
     auto test = [&](auto& bench, auto&& name, auto&& sorter) {
         for (auto n : ns) {
             for (auto m : ms) {
-                for (auto t : ts) {
-                    run_sorter(bench, name, sorter, n, m, t);
-                }
+                run_sorter(bench, name, sorter, n, m);
             }
         }
     };
@@ -91,6 +77,16 @@ TEST_CASE("non-dominated sort performance")
         bench.render(ankerl::nanobench::templates::csv(), std::cout);;
     }
 
+    SUBCASE("RS N=25000 M=10")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        const int n{25000};
+        const int m{10};
+        run_sorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
+        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
+    }
+
     SUBCASE("MNDS")
     {
         nb::Bench bench;
@@ -99,60 +95,14 @@ TEST_CASE("non-dominated sort performance")
         bench.render(ankerl::nanobench::templates::csv(), std::cout);;
     }
 
-    SUBCASE("RS N=15000 M=5")
+    SUBCASE("MNDS N=25000 M=10")
     {
         nb::Bench bench;
         bench.performanceCounters(true);
-        run_sorter(bench, "RS", Operon::RankIntersectSorter{}, 15000, 5, 1);
-    }
-
-    SUBCASE("RS N=17500 M=5")
-    {
-        nb::Bench bench;
-        bench.performanceCounters(true);
-        run_sorter(bench, "RS", Operon::RankIntersectSorter{}, 17500, 5, 1);
-    }
-
-    SUBCASE("RS N=20000 M=10 T=4")
-    {
-        nb::Bench bench;
-        bench.performanceCounters(true);
-        run_sorter(bench, "RS", Operon::RankIntersectSorter{}, 20000, 10, 4);
-    }
-
-    SUBCASE("RS N=50000 M=10 T=4")
-    {
-        nb::Bench bench;
-        bench.performanceCounters(true);
-        run_sorter(bench, "RS", Operon::RankIntersectSorter{}, 50000, 10, 4);
-    }
-
-    SUBCASE("MNDS N=15000 M=5")
-    {
-        nb::Bench bench;
-        bench.performanceCounters(true);
-        run_sorter(bench, "MNDS", Operon::MergeSorter{}, 15000, 5, 1);
-    }
-
-    SUBCASE("MNDS N=17500 M=5")
-    {
-        nb::Bench bench;
-        bench.performanceCounters(true);
-        run_sorter(bench, "MNDS", Operon::MergeSorter{}, 17500, 5, 1);
-    }
-
-    SUBCASE("MNDS N=20000 M=10 T=4")
-    {
-        nb::Bench bench;
-        bench.performanceCounters(true);
-        run_sorter(bench, "MNDS", Operon::MergeSorter{}, 20000, 10, 4);
-    }
-
-    SUBCASE("MNDS N=50000 M=10 T=4")
-    {
-        nb::Bench bench;
-        bench.performanceCounters(true);
-        run_sorter(bench, "MNDS", Operon::MergeSorter{}, 50000, 10, 4);
+        const int n{25000};
+        const int m{10};
+        run_sorter(bench, "MNDS", Operon::MergeSorter{}, n, m);
+        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
     }
 }
 
