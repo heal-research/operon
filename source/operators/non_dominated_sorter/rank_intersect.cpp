@@ -6,19 +6,10 @@
 
 #include <iostream>
 #include <eve/wide.hpp>
-#include <cpp-sort/adapters/stable_adapter.h>
-#include <cpp-sort/sorters/pdq_sorter.h>
+#include <cpp-sort/sorters/merge_sorter.h>
 
 namespace Operon {
 namespace detail {
-    template<std::ranges::random_access_range R, typename T = typename std::remove_cvref_t<R>::value_type, size_t D = std::numeric_limits<T>::digits>
-    inline auto TightenBounds(R&& r, int lo, int hi, T v) -> std::pair<int, int>
-    {
-        while (lo < hi && r[lo] == v) { ++lo; }
-        while (lo < hi-1 && r[hi-1] == v) { --hi; }
-        return { lo, hi };
-    }
-
     template<std::ranges::random_access_range R, typename T = typename std::remove_cvref_t<R>::value_type, size_t D = std::numeric_limits<T>::digits>
     requires std::is_integral_v<T>
     inline auto SetBit(R&& r, int i)
@@ -62,24 +53,23 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     int const m = static_cast<int>(pop.front().Size());
 
     // bitset block type
-    using Block = uint64_t;
-    auto constexpr ONES = ~Block{0};
-    auto constexpr ZEROS = Block{0};
+    auto constexpr ONES = ~uint64_t{0};
+    auto constexpr ZEROS = uint64_t{0};
 
     // constants
-    size_t constexpr DIGITS{std::numeric_limits<Block>::digits};
+    size_t constexpr DIGITS{std::numeric_limits<uint64_t>::digits};
     size_t const nb{n / DIGITS + static_cast<size_t>(n % DIGITS != 0)};
     size_t const ub = DIGITS * nb - n; // unused bit region (must be zeroed)
 
-    using Span = std::span<Block>;
-    std::vector<std::pair<int, int>> bounds(n); // vector of ranges keeping track of the first/last non-zero blocks
+    using Span = std::span<uint64_t>;
+    std::vector<int> bs(n);
 
     // initialization
-    auto aux = detail::MakeUnique<Block[]>(nb, ONES);
-    std::span<Block> q(aux.get(), nb);
+    auto aux = detail::MakeUnique<uint64_t[]>(nb, ONES); // NOLINT
+    std::span<uint64_t> q(aux.get(), nb);
     q[nb-1] >>= ub; // zero unused region
 
-    auto bits = detail::MakeUnique<Block[]>(nb * n);
+    auto bits = detail::MakeUnique<uint64_t[]>(nb * n); // NOLINT
     std::vector<int> indices(n);
 
     auto b = 0; // current non-zero block
@@ -89,17 +79,17 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
         b += static_cast<int>(q[i / DIGITS] == 0); // advance lower bound when a block becomes zero
         Span s{bits.get() + i * nb, nb};
         std::copy(q.begin() + b, q.end(), s.begin() + b); // initialize bitset with q
-        bounds[i] = { b, nb }; // NOLINT
+        bs[i] = b;
     }
 
-    std::vector<std::unique_ptr<Block[]>> ranksets;
-    ranksets.push_back(detail::MakeUnique<Block[]>(nb, ONES)); // vector of sets keeping track of individuals whose rank was updated
-    ranksets.back().get()[nb-1] >>= ub; // zero unused region
+    std::vector<std::unique_ptr<uint64_t[]>> rs; // NOLINT
+    rs.push_back(detail::MakeUnique<uint64_t[]>(nb, ONES)); // vector of sets keeping track of individuals whose rank was updated NOLINT
+    rs.back().get()[nb-1] >>= ub; // zero unused region
     std::vector<int> rank(n, 0); // individual ranks (initially, all zero)
     Operon::Less cmp{};
 
     std::vector<Operon::Scalar> values(n);
-    cppsort::stable_adapter<cppsort::pdq_sorter> sorter;
+    cppsort::merge_sorter sorter;
 
     for (auto obj = 1; obj < m; ++obj) {
         std::transform(pop.begin(), pop.end(), values.begin(), [obj](auto const& ind) { return ind[obj]; });
@@ -112,11 +102,11 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
 
             if (i == indices.back()) {
                 // last individual cannot dominate anyone else
-                std::get<0>(bounds[i]) = std::get<1>(bounds[i]);
+                bs[i] = static_cast<int>(nb);
                 continue;
             }
-            auto [lo, hi] = bounds[i]; // get bounds
-            if (lo == hi) { continue; }
+            auto b = bs[i];
+            if (b == nb) { continue; }
 
             // compute the intersections of the dominance sets (most runtime intensive part)
             Span s{bits.get() + i * nb, nb};
@@ -124,21 +114,22 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
                 auto* ss = s.data();
                 auto* qq = q.data();
 
-                for (auto j = lo; j < hi; ++j) {
+                for (auto j = b; j < static_cast<int>(nb); ++j) {
                     s[j] &= q[j];
+                    b += !s[j]; // update lower bound in the same loop NOLINT
                 }
-                bounds[i] = detail::TightenBounds(s, lo, hi, ZEROS);              // update bounds
+                bs[i] = b;
             }
 
             if (obj == m-1) {
                 // if we're at the last objective, we can update the ranks
-                if (rank[i] + 1UL == ranksets.size()) {                         // new rankset if necessary
-                    ranksets.push_back(detail::MakeUnique<Block[]>(nb, ZEROS)); // NOLINT
+                if (rank[i] + 1UL == rs.size()) {                         // new rankset if necessary
+                    rs.push_back(detail::MakeUnique<uint64_t[]>(nb, ZEROS)); // NOLINT
                 }
-                auto* curr = (ranksets.begin() + rank[i])->get();               // the pareto front of the current individual
-                auto* next = (ranksets.begin() + rank[i] + 1)->get();           // next (worse) pareto front
+                auto* curr = (rs.begin() + rank[i])->get();               // the pareto front of the current individual
+                auto* next = (rs.begin() + rank[i] + 1)->get();           // next (worse) pareto front
 
-                for (auto j = lo; j != hi; ++j) {                               // iterate over bitset blocks
+                for (auto j = b; j != static_cast<int>(nb); ++j) {              // iterate over bitset blocks
                     auto v = s[j] & curr[j];                                    // final set as intersection of dominance set and rank set
                     curr[j] &= ~v;                                              // remove intersection result from current rank set
                     next[j] |= v;                                               // add intersection result to next rank set
