@@ -14,7 +14,7 @@
           inherit system;
           overlays = [ foolnotion.overlay ];
         };
-        operon = pkgs.gcc12Stdenv.mkDerivation {
+        operon = pkgs.stdenv.mkDerivation {
           name = "operon";
           src = self;
 
@@ -39,7 +39,7 @@
             openlibm
             pkg-config
             pratt-parser.defaultPackage.${system}
-            vstat.defaultPackage.${system}
+            vstat.packages.${system}.default
             # foolnotion overlay 
             aria-csv
             fast_float
@@ -56,7 +56,7 @@
         packages.${system}.default = operon;
         defaultPackage = operon; 
 
-        devShell = pkgs.gcc12Stdenv.mkDerivation {
+        devShell = pkgs.stdenv.mkDerivation {
           name = "operon-env";
           hardeningDisable = [ "all" ];
           impureUseNativeOptimizations = true;
@@ -80,7 +80,7 @@
 
           shellHook = ''
             LD_LIBRARY_PATH=${
-              pkgs.lib.makeLibraryPath [ pkgs.gcc12Stdenv.cc.cc.lib ]
+              pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]
             };
             alias bb="cmake --build build -j"
           '';
