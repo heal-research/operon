@@ -71,7 +71,7 @@ struct GenericInterpreter {
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> Values;
             std::optional<Callable const> Func;
 
-            NodeMeta(T param, decltype(Values) values, decltype(Func) func)
+            NodeMeta(T param, decltype(Values) values, decltype(Func) func) // NOLINT
                 : Param(param), Values(values), Func(func)
             {
             }

@@ -18,16 +18,12 @@ namespace Operon {
             std::vector<size_t> front;
 
             for (size_t i = 0; i < pop.size(); ++i) {
-                ++Stats.InnerOps;
                 if (!dominatedOrSorted(i)) {
                     for (size_t j = i + 1; j < pop.size(); ++j) {
-                        ++Stats.InnerOps;
                         if (!dominatedOrSorted(j)) {
-                            ++Stats.DominanceComparisons;
                             auto const& lhs = pop[i];
                             auto const& rhs = pop[j];
                             auto res = ParetoDominance{}(lhs.Fitness, rhs.Fitness, eps);
-
                             dominated[i] = (res == Dominance::Right);
                             dominated[j] = (res == Dominance::Left);
 
@@ -49,5 +45,4 @@ namespace Operon {
         }
         return fronts;
     }
-
-}
+} // namespace Operon

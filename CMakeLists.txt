@@ -44,11 +44,13 @@ add_library(
     source/algorithms/nsga2.cpp
     source/core/dataset.cpp
     source/core/distance.cpp
-    source/core/format.cpp
     source/core/node.cpp
     source/core/pset.cpp
     source/core/tree.cpp
     source/core/version.cpp
+    source/formatter/infix.cpp
+    source/formatter/postfix.cpp
+    source/formatter/tree.cpp
     source/hash/hash.cpp
     source/hash/metrohash64.cpp
     source/operators/creator/balanced.cpp

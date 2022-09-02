@@ -2,21 +2,31 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include "operon/operators/non_dominated_sorter.hpp"
-#include "operon/collections/bitset.hpp"
 #include "operon/core/individual.hpp"
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 namespace Operon {
 
 namespace detail {
-    constexpr int INSERTIONSORT = 7;
+    inline auto CountTrailingZeros(uint64_t value) {
+#if defined(_MSC_VER)
+        int result;
+        return _BitScanForward(&result, value);
+        return result;
+#else
+        return __builtin_ctzl(value);
+#endif
+    }
 
     class BitsetManager {
         using word_t = uint64_t; // NOLINT
 
         static constexpr size_t FIRST_WORD_RANGE = 0;
         static constexpr size_t LAST_WORD_RANGE = 1;
-        static constexpr size_t N_BIT_ADDR = 6; // 2^6 = 64
-        static constexpr word_t WORD_MASK = ~word_t { 0 };
+        static constexpr word_t WORD_MASK = ~word_t{0};
         static constexpr size_t WORD_SIZE = std::numeric_limits<word_t>::digits;
 
         std::vector<std::vector<word_t>> bitsets_;
@@ -80,7 +90,7 @@ namespace detail {
             for (; fw <= lw; fw++) {
                 word = bitsets_[solutionId][fw] & incrementalBitset_[fw];
                 if (word != 0) {
-                    i = static_cast<int>(Bitset<>::CountTrailingZeros(static_cast<word_t>(word)));
+                    i = detail::CountTrailingZeros(static_cast<word_t>(word));
                     offset = static_cast<size_t>(fw) * WORD_SIZE;
                     do {
                         if (ranking_[offset + i] >= rank) {
@@ -88,7 +98,7 @@ namespace detail {
                         }
                         i++;
                         word_t w = word >> i; // NOLINT
-                        i += static_cast<bool>(w) ? Bitset<>::CountTrailingZeros(w) : WORD_SIZE;
+                        i += static_cast<bool>(w) ? detail::CountTrailingZeros(w) : WORD_SIZE;
                     } while (i < WORD_SIZE && rank <= wordRanking_[fw]);
                     if (rank > maxRank_) {
                         maxRank_ = rank;
@@ -98,7 +108,7 @@ namespace detail {
             }
             ranking_[solutionId] = rank;
             ranking0_[initSolId] = rank;
-            i = solutionId >> N_BIT_ADDR;
+            i = solutionId / WORD_SIZE;
             if (rank > wordRanking_[i]) {
                 wordRanking_[i] = rank;
             }
@@ -106,30 +116,26 @@ namespace detail {
 
         void UpdateIncrementalBitset(size_t solutionId)
         {
-            auto wordIndex = solutionId >> N_BIT_ADDR;
-            //int shiftDistance = solutionId & 0x3f;
-            auto shiftDistance = solutionId;
-            incrementalBitset_[wordIndex] |= (word_t { 1 } << shiftDistance);
+            auto wordIndex = solutionId / WORD_SIZE;
+            incrementalBitset_[wordIndex] |= (word_t{1} << solutionId);
             if (incBsLstWord_ < wordIndex) {
                 incBsLstWord_ = static_cast<int>(wordIndex);
             }
             if (incBsFstWord_ > wordIndex) {
-                incBsFstWord_ = static_cast<int>(wordIndex);
+                incBsFstWord_ = wordIndex;
             }
         }
 
         auto InitializeSolutionBitset(size_t solutionId) -> bool
         {
-            //int const shiftDistance = solutionId & 0x3f;
-            auto const shiftDistance = solutionId;
-            auto wordIndex = solutionId >> N_BIT_ADDR;
+            auto wordIndex = solutionId / WORD_SIZE;
             if (wordIndex < incBsFstWord_ || 0 == solutionId) {
                 bsRanges_[solutionId][FIRST_WORD_RANGE] = std::numeric_limits<int>::max();
                 return false;
-            } 
+            }
             if (wordIndex == incBsFstWord_) { //only 1 word in common
                 bitsets_[solutionId] = std::vector<word_t>(wordIndex + 1);
-                auto intersection = incrementalBitset_[incBsFstWord_] & ~(WORD_MASK << shiftDistance);
+                auto intersection = incrementalBitset_[incBsFstWord_] & ~(WORD_MASK << solutionId);
                 if (intersection != 0) {
                     bsRanges_[solutionId][FIRST_WORD_RANGE] = wordIndex;
                     bsRanges_[solutionId][LAST_WORD_RANGE] = wordIndex;
@@ -142,10 +148,9 @@ namespace detail {
             bsRanges_[solutionId][FIRST_WORD_RANGE] = incBsFstWord_;
             bsRanges_[solutionId][LAST_WORD_RANGE] = lw;
             bitsets_[solutionId] = std::vector<word_t>(lw + 1);
-            std::copy_n(incrementalBitset_.begin() + std::make_signed_t<size_t>(incBsFstWord_), lw - incBsFstWord_ + 1,
-                    bitsets_[solutionId].begin() + std::make_signed_t<size_t>(incBsFstWord_));
+            std::copy_n(incrementalBitset_.data() + incBsFstWord_, lw - incBsFstWord_ + 1, bitsets_[solutionId].data() + incBsFstWord_);
             if (incBsLstWord_ >= wordIndex) { // update (compute intersection) the last word
-                bitsets_[solutionId][lw] = incrementalBitset_[lw] & ~(WORD_MASK << shiftDistance);
+                bitsets_[solutionId][lw] = incrementalBitset_[lw] & ~(WORD_MASK << solutionId);
                 if (bitsets_[solutionId][lw] == 0) {
                     bsRanges_[solutionId][LAST_WORD_RANGE]--;
                 }
@@ -166,14 +171,12 @@ namespace detail {
         // constructor
         explicit BitsetManager(size_t nSolutions) : incBsFstWord_(std::numeric_limits<int>::max())
         {
-            auto n = nSolutions - 1;
-            size_t wordIndex = static_cast<int>(n >> N_BIT_ADDR);
             ranking_.resize(nSolutions, 0);
             ranking0_.resize(nSolutions, 0);
             wordRanking_.resize(nSolutions, 0);
             bitsets_.resize(nSolutions);
             bsRanges_.resize(nSolutions);
-            incrementalBitset_.resize(wordIndex + 1);
+            incrementalBitset_.resize(nSolutions / WORD_SIZE + (nSolutions % WORD_SIZE != 0));
         }
     };
 
@@ -190,52 +193,12 @@ namespace detail {
         }
         return 0;
     }
-
-    inline auto MergeSort(std::vector<std::vector<Operon::Scalar>>& src, std::vector<std::vector<Operon::Scalar>>& dest, size_t low, size_t high, size_t obj, size_t toObj, Operon::Scalar eps) -> bool
-    {
-        size_t i{0};
-        size_t j{0};
-        size_t s{0};
-        size_t destLow = low;
-        size_t length = high - low;
-
-        if (length < INSERTIONSORT) {
-            bool alreadySorted { true };
-            for (i = low; i < high; i++) {
-                for (j = i; j > low && CompareLex(dest[j - 1], dest[j], obj, toObj, eps) > 0; j--) {
-                    alreadySorted = false;
-                    dest[j].swap(dest[j - 1]);
-                }
-            }
-            return alreadySorted; // if temp==null, src is already sorted
-        }
-        size_t mid = (low + high) / 2;
-        bool isSorted = MergeSort(dest, src, low, mid, obj, toObj, eps) & MergeSort(dest, src, mid, high, obj, toObj, eps); // NOLINT
-
-        // If list is already sorted, just copy from src to dest.
-        if (src[mid - 1][obj] <= src[mid][obj]) {
-            std::copy_n(src.begin() + static_cast<int64_t>(low), length, dest.begin() + static_cast<int64_t>(destLow));
-            return isSorted;
-        }
-
-        for (s = low, i = low, j = mid; s < high; s++) {
-            if (j >= high) { // NOLINT
-                dest[s] = src[i++];
-            } else if (i < mid && CompareLex(src[i], src[j], obj, toObj, eps) <= 0) {
-                dest[s] = src[i++];
-            } else {
-                dest[s] = src[j++];
-            }
-        }
-        return false;
-    }
-
 } // namespace detail
 
     auto
     MergeSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result {
         auto n = pop.size();
-        auto m = pop.front().Size(); 
+        auto m = pop.front().Size();
         detail::BitsetManager bsm(n);
 
         std::vector<int> ranking;
@@ -258,9 +221,7 @@ namespace detail {
 
         size_t solutionId{0};
         bool dominance{false};
-        work = population;
-        detail::MergeSort(population, work, 0, n, 1, 2, eps);
-        population = work;
+        std::stable_sort(population.begin(), population.end(), [&](auto const& a, auto const& b) { return Operon::Less{}(a[1], b[1]); });
         for (decltype(n) p = 0; p < n; p++) {
             solutionId = static_cast<size_t>(population[p][sortIndex]);
             dominance |= bsm.InitializeSolutionBitset(solutionId);
@@ -276,16 +237,7 @@ namespace detail {
             decltype(m) lastObjective = m - 1;
             work = population;
             for (auto obj = 2UL; obj < m; obj++) {
-                if (detail::MergeSort(population, work, 0, n, obj, obj + 1UL, eps)) {
-                    // Population has the same order as in previous objective
-                    if (obj == lastObjective) {
-                        for (decltype(n) p = 0; p < n; p++) {
-                            bsm.ComputeSolutionRanking(static_cast<int>(population[p][sortIndex]), static_cast<int>(population[p][solId]));
-                        }
-                    }
-                    continue;
-                }
-                population = work;
+                std::stable_sort(population.begin(), population.end(), [&](auto const& a, auto const& b) { return Operon::Less{}(a[obj], b[obj]); });
                 bsm.ClearIncrementalBitset();
                 dominance = false;
                 for (decltype(n) p = 0; p < n; p++) {

@@ -120,7 +120,7 @@ auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const&
     std::vector<size_t> widths;
     auto out = fmt::memory_buffer();
     for (auto const& [name, value, format] : stats) {
-        fmt::format_to(std::back_inserter(out), fmt::format("{{{}}}", format), value);
+        fmt::format_to(std::back_inserter(out), fmt::runtime(fmt::format("{{{}}}", format)), value);
         auto width = std::max(name.size(), fmt::to_string(out).size());
         widths.push_back(width);
         out.clear();
@@ -132,7 +132,7 @@ auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const&
         fmt::print("\n");
     }
     for (auto i = 0UL; i < stats.size(); ++i) {
-        fmt::format_to(std::back_inserter(out), fmt::format("{{{}}}", std::get<2>(stats[i])), std::get<1>(stats[i]));
+        fmt::format_to(std::back_inserter(out), fmt::runtime(fmt::format("{{{}}}", std::get<2>(stats[i]))), std::get<1>(stats[i]));
         fmt::print("{} ", fmt::format("{:>{}}", fmt::to_string(out), widths[i]));
         out.clear();
     }

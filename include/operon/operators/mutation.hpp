@@ -9,12 +9,12 @@
 #include "operon/core/operator.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
+#include "operon/core/variable.hpp"
 
 namespace Operon {
 
 struct CoefficientInitializerBase;
 struct CreatorBase;
-struct Variable;
 
 // the mutator can work in place or return a copy (child)
 struct MutatorBase : public OperatorBase<Tree, Tree> {

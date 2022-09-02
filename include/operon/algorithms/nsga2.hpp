@@ -5,7 +5,6 @@
 #define OPERON_NSGA2_HPP
 
 #include <functional>                      // for reference_wrapper, function
-#include <nonstd/span.hpp>                 // for span<>::pointer
 #include <operon/operon_export.hpp>        // for OPERON_EXPORT
 #include <thread>                          // for thread
 #include <utility>                         // for move
@@ -67,6 +66,7 @@ public:
 
     [[nodiscard]] auto Parents() const -> Operon::Span<Individual const> { return { parents_.data(), parents_.size() }; }
     [[nodiscard]] auto Offspring() const -> Operon::Span<Individual const> { return { offspring_.data(), offspring_.size() }; }
+    [[nodiscard]] auto Individuals() const -> Operon::Vector<Operon::Individual> const& { return individuals_; }
     [[nodiscard]] auto Best() const -> Operon::Span<Individual const> { return { best_.data(), best_.size() }; }
 
     [[nodiscard]] auto GetProblem() const -> const Problem& { return problem_.get(); }

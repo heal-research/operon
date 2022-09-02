@@ -6,6 +6,8 @@
 #include <Eigen/Core>
 
 namespace Operon {
+
+// rank-based non-dominated sorting - ordinal version - see https://arxiv.org/abs/2203.13654
 auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
 {
 #if EIGEN_VERSION_AT_LEAST(3, 4, 0)
@@ -30,6 +32,7 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
         std::stable_sort(p.col(i).begin(), p.col(i).end(), [&](auto a, auto b) { return cmp(buf[a], buf[b], eps); });
         r(i, p.col(i)) = Vec::LinSpaced(n, 0, n - 1);
     }
+
     // 2) save min and max positions as well as the column index for the max position
     Vec maxc(n);
     Vec maxp(n);
