@@ -53,6 +53,7 @@ add_library(
     source/formatter/tree.cpp
     source/hash/hash.cpp
     source/hash/metrohash64.cpp
+    source/interpreter/interpreter.cpp
     source/operators/creator/balanced.cpp
     source/operators/creator/koza.cpp
     source/operators/creator/ptc2.cpp
