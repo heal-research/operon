@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#ifndef OPERON_NNLS_TINY_OPTIMIZER
-#define OPERON_NNLS_TINY_OPTIMIZER
+#ifndef OPERON_OPTIMIZER_TINY_HPP
+#define OPERON_OPTIMIZER_TINY_HPP
 
 #include <Eigen/Core>
 #include "operon/interpreter/interpreter.hpp"

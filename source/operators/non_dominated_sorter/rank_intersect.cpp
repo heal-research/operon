@@ -1,94 +1,142 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#include "operon/collections/bitset.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/operators/non_dominated_sorter.hpp"
 
+#include <iostream>
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 namespace Operon {
 namespace detail {
-    template <typename T>
-    struct Item {
-        T Value;
-        size_t Index;
-    };
+    template<typename T, size_t D = std::numeric_limits<T>::digits>
+    inline auto SetBit(Operon::Span<T> r, int i)
+    {
+        r[i / D] |= (T{1} << (D - i % D));
+    }
+
+    template<typename T, size_t D = std::numeric_limits<T>::digits>
+    inline auto ResetBit(Operon::Span<T> r, int i)
+    {
+        r[i / D] &= ~(T{1} << (i % D));
+    }
+
+    template<typename T, typename X = std::remove_extent_t<T>, std::align_val_t ALIGNMENT = std::align_val_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__}>
+    inline auto MakeUnique(size_t n)
+    {
+        return std::unique_ptr<T>(new (ALIGNMENT) X[n]);
+    }
+
+    template<typename T, typename X = std::remove_extent_t<T>, std::align_val_t ALIGNMENT = std::align_val_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__}>
+    inline auto MakeUnique(size_t n, X value)
+    {
+        auto p = std::unique_ptr<T>(new (ALIGNMENT) X[n]);
+        std::fill_n(p.get(), n, value);
+        return p;
+    }
+
+    inline auto CountTrailingZeros(uint64_t value) {
+#if defined(_MSC_VER)
+        int result;
+        return _BitScanForward(&result, value);
+        return result;
+#else
+        return __builtin_ctzl(value);
+#endif
+    }
 } // namespace detail
 
+// rank-based non-dominated sorting - intersect version - see https://arxiv.org/abs/2203.13654
 auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
 {
-    size_t const n = pop.size();
-    size_t const m = pop.front().Fitness.size();
+    int const n = static_cast<int>(pop.size());
+    int const m = static_cast<int>(pop.front().Size());
 
-    using Bitset = Operon::Bitset<uint64_t>;
+    // bitset block type
+    auto constexpr ONES = ~uint64_t{0};
+    auto constexpr ZEROS = uint64_t{0};
 
-    Bitset b(n, Bitset::OneBlock);
-    std::vector<Bitset> bs(n); // vector of bitsets (one for each individual)
-    std::vector<std::pair<size_t, size_t>> br(n); // vector of ranges keeping track of the first/last non-zero blocks
-    std::vector<detail::Item<Operon::Scalar>> items(n); // these items hold the values to be sorted along with their associated index
+    // constants
+    size_t constexpr DIGITS{std::numeric_limits<uint64_t>::digits};
+    size_t const nb{n / DIGITS + static_cast<size_t>(n % DIGITS != 0)};
+    size_t const ub = DIGITS * nb - n; // unused bit region (must be zeroed)
 
-    auto const nb = b.NumBlocks();
-    for (size_t i = 0; i < n; ++i) {
-        items[i].Index = i;
-        b.Reset(i);
+    using Span = Operon::Span<uint64_t>;
+    std::vector<int> bs(n);
+
+    // initialization
+    auto aux = detail::MakeUnique<uint64_t[]>(nb, ONES); // NOLINT
+    Operon::Span<uint64_t> q(aux.get(), nb);
+    q[nb-1] >>= ub; // zero unused region
+
+    auto bits = detail::MakeUnique<uint64_t[]>(nb * n); // NOLINT
+    std::vector<int> indices(n);
+
+    auto b = 0; // current non-zero block
+    for (auto i = 0; i < n; ++i) {
+        indices[i] = i;
+        detail::ResetBit(q, i); // reset bit i
+        b += static_cast<int>(q[i / DIGITS] == 0); // advance lower bound when a block becomes zero
+        Span s{bits.get() + i * nb, nb};
+        std::copy(q.begin() + b, q.end(), s.begin() + b); // initialize bitset with q
         bs[i] = b;
-        br[i] = { 0, nb - 1 };
     }
-    std::vector<Bitset> rk; // vector of sets keeping track of individuals whose rank was updated
-    rk.emplace_back(n, Bitset::OneBlock);
 
-    std::vector<size_t> rank(n, 0);
+    std::vector<std::unique_ptr<uint64_t[]>> rs; // NOLINT
+    rs.push_back(detail::MakeUnique<uint64_t[]>(nb, ONES)); // vector of sets keeping track of individuals whose rank was updated NOLINT
+    rs.back().get()[nb-1] >>= ub; // zero unused region
+    std::vector<int> rank(n, 0); // individual ranks (initially, all zero)
+    Operon::Less cmp{};
 
-    auto cmp = [eps](auto a, auto b) { return Operon::Less{}(a.Value, b.Value, eps); };
+    std::vector<Operon::Scalar> values(n);
 
-    for (size_t k = 1; k < m; ++k) {
-        for (auto& item : items) {
-            item.Value = pop[item.Index][k];
-        }
-        std::stable_sort(items.begin(), items.end(), cmp);
-        b.Fill(Bitset::OneBlock);
+    for (auto obj = 1; obj < m; ++obj) {
+        std::transform(pop.begin(), pop.end(), values.begin(), [obj](auto const& ind) { return ind[obj]; });
+        std::stable_sort(indices.begin(), indices.end(), [&](auto i, auto j) { return values[i] < values[j]; });
+        std::fill(q.begin(), q.end(), ONES); // reset q bitset to all ones
+        q[nb-1] >>= ub; // zero unused region
 
-        for (auto [_, i] : items) {
-            b.Reset(i);
-            auto [lo, hi] = br[i];
-            if (lo > hi) {
+        for (auto i : indices) {
+            detail::ResetBit(q, i); // reset bit i
+
+            if (i == indices.back()) {
+                // last individual cannot dominate anyone else
+                bs[i] = static_cast<int>(nb);
                 continue;
             }
+            auto b = bs[i];
+            if (b == nb) { continue; }
 
-            auto* p = bs[i].Data();
-            auto const* q = b.Data();
+            // compute the intersections of the dominance sets (most runtime intensive part)
+            Span s{bits.get() + i * nb, nb};
+            if (i != indices.front()) {
+                auto* ss = s.data();
+                auto* qq = q.data();
 
-            // tighten the bounds around empty blocks
-            while (lo <= hi && !(p[lo] & q[lo])) {
-                ++lo;
-            } // NOLINT
-            while (lo <= hi && !(p[hi] & q[hi])) {
-                --hi;
-            } // NOLINT
-            br[i] = { lo, hi };
-
-            if (k < m - 1) {
-                // perform the set intersection
-                for (size_t j = lo; j <= hi; ++j) {
-                    p[j] &= q[j];
+                for (auto j = b; j < static_cast<int>(nb); ++j) {
+                    s[j] &= q[j];
+                    b += !s[j]; // update lower bound in the same loop NOLINT
                 }
-            } else {
-                auto rnk = rank[i];
-                if (rnk + 1UL == rk.size()) {
-                    rk.emplace_back(n, Bitset::ZeroBlock);
+                bs[i] = b;
+            }
+
+            if (obj == m-1) {
+                // if we're at the last objective, we can update the ranks
+                if (rank[i] + 1UL == rs.size()) {                         // new rankset if necessary
+                    rs.push_back(detail::MakeUnique<uint64_t[]>(nb, ZEROS)); // NOLINT
                 }
-                auto* r = rk[rnk].Data();
-                auto* s = rk[rnk + 1].Data();
+                auto* curr = (rs.begin() + rank[i])->get();               // the pareto front of the current individual
+                auto* next = (rs.begin() + rank[i] + 1)->get();           // next (worse) pareto front
 
-                for (size_t j = lo; j <= hi; ++j) {
-                    auto v = p[j] & q[j] & r[j]; // obtain the dominance set
-                    r[j] &= ~v; // remove dominated individuals from current rank set
-                    s[j] |= v; // add the individuals to the next rank set
-
-                    auto o = Bitset::BlockSize * j;
-                    while (v) {
-                        auto x = o + Bitset::CountTrailingZeros(v);
-                        v &= (v - 1);
-                        ++rank[x];
+                for (auto j = b; j != static_cast<int>(nb); ++j) {              // iterate over bitset blocks
+                    auto v = s[j] & curr[j];                                    // final set as intersection of dominance set and rank set
+                    curr[j] &= ~v;                                              // remove intersection result from current rank set
+                    next[j] |= v;                                               // add intersection result to next rank set
+                    for (; v != 0; v &= (v - 1)) {                              // iterate over set bits of v
+                        ++rank[j * DIGITS + detail::CountTrailingZeros(v)];               // increment rank
                     }
                 }
             }
@@ -96,7 +144,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     }
 
     std::vector<std::vector<size_t>> fronts;
-    fronts.resize(*std::max_element(rank.begin(), rank.end()) + 1);
+    fronts.resize(*std::max_element(rank.begin(), rank.end()) + 1UL);
     for (size_t i = 0UL; i < n; ++i) {
         fronts[rank[i]].push_back(i);
     }

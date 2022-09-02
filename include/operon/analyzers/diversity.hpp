@@ -44,7 +44,6 @@ public:
                 [&](auto i) { return MakeHashes(pop[i], M); });
 
         vstat::univariate_accumulator<double> acc;
-
         for (auto i = 0UL; i < pop.size() - 1; ++i) {
             for (auto j = i+1; j < pop.size(); ++j) {
                 acc(Operon::Distance::Jaccard(hashes[i], hashes[j]));
