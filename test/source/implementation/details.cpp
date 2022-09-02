@@ -24,11 +24,6 @@ namespace Operon::Test {
         CHECK(std::is_standard_layout_v<Operon::Node>);
     }
 
-    TEST_CASE("Node is pod" * dt::test_suite("[detail]"))
-    {
-        CHECK(std::is_pod_v<Operon::Node>);
-    }
-
     TEST_CASE("Node is small" * dt::test_suite("[detail]"))
     {
         // this test case basically wants to ensure that,
