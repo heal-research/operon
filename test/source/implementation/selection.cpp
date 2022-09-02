@@ -5,7 +5,7 @@
 #include <catch2/catch.hpp>
 
 #include "operon/core/dataset.hpp"
-#include "operon/core/format.hpp"
+#include "operon/formatter/formatter.hpp"
 #include "operon/core/grammar.hpp"
 #include "operon/core/stats.hpp"
 #include "operon/operators/creator.hpp"

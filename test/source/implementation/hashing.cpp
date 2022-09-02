@@ -9,7 +9,7 @@
 #include "operon/core/dataset.hpp"
 #include "operon/core/distance.hpp"
 #include "operon/core/operator.hpp"
-#include "operon/core/format.hpp"
+#include "operon/formatter/formatter.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/variable.hpp"
 #include "operon/hash/hash.hpp"
@@ -24,7 +24,7 @@ void CalculateDistance(std::vector<Tree>& trees, const std::string& name) {
 
     for (auto& t : trees) {
         Operon::Vector<Operon::Hash> hh(t.Length());
-        t.Hash(Operon::HashMode::Strict);
+        (void) t.Hash(Operon::HashMode::Strict);
         std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
         std::sort(hh.begin(), hh.end());
         treeHashes.push_back(hh);
@@ -34,8 +34,7 @@ void CalculateDistance(std::vector<Tree>& trees, const std::string& name) {
 
     for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
         for (size_t j = i + 1; j < treeHashes.size(); ++j) {
-            auto d = Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]);
-            acc(d);
+            acc( Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]) );
         }
     }
     vstat::univariate_statistics stats(acc);
@@ -58,8 +57,7 @@ void CalculateDistanceWithSort(std::vector<Tree>& trees, const std::string& name
 
     for (size_t i = 0; i < treeHashes.size() - 1; ++i) {
         for (size_t j = i + 1; j < treeHashes.size(); ++j) {
-            auto d = Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]);
-            acc(d);
+            acc( Operon::Distance::Jaccard(treeHashes[i], treeHashes[j]) );
         }
     }
 
@@ -143,8 +141,7 @@ TEST_CASE("Hash collisions") {
     std::transform(indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::RandomGenerator rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
-        tree.Hash(Operon::HashMode::Strict);
-        return tree;
+        return tree.Hash(Operon::HashMode::Strict);
     });
 
     std::unordered_set<uint64_t> set64;
