@@ -13,8 +13,12 @@ namespace Operon {
 namespace detail {
     inline auto CountTrailingZeros(uint64_t value) {
 #if defined(_MSC_VER)
-        int result;
-        return _BitScanForward(&result, value);
+        unsigned long result;
+    #if defined(_M_X64)
+        _BitScanForward64(&result, value);
+    #else
+        _BitScanForward(&result, value);
+    #endif
         return result;
 #else
         return __builtin_ctzl(value);

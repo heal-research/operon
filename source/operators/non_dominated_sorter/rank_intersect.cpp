@@ -5,6 +5,7 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 
 #include <iostream>
+#include <new>
 
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -24,24 +25,41 @@ namespace detail {
         r[i / D] &= ~(T{1} << (i % D));
     }
 
-    template<typename T, typename X = std::remove_extent_t<T>, std::align_val_t ALIGNMENT = std::align_val_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__}>
-    inline auto MakeUnique(size_t n)
+    template<typename T, std::align_val_t A = std::align_val_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__}>
+    inline auto AlignedNew(std::size_t count)
     {
-        return std::unique_ptr<T>(new (ALIGNMENT) X[n]);
+        return static_cast<T*>(::operator new[](count * sizeof(T), A));
     }
 
-    template<typename T, typename X = std::remove_extent_t<T>, std::align_val_t ALIGNMENT = std::align_val_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__}>
-    inline auto MakeUnique(size_t n, X value)
+    template<typename T, std::align_val_t A = std::align_val_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__}>
+    inline auto AlignedDelete(T* ptr)
     {
-        auto p = std::unique_ptr<T>(new (ALIGNMENT) X[n]);
+        ::operator delete[](ptr, A);
+    }
+
+    template<typename T, std::align_val_t A = std::align_val_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__}>
+    inline auto MakeUnique(size_t n)
+    {
+        using E = typename std::remove_extent_t<T>;
+        return std::unique_ptr<T, std::add_pointer_t<void(E*)>>(AlignedNew<E, A>(n), AlignedDelete<E, A>);
+    }
+
+    template<typename T, std::align_val_t A = std::align_val_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__}>
+    inline auto MakeUnique(size_t n, typename std::remove_extent_t<T> value)
+    {
+        auto p = MakeUnique<T, A>(n);
         std::fill_n(p.get(), n, value);
         return p;
     }
 
     inline auto CountTrailingZeros(uint64_t value) {
 #if defined(_MSC_VER)
-        int result;
-        return _BitScanForward(&result, value);
+        unsigned long result;
+    #if defined(_M_X64)
+        _BitScanForward64(&result, value);
+    #else
+        _BitScanForward(&result, value);
+    #endif
         return result;
 #else
         return __builtin_ctzl(value);
@@ -85,7 +103,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
         bs[i] = b;
     }
 
-    std::vector<std::unique_ptr<uint64_t[]>> rs; // NOLINT
+    std::vector<std::unique_ptr<uint64_t[], std::add_pointer_t<void(uint64_t*)>>> rs; // NOLINT
     rs.push_back(detail::MakeUnique<uint64_t[]>(nb, ONES)); // vector of sets keeping track of individuals whose rank was updated NOLINT
     rs.back().get()[nb-1] >>= ub; // zero unused region
     std::vector<int> rank(n, 0); // individual ranks (initially, all zero)

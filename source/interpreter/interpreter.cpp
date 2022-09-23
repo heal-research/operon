@@ -9,7 +9,8 @@ namespace Operon {
         tf::Executor ex(nthreads);
         tf::Taskflow tf;
         auto const s = range.Size();
-        tf.for_each_index(0UL, trees.size(), 1UL, [&](size_t i) {
+        auto const n = trees.size();
+        tf.for_each_index(decltype(n){0}, n, decltype(n){1}, [&](size_t i) {
             interpreter.Evaluate<Operon::Scalar>(trees[i], dataset, range, result.subspan(i * s, s));
         });
         ex.run(tf).wait();
