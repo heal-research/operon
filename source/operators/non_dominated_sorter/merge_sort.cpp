@@ -167,20 +167,6 @@ namespace detail {
             incrementalBitset_.resize(nSolutions / WORD_SIZE + (nSolutions % WORD_SIZE != 0));
         }
     };
-
-    inline auto CompareLex(std::vector<Operon::Scalar> const& s1, std::vector<Operon::Scalar> const& s2, size_t fromObj, size_t toObj, Operon::Scalar eps) -> int
-    {
-        Operon::Less cmp;
-        for (; fromObj < toObj; fromObj++) {
-            if (cmp(s1[fromObj], s2[fromObj], eps)) {
-                return -1;
-            }
-            if (cmp(s2[fromObj], s1[fromObj], eps)) {
-                return 1;
-            }
-        }
-        return 0;
-    }
 } // namespace detail
 
     auto
