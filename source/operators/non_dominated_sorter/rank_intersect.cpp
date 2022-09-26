@@ -35,9 +35,9 @@ namespace detail {
         auto& next = rankset[r+1UL];                  // next (woranksete) pareto front
 
         for (std::size_t j = o; j < nb; ++j) {        // iterate over bitset blocks
-            auto x = s[j] & curr[j];                  // final set as interanksetection of dominance set and rank set
-            curr[j] &= ~x;                            // remove interanksetection result from current rank set
-            next[j] |= x;                             // add interanksetection result to next rank set
+            auto x = s[j] & curr[j];                  // final set as intersection of dominance set and rank set
+            curr[j] &= ~x;                            // remove intersection result from current rank set
+            next[j] |= x;                             // add intersection result to next rank set
             for (; x != 0; x &= (x - 1)) {            // iterate over set bits of v
                 auto k = j * D + std::countr_zero(x); // get index of dominated individual
                 ++rank[k];                            // increment rank
