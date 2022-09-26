@@ -4,8 +4,7 @@
 #include "operon/core/distance.hpp"
 
 #include <eve/wide.hpp>
-#include <eve/function/any.hpp>
-#include <eve/function/reduce.hpp>
+#include <eve/algo/any_of.hpp>
 
 namespace Operon::Distance {
     namespace detail {
