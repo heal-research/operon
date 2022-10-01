@@ -42,8 +42,8 @@ namespace Operon::Test {
     {
         tf::Taskflow taskflow;
         taskflow.for_each(trees.begin(), trees.end(), [&](auto const& tree) {
-            std::unique_ptr<T> buf(new (std::align_val_t{32}) T[range.Size()]);
-            interpreter.Evaluate<T>(tree, ds, range, Operon::Span<T>{buf.get(), range.Size()});
+            std::vector<T> buf(range.Size());
+            interpreter.Evaluate<T>(tree, ds, range, Operon::Span<T>{buf.data(), buf.size()});
         });
         executor.run(taskflow).wait();
     }
@@ -282,13 +282,12 @@ namespace Operon::Test {
 
         nb::Bench b;
         b.relative(true).epochs(10).minEpochIterations(100).performanceCounters(true);
-        std::unique_ptr<Operon::Scalar> buf(new (std::align_val_t{32}) Operon::Scalar[range.Size() * n]);
-        //std::vector<Operon::Scalar> buf(range.Size() * n);
+        std::vector<Operon::Scalar> buf(range.Size() * n);
 
         Operon::Interpreter interpreter;
         std::vector<size_t> threads{ 1UL, 8UL, 16UL };
         for (auto t : threads) {
-            b.batch(TotalNodes(trees) * range.Size()).run("parallel interpreter", [&]() { Evaluate(interpreter, trees, ds, range, {buf.get(), range.Size() * n}, t); });
+            b.batch(TotalNodes(trees) * range.Size()).run("parallel interpreter", [&]() { Evaluate(interpreter, trees, ds, range, {buf.data(), range.Size() * n}, t); });
         }
     }
 

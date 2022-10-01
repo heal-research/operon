@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include <algorithm>
+#include <numeric>
 #include <doctest/doctest.h>
 
 #include "operon/core/dataset.hpp"

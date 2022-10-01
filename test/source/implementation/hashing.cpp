@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
+#include <numeric>
 #include <doctest/doctest.h>
 #include <unordered_set>
 #include <vstat/vstat.hpp>

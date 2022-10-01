@@ -5,6 +5,7 @@
 #define DIVERSITY_HPP
 
 #include <algorithm>
+#include <numeric>
 #include <unordered_set>
 #include <vstat/vstat.hpp>
 
