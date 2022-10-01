@@ -131,13 +131,10 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
             // compute the intersections of the dominance sets (most runtime intensive part)
             Span s{bits.get() + i * nb, nb};
             if (i != indices.front()) {
-                auto* ss = s.data();
-                auto* qq = q.data();
-
                 for (auto j = b; j < static_cast<int>(nb); ++j) {
                     s[j] &= q[j];
-                    b += !s[j]; // update lower bound in the same loop NOLINT
                 }
+                while (b < static_cast<int>(nb) && s[b] == ZEROS) { ++b; }
                 bs[i] = b;
             }
 
