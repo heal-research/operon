@@ -76,6 +76,7 @@
             linuxPackages.perf
             graphviz
             seer
+            hyperfine
           ]);
 
           shellHook = ''

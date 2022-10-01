@@ -11,6 +11,7 @@ if(PROJECT_IS_TOP_LEVEL)
 endif()
 
 find_package(doctest REQUIRED)
+find_package(vstat REQUIRED)
 
 add_executable(operon_test
     source/operon_test.cpp
@@ -29,12 +30,13 @@ add_executable(operon_test
     source/performance/evaluation.cpp
     source/performance/nondominatedsort.cpp
     )
-target_link_libraries(operon_test PRIVATE operon::operon doctest::doctest)
+target_link_libraries(operon_test PRIVATE operon::operon doctest::doctest vstat::vstat)
 target_compile_features(operon_test PRIVATE cxx_std_17)
 target_include_directories(operon_test PRIVATE ${PROJECT_SOURCE_DIR}/source/thirdparty)
 
 if(MSVC)
     target_compile_options(operon_test PUBLIC "/std:c++latest")
+    target_link_options(operon_test PUBLIC "/bigobj")
 else()
     target_link_options(operon_test PUBLIC "-Wl,--no-undefined")
 endif()
