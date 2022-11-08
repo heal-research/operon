@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include <doctest/doctest.h>
-#include <robin_hood.h>
 
 #include "operon/hash/hash.hpp"
 #include "operon/interpreter/interpreter.hpp"
@@ -66,7 +65,7 @@ TEST_SUITE("[implementation]")
         parsedTrees.reserve(nTrees);
 
         // map variables
-        robin_hood::unordered_flat_map<std::string, Operon::Hash> vmap;
+        Operon::Map<std::string, Operon::Hash> vmap;
         for (auto const& v : ds.Variables()) {
             vmap.insert({ v.Name, v.Hash });
         }
@@ -134,7 +133,7 @@ TEST_SUITE("[implementation]")
     {
         auto model_str = "sin((sqrt(abs(square(sin(((-0.00191) * X6))))) - sqrt(abs(((-0.96224) / (-0.40567))))))";
         auto tokens_map = InfixParser::DefaultTokens();
-        robin_hood::unordered_flat_map<std::string, Operon::Hash> vars_map;
+        Operon::Map<std::string, Operon::Hash> vars_map;
         std::unordered_map<Operon::Hash, std::string> vars_names;
         Hasher hasher;
         for (int i = 0; i < 10; ++i) {
@@ -172,7 +171,7 @@ TEST_SUITE("[implementation]")
         Dataset ds("./data/Poly-10.csv", true);
         auto s1 = InfixFormatter::Format(t, ds, 5);
         fmt::print("s1: {}\n", s1);
-        robin_hood::unordered_flat_map<std::string, Operon::Hash> vmap;
+        Operon::Map<std::string, Operon::Hash> vmap;
         auto t2 = InfixParser::Parse(s1, InfixParser::DefaultTokens(), vmap);
         auto s2 = InfixFormatter::Format(t2, ds, 5);
         fmt::print("s2: {}\n", s1);
@@ -187,7 +186,7 @@ TEST_SUITE("[implementation]")
     TEST_CASE("Parser Expr 3")
     {
         std::string const expr{"3 aq 5"};
-        robin_hood::unordered_flat_map<std::string, Operon::Hash> vmap;
+        Operon::Map<std::string, Operon::Hash> vmap;
         auto tree = InfixParser::Parse(expr, InfixParser::DefaultTokens(), vmap);
         std::unordered_map<Operon::Hash, std::string> variableNames;
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, variableNames, 2));
@@ -199,7 +198,7 @@ TEST_SUITE("[implementation]")
 
         Hasher hasher;
 
-        robin_hood::unordered_flat_map<std::string, Operon::Hash> vars_map;
+        Operon::Map<std::string, Operon::Hash> vars_map;
         std::unordered_map<Operon::Hash, std::string> vars_names;
         for (int i = 0; i < 78; ++i) {
             auto name = fmt::format("X{}", i);
@@ -219,7 +218,7 @@ TEST_SUITE("[implementation]")
 
         Hasher hasher;
 
-        robin_hood::unordered_flat_map<std::string, Operon::Hash> vars_map;
+        Operon::Map<std::string, Operon::Hash> vars_map;
         std::unordered_map<Operon::Hash, std::string> vars_names;
 
         auto tokens_map = InfixParser::DefaultTokens();
@@ -282,7 +281,7 @@ TEST_SUITE("[performance]")
         std::transform(trees.begin(), trees.end(), std::back_inserter(treeStrings), [&](auto const& tree) { return InfixFormatter::Format(tree, ds, 30); });
 
         // map dataset variables for parsing
-        robin_hood::unordered_map<std::string, Operon::Hash> map;
+        Operon::Map<std::string, Operon::Hash> map;
         for (auto const& v : ds.Variables()) {
             map.insert({ v.Name, v.Hash });
         }
