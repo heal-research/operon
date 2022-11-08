@@ -55,7 +55,7 @@ auto main(int argc, char** argv) -> int
     Operon::Dataset ds(result["dataset"].as<std::string>(), /*hasHeader=*/true);
     auto infix = result.unmatched().front();
     auto tmap = Operon::InfixParser::DefaultTokens();
-    robin_hood::unordered_flat_map<std::string, Operon::Hash> vmap;
+    Operon::Map<std::string, Operon::Hash> vmap;
     for (auto const& v : ds.Variables()) {
         vmap.insert({ v.Name, v.Hash });
     }

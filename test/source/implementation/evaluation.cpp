@@ -28,7 +28,7 @@ TEST_CASE("Evaluation correctness")
     Interpreter interpreter;
     auto const& X = ds.Values(); // NOLINT
 
-    robin_hood::unordered_map<std::string, Operon::Hash> map;
+    Operon::Map<std::string, Operon::Hash> map;
     for (auto v : ds.Variables()) {
         fmt::print("{} : {} {}\n", v.Name, v.Hash, v.Index);
         map[v.Name] = v.Hash;
@@ -99,7 +99,7 @@ TEST_CASE("Numeric optimization")
 
     auto tmap = InfixParser::DefaultTokens();
 
-    robin_hood::unordered_map<std::string, Operon::Hash> map;
+    Operon::Map<std::string, Operon::Hash> map;
     for (auto v : ds.Variables()) {
         fmt::print("{} : {}\n", v.Name, v.Hash);
         map[v.Name] = v.Hash;
