@@ -84,7 +84,7 @@ find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
 find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
-find_package(robin_hood REQUIRED)
+find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
 find_package(FastFloat REQUIRED)
 find_package(cpp-sort REQUIRED)
@@ -212,9 +212,9 @@ target_link_libraries(operon_operon PUBLIC
 target_link_libraries(operon_operon PRIVATE
     FastFloat::fast_float
     Taskflow::Taskflow
-    vstat::vstat
-    robin_hood::robin_hood
     cpp-sort::cpp-sort
+    unordered_dense::unordered_dense
+    vstat::vstat
 )
 
 target_compile_features(operon_operon PUBLIC cxx_std_20)

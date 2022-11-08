@@ -241,7 +241,7 @@ public:
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
 
 private:
-    mutable robin_hood::unordered_flat_map<size_t, size_t> divmap_;
+    mutable Operon::Map<size_t, size_t> divmap_;
     mutable double total_{0}; // total count
     Operon::HashMode hashmode_;
 };
