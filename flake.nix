@@ -30,26 +30,25 @@
 
           nativeBuildInputs = with pkgs; [ cmake ];
 
-          buildInputs = with pkgs; [
+          buildInputs = (with pkgs; [
+            aria-csv
+            cpp-sort
             cxxopts
             doctest
             eigen
+            fast_float
             fmt_8
             git
             openlibm
             pkg-config
-            pratt-parser.defaultPackage.${system}
-            vstat.packages.${system}.default
-            # foolnotion overlay 
-            aria-csv
-            fast_float
-            robin-hood-hashing
+            pratt-parser.packages.${system}.default
             scnlib
-            span-lite
             taskflow
+            unordered_dense
             vectorclass
-            xxhash
-          ];
+            vstat.packages.${system}.default
+            xxHash
+          ]);
         };
 
       in rec {

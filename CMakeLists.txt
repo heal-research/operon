@@ -84,8 +84,8 @@ find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
 find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
-find_package(robin_hood REQUIRED)
 find_package(span-lite REQUIRED)
+find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
 
 find_package(vectorclass)
@@ -219,8 +219,9 @@ target_link_libraries(operon_operon PUBLIC
 target_link_libraries(operon_operon PRIVATE
     FastFloat::fast_float
     Taskflow::Taskflow
+    unordered_dense::unordered_dense
     vstat::vstat
-    )
+)
 
 target_compile_features(operon_operon PUBLIC cxx_std_17)
 set_target_properties(operon_operon PROPERTIES POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})

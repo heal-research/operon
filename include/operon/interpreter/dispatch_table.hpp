@@ -7,7 +7,6 @@
 #include <Eigen/Dense>
 #include <fmt/core.h>
 #include <optional>
-#include <robin_hood.h>
 #include <cstddef>
 #include <tuple>
 
@@ -200,7 +199,7 @@ struct DispatchTable {
     using Callable = detail::Callable<T>;
 
     using Tuple    = std::tuple<Callable<Ts>...>;
-    using Map      = robin_hood::unordered_flat_map<Operon::Hash, Tuple>;
+    using Map      = Operon::Map<Operon::Hash, Tuple>;
 
 private:
     Map map_;
@@ -232,9 +231,9 @@ public:
         return *this;
     }
 
-    DispatchTable(Map const& map) : map_(map) { }
-    DispatchTable(Map&& map) : map_(std::move(map)) { }
-    DispatchTable(std::unordered_map<Operon::Hash, Tuple> const& map) : map_(map.begin(), map.end()) { }
+    explicit DispatchTable(Map const& map) : map_(map) { }
+    explicit DispatchTable(Map&& map) : map_(std::move(map)) { }
+    explicit DispatchTable(std::unordered_map<Operon::Hash, Tuple> const& map) : map_(map.begin(), map.end()) { }
 
     DispatchTable(DispatchTable const& other) : map_(other.map_) { }
     DispatchTable(DispatchTable &&other) noexcept : map_(std::move(other.map_)) { }
