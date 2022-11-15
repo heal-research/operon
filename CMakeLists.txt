@@ -97,22 +97,7 @@ else ()
     pkg_check_modules(vectorclass REQUIRED IMPORTED_TARGET vectorclass)
     target_link_libraries(operon_operon PRIVATE PkgConfig::vectorclass)
 endif ()
-
-find_package(xxHash)
-if (xxHash_FOUND)
-    target_link_libraries(operon_operon PRIVATE xxHash::xxhash)
-else ()
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(xxhash IMPORTED_TARGET xxhash)
-    if (NOT xxhash_FOUND)
-        pkg_check_modules(xxhash IMPORTED_TARGET libxxhash)
-    endif()
-    if(xxhash_FOUND)
-        target_link_libraries(operon_operon PRIVATE PkgConfig::xxhash)
-    else()
-        message(FATAL_ERROR "xxHash dependency could not be found.")
-    endif()
-endif ()
+find_package(xxhash_cpp REQUIRED)
 
 # ---- Optional dependencies
 set(HAVE_CERES FALSE)
@@ -206,7 +191,7 @@ target_link_libraries(operon_operon PUBLIC
     fmt::fmt
     nonstd::span-lite
     pratt-parser::pratt-parser
-    )
+)
 
 target_link_libraries(operon_operon PRIVATE
     AriaCsvParser::AriaCsvParser
@@ -214,6 +199,7 @@ target_link_libraries(operon_operon PRIVATE
     Taskflow::Taskflow
     unordered_dense::unordered_dense
     vstat::vstat
+    xxhash_cpp::xxhash_cpp
 )
 
 target_compile_features(operon_operon PUBLIC cxx_std_17)
