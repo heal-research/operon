@@ -287,7 +287,7 @@ namespace Operon::Test {
         Operon::Interpreter interpreter;
         std::vector<size_t> threads{ 1UL, 8UL, 16UL };
         for (auto t : threads) {
-            b.batch(TotalNodes(trees) * range.Size()).run("parallel interpreter", [&]() { Evaluate(interpreter, trees, ds, range, {buf.data(), range.Size() * n}, t); });
+            b.batch(TotalNodes(trees) * range.Size()).run("parallel interpreter", [&]() { EvaluateTrees(trees, ds, range, t); });
         }
     }
 
