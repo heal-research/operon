@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
+//
 #define ANKERL_NANOBENCH_IMPLEMENT
 #include "thirdparty/nanobench.h"
 
