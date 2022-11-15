@@ -42,6 +42,7 @@
             fast_float
             fmt_8
             git
+            mold
             openlibm
             pkg-config
             pratt-parser.packages.${system}.default
@@ -49,7 +50,7 @@
             taskflow
             unordered_dense
             vstat.packages.${system}.default
-            xxHash
+            xxhash_cpp
           ]);
         };
 
