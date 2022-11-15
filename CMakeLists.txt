@@ -83,26 +83,12 @@ find_package(FastFloat REQUIRED)
 find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
 find_package(cpp-sort REQUIRED)
+find_package(eve REQUIRED)
 find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
-
-find_package(xxHash)
-if (xxHash_FOUND)
-    target_link_libraries(operon_operon PRIVATE xxHash::xxhash)
-else ()
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(xxhash IMPORTED_TARGET xxhash)
-    if (NOT xxhash_FOUND)
-        pkg_check_modules(xxhash IMPORTED_TARGET libxxhash)
-    endif()
-    if(xxhash_FOUND)
-        target_link_libraries(operon_operon PRIVATE PkgConfig::xxhash)
-    else()
-        message(FATAL_ERROR "xxHash dependency could not be found.")
-    endif()
-endif ()
+find_package(xxhash_cpp REQUIRED)
 
 find_package(aria-csv)
 if (aria-csv_FOUND)
@@ -111,9 +97,6 @@ else()
     find_path(ARIA_CSV_INCLUDE_DIRS "aria-csv/parser.hpp")
     target_include_directories(operon_operon PRIVATE "${ARIA_CSV_INCLUDE_DIRS}")
 endif()
-
-find_package(eve REQUIRED)
-target_link_libraries(operon_operon INTERFACE eve::eve)
 
 # ---- Optional dependencies
 set(HAVE_CERES FALSE)
@@ -201,11 +184,13 @@ target_include_directories(
 if(Ceres_FOUND AND USE_CERES_NNLS)
 endif()
 
+target_link_libraries(operon_operon INTERFACE eve::eve)
+
 target_link_libraries(operon_operon PUBLIC
     Eigen3::Eigen
     Threads::Threads
     fmt::fmt
-    )
+)
 
 target_link_libraries(operon_operon PRIVATE
     Taskflow::Taskflow
@@ -213,6 +198,7 @@ target_link_libraries(operon_operon PRIVATE
     pratt-parser::pratt-parser
     unordered_dense::unordered_dense
     vstat::vstat
+    xxhash_cpp::xxhash_cpp
 )
 
 target_compile_features(operon_operon PUBLIC cxx_std_20)
