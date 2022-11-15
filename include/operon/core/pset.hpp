@@ -4,10 +4,8 @@
 #ifndef OPERON_PSET_HPP
 #define OPERON_PSET_HPP
 
-#include <robin_hood.h>
 #include "contracts.hpp"
 #include "node.hpp"
-
 
 namespace Operon {
 
@@ -20,7 +18,7 @@ class PrimitiveSet {
         >;
     enum { NODE = 0, FREQUENCY = 1, MINARITY = 2, MAXARITY = 3}; // for accessing tuple elements more easily
 
-    robin_hood::unordered_flat_map<Operon::Hash, Primitive> pset_;
+    Operon::Map<Operon::Hash, Primitive> pset_;
 
     [[nodiscard]] auto GetPrimitive(Operon::Hash hash) const -> Primitive const& {
         auto it = pset_.find(hash);
