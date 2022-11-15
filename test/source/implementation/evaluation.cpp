@@ -28,13 +28,11 @@ TEST_CASE("Evaluation correctness")
     Interpreter interpreter;
     auto const& X = ds.Values(); // NOLINT
 
-    Operon::Map<std::string, Operon::Hash> map;
+    Operon::Map<std::string, Operon::Hash> vars;
     for (auto v : ds.Variables()) {
         fmt::print("{} : {} {}\n", v.Name, v.Hash, v.Index);
-        map[v.Name] = v.Hash;
+        vars[v.Name] = v.Hash;
     }
-
-    auto tmap = InfixParser::DefaultTokens();
 
     std::vector<size_t> indices(range.Size());
     std::iota(indices.begin(), indices.end(), 0);
@@ -43,13 +41,13 @@ TEST_CASE("Evaluation correctness")
     {
         const auto eps = 1e-6;
 
-        auto tree = InfixParser::Parse("X1 + X2 + X3", tmap, map);
+        auto tree = InfixParser::Parse("X1 + X2 + X3", vars);
         auto estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
         auto res1 = X.col(0) + X.col(1) + X.col(2);
 
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res1(i)) < eps; }));
 
-        tree = InfixParser::Parse("X1 - X2 + X3", tmap, map);
+        tree = InfixParser::Parse("X1 - X2 + X3", vars);
         estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
         auto res2 = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res2(i)) < eps; }));
@@ -81,8 +79,8 @@ TEST_CASE("Evaluator")
     Operon::Evaluator ev(problem, ir, r2, /*linearScaling=*/false);
     Operon::RandomGenerator rd(1234);
 
-    std::unordered_map<std::string, Operon::Hash> vars;
-    auto t = InfixParser::ParseDefault("1 + 2 + 3", vars);
+    Operon::Map<std::string, Operon::Hash> vars;
+    auto t = InfixParser::Parse("1 + 2 + 3", vars);
     Operon::Individual ind;
     ind.Genotype = t;
     auto r = ev(rd, ind, {});
@@ -97,17 +95,15 @@ TEST_CASE("Numeric optimization")
     Interpreter interpreter;
     auto const& X = ds.Values(); // NOLINT
 
-    auto tmap = InfixParser::DefaultTokens();
-
-    Operon::Map<std::string, Operon::Hash> map;
+    Operon::Map<std::string, Operon::Hash> vars;
     for (auto v : ds.Variables()) {
         fmt::print("{} : {}\n", v.Name, v.Hash);
-        map[v.Name] = v.Hash;
+        vars[v.Name] = v.Hash;
     }
 
     Eigen::Array<Operon::Scalar, -1, 1> res = X.col(0) + X.col(1);
     Operon::Span<Operon::Scalar> target(res.data(), res.size());
-    auto tree = InfixParser::Parse("X1 + X2", tmap, map);
+    auto tree = InfixParser::Parse("X1 + X2", vars);
     for (auto& node : tree.Nodes()) {
         if (node.IsVariable()) node.Value = static_cast<Operon::Scalar>(0.0001);
     }
@@ -148,13 +144,12 @@ TEST_CASE("tiny bug")
 {
     auto ds = Dataset("../data/Pagie-1.csv", true);
     auto infix = "((((10.31296 / 4.01705) + ((-27.05388) - 23.68143)) / ((-148.00854) - ((78.81192 * Y) + ((-30.19245) * X)))) / (((((-6.40791) * Y) - (4.72377 * Y)) - (((-76.46925) * X) + 403.50482)) / (14.26075 - (-14.37711))))";
-    std::unordered_map<std::string, Operon::Hash> map;
+    Operon::Map<std::string, Operon::Hash> vars;
     for (auto const& v : ds.Variables()) {
-        map.insert({ v.Name, v.Hash });
+        vars.insert({ v.Name, v.Hash });
     }
 
-    auto tmap = InfixParser::DefaultTokens();
-    auto tree = InfixParser::Parse(infix, tmap, map);
+    auto tree = InfixParser::Parse(infix, vars);
 
     Interpreter interpreter;
 
