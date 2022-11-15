@@ -77,6 +77,14 @@ TEST_CASE("non-dominated sort performance")
         bench.render(ankerl::nanobench::templates::csv(), std::cout);;
     }
 
+    SUBCASE("RO")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        test(bench, "RO", Operon::RankOrdinalSorter{});
+        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
+    }
+
     SUBCASE("RS N=25000 M=10")
     {
         nb::Bench bench;

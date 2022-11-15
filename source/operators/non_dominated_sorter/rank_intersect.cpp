@@ -4,6 +4,7 @@
 #include "operon/core/individual.hpp"
 #include "operon/operators/non_dominated_sorter.hpp"
 #include <cpp-sort/sorters/merge_sorter.h>
+#include <iterator>
 #include <optional>
 
 namespace Operon {
@@ -32,15 +33,17 @@ namespace detail {
             rankset.push_back(std::move(p));
         }
         auto& curr = rankset[r];                      // the pareto front of the current individual
-        auto& next = rankset[r+1UL];                  // next (woranksete) pareto front
+        auto& next = rankset[r+1UL];                  // next (worse rank) pareto front
 
         for (std::size_t j = o; j < nb; ++j) {        // iterate over bitset blocks
             auto x = s[j] & curr[j];                  // final set as intersection of dominance set and rank set
+            if (x != 0) {
             curr[j] &= ~x;                            // remove intersection result from current rank set
             next[j] |= x;                             // add intersection result to next rank set
             for (; x != 0; x &= (x - 1)) {            // iterate over set bits of v
                 auto k = j * D + std::countr_zero(x); // get index of dominated individual
                 ++rank[k];                            // increment rank
+            }
             }
         }
     }
@@ -65,7 +68,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     std::size_t constexpr ZEROS{uint64_t{0}};
     std::size_t constexpr ONES{~ZEROS};
     std::size_t constexpr D{std::numeric_limits<uint64_t>::digits};
-    std::size_t const nb{n / D + static_cast<std::size_t>(n % D != 0)};
+    int const nb{static_cast<int>(n / D + static_cast<std::size_t>(n % D != 0))};
     std::size_t const ub = D * nb - n; // number of unused bits at the end of the last block (must be set to zero) 
 
     using Ptr = std::unique_ptr<uint64_t[], std::add_pointer_t<void(uint64_t*)>>; // NOLINT

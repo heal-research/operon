@@ -50,29 +50,30 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         }
         fmt::print("\n");
     };
-    
-    SUBCASE("dominance degree sort")
+
+    auto test = [&](int n, int m, auto&& sorter)
     {
-        //Eigen::Array<Operon::Scalar, -1, 1> w(6);
-        //w << 0.9218f, 0.7382f, 0.1763f, 0.4057f, 0.9355f, 0.9218f;
-        //auto c = detail::ComputeComparisonMatrix(w);
-        //std::cout << "C:\n" << c << "\n";
+        std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
+        auto pop = initializePop(rd, dist, n, m);
 
-        //decltype(w) w1(6), w2(6), w3(6);
-        //w1 << 0.9501f, 0.2311f, 0.6068f, 0.2311f, 0.8913f, 0.9501f;
-        //w2 << 0.4565f, 0.0185f, 0.8214f, 0.0185f, 0.6154f, 0.4565f;
-        //w3 << 0.9218f, 0.7382f, 0.1763f, 0.4057f, 0.9355f, 0.9218f;
-        //
-        //decltype(c) d(6, 6);
-        //auto c1 = detail::ComputeComparisonMatrix(w1); d += c1;
-        //std::cout << "C1:\n" << c << "\n";
-        //auto c2 = detail::ComputeComparisonMatrix(w2); d += c2;
-        //std::cout << "C2:\n" << c << "\n";
-        //auto c3 = detail::ComputeComparisonMatrix(w3); d += c3;
-        //std::cout << "C3:\n" << c << "\n";
+        Operon::Less less;
+        Operon::Equal eq;
 
-        //std::cout << "D:\n" << d << "\n";
-    }
+        Operon::Scalar const eps{0};
+        std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return less(lhs.Fitness, rhs.Fitness, eps); });
+        for(auto i = pop.begin(); i < pop.end(); ) {
+            i->Rank = 0;
+            auto j = i + 1;
+            for (; j < pop.end() && eq(i->Fitness, j->Fitness, eps); ++j) {
+                j->Rank = 1;
+            }
+            i = j;
+        }
+        auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) { return !ind.Rank; });
+        Operon::Span<Operon::Individual const> s(pop.begin(), r);
+
+        return sorter(s);
+    };
 
     SUBCASE("test 1")
     {
@@ -163,6 +164,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
 
     SUBCASE("test 3")
     {
+        // NOLINTBEGIN
         std::vector<std::vector<Operon::Scalar>> points = {
             { 0.79, 0.35 },
             { 0.40, 0.71 },
@@ -175,7 +177,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
             { 0.85, 0.78 },
             { 0.96, 0.83 }
         };
-
+        // NOLINTEND
 
         std::vector<Individual> pop(points.size());
         for (size_t i = 0; i < points.size(); ++i) {
@@ -198,56 +200,6 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         }
 
         print(fronts);
-
-        //fmt::print("RO\n");
-        //fronts = RankSorter::SortRank(pop);
-        //print(fronts);
-
-        //fmt::print("MNDS\n");
-        //MergeNondominatedSorter ms;
-        //fronts = ms(pop);
-        //print(fronts);
-    }
-
-    SUBCASE("six solutions")
-    {
-        Operon::Vector<Individual> pop(6);
-        pop[0].Fitness = { 4.1f, 4.1f };
-        pop[1].Fitness = { 3.1f, 5.1f };
-        pop[2].Fitness = { 2.4f, 6.0f };
-        pop[3].Fitness = { 5.3f, 1.3f };
-        pop[4].Fitness = { 4.2f, 2.0f };
-        pop[5].Fitness = { 1.8f, 3.4f };
-
-        DeductiveSorter ds;
-        auto fronts = ds(pop);
-        fmt::print("DS: {}\n", ds.Stats.DominanceComparisons);
-        print(fronts);
-
-        RankIntersectSorter rs;
-        fronts = rs(pop);
-        fmt::print("RS: {}\n", rs.Stats.RankComparisons);
-        print(fronts);
-
-        HierarchicalSorter hs;
-        fronts = hs(pop);
-        fmt::print("HS: {}\n", hs.Stats.DominanceComparisons);
-        print(fronts);
-
-        EfficientSequentialSorter es;
-        fronts = es(pop);
-        fmt::print("ENS-SS: {}\n", es.Stats.DominanceComparisons);
-        print(fronts);
-
-        EfficientBinarySorter eb;
-        fronts = eb(pop);
-        fmt::print("ENS-BS: {}\n", eb.Stats.DominanceComparisons);
-        print(fronts);
-
-        MergeSorter ms;
-        fronts = ms(pop);
-        fmt::print("ENS-BS: {}\n", ms.Stats.DominanceComparisons);
-        print(fronts);
     }
 
     SUBCASE("rank sort") {
@@ -265,10 +217,30 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
     //auto eigenMap = [](Operon::Vector<Operon::Scalar> const& fit) {
     //    return Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1, Eigen::ColMajor> const> (fit.data(), fit.size());
     //};
+    SUBCASE("MNDS")
+    {
+        size_t n = 69;
+        size_t m = 2;
+
+        auto fronts = test(n, m, MergeSorter{});
+        fmt::print("mnds\n");
+        print(fronts);
+    }
+
+    SUBCASE("RS")
+    {
+        size_t n = 69;
+        size_t m = 2;
+
+        auto fronts = test(n, m, RankIntersectSorter{});
+        fmt::print("rs\n");
+        print(fronts);
+    }
+
     SUBCASE("basic")
     {
-        size_t n = 256;
-        size_t m = 3;
+        size_t n = 7;
+        size_t m = 2;
 
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
         auto pop = initializePop(rd, dist, n, m);
@@ -276,8 +248,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         Operon::Less less;
         Operon::Equal eq;
 
-        Operon::Scalar const eps{1e-5};
-
+        Operon::Scalar const eps{0};
         std::stable_sort(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return less(lhs.Fitness, rhs.Fitness, eps); });
         for(auto i = pop.begin(); i < pop.end(); ) {
             i->Rank = 0;
@@ -290,37 +261,38 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) { return !ind.Rank; });
         Operon::Span<Operon::Individual const> s(pop.begin(), r);
 
-        auto fronts = DeductiveSorter{}(s, eps);
-        std::cout << "deductive sort\n"; 
+        //auto fronts = DeductiveSorter{}(s, eps);
+        //std::cout << "deductive sort\n"; 
+        //print(fronts);
+
+
+        auto fronts = RankOrdinalSorter{}(s, eps);
+        std::cout << "rank ordinal\n"; 
         print(fronts);
 
         fronts = RankIntersectSorter{}(s, eps);
         std::cout << "rank intersect\n"; 
         print(fronts);
 
-        fronts = RankOrdinalSorter{}(s, eps);
-        std::cout << "rank ordinal\n"; 
-        print(fronts);
-
         //fronts = FastNondominatedSorter{}(pop);
         //std::cout << "nds sort\n"; 
         //print(fronts);
 
-        fronts = HierarchicalSorter{}(s, eps);
-        std::cout << "hierarchical sort\n";
-        print(fronts);
+        //fronts = HierarchicalSorter{}(s, eps);
+        //std::cout << "hierarchical sort\n";
+        //print(fronts);
 
-        fronts = DominanceDegreeSorter{}(s, eps);
-        std::cout << "dominance degree sort\n";
-        print(fronts);
+        //fronts = DominanceDegreeSorter{}(s, eps);
+        //std::cout << "dominance degree sort\n";
+        //print(fronts);
 
-        fronts = EfficientSequentialSorter{}(s, eps);
-        std::cout << "ens-ss\n";
-        print(fronts);
+        //fronts = EfficientSequentialSorter{}(s, eps);
+        //std::cout << "ens-ss\n";
+        //print(fronts);
 
-        fronts = EfficientBinarySorter{}(s, eps);
-        std::cout << "ens-bs\n";
-        print(fronts);
+        //fronts = EfficientBinarySorter{}(s, eps);
+        //std::cout << "ens-bs\n";
+        //print(fronts);
 
         fronts = MergeSorter{}(s, eps);
         std::cout << "mnds\n";
