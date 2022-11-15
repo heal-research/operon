@@ -39,11 +39,11 @@ struct ComputeDistanceMatrix {
 TEST_CASE("Intersection performance")
 {
     size_t n = 1000;
-    size_t maxLength = 200;
+    size_t maxLength = 50;
     size_t maxDepth = 1000;
 
     Operon::RandomGenerator rd(1234);
-    auto ds = Dataset("./data/Poly-10.csv", true);
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
 
     auto target = "Y";
     auto variables = ds.Variables();

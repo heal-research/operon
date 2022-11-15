@@ -8,22 +8,7 @@
 #include <taskflow/algorithm/reduce.hpp>
 #endif
 
-#include "operon/algorithms/config.hpp"
-#include "operon/algorithms/nsga2.hpp"
-#include "operon/core/dataset.hpp"
-#include "operon/core/pset.hpp"
-#include "operon/interpreter/dispatch_table.hpp"
-#include "operon/interpreter/interpreter.hpp"
-#include "operon/operators/creator.hpp"
-#include "operon/operators/crossover.hpp"
-#include "operon/operators/evaluator.hpp"
-
-#include "nanobench.h"
-#include "operon/operators/generator.hpp"
-#include "operon/operators/initializer.hpp"
-#include "operon/operators/mutation.hpp"
-#include "operon/operators/non_dominated_sorter.hpp"
-#include "operon/operators/reinserter.hpp"
+#include "../operon_test.hpp"
 
 namespace Operon::Test {
     auto TotalNodes(const std::vector<Tree>& trees) -> std::size_t {
@@ -48,16 +33,6 @@ namespace Operon::Test {
         executor.run(taskflow).wait();
     }
 
-    auto RandomDataset(Operon::RandomGenerator& rng, int rows, int cols) -> Operon::Dataset {
-        fmt::print("rows: {}, cols: {}\n", rows, cols);
-        std::uniform_real_distribution<Operon::Scalar> dist(-1.f, +1.f);
-        Eigen::Matrix<decltype(dist)::result_type, -1, -1> data(rows, cols);
-        //std::generate(data.data(), data.data() + rows * cols, [&](){ return dist(rng); });
-        for (auto& v : data.reshaped()) { v = dist(rng); }
-        Operon::Dataset ds(data);
-        fmt::print("rows: {}, cols: {}\n", ds.Rows(), ds.Cols());
-        return ds;
-    }
 
     // used by some Langdon & Banzhaf papers as benchmark for measuring GPops/s
     TEST_CASE("Evaluation performance")
@@ -70,7 +45,7 @@ namespace Operon::Test {
 
         constexpr size_t minEpochIterations = 5;
         Operon::RandomGenerator rd(1234);
-        auto ds = RandomDataset(rd, nrow, ncol); 
+        auto ds = Util::RandomDataset(rd, nrow, ncol);
         fmt::print("dataset rows: {}, cols: {}\n", nrow, ncol);
         auto target = "Y";
         auto variables = ds.Variables();
@@ -185,7 +160,7 @@ namespace Operon::Test {
         constexpr size_t ncol = 10;
 
         Operon::RandomGenerator rd(1234);
-        auto ds = RandomDataset(rd, nrow, ncol); 
+        auto ds = Util::RandomDataset(rd, nrow, ncol);
 
         auto variables = ds.Variables();
         auto target = variables.back().Name;
@@ -224,7 +199,7 @@ namespace Operon::Test {
             double sum{0};
             taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{}, [&](Operon::Individual& ind) {
                 auto id = executor.this_worker_id();
-                if (slots[id].size() < range.Size()) { slots[id].resize(range.Size()); } 
+                if (slots[id].size() < range.Size()) { slots[id].resize(range.Size()); }
                 return evaluator(rd, ind, slots[id]).front();
             });
 
@@ -258,7 +233,7 @@ namespace Operon::Test {
         constexpr size_t ncol = 10;
 
         Operon::RandomGenerator rd(1234);
-        auto ds = RandomDataset(rd, nrow, ncol); 
+        auto ds = Util::RandomDataset(rd, nrow, ncol);
 
         auto variables = ds.Variables();
         auto target = variables.back().Name;
@@ -359,13 +334,13 @@ namespace Operon::Test {
 
         GeneticAlgorithmConfig config{};
         config.Generations = 100;
-        config.PopulationSize = 1000; 
+        config.PopulationSize = 1000;
         config.PoolSize = 1000;
-        config.Evaluations = 1000000; 
-        config.Iterations = 0; 
-        config.CrossoverProbability = 1.0; 
-        config.MutationProbability = 0.25; 
-        config.TimeLimit = ~size_t{0}; 
+        config.Evaluations = 1000000;
+        config.Iterations = 0;
+        config.CrossoverProbability = 1.0;
+        config.MutationProbability = 0.25;
+        config.TimeLimit = ~size_t{0};
         config.Seed = random();
 
         Operon::NSGA2 gp { problem, config, initializer, coeffInit, generator, reinserter, sorter };
