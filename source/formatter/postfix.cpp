@@ -6,7 +6,7 @@
 
 namespace Operon {
 
-auto PostfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer& current, int decimalPrecision) -> void
+auto PostfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer& current, int decimalPrecision) -> void
 {
     auto const& s = tree[i];
 
@@ -32,14 +32,14 @@ auto PostfixFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::H
 
 auto PostfixFormatter::Format(Tree const& tree, Dataset const& dataset, int decimalPrecision) -> std::string
 {
-    std::unordered_map<Operon::Hash, std::string> variableNames;
+    Operon::Map<Operon::Hash, std::string> variableNames;
     for (auto const& var : dataset.Variables()) {
         variableNames.insert({ var.Hash, var.Name });
     }
     return Format(tree, variableNames, decimalPrecision);
 }
 
-auto PostfixFormatter::Format(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
+auto PostfixFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
 {
     fmt::memory_buffer result;
     for (auto i = 0UL; i < tree.Length(); ++i) {

@@ -13,27 +13,27 @@ namespace Operon {
 class Dataset;
 
 class OPERON_EXPORT TreeFormatter {
-    static auto FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> variableNames, size_t i, std::string& current, std::string indent, bool isLast, bool initialMarker, int decimalPrecision) -> void;
+    static auto FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> variableNames, size_t i, std::string& current, std::string indent, bool isLast, bool initialMarker, int decimalPrecision) -> void;
 
 public:
     static auto Format(Tree const& tree, Dataset const& dataset, int decimalPrecision = 2) -> std::string;
-    static auto Format(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2) -> std::string;
+    static auto Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2) -> std::string;
 };
 
 class OPERON_EXPORT InfixFormatter {
-    static auto FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer& current, int decimalPrecision) -> void;
+    static auto FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer& current, int decimalPrecision) -> void;
 
 public:
     static auto Format(Tree const& tree, Dataset const& dataset, int decimalPrecision = 2) -> std::string;
-    static auto Format(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2) -> std::string;
+    static auto Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2) -> std::string;
 };
 
 class OPERON_EXPORT PostfixFormatter {
-    static auto FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer& current, int decimalPrecision) -> void;
+    static auto FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer& current, int decimalPrecision) -> void;
 
 public:
     static auto Format(Tree const& tree, Dataset const& dataset, int decimalPrecision = 2) -> std::string;
-    static auto Format(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2) -> std::string;
+    static auto Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2) -> std::string;
 };
 } // namespace Operon
 
