@@ -7,7 +7,7 @@
 //
 // Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2019-2021 Martin Ankerl <martin.ankerl@gmail.com>
+// Copyright (c) 2019-2022 Martin Ankerl <martin.ankerl@gmail.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -33,17 +33,18 @@
 // see https://semver.org/
 #define ANKERL_NANOBENCH_VERSION_MAJOR 4 // incompatible API changes
 #define ANKERL_NANOBENCH_VERSION_MINOR 3 // backwards-compatible changes
-#define ANKERL_NANOBENCH_VERSION_PATCH 6 // backwards-compatible bug fixes
+#define ANKERL_NANOBENCH_VERSION_PATCH 7 // backwards-compatible bug fixes
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // public facing api - as minimal as possible
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include <chrono>  // high_resolution_clock
-#include <cstring> // memcpy
-#include <iosfwd>  // for std::ostream* custom output target in Config
-#include <string>  // all names
-#include <vector>  // holds all results
+#include <chrono>        // high_resolution_clock
+#include <cstring>       // memcpy
+#include <iosfwd>        // for std::ostream* custom output target in Config
+#include <string>        // all names
+#include <unordered_map> // holds context information of results
+#include <vector>        // holds all results
 
 #define ANKERL_NANOBENCH(x) ANKERL_NANOBENCH_PRIVATE_##x()
 
@@ -91,7 +92,7 @@
 #define ANKERL_NANOBENCH_PRIVATE_PERF_COUNTERS() 0
 #if defined(__linux__) && !defined(ANKERL_NANOBENCH_DISABLE_PERF_COUNTERS)
 #    include <linux/version.h>
-#    if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
+#    if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)
 // PERF_COUNT_HW_REF_CPU_CYCLES only available since kernel 3.3
 // PERF_FLAG_FD_CLOEXEC since kernel 3.14
 #        undef ANKERL_NANOBENCH_PRIVATE_PERF_COUNTERS
@@ -167,7 +168,7 @@ class BigO;
  *    * `{{maxEpochTime}}` Configuration for a maximum time each measurement (epoch) is allowed to take. Note that at least
  *      a single iteration will be performed, even when that takes longer than maxEpochTime. See Bench::maxEpochTime().
  *
- *    * `{{minEpochTime}}` Minimum epoch time, usually not set. See Bench::minEpochTime().
+ *    * `{{minEpochTime}}` Minimum epoch time, defaults to 1ms. See Bench::minEpochTime().
  *
  *    * `{{minEpochIterations}}` See Bench::minEpochIterations().
  *
@@ -177,10 +178,12 @@ class BigO;
  *
  *    * `{{relative}}` True or false, depending on the setting you have used. See Bench::relative().
  *
+ *    * `{{context(variableName)}} See Bench::context().
+ *
  *    Apart from these tags, it is also possible to use some mathematical operations on the measurement data. The operations
  *    are of the form `{{command(name)}}`.  Currently `name` can be one of `elapsed`, `iterations`. If performance counters
  *    are available (currently only on current Linux systems), you also have `pagefaults`, `cpucycles`,
- *    `contextswitches`, `instructions`, `branchinstructions`, and `branchmisses`. All the measuers (except `iterations`) are
+ *    `contextswitches`, `instructions`, `branchinstructions`, and `branchmisses`. All the measures (except `iterations`) are
  *    provided for a single iteration (so `elapsed` is the time a single iteration took). The following tags are available:
  *
  *    * `{{median(<name>)}}` Calculate median of a measurement data set, e.g. `{{median(elapsed)}}`.
@@ -321,7 +324,7 @@ char const* csv() noexcept;
 char const* htmlBoxplot() noexcept;
 
 /*!
- @brief Output in pyperf  compatible JSON format, which can be used for more analyzations.
+ @brief Output in pyperf compatible JSON format, which can be used for more analyzation.
  @verbatim embed:rst
  See the tutorial at :ref:`tutorial-template-pyperf` for an example how to further analyze the output.
  @endverbatim
@@ -386,7 +389,7 @@ struct Config {
     size_t mNumEpochs = 11;
     size_t mClockResolutionMultiple = static_cast<size_t>(1000);
     std::chrono::nanoseconds mMaxEpochTime = std::chrono::milliseconds(100);
-    std::chrono::nanoseconds mMinEpochTime{};
+    std::chrono::nanoseconds mMinEpochTime = std::chrono::milliseconds(1);
     uint64_t mMinEpochIterations{1};
     uint64_t mEpochIterations{0}; // If not 0, run *exactly* these number of iterations per epoch.
     uint64_t mWarmup = 0;
@@ -395,6 +398,7 @@ struct Config {
     std::string mTimeUnitName = "ns";
     bool mShowPerformanceCounters = true;
     bool mIsRelative = false;
+    std::unordered_map<std::string, std::string> mContext{};
 
     Config();
     ~Config();
@@ -442,6 +446,8 @@ public:
     ANKERL_NANOBENCH(NODISCARD) double sumProduct(Measure m1, Measure m2) const noexcept;
     ANKERL_NANOBENCH(NODISCARD) double minimum(Measure m) const noexcept;
     ANKERL_NANOBENCH(NODISCARD) double maximum(Measure m) const noexcept;
+    ANKERL_NANOBENCH(NODISCARD) std::string const& context(char const*) const;
+    ANKERL_NANOBENCH(NODISCARD) std::string const& context(std::string const&) const;
 
     ANKERL_NANOBENCH(NODISCARD) bool has(Measure m) const noexcept;
     ANKERL_NANOBENCH(NODISCARD) double get(size_t idx, Measure m) const;
@@ -485,7 +491,7 @@ public:
     static constexpr uint64_t(max)();
 
     /**
-     * As a safety precausion, we don't allow copying. Copying a PRNG would mean you would have two random generators that produce the
+     * As a safety precaution, we don't allow copying. Copying a PRNG would mean you would have two random generators that produce the
      * same sequence, which is generally not what one wants. Instead create a new rng with the default constructor Rng(), which is
      * automatically seeded from `std::random_device`. If you really need a copy, use copy().
      */
@@ -675,6 +681,31 @@ public:
     ANKERL_NANOBENCH(NODISCARD) std::string const& name() const noexcept;
 
     /**
+     * @brief Set context information.
+     *
+     * The information can be accessed using custom render templates via `{{context(variableName)}}`.
+     * Trying to render a variable that hasn't been set before raises an exception.
+     * Not included in (default) markdown table.
+     *
+     * @see clearContext(), render()
+     *
+     * @param variableName The name of the context variable.
+     * @param variableValue The value of the context variable.
+     */
+    Bench& context(char const* variableName, char const* variableValue);
+    Bench& context(std::string const& variableName, std::string const& variableValue);
+
+    /**
+     * @brief Reset context information.
+     *
+     * This may be improve efficiency when using many context entries,
+     * or improve robustness by removing spurious context entries.
+     *
+     * @see context()
+     */
+    Bench& clearContext();
+
+    /**
      * @brief Sets the batch size.
      *
      * E.g. number of processed byte, or some other metric for the size of the processed data in each iteration. If you benchmark
@@ -754,9 +785,9 @@ public:
      * representation of the benchmarked code's runtime stability.
      *
      * Choose the value wisely. In practice, 11 has been shown to be a reasonable choice between runtime performance and accuracy.
-     * This setting goes hand in hand with minEpocIterations() (or minEpochTime()). If you are more interested in *median* runtime, you
-     * might want to increase epochs(). If you are more interested in *mean* runtime, you might want to increase minEpochIterations()
-     * instead.
+     * This setting goes hand in hand with minEpochIterations() (or minEpochTime()). If you are more interested in *median* runtime,
+     * you might want to increase epochs(). If you are more interested in *mean* runtime, you might want to increase
+     * minEpochIterations() instead.
      *
      * @param numEpochs Number of epochs.
      */
@@ -766,7 +797,7 @@ public:
     /**
      * @brief Upper limit for the runtime of each epoch.
      *
-     * As a safety precausion if the clock is not very accurate, we can set an upper limit for the maximum evaluation time per
+     * As a safety precaution if the clock is not very accurate, we can set an upper limit for the maximum evaluation time per
      * epoch. Default is 100ms. At least a single evaluation of the benchmark is performed.
      *
      * @see minEpochTime(), minEpochIterations()
@@ -793,7 +824,7 @@ public:
      * @brief Sets the minimum number of iterations each epoch should take.
      *
      * Default is 1, and we rely on clockResolutionMultiple(). If the `err%` is high and you want a more smooth result, you might want
-     * to increase the minimum number or iterations, or increase the minEpochTime().
+     * to increase the minimum number of iterations, or increase the minEpochTime().
      *
      * @see minEpochTime(), maxEpochTime(), minEpochIterations()
      *
@@ -858,7 +889,7 @@ public:
      * @brief Retrieves all benchmark results collected by the bench object so far.
      *
      * Each call to run() generates a Result that is stored within the Bench instance. This is mostly for advanced users who want to
-     * see all the nitty gritty detials.
+     * see all the nitty gritty details.
      *
      * @return All results collected so far.
      */
@@ -993,7 +1024,7 @@ void doNotOptimizeAway(T const& val);
 #else
 
 // These assembly magic is directly from what Google Benchmark is doing. I have previously used what facebook's folly was doing, but
-// this seemd to have compilation problems in some cases. Google Benchmark seemed to be the most well tested anyways.
+// this seemed to have compilation problems in some cases. Google Benchmark seemed to be the most well tested anyways.
 // see https://github.com/google/benchmark/blob/master/include/benchmark/benchmark.h#L307
 template <typename T>
 void doNotOptimizeAway(T const& val) {
@@ -1143,11 +1174,15 @@ double Rng::uniform01() noexcept {
 
 template <typename Container>
 void Rng::shuffle(Container& container) noexcept {
-    auto size = static_cast<uint32_t>(container.size());
-    for (auto i = size; i > 1U; --i) {
+    auto i = container.size();
+    while (i > 1U) {
         using std::swap;
-        auto p = bounded(i); // number in [0, i)
-        swap(container[i - 1], container[p]);
+        auto n = operator()();
+        auto b1 = static_cast<size_t>((static_cast<uint32_t>(n) * static_cast<uint64_t>(i)) >> 32U);
+        swap(container[--i], container[b1]);
+
+        auto b2 = static_cast<size_t>(((n >> 32U) * static_cast<uint64_t>(i)) >> 32U);
+        swap(container[--i], container[b2]);
     }
 }
 
@@ -1596,6 +1631,10 @@ static std::ostream& generateResultTag(Node const& n, Result const& r, std::ostr
     std::vector<std::string> matchResult;
     if (matchCmdArgs(std::string(n.begin, n.end), matchResult)) {
         if (matchResult.size() == 2) {
+            if (matchResult[0] == "context") {
+                return out << r.context(matchResult[1]);
+            }
+
             auto m = Result::fromString(matchResult[1]);
             if (m == Result::Measure::_size) {
                 return out << 0.0;
@@ -2987,6 +3026,14 @@ double Result::maximum(Measure m) const noexcept {
     return *std::max_element(data.begin(), data.end());
 }
 
+std::string const& Result::context(char const* variableName) const {
+    return mConfig.mContext.at(variableName);
+}
+
+std::string const& Result::context(std::string const& variableName) const {
+    return mConfig.mContext.at(variableName);
+}
+
 Result::Measure Result::fromString(std::string const& str) {
     if (str == "elapsed") {
         return Measure::elapsed;
@@ -3112,6 +3159,21 @@ Bench& Bench::name(std::string const& benchmarkName) {
 
 std::string const& Bench::name() const noexcept {
     return mConfig.mBenchmarkName;
+}
+
+Bench& Bench::context(char const* variableName, char const* variableValue) {
+    mConfig.mContext[variableName] = variableValue;
+    return *this;
+}
+
+Bench& Bench::context(std::string const& variableName, std::string const& variableValue) {
+    mConfig.mContext[variableName] = variableValue;
+    return *this;
+}
+
+Bench& Bench::clearContext() {
+    mConfig.mContext.clear();
+    return *this;
 }
 
 // Number of epochs to evaluate. The reported result will be the median of evaluation of each epoch.
