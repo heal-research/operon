@@ -171,13 +171,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
         if (n.IsLeaf()) {
             n.CalculatedHashValue = n.HashValue;
             if (mode == Operon::HashMode::Strict) {
-                const size_t s1 = sizeof(Operon::Hash);
-                const size_t s2 = sizeof(Operon::Scalar);
-                std::array<uint8_t, s1 + s2> key {};
-                auto* ptr = key.data();
-                std::memcpy(ptr, &n.HashValue, s1);
-                std::memcpy(ptr + s1, &n.Value, s2);
-                n.CalculatedHashValue = hasher(key.data(), key.size());
+                n.CalculatedHashValue += hasher(reinterpret_cast<uint8_t const*>(&n.Value), sizeof(n.Value));
             }
             continue;
         }
