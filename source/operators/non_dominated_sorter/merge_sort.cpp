@@ -164,7 +164,7 @@ namespace detail {
             wordRanking_.resize(nSolutions, 0);
             bitsets_.resize(nSolutions);
             bsRanges_.resize(nSolutions);
-            incrementalBitset_.resize(nSolutions / WORD_SIZE + (nSolutions % WORD_SIZE != 0));
+            incrementalBitset_.resize(nSolutions / WORD_SIZE + static_cast<uint64_t>(nSolutions % WORD_SIZE != 0));
         }
     };
 } // namespace detail
