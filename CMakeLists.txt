@@ -73,6 +73,7 @@ add_library(
     source/operators/non_dominated_sorter/rank_ordinal.cpp
     source/operators/selector/proportional.cpp
     source/operators/selector/tournament.cpp
+    source/parser/infix.cpp
 )
 add_library(operon::operon ALIAS operon_operon)
 
