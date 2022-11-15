@@ -6,7 +6,7 @@
 
 namespace Operon {
 
-auto TreeFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Hash, std::string> variableNames, size_t i, std::string& current, std::string indent, bool isLast, bool initialMarker, int decimalPrecision) -> void
+auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> variableNames, size_t i, std::string& current, std::string indent, bool isLast, bool initialMarker, int decimalPrecision) -> void
 {
     std::string const last{"└── "};
     std::string const notLast{"├── "};
@@ -50,7 +50,7 @@ auto TreeFormatter::FormatNode(Tree const& tree, std::unordered_map<Operon::Hash
 
 auto TreeFormatter::Format(Tree const& tree, Dataset const& dataset, int decimalPrecision) -> std::string
 {
-    std::unordered_map<Operon::Hash, std::string> variableNames;
+    Operon::Map<Operon::Hash, std::string> variableNames;
     for (auto const& var : dataset.Variables()) {
         variableNames.insert({ var.Hash, var.Name });
     }
@@ -60,7 +60,7 @@ auto TreeFormatter::Format(Tree const& tree, Dataset const& dataset, int decimal
     return result;
 }
 
-auto TreeFormatter::Format(Tree const& tree, std::unordered_map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
+auto TreeFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
 {
     std::string result;
     FormatNode(tree, variableNames, tree.Length() - 1, result, "", /*isLast=*/true, /*initialMarker=*/false, decimalPrecision);

@@ -14,27 +14,6 @@
 namespace Operon::Test {
 TEST_SUITE("[implementation]")
 {
-    TEST_CASE("Lexer")
-    {
-        auto tokMap = InfixParser::DefaultTokens();
-
-        SUBCASE("sin(PI)")
-        {
-            std::string str("-(1)");
-            pratt::lexer<InfixParser::Token, InfixParser::Conv, decltype(tokMap)> lex(str, tokMap);
-            auto tokens = lex.tokenize();
-            for (auto t : tokens) {
-                Operon::Scalar v{0};
-                if (t.kind() == InfixParser::TokenKind::constant) {
-                    v = t.value()[0].Value;
-                    std::cout << v << "\n";
-                } else {
-                    std::cout << t.name() << "\n";
-                }
-            }
-        }
-    }
-
     TEST_CASE("Parser correctness")
     {
         constexpr int nTrees = 1'000'000;
@@ -65,15 +44,14 @@ TEST_SUITE("[implementation]")
         parsedTrees.reserve(nTrees);
 
         // map variables
-        Operon::Map<std::string, Operon::Hash> vmap;
+        Operon::Map<std::string, Operon::Hash> vars;
         for (auto const& v : ds.Variables()) {
-            vmap.insert({ v.Name, v.Hash });
+            vars.insert({ v.Name, v.Hash });
         }
 
-        auto tmap = InfixParser::DefaultTokens();
         std::transform(trees.begin(), trees.end(), std::back_inserter(parsedTrees), [&](const auto& tree) {
             try {
-                auto parsed = InfixParser::Parse(InfixFormatter::Format(tree, ds, 50), tmap, vmap);
+                auto parsed = InfixParser::Parse(InfixFormatter::Format(tree, ds, 50), vars);
                 return parsed;
             } catch(std::exception& e) {
                 fmt::print("unable to parse tree: {}\n{}\n", e.what(), Operon::InfixFormatter::Format(tree, ds));
@@ -81,7 +59,7 @@ TEST_SUITE("[implementation]")
             }
         });
 
-        auto validate_string = [](auto const& s) {
+        auto validateString = [](auto const& s) {
             size_t lp{0};
             size_t rp{0};
             for (auto c : s) {
@@ -108,11 +86,11 @@ TEST_SUITE("[implementation]")
             auto s1 = Operon::InfixFormatter::Format(t1, ds, 5);
             auto s2 = Operon::InfixFormatter::Format(t2, ds, 5);
 
-            if (!validate_string(s1)) {
+            if (!validateString(s1)) {
                 fmt::print("warning: corrupted format string s1: {}\n", s1);
             }
 
-            if (!validate_string(s2)) {
+            if (!validateString(s2)) {
                 fmt::print("warning: corrupted format string s2: {}\n", s2);
             }
 
@@ -131,30 +109,20 @@ TEST_SUITE("[implementation]")
 
     TEST_CASE("Parser Expr 1")
     {
-        auto model_str = "sin((sqrt(abs(square(sin(((-0.00191) * X6))))) - sqrt(abs(((-0.96224) / (-0.40567))))))";
-        auto tokens_map = InfixParser::DefaultTokens();
-        Operon::Map<std::string, Operon::Hash> vars_map;
-        std::unordered_map<Operon::Hash, std::string> vars_names;
+        auto str = "sin((sqrt(abs(square(sin(((-0.00191) * X6))))) - sqrt(abs(((-0.96224) / (-0.40567))))))";
+        Operon::Map<std::string, Operon::Hash> vars;
+        Operon::Map<Operon::Hash, std::string> names;
         Hasher hasher;
         for (int i = 0; i < 10; ++i) {
             auto name = fmt::format("X{}", i);
             auto hash = hasher(reinterpret_cast<uint8_t const*>(name.data()), name.size() * sizeof(char) / sizeof(uint8_t));
-            vars_map[name] = hash;
-            vars_names[hash] = name;
+            vars[name] = hash;
+            names[hash] = name;
         }
 
-        SUBCASE("Tokenize") {
-            pratt::lexer<InfixParser::Token, InfixParser::Conv, decltype(tokens_map)> lex(model_str, tokens_map);
-            auto tokens = lex.tokenize();
-            std::cout << "tokens:\n";
-            for (auto const& t : tokens) {
-                std::cout << t.name() << "\n";
-            }
-        }
-
-        auto tree = Operon::InfixParser::Parse(model_str, tokens_map, vars_map);
-        fmt::print("{}\n", model_str);
-        fmt::print("{}\n", Operon::InfixFormatter::Format(tree, vars_names, 5));
+        auto tree = Operon::InfixParser::Parse(str, vars);
+        fmt::print("{}\n", str);
+        fmt::print("{}\n", Operon::InfixFormatter::Format(tree, names, 5));
     }
 
     TEST_CASE("Parser Expr 2")
@@ -172,7 +140,7 @@ TEST_SUITE("[implementation]")
         auto s1 = InfixFormatter::Format(t, ds, 5);
         fmt::print("s1: {}\n", s1);
         Operon::Map<std::string, Operon::Hash> vmap;
-        auto t2 = InfixParser::Parse(s1, InfixParser::DefaultTokens(), vmap);
+        auto t2 = InfixParser::Parse(s1, vmap);
         auto s2 = InfixFormatter::Format(t2, ds, 5);
         fmt::print("s2: {}\n", s1);
 
@@ -186,9 +154,9 @@ TEST_SUITE("[implementation]")
     TEST_CASE("Parser Expr 3")
     {
         std::string const expr{"3 aq 5"};
-        Operon::Map<std::string, Operon::Hash> vmap;
-        auto tree = InfixParser::Parse(expr, InfixParser::DefaultTokens(), vmap);
-        std::unordered_map<Operon::Hash, std::string> variableNames;
+        Operon::Map<std::string, Operon::Hash> vars;
+        auto tree = InfixParser::Parse(expr, vars);
+        Operon::Map<Operon::Hash, std::string> variableNames;
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, variableNames, 2));
     }
 
@@ -199,7 +167,7 @@ TEST_SUITE("[implementation]")
         Hasher hasher;
 
         Operon::Map<std::string, Operon::Hash> vars_map;
-        std::unordered_map<Operon::Hash, std::string> vars_names;
+        Operon::Map<Operon::Hash, std::string> vars_names;
         for (int i = 0; i < 78; ++i) {
             auto name = fmt::format("X{}", i);
             auto hash = hasher(reinterpret_cast<uint8_t const*>(name.data()), name.size() * sizeof(char) / sizeof(uint8_t));
@@ -207,8 +175,7 @@ TEST_SUITE("[implementation]")
             vars_names[hash] = name;
         }
 
-        auto tokens_map = InfixParser::DefaultTokens();
-        auto tree = Operon::InfixParser::Parse(model_str, tokens_map, vars_map);
+        auto tree = Operon::InfixParser::Parse(model_str, vars_map);
         fmt::print("{}\n", Operon::InfixFormatter::Format(tree, vars_names));
     }
 
@@ -219,10 +186,9 @@ TEST_SUITE("[implementation]")
         Hasher hasher;
 
         Operon::Map<std::string, Operon::Hash> vars_map;
-        std::unordered_map<Operon::Hash, std::string> vars_names;
+        Operon::Map<Operon::Hash, std::string> vars_names;
 
-        auto tokens_map = InfixParser::DefaultTokens();
-        auto tree = Operon::InfixParser::Parse(model_str, tokens_map, vars_map);
+        auto tree = Operon::InfixParser::Parse(model_str, vars_map);
         fmt::print("{}\n", Operon::InfixFormatter::Format(tree, vars_names));
         fmt::print("{}\n", Operon::PostfixFormatter::Format(tree, vars_names));
     }
@@ -240,7 +206,7 @@ TEST_SUITE("[implementation]")
             Tree t1({c2, c1, aq});
             Tree t2({c2, c1, dv});
 
-            std::unordered_map<Operon::Hash, std::string> map;
+            Operon::Map<Operon::Hash, std::string> map;
 
             Dataset::Matrix m(1,1);
             Operon::Dataset ds(m);
@@ -285,12 +251,10 @@ TEST_SUITE("[performance]")
         for (auto const& v : ds.Variables()) {
             map.insert({ v.Name, v.Hash });
         }
-        auto tmap = InfixParser::DefaultTokens();
-
         // benchmark parsing performance
         ankerl::nanobench::Bench b;
         b.performanceCounters(true).batch(nTrees * nNodes);
-        b.run("parser performance", [&]() { std::for_each(treeStrings.begin(), treeStrings.end(), [&](auto const& str) { return Operon::InfixParser::Parse(str, tmap, map); }); });
+        b.run("parser performance", [&]() { std::for_each(treeStrings.begin(), treeStrings.end(), [&](auto const& str) { return Operon::InfixParser::Parse(str, map); }); });
     }
 }
 } // namespace Operon::Test

@@ -22,8 +22,8 @@ namespace Operon::Test {
         Operon::Dataset ds({x}, {v});
 
         auto check = [&](DispatchTable const& dt, std::string const& expr, Operon::Scalar expected) {
-            std::unordered_map<std::string, Operon::Hash> vars;
-            auto t = InfixParser::ParseDefault(expr, vars);
+            Operon::Map<std::string, Operon::Hash> vars;
+            auto t = InfixParser::Parse(expr, vars);
             fmt::print("Check expression {} == {}\n", InfixFormatter::Format(t, ds), expected);
             fmt::print("Tree representation:\n{}\n", TreeFormatter::Format(t, ds));
             Interpreter interp(dt);
