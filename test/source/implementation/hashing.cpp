@@ -73,7 +73,7 @@ TEST_CASE("Hash-based distance") {
     size_t maxDepth = 1000;
 
     Operon::RandomGenerator rd(1234);
-    auto ds = Dataset("../data/Poly-10.csv", /*hasHeader=*/true);
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
 
     auto target = "Y";
     auto variables = ds.Variables();
