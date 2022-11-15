@@ -44,7 +44,7 @@
             git
             openlibm
             pkg-config
-            pratt-parser.defaultPackage.${system}
+            pratt-parser.packages.${system}.default
             scnlib
             taskflow
             unordered_dense
@@ -82,7 +82,6 @@
           ]);
 
           buildInputs = operon.buildInputs ++ (with pkgs; [
-            #hotspot
             gdb
             graphviz
             hyperfine
