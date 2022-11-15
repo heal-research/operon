@@ -10,9 +10,9 @@ namespace Operon::Distance {
     namespace detail {
         template<typename T>
         auto Intersect(T const* lhs, T const* rhs) {
-            eve::wide<T> const a(eve::as_aligned(lhs));
-            return [&]<std::size_t ...i>(std::index_sequence<i...>){
-                return eve::any(((a == rhs[i]) || ...));
+            eve::wide<T> const a(lhs);
+            return [&]<auto... Idx>(std::index_sequence<Idx...>){
+                return eve::any(((a == rhs[Idx]) || ...));
             }(std::make_index_sequence<eve::wide<T>::size()>{});
         }
 
@@ -45,11 +45,9 @@ namespace Operon::Distance {
             while(p < pN && q < qN) {
                 auto const a = *p;
                 auto const b = *q;
-
                 if (a > bN || b > aN) {
                     break;
                 }
-
                 count += a == b;
                 p += a <= b;
                 q += a >= b;
@@ -68,8 +66,8 @@ namespace Operon::Distance {
 
     auto Jaccard(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept -> double
     {
-        size_t c = detail::CountIntersect(lhs, rhs);
         size_t n = lhs.size() + rhs.size();
+        size_t c = detail::CountIntersect(lhs, rhs);
         return static_cast<double>(n - 2 * c) / static_cast<double>(n);
     }
 
