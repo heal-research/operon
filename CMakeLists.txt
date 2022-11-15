@@ -77,17 +77,15 @@ add_library(
 add_library(operon::operon ALIAS operon_operon)
 
 # ---- Required dependencies ----
-
 find_package(Eigen3 REQUIRED)
 find_package(FastFloat REQUIRED)
 find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
+find_package(cpp-sort REQUIRED)
 find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
-find_package(FastFloat REQUIRED)
-find_package(cpp-sort REQUIRED)
 
 find_package(xxHash)
 if (xxHash_FOUND)
@@ -206,13 +204,12 @@ target_link_libraries(operon_operon PUBLIC
     Eigen3::Eigen
     Threads::Threads
     fmt::fmt
-    pratt-parser::pratt-parser
     )
 
 target_link_libraries(operon_operon PRIVATE
-    FastFloat::fast_float
     Taskflow::Taskflow
     cpp-sort::cpp-sort
+    pratt-parser::pratt-parser
     unordered_dense::unordered_dense
     vstat::vstat
 )
@@ -224,6 +221,7 @@ if(MSVC)
     target_compile_options(operon_operon PRIVATE "/std:c++latest")
 else()
     target_link_options(operon_operon PRIVATE "-Wl,--no-undefined")
+    target_compile_options(operon_operon PRIVATE "-fno-math-errno")
 endif()
 
 target_compile_definitions(operon_operon PUBLIC 
