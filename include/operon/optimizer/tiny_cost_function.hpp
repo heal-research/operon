@@ -36,13 +36,13 @@ namespace detail {
         }
         std::vector<Dual> outputs(function.NumResiduals());
 
-        static auto constexpr D{Dual::DIMENSION};
+        static auto constexpr dim{Dual::DIMENSION};
         Eigen::Map<Eigen::Matrix<Scalar, -1, -1, JacobianLayout>> jmap(jacobian, outputs.size(), inputs.size());
 
-        for (int s = 0; s < inputs.size(); s += D) {
-            int r = std::min(static_cast<int>(inputs.size()), s + D); // remaining parameters
+        for (auto s = 0U; s < inputs.size(); s += dim) {
+            auto r = std::min(static_cast<uint32_t>(inputs.size()), s + dim); // remaining parameters
 
-            for (int i = s; i < r; ++i) {
+            for (auto i = s; i < r; ++i) {
                 inputs[i].v[i - s] = 1.0;
             }
 
@@ -50,13 +50,13 @@ namespace detail {
                 return false;
             }
 
-            for (int i = s; i < r; ++i) {
+            for (auto i = s; i < r; ++i) {
                 inputs[i].v[i - s] = 0.0;
             }
 
             // fill in the jacobian trying to exploit its layout for efficiency
             if constexpr (JacobianLayout == Eigen::ColMajor) {
-                for (int i = s; i < r; ++i) {
+                for (auto i = s; i < r; ++i) {
                     std::transform(outputs.cbegin(), outputs.cend(), jmap.col(i).data(), [&](auto const& jet) { return jet.v[i - s]; });
                 }
             } else {
