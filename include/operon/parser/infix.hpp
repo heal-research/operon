@@ -7,13 +7,14 @@
 #include <pratt-parser/token.hpp>
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/hash/hash.hpp"
 
 namespace Operon {
 
 namespace detail {
     using TokenKind = pratt::token_kind;
     using Token = pratt::token<Operon::Vector<Node>>;
-    using TokenMap = Operon::Map<std::string_view, detail::Token>;
+    using TokenMap = Operon::Map<std::string, detail::Token, Operon::Hasher, std::equal_to<>>;
     using VariableMap = Operon::Map<std::string, Operon::Hash>;
 } // namespace detail
 

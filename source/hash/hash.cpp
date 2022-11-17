@@ -5,11 +5,12 @@
 #include "operon/hash/hash.hpp"
 
 #include "operon/hash/metrohash64.hpp"
+#include <cstdint>
 #include <include/xxhash.hpp>
 
 namespace Operon {
 
-auto Hasher::operator()(uint8_t const* key, size_t len) noexcept -> uint64_t
+auto Hasher::operator()(uint8_t const* key, size_t len) const noexcept -> uint64_t
 {
     if constexpr (Operon::HashFunc == HashFunction::XXHash) {
         return xxh::xxhash3<std::numeric_limits<Operon::Hash>::digits>(key, len);
@@ -28,8 +29,18 @@ auto Hasher::operator()(uint8_t const* key, size_t len) noexcept -> uint64_t
     return 0; // unreachable
 }
 
-auto Hasher::operator()(std::string const& key) noexcept -> uint64_t
+auto Hasher::operator()(std::string_view key) const noexcept -> uint64_t
 {
-    return (*this)(reinterpret_cast<uint8_t const*>(key.c_str()), key.size());
+    return (*this)(reinterpret_cast<uint8_t const*>(key.data()), key.size());
+}
+
+auto Hasher::operator()(std::string const& key) const noexcept -> uint64_t
+{
+    return (*this)(std::string_view{key});
+}
+
+auto Hasher::operator()(char const* key) const noexcept -> uint64_t
+{
+    return (*this)(std::string_view{key});
 }
 } // namespace Operon
