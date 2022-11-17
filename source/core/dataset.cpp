@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include <vstat/vstat.hpp>
-#include <aria-csv/parser.hpp>
+#include <parser.hpp>
 #include <fast_float/fast_float.h>
 
 #include "operon/core/constants.hpp"
