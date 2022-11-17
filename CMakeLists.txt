@@ -78,6 +78,7 @@ add_library(
 add_library(operon::operon ALIAS operon_operon)
 
 # ---- Required dependencies ----
+find_package(AriaCsvParser REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(FastFloat REQUIRED)
 find_package(Taskflow REQUIRED)
@@ -89,14 +90,6 @@ find_package(pratt-parser REQUIRED)
 find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
 find_package(xxhash_cpp REQUIRED)
-
-find_package(aria-csv)
-if (aria-csv_FOUND)
-    target_link_libraries(operon_operon PRIVATE aria-csv::aria-csv)
-else()
-    find_path(ARIA_CSV_INCLUDE_DIRS "aria-csv/parser.hpp")
-    target_include_directories(operon_operon PRIVATE "${ARIA_CSV_INCLUDE_DIRS}")
-endif()
 
 # ---- Optional dependencies
 set(HAVE_CERES FALSE)
@@ -193,6 +186,7 @@ target_link_libraries(operon_operon PUBLIC
 )
 
 target_link_libraries(operon_operon PRIVATE
+    AriaCsvParser::AriaCsvParser
     Taskflow::Taskflow
     cpp-sort::cpp-sort
     pratt-parser::pratt-parser
