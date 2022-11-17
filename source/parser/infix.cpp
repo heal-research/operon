@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include <pratt-parser/parser.hpp>
+#include "operon/hash/hash.hpp"
 #include "operon/parser/infix.hpp"
 
 namespace Operon {
@@ -85,7 +86,7 @@ namespace detail {
     };
 
     static auto DefaultTokens() { 
-        return Operon::Map<std::string_view, Token>{
+        return Operon::Map<std::string, Token, Operon::Hasher, std::equal_to<>>{
             // NOLINTBEGIN
             { "+", Token(TokenKind::dynamic, "add", static_cast<size_t>(NodeType::Add), 10, pratt::associativity::left) },
             { "-", Token(TokenKind::dynamic, "sub", static_cast<size_t>(NodeType::Sub), 10, pratt::associativity::left) },
