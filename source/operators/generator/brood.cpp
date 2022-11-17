@@ -37,17 +37,13 @@ namespace Operon {
             return child;
         };
 
-        std::vector<Individual> offspring;
-        offspring.reserve(broodSize_);
-        for (size_t i = 0; i < broodSize_; ++i) {
-            offspring.push_back(makeOffspring());
-        }
+        std::vector<Individual> offspring(broodSize_);
+        std::generate(offspring.begin(), offspring.end(), makeOffspring);
         SingleObjectiveComparison comp{0};
-        RankIntersectSorter sorter;
 
         if (population[first].Size() > 1) {
             std::stable_sort(offspring.begin(), offspring.end(), LexicographicalComparison{});
-            auto fronts = sorter(offspring);
+            auto fronts = RankIntersectSorter{}(offspring);
             auto best = *std::min_element(fronts[0].begin(), fronts[0].end(), [&](auto i, auto j) { return comp(offspring[i], offspring[j]); });
             return std::make_optional(offspring[best]);
         }
