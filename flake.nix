@@ -40,7 +40,7 @@
             eigen
             eve
             fast_float
-            fmt_8
+            fmt_9
             git
             mold
             openlibm
