@@ -22,13 +22,25 @@ namespace Operon::Test {
 
     namespace nb = ankerl::nanobench;
 
+    template<typename T, std::align_val_t A = std::align_val_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__}>
+    inline auto MakeUnique(std::size_t n, std::optional<typename std::remove_extent_t<T>> init = std::nullopt)
+    {
+        using E = typename std::remove_extent_t<T>;
+        using Ptr = std::unique_ptr<T, std::add_pointer_t<void(E*)>>;
+        auto ptr = Ptr(static_cast<E*>(::operator new[](n * sizeof(E), A)), [](E* ptr){ ::operator delete[](ptr, A); });
+        if (init) { std::fill_n(ptr.get(), n, init.value()); }
+        return ptr;
+    }
+
     template <typename T>
     void Evaluate(tf::Executor& executor, Interpreter const& interpreter, std::vector<Tree> const& trees, Dataset const& ds, Range range)
     {
         tf::Taskflow taskflow;
-        taskflow.for_each(trees.begin(), trees.end(), [&](auto const& tree) {
-            std::unique_ptr<T> buf(new (std::align_val_t{32}) T[range.Size()]);
-            interpreter.Evaluate<T>(tree, ds, range, Operon::Span<T>{buf.get(), range.Size()});
+        std::vector<std::vector<T>> results(executor.num_workers());
+        for (auto& res: results) { res.resize(range.Size()); }
+        taskflow.for_each_index(size_t{0}, trees.size(), size_t{1}, [&](auto i) {
+            auto& res = results[executor.this_worker_id()];
+            interpreter.Evaluate<T>(trees[i], ds, range, {res.data(), res.size()});
         });
         executor.run(taskflow).wait();
     }
@@ -250,20 +262,13 @@ namespace Operon::Test {
         std::vector<Tree> trees(n);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
-        std::vector<Individual> individuals(n);
-        for (size_t i = 0; i < individuals.size(); ++i) {
-            individuals[i].Genotype = trees[i];
-        }
-
         nb::Bench b;
         b.relative(true).epochs(10).minEpochIterations(100).performanceCounters(true);
-        std::unique_ptr<Operon::Scalar> buf(new (std::align_val_t{32}) Operon::Scalar[range.Size() * n]);
-        //std::vector<Operon::Scalar> buf(range.Size() * n);
-
         Operon::Interpreter interpreter;
-        std::vector<size_t> threads{ 1UL, 8UL, 16UL };
+        std::vector<size_t> threads(std::thread::hardware_concurrency());
+        std::iota(threads.begin(), threads.end(), 1);
         for (auto t : threads) {
-            b.batch(TotalNodes(trees) * range.Size()).run("parallel interpreter", [&]() { Evaluate(interpreter, trees, ds, range, {buf.get(), range.Size() * n}, t); });
+            b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, ds, range, t); });
         }
     }
 
