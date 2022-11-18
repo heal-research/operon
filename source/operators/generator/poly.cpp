@@ -8,7 +8,7 @@ namespace Operon {
     auto PolygenicOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
     {
         std::uniform_real_distribution<double> uniformReal;
-        auto population = FemaleSelector().Population();
+        auto population = this->FemaleSelector().Population();
 
         // assuming the basic generator never fails
         auto makeOffspring = [&]() {
@@ -35,11 +35,8 @@ namespace Operon {
             return child;
         };
 
-        std::vector<Individual> offspring;
-        offspring.reserve(broodSize_);
-        for (size_t i = 0; i < broodSize_; ++i) {
-            offspring.push_back(makeOffspring());
-        }
+        std::vector<Individual> offspring(broodSize_);
+        std::generate(offspring.begin(), offspring.end(), makeOffspring);
         SingleObjectiveComparison comp{0};
 
         if (population.front().Size() > 1) {
