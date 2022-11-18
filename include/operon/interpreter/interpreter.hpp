@@ -122,7 +122,8 @@ private:
 using Interpreter = GenericInterpreter<Operon::Scalar, Operon::Dual>;
 
 // convenience method to interpret many trees in parallel (mostly useful from the python wrapper)
-auto OPERON_EXPORT Evaluate(Interpreter const& interpreter, std::vector<Operon::Tree> const& trees, Dataset const& dataset, Range range, Operon::Span<Operon::Scalar> result, size_t nthreads = 1) noexcept -> void;
+auto OPERON_EXPORT EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const& dataset, Operon::Range range, size_t nthread = 0) -> std::vector<std::vector<Operon::Scalar>> ;
+
 } // namespace Operon
 
 
