@@ -20,4 +20,18 @@ namespace Operon {
         executor.wait_for_all();
         return result;
     }
+
+    auto EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const& dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread) -> void {
+        if (nthread == 0) { nthread = std::thread::hardware_concurrency(); }
+        tf::Executor executor(nthread);
+        tf::Taskflow taskflow;
+        Operon::Interpreter interpreter;
+
+        taskflow.for_each_index(size_t{0}, size_t{trees.size()}, size_t{1}, [&](size_t i) {
+            auto res = result.subspan(i * range.Size(), range.Size());
+            interpreter.Evaluate<Operon::Scalar>(trees[i], dataset, range, res);
+        });
+        executor.run(taskflow);
+        executor.wait_for_all();
+    }
 } // namespace Operon
