@@ -177,19 +177,21 @@ target_include_directories(
 if(Ceres_FOUND AND USE_CERES_NNLS)
 endif()
 
-target_link_libraries(operon_operon INTERFACE eve::eve)
+target_link_libraries(operon_operon INTERFACE
+    eve::eve # required by vstat
+)
 
 target_link_libraries(operon_operon PUBLIC
     Eigen3::Eigen
     Threads::Threads
     fmt::fmt
+    pratt-parser::pratt-parser # required by infix parser
 )
 
 target_link_libraries(operon_operon PRIVATE
     AriaCsvParser::AriaCsvParser
     Taskflow::Taskflow
     cpp-sort::cpp-sort
-    pratt-parser::pratt-parser
     unordered_dense::unordered_dense
     vstat::vstat
     xxhash_cpp::xxhash_cpp
