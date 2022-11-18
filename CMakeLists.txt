@@ -198,7 +198,6 @@ target_link_libraries(operon_operon PRIVATE
 )
 
 target_compile_features(operon_operon PUBLIC cxx_std_20)
-set_target_properties(operon_operon PROPERTIES POSITION_INDEPENDENT_CODE ${BUILD_SHARED_LIBS})
 
 if(MSVC)
     target_compile_options(operon_operon PRIVATE "/std:c++latest")
