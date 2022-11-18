@@ -17,7 +17,12 @@
           overlays = [ foolnotion.overlay ];
         };
 
-        operon = pkgs.stdenv.mkDerivation {
+        llvm = pkgs.llvmPackages_14;
+        stdenv = pkgs.overrideCC llvm.stdenv (
+          llvm.clang.override { gccForLibs = pkgs.gcc12.cc; }
+          );
+
+        operon = stdenv.mkDerivation {
           name = "operon";
           src = self;
 
@@ -42,6 +47,7 @@
             fast_float
             fmt_9
             git
+            jemalloc
             mold
             openlibm
             pkg-config
