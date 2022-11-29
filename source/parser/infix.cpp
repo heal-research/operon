@@ -85,7 +85,7 @@ namespace detail {
         }
     };
 
-    static auto DefaultTokens() { 
+    static auto DefaultTokens() {
         return Operon::Map<std::string, Token, Operon::Hasher, std::equal_to<>>{
             // NOLINTBEGIN
             { "+", Token(TokenKind::dynamic, "add", static_cast<size_t>(NodeType::Add), 10, pratt::associativity::left) },
@@ -120,7 +120,7 @@ namespace detail {
         };
     }
 
-    using Parser = pratt::parser<Nud, Led, Conv, TokenMap, VariableMap>; 
+    using Parser = pratt::parser<Nud, Led, Conv, TokenMap, VariableMap>;
 } // namespace detail
 
 auto InfixParser::Parse(std::string const& infix, detail::VariableMap const& vars, detail::TokenMap const& toks, bool reduce) -> Tree
