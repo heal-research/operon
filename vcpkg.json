@@ -1,20 +1,21 @@
 {
-    "name": "operon",
-    "version-string": "0.3.1",
-    "dependencies": [
-        "aria-csv",
-        "cxxopts",
-        "doctest",
-        "eigen3",
-        "fast-float",
-        "fmt",
-        "pratt-parser",
-        "robin-hood-hashing",
-        "scnlib",
-        "span-lite",
-        "taskflow",
-        "vectorclass",
-        "vstat",
-        "xxhash"
-    ]
+  "name": "operon",
+  "version-string": "0.3.1",
+  "dependencies": [
+    "aria-csv",
+    "cxxopts",
+    "doctest",
+    "eigen3",
+    "fast-float",
+    "fmt",
+    "pratt-parser",
+    "robin-hood-hashing",
+    "scnlib",
+    "span-lite",
+    "taskflow",
+    "unordered-dense",
+    "vectorclass",
+    "vstat",
+    "xxhash-cpp"
+  ]
 }
