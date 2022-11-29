@@ -43,6 +43,7 @@
             pkg-config
             pratt-parser.packages.${system}.default
             scnlib
+            span-lite
             taskflow
             unordered_dense
             vectorclass
