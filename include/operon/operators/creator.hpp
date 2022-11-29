@@ -12,7 +12,6 @@ namespace Operon {
 
 class Tree;
 class PrimitiveSet;
-struct Variable;
 
 // the creator builds a new tree using the existing pset and allowed inputs
 struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
