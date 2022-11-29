@@ -1,17 +1,30 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO AriaFallah/csv-parser
-    REF 544c764d0585c61d4c3bd3a023a825f3d7de1f31
-    SHA512 2a16cb0d112f467337ebcd7a9911b50112632c7ff477b562bf9ecacff7a6879d70406de1cca7c097ce7379b61313f1d3062643164e057506a359f7591f2ed778
-    HEAD_REF main
+    REF 4965c9f320d157c15bc1f5a6243de116a4caf101
+    SHA512 57c50b592a992752e49cfe94f0534b4795a91a3db625b303b56b84f9ad27e0fcf71ff3e5bdb8bd4533e79db49a39075a28e6eb359484ccb145d870209b8bca46
+    HEAD_REF master
 )
+
+include("${VCPKG_ROOT_DIR}/ports/vcpkg-cmake/vcpkg_cmake_build.cmake")
+include("${VCPKG_ROOT_DIR}/ports/vcpkg-cmake/vcpkg_cmake_install.cmake")
+include("${VCPKG_ROOT_DIR}/ports/vcpkg-cmake-config/vcpkg_cmake_config_fixup.cmake")
 
 set(VCPKG_BUILD_TYPE release)
 
-# we only need the hpp file
-file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/include/aria-csv")
-file(COPY "${SOURCE_PATH}/parser.hpp"
-    DESTINATION "${CURRENT_PACKAGES_DIR}/include/aria-csv")
+vcpkg_configure_cmake(
+  SOURCE_PATH "${SOURCE_PATH}"
+  PREFER_NINJA
+)
+
+vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(PACKAGE_NAME AriaCsvParser CONFIG_PATH lib/cmake/AriaCsvParser DO_NOT_DELETE_PARENT_CONFIG_PATH)
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include"
+                    "${CURRENT_PACKAGES_DIR}/debug/share"
+                    "${CURRENT_PACKAGES_DIR}/lib")
+
+vcpkg_fixup_pkgconfig()
 
 file(
   INSTALL "${SOURCE_PATH}/LICENSE"

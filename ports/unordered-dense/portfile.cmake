@@ -1,8 +1,8 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO foolnotion/pratt-parser-calculator
-    REF a15528b1a9acfe6adefeb41334bce43bdb8d578c
-    SHA512 f2ca7f5ce05c5d5be636c2b5351390347622067eedeef2a94cfe880b532a50e7d7e1aecc8a99e149297d60249592953ac2a46c6023bf6f662729cced9dc0abc9
+    REPO martinus/unordered_dense
+    REF 2cb4414a1d284e01110b04dbb799d193e525c22e
+    SHA512 a5ed691714aca6be854c878cfe86ec1403ceceb9933118c716586cee5967377826265609718351dc8f442f725b4edcc1988621cf647fe4ab8f205bc86c66461a
     HEAD_REF main
 )
 
@@ -15,18 +15,19 @@ set(VCPKG_BUILD_TYPE release)
 vcpkg_configure_cmake(
   SOURCE_PATH "${SOURCE_PATH}"
   PREFER_NINJA
-  OPTIONS
-        -DBUILD_TESTING=OFF
-        -DBUILD_EXAMPLES=OFF
 )
+
 vcpkg_cmake_install()
-vcpkg_cmake_config_fixup(PACKAGE_NAME pratt-parser CONFIG_PATH lib/cmake/pratt-parser DO_NOT_DELETE_PARENT_CONFIG_PATH)
+vcpkg_cmake_config_fixup(PACKAGE_NAME unordered_dense CONFIG_PATH lib/cmake/unordered_dense DO_NOT_DELETE_PARENT_CONFIG_PATH)
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include"
                     "${CURRENT_PACKAGES_DIR}/debug/share"
                     "${CURRENT_PACKAGES_DIR}/lib")
 
+vcpkg_fixup_pkgconfig()
+
 file(
   INSTALL "${SOURCE_PATH}/LICENSE"
   DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}"
   RENAME copyright)
+
