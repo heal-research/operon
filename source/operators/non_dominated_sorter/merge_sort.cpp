@@ -4,21 +4,19 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/core/individual.hpp"
 
-#if defined(_MSC_VER)
-#include <intrin.h>
-#endif
-
 namespace Operon {
 
 namespace detail {
+    constexpr int INSERTIONSORT = 7;
+
     inline auto CountTrailingZeros(uint64_t value) {
 #if defined(_MSC_VER)
         unsigned long result;
-    #if defined(_M_X64)
+#if defined(_M_X64)
         _BitScanForward64(&result, value);
-    #else
+#else
         _BitScanForward(&result, value);
-    #endif
+#endif
         return result;
 #else
         return __builtin_ctzl(value);
@@ -94,7 +92,7 @@ namespace detail {
             for (; fw <= lw; fw++) {
                 word = bitsets_[solutionId][fw] & incrementalBitset_[fw];
                 if (word != 0) {
-                    i = detail::CountTrailingZeros(static_cast<word_t>(word));
+                    i = CountTrailingZeros(static_cast<word_t>(word));
                     offset = static_cast<size_t>(fw) * WORD_SIZE;
                     do {
                         if (ranking_[offset + i] >= rank) {
@@ -102,7 +100,7 @@ namespace detail {
                         }
                         i++;
                         word_t w = word >> i; // NOLINT
-                        i += static_cast<bool>(w) ? detail::CountTrailingZeros(w) : WORD_SIZE;
+                        i += static_cast<bool>(w) ? CountTrailingZeros(w) : WORD_SIZE;
                     } while (i < WORD_SIZE && rank <= wordRanking_[fw]);
                     if (rank > maxRank_) {
                         maxRank_ = rank;
@@ -180,23 +178,9 @@ namespace detail {
             wordRanking_.resize(nSolutions, 0);
             bitsets_.resize(nSolutions);
             bsRanges_.resize(nSolutions);
-            incrementalBitset_.resize(nSolutions / WORD_SIZE + (nSolutions % WORD_SIZE != 0));
+            incrementalBitset_.resize(nSolutions / WORD_SIZE + static_cast<uint64_t>(nSolutions % WORD_SIZE != 0));
         }
     };
-
-    inline auto CompareLex(std::vector<Operon::Scalar> const& s1, std::vector<Operon::Scalar> const& s2, size_t fromObj, size_t toObj, Operon::Scalar eps) -> int
-    {
-        Operon::Less cmp;
-        for (; fromObj < toObj; fromObj++) {
-            if (cmp(s1[fromObj], s2[fromObj], eps)) {
-                return -1;
-            }
-            if (cmp(s2[fromObj], s1[fromObj], eps)) {
-                return 1;
-            }
-        }
-        return 0;
-    }
 } // namespace detail
 
     auto
@@ -268,3 +252,4 @@ namespace detail {
         return fronts;
     }
 } // namespace Operon
+
