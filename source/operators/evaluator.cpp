@@ -130,7 +130,7 @@ namespace Operon {
             constexpr OptimizerType TYPE = OptimizerType::EIGEN;
 #endif
             NonlinearLeastSquaresOptimizer<TYPE> opt(interpreter_.get(), genotype, dataset);
-            OptimizerSummary summary;
+            OptimizerSummary summary{};
             auto coefficients = opt.Optimize(targetValues, trainingRange, iter, summary);
             ResidualEvaluations += summary.FunctionEvaluations;
             JacobianEvaluations += summary.JacobianEvaluations;
@@ -158,7 +158,7 @@ namespace Operon {
                 auto [it, _] = divmap_.insert({ node.CalculatedHashValue, 0 });
                 ++it->second;
             }
-            total_ += ind.Genotype.Length();
+            total_ += static_cast<double>(ind.Genotype.Length());
         }
     }
 
