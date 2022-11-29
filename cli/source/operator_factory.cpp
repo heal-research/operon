@@ -137,13 +137,13 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
         dynamic_cast<OffspringSelectionGenerator*>(generator.get())->ComparisonFactor(comparisonFactor);
     } else if (name == "brood") {
         generator = std::make_unique<BroodOffspringGenerator>(eval, cx, mut, femSel, maleSel);
-        size_t broodSize{5};
+        size_t broodSize{BroodOffspringGenerator::DefaultBroodSize};
         if (tok.size() > 1) { (void) scn::scan(tok[1], "{}", broodSize); }
         dynamic_cast<BroodOffspringGenerator*>(generator.get())->BroodSize(broodSize);
     } else if (name == "poly") {
-        generator = std::make_unique<BroodOffspringGenerator>(eval, cx, mut, femSel, maleSel);
-        size_t polygenicSize{5};
-        if (tok.size() > 1) { (void) scn::scan(tok[1], "{}", polygenicSize); }
+        generator = std::make_unique<PolygenicOffspringGenerator>(eval, cx, mut, femSel, maleSel);
+        size_t polygenicSize{PolygenicOffspringGenerator::DefaultBroodSize};
+        if (tok.size() > 1) { auto result = scn::scan(tok[1], "{}", polygenicSize); }
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
     }
     return generator;
