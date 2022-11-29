@@ -213,7 +213,6 @@ target_link_libraries(operon_operon PUBLIC
     fmt::fmt
     nonstd::span-lite
     pratt-parser::pratt-parser
-    robin_hood::robin_hood
     )
 
 target_link_libraries(operon_operon PRIVATE
