@@ -175,12 +175,13 @@ namespace Operon::Test {
         auto ds = Util::RandomDataset(rd, nrow, ncol);
 
         auto variables = ds.Variables();
-        auto target = variables.back().Name;
+        auto target = variables.back();
         std::vector<Variable> inputs;
-        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target; });
+        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target.Name; });
         Range range = { 0, ds.Rows() };
 
-        auto problem = Problem(ds).Inputs(inputs).Target(target).TrainingRange(range).TestRange(range);
+        //auto problem = Problem(ds).Inputs(inputs).Target(target).TrainingRange(range).TestRange(range);
+        Operon::Problem problem(ds, inputs, target, range, range);
         problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
@@ -253,11 +254,10 @@ namespace Operon::Test {
         std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target; });
         Range range = { 0, ds.Rows() };
 
-        auto problem = Problem(ds).Inputs(inputs).Target(target).TrainingRange(range).TestRange(range);
-        problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
-
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        auto creator = BalancedTreeCreator { problem.GetPrimitiveSet(), inputs };
+        Operon::PrimitiveSet pset;
+        pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
+        auto creator = BalancedTreeCreator { pset, inputs };
 
         std::vector<Tree> trees(n);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
@@ -267,8 +267,9 @@ namespace Operon::Test {
         Operon::Interpreter interpreter;
         std::vector<size_t> threads(std::thread::hardware_concurrency());
         std::iota(threads.begin(), threads.end(), 1);
+        std::vector<Operon::Scalar> result(trees.size() * range.Size());
         for (auto t : threads) {
-            b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, ds, range, t); });
+            b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, ds, range, result, t); });
         }
     }
 
@@ -277,17 +278,20 @@ namespace Operon::Test {
         auto ds = Dataset("/home/bogdb/projects/operon-archive/data/Friedman-I.csv", /*hasHeader=*/true);
 
         std::vector<Variable> inputs;
-        const auto *target = "Y";
+        const auto *targetName = "Y";
         auto variables = ds.Variables();
         std::copy_if(variables.begin(),
                 variables.end(),
                 std::back_inserter(inputs),
-                [&](auto const& var) { return var.Name != target; });
+                [&](auto const& var) { return var.Name != targetName; });
+        auto result = ds.GetVariable(targetName);
+        ENSURE(result);
+        auto target = result.value();
 
         Range trainingRange(0, ds.Rows() / 2);
         Range testRange(ds.Rows() / 2, ds.Rows());
 
-        auto problem = Problem(ds).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
+        Operon::Problem problem(ds, inputs, target, trainingRange, testRange);
         problem.GetPrimitiveSet().SetConfig(PrimitiveSet::Arithmetic);
         BalancedTreeCreator creator(problem.GetPrimitiveSet(), problem.InputVariables(), 0.0);
 
@@ -357,5 +361,41 @@ namespace Operon::Test {
 
         gp.Run(random, report, 10);
     }
-} // namespace Operon
+
+    TEST_CASE("math cost model")
+    {
+        const size_t n         = 1000;
+        const size_t maxLength = 3;
+        const size_t maxDepth  = 2;
+
+        constexpr size_t nrow = 10000;
+        constexpr size_t ncol = 10;
+
+        Operon::RandomGenerator rd(1234);
+        auto ds = Util::RandomDataset(rd, nrow, ncol);
+
+        auto variables = ds.Variables();
+        auto target = variables.back().Name;
+        std::vector<Variable> inputs;
+        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target; });
+        Range range = { 0, ds.Rows() };
+        Operon::Interpreter interpreter;
+
+        //Operon::PrimitiveSet base(Operon::PrimitiveSet::Arithmetic);
+        auto primitives = NodeType::Constant;
+        nb::Bench b;
+        for (auto i = 0UL; i < NodeTypes::Count-3; ++i) {
+            Operon::PrimitiveSet pset(primitives | static_cast<NodeType>(1U << i));
+            Operon::Node node(static_cast<NodeType>(1U << i));
+            auto creator = BalancedTreeCreator { pset, inputs };
+            std::vector<Tree> trees(n);
+            std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+
+            b.batch(range.Size()).epochs(10).epochIterations(1000).run(node.Name(), [&]() {
+                auto tree = creator(rd, sizeDistribution(rd), 0, maxDepth);
+                return interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
+            });
+        }
+    }
+} // namespace Operon::Test
 
