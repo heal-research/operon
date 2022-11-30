@@ -14,7 +14,7 @@ using Operon::NodeType;
 
 namespace Operon {
 
-static const std::unordered_map<std::string, NodeType> Primitives {
+static const Operon::Map<std::string, NodeType> Primitives {
     { "add",      NodeType::Add },
     { "mul",      NodeType::Mul },
     { "sub",      NodeType::Sub },
@@ -168,7 +168,10 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("crossover-probability", "The probability to apply crossover", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
         ("crossover-internal-probability", "Crossover bias towards swapping function nodes", cxxopts::value<Operon::Scalar>()->default_value("0.9"))
         ("mutation-probability", "The probability to apply mutation", cxxopts::value<Operon::Scalar>()->default_value("0.25"))
-        ("tree-creator", "Tree creator operator to initialize the population with.", cxxopts::value<std::string>()->default_value("btc"))
+        ("creator", "Tree creator operator to initialize the population with.", cxxopts::value<std::string>()->default_value("btc"))
+        ("creator-mindepth", "Minimum tree depth (applies to the grow tree creator)", cxxopts::value<std::size_t>()->default_value("1"))
+        ("creator-maxdepth", "Minimum tree depth (applies to all tree creators)", cxxopts::value<std::size_t>()->default_value("100"))
+        ("creator-maxlength", "Maximum tree length (applies to all tree creators)", cxxopts::value<std::size_t>()->default_value("50"))
         ("female-selector", "Female selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>()->default_value("tournament"))
         ("male-selector", "Male selection operator, with optional parameters separated by : (eg, --selector tournament:5)", cxxopts::value<std::string>()->default_value("tournament"))
         ("offspring-generator", "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)", cxxopts::value<std::string>()->default_value("basic"))

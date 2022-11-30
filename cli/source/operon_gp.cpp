@@ -52,7 +52,7 @@ auto main(int argc, char** argv) -> int
     Operon::Range trainingRange;
     Operon::Range testRange;
     std::unique_ptr<Operon::Dataset> dataset;
-    std::string target;
+    std::string targetName;
     bool showPrimitiveSet = false;
     auto threads = std::thread::hardware_concurrency();
     Operon::NodeType primitiveSetConfig = Operon::PrimitiveSet::Arithmetic;
@@ -82,7 +82,7 @@ auto main(int argc, char** argv) -> int
                 testRange = Operon::ParseRange(value);
             }
             if (key == "target") {
-                target = value;
+                targetName = value;
             }
             if (key == "maxlength") {
                 maxLength = kv.as<size_t>();
@@ -110,8 +110,8 @@ auto main(int argc, char** argv) -> int
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;
         }
-        if (auto res = dataset->GetVariable(target); !res.has_value()) {
-            fmt::print(stderr, "error: target variable {} does not exist in the dataset.", target);
+        if (auto res = dataset->GetVariable(targetName); !res.has_value()) {
+            fmt::print(stderr, "error: target variable {} does not exist in the dataset.", targetName);
             return EXIT_FAILURE;
         }
         if (result.count("train") == 0) {
@@ -141,7 +141,7 @@ auto main(int argc, char** argv) -> int
         std::vector<Operon::Variable> inputs;
         if (result.count("inputs") == 0) {
             auto variables = dataset->Variables();
-            std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& var) { return var.Name != target; });
+            std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& var) { return var.Name != targetName; });
         } else {
             auto str = result["inputs"].as<std::string>();
             auto tokens = Operon::Split(str, ',');
@@ -156,11 +156,12 @@ auto main(int argc, char** argv) -> int
             }
         }
 
-        auto problem = Operon::Problem(*dataset).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
+        auto target = dataset->GetVariable(targetName).value();
+        Operon::Problem problem(*dataset, inputs, target, trainingRange, testRange);
         problem.GetPrimitiveSet().SetConfig(primitiveSetConfig);
 
         std::unique_ptr<Operon::CreatorBase> creator;
-        creator = ParseCreator(result["tree-creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.InputVariables());
+        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.InputVariables());
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(*creator);
