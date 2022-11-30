@@ -94,6 +94,7 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
     auto BudgetExhausted() const -> bool { return TotalEvaluations() >= Budget(); }
 
     auto Population() const -> Operon::Span<Individual const> { return population_; }
+    auto SetPopulation(Operon::Span<Operon::Individual const> pop) const { population_ = pop; }
     auto GetProblem() const -> Problem const& { return problem_; }
     auto GetProblem() -> Problem& { return problem_; }
     auto SetProblem(Problem& problem) { problem_ = problem; }
@@ -106,7 +107,7 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
     }
 
     private:
-    Operon::Span<Operon::Individual const> population_;
+    mutable Operon::Span<Operon::Individual const> population_;
     std::reference_wrapper<Problem> problem_;
     size_t iterations_ = DefaultLocalOptimizationIterations;
     size_t budget_ = DefaultEvaluationBudget;
@@ -184,13 +185,15 @@ public:
     auto
     operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
     {
-        Operon::Vector<Operon::Scalar> fit;
+        EvaluatorBase::ReturnType fit;
+        fit.reserve(ind.Size());
+
         auto resEval{0UL};
         auto jacEval{0UL};
         auto eval{0UL};
         for (auto const& ev : evaluators_) {
-            auto fitI = ev(rng, ind, buf);
-            std::copy(fitI.begin(), fitI.end(), std::back_inserter(fit));
+            auto f = ev(rng, ind, buf);
+            std::copy(f.begin(), f.end(), std::back_inserter(fit));
 
             resEval += ev.get().ResidualEvaluations;
             jacEval += ev.get().JacobianEvaluations;
@@ -228,10 +231,21 @@ public:
     }
 };
 
+class ComplexityEvaluator : public EvaluatorBase {
+public:
+    explicit ComplexityEvaluator(Operon::Problem& problem)
+        : EvaluatorBase(problem)
+    {
+    }
+
+    auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+};
+
 class OPERON_EXPORT DiversityEvaluator : public EvaluatorBase {
 public:
-    explicit DiversityEvaluator(Operon::Problem& problem, Operon::HashMode hashmode = Operon::HashMode::Strict)
-        : EvaluatorBase(problem), hashmode_(hashmode)
+    explicit DiversityEvaluator(Operon::Problem& problem, Operon::HashMode hashmode = Operon::HashMode::Strict, std::size_t sampleSize = 100)
+        : EvaluatorBase(problem), hashmode_(hashmode), sampleSize_(sampleSize)
     {
     }
 
@@ -241,9 +255,9 @@ public:
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
 
 private:
-    mutable Operon::Map<size_t, size_t> divmap_;
-    mutable double total_{0}; // total count
-    Operon::HashMode hashmode_;
+    mutable Operon::Map<Operon::Hash, std::vector<Operon::Hash>> divmap_;
+    Operon::HashMode hashmode_{Operon::HashMode::Strict};
+    std::size_t sampleSize_{};
 };
 
 } // namespace Operon
