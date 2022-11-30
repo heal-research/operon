@@ -28,4 +28,3 @@ static auto Parse(std::string const& infix, detail::VariableMap const& vars, boo
 } // namespace Operon
 
 #endif
-
