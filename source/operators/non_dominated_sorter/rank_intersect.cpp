@@ -88,8 +88,8 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     using Ptr = std::unique_ptr<uint64_t[], std::add_pointer_t<void(uint64_t*)>>; // NOLINT
     using Operon::Scalar;
 
-    auto set = [](auto&& range, int i) { range[i / D] |= (1UL << (D - i % D));}; // set bit i
-    auto reset = [](auto&& range, int i) { range[i / D] &= ~(1UL << (i % D)); }; // unset bit i
+    auto set = [D](auto&& range, int i) { range[i / D] |= (1UL << (D - i % D));}; // set bit i
+    auto reset = [D](auto&& range, int i) { range[i / D] &= ~(1UL << (i % D)); }; // unset bit i
 
     // initialization
     auto q = detail::MakeUnique<uint64_t[]>(nb, ONES); // NOLINT
