@@ -41,10 +41,6 @@ public:
     }
 };
 
-struct OPERON_EXPORT BestOrderSorter : public NondominatedSorterBase {
-    auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
-};
-
 struct OPERON_EXPORT DeductiveSorter : public NondominatedSorterBase {
     auto Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result override;
 };
