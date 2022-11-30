@@ -56,7 +56,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
         auto pop = initializePop(rd, dist, n, m);
 
-        Operon::Less less;
+        Operon::Less<false> less;
         Operon::Equal eq;
 
         Operon::Scalar const eps{0};
