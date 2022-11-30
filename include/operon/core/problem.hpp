@@ -16,20 +16,11 @@ namespace Operon {
 
 class Problem {
 public:
-    explicit Problem(Dataset const& ds) 
-        : dataset_(ds)
-    {
-        std::copy(ds.Variables().begin(), ds.Variables().end()-1, std::back_inserter(inputVariables_));
-        training_ = Range{0, ds.Rows() / 2};
-        test_ = Range{ds.Rows() / 2, ds.Rows()};
-        target_ = dataset_.Variables().back();
-    }
-
-    Problem(Dataset ds, Operon::Span<const Variable> inputs, Variable targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 }) // NOLINT(bugprone-easily-swappable-parameters)
+    Problem(Dataset ds, Operon::Span<Variable const> inputs, Variable targetVariable, Range trainingRange, Range testRange, Range validationRange = { 0, 0 }) // NOLINT(bugprone-easily-swappable-parameters)
         : dataset_(std::move(ds))
-        , training_(std::move(trainingRange))
-        , test_(std::move(testRange))
-        , validation_(std::move(validationRange))
+        , training_(trainingRange)
+        , test_(testRange)
+        , validation_(validationRange)
         , target_(std::move(targetVariable))
         , inputVariables_(inputs.begin(), inputs.end())
     {

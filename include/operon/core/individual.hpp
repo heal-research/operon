@@ -63,7 +63,7 @@ struct LexicographicalComparison {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
         auto const& fit1 = lhs.Fitness;
         auto const& fit2 = rhs.Fitness;
-        return Less{}(fit1.cbegin(), fit1.cend(), fit2.cbegin(), fit2.cend(), eps);
+        return Less{}(fit1.begin(), fit1.end(), fit2.begin(), fit2.end(), eps);
     }
 };
 
@@ -76,7 +76,7 @@ struct ParetoComparison {
         EXPECT(std::size(lhs.Fitness) == std::size(rhs.Fitness));
         auto const& fit1 = lhs.Fitness;
         auto const& fit2 = rhs.Fitness;
-        return ParetoDominance{}(fit1.cbegin(), fit1.cend(), fit2.cbegin(), fit2.cend(), eps) == Dominance::Left;
+        return ParetoDominance{}(fit1.begin(), fit1.end(), fit2.begin(), fit2.end(), eps) == Dominance::Left;
     }
 };
 

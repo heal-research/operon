@@ -19,7 +19,6 @@ auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t /*args*
     size_t maxFunctionArity = std::get<1>(t);
 
     auto const& variables = Variables();
-    std::normal_distribution<Operon::Scalar> normalReal(0, 1);
     auto init = [&](Node& node) {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {
