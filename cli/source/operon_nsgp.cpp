@@ -54,7 +54,7 @@ auto main(int argc, char** argv) -> int
     Operon::Range trainingRange;
     Operon::Range testRange;
     std::unique_ptr<Operon::Dataset> dataset;
-    std::string target;
+    std::string targetName;
     bool showPrimitiveSet = false;
     auto threads = std::thread::hardware_concurrency();
     Operon::NodeType primitiveSetConfig = Operon::PrimitiveSet::Arithmetic;
@@ -84,7 +84,7 @@ auto main(int argc, char** argv) -> int
                 testRange = Operon::ParseRange(value);
             }
             if (key == "target") {
-                target = value;
+                targetName = value;
             }
             if (key == "maxlength") {
                 maxLength = kv.as<size_t>();
@@ -112,8 +112,8 @@ auto main(int argc, char** argv) -> int
             Operon::PrintPrimitives(primitiveSetConfig);
             return 0;
         }
-        if (auto res = dataset->GetVariable(target); !res.has_value()) {
-            fmt::print(stderr, "error: target variable {} does not exist in the dataset.", target);
+        if (auto res = dataset->GetVariable(targetName); !res.has_value()) {
+            fmt::print(stderr, "error: target variable {} does not exist in the dataset.", targetName);
             return EXIT_FAILURE;
         }
         if (result.count("train") == 0) {
@@ -143,7 +143,7 @@ auto main(int argc, char** argv) -> int
         std::vector<Operon::Variable> inputs;
         if (result.count("inputs") == 0) {
             auto variables = dataset->Variables();
-            std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& var) { return var.Name != target; });
+            std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& var) { return var.Name != targetName; });
         } else {
             auto str = result["inputs"].as<std::string>();
             auto tokens = Operon::Split(str, ',');
@@ -158,17 +158,22 @@ auto main(int argc, char** argv) -> int
             }
         }
 
-        auto problem = Operon::Problem(*dataset).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
+        auto target = dataset->GetVariable(targetName).value();
+        Operon::Problem problem(*dataset, inputs, target, trainingRange, testRange);
+        //auto problem = Operon::Problem(*dataset).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
         problem.GetPrimitiveSet().SetConfig(primitiveSetConfig);
 
         std::unique_ptr<Operon::CreatorBase> creator;
-        creator = ParseCreator(result["tree-creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.InputVariables());
+        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.InputVariables());
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(*creator);
+
+        auto const initialMinDepth = result["creator-mindepth"].as<std::size_t>();
+        auto const initialMaxDepth = result["creator-mindepth"].as<std::size_t>();
         treeInitializer.ParameterizeDistribution(amin+1, maxLength);
-        treeInitializer.SetMinDepth(1);
-        treeInitializer.SetMaxDepth(1000); // NOLINT
+        treeInitializer.SetMinDepth(initialMinDepth);
+        treeInitializer.SetMaxDepth(initialMaxDepth); // NOLINT
 
         std::unique_ptr<Operon::CoefficientInitializerBase> coeffInitializer;
         std::unique_ptr<Operon::MutatorBase> onePoint;
@@ -213,13 +218,15 @@ auto main(int argc, char** argv) -> int
         errorEvaluator.SetLocalOptimizationIterations(config.Iterations);
         errorEvaluator.SetBudget(config.Evaluations);
         Operon::LengthEvaluator lengthEvaluator(problem, maxLength);
+        Operon::ComplexityEvaluator complexityEvaluator(problem);
         //Operon::ShapeEvaluator shapeEvaluator(problem);
-        //Operon::DiversityEvaluator divEvaluator(problem, Operon::HashMode::Strict);
+        //Operon::DiversityEvaluator divEvaluator(problem, Operon::HashMode::Relaxed, 10);
 
         Operon::MultiEvaluator evaluator(problem);
         evaluator.SetBudget(config.Evaluations);
         evaluator.Add(errorEvaluator);
         evaluator.Add(lengthEvaluator);
+        //evaluator.Add(complexityEvaluator);
         //evaluator.Add(shapeEvaluator);
         //evaluator.Add(divEvaluator);
 
