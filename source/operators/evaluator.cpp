@@ -140,7 +140,7 @@ namespace Operon {
             }
         }
 
-        auto fit = Operon::Vector<Operon::Scalar> { static_cast<Operon::Scalar>(computeFitness()) };
+        auto fit = EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(computeFitness()) };
         for (auto& v : fit) {
             if (!std::isfinite(v)) {
                 v = std::numeric_limits<Operon::Scalar>::max();
@@ -151,22 +151,76 @@ namespace Operon {
 
     auto DiversityEvaluator::Prepare(Operon::Span<Operon::Individual const> pop) const -> void {
         divmap_.clear();
-        total_ = 0;
-        for (auto const& ind : pop) {
-            auto const& nodes = ind.Genotype.Hash(hashmode_).Nodes();
-            for (auto const& node : nodes) {
-                auto [it, _] = divmap_.insert({ node.CalculatedHashValue, 0 });
-                ++it->second;
-            }
-            total_ += static_cast<double>(ind.Genotype.Length());
+        for (auto i = 0UL; i < pop.size(); ++i) {
+            auto const& tree = pop[i].Genotype;
+            auto const& nodes = tree.Nodes();
+            (void) tree.Hash(hashmode_);
+            std::vector<Operon::Hash> hash(nodes.size());;
+            std::transform(nodes.begin(), nodes.end(), hash.begin(), [](auto const& n) { return n.CalculatedHashValue; });
+            std::stable_sort(hash.begin(), hash.end());
+            divmap_[tree.HashValue()] = std::move(hash);
         }
     }
 
     auto
-    DiversityEvaluator::operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar>  /*buf*/) const -> typename EvaluatorBase::ReturnType
+    DiversityEvaluator::operator()(Operon::RandomGenerator& random, Individual& ind, Operon::Span<Operon::Scalar>  /*buf*/) const -> typename EvaluatorBase::ReturnType
     {
+        (void)ind.Genotype.Hash(hashmode_);
+        std::vector<Operon::Hash> lhs(ind.Genotype.Length());
         auto const& nodes = ind.Genotype.Nodes();
-        auto sum = std::transform_reduce(nodes.begin(), nodes.end(), Operon::Scalar{0}, std::plus{}, [&](auto const& n) { auto it = divmap_.find(n.CalculatedHashValue); return it == divmap_.end() ? 0 : it->second; });
-        return { sum / static_cast<Operon::Scalar>(total_) };
+        std::transform(nodes.begin(), nodes.end(), lhs.begin(), [](auto const& n) { return n.CalculatedHashValue; });
+        std::stable_sort(lhs.begin(), lhs.end());
+        auto const& values = divmap_.values();
+
+        Operon::Scalar distance{0};
+        std::vector<double> distances(sampleSize_);
+        for (auto i = 0; i < sampleSize_; ++i) {
+            auto const& rhs = Operon::Random::Sample(random, values.begin(), values.end())->second;
+            distance += static_cast<Operon::Scalar>(Operon::Distance::Jaccard(lhs, rhs));
+        }
+        return EvaluatorBase::ReturnType { -distance / static_cast<Operon::Scalar>(sampleSize_) };
+    }
+
+    auto
+    ComplexityEvaluator::operator()(Operon::RandomGenerator& random, Individual& ind, Operon::Span<Operon::Scalar>  /*buf*/) const -> typename EvaluatorBase::ReturnType
+    {
+        // NOLINTBEGIN(*)
+        static Operon::Map<NodeType, int> costMap {
+            { NodeType::Add,  3 },
+            { NodeType::Mul,  3 },
+            { NodeType::Sub,  3 },
+            { NodeType::Div,  3 },
+            { NodeType::Fmin, 3 },
+            { NodeType::Fmax, 3 },
+            { NodeType::Aq,   3 },
+            { NodeType::Pow,  9 },
+            { NodeType::Abs,  3 },
+            { NodeType::Acos, 9 },
+            { NodeType::Asin, 9 },
+            { NodeType::Atan, 28 },
+            { NodeType::Cbrt, 22 },
+            { NodeType::Ceil,  3 },
+            { NodeType::Cos,   5 },
+            { NodeType::Cosh, 37 },
+            { NodeType::Exp,   5 },
+            { NodeType::Floor, 3 },
+            { NodeType::Log, 6 },
+            { NodeType::Logabs, 6 },
+            { NodeType::Log1p, 6 },
+            { NodeType::Sin, 5 },
+            { NodeType::Sinh, 37 },
+            { NodeType::Sqrt, 4 },
+            { NodeType::Sqrtabs, 4 },
+            { NodeType::Tan, 65 },
+            { NodeType::Tanh, 27 },
+            { NodeType::Square, 3 },
+            { NodeType::Constant, 0 },
+            { NodeType::Variable, 0 },
+            { NodeType::Dynamic, 1000 }
+        };
+        // NOLINTEND(*)
+        auto const& nodes = ind.Genotype.Nodes();
+        auto complexity = std::transform_reduce(nodes.begin(), nodes.end(), 0, std::plus{}, [&](auto const& node) { return costMap[node.Type]; });
+        return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(complexity) };
     }
 } // namespace Operon
