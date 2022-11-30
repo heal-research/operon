@@ -12,7 +12,7 @@ using std::string;
 using std::unordered_map;
 
 namespace Operon {
-    static const unordered_map<NodeType, pair<string, string>> NodeDesc = {
+    static const Operon::Map<NodeType, pair<string, string>> NodeDesc = {
         { NodeType::Add,      std::make_pair("+", "n-ary addition f(a,b,c,...) = a + b + c + ...") },
         { NodeType::Mul,      std::make_pair("*", "n-ary multiplication f(a,b,c,...) = a * b * c * ..." ) },
         { NodeType::Sub,      std::make_pair("-", "n-ary subtraction f(a,b,c,...) = a - (b + c + ...)" ) },
