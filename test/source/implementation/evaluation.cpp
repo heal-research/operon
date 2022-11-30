@@ -60,33 +60,6 @@ TEST_CASE("Evaluation correctness")
     }
 }
 
-TEST_CASE("Evaluator")
-{
-    Eigen::Matrix<Operon::Scalar, -1, -1> m(1, 1);
-    Dataset ds(m);
-
-    auto variables = ds.Variables();
-    auto target = variables.back().Name;
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target; });
-    Range range = { 0, ds.Rows() };
-
-    auto problem = Problem(ds).Inputs(inputs).Target(target).TrainingRange(range).TestRange(range);
-    problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
-
-    Operon::Interpreter ir;
-    Operon::R2 r2;
-    Operon::Evaluator ev(problem, ir, r2, /*linearScaling=*/false);
-    Operon::RandomGenerator rd(1234);
-
-    Operon::Map<std::string, Operon::Hash> vars;
-    auto t = InfixParser::Parse("1 + 2 + 3", vars);
-    Operon::Individual ind;
-    ind.Genotype = t;
-    auto r = ev(rd, ind, {});
-    fmt::print("result = {}\n", r[0]);
-}
-
 TEST_CASE("Numeric optimization")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
