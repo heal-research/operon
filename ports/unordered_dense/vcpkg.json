@@ -1,5 +1,0 @@
-{
-    "name": "unordered-dense",
-    "version-string": "2.0.1",
-    "description": "A fast & densely stored hashmap and hashset based on robin-hood backward shift deletion.."
-}
