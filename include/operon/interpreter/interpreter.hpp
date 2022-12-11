@@ -66,45 +66,34 @@ struct GenericInterpreter {
         Operon::Vector<detail::Array<T>> m(nodes.size());
         Eigen::Map<Eigen::Array<T, -1, 1>> res(result.data(), result.size(), 1);
 
-        struct NodeMeta {
-            T Param;
-            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> Values;
-            std::optional<Callable const> Func;
-
-            NodeMeta(T param, decltype(Values) values, decltype(Func) func) // NOLINT
-                : Param(param), Values(values), Func(func)
-            {
-            }
-        };
-
+        using NodeMeta = std::tuple<T, Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>, std::optional<Callable const>>;
         Operon::Vector<NodeMeta> meta; meta.reserve(nodes.size());
 
         size_t idx = 0;
+        int numRows = static_cast<int>(range.Size());
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto const& n = nodes[i];
 
-            const auto *ptr = n.IsVariable() ? dataset.GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
-            const auto sz = ptr ? range.Size() : 0UL;
-            meta.emplace_back(
-                (parameters && n.Optimize) ? parameters[idx++] : T{n.Value},
-                decltype(NodeMeta::Values)(ptr, static_cast<int64_t>(sz)),
+            auto const* ptr = n.IsVariable() ? dataset.GetValues(n.HashValue).subspan(range.Start(), numRows).data() : nullptr;
+            auto const param = (parameters && n.Optimize) ? parameters[idx++] : T{n.Value};
+            meta.push_back({
+                param,
+                std::tuple_element_t<1, NodeMeta>(ptr, numRows),
                 ftable_.template TryGet<T>(n.HashValue)
-            );
-            if (n.IsConstant()) { m[i].setConstant(meta.back().Param); }
+            });
+            if (n.IsConstant()) { m[i].setConstant(param); }
         }
 
-        int numRows = static_cast<int>(range.Size());
         for (int row = 0; row < numRows; row += S) {
             auto remainingRows = std::min(S, numRows - row);
             Operon::Range rg(range.Start() + row, range.Start() + row + remainingRows);
 
             for (size_t i = 0; i < nodes.size(); ++i) {
-                auto const& s = nodes[i];
                 auto const& [ param, values, func ] = meta[i];
-                if (func) {
-                    std::invoke(func.value(), m, nodes, i, rg);
-                } else if (s.IsVariable()) {
-                    m[i].segment(0, remainingRows) = meta[i].Param * values.segment(row, remainingRows).template cast<T>();
+                if (nodes[i].IsVariable()) {
+                    m[i].segment(0, remainingRows) = param * values.segment(row, remainingRows).template cast<T>();
+                } else if (func) {
+                    std::invoke(*func, m, nodes, i, rg);
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
