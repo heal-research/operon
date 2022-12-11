@@ -14,6 +14,7 @@ find_package(doctest REQUIRED)
 
 add_executable(operon_test
     source/operon_test.cpp
+    source/implementation/autodiff.cpp
     source/implementation/crossover.cpp
     source/implementation/details.cpp
     source/implementation/dispatch_table.cpp
@@ -25,6 +26,7 @@ add_executable(operon_test
     source/implementation/mutation.cpp
     source/implementation/nondominatedsort.cpp
     source/implementation/random.cpp
+    source/performance/autodiff.cpp
     source/performance/distance.cpp
     source/performance/evaluation.cpp
     source/performance/nondominatedsort.cpp
