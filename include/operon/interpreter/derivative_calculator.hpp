@@ -227,14 +227,17 @@ struct DerivativeCalculator {
             }
 
             // update weights
-            rnodes.back().W.setConstant(1);
-            for (auto i = std::ssize(nodes)-1; i >= 0; --i) {
-                auto const& n = nodes[i];
-                //if (n.IsLeaf()) { continue; }
-                auto indices = detail::Indices(nodes, i);
-
-                for (decltype(i) j = i-1, k = 0; k < n.Arity; ++k, j -= (nodes[j].Length+1)) {
-                    rnodes[j].W += rnodes[i].W * rnodes[i].D[k];
+            auto const& root = nodes.back();
+            if (root.IsLeaf()) {
+                rnodes.back().W = rnodes.back().A;
+            } else {
+                rnodes.back().W.setConstant(1);
+                for (auto i = std::ssize(nodes)-1; i >= 0; --i) {
+                    if (nodes[i].IsLeaf()) { continue; }
+                    auto const& n = nodes[i];
+                    for (decltype(i) j = i-1, k = 0; k < n.Arity; ++k, j -= (nodes[j].Length+1)) {
+                        rnodes[j].W += rnodes[i].W * rnodes[i].D[k];
+                    }
                 }
             }
 
