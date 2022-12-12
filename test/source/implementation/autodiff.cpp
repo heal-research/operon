@@ -11,8 +11,11 @@
 #include "operon/interpreter/derivative_calculator.hpp"
 #include "operon/interpreter/dispatch_table.hpp"
 #include "operon/operators/creator.hpp"
+#include "operon/operators/initializer.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
+
+#include <iomanip>
 
 namespace dt = doctest;
 
@@ -55,7 +58,6 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         auto parameters = tree.GetCoefficients();
 
         Eigen::Matrix<Operon::Scalar, -1, -1> jacobian(range.Size(), parameters.size());
-
         auto autodiff = Operon::detail::Autodiff<decltype(re), Operon::Dual, Operon::Scalar, Eigen::ColMajor>;
         autodiff(re, parameters.data(), nullptr, jacobian.data());
 
@@ -65,6 +67,8 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         std::cout << "J_forward: " << jacobian << "\n";
         std::cout << "J_reverse: " << dt.Jacobian() << "\n\n";
     };
+
+    SUBCASE("0.51 * X1") { derive("0.51 * X1"); }
 
     SUBCASE("cos(sin(3))") { derive("cos(sin(3))"); }
 
@@ -89,8 +93,53 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     SUBCASE("random trees") {
         Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos);
         Operon::BalancedTreeCreator btc(pset, ds.Variables());
+        Operon::UniformCoefficientInitializer initializer;
 
-        constexpr auto n{10};
+        constexpr auto n{100'000};
+        constexpr auto maxsize{50};
+        constexpr auto mindepth{1};
+        constexpr auto maxdepth{1000};
+
+        std::uniform_int_distribution<size_t> dist(1, maxsize);
+
+        // comparison precision
+        constexpr auto epsilon{1e-4};
+
+        Operon::Interpreter interpreter;
+        Operon::Range range(0, ds.Rows());
+        Operon::Vector<Operon::Scalar> target(ds.Rows());
+
+        Operon::DispatchTable<Operon::Scalar> dtable;
+
+        for (auto i = 0; i < n; ++i) {
+            auto tree = btc(rng, dist(rng), mindepth, maxdepth);
+            initializer(rng, tree);
+
+            auto parameters = tree.GetCoefficients();
+
+            // forward mode
+            Eigen::Matrix<Operon::Scalar, -1, -1> jacobian(range.Size(), parameters.size());
+            Operon::ResidualEvaluator re(interpreter, tree, ds, target, range);
+            auto autodiff = Operon::detail::Autodiff<decltype(re), Operon::Dual, Operon::Scalar, Eigen::ColMajor>;
+            autodiff(re, parameters.data(), nullptr, jacobian.data());
+
+            // reverse mode
+            Operon::Interpreteur interpreteur{ tree, ds, range, dtable};
+            Operon::DerivativeCalculator dt(interpreteur);
+            dt(parameters);
+
+            constexpr auto precision{10};
+            auto finite{ std::isfinite(jacobian.sum()) };
+            auto areEqual{ jacobian.array().isApprox(dt.Jacobian(), epsilon) };
+            auto ok = !finite || areEqual;
+
+            //if(!ok) {
+            //    fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
+            //    std::cout << std::setprecision(precision) << "J_forward: " << jacobian << "\n";
+            //    std::cout << std::setprecision(precision) << "J_reverse: " << dt.Jacobian() << "\n\n";
+            //}
+            CHECK(ok);
+        }
     }
 }
 
