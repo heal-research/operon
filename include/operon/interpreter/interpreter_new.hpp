@@ -37,7 +37,7 @@ struct Interpreteur {
         EXPECT(!nodes.empty());
 
         constexpr int S = static_cast<Eigen::Index>(detail::BatchSize<T>::Value);
-        Operon::Vector<detail::Array<T>> m(nodes.size());
+        Operon::Vector<detail::Array<T>> m(nodes.size(), detail::Array<T>::Zero());
         Eigen::Map<Eigen::Array<T, -1, 1>> res(result.data(), result.size(), 1);
 
         using NodeMeta = std::tuple<T, Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>, std::optional<Callable const>>;
