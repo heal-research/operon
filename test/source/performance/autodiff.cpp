@@ -48,11 +48,11 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
             a = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) { return t.CoefficientsCount(); }) / static_cast<double>(n);
             auto b = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) { return t.Length(); }) / static_cast<double>(n);
             std::vector<Operon::Scalar> y(ds.Rows());
+            Operon::Span<Operon::Scalar> target{y.data(), y.size()};
+            Operon::Interpreter interpreter;
             bench.batch(n).run(fmt::format("forward;{};{}", a, b), [&]() {
                 std::size_t sz{0};
                 for (auto const& tree : trees) {
-                    Operon::Interpreter interpreter;
-                    Operon::Span<Operon::Scalar> target{y.data(), y.size()};
                     Operon::ResidualEvaluator re(interpreter, tree, ds, target, range);
                     auto parameters = tree.GetCoefficients();
                     Eigen::Matrix<Operon::Scalar, -1, -1> jacobian(range.Size(), parameters.size());
