@@ -13,9 +13,8 @@ namespace detail {
     using T = detail::Array<Operon::Scalar>;
 
     struct RNode {
-        T A; // adjoint
-        T W; // weight
-        std::vector<T> D;
+        T P;              // primal
+        std::vector<T> D; // derivatives
     };
 
     auto Indices(auto const& nodes, auto i) {
@@ -31,15 +30,8 @@ namespace detail {
     template <Operon::NodeType N = Operon::NodeType::Add>
     struct Derivative {
         inline auto operator()(auto const& nodes, auto const& /*unused*/, auto& rnodes, auto i) {
-            auto const& n = nodes[i];
-            rnodes[i].A.setConstant(0);
-
-            for (decltype(i) j = i-1, k = 0; k < n.Arity; ++k, j -= (nodes[j].Length+1)) {
-                auto& d = rnodes[i].D[k];
-                auto const x = nodes[j].IsLeaf();
-                if (x) { d = rnodes[j].A; }
-                else { d.setConstant(1); }
-                rnodes[i].A += rnodes[j].A;
+            for (decltype(i) j = i-1, k = 0; k < nodes[i].Arity; ++k, j -= (nodes[j].Length+1)) {
+                rnodes[i].D[k] = rnodes[j].P;
             }
         }
     };
@@ -47,16 +39,8 @@ namespace detail {
     template<>
     struct Derivative<Operon::NodeType::Sub> {
         inline auto operator()(auto const& nodes, auto const& /*unused*/, auto& rnodes, auto i) {
-            auto const& n = nodes[i];
-            rnodes[i].A.setConstant(0);
-
-            for (decltype(i) j = i-1, k = 0; k < n.Arity; ++k, j -= (nodes[j].Length+1)) {
-                auto sign = k == 0 ? +1 : -1;
-                auto& d = rnodes[i].D[k];
-                auto const x = nodes[j].IsLeaf();
-                if (x) { d = rnodes[j].A * sign; }
-                else { d.setConstant(sign); }
-                rnodes[i].A += rnodes[j].A;
+            for (decltype(i) j = i-1, k = 0; k < nodes[i].Arity; ++k, j -= (nodes[j].Length+1)) {
+                rnodes[i].D[k] = (k == 0 ? +1 : -1) * rnodes[j].P;
             }
         }
     };
@@ -69,14 +53,11 @@ namespace detail {
             auto idx{0};
             for (auto j : indices) {
                 auto& d = rnodes[i].D[idx++];
-                auto const x = nodes[j].IsLeaf();
-                if (x) { d = rnodes[j].A; }
-                else { d.setConstant(1); }
+                d = rnodes[j].P;
                 for (auto k : indices) {
                     if (j == k) { continue; }
                     d *= values[k];
                 }
-                rnodes[i].A += d;
             }
         }
     };
@@ -94,18 +75,12 @@ namespace detail {
 
             if (n.Arity == 1) {
                 auto j = i-1;
-                if (nodes[j].IsLeaf()) { d[0] = -rnodes[j].A / values[j].square(); }
-                else { d[0] = -values[j].square().inverse(); }
-                rnodes[i].A = d[0];
+                d[0] = -rnodes[j].P / values[j].square();
             } else if (n.Arity == 2) {
                 auto j = i-1;
                 auto k = j-(nodes[j].Length+1);
-                if (nodes[j].IsLeaf()) { d[0] = rnodes[j].A / values[k]; }
-                else { d[0] = values[k].inverse(); }
-
-                if (nodes[k].IsLeaf()) { d[1] = -rnodes[k].A * values[j] / values[k].square(); }
-                else { d[1] = -values[j] / values[k].square(); }
-                rnodes[i].A = d[0] + d[1];
+                d[0] = rnodes[j].P / values[k];
+                d[1] = -rnodes[k].P * values[j] / values[k].square();
             } else {
                 // TODO
                 // f = g * (h * i * ...)
@@ -117,79 +92,50 @@ namespace detail {
 
     template<>
     struct Derivative<Operon::NodeType::Exp> {
-        inline auto operator()(auto const& nodes, auto const& values, auto& rnodes, auto i) {
-            auto const& n = nodes[i];
-            auto j = i-1;
-            auto const x = nodes[j].IsLeaf();
-            auto& d = rnodes[i].D[0];
-            if (x) { d = rnodes[j].A * values[i]; }
-            else { d = values[i]; }
-            rnodes[i].A = d;
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = rnodes[i-1].P * values[i];
         }
     };
 
     template<>
     struct Derivative<Operon::NodeType::Log> {
-        inline auto operator()(auto const& nodes, auto const& values, auto& rnodes, auto i) {
-            auto const& n = nodes[i];
-            auto j = i-1;
-            auto const x = nodes[j].IsLeaf();
-            auto& d = rnodes[i].D[0];
-            if (x) { d = rnodes[j].A * values[j].inverse(); }
-            else { d = values[j].inverse(); }
-            rnodes[i].A = d;
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = rnodes[i-1].P / values[i-1];
         }
     };
 
     template<>
     struct Derivative<Operon::NodeType::Sin> {
-        inline auto operator()(auto const& nodes, auto const& values, auto& rnodes, auto i) {
-            auto const x = nodes[i-1].IsLeaf();
-            if (x) { rnodes[i].D[0] = rnodes[i-1].A * values[i-1].cos(); }
-            else { rnodes[i].D[0] = values[i-1].cos(); }
-            rnodes[i].A = rnodes[i].D[0];
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = rnodes[i-1].P * values[i-1].cos();
         }
     };
 
     template<>
     struct Derivative<Operon::NodeType::Cos> {
-        inline auto operator()(auto const& nodes, auto const& values, auto& rnodes, auto i) {
-            auto const x = nodes[i-1].IsLeaf();
-            if (x) { rnodes[i].D[0] = rnodes[i-1].A * -values[i-1].sin(); }
-            else { rnodes[i].D[0] = -values[i-1].sin(); }
-            rnodes[i].A = rnodes[i].D[0];
-        }
-    };
-
-    template<>
-    struct Derivative<Operon::NodeType::Variable> {
-        inline auto operator()(auto const& nodes, auto const& values, auto& rnodes, auto i) {
-            // the values corresponding to this node already include the multiplication
-            // with the variable weight, this must be reversed here, hence the division
-            rnodes[i].A = values[i] / nodes[i].Value;
-        }
-    };
-
-    template<>
-    struct Derivative<Operon::NodeType::Constant> {
-        inline auto operator()(auto const& /*unused*/, auto const& /*unused*/, auto& rnodes, auto i) {
-            rnodes[i].A.setConstant(1);
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = -rnodes[i-1].P * values[i-1].sin();
         }
     };
 
     auto ComputeDerivative(auto const& nodes, auto const& values, auto& rnodes, auto i) -> void {
         switch(nodes[i].Type) {
-            case NodeType::Add: { Derivative<NodeType::Add>{}(nodes, values, rnodes, i); return; }
-            case NodeType::Sub: { Derivative<NodeType::Sub>{}(nodes, values, rnodes, i); return; }
-            case NodeType::Mul: { Derivative<NodeType::Mul>{}(nodes, values, rnodes, i); return; }
-            case NodeType::Div: { Derivative<NodeType::Div>{}(nodes, values, rnodes, i); return; }
-            case NodeType::Exp: { Derivative<NodeType::Exp>{}(nodes, values, rnodes, i); return; }
-            case NodeType::Log: { Derivative<NodeType::Log>{}(nodes, values, rnodes, i); return; }
-            case NodeType::Sin: { Derivative<NodeType::Sin>{}(nodes, values, rnodes, i); return; }
-            case NodeType::Cos: { Derivative<NodeType::Cos>{}(nodes, values, rnodes, i); return; }
-            case NodeType::Constant: { Derivative<NodeType::Constant>{}(nodes, values, rnodes, i); return; }
-            case NodeType::Variable: { Derivative<NodeType::Variable>{}(nodes, values, rnodes, i); return; }
-            default: { throw std::runtime_error("unsupported node type"); }
+            case NodeType::Constant: { rnodes[i].P.setConstant(1); return; }
+            case NodeType::Variable: { rnodes[i].P = values[i] / nodes[i].Value; return; }
+            default: {
+                rnodes[i].P.setConstant(nodes[i].Value);
+                switch(nodes[i].Type) {
+                    case NodeType::Add: { Derivative<NodeType::Add>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Sub: { Derivative<NodeType::Sub>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Mul: { Derivative<NodeType::Mul>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Div: { Derivative<NodeType::Div>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Exp: { Derivative<NodeType::Exp>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Log: { Derivative<NodeType::Log>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Sin: { Derivative<NodeType::Sin>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Cos: { Derivative<NodeType::Cos>{}(nodes, values, rnodes, i); return; }
+                    default: { throw std::runtime_error("unsupported node type"); }
+                }
+            }
         }
     }
 } // namespace detail
@@ -209,9 +155,11 @@ struct DerivativeCalculator {
 
         jacobian_.resize(
             static_cast<Eigen::Index>(range.Size()),
-            static_cast<Eigen::Index>(parameters.size()));
+            static_cast<Eigen::Index>(parameters.size())
+        );
 
-        Operon::Vector<detail::RNode> rnodes(nodes.size());
+        std::vector<detail::RNode> rnodes(nodes.size());
+        std::vector<detail::T> weights(nodes.size(), detail::T::Zero());
 
         auto row = 0;
         auto callback = [&](auto const& values) {
@@ -219,24 +167,19 @@ struct DerivativeCalculator {
             for (auto i = 0; i < std::ssize(nodes); ++i) {
                 if (!nodes[i].IsLeaf()) { rnodes[i].D.resize(nodes[i].Arity); }
                 ComputeDerivative(nodes, values, rnodes, i);
-
-                //fmt::print("{}: d_{} = {}\n", nodes[i].Name(), i, rnodes[i].A[0]);
-                //for (auto j = 0; j < rnodes[i].D.size(); ++j) {
-                //    fmt::print("{}: d_{}{} = {}\n", nodes[i].Name(), i, j, rnodes[i].D[j][0]);
-                //}
             }
 
             // update weights
             auto const& root = nodes.back();
             if (root.IsLeaf()) {
-                rnodes.back().W = rnodes.back().A;
+                weights.back() = rnodes.back().P;
             } else {
-                rnodes.back().W.setConstant(1);
+                weights.back().setConstant(1);
                 for (auto i = std::ssize(nodes)-1; i >= 0; --i) {
                     if (nodes[i].IsLeaf()) { continue; }
                     auto const& n = nodes[i];
                     for (decltype(i) j = i-1, k = 0; k < n.Arity; ++k, j -= (nodes[j].Length+1)) {
-                        rnodes[j].W += rnodes[i].W * rnodes[i].D[k];
+                        weights[j] += weights[i] * rnodes[i].D[k];
                     }
                 }
             }
@@ -244,9 +187,7 @@ struct DerivativeCalculator {
             for (auto i = 0, j = 0; i < std::ssize(nodes); ++i) {
                 if (!nodes[i].Optimize) { continue; }
                 auto const sz = std::min(values.size(), range.Size()-row);
-                //ENSURE(j < jacobian_.cols());
-                //ENSURE(row+sz < jacobian_.rows());
-                jacobian_.col(j++).segment(row, sz) = rnodes[i].W.segment(0, sz);
+                jacobian_.col(j++).segment(row, sz) = weights[i].segment(0, sz);
             }
             row += values.front().size();
         };
