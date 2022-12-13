@@ -39,18 +39,19 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
     auto benchForward = [&](ankerl::nanobench::Bench& bench, std::size_t n, std::size_t s) {
         std::vector<Operon::Tree> trees(n);
         double a{0};
-        auto z{10}; // max size
+        auto z{20}; // max size
+                    //
+        Operon::Range range{0, ds.Rows()};
+        std::vector<Operon::Scalar> y(ds.Rows());
+        Operon::Span<Operon::Scalar> target{y.data(), y.size()};
+        Operon::Interpreter interpreter;
 
         do {
             std::uniform_int_distribution<size_t> dist(1, z);
             std::generate(trees.begin(), trees.end(), [&](){ return creator(rng, dist(rng), 1, 1000); }); // NOLINT
-            Operon::Range range{0, ds.Rows()};
             a = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) { return t.CoefficientsCount(); }) / static_cast<double>(n);
-            auto b = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) { return t.Length(); }) / static_cast<double>(n);
-            std::vector<Operon::Scalar> y(ds.Rows());
-            Operon::Span<Operon::Scalar> target{y.data(), y.size()};
-            Operon::Interpreter interpreter;
-            bench.batch(n).run(fmt::format("forward;{};{}", a, b), [&]() {
+            auto b = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus{}, [](auto const& t) { return t.Length(); });
+            bench.batch(range.Size() * b).run(fmt::format("forward;{};{}", a, static_cast<double>(b)/static_cast<double>(n)), [&]() {
                 std::size_t sz{0};
                 for (auto const& tree : trees) {
                     Operon::ResidualEvaluator re(interpreter, tree, ds, target, range);
@@ -70,15 +71,15 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
         std::vector<Operon::Tree> trees(n);
 
         double a{0};
-        auto z{10}; // max size
+        auto z{20};
 
         do {
             std::uniform_int_distribution<size_t> dist(1, z);
             std::generate(trees.begin(), trees.end(), [&](){ return creator(rng, dist(rng), 1, 1000); }); // NOLINT
             Operon::Range range{0, ds.Rows()};
             a = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) { return t.CoefficientsCount(); }) / static_cast<double>(n);
-            auto b = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) { return t.Length(); }) / static_cast<double>(n);
-            bench.batch(n).run(fmt::format("reverse;{};{}", a, b), [&]() {
+            auto b = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus{}, [](auto const& t) { return t.Length(); });
+            bench.batch(range.Size() * b).run(fmt::format("reverse;{};{}", a, static_cast<double>(b)/static_cast<double>(n)), [&]() {
                 std::size_t sz{0};
                 Operon::DispatchTable<Operon::Scalar> dtable;
                 for (auto const& tree : trees) {
@@ -94,8 +95,8 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
         } while (a < s);
     };
 
-    constexpr auto n{1000};
-    constexpr auto m{100};
+    constexpr auto n{5000};
+    constexpr auto m{20};
 
     SUBCASE("forward mode") {
         benchForward(b, n, m);
