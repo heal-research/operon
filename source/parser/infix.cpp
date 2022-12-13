@@ -110,7 +110,7 @@ namespace detail {
             { "sinh", Token(TokenKind::dynamic, "sinh", static_cast<size_t>(NodeType::Sinh), 30, pratt::associativity::none) },
             { "sqrt", Token(TokenKind::dynamic, "sqrt", static_cast<size_t>(NodeType::Sqrt), 30, pratt::associativity::none) },
             { "square", Token(TokenKind::dynamic, "square", static_cast<size_t>(NodeType::Square), 30, pratt::associativity::right) },
-            { "tan", Token(TokenKind::dynamic, "atan", static_cast<size_t>(NodeType::Atan), 30, pratt::associativity::none) },
+            { "atan", Token(TokenKind::dynamic, "atan", static_cast<size_t>(NodeType::Atan), 30, pratt::associativity::none) },
             { "tan", Token(TokenKind::dynamic, "tan", static_cast<size_t>(NodeType::Tan), 30, pratt::associativity::none) },
             { "tanh", Token(TokenKind::dynamic, "tanh", static_cast<size_t>(NodeType::Tanh), 30, pratt::associativity::none) },
             { "(", Token(pratt::token_kind::lparen, "(", 0UL /* don't care */, 0, pratt::associativity::none) },
