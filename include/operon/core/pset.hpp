@@ -132,6 +132,7 @@ public:
         auto minArity = std::numeric_limits<size_t>::max();
         auto maxArity = std::numeric_limits<size_t>::min();
         for (auto const& [key, val] : pset_) {
+            if (std::get<NODE>(val).IsLeaf()) { continue; }
             minArity = std::min(minArity, std::get<MINARITY>(val));
             maxArity = std::max(maxArity, std::get<MAXARITY>(val));
         }
