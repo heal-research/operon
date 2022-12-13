@@ -92,6 +92,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
     SUBCASE("random trees") {
         Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos);
+        //Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic);
         Operon::BalancedTreeCreator btc(pset, ds.Variables());
         Operon::UniformCoefficientInitializer initializer;
 
@@ -133,11 +134,11 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
             auto areEqual{ jacobian.array().isApprox(dt.Jacobian(), epsilon) };
             auto ok = !finite || areEqual;
 
-            //if(!ok) {
-            //    fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
-            //    std::cout << std::setprecision(precision) << "J_forward: " << jacobian << "\n";
-            //    std::cout << std::setprecision(precision) << "J_reverse: " << dt.Jacobian() << "\n\n";
-            //}
+            if(!ok) {
+                fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
+                std::cout << std::setprecision(precision) << "J_forward: " << jacobian << "\n";
+                std::cout << std::setprecision(precision) << "J_reverse: " << dt.Jacobian() << "\n\n";
+            }
             CHECK(ok);
         }
     }
