@@ -90,6 +90,29 @@ namespace detail {
         }
     };
 
+    // binary symbols
+    template<>
+    struct Derivative<Operon::NodeType::Aq> {
+        inline auto operator()(auto const& nodes, auto const& values, auto& rnodes, auto i) {
+            auto j = i-1;
+            auto k = j - (nodes[j].Length+1);
+            rnodes[i].D[0] = rnodes[j].P * values[i] / values[j];
+            //rnodes[i].D[1] = -rnodes[k].P * values[k] * values[j] * (values[i] / values[j]).pow(3);
+            rnodes[i].D[1] = -rnodes[k].P * values[k] * values[i].pow(3) / values[j].square();
+        }
+    };
+
+    template<>
+    struct Derivative<Operon::NodeType::Pow> {
+        inline auto operator()(auto const& nodes, auto const& values, auto& rnodes, auto i) {
+            auto j = i-1;
+            auto k = j - (nodes[j].Length+1);
+            rnodes[i].D[0] = rnodes[j].P * values[j].pow(values[k]-1) * values[k];
+            rnodes[i].D[1] = rnodes[k].P * values[i] * values[j].log();
+        }
+    };
+
+    // unary symbols
     template<>
     struct Derivative<Operon::NodeType::Exp> {
         inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
@@ -118,6 +141,48 @@ namespace detail {
         }
     };
 
+    template<>
+    struct Derivative<Operon::NodeType::Tan> {
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = rnodes[i-1].P * (values[i].square() + 1);
+        }
+    };
+
+    template<>
+    struct Derivative<Operon::NodeType::Tanh> {
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = rnodes[i-1].P * (1 - values[i].square());
+        }
+    };
+
+    template<>
+    struct Derivative<Operon::NodeType::Asin> {
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = rnodes[i-1].P / (1 - values[i-1].square()).sqrt();
+        }
+    };
+
+    template<>
+    struct Derivative<Operon::NodeType::Acos> {
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = -rnodes[i-1].P / (1 - values[i-1].square()).sqrt();
+        }
+    };
+
+    template<>
+    struct Derivative<Operon::NodeType::Atan> {
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = rnodes[i-1].P / (1 + values[i-1].square());
+        }
+    };
+
+    template<>
+    struct Derivative<Operon::NodeType::Sqrt> {
+        inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i) {
+            rnodes[i].D[0] = rnodes[i-1].P / (2 * values[i]);
+        }
+    };
+
     auto ComputeDerivative(auto const& nodes, auto const& values, auto& rnodes, auto i) -> void {
         switch(nodes[i].Type) {
             case NodeType::Constant: { rnodes[i].P.setConstant(1); return; }
@@ -129,10 +194,18 @@ namespace detail {
                     case NodeType::Sub: { Derivative<NodeType::Sub>{}(nodes, values, rnodes, i); return; }
                     case NodeType::Mul: { Derivative<NodeType::Mul>{}(nodes, values, rnodes, i); return; }
                     case NodeType::Div: { Derivative<NodeType::Div>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Pow: { Derivative<NodeType::Pow>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Aq: { Derivative<NodeType::Aq>{}(nodes, values, rnodes, i); return; }
                     case NodeType::Exp: { Derivative<NodeType::Exp>{}(nodes, values, rnodes, i); return; }
                     case NodeType::Log: { Derivative<NodeType::Log>{}(nodes, values, rnodes, i); return; }
                     case NodeType::Sin: { Derivative<NodeType::Sin>{}(nodes, values, rnodes, i); return; }
                     case NodeType::Cos: { Derivative<NodeType::Cos>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Tan: { Derivative<NodeType::Tan>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Tanh: { Derivative<NodeType::Tanh>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Asin: { Derivative<NodeType::Asin>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Acos: { Derivative<NodeType::Acos>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Atan: { Derivative<NodeType::Atan>{}(nodes, values, rnodes, i); return; }
+                    case NodeType::Sqrt: { Derivative<NodeType::Sqrt>{}(nodes, values, rnodes, i); return; }
                     default: { throw std::runtime_error("unsupported node type"); }
                 }
             }
