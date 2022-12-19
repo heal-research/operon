@@ -148,6 +148,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic |
                 Operon::NodeType::Pow | Operon::NodeType::Aq |
                 Operon::NodeType::Exp | Operon::NodeType::Log |
+                Operon::NodeType::Log1p |
                 Operon::NodeType::Sin | Operon::NodeType::Asin |
                 Operon::NodeType::Cos | Operon::NodeType::Acos |
                 Operon::NodeType::Tan | Operon::NodeType::Atan |
@@ -156,7 +157,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         Operon::BalancedTreeCreator btc(pset, ds.Variables());
         Operon::UniformCoefficientInitializer initializer;
 
-        constexpr auto n{100'000};
+        constexpr auto n{1'000'000};
         constexpr auto maxsize{5};
         constexpr auto mindepth{1};
         constexpr auto maxdepth{1000};
