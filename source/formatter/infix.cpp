@@ -49,8 +49,8 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 fmt::format_to(std::back_inserter(current), " ^ 2))");
             } else {
                 size_t count = 0;
-                for (auto it = tree.Children(i); it.HasNext(); ++it) {
-                    FormatNode(tree, variableNames, it.Index(), current, decimalPrecision);
+                for (auto j : tree.Indices(i)) {
+                    FormatNode(tree, variableNames, j, current, decimalPrecision);
                     if (++count < s.Arity) {
                         fmt::format_to(std::back_inserter(current), " {} ", s.Name());
                     }
