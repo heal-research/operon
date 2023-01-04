@@ -6,78 +6,16 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <random>
 #include <vector>
 
-#include "operon/core/node.hpp"
-#include "operon/operon_export.hpp"
 #include "contracts.hpp"
+#include "subtree.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon {
-
-template<typename T>
-class SubtreeIterator {
-public:
-    // iterator traits
-    using value_type = std::conditional_t<std::is_const_v<T>, Node const, Node>;// NOLINT
-    using difference_type = std::ptrdiff_t;// NOLINT
-    using pointer = value_type*;// NOLINT
-    using reference = value_type&;// NOLINT
-    using iterator_category = std::forward_iterator_tag;// NOLINT
-
-    explicit SubtreeIterator(T& tree, size_t i)
-        : nodes_(tree.Nodes())
-        , parentIndex_(i)
-        , index_(i - 1)
-    {
-        EXPECT(i > 0);
-    }
-
-    inline auto operator*() -> value_type& { return nodes_[index_]; }
-    inline auto operator*() const -> value_type const& { return nodes_[index_]; }
-    inline auto operator->() -> value_type* { return &**this; }
-    inline auto operator->() const -> value_type const* { return &**this; }
-
-    auto operator++() -> SubtreeIterator& // pre-increment
-    {
-        index_ -= nodes_[index_].Length + 1UL;
-        return *this;
-    }
-
-    auto operator++(int) -> SubtreeIterator // post-increment
-    {
-        auto t = *this;
-        ++t;
-        return t;
-    }
-
-    auto operator==(SubtreeIterator const& rhs) -> bool
-    {
-        return std::tie(index_, parentIndex_, nodes_.data()) == std::tie(rhs.index_, rhs.parentIndex_, rhs.nodes_.data());
-    }
-
-    auto operator!=(SubtreeIterator const& rhs) -> bool
-    {
-        return !(*this == rhs);
-    }
-
-    auto operator<(SubtreeIterator const& rhs) -> bool
-    {
-        // this looks a little strange, but correct: we use a postfix representation and trees are iterated from right to left
-        // (thus the lower index will be the more advanced iterator)
-        return std::tie(parentIndex_, nodes_.data()) == std::tie(rhs.parentIndex_, rhs.nodes_.data()) && index_ > rhs.index_;
-    }
-
-    inline auto HasNext() -> bool { return index_ < parentIndex_ && index_ >= (parentIndex_ - nodes_[parentIndex_].Length); }
-    [[nodiscard]] inline auto Index() const -> size_t { return index_; } // index of current child
-
-private:
-    Operon::Span<value_type> nodes_;
-    size_t parentIndex_; // index of parent node
-    size_t index_;       // index of current child node
-};
-
 class OPERON_EXPORT Tree { // NOLINT
 public:
     Tree() = default;
@@ -121,14 +59,14 @@ public:
     // aggregating hash values from the leafs towards the root node
     [[nodiscard]] auto Hash(Operon::HashMode mode) const -> Tree const&;
 
-    [[nodiscard]] auto Subtree(size_t i) const -> Tree {
+    // splice a subtree rooted at node with index i as a new tree
+    [[nodiscard]] auto Splice(size_t i) const -> Tree {
         EXPECT(i < Length());
         auto const& n = nodes_[i];
-        auto it = nodes_.begin() + std::make_signed_t<size_t>(i);
+        auto it = nodes_.begin() + static_cast<int64_t>(i);
         return Tree({it - n.Length, it + 1}).UpdateNodes();
     }
 
-    [[nodiscard]] auto ChildIndices(size_t i) const -> std::vector<size_t>;
     inline void SetEnabled(size_t i, bool enabled)
     {
         for (auto j = i - nodes_[i].Length; j <= i; ++j) {
@@ -158,8 +96,9 @@ public:
 
     [[nodiscard]] auto HashValue() const -> Operon::Hash { return nodes_.empty() ? 0 : nodes_.back().CalculatedHashValue; }
 
-    auto Children(size_t i) -> SubtreeIterator<Tree> { return SubtreeIterator(*this, i); }
-    [[nodiscard]] auto Children(size_t i) const -> SubtreeIterator<Tree const> { return SubtreeIterator(*this, i); }
+    [[nodiscard]] auto Children(size_t i) { return Subtree<Node>{nodes_, i}.Nodes(); }
+    [[nodiscard]] auto Children(size_t i) const { return Subtree<Node const>{nodes_, i}.Nodes(); }
+    [[nodiscard]] auto Indices(size_t i) const { return Subtree<Node const>{nodes_, i}.Indices(); }
 
 private:
     Operon::Vector<Node> nodes_;
