@@ -7,6 +7,8 @@
 #include "interpreter.hpp"
 #include "interpreter_new.hpp"
 
+#include <ranges>
+
 namespace Operon {
 
 namespace detail {
@@ -17,20 +19,19 @@ namespace detail {
         std::vector<T> D; // derivatives
     };
 
-    auto Indices(auto const& nodes, auto i) {
-        std::vector<decltype(i)> indices;
-        indices.reserve(nodes[i].Arity);
-        for (decltype(i) j = i-1, k = 0; k < nodes[i].Arity; ++k, j -= nodes[j].Length+1) {
-            indices.push_back(j);
-        }
-        return indices;
-    };
+    inline auto Enumerate(auto const& nodes, auto i) {
+        return Subtree<Node const>{nodes, i}.EnumerateIndices();
+    }
+
+    inline auto Indices(auto const& nodes, auto i) {
+        return Subtree<Node const>{nodes, i}.Indices();
+    }
 
     // derivatives
     template <Operon::NodeType N = Operon::NodeType::Add>
     struct Derivative {
         inline auto operator()(auto const& nodes, auto const& /*unused*/, auto& rnodes, auto i) {
-            for (decltype(i) j = i-1, k = 0; k < nodes[i].Arity; ++k, j -= (nodes[j].Length+1)) {
+            for (auto [k, j] : Enumerate(nodes, i)) {
                 rnodes[i].D[k] = rnodes[j].P;
             }
         }
@@ -39,7 +40,7 @@ namespace detail {
     template<>
     struct Derivative<Operon::NodeType::Sub> {
         inline auto operator()(auto const& nodes, auto const& /*unused*/, auto& rnodes, auto i) {
-            for (decltype(i) j = i-1, k = 0; k < nodes[i].Arity; ++k, j -= (nodes[j].Length+1)) {
+            for (auto [k, j] : Enumerate(nodes, i)) {
                 rnodes[i].D[k] = (k == 0 ? +1 : -1) * rnodes[j].P;
             }
         }
@@ -49,12 +50,11 @@ namespace detail {
     struct Derivative<Operon::NodeType::Mul> {
         inline auto operator()(auto const& nodes, auto const& values, auto& rnodes, auto i) {
             auto const& n = nodes[i];
-            auto indices{Indices(nodes, i)};
             auto idx{0};
-            for (auto j : indices) {
+            for (auto j : Indices(nodes, i)) {
                 auto& d = rnodes[i].D[idx++];
                 d = rnodes[j].P;
-                for (auto k : indices) {
+                for (auto k : Indices(nodes, i)) {
                     if (j == k) { continue; }
                     d *= values[k];
                 }
@@ -261,7 +261,7 @@ struct DerivativeCalculator {
         auto row = 0;
         auto callback = [&](auto const& values) {
             // compute derivatives
-            for (auto i = 0; i < std::ssize(nodes); ++i) {
+            for (auto i = 0UL; i < nodes.size(); ++i) {
                 if (!nodes[i].IsLeaf()) { rnodes[i].D.resize(nodes[i].Arity); }
                 ComputeDerivative(nodes, values, rnodes, i);
             }

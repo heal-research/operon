@@ -21,11 +21,6 @@ namespace dt = doctest;
 
 namespace Operon::Test {
 
-namespace detail {
-    using T = Operon::detail::Array<Operon::Scalar>;
-
-} // namespace detail
-
 TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     constexpr auto nrow{10};
     constexpr auto ncol{3};;
