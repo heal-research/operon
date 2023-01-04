@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <ranges>
 
 #include "operon/core/tree.hpp"
 #include "operon/hash/hash.hpp"
@@ -47,10 +48,10 @@ auto Tree::Reduce() -> Tree&
             continue;
         }
 
-        for (auto it = Children(i); it.HasNext(); ++it) {
-            if (s.HashValue == it->HashValue) {
-                it->IsEnabled = false;
-                s.Arity = static_cast<uint16_t>(s.Arity + it->Arity - 1);
+        for (auto& p : Children(i)) {
+            if (s.HashValue == p.HashValue) {
+                p.IsEnabled = false;
+                s.Arity = static_cast<uint16_t>(s.Arity + p.Arity - 1);
                 reduced = true;
             }
         }
@@ -92,9 +93,7 @@ auto Tree::Sort() -> Tree&
             if (arity == size) {
                 std::stable_sort(start + i - size, start + i); // NOLINT
             } else {
-                for (auto it = Children(i); it.HasNext(); ++it) {
-                    children.push_back(it.Index());
-                }
+                std::ranges::copy(Indices(i), std::back_inserter(children));
                 std::stable_sort(children.begin(), children.end(), [&](auto a, auto b) { return nodes_[a] < nodes_[b]; }); // sort child indices
 
                 auto pos = sorted.begin() + i - size; // NOLINT
@@ -109,19 +108,6 @@ auto Tree::Sort() -> Tree&
     }
     nodes_.swap(sorted);
     return this->UpdateNodes();
-}
-
-auto Tree::ChildIndices(size_t i) const -> std::vector<size_t>
-{
-    if (nodes_[i].IsLeaf()) {
-        return std::vector<size_t> {};
-    }
-    std::vector<size_t> indices(nodes_[i].Arity);
-    size_t j = 0;
-    for (auto it = Children(i); it.HasNext(); ++it) {
-        indices[j++] = it.Index();
-    }
-    return indices;
 }
 
 auto Tree::GetCoefficients() const -> std::vector<Operon::Scalar>
@@ -176,9 +162,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
             continue;
         }
 
-        for (auto it = Children(i); it.HasNext(); ++it) {
-            childIndices.push_back(it.Index());
-        }
+        std::ranges::copy(Indices(i), std::back_inserter(childIndices));
 
         auto begin = childIndices.begin();
         auto end = begin + n.Arity;

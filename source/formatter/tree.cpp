@@ -43,8 +43,8 @@ auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::
     }
 
     size_t count = 0;
-    for (auto it = tree.Children(i); it.HasNext(); ++it) {
-        FormatNode(tree, variableNames, it.Index(), current, indent, ++count == s.Arity, /*initialMarker=*/true, decimalPrecision);
+    for (auto j : tree.Indices(i)) {
+        FormatNode(tree, variableNames, i, current, indent, ++count == s.Arity, /*initialMarker=*/true, decimalPrecision);
     }
 }
 

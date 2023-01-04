@@ -52,7 +52,6 @@ TEST_CASE("Evaluation correctness")
         auto res2 = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res2(i)) < eps; }));
 
-        tree = tree.Subtree(tree.Length() - 1);
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
         estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
         auto res3 = X.col(0) - X.col(1) + X.col(2);

@@ -20,7 +20,7 @@
         llvm = pkgs.llvmPackages_14;
         stdenv = pkgs.overrideCC llvm.stdenv (
           llvm.clang.override { gccForLibs = pkgs.gcc12.cc; }
-          );
+        );
 
         operon = stdenv.mkDerivation {
           name = "operon";
@@ -35,7 +35,7 @@
             "-DUSE_SINGLE_PRECISION=ON"
           ];
 
-          nativeBuildInputs = with pkgs; [ cmake ];
+          nativeBuildInputs = with pkgs; [ cmake gcc12 ];
 
           buildInputs = (with pkgs; [
             aria-csv
@@ -79,7 +79,9 @@
           });
         };
 
-        devShells.default = pkgs.mkShell {
+        devShells.default = stdenv.mkDerivation {
+          name = "operon";
+
           nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
             bear
             clang_14
@@ -91,6 +93,7 @@
           buildInputs = operon.buildInputs ++ (with pkgs; [
             gdb
             graphviz
+            hotspot
             hyperfine
             linuxPackages.perf
             pyprof2calltree
