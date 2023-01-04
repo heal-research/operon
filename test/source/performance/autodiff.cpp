@@ -17,11 +17,6 @@ namespace dt = doctest;
 
 namespace Operon::Test {
 
-namespace detail {
-    using T = Operon::detail::Array<Operon::Scalar>;
-
-} // namespace detail
-
 TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
     constexpr auto nrow{10000};
     constexpr auto ncol{10};
@@ -32,7 +27,7 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
     //b.output(nullptr);
 
     Operon::PrimitiveSet pset;
-    Operon::PrimitiveSetConfig psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Cos | Operon::NodeType::Exp | Operon::NodeType::Log;
+    Operon::PrimitiveSetConfig psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Cos | Operon::NodeType::Log;
     pset.SetConfig(psetcfg);
     Operon::BalancedTreeCreator creator(pset, ds.Variables());
 
