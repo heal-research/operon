@@ -44,7 +44,7 @@ auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::
 
     size_t count = 0;
     for (auto j : tree.Indices(i)) {
-        FormatNode(tree, variableNames, i, current, indent, ++count == s.Arity, /*initialMarker=*/true, decimalPrecision);
+        FormatNode(tree, variableNames, j, current, indent, ++count == s.Arity, /*initialMarker=*/true, decimalPrecision);
     }
 }
 
