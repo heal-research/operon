@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT // NOLINT
-// SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research // NOLINT
+// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research // NOLINT
  // NOLINT
 #ifndef OPERON_RANDOM_WYRAND_HPP // NOLINT
 #define OPERON_RANDOM_WYRAND_HPP // NOLINT

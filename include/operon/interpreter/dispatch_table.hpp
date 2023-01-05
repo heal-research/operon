@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #ifndef OPERON_EVAL_DETAIL
 #define OPERON_EVAL_DETAIL
