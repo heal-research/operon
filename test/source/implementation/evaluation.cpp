@@ -16,20 +16,11 @@ TEST_CASE("Evaluation correctness")
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto range = Range { 0, ds.Rows() };
 
-    //auto decimals = [](auto v) {
-    //    auto s = fmt::format("{:.50f}", v);
-    //    size_t d = 0;
-    //    auto p = s.find('.');
-    //    while(s[++p] == '0')
-    //        ++d;
-    //    return d;
-    //};
-
     Interpreter interpreter;
     auto const& X = ds.Values(); // NOLINT
 
     Operon::Map<std::string, Operon::Hash> vars;
-    for (auto v : ds.Variables()) {
+    for (auto const& v : ds.Variables()) {
         fmt::print("{} : {} {}\n", v.Name, v.Hash, v.Index);
         vars[v.Name] = v.Hash;
     }
@@ -42,29 +33,28 @@ TEST_CASE("Evaluation correctness")
         const auto eps = 1e-6;
 
         auto tree = InfixParser::Parse("X1 + X2 + X3", vars);
-        auto estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
+        auto estimatedValues = interpreter.operator()<Operon::Scalar>(tree, ds, range);
         auto res1 = X.col(0) + X.col(1) + X.col(2);
 
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res1(i)) < eps; }));
 
         tree = InfixParser::Parse("X1 - X2 + X3", vars);
-        estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
+        estimatedValues = interpreter.operator()<Operon::Scalar>(tree, ds, range);
         auto res2 = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res2(i)) < eps; }));
 
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
-        estimatedValues = interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
+        estimatedValues = interpreter.operator()<Operon::Scalar>(tree, ds, range);
         auto res3 = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res3(i)) < eps; }));
     }
 }
 
-TEST_CASE("Numeric optimization")
+TEST_CASE("parameter optimization")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto range = Range { 0, ds.Rows() };
 
-    Interpreter interpreter;
     auto const& X = ds.Values(); // NOLINT
 
     Operon::Map<std::string, Operon::Hash> vars;
@@ -73,67 +63,75 @@ TEST_CASE("Numeric optimization")
         vars[v.Name] = v.Hash;
     }
 
-    Eigen::Array<Operon::Scalar, -1, 1> res = X.col(0) + X.col(1);
+    auto s1 = ds.GetValues("X1"); 
+    auto s2 = ds.GetValues("X2"); 
+    auto s3 = ds.GetValues("X3"); 
+    auto s4 = ds.GetValues("X4");
+
+    Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x1(s1.data(), std::ssize(s1));
+    Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x2(s2.data(), std::ssize(s2));
+    Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x3(s3.data(), std::ssize(s3));
+    Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x4(s4.data(), std::ssize(s4));
+
+    Eigen::Array<Operon::Scalar, -1, 1> res = x1 * x2 + x3 * x4;
     Operon::Span<Operon::Scalar> target(res.data(), res.size());
-    auto tree = InfixParser::Parse("X1 + X2", vars);
+    auto tree = InfixParser::Parse("X1 * X2 + X3 * X4", vars);
     for (auto& node : tree.Nodes()) {
-        if (node.IsVariable()) node.Value = static_cast<Operon::Scalar>(0.0001);
+        if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.0001); } // NOLINT
     }
+    fmt::print("initial tree: {}\n", InfixFormatter::Format(tree, ds));
 
+#if false 
+    using Interpreter = Operon::GenericInterpreter<Operon::Scalar, Operon::Dual>;
+    Interpreter interpreter;
+    using DerivativeCalculator = Operon::Autodiff::Forward::ForwardAutodiffCalculator<Interpreter>;
+    DerivativeCalculator dc{ interpreter };
+#else
+    using Interpreter = Operon::GenericInterpreter<Operon::Scalar>;
+    Interpreter interpreter;
+    using DerivativeCalculator = Operon::Autodiff::Reverse::DerivativeCalculator<Interpreter>;
+    DerivativeCalculator dc{ interpreter };
+#endif
+
+    auto constexpr iterations{50};
+
+#if defined(HAVE_CERES)
     SUBCASE("ceres autodiff") {
-        auto treeCopy = tree;
-        NonlinearLeastSquaresOptimizer<OptimizerType::CERES> optimizer(interpreter, treeCopy, ds);
-        OptimizerSummary summary;
-        auto coeff = optimizer.Optimize(target, range, 10, summary);
+        NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Ceres> optimizer(dc, tree, ds);
+        OptimizerSummary summary{};
+        auto coeff = optimizer.Optimize(target, range, iterations, summary);
         fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
+        tree.SetCoefficients(coeff);
+        fmt::print("final tree: {}\n", InfixFormatter::Format(tree, ds));
     }
-
-    //SUBCASE("ceres numeric diff") {
-    //    auto tree_copy = tree;
-    //    NonlinearLeastSquaresOptimizer<OptimizerType::CERES> optimizer(interpreter, tree_copy, ds);
-    //    auto summary = optimizer.Optimize<DerivativeMethod::NUMERIC>(target, range, 10, true, true);
-    //    fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
-    //}
+#endif
 
     SUBCASE("tiny") {
-        auto tree_copy = tree;
-        NonlinearLeastSquaresOptimizer<OptimizerType::TINY> optimizer(interpreter, tree_copy, ds);
-        OptimizerSummary summary;
-        auto coeff = optimizer.Optimize(target, range, 10, summary);
+        NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Tiny> optimizer(dc, tree, ds);
+        OptimizerSummary summary{};
+        auto coeff = optimizer.Optimize(target, range, iterations, summary);
         fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
+        tree.SetCoefficients(coeff);
+        fmt::print("final tree: {}\n", InfixFormatter::Format(tree, ds));
     }
 
     SUBCASE("eigen") {
-        auto tree_copy = tree;
-        NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> optimizer(interpreter, tree_copy, ds);
-        OptimizerSummary summary;
-        auto coeff = optimizer.Optimize(target, range, 10, summary);
+        NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Eigen> optimizer(dc, tree, ds);
+        OptimizerSummary summary{};
+        auto coeff = optimizer.Optimize(target, range, iterations, summary);
         fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
-    }
-}
-
-TEST_CASE("tiny bug")
-{
-    auto ds = Dataset("../data/Pagie-1.csv", true);
-    auto infix = "((((10.31296 / 4.01705) + ((-27.05388) - 23.68143)) / ((-148.00854) - ((78.81192 * Y) + ((-30.19245) * X)))) / (((((-6.40791) * Y) - (4.72377 * Y)) - (((-76.46925) * X) + 403.50482)) / (14.26075 - (-14.37711))))";
-    Operon::Map<std::string, Operon::Hash> vars;
-    for (auto const& v : ds.Variables()) {
-        vars.insert({ v.Name, v.Hash });
+        tree.SetCoefficients(coeff);
+        fmt::print("final tree: {}\n", InfixFormatter::Format(tree, ds));
     }
 
-    auto tree = InfixParser::Parse(infix, vars);
-
-    Interpreter interpreter;
-
-    auto range = Range { 0, ds.Rows() };
-    auto target = ds.GetValues("F");
-
-    NonlinearLeastSquaresOptimizer<OptimizerType::TINY> optimizer(interpreter, tree, ds);
-    OptimizerSummary summary;
-    auto coeff = optimizer.Optimize(target, range, 10, summary);
-    fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
+    SUBCASE("ceres") {
+        NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Ceres> optimizer(dc, tree, ds);
+        OptimizerSummary summary{};
+        auto coeff = optimizer.Optimize(target, range, iterations, summary);
+        fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
+        tree.SetCoefficients(coeff);
+        fmt::print("final tree: {}\n", InfixFormatter::Format(tree, ds));
+    }
 }
-
-
 } // namespace Operon::Test
 
