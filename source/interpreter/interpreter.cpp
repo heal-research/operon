@@ -14,7 +14,8 @@ namespace Operon {
 
         taskflow.for_each_index(size_t{0}, size_t{trees.size()}, size_t{1}, [&](size_t i) {
             result[i].resize(range.Size());
-            interpreter.Evaluate<Operon::Scalar>(trees[i], dataset, range, result[i]);
+            Operon::Span<Operon::Scalar> s{result[i].data(), result[i].size()};
+            interpreter(trees[i], dataset, range, s);
         });
         executor.run(taskflow);
         executor.wait_for_all();
@@ -29,7 +30,7 @@ namespace Operon {
 
         taskflow.for_each_index(size_t{0}, size_t{trees.size()}, size_t{1}, [&](size_t i) {
             auto res = result.subspan(i * range.Size(), range.Size());
-            interpreter.Evaluate<Operon::Scalar>(trees[i], dataset, range, res);
+            interpreter(trees[i], dataset, range, res);
         });
         executor.run(taskflow);
         executor.wait_for_all();

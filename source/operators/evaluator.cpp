@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include "operon/autodiff/reverse/reverse.hpp"
 #include "operon/core/distance.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/error_metrics/mean_squared_error.hpp"
@@ -11,6 +12,7 @@
 #include "operon/optimizer/optimizer.hpp"
 
 #include <taskflow/taskflow.hpp>
+#include <chrono>
 
 namespace Operon {
     auto MSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
@@ -105,6 +107,7 @@ namespace Operon {
         auto trainingRange = problem.TrainingRange();
         auto targetValues = dataset.GetValues(problem.TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
 
+        auto const& interpreter = GetInterpreter();
         auto computeFitness = [&]() {
             ++ResidualEvaluations;
             Operon::Vector<Operon::Scalar> estimatedValues;
@@ -112,7 +115,7 @@ namespace Operon {
                 estimatedValues.resize(trainingRange.Size());
                 buf = Operon::Span<Operon::Scalar>(estimatedValues.data(), estimatedValues.size());
             }
-            GetInterpreter().template Evaluate<Operon::Scalar>(genotype, dataset, trainingRange, buf);
+            interpreter(genotype, dataset, trainingRange, buf);
 
             if (scaling_) {
                 auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
@@ -124,12 +127,10 @@ namespace Operon {
         auto const iter = LocalOptimizationIterations();
 
         if (iter > 0) {
-#if defined(HAVE_CERES)
-            constexpr OptimizerType TYPE = OptimizerType::CERES;
-#else
-            constexpr OptimizerType TYPE = OptimizerType::EIGEN;
-#endif
-            NonlinearLeastSquaresOptimizer<TYPE> opt(interpreter_.get(), genotype, dataset);
+            auto t0 = std::chrono::high_resolution_clock::now();
+            Autodiff::Forward::DerivativeCalculator calc(this->GetInterpreter());
+            //Autodiff::Reverse::DerivativeCalculator calc{ this->GetInterpreter() };
+            NonlinearLeastSquaresOptimizer<decltype(calc), OptimizerType::Ceres> opt(calc, ind.Genotype, dataset);
             OptimizerSummary summary{};
             auto coefficients = opt.Optimize(targetValues, trainingRange, iter, summary);
             ResidualEvaluations += summary.FunctionEvaluations;
@@ -138,6 +139,8 @@ namespace Operon {
             if (summary.Success) {
                 genotype.SetCoefficients(coefficients);
             }
+            auto t1 = std::chrono::high_resolution_clock::now();
+            CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1-t0).count();
         }
 
         auto fit = EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(computeFitness()) };
@@ -151,8 +154,8 @@ namespace Operon {
 
     auto DiversityEvaluator::Prepare(Operon::Span<Operon::Individual const> pop) const -> void {
         divmap_.clear();
-        for (auto i = 0UL; i < pop.size(); ++i) {
-            auto const& tree = pop[i].Genotype;
+        for (auto const& individual : pop) {
+            auto const& tree = individual.Genotype;
             auto const& nodes = tree.Nodes();
             (void) tree.Hash(hashmode_);
             std::vector<Operon::Hash> hash(nodes.size());;

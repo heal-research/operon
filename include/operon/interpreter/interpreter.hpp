@@ -8,8 +8,8 @@
 #include <optional>
 #include <utility>
 
+#include "operon/autodiff/forward/dual.hpp"
 #include "operon/core/dataset.hpp"
-#include "operon/core/dual.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "dispatch_table.hpp"
@@ -20,50 +20,32 @@ template<typename... Ts>
 struct GenericInterpreter {
     using DTable = DispatchTable<Ts...>;
 
-    explicit GenericInterpreter(DTable ft)
-        : ftable_(std::move(ft))
-    {
-    }
+    explicit GenericInterpreter(DTable dt)
+        : dtable_(std::move(dt))
+    { }
 
     GenericInterpreter() : GenericInterpreter(DTable{}) { }
 
     // evaluate a tree and return a vector of values
-    template <typename T>
-    auto Evaluate(Tree const& tree, Dataset const& dataset, Range const range, T const* const parameters = nullptr) const noexcept -> Operon::Vector<T>
+    template <typename T = Operon::Scalar, typename F = Dispatch::Noop>
+    requires std::invocable<F, Operon::Vector<Dispatch::Array<T>>, int>
+    auto operator()(Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T const> coeff = {}, F&& callback = F{}) const noexcept -> Operon::Vector<T>
     {
         Operon::Vector<T> result(range.Size());
-        Evaluate<T>(tree, dataset, range, Operon::Span<T>(result), parameters);
+        this->operator()<T>(tree, dataset, range, result, coeff, callback);
         return result;
     }
 
-    template <typename T>
-    auto Evaluate(Tree const& tree, Dataset const& dataset, Range const range, size_t const batchSize, T const* const parameters = nullptr) const noexcept -> Operon::Vector<T>
+    template <typename T = Operon::Scalar, typename F = Dispatch::Noop>
+    requires std::invocable<F, Operon::Vector<Dispatch::Array<T>>, int>
+    void operator()(Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T> result, Operon::Span<T const> coeff = {}, F&& callback = F{}) const noexcept
     {
-        Operon::Vector<T> result(range.Size());
-        Operon::Span<T> view(result);
-
-        size_t n = range.Size() / batchSize;
-        size_t m = range.Size() % batchSize;
-        std::vector<size_t> indices(n + (m != 0));
-        std::iota(indices.begin(), indices.end(), 0UL);
-        std::for_each(indices.begin(), indices.end(), [&](auto idx) {
-            auto start = range.Start() + idx * batchSize;
-            auto end = std::min(start + batchSize, range.End());
-            auto subview = view.subspan(idx * batchSize, end - start);
-            Evaluate(tree, dataset, Range { start, end }, subview, parameters);
-        });
-        return result;
-    }
-
-    template <typename T>
-    void Evaluate(Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T> result, T const* const parameters = nullptr) const noexcept
-    {
-        using Callable = typename DTable::template Callable<T>;
+        using Callable = Dispatch::Callable<T>;
         const auto& nodes = tree.Nodes();
         EXPECT(!nodes.empty());
 
-        constexpr int S = static_cast<Eigen::Index>(detail::BatchSize<T>::Value);
-        Operon::Vector<detail::Array<T>> m(nodes.size());
+        auto constexpr S{ static_cast<int>(Dispatch::BatchSize<T>) };
+        Operon::Vector<Dispatch::Array<T>> m(nodes.size(), Dispatch::Array<T>::Zero());
         Eigen::Map<Eigen::Array<T, -1, 1>> res(result.data(), result.size(), 1);
 
         using NodeMeta = std::tuple<T, Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>, std::optional<Callable const>>;
@@ -75,11 +57,12 @@ struct GenericInterpreter {
             auto const& n = nodes[i];
 
             auto const* ptr = n.IsVariable() ? dataset.GetValues(n.HashValue).subspan(range.Start(), numRows).data() : nullptr;
-            auto const param = (parameters && n.Optimize) ? parameters[idx++] : T{n.Value};
+            auto const param = (!coeff.empty() && n.Optimize) ? coeff[idx++] : T{n.Value};
+
             meta.push_back({
                 param,
                 std::tuple_element_t<1, NodeMeta>(ptr, numRows),
-                ftable_.template TryGet<T>(n.HashValue)
+                dtable_.template TryGet<T>(n.HashValue)
             });
             if (n.IsConstant()) { m[i].setConstant(param); }
         }
@@ -98,17 +81,19 @@ struct GenericInterpreter {
             }
             // the final result is found in the last section of the buffer corresponding to the root node
             res.segment(row, remainingRows) = m.back().segment(0, remainingRows);
+            callback(m, row);
         }
     }
 
-    auto GetDispatchTable() -> DTable& { return ftable_; }
-    [[nodiscard]] auto GetDispatchTable() const -> DTable const& { return ftable_; }
+    auto GetDispatchTable() -> DTable& { return dtable_; }
+    [[nodiscard]] auto GetDispatchTable() const -> DTable const& { return dtable_; }
 
 private:
-    DTable ftable_;
+    DTable dtable_;
 };
 
 using Interpreter = GenericInterpreter<Operon::Scalar, Operon::Dual>;
+//using Interpreter = GenericInterpreter<Operon::Scalar>;
 
 // convenience method to interpret many trees in parallel (mostly useful from the python wrapper)
 auto OPERON_EXPORT EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const& dataset, Operon::Range range, size_t nthread = 0) -> std::vector<std::vector<Operon::Scalar>> ;

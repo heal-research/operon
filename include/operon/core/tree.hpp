@@ -86,6 +86,13 @@ public:
     void SetCoefficients(Operon::Span<Operon::Scalar const> coefficients);
     [[nodiscard]] auto GetCoefficients() const -> std::vector<Operon::Scalar>;
 
+    [[nodiscard]] auto ApplyCoefficients(Operon::Span<Operon::Scalar const> coefficients) const
+    {
+        auto tree{ *this };
+        tree.SetCoefficients(coefficients);
+        return tree;
+    }
+
     inline auto operator[](size_t i) noexcept -> Node& { return nodes_[i]; }
     inline auto operator[](size_t i) const noexcept -> Node const& { return nodes_[i]; }
 

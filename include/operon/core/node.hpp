@@ -12,15 +12,19 @@
 
 namespace Operon {
 enum class NodeType : uint32_t {
+    // n-ary symbols
     Add      = 1U << 0U,
     Mul      = 1U << 1U,
     Sub      = 1U << 2U,
     Div      = 1U << 3U,
     Fmin     = 1U << 4U,
     Fmax     = 1U << 5U,
+
+    // binary symbols
     Aq       = 1U << 6U,
     Pow      = 1U << 7U,
 
+    // unary symbols
     Abs      = 1U << 8U,
     Acos     = 1U << 9U,
     Asin     = 1U << 10U,
@@ -42,6 +46,7 @@ enum class NodeType : uint32_t {
     Tanh     = 1U << 26U,
     Square   = 1U << 27U,
 
+    // nullary symbols (dynamic can be anything)
     Dynamic  = 1U << 28U,
     Constant = 1U << 29U,
     Variable = 1U << 30U
@@ -52,12 +57,12 @@ using PrimitiveSetConfig = NodeType;
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 struct NodeTypes {
     // magic number keeping track of the number of different node types
-    static constexpr size_t Count = 31;
+    static auto constexpr Count = std::countr_zero(static_cast<uint64_t>(NodeType::Variable)) + 1UL;
 
     // returns the index of the given type in the NodeType enum
     static auto GetIndex(NodeType type) -> size_t
     {
-        return std::bitset<Count>(static_cast<std::underlying_type_t<NodeType>>(type) - 1).count();
+        return std::countr_zero(static_cast<uint32_t>(type));
     }
 };
 
@@ -94,7 +99,7 @@ struct Node {
     bool IsEnabled;
     bool Optimize;
 
-    Node() = default; 
+    Node() = default;
 
     explicit Node(NodeType type) noexcept
         : Node(type, static_cast<Operon::Hash>(type))
@@ -189,6 +194,18 @@ struct Node {
     [[nodiscard]] inline auto IsCubeRoot() const -> bool { return Is<NodeType::Cbrt>(); }
     [[nodiscard]] inline auto IsSquare() const -> bool { return Is<NodeType::Square>(); }
     [[nodiscard]] inline auto IsDynamic() const -> bool { return Is<NodeType::Dynamic>(); }
+
+    template<NodeType Type>
+    static auto constexpr IsNary = Type < NodeType::Aq;
+
+    template<NodeType Type>
+    static auto constexpr IsBinary = Type > NodeType::Fmax && Type < NodeType::Abs;
+
+    template<NodeType Type>
+    static auto constexpr IsUnary = Type > NodeType::Pow && Type < NodeType::Dynamic;
+
+    template<NodeType Type>
+    static auto constexpr IsNullary = Type > NodeType::Square;
 };
 } // namespace Operon
 #endif
