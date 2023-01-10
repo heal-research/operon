@@ -40,7 +40,7 @@ namespace Operon::Test {
         for (auto& res: results) { res.resize(range.Size()); }
         taskflow.for_each_index(size_t{0}, trees.size(), size_t{1}, [&](auto i) {
             auto& res = results[executor.this_worker_id()];
-            interpreter.Evaluate<T>(trees[i], ds, range, {res.data(), res.size()});
+            interpreter.operator()<T>(trees[i], ds, range, {res.data(), res.size()});
         });
         executor.run(taskflow).wait();
     }
@@ -393,7 +393,7 @@ namespace Operon::Test {
 
             b.batch(range.Size()).epochs(10).epochIterations(1000).run(node.Name(), [&]() {
                 auto tree = creator(rd, sizeDistribution(rd), 0, maxDepth);
-                return interpreter.Evaluate<Operon::Scalar>(tree, ds, range);
+                return interpreter.operator()<Operon::Scalar>(tree, ds, range);
             });
         }
     }

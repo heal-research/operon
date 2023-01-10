@@ -27,7 +27,7 @@ namespace Operon::Test {
             fmt::print("Check expression {} == {}\n", InfixFormatter::Format(t, ds), expected);
             fmt::print("Tree representation:\n{}\n", TreeFormatter::Format(t, ds));
             Interpreter interp(dt);
-            auto r = interp.Evaluate<Operon::Scalar>(t, ds, Operon::Range{0, 1});
+            auto r = interp(t, ds, Operon::Range{0, 1});
             CHECK(r[0] == expected);
         };
 
