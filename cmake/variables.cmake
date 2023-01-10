@@ -12,20 +12,20 @@ if(PROJECT_IS_TOP_LEVEL)
   set(OPENLIBM_DESCRIPTION             "Link against Julia's openlibm, a high performance mathematical library [default=OFF].")
   set(JEMALLOC_DESCRIPTION             "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support [default=OFF].")
   set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes [default=OFF].")
-  set(USE_CERES_NNLS_DESCRIPTION       "Use the non-linear least squares optimizer from Ceres solver to tune model coefficients (if OFF, Eigen::LevenbergMarquardt will be used instead).")
+  set(USE_CERES_DESCRIPTION            "Use the non-linear least squares optimizer from Ceres solver to tune model coefficients (if OFF, Eigen::LevenbergMarquardt will be used instead).")
   
   # option descriptions
   option(USE_OPENLIBM         ${OPENLIBM_DESCRIPTION}             ON)
   option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
   option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION} ON)
-  option(USE_CERES_NNLS       ${USE_CERES_NNLS_DESCRIPTION}       OFF)
+  option(USE_CERES       ${USE_CERES_DESCRIPTION}       OFF)
   
   # provide a summary of configured options
   include(FeatureSummary)
   add_feature_info(USE_OPENLIBM         USE_OPENLIBM         ${OPENLIBM_DESCRIPTION})
   add_feature_info(USE_JEMALLOC         USE_JEMALLOC         ${JEMALLOC_DESCRIPTION})
   add_feature_info(USE_SINGLE_PRECISION USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION})
-  add_feature_info(USE_CERES_NNLS       USE_CERES_NNLS       ${USE_CERES_NNLS_DESCRIPTION})
+  add_feature_info(USE_CERES            USE_CERES            ${USE_CERES_DESCRIPTION})
   set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
   if(CMAKE_EXPORT_COMPILE_COMMANDS)
     set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})

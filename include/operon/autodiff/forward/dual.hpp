@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#ifndef OPERON_CORE_DUAL_HPP
-#define OPERON_CORE_DUAL_HPP
+#ifndef OPERON_AUTODIFF_FORWARD_DUAL_HPP
+#define OPERON_AUTODIFF_FORWARD_DUAL_HPP
 
-#include "types.hpp"
+#include "operon/core/types.hpp"
 
 #if defined(HAVE_CERES)
 #include <ceres/jet.h>

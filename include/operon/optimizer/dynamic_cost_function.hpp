@@ -4,10 +4,13 @@
 #ifndef OPERON_OPTIMIZER_COST_FUNCTION_HPP
 #define OPERON_OPTIMIZER_COST_FUNCTION_HPP
 
-#include <ceres/dynamic_autodiff_cost_function.h>
-#include <ceres/dynamic_numeric_diff_cost_function.h>
-#include <ceres/loss_function.h>
-#include <ceres/solver.h>
+#ifdef HAVE_CERES
+#ifndef CERES_EXPORT
+#define CERES_EXPORT OPERON_EXPORT
+#endif
+
+#include "operon/core/contracts.hpp"
+#include <ceres/ceres.h>
 
 namespace Operon {
 template <typename CostFunctor>
@@ -18,7 +21,7 @@ struct DynamicCostFunction final : public ceres::DynamicCostFunction {
         : cf_(cf)
     {
         static_assert(CostFunctor::Storage == Eigen::RowMajor, "Operon::DynamicCostFunction requires row-major storage.");
-        mutable_parameter_block_sizes()->push_back(cf_.NumParameters());
+        this->mutable_parameter_block_sizes()->push_back(cf_.NumParameters());
         set_num_residuals(cf_.NumResiduals());
 
         ENSURE(cf_.NumParameters() > 0);
@@ -28,23 +31,24 @@ struct DynamicCostFunction final : public ceres::DynamicCostFunction {
     // required by ceres
     auto Evaluate(double const* const* parameters, double* residuals, double** jacobians) const -> bool override
     {
-        EXPECT(parameters != nullptr);
+        EXPECT(parameters != nullptr && parameters[0] != nullptr);
 
         if constexpr (std::is_same_v<Scalar, double>) {
+            if (jacobians != nullptr) { EXPECT(jacobians[0] != nullptr); }
             return cf_(parameters[0], residuals, jacobians == nullptr ? nullptr : jacobians[0]);
         } else {
             // we need to make a copy
-            int numResiduals = num_residuals();
-            int numParameters = parameter_block_sizes().front();
+            int const nr = this->num_residuals();
+            int const np = this->parameter_block_sizes().front();
 
-            ENSURE(numResiduals > 0);
-            ENSURE(numParameters > 0);
+            ENSURE(nr > 0);
+            ENSURE(np > 0);
 
-            Eigen::Map<const Eigen::Matrix<double, -1, 1>> pMap(parameters[0], numParameters);
-            Eigen::Map<Eigen::Matrix<double, -1, 1>> rMap(residuals, numResiduals);
+            Eigen::Map<const Eigen::Matrix<double, -1, 1>> pMap(parameters[0], np);
+            Eigen::Map<Eigen::Matrix<double, -1, 1>> rMap(residuals, nr);
 
             Eigen::Matrix<Scalar, -1, 1> param = pMap.cast<Scalar>();
-            Eigen::Matrix<Scalar, -1, 1> resid(numResiduals);
+            Eigen::Matrix<Scalar, -1, 1> resid(nr);
 
             if (jacobians == nullptr) {
                 auto success = cf_(param.data(), resid.data(), nullptr);
@@ -52,13 +56,13 @@ struct DynamicCostFunction final : public ceres::DynamicCostFunction {
                     return false;
                 }
             } else {
-                Eigen::Matrix<Scalar, -1, -1> jacob(numResiduals, numParameters);
+                Eigen::Matrix<Scalar, -1, -1, CostFunctor::Storage> jacob(nr, np);
                 auto success = cf_(param.data(), resid.data(), jacob.data());
                 if (!success) {
                     return false;
                 }
 
-                Eigen::Map<Eigen::Matrix<double, -1, -1>> jMap(jacobians[0], numResiduals, numParameters);
+                Eigen::Map<Eigen::Matrix<double, -1, -1, CostFunctor::Storage>> jMap(jacobians[0], nr, np);
                 jMap = jacob.template cast<double>();
             }
             rMap = resid.template cast<double>();
@@ -83,6 +87,7 @@ struct DynamicCostFunction final : public ceres::DynamicCostFunction {
 private:
     CostFunctor cf_;
 };
+#endif
 } // namespace Operon
 
 #endif

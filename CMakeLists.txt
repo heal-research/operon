@@ -93,11 +93,10 @@ find_package(xxhash_cpp REQUIRED)
 
 # ---- Optional dependencies
 set(HAVE_CERES FALSE)
-if (USE_CERES_NNLS)
+if (USE_CERES)
     find_package(Ceres)   # use the Ceres optimizer for coefficients tuning
     if (Ceres_FOUND)
         set(HAVE_CERES TRUE)
-        target_link_libraries(operon_operon PUBLIC Ceres::ceres)
     endif()
 else()
     set(Ceres_VERSION "n/a")
@@ -107,9 +106,6 @@ if (USE_OPENLIBM)
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
         pkg_check_modules(openlibm IMPORTED_TARGET openlibm)
-        if (openlibm_FOUND)
-            target_link_libraries(operon_operon PUBLIC PkgConfig::openlibm)
-        endif()
     endif()
 endif()
 
@@ -174,7 +170,7 @@ target_include_directories(
     "${PROJECT_BINARY_DIR}"
 )
 
-if(Ceres_FOUND AND USE_CERES_NNLS)
+if(Ceres_FOUND AND USE_CERES)
 endif()
 
 target_link_libraries(operon_operon INTERFACE
@@ -196,6 +192,14 @@ target_link_libraries(operon_operon PRIVATE
     vstat::vstat
     xxhash_cpp::xxhash_cpp
 )
+
+if (USE_OPENLIBM AND openlibm_FOUND)
+    target_link_libraries(operon_operon PUBLIC PkgConfig::openlibm)
+endif()
+
+if (USE_CERES AND Ceres_FOUND)
+    target_link_libraries(operon_operon PUBLIC Ceres::ceres)
+endif()
 
 target_compile_features(operon_operon PUBLIC cxx_std_20)
 

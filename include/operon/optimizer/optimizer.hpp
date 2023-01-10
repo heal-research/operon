@@ -5,12 +5,11 @@
 #define OPERON_OPTIMIZER_HPP
 
 #include <unsupported/Eigen/LevenbergMarquardt>
-
-#include "operon/core/dual.hpp"
+#include "operon/autodiff/forward/forward.hpp"
 #include "operon/core/comparison.hpp"
-#include "residual_evaluator.hpp"
 #include "tiny_cost_function.hpp"
 #include "operon/ceres/tiny_solver.h"
+#include "operon/autodiff/autodiff.hpp"
 
 #if defined(HAVE_CERES)
 #include "dynamic_cost_function.hpp"
@@ -18,10 +17,7 @@
 
 namespace Operon {
 
-enum class OptimizerType : int { TINY, EIGEN,
-    CERES };
-enum class DerivativeMethod : int { NUMERIC,
-    AUTODIFF };
+enum class OptimizerType : int { Tiny, Eigen, Ceres };
 
 struct OptimizerSummary {
     double InitialCost;
@@ -32,24 +28,26 @@ struct OptimizerSummary {
     bool Success;
 };
 
+template<typename DerivativeCalculator>
 struct OptimizerBase {
 private:
-    std::reference_wrapper<Interpreter const> interpreter_;
-    std::reference_wrapper<Tree const> tree_;
-    std::reference_wrapper<Dataset const> dataset_;
+    DerivativeCalculator& calculator_;
+    Operon::Tree const& tree_;
+    Operon::Dataset const& dataset_;
 
 public:
-    OptimizerBase(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset)
-        : interpreter_(interpreter)
+    OptimizerBase(DerivativeCalculator& calculator, Tree const& tree, Dataset const& dataset)
+        : calculator_(calculator)
         , tree_(tree)
         , dataset_(dataset)
     {
     }
 
-    [[nodiscard]] auto GetInterpreter() const -> Interpreter const& { return interpreter_.get(); }
-    [[nodiscard]] auto GetTree() const -> Tree const& { return tree_.get(); }
-    [[nodiscard]] auto GetDataset() const -> Dataset const& { return dataset_.get(); }
-    [[nodiscard]] auto GetCoefficients() const -> std::vector<Operon::Scalar> { return GetTree().GetCoefficients(); }
+    [[nodiscard]] auto GetInterpreter() const -> Interpreter const& { return calculator_.GetInterpreter(); }
+    [[nodiscard]] auto GetTree() const -> Tree const& { return tree_; }
+    [[nodiscard]] auto GetDataset() const -> Dataset const& { return dataset_; }
+    [[nodiscard]] auto GetDerivativeCalculator() -> DerivativeCalculator& { return calculator_; }
+    [[nodiscard]] auto GetDerivativeCalculator() const -> DerivativeCalculator const& { return calculator_; }
 };
 
 namespace detail {
@@ -59,28 +57,29 @@ namespace detail {
     }
 } // namespace detail
 
-template <OptimizerType = OptimizerType::TINY>
-struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
-    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset)
-        : OptimizerBase(interpreter, tree, dataset)
+template <typename DerivativeCalculator, OptimizerType = OptimizerType::Tiny>
+struct NonlinearLeastSquaresOptimizer : public OptimizerBase<DerivativeCalculator> {
+    NonlinearLeastSquaresOptimizer(DerivativeCalculator& calculator, Tree const& tree, Dataset const& dataset)
+        : OptimizerBase<DerivativeCalculator>(calculator, tree, dataset)
     {
     }
 
-    template <DerivativeMethod D = DerivativeMethod::AUTODIFF>
-    auto Optimize(Operon::Span<Operon::Scalar const> target, Range range, size_t iterations, OptimizerSummary& summary) -> std::vector<Operon::Scalar> 
+    auto Optimize(Operon::Span<Operon::Scalar const> target, Range range, size_t iterations, OptimizerSummary& summary) -> std::vector<Operon::Scalar>
     {
-        static_assert(D == DerivativeMethod::AUTODIFF, "The tiny optimizer only supports autodiff.");
-        ResidualEvaluator re(GetInterpreter(), GetTree(), GetDataset(), target, range);
-        Operon::TinyCostFunction<ResidualEvaluator, Operon::Dual, Operon::Scalar, Eigen::ColMajor> cf(re);
+        auto const& tree = this->GetTree();
+        auto const& ds = this->GetDataset();
+        auto& dc = this->GetDerivativeCalculator();
+
+        Operon::CostFunction cf(tree, ds, target, range, dc);
         ceres::TinySolver<decltype(cf)> solver;
         solver.options.max_num_iterations = static_cast<int>(iterations);
 
-        auto x0 = GetCoefficients();
-        auto m0 = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size()); 
+        auto x0 = tree.GetCoefficients();
+        auto m0 = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size());
         if (!x0.empty()) {
-            decltype(solver)::Parameters p = m0.cast<typename decltype(cf)::Scalar>();
+            typename decltype(solver)::Parameters p = m0.cast<typename decltype(cf)::Scalar>();
             solver.Solve(cf, &p);
-            m0 = p.cast<Operon::Scalar>();
+            m0 = p.template cast<Operon::Scalar>();
         }
         summary.InitialCost = solver.summary.initial_cost;
         summary.FinalCost = solver.summary.final_cost;
@@ -91,28 +90,29 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase {
     }
 };
 
-template <>
-struct NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> : public OptimizerBase {
-    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset)
-        : OptimizerBase(interpreter, tree, dataset)
+template <typename DerivativeCalculator>
+struct NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Eigen> : public OptimizerBase<DerivativeCalculator> {
+    NonlinearLeastSquaresOptimizer(DerivativeCalculator& calculator, Tree const& tree, Dataset const& dataset)
+        : OptimizerBase<DerivativeCalculator>(calculator, tree, dataset)
     {
     }
 
-    template <DerivativeMethod D = DerivativeMethod::AUTODIFF>
     auto Optimize(Operon::Span<Operon::Scalar const> target, Range range, size_t iterations, OptimizerSummary& summary) -> std::vector<Operon::Scalar>
     {
-        static_assert(D == DerivativeMethod::AUTODIFF, "Eigen::LevenbergMarquardt only supports autodiff.");
-        ResidualEvaluator re(GetInterpreter(), GetTree(), GetDataset(), target, range);
-        Operon::TinyCostFunction<ResidualEvaluator, Operon::Dual, Operon::Scalar, Eigen::ColMajor> cf(re);
+        auto const& tree = this->GetTree();
+        auto const& ds = this->GetDataset();
+        auto& dc = this->GetDerivativeCalculator();
+
+        Operon::CostFunction cf(tree, ds, target, range, dc);
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
         lm.setMaxfev(static_cast<int>(iterations+1));
 
-        auto x0 = GetCoefficients();
+        auto x0 = tree.GetCoefficients();
         Eigen::ComputationInfo info{};
         if (!x0.empty()) {
             Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
             Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
-            
+
             // do the minimization loop manually because we want to extract the initial cost
             Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
             summary.InitialCost = summary.FinalCost = lm.fnorm() * lm.fnorm(); // get the initial cost after calling minimizeInit()
@@ -133,56 +133,45 @@ struct NonlinearLeastSquaresOptimizer<OptimizerType::EIGEN> : public OptimizerBa
 };
 
 #if HAVE_CERES
-template <>
-struct NonlinearLeastSquaresOptimizer<OptimizerType::CERES> : public OptimizerBase {
-    NonlinearLeastSquaresOptimizer(Interpreter const& interpreter, Tree const& tree, Dataset const& dataset)
-        : OptimizerBase(interpreter, tree, dataset)
+template <typename DerivativeCalculator>
+struct NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Ceres> : public OptimizerBase<DerivativeCalculator> {
+    NonlinearLeastSquaresOptimizer(DerivativeCalculator& interpreter, Tree const& tree, Dataset const& dataset)
+        : OptimizerBase<DerivativeCalculator>(interpreter, tree, dataset)
     {
     }
 
-    template <DerivativeMethod D = DerivativeMethod::AUTODIFF>
-    auto Optimize(Operon::Span<Operon::Scalar const> target, Range range, size_t iterations, bool writeCoefficients = true, OptimizerSummary& summary) -> std::vector<Operon::Scalar> 
+    auto Optimize(Operon::Span<Operon::Scalar const> target, Range range, size_t iterations, OptimizerSummary& summary) -> std::vector<Operon::Scalar>
     {
-        auto x0 = GetCoeff();
+        auto const& tree = this->GetTree();
+        auto const& ds = this->GetDataset();
+        auto& dc = this->GetDerivativeCalculator();
 
-        auto const& interpreter = GetInterpreter();
-        auto const& dataset = GetDataset();
+        auto x0 = tree.GetCoefficients();
 
-        if (x0.empty()) {
-            return OptimizerSummary {};
-        }
-
-        ceres::DynamicCostFunction* costFunction = nullptr;
-        if constexpr (D == DerivativeMethod::AUTODIFF) {
-            ResidualEvaluator re(interpreter, tree, dataset, target, range);
-            TinyCostFunction<ResidualEvaluator, Operon::Dual, Operon::Scalar, Eigen::RowMajor> f(re);
-            costFunction = new Operon::DynamicCostFunction<decltype(f)>(f);
-        } else {
-            auto* eval = new ResidualEvaluator(interpreter, tree, dataset, target, range); // NOLINT
-            costFunction = new ceres::DynamicNumericDiffCostFunction(eval);
-            costFunction->AddParameterBlock(static_cast<int>(coef.size()));
-            costFunction->SetNumResiduals(static_cast<int>(target.size()));
-        }
-
-        auto sz = static_cast<Eigen::Index>(x0.size());
-        Eigen::MatrixXd params = Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>>(x0.data(), sz).template cast<double>();
-        ceres::Problem problem;
-        problem.AddResidualBlock(costFunction, nullptr, params.data());
-
-        ceres::Solver::Options options;
-        options.max_num_iterations = static_cast<int>(iterations - 1); // workaround since for some reason ceres sometimes does 1 more iteration
-        options.linear_solver_type = ceres::DENSE_QR;
-        options.minimizer_progress_to_stdout = report;
-        options.num_threads = 1;
-        options.logging_type = ceres::LoggingType::SILENT;
+        Operon::CostFunction<DerivativeCalculator, Eigen::RowMajor> cf(tree, ds, target, range, dc);
+        auto costFunction = new Operon::DynamicCostFunction(cf); // NOLINT
 
         ceres::Solver::Summary s;
-        Solve(options, &problem, &s);
-        sum.InitialCost = s.initial_cost;
-        sum.FinalCost = s.final_cost;
-        sum.Iterations = static_cast<int>(s.iterations.size());
-        sum.FunctionEvaluations = s.num_residual_evaluations;
-        sum.JacobianEvaluations = s.num_jacobian_evaluations;
+        if (!x0.empty()) {
+            Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
+            auto sz = static_cast<Eigen::Index>(x0.size());
+            Eigen::VectorXd params = Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>>(x0.data(), sz).template cast<double>();
+            ceres::Problem problem;
+            problem.AddResidualBlock(costFunction, nullptr, params.data());
+            ceres::Solver::Options options;
+            options.max_num_iterations = static_cast<int>(iterations - 1); // workaround since for some reason ceres sometimes does 1 more iteration
+            options.linear_solver_type = ceres::DENSE_QR;
+            options.minimizer_progress_to_stdout = false;
+            options.num_threads = 1;
+            options.logging_type = ceres::LoggingType::SILENT;
+            Solve(options, &problem, &s);
+            m0 = params.cast<Operon::Scalar>();
+        }
+        summary.InitialCost = s.initial_cost;
+        summary.FinalCost = s.final_cost;
+        summary.Iterations = static_cast<int>(s.iterations.size());
+        summary.FunctionEvaluations = s.num_residual_evaluations;
+        summary.JacobianEvaluations = s.num_jacobian_evaluations;
         summary.Success = detail::CheckSuccess(summary.InitialCost, summary.FinalCost);
         return x0;
     }
