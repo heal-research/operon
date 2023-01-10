@@ -4,6 +4,7 @@
 #ifndef OPERON_OPTIMIZER_HPP
 #define OPERON_OPTIMIZER_HPP
 
+#include <ceres/types.h>
 #include <unsupported/Eigen/LevenbergMarquardt>
 #include "operon/autodiff/forward/forward.hpp"
 #include "operon/core/comparison.hpp"
@@ -159,11 +160,13 @@ struct NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Ceres
             ceres::Problem problem;
             problem.AddResidualBlock(costFunction, nullptr, params.data());
             ceres::Solver::Options options;
-            options.max_num_iterations = static_cast<int>(iterations - 1); // workaround since for some reason ceres sometimes does 1 more iteration
             options.linear_solver_type = ceres::DENSE_QR;
+            options.logging_type = ceres::LoggingType::SILENT;
+            options.max_num_iterations = static_cast<int>(iterations - 1); // workaround since for some reason ceres sometimes does 1 more iteration
             options.minimizer_progress_to_stdout = false;
             options.num_threads = 1;
-            options.logging_type = ceres::LoggingType::SILENT;
+            options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
+            options.use_inner_iterations = false;
             Solve(options, &problem, &s);
             m0 = params.cast<Operon::Scalar>();
         }
