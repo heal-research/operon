@@ -17,199 +17,149 @@
 
 namespace Operon {
 
-namespace detail {
-    // this should be good enough - tests show 512 is about optimal
-    template<typename T>
-    struct BatchSize {
-        static const size_t Value = 512 / sizeof(T);
+// data types used by the dispatch table and the interpreter
+struct Dispatch {
+
+template<typename T>
+static auto constexpr BatchSize{ 512UL / sizeof(T) };
+
+template<typename T>
+using Array = Eigen::Array<T, BatchSize<T>, 1>;
+
+template<typename T>
+using Ref = Eigen::Ref<Array<T>>;
+
+template<typename T>
+using Callable = std::function<void(Operon::Vector<Array<T>>&, Operon::Vector<Node> const&, size_t, Operon::Range)>;
+
+// dispatching mechanism
+// compared to the simple/naive way of evaluating n-ary symbols, this method has the following advantages:
+// 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments
+// 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
+//    if arity > 4, one accumulation is performed every 4 args
+template<NodeType Type, typename T>
+requires Node::IsNary<Type>
+static inline void NaryOp(Operon::Vector<Dispatch::Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, Operon::Range /*unused*/)
+{
+    static_assert(Type < NodeType::Aq);
+    auto result = Ref<T>(m[parentIndex]);
+    const auto f = [](bool cont, decltype(result) res, auto&&... args) {
+        if (cont) {
+            ContinuedFunction<Type>{}(res, std::forward<decltype(args)>(args)...);
+        } else {
+            Function<Type>{}(res, std::forward<decltype(args)>(args)...);
+        }
     };
+    const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
 
-    template<typename T>
-    using Array = Eigen::Array<T, BatchSize<T>::Value, 1>;
+    auto arg1 = parentIndex - 1;
 
-    template<typename T>
-    using Ref = Eigen::Ref<Array<T>>;
+    bool continued = false;
 
-    // dispatching mechanism
-    // compared to the simple/naive way of evaluating n-ary symbols, this method has the following advantages:
-    // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments
-    // 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
-    //    if arity > 4, one accumulation is performed every 4 args
-    template<NodeType Type, typename T>
-    inline void DispatchOpNary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, Operon::Range /* not used here - provided for dynamic symbols */)
-    {
-        static_assert(Type < NodeType::Aq);
-        auto result = Ref<T>(m[parentIndex]);
-        const auto f = [](bool cont, decltype(result) res, auto&&... args) {
-            if (cont) {
-                ContinuedFunction<Type>{}(res, std::forward<decltype(args)>(args)...);
-            } else {
-                Function<Type>{}(res, std::forward<decltype(args)>(args)...);
-            }
-        };
-        const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
+    using R = Eigen::Ref<Dispatch::Array<T>>; 
 
-        auto arg1 = parentIndex - 1;
-
-        bool continued = false;
-
-        using R = Ref<T>;
-
-        int arity = nodes[parentIndex].Arity;
-        while (arity > 0) {
-            switch (arity) {
+    int arity = nodes[parentIndex].Arity;
+    while (arity > 0) {
+        switch (arity) {
             case 1: {
-                f(continued, result, R(m[arg1]));
-                arity = 0;
-                break;
-            }
+                        f(continued, result, R(m[arg1]));
+                        arity = 0;
+                        break;
+                    }
             case 2: {
-                auto arg2 = nextArg(arg1);
-                f(continued, result, R(m[arg1]), R(m[arg2]));
-                arity = 0;
-                break;
-            }
+                        auto arg2 = nextArg(arg1);
+                        f(continued, result, R(m[arg1]), R(m[arg2]));
+                        arity = 0;
+                        break;
+                    }
             case 3: {
-                auto arg2 = nextArg(arg1);
-                auto arg3 = nextArg(arg2);
-                f(continued, result, R(m[arg1]), R(m[arg2]), R(m[arg3]));
-                arity = 0;
-                break;
-            }
+                        auto arg2 = nextArg(arg1);
+                        auto arg3 = nextArg(arg2);
+                        f(continued, result, R(m[arg1]), R(m[arg2]), R(m[arg3]));
+                        arity = 0;
+                        break;
+                    }
             default: {
-                auto arg2 = nextArg(arg1);
-                auto arg3 = nextArg(arg2);
-                auto arg4 = nextArg(arg3);
-                f(continued, result, R(m[arg1]), R(m[arg2]), R(m[arg3]), R(m[arg4]));
-                arity -= 4;
-                arg1 = nextArg(arg4);
-                break;
-            }
-            }
-            continued = true;
+                         auto arg2 = nextArg(arg1);
+                         auto arg3 = nextArg(arg2);
+                         auto arg4 = nextArg(arg3);
+                         f(continued, result, R(m[arg1]), R(m[arg2]), R(m[arg3]), R(m[arg4]));
+                         arity -= 4;
+                         arg1 = nextArg(arg4);
+                         break;
+                     }
         }
+        continued = true;
     }
+}
 
-    template<NodeType Type, typename T>
-    inline void DispatchOpUnary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& /*unused*/, size_t i, Operon::Range /* not used here - provided for dynamic symbols */)
-    {
-        static_assert(Type < NodeType::Dynamic && Type > NodeType::Pow);
-        Function<Type>{}(Ref<T>(m[i]), Ref<T>(m[i-1]));
+template<NodeType Type, typename T>
+requires Node::IsBinary<Type>
+static inline void BinaryOp(Operon::Vector<Dispatch::Array<T>>& m, Operon::Vector<Node> const& nodes, size_t i, Operon::Range /*unused*/)
+{
+    auto j = i - 1;
+    auto k = j - nodes[j].Length - 1;
+    Function<Type>{}(Ref<T>(m[i]), Ref<T>(m[j]), Ref<T>(m[k]));
+}
+
+template<NodeType Type, typename T>
+requires Node::IsUnary<Type>
+static inline void UnaryOp(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& /*unused*/, size_t i, Operon::Range /*unused*/)
+{
+    Function<Type>{}(Ref<T>(m[i]), Ref<T>(m[i-1]));
+}
+
+struct Noop {
+    template<typename... Args>
+    void operator()(Args&&... /*unused*/) {}
+};
+
+template<NodeType Type, typename T>
+static constexpr auto MakeCall() -> Dispatch::Callable<T>
+{
+    if constexpr (Node::IsNary<Type>) {
+        return Callable<T>(NaryOp<Type, T>);
+    } else if constexpr (Node::IsBinary<Type>) {
+        return Callable<T>(BinaryOp<Type, T>);
+    } else if constexpr (Node::IsUnary<Type>) {
+        return Callable<T>(UnaryOp<Type, T>);
     }
-
-    template<NodeType Type, typename T>
-    inline void DispatchOpBinary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t i, Operon::Range /* not used here - provided for dynamic symbols */)
-    {
-        static_assert(Type < NodeType::Abs && Type > NodeType::Fmax);
-        auto j = i - 1;
-        auto k = j - nodes[j].Length - 1;
-        Function<Type>{}(Ref<T>(m[i]), Ref<T>(m[j]), Ref<T>(m[k]));
-    }
-
-    template<NodeType Type, typename T>
-    inline void DispatchOpSimpleUnaryOrBinary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, Operon::Range /* not used here - provided for dynamic symbols */)
-    {
-        auto r = Ref<T>(m[parentIndex]);
-        size_t i = parentIndex - 1;
-        size_t arity = nodes[parentIndex].Arity;
-
-        Function<Type> f{};
-
-        if (arity == 1) {
-            f(r, Ref<T>(m[i]));
-        } else {
-            auto j = i - (nodes[i].Length + 1);
-            f(r, Ref<T>(m[i]), Ref<T>(m[j]));
-        }
-    }
-
-    template<NodeType Type, typename T>
-    inline void DispatchOpSimpleNary(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, Operon::Range /* not used here - provided for dynamic symbols */)
-    {
-        auto r = Ref<T>(m[parentIndex]);
-        size_t arity = nodes[parentIndex].Arity;
-
-        auto i = parentIndex - 1;
-
-        Function<Type> f{};
-
-        if (arity == 1) {
-            f(r, Ref<T>(m[i]));
-        } else {
-            r = m[i];
-
-            for (size_t k = 1; k < arity; ++k) {
-                i -= nodes[i].Length + 1;
-                f(r, Ref<T>(m[i]));
-            }
-        }
-    }
-
-    struct Noop {
-        template<typename... Args>
-        void operator()(Args&&... /*unused*/) {}
-    };
-
-    template<typename X, typename Tuple>
-    class tuple_index;
-
-    template<typename X, typename... T>
-    class tuple_index<X, std::tuple<T...>> {
-        template<std::size_t... Idx>
-        static constexpr auto FindIdx(std::index_sequence<Idx...> /*unused*/) -> int64_t
-        {
-            return -1 + ((std::is_same<X, T>::value ? Idx + 1 : 0) + ...);
-        }
-
-    public:
-        static constexpr int64_t value = FindIdx(std::index_sequence_for<T...>{});
-    };
-
-    template<typename T>
-    using Callable = typename std::function<void(Operon::Vector<Array<T>>&, Operon::Vector<Node> const&, size_t, Operon::Range)>;
-
-    template<NodeType Type, typename T>
-    static constexpr auto MakeCall() -> Callable<T>
-    {
-        if constexpr (Type < NodeType::Aq) { // nary: add, sub, mul, div, fmin, fmax
-            return Callable<T>(detail::DispatchOpNary<Type, T>);
-        } else if constexpr (Type < NodeType::Abs) { // binary: aq, pow
-            return Callable<T>(detail::DispatchOpBinary<Type, T>);
-        } else if constexpr (Type < NodeType::Dynamic) { // unary: exp, log, sin, cos, tan, tanh, sqrt, cbrt, square
-            return Callable<T>(detail::DispatchOpUnary<Type, T>);
-        }
-    }
-
-    template<NodeType Type, typename... Ts, std::enable_if_t<sizeof...(Ts) != 0, bool> = true>
-    static constexpr auto MakeTuple()
-    {
-        return std::make_tuple(MakeCall<Type, Ts>()...);
-    };
-
-    template<typename F, typename... Ts, std::enable_if_t<sizeof...(Ts) != 0 && (std::is_invocable_r_v<void, F, detail::Array<Ts>&, Vector<Node> const&, size_t, Operon::Range> && ...), bool> = true>
-    static constexpr auto MakeTuple(F&& f)
-    {
-        return std::make_tuple(Callable<Ts>(std::forward<F&&>(f))...);
-    }
-} // namespace detail
+}
+};
 
 template<typename... Ts>
 struct DispatchTable {
-    template<typename T>
-    using Callable = detail::Callable<T>;
-
-    using Tuple    = std::tuple<Callable<Ts>...>;
+    using Tuple    = std::tuple<Dispatch::Callable<Ts>...>;
     using Map      = Operon::Map<Operon::Hash, Tuple>;
 
 private:
     Map map_;
+
+    template<NodeType Type>
+    static constexpr auto MakeTuple()
+    {
+        return std::make_tuple(Dispatch::MakeCall<Type, Ts>()...);
+    };
+
+    template<typename F>
+    requires (std::is_invocable_r_v<void, F, Dispatch::Array<Ts>&, Vector<Node> const&, size_t, Operon::Range> && ...)
+    static constexpr auto MakeTuple(F&& f)
+    {
+        return std::make_tuple(Callable<Ts>(std::forward<F&&>(f))...);
+    }
+
+    // return the index of Callable<T> in Tuple 
+    template<typename T>
+    static auto constexpr IndexOf = []<auto... Idx>(std::index_sequence<Idx...>) {
+        return -1 + ((std::is_same_v<T, std::tuple_element_t<Idx, Tuple>> ? Idx + 1 : 0) + ...);
+    }(std::index_sequence_for<Ts...>{});
 
 public:
     DispatchTable()
     {
         auto constexpr f = [](auto i) { return static_cast<NodeType>(1U << i); };
         [&]<auto ...I>(std::index_sequence<I...>){
-            (map_.insert({ Node(f(I)).HashValue, detail::MakeTuple<f(I), Ts...>() }), ...);
+            (map_.insert({ Node(f(I)).HashValue, MakeTuple<f(I)>() }), ...);
         }(std::make_index_sequence<NodeTypes::Count-3>{});
     }
 
@@ -238,15 +188,15 @@ public:
     auto GetMap() const -> Map const& { return map_; }
 
     template<typename T>
-    inline auto Get(Operon::Hash const h) -> Callable<T>&
+    inline auto Get(Operon::Hash const h) -> Dispatch::Callable<T>&
     {
-        return const_cast<Callable<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->Get(h)); // NOLINT
+        return const_cast<Dispatch::Callable<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->Get(h)); // NOLINT
     }
 
     template<typename T>
-    [[nodiscard]] inline auto Get(Operon::Hash const h) const -> Callable<T> const&
+    [[nodiscard]] inline auto Get(Operon::Hash const h) const -> Dispatch::Callable<T> const&
     {
-        constexpr int64_t idx = detail::tuple_index<Callable<T>, Tuple>::value;
+        constexpr int64_t idx = IndexOf<Dispatch::Callable<T>>;
         static_assert(idx >= 0, "Tuple does not contain type T");
         if (auto it = map_.find(h); it != map_.end()) {
             return std::get<static_cast<size_t>(idx)>(it->second);
@@ -256,13 +206,13 @@ public:
 
     template<typename F>
     void RegisterCallable(Operon::Hash hash, F&& f) {
-        map_[hash] = detail::MakeTuple<F, Ts...>(std::forward<F&&>(f));
+        map_[hash] = MakeTuple<F, Ts...>(std::forward<F&&>(f));
     }
 
     template<typename T>
-    [[nodiscard]] inline auto TryGet(Operon::Hash const h) const noexcept -> std::optional<Callable<T>>
+    [[nodiscard]] inline auto TryGet(Operon::Hash const h) const noexcept -> std::optional<Dispatch::Callable<T>>
     {
-        constexpr int64_t idx = detail::tuple_index<Callable<T>, Tuple>::value;
+        constexpr int64_t idx = IndexOf<Dispatch::Callable<T>>;
         static_assert(idx >= 0, "Tuple does not contain type T");
         if (auto it = map_.find(h); it != map_.end()) {
             return { std::get<static_cast<size_t>(idx)>(it->second) };

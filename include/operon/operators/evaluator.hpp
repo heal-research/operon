@@ -69,6 +69,7 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
     mutable std::atomic_ulong ResidualEvaluations{0}; // NOLINT
     mutable std::atomic_ulong JacobianEvaluations{0}; // NOLINT
     mutable std::atomic_ulong CallCount{0};           // NOLINT
+    mutable std::atomic_ulong CostFunctionTime{0};    // NOLINT
 
     static constexpr size_t DefaultLocalOptimizationIterations = 50;
     static constexpr size_t DefaultEvaluationBudget = 100'000;
@@ -104,6 +105,7 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
         ResidualEvaluations = 0;
         JacobianEvaluations = 0;
         CallCount = 0;
+        CostFunctionTime = 0;
     }
 
     private:
@@ -191,6 +193,7 @@ public:
         auto resEval{0UL};
         auto jacEval{0UL};
         auto eval{0UL};
+        auto cft{0UL};
         for (auto const& ev : evaluators_) {
             auto f = ev(rng, ind, buf);
             std::copy(f.begin(), f.end(), std::back_inserter(fit));
@@ -198,10 +201,12 @@ public:
             resEval += ev.get().ResidualEvaluations;
             jacEval += ev.get().JacobianEvaluations;
             eval += ev.get().CallCount;
+            cft += ev.get().CostFunctionTime;
         }
         ResidualEvaluations = resEval;
         JacobianEvaluations = jacEval;
         CallCount = eval;
+        CostFunctionTime = cft;
         return fit;
     }
 

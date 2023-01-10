@@ -77,7 +77,7 @@ auto main(int argc, char** argv) -> int
         fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
     }
 
-    auto est = interpreter.Evaluate<Operon::Scalar>(model, ds, range);
+    auto est = interpreter(model, ds, range);
 
     std::string format = result["format"].as<std::string>();
     if (result["target"].count() > 0) {

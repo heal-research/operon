@@ -266,11 +266,11 @@ auto main(int argc, char** argv) -> int
             tf::Taskflow taskflow;
 
             auto evalTrain = taskflow.emplace([&]() {
-                estimatedTrain = interpreter.Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), trainingRange);
+                estimatedTrain = interpreter(best.Genotype, problem.GetDataset(), trainingRange);
             });
 
             auto evalTest = taskflow.emplace([&]() {
-                estimatedTest = interpreter.Evaluate<Operon::Scalar>(best.Genotype, problem.GetDataset(), testRange);
+                estimatedTest = interpreter(best.Genotype, problem.GetDataset(), testRange);
             });
 
             // scale values
@@ -304,12 +304,12 @@ auto main(int argc, char** argv) -> int
             double maeTest{};
 
             auto scaleTrain = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), static_cast<int64_t>(estimatedTrain.size()));
+                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), std::ssize(estimatedTrain));
                 estimated = estimated * a + b;
             });
 
             auto scaleTest = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), static_cast<int64_t>(estimatedTest.size()));
+                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), std::ssize(estimatedTest));
                 estimated = estimated * a + b;
             });
 
@@ -329,8 +329,8 @@ auto main(int argc, char** argv) -> int
             double avgQuality = 0;
             double totalMemory = 0;
 
-            auto calculateLength = taskflow.transform_reduce(pop.begin(), pop.end(), avgLength, std::plus<double>{}, [](auto const& ind) { return ind.Genotype.Length(); });
-            auto calculateQuality = taskflow.transform_reduce(pop.begin(), pop.end(), avgQuality, std::plus<double>{}, [idx=idx](auto const& ind) { return ind[idx]; });
+            auto calculateLength = taskflow.transform_reduce(pop.begin(), pop.end(), avgLength, std::plus{}, [](auto const& ind) { return ind.Genotype.Length(); });
+            auto calculateQuality = taskflow.transform_reduce(pop.begin(), pop.end(), avgQuality, std::plus{}, [idx=idx](auto const& ind) { return ind[idx]; });
             auto calculatePopMemory = taskflow.transform_reduce(pop.begin(), pop.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); });
             auto calculateOffMemory = taskflow.transform_reduce(off.begin(), off.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); });
 
@@ -363,6 +363,7 @@ auto main(int argc, char** argv) -> int
                 T{ "eval_cnt", evaluator.CallCount , ":>" },
                 T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
                 T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
+                T{ "opt_time", evaluator.CostFunctionTime,    ":>" },
                 T{ "seed", config.Seed, ":>" },
                 T{ "elapsed", elapsed, ":>"},
             };

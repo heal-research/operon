@@ -113,9 +113,9 @@ auto Tree::Sort() -> Tree&
 auto Tree::GetCoefficients() const -> std::vector<Operon::Scalar>
 {
     std::vector<Operon::Scalar> coefficients;
-    for (auto const& s : nodes_) {
-        if (s.Optimize) {
-            coefficients.push_back(s.Value);
+    for (auto const& n : nodes_) {
+        if (n.Optimize) {
+            coefficients.push_back(n.Value);
         }
     }
     return coefficients;
@@ -125,9 +125,7 @@ void Tree::SetCoefficients(Operon::Span<Operon::Scalar const> coefficients)
 {
     size_t idx = 0;
     for (auto& s : nodes_) {
-        if (s.Optimize) {
-            s.Value = static_cast<Operon::Scalar>(coefficients[idx++]);
-        }
+        if (s.Optimize) { s.Value = coefficients[idx++]; }
     }
 }
 

@@ -11,97 +11,58 @@ namespace Operon {
 
 // this cost function is adapted to work with both solvers from Ceres: the normal one and the tiny solver
 // for this, a number of template parameters are necessary:
-// - the CostFunctor is the actual functor for computing the residuals
-// - the Dual type represents a dual number, the user can specify the type for the Scalar part (float, double) and the Stride (Ceres-specific)
+// - the AutodiffCalculator will compute and return the Jacobian matrix
 // - the StorageOrder specifies the format of the jacobian (row-major for the big Ceres solver, column-major for the tiny solver)
 
-namespace detail {
-    template<typename CostFunctor, typename Dual, typename Scalar, int JacobianLayout = Eigen::ColMajor>
-    inline auto Autodiff(CostFunctor const& function, Scalar const* parameters, Scalar* residuals, Scalar* jacobian) -> bool
-    {
-        static_assert(std::is_convertible_v<typename Dual::Scalar, Scalar>, "The chosen Jet and Scalar types are not compatible.");
-        static_assert(std::is_convertible_v<Scalar, typename Dual::Scalar>, "The chosen Jet and Scalar types are not compatible.");
-
-        EXPECT(parameters != nullptr);
-        EXPECT(residuals != nullptr || jacobian != nullptr);
-
-        if (jacobian == nullptr) {
-            return function(parameters, residuals);
-        }
-
-        std::vector<Dual> inputs(function.NumParameters());
-        for (size_t i = 0; i < inputs.size(); ++i) {
-            inputs[i].a = parameters[i];
-            inputs[i].v.setZero();
-        }
-        std::vector<Dual> outputs(function.NumResiduals());
-
-        static auto constexpr dim{Dual::DIMENSION};
-        Eigen::Map<Eigen::Matrix<Scalar, -1, -1, JacobianLayout>> jmap(jacobian, outputs.size(), inputs.size());
-
-        for (auto s = 0U; s < inputs.size(); s += dim) {
-            auto r = std::min(static_cast<uint32_t>(inputs.size()), s + dim); // remaining parameters
-
-            for (auto i = s; i < r; ++i) {
-                inputs[i].v[i - s] = 1.0;
-            }
-
-            if (!function(inputs.data(), outputs.data())) {
-                return false;
-            }
-
-            for (auto i = s; i < r; ++i) {
-                inputs[i].v[i - s] = 0.0;
-            }
-
-            // fill in the jacobian trying to exploit its layout for efficiency
-            if constexpr (JacobianLayout == Eigen::ColMajor) {
-                for (auto i = s; i < r; ++i) {
-                    std::transform(outputs.cbegin(), outputs.cend(), jmap.col(i).data(), [&](auto const& jet) { return jet.v[i - s]; });
-                }
-            } else {
-                for (auto i = 0; i < outputs.size(); ++i) {
-                    std::copy_n(outputs[i].v.data(), r - s, jmap.row(i).data() + s);
-                }
-            }
-        }
-        if (residuals != nullptr) {
-            std::transform(std::cbegin(outputs), std::cend(outputs), residuals, [](auto const& jet) { return jet.a; });
-        }
-        return true;
-    }
-} // namespace detail
-
-template <typename CostFunctor, typename DualType, typename ScalarType, int StorageOrder = Eigen::RowMajor>
-struct TinyCostFunction {
-    static constexpr int Stride = DualType::DIMENSION;
-    static constexpr int Storage = StorageOrder;
-    using Scalar = ScalarType;
+template<typename DerivativeCalculator, int StorageOrder = Eigen::ColMajor>
+struct CostFunction {
+    static auto constexpr Storage{ StorageOrder };
+    using Scalar = Operon::Scalar;
 
     enum {
         NUM_RESIDUALS = Eigen::Dynamic,  // NOLINT
         NUM_PARAMETERS = Eigen::Dynamic, // NOLINT
     };
 
-    explicit TinyCostFunction(CostFunctor const& functor)
-        : functor_(functor)
-    {
-    }
+    explicit CostFunction(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> target, Operon::Range const range, DerivativeCalculator& calculator)
+        : tree_{tree}
+        , dataset_{dataset}
+        , target_{target}
+        , range_{range}
+        , derivativeCalculator_{calculator}
+        , numResiduals_{range.Size()}
+        , numParameters_{ParameterCount(tree)}
+    { }
 
-    auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
+    inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
     {
-        return detail::Autodiff<CostFunctor, DualType, ScalarType, StorageOrder>(functor_, parameters, residuals, jacobian);
+        EXPECT(parameters != nullptr);
+        Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
+
+        if (jacobian != nullptr) {
+            derivativeCalculator_.template operator()<StorageOrder>(tree_, dataset_, params, range_, jacobian);
+        }
+
+        if (residuals != nullptr) {
+            Operon::Span<Operon::Scalar> result{ residuals, numResiduals_ };
+            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> res(residuals, numResiduals_);
+            auto const& interpreter = derivativeCalculator_.GetInterpreter();
+            interpreter.template operator()<Operon::Scalar>(tree_, dataset_, range_, result, params);
+            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.subspan(range_.Start(), range_.Size()).data(), numResiduals_);
+            res -= y;
+        }
+        return true;
     }
 
     // ceres solver - jacobian must be in row-major format
-    // ceres tiny solver - jacobian must be in col-major format
+    // tiny solver - jacobian must be in col-major format
     auto operator()(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
     {
         return Evaluate(parameters, residuals, jacobian);
     }
 
-    [[nodiscard]] auto NumResiduals() const -> int { return functor_.NumResiduals(); }
-    [[nodiscard]] auto NumParameters() const -> int { return functor_.NumParameters(); }
+    [[nodiscard]] auto NumResiduals() const -> int { return numResiduals_; }
+    [[nodiscard]] auto NumParameters() const -> int { return numParameters_; }
 
     // required by Eigen::LevenbergMarquardt
     using JacobianType = Eigen::Matrix<Operon::Scalar, -1, -1>;
@@ -126,7 +87,18 @@ struct TinyCostFunction {
     [[nodiscard]] auto inputs() const -> int { return NumParameters(); } // NOLINT
 
 private:
-    CostFunctor functor_;
+    Operon::Tree const& tree_;
+    Operon::Dataset const& dataset_;
+    Operon::Range const range_; // NOLINT
+    DerivativeCalculator& derivativeCalculator_;
+    Operon::Span<Operon::Scalar const> target_;
+    std::size_t numResiduals_;
+    std::size_t numParameters_;
+
+    inline auto ParameterCount(auto const& tree) const -> std::size_t {
+        auto const& nodes = tree.Nodes();
+        return std::count_if(nodes.cbegin(), nodes.cend(), [](auto const& n) { return n.Optimize; });
+    }
 };
 } // namespace Operon
 
