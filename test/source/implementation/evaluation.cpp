@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 //
 #include <doctest/doctest.h>
+#include "operon/autodiff/autodiff.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
