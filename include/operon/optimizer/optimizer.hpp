@@ -32,12 +32,12 @@ struct OptimizerSummary {
 template<typename DerivativeCalculator>
 struct OptimizerBase {
 private:
-    DerivativeCalculator& calculator_;
+    DerivativeCalculator const& calculator_;
     Operon::Tree const& tree_;
     Operon::Dataset const& dataset_;
 
 public:
-    OptimizerBase(DerivativeCalculator& calculator, Tree const& tree, Dataset const& dataset)
+    OptimizerBase(DerivativeCalculator const& calculator, Tree const& tree, Dataset const& dataset)
         : calculator_(calculator)
         , tree_(tree)
         , dataset_(dataset)
@@ -47,7 +47,6 @@ public:
     [[nodiscard]] auto GetInterpreter() const -> Interpreter const& { return calculator_.GetInterpreter(); }
     [[nodiscard]] auto GetTree() const -> Tree const& { return tree_; }
     [[nodiscard]] auto GetDataset() const -> Dataset const& { return dataset_; }
-    [[nodiscard]] auto GetDerivativeCalculator() -> DerivativeCalculator& { return calculator_; }
     [[nodiscard]] auto GetDerivativeCalculator() const -> DerivativeCalculator const& { return calculator_; }
 };
 
@@ -60,7 +59,7 @@ namespace detail {
 
 template <typename DerivativeCalculator, OptimizerType = OptimizerType::Tiny>
 struct NonlinearLeastSquaresOptimizer : public OptimizerBase<DerivativeCalculator> {
-    NonlinearLeastSquaresOptimizer(DerivativeCalculator& calculator, Tree const& tree, Dataset const& dataset)
+    NonlinearLeastSquaresOptimizer(DerivativeCalculator const& calculator, Tree const& tree, Dataset const& dataset)
         : OptimizerBase<DerivativeCalculator>(calculator, tree, dataset)
     {
     }
@@ -93,7 +92,7 @@ struct NonlinearLeastSquaresOptimizer : public OptimizerBase<DerivativeCalculato
 
 template <typename DerivativeCalculator>
 struct NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Eigen> : public OptimizerBase<DerivativeCalculator> {
-    NonlinearLeastSquaresOptimizer(DerivativeCalculator& calculator, Tree const& tree, Dataset const& dataset)
+    NonlinearLeastSquaresOptimizer(DerivativeCalculator const& calculator, Tree const& tree, Dataset const& dataset)
         : OptimizerBase<DerivativeCalculator>(calculator, tree, dataset)
     {
     }
@@ -136,8 +135,8 @@ struct NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Eigen
 #if defined(HAVE_CERES)
 template <typename DerivativeCalculator>
 struct NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Ceres> : public OptimizerBase<DerivativeCalculator> {
-    NonlinearLeastSquaresOptimizer(DerivativeCalculator& interpreter, Tree const& tree, Dataset const& dataset)
-        : OptimizerBase<DerivativeCalculator>(interpreter, tree, dataset)
+    NonlinearLeastSquaresOptimizer(DerivativeCalculator const& calculator, Tree const& tree, Dataset const& dataset)
+        : OptimizerBase<DerivativeCalculator>(calculator, tree, dataset)
     {
     }
 
