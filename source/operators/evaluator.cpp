@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#include "operon/autodiff/reverse/reverse.hpp"
+#include "operon/autodiff/autodiff.hpp"
 #include "operon/core/distance.hpp"
 #include "operon/error_metrics/correlation_coefficient.hpp"
 #include "operon/error_metrics/mean_absolute_error.hpp"
@@ -128,8 +128,8 @@ namespace Operon {
 
         if (iter > 0) {
             auto t0 = std::chrono::high_resolution_clock::now();
-            Autodiff::Forward::DerivativeCalculator calc(this->GetInterpreter());
-            //Autodiff::Reverse::DerivativeCalculator calc{ this->GetInterpreter() };
+            //Autodiff::Forward::DerivativeCalculator calc(this->GetInterpreter());
+            Autodiff::Reverse::DerivativeCalculator calc{ this->GetInterpreter() };
             NonlinearLeastSquaresOptimizer<decltype(calc), OptimizerType::Eigen> opt(calc, ind.Genotype, dataset);
             OptimizerSummary summary{};
             auto coefficients = opt.Optimize(targetValues, trainingRange, iter, summary);
