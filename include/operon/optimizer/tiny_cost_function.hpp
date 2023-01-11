@@ -24,7 +24,7 @@ struct CostFunction {
         NUM_PARAMETERS = Eigen::Dynamic, // NOLINT
     };
 
-    explicit CostFunction(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> target, Operon::Range const range, DerivativeCalculator& calculator)
+    explicit CostFunction(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> target, Operon::Range const range, DerivativeCalculator const& calculator)
         : tree_{tree}
         , dataset_{dataset}
         , target_{target}
@@ -70,13 +70,13 @@ struct CostFunction {
 
     // there is no real documentation but looking at Eigen unit tests, these functions should return zero
     // see: https://gitlab.com/libeigen/eigen/-/blob/master/unsupported/test/NonLinearOptimization.cpp
-    auto operator()(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, 1> &residual) -> int
+    auto operator()(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, 1> &residual) const -> int
     {
         Evaluate(input.data(), residual.data(), nullptr);
         return 0;
     }
 
-    auto df(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, -1> &jacobian) -> int // NOLINT
+    auto df(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, -1> &jacobian) const -> int // NOLINT
     {
         static_assert(StorageOrder == Eigen::ColMajor, "Eigen::LevenbergMarquardt requires the Jacobian to be stored in column-major format.");
         Evaluate(input.data(), nullptr, jacobian.data());
@@ -90,7 +90,7 @@ private:
     Operon::Tree const& tree_;
     Operon::Dataset const& dataset_;
     Operon::Range const range_; // NOLINT
-    DerivativeCalculator& derivativeCalculator_;
+    DerivativeCalculator const& derivativeCalculator_;
     Operon::Span<Operon::Scalar const> target_;
     std::size_t numResiduals_;
     std::size_t numParameters_;

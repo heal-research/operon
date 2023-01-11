@@ -18,14 +18,14 @@ public:
         : interpreter_(interpreter) { }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range) {
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range) const {
         Eigen::Array<Operon::Scalar, -1, -1, StorageOrder> jacobian(static_cast<int>(range.Size()), std::ssize(coeff));
         this->operator()<StorageOrder>(tree, dataset, coeff, range, jacobian.data());
         return jacobian;
     }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Scalar* jacobian)
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Scalar* jacobian) const
     {
         auto const& nodes = tree.Nodes();
         std::vector<Dual> inputs(coeff.size());
