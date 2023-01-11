@@ -9,8 +9,8 @@
 #define CERES_EXPORT OPERON_EXPORT
 #endif
 
-#include "operon/core/contracts.hpp"
 #include <ceres/ceres.h>
+#include "operon/core/contracts.hpp"
 
 namespace Operon {
 template <typename CostFunctor>
@@ -87,7 +87,6 @@ struct DynamicCostFunction final : public ceres::DynamicCostFunction {
 private:
     CostFunctor cf_;
 };
-#endif
 } // namespace Operon
-
+#endif
 #endif
