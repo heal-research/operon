@@ -4,17 +4,17 @@
 #ifndef OPERON_OPTIMIZER_HPP
 #define OPERON_OPTIMIZER_HPP
 
-#include <ceres/types.h>
-#include <unsupported/Eigen/LevenbergMarquardt>
-#include "operon/autodiff/forward/forward.hpp"
-#include "operon/core/comparison.hpp"
-#include "tiny_cost_function.hpp"
-#include "operon/ceres/tiny_solver.h"
-#include "operon/autodiff/autodiff.hpp"
-
 #if defined(HAVE_CERES)
-#include "dynamic_cost_function.hpp"
+#include <ceres/tiny_solver.h>
+#else
+#include "operon/ceres/tiny_solver.h"
 #endif
+
+#include <unsupported/Eigen/LevenbergMarquardt>
+
+#include "tiny_cost_function.hpp"
+#include "dynamic_cost_function.hpp"
+#include "operon/core/comparison.hpp"
 
 namespace Operon {
 
@@ -133,7 +133,7 @@ struct NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Eigen
     }
 };
 
-#if HAVE_CERES
+#if defined(HAVE_CERES)
 template <typename DerivativeCalculator>
 struct NonlinearLeastSquaresOptimizer<DerivativeCalculator, OptimizerType::Ceres> : public OptimizerBase<DerivativeCalculator> {
     NonlinearLeastSquaresOptimizer(DerivativeCalculator& interpreter, Tree const& tree, Dataset const& dataset)
