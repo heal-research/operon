@@ -14,7 +14,7 @@ template<typename Interpreter>
 class DerivativeCalculator {
     Interpreter const& interpreter_;
 
-    auto ComputeDerivative(auto const& nodes, auto const& values, auto& rnodes, auto i) -> void {
+    auto ComputeDerivative(auto const& nodes, auto const& values, auto& rnodes, auto i) const -> void {
         switch(nodes[i].Type) {
         case NodeType::Add: { Derivative<NodeType::Add>{}(nodes, values, rnodes, i); return; }
         case NodeType::Sub: { Derivative<NodeType::Sub>{}(nodes, values, rnodes, i); return; }
@@ -50,14 +50,14 @@ public:
         : interpreter_(interpreter) { }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range) {
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range) const {
         Eigen::Array<Operon::Scalar, -1, -1, StorageOrder> jacobian(static_cast<Eigen::Index>(range.Size()), std::ssize(coeff));
         this->operator()<StorageOrder>(tree, dataset, coeff, range, jacobian.data());
         return jacobian;
     }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Scalar* jacobian)
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Scalar* jacobian) const
     {
         auto const& nodes = tree.Nodes();
         auto const np{ static_cast<int>(coeff.size()) }; // number of parameters

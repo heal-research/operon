@@ -17,7 +17,7 @@ template <typename CostFunctor>
 struct DynamicCostFunction final : public ceres::DynamicCostFunction {
     using Scalar = typename CostFunctor::Scalar;
 
-    explicit DynamicCostFunction(CostFunctor& cf)
+    explicit DynamicCostFunction(CostFunctor const& cf)
         : cf_(cf)
     {
         static_assert(CostFunctor::Storage == Eigen::RowMajor, "Operon::DynamicCostFunction requires row-major storage.");
