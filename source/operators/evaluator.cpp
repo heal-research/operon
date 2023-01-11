@@ -3,12 +3,12 @@
 
 #include "operon/autodiff/reverse/reverse.hpp"
 #include "operon/core/distance.hpp"
-#include "operon/operators/evaluator.hpp"
+#include "operon/error_metrics/correlation_coefficient.hpp"
+#include "operon/error_metrics/mean_absolute_error.hpp"
 #include "operon/error_metrics/mean_squared_error.hpp"
 #include "operon/error_metrics/normalized_mean_squared_error.hpp"
 #include "operon/error_metrics/r2_score.hpp"
-#include "operon/error_metrics/correlation_coefficient.hpp"
-#include "operon/error_metrics/mean_absolute_error.hpp"
+#include "operon/operators/evaluator.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
 #include <taskflow/taskflow.hpp>
@@ -130,7 +130,7 @@ namespace Operon {
             auto t0 = std::chrono::high_resolution_clock::now();
             Autodiff::Forward::DerivativeCalculator calc(this->GetInterpreter());
             //Autodiff::Reverse::DerivativeCalculator calc{ this->GetInterpreter() };
-            NonlinearLeastSquaresOptimizer<decltype(calc), OptimizerType::Ceres> opt(calc, ind.Genotype, dataset);
+            NonlinearLeastSquaresOptimizer<decltype(calc), OptimizerType::Eigen> opt(calc, ind.Genotype, dataset);
             OptimizerSummary summary{};
             auto coefficients = opt.Optimize(targetValues, trainingRange, iter, summary);
             ResidualEvaluations += summary.FunctionEvaluations;
