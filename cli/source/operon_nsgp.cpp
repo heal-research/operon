@@ -250,7 +250,7 @@ auto main(int argc, char** argv) -> int
 
         tf::Executor executor(threads);
 
-        auto t0 = std::chrono::high_resolution_clock::now();
+        auto t0 = std::chrono::steady_clock::now();
         Operon::RankIntersectSorter sorter;
         Operon::NSGA2 gp { problem, config, treeInitializer, *coeffInitializer, *generator, *reinserter, sorter };
 
@@ -363,7 +363,7 @@ auto main(int argc, char** argv) -> int
             avgLength /= static_cast<double>(pop.size());
             avgQuality /= static_cast<double>(pop.size());
 
-            auto t1 = std::chrono::high_resolution_clock::now();
+            auto t1 = std::chrono::steady_clock::now();
             auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
 
             using T = std::tuple<std::string, double, std::string>;

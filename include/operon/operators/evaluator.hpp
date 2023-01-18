@@ -143,7 +143,6 @@ private:
 };
 
 class OPERON_EXPORT Evaluator : public EvaluatorBase {
-
 public:
     Evaluator(Problem& problem, Interpreter& interp, ErrorMetric const& error = MSE{}, bool linearScaling = true)
         : EvaluatorBase(problem)
