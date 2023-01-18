@@ -92,6 +92,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     // update best front
     best_.clear();
     std::transform(fronts_.front().begin(), fronts_.front().end(), std::back_inserter(best_), [&](auto i) { return pop[i]; });
+    archive_.Insert(best_);
 }
 
 auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report) -> void
