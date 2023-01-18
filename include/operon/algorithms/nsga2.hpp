@@ -10,6 +10,7 @@
 #include <utility>                         // for move
 #include <vector>                          // for vector
 #include "operon/algorithms/config.hpp"    // for GeneticAlgorithmConfig
+#include "operon/algorithms/solution_archive.hpp"
 #include "operon/core/individual.hpp"      // for Individual
 #include "operon/core/types.hpp"           // for Span, Vector, RandomGenerator
 #include "operon/operators/evaluator.hpp"  // for EvaluatorBase
@@ -45,6 +46,7 @@ class OPERON_EXPORT NSGA2 {
 
     // best pareto front
     Operon::Vector<Individual> best_;
+    Operon::SolutionArchive archive_;
 
     auto UpdateDistance(Operon::Span<Individual> pop) -> void;
     auto Sort(Operon::Span<Individual> pop) -> void;
@@ -68,6 +70,7 @@ public:
     [[nodiscard]] auto Offspring() const -> Operon::Span<Individual const> { return { offspring_.data(), offspring_.size() }; }
     [[nodiscard]] auto Individuals() const -> Operon::Vector<Operon::Individual> const& { return individuals_; }
     [[nodiscard]] auto Best() const -> Operon::Span<Individual const> { return { best_.data(), best_.size() }; }
+    [[nodiscard]] auto Archive() const -> Operon::Span<Operon::Individual const> { return archive_.Solutions(); }
 
     [[nodiscard]] auto GetProblem() const -> const Problem& { return problem_.get(); }
     [[nodiscard]] auto GetConfig() const -> const GeneticAlgorithmConfig& { return config_.get(); }
@@ -83,6 +86,7 @@ public:
     {
         generation_ = 0;
         GetGenerator().Evaluator().Reset();
+        archive_.Clear();
     }
 
     auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator&/*rng*/, std::function<void()> /*report*/ = nullptr) -> void;
