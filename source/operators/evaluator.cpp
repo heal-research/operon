@@ -127,7 +127,7 @@ namespace Operon {
         auto const iter = LocalOptimizationIterations();
 
         if (iter > 0) {
-            auto t0 = std::chrono::high_resolution_clock::now();
+            auto t0 = std::chrono::steady_clock::now();
             //Autodiff::Forward::DerivativeCalculator calc(this->GetInterpreter());
             Autodiff::Reverse::DerivativeCalculator calc{ this->GetInterpreter() };
             NonlinearLeastSquaresOptimizer<decltype(calc), OptimizerType::Eigen> opt(calc, ind.Genotype, dataset);
@@ -139,7 +139,7 @@ namespace Operon {
             if (summary.Success) {
                 genotype.SetCoefficients(coefficients);
             }
-            auto t1 = std::chrono::high_resolution_clock::now();
+            auto t1 = std::chrono::steady_clock::now();
             CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1-t0).count();
         }
 
