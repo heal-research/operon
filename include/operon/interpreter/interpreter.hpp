@@ -46,7 +46,6 @@ struct GenericInterpreter {
 
         auto constexpr S{ static_cast<int>(Dispatch::BatchSize<T>) };
         Operon::Vector<Dispatch::Array<T>> m(nodes.size(), Dispatch::Array<T>::Zero());
-        Eigen::Map<Eigen::Array<T, -1, 1>> res(result.data(), result.size(), 1);
 
         using NodeMeta = std::tuple<T, Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>, std::optional<Callable const>>;
         Operon::Vector<NodeMeta> meta; meta.reserve(nodes.size());
@@ -80,7 +79,9 @@ struct GenericInterpreter {
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
-            res.segment(row, remainingRows) = m.back().segment(0, remainingRows);
+            if (result.size() == range.Size()) {
+                Eigen::Map<Eigen::Array<T, -1, 1>>(result.data(), result.size()).segment(row, remainingRows) = m.back().segment(0, remainingRows);
+            }
             callback(m, row);
         }
     }

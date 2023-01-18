@@ -20,17 +20,23 @@ public:
     template<int StorageOrder = Eigen::ColMajor>
     auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range) const {
         Eigen::Array<Operon::Scalar, -1, -1, StorageOrder> jacobian(static_cast<int>(range.Size()), std::ssize(coeff));
-        this->operator()<StorageOrder>(tree, dataset, coeff, range, jacobian.data());
+        this->operator()<StorageOrder>(tree, dataset, coeff, range, {/* empty */}, { jacobian.data(), static_cast<std::size_t>(jacobian.size()) });
         return jacobian;
     }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Scalar* jacobian) const
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Span<Operon::Scalar> jacobian) const{
+        this->operator()<StorageOrder>(tree, dataset, coeff, range, {/* empty */}, jacobian);
+    }
+
+    template<int StorageOrder = Eigen::ColMajor>
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Span<Operon::Scalar> residual, Operon::Span<Operon::Scalar> jacobian) const
     {
         auto const& nodes = tree.Nodes();
         std::vector<Dual> inputs(coeff.size());
         std::vector<Dual> outputs(range.Size());
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1, StorageOrder>> jac(jacobian, std::ssize(outputs), std::ssize(inputs));
+        ENSURE(jacobian.size() == inputs.size() * outputs.size());
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1, StorageOrder>> jac(jacobian.data(), std::ssize(outputs), std::ssize(inputs));
         jac.setConstant(0);
 
         for (auto i{0UL}; i < inputs.size(); ++i) {
@@ -58,6 +64,11 @@ public:
                     std::copy_n(outputs[i].v.data(), r - s, jac.row(i).data() + s);
                 }
             }
+        }
+
+        // copy the residual over
+        if (residual.size() == outputs.size()) {
+            std::transform(outputs.cbegin(), outputs.cend(), residual.begin(), [&](auto const& jet) { return jet.a; });
         }
     }
 

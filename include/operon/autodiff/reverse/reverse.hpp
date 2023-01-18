@@ -52,17 +52,22 @@ public:
     template<int StorageOrder = Eigen::ColMajor>
     auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range) const {
         Eigen::Array<Operon::Scalar, -1, -1, StorageOrder> jacobian(static_cast<Eigen::Index>(range.Size()), std::ssize(coeff));
-        this->operator()<StorageOrder>(tree, dataset, coeff, range, jacobian.data());
+        this->operator()<StorageOrder>(tree, dataset, coeff, range, {/* empty */}, { jacobian.data(), static_cast<std::size_t>(jacobian.size()) });
         return jacobian;
     }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Scalar* jacobian) const
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Span<Operon::Scalar> jacobian) const {
+        this->operator()<StorageOrder>(tree, dataset, coeff, range, {/* empty */}, jacobian);
+    }
+
+    template<int StorageOrder = Eigen::ColMajor>
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Span<Operon::Scalar> residual, Operon::Span<Operon::Scalar> jacobian) const
     {
         auto const& nodes = tree.Nodes();
         auto const np{ static_cast<int>(coeff.size()) }; // number of parameters
         auto const nr{ static_cast<int>(range.Size()) }; // number of residuals
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1, StorageOrder>> jac(jacobian, nr, np);
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1, StorageOrder>> jac(jacobian.data(), nr, np);
         jac.setConstant(0);
 
         std::vector<RNode> rnodes(nodes.size());
@@ -77,8 +82,6 @@ public:
             }
         }
 
-        std::vector<Operon::Scalar> result(nr);
-
         auto callback = [&](auto const& values, auto row) {
             auto const len = std::min(S, nr - row);
 
@@ -88,7 +91,7 @@ public:
                 auto const& n{ nodes[i] };
                 if (n.IsVariable()) {
                     auto s { dataset.GetValues(n.HashValue).subspan(row, len) };
-                    rnodes[i].P.segment(0, len) = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(s.data(), std::ssize(s)); 
+                    rnodes[i].P.segment(0, len) = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(s.data(), std::ssize(s));
                 } else if (n.Arity > 0) {
                     ComputeDerivative(nodes, values, rnodes, i);
                 }
@@ -109,7 +112,7 @@ public:
             }
         };
 
-        interpreter_.template operator()<Operon::Scalar>(tree, dataset, range, result, coeff, callback);
+        interpreter_.template operator()<Operon::Scalar>(tree, dataset, range, residual, coeff, callback);
     }
 
     [[nodiscard]] auto GetInterpreter() const -> Interpreter const& { return interpreter_; }

@@ -40,14 +40,13 @@ struct CostFunction {
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
         if (jacobian != nullptr) {
-            derivativeCalculator_.template operator()<StorageOrder>(tree_, dataset_, params, range_, jacobian);
+            derivativeCalculator_.template operator()<StorageOrder>(tree_, dataset_, params, range_, { jacobian, numResiduals_ * numParameters_ });
         }
 
         if (residuals != nullptr) {
-            Operon::Span<Operon::Scalar> result{ residuals, numResiduals_ };
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> res(residuals, numResiduals_);
             auto const& interpreter = derivativeCalculator_.GetInterpreter();
-            interpreter.template operator()<Operon::Scalar>(tree_, dataset_, range_, result, params);
+            interpreter.template operator()<Operon::Scalar>(tree_, dataset_, range_, { residuals, numResiduals_ }, params);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.subspan(range_.Start(), range_.Size()).data(), numResiduals_);
             res -= y;
         }
