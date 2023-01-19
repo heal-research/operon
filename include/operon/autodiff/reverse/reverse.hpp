@@ -35,6 +35,7 @@ class DerivativeCalculator {
         case NodeType::Atan: { Derivative<NodeType::Atan>{}(nodes, values, rnodes, i); return; }
         case NodeType::Sqrt: { Derivative<NodeType::Sqrt>{}(nodes, values, rnodes, i); return; }
         case NodeType::Sqrtabs: { Derivative<NodeType::Sqrtabs>{}(nodes, values, rnodes, i); return; }
+        case NodeType::Cbrt: { Derivative<NodeType::Cbrt>{}(nodes, values, rnodes, i); return; }
         default: { throw std::runtime_error("unsupported node type"); }
         }
     }
@@ -85,10 +86,10 @@ public:
         auto callback = [&](auto const& values, auto row) {
             auto const len = std::min(S, nr - row);
 
-            // compute derivatives
-            for (auto i = 0UL, j = 0UL; i < nodes.size(); ++i) {
+            // backward pass - compute derivatives
+            for (auto i = 0UL; i < nodes.size(); ++i) {
                 weights[i].setConstant(0);
-                auto const& n{ nodes[i] };
+                auto const& n = nodes[i];
                 if (n.IsVariable()) {
                     auto s { dataset.GetValues(n.HashValue).subspan(row, len) };
                     rnodes[i].P.segment(0, len) = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(s.data(), std::ssize(s));
@@ -97,15 +98,16 @@ public:
                 }
             }
 
-            // update weights
+            // forward pass - update weights
             weights.back() = rnodes.back().P;
-            for (auto i = std::ssize(nodes)-1, j = jac.cols(); i >= 0; --i) {
+            for (auto i = std::ssize(nodes)-1; i >= 0; --i) {
                 if (nodes[i].IsLeaf()) { continue; }
                 for (auto [k, j] : Enumerate(nodes, static_cast<std::size_t>(i))) {
                     weights[j].segment(0, len) += weights[i].segment(0, len) * rnodes[i].D[k].segment(0, len);
                 }
             }
 
+            // fill jacobian
             for (auto i = 0, j = 0; i < std::ssize(nodes); ++i) {
                 if (!nodes[i].Optimize) { continue; }
                 jac.col(j++).segment(row, len) = weights[i].segment(0, len);
