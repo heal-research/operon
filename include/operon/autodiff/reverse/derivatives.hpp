@@ -44,14 +44,19 @@ struct Derivative<Operon::NodeType::Mul> {
     inline auto operator()(auto const& nodes, auto const& values, auto& rnodes, auto i)
     {
         auto const& n = nodes[i];
-        for (auto [x, j] : Enumerate(nodes, i)) {
-            auto& d = rnodes[i].D[x];
-            d = rnodes[j].P;
-            for (auto k : Indices(nodes, i)) {
-                if (j == k) {
-                    continue;
+        if (n.Arity == 2) {
+            auto j = i-1;
+            auto k = j - (nodes[j].Length + 1);
+            rnodes[i].D[0] = rnodes[j].P * values[k];
+            rnodes[i].D[1] = rnodes[k].P * values[j];
+        } else {
+            for (auto [x, j] : Enumerate(nodes, i)) {
+                auto& d = rnodes[i].D[x];
+                d = rnodes[j].P;
+                for (auto k : Indices(nodes, i)) {
+                    if (j == k) { continue; }
+                    d *= values[k];
                 }
-                d *= values[k];
             }
         }
     }
@@ -216,10 +221,10 @@ struct Derivative<Operon::NodeType::Sqrtabs> {
 };
 
 template <>
-struct Derivative<Operon::NodeType::Constant> {
-    inline auto operator()(auto const& /*nodes*/, auto const& /*values*/, auto& rnodes, auto i)
+struct Derivative<Operon::NodeType::Cbrt> {
+    inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].P.setConstant(1);
+        rnodes[i].D[0] = rnodes[i - 1].P / (3 * values[i].square());
     }
 };
 } // namespace Operon::Autodiff::Reverse
