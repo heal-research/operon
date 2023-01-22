@@ -40,7 +40,7 @@ struct CostFunction {
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
         if (jacobian != nullptr) {
-            derivativeCalculator_.template operator()<StorageOrder>(tree_, dataset_, params, range_, { jacobian, numResiduals_ * numParameters_ });
+            derivativeCalculator_.template operator()<StorageOrder>(tree_, dataset_, range_, params, { jacobian, numResiduals_ * numParameters_ });
         }
 
         if (residuals != nullptr) {

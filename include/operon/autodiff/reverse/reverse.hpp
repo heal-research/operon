@@ -41,9 +41,8 @@ class DerivativeCalculator {
     }
 
     struct RNode {
-        using Array = Dispatch::Array<Operon::Scalar>;
-        Array P;              // primal
-        std::vector<Array> D; // derivatives
+        Eigen::Array<Operon::Scalar, Dispatch::BatchSize<Operon::Scalar>, 1> P;              // primal
+        std::vector<decltype(P)> D; // derivatives
     };
 
 public:
@@ -51,19 +50,19 @@ public:
         : interpreter_(interpreter) { }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range) const {
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<Operon::Scalar const> coeff) const {
         Eigen::Array<Operon::Scalar, -1, -1, StorageOrder> jacobian(static_cast<Eigen::Index>(range.Size()), std::ssize(coeff));
-        this->operator()<StorageOrder>(tree, dataset, coeff, range, {/* empty */}, { jacobian.data(), static_cast<std::size_t>(jacobian.size()) });
+        this->operator()<StorageOrder>(tree, dataset, range, coeff, {/* empty */}, { jacobian.data(), static_cast<std::size_t>(jacobian.size()) });
         return jacobian;
     }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Span<Operon::Scalar> jacobian) const {
-        this->operator()<StorageOrder>(tree, dataset, coeff, range, {/* empty */}, jacobian);
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<Operon::Scalar const> coeff, Operon::Span<Operon::Scalar> jacobian) const {
+        this->operator()<StorageOrder>(tree, dataset, range, coeff, {/* empty */}, jacobian);
     }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Span<Operon::Scalar> residual, Operon::Span<Operon::Scalar> jacobian) const
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<Operon::Scalar const> coeff, Operon::Span<Operon::Scalar> residual, Operon::Span<Operon::Scalar> jacobian) const
     {
         auto const& nodes = tree.Nodes();
         auto const np{ static_cast<int>(coeff.size()) }; // number of parameters
@@ -71,10 +70,10 @@ public:
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1, StorageOrder>> jac(jacobian.data(), nr, np);
         jac.setConstant(0);
 
-        std::vector<RNode> rnodes(nodes.size());
-        std::vector<typename RNode::Array> weights(nodes.size());
 
         auto constexpr S{ static_cast<int>(Dispatch::BatchSize<Operon::Scalar>) };
+        Dispatch::Matrix<Operon::Scalar> weights(S, std::ssize(nodes));
+        std::vector<RNode> rnodes(nodes.size());
 
         for (auto i{0UL}; i < nodes.size(); ++i) {
             rnodes[i].P.setConstant(1);
@@ -88,7 +87,7 @@ public:
 
             // backward pass - compute derivatives
             for (auto i = 0UL; i < nodes.size(); ++i) {
-                weights[i].setConstant(0);
+                weights.col(i).setConstant(0);
                 auto const& n = nodes[i];
                 if (n.IsVariable()) {
                     auto s { dataset.GetValues(n.HashValue).subspan(row, len) };
@@ -99,18 +98,18 @@ public:
             }
 
             // forward pass - update weights
-            weights.back() = rnodes.back().P;
+            weights.col(weights.cols()-1) = rnodes.back().P;
             for (auto i = std::ssize(nodes)-1; i >= 0; --i) {
                 if (nodes[i].IsLeaf()) { continue; }
                 for (auto [k, j] : Enumerate(nodes, static_cast<std::size_t>(i))) {
-                    weights[j].segment(0, len) += weights[i].segment(0, len) * rnodes[i].D[k].segment(0, len);
+                    weights.col(j).segment(0, len) += weights.col(i).segment(0, len) * rnodes[i].D[k].segment(0, len);
                 }
             }
 
             // fill jacobian
             for (auto i = 0, j = 0; i < std::ssize(nodes); ++i) {
                 if (!nodes[i].Optimize) { continue; }
-                jac.col(j++).segment(row, len) = weights[i].segment(0, len);
+                jac.col(j++).segment(row, len) = weights.col(i).segment(0, len);
             }
         };
 

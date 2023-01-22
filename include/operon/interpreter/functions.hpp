@@ -5,7 +5,7 @@
 #define OPERON_INTERPRETER_FUNCTIONS_HPP
 
 #include "operon/core/node.hpp"
-#include "operon/ceres/jet.h" // for ceres::cbrt 
+#include "operon/ceres/jet.h" // for ceres::cbrt
 
 namespace Operon
 {
