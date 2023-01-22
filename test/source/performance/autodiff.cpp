@@ -17,26 +17,59 @@ namespace dt = doctest;
 
 namespace Operon::Test {
 
+TEST_CASE("comparison benchmark" * dt::test_suite("[performance]")) {
+    Operon::RandomGenerator rng(0);
+
+    constexpr auto nrow{30000};
+    constexpr auto ncol{10};
+    auto ds = Operon::Test::Util::RandomDataset(rng, nrow, ncol);
+    std::string str{ "10 * sin(3.141592654 * X1 * X2) + 20 * (X3 - 0.5) ^ 2 + 10 * X4 + 5 * X5" };
+
+    Operon::Map<std::string, Operon::Hash> variables;
+    for (auto&& v : ds.Variables()) {
+        variables.insert({v.Name, v.Hash});
+    }
+    auto tree = Operon::InfixParser::Parse(str, variables);
+    for (auto& node : tree.Nodes()) { node.Optimize = node.IsVariable(); }
+    fmt::print("F1: {}\n", Operon::InfixFormatter::Format(tree, ds));
+
+
+    Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
+    Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
+
+    ankerl::nanobench::Bench b;
+    b.timeUnit(std::chrono::microseconds(1), "us");
+    //b.output(nullptr);
+
+    for (auto rows = 1000UL; rows <= 50000; rows += 1000) {
+        b.run(fmt::format("rows = {}", rows), [&]() {
+            Operon::Range range{0, rows};
+            auto coeff = tree.GetCoefficients();
+            Eigen::Matrix<Operon::Scalar, -1, -1> jac = dc(tree, ds, range, coeff);
+        });
+    }
+
+    b.render(ankerl::nanobench::templates::csv(), std::cout);
+}
+
 TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
     constexpr auto nrow{1000};
     constexpr auto ncol{10};
 
     Operon::RandomGenerator rng(0);
     auto ds = Operon::Test::Util::RandomDataset(rng, nrow, ncol);
-    //auto ds = Dataset("./data/Friedman-I.csv", /*hasHeader=*/true);
     ankerl::nanobench::Bench b;
     //b.output(nullptr);
+    b.timeUnit(std::chrono::milliseconds(1), "ms");
 
-    Operon::PrimitiveSet pset;
-    Operon::PrimitiveSetConfig psetcfg = Operon::PrimitiveSet::Arithmetic;
-    //Operon::PrimitiveSetConfig psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt;
-    pset.SetConfig(psetcfg);
+    Operon::PrimitiveSet pset{ Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt };
     Operon::BalancedTreeCreator creator(pset, ds.Variables());
 
-    auto benchmark = [&]<typename DerivativeCalculator>(ankerl::nanobench::Bench& bench, DerivativeCalculator& dc, std::string const& prefix, std::size_t n, std::size_t s) {
+    auto constexpr initialSize{20};
+    auto benchmark = [&](ankerl::nanobench::Bench& bench, auto const& dc, auto&& f, std::string const& prefix, std::size_t n, std::size_t s) {
         std::vector<Operon::Tree> trees(n);
         double a{0};
-        auto z{20}; // max size
+        auto z{initialSize}; // max size
         Operon::Range range{0, ds.Rows()};
         std::vector<Operon::Scalar> y(ds.Rows());
         Operon::Span<Operon::Scalar> target{y.data(), y.size()};
@@ -46,36 +79,40 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
             std::generate(trees.begin(), trees.end(), [&](){ return creator(rng, dist(rng), 1, 1000); }); // NOLINT
             a = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) { return t.CoefficientsCount(); }) / static_cast<double>(n);
             auto b = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus{}, [](auto const& t) { return t.Length(); });
-            bench.batch(range.Size() * b).run(fmt::format("{};{};{}", prefix, a, static_cast<double>(b)/static_cast<double>(n)), [&]() {
-                std::size_t sz{0};
-                Operon::Scalar r2{0};
-                for (auto const& tree : trees) {
-                    auto coeff = tree.GetCoefficients();
-                    //std::vector<Operon::Scalar> residual(range.Size());
-                    //dc.GetInterpreter().template operator()<Operon::Scalar>(tree, ds, range, residual, coeff);
-                    //sz += static_cast<std::size_t>(y.front());
-                    //r2 += Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>>(y.data(), std::ssize(y)).sum();
-                    Eigen::Matrix<Operon::Scalar, -1, -1> jac = dc(tree, ds, coeff, range);
-                    //sz += jac.size();
-                }
-                return sz;
+            bench.batch(trees.size()).run(fmt::format("{};{};{}", prefix, a, static_cast<double>(b)/static_cast<double>(n)), [&]() {
+                for (auto const& tree : trees) { f(dc, ds, tree, range); }
             });
-            z += 10;
-        } while (a < s);
+            z += 10; // NOLINT
+        } while (a < s); // NOLINT
     };
 
     constexpr auto n{1000};
-    constexpr auto m{10};
+    constexpr auto m{50};
     Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
+
+    auto residual = [](auto const& dc, auto const& ds, auto const& tree, auto range) {
+        auto coeff = tree.GetCoefficients();
+        return dc.GetInterpreter().template operator()<Operon::Scalar>(tree, ds, range, coeff);
+    };
+
+    auto jacobian = [](auto const& dc, auto const& ds, auto const& tree, auto range) {
+        auto coeff = tree.GetCoefficients();
+        return dc(tree, ds, range, coeff);
+    };
+
+    SUBCASE("residual") {
+        Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
+        benchmark(b, dc, residual, "residual;", n, m);
+    }
 
     SUBCASE("forward") {
         Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
-        benchmark(b, dc, "forward", n, m);
+        benchmark(b, dc, jacobian, "forward;jacobian", n, m);
     }
 
     SUBCASE("reverse") {
         Operon::Autodiff::Reverse::DerivativeCalculator dc{ interpreter };
-        benchmark(b, dc, "reverse", n, m);
+        benchmark(b, dc, jacobian, "reverse;jacobian", n, m);
     }
 
     b.render(ankerl::nanobench::templates::csv(), std::cout);

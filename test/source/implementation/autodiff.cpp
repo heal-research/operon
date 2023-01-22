@@ -53,8 +53,8 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         std::vector<Operon::Scalar> y(ds.Rows());
         Operon::Span<Operon::Scalar> target{y.data(), y.size()};
         auto parameters = tree.GetCoefficients();
-        auto jfwd = fcalc(tree, ds, { parameters.data(), parameters.size() }, range);
-        auto jrev = rcalc(tree, ds, { parameters.data(), parameters.size() }, range);
+        auto jfwd = fcalc(tree, ds, range, { parameters.data(), parameters.size() });
+        auto jrev = rcalc(tree, ds, range, { parameters.data(), parameters.size() });
 
         std::cout << "J_forward: " << jfwd << "\n";
         std::cout << "J_reverse: " << jrev << "\n\n";
@@ -127,21 +127,25 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         constexpr auto maxdepth{1000};
 
         std::uniform_int_distribution<size_t> dist(1, maxsize);
+        std::bernoulli_distribution d(0.7);
 
         // comparison precision
         constexpr auto epsilon{1e-4};
 
         for (auto i = 0; i < n; ++i) {
             auto tree = btc(rng, dist(rng), mindepth, maxdepth);
+            for (auto& node : tree.Nodes()) {
+                if (node.IsLeaf()) { node.Optimize = d(rng); }
+            }
             initializer(rng, tree);
 
             auto parameters = tree.GetCoefficients();
 
             // forward mode
-            auto jfwd = fcalc(tree, ds, { parameters.data(), parameters.size() }, range);
+            auto jfwd = fcalc(tree, ds, range, { parameters.data(), parameters.size() });
 
             // reverse mode
-            auto jrev = rcalc(tree, ds, { parameters.data(), parameters.size() }, range);
+            auto jrev = rcalc(tree, ds, range, { parameters.data(), parameters.size() });
 
             constexpr auto precision{20};
             auto finite{ std::isfinite(jfwd.sum()) };

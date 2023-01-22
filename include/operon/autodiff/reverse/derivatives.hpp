@@ -47,15 +47,15 @@ struct Derivative<Operon::NodeType::Mul> {
         if (n.Arity == 2) {
             auto j = i-1;
             auto k = j - (nodes[j].Length + 1);
-            rnodes[i].D[0] = rnodes[j].P * values[k];
-            rnodes[i].D[1] = rnodes[k].P * values[j];
+            rnodes[i].D[0] = rnodes[j].P * values.col(k);
+            rnodes[i].D[1] = rnodes[k].P * values.col(j);
         } else {
             for (auto [x, j] : Enumerate(nodes, i)) {
                 auto& d = rnodes[i].D[x];
                 d = rnodes[j].P;
                 for (auto k : Indices(nodes, i)) {
                     if (j == k) { continue; }
-                    d *= values[k];
+                    d *= values.col(k);
                 }
             }
         }
@@ -76,12 +76,12 @@ struct Derivative<Operon::NodeType::Div> {
 
         if (n.Arity == 1) {
             auto j = i - 1;
-            d[0] = -rnodes[j].P / values[j].square();
+            d[0] = -rnodes[j].P / values.col(j).square();
         } else if (n.Arity == 2) {
             auto j = i - 1;
             auto k = j - (nodes[j].Length + 1);
-            d[0] = rnodes[j].P / values[k];
-            d[1] = -rnodes[k].P * values[j] / values[k].square();
+            d[0] = rnodes[j].P / values.col(k);
+            d[1] = -rnodes[k].P * values.col(j) / values.col(k).square();
         } else {
             // TODO
             // f = g * (h * i * ...)
@@ -98,9 +98,9 @@ struct Derivative<Operon::NodeType::Aq> {
     {
         auto j = i - 1;
         auto k = j - (nodes[j].Length + 1);
-        rnodes[i].D[0] = rnodes[j].P * values[i] / values[j];
+        rnodes[i].D[0] = rnodes[j].P * values.col(i) / values.col(j);
         // rnodes[i].D[1] = -rnodes[k].P * values[k] * values[j] * (values[i] / values[j]).pow(3);
-        rnodes[i].D[1] = -rnodes[k].P * values[k] * values[i].pow(3) / values[j].square();
+        rnodes[i].D[1] = -rnodes[k].P * values.col(k) * values.col(i).pow(3) / values.col(j).square();
     }
 };
 
@@ -110,8 +110,8 @@ struct Derivative<Operon::NodeType::Pow> {
     {
         auto j = i - 1;
         auto k = j - (nodes[j].Length + 1);
-        rnodes[i].D[0] = rnodes[j].P * values[j].pow(values[k] - 1) * values[k];
-        rnodes[i].D[1] = rnodes[k].P * values[i] * values[j].log();
+        rnodes[i].D[0] = rnodes[j].P * values.col(j).pow(values.col(k) - 1) * values.col(k);
+        rnodes[i].D[1] = rnodes[k].P * values.col(i) * values.col(j).log();
     }
 };
 
@@ -120,7 +120,7 @@ template <>
 struct Derivative<Operon::NodeType::Exp> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P * values[i];
+        rnodes[i].D[0] = rnodes[i - 1].P * values.col(i);
     }
 };
 
@@ -128,7 +128,7 @@ template <>
 struct Derivative<Operon::NodeType::Log> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P / values[i - 1];
+        rnodes[i].D[0] = rnodes[i - 1].P / values.col(i-1);
     }
 };
 
@@ -136,7 +136,7 @@ template <>
 struct Derivative<Operon::NodeType::Logabs> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P * values[i - 1].sign() / values[i - 1].abs();
+        rnodes[i].D[0] = rnodes[i - 1].P * values.col(i-1).sign() / values.col(i-1).abs();
     }
 };
 
@@ -144,7 +144,7 @@ template <>
 struct Derivative<Operon::NodeType::Log1p> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P / (values[i - 1] + 1);
+        rnodes[i].D[0] = rnodes[i - 1].P / (values.col(i-1) + 1);
     }
 };
 
@@ -152,7 +152,7 @@ template <>
 struct Derivative<Operon::NodeType::Sin> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P * values[i - 1].cos();
+        rnodes[i].D[0] = rnodes[i - 1].P * values.col(i-1).cos();
     }
 };
 
@@ -160,7 +160,7 @@ template <>
 struct Derivative<Operon::NodeType::Cos> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = -rnodes[i - 1].P * values[i - 1].sin();
+        rnodes[i].D[0] = -rnodes[i - 1].P * values.col(i-1).sin();
     }
 };
 
@@ -168,7 +168,7 @@ template <>
 struct Derivative<Operon::NodeType::Tan> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P * (values[i].square() + 1);
+        rnodes[i].D[0] = rnodes[i - 1].P * (values.col(i).square() + 1);
     }
 };
 
@@ -176,7 +176,7 @@ template <>
 struct Derivative<Operon::NodeType::Tanh> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P * (1 - values[i].square());
+        rnodes[i].D[0] = rnodes[i - 1].P * (1 - values.col(i).square());
     }
 };
 
@@ -184,7 +184,7 @@ template <>
 struct Derivative<Operon::NodeType::Asin> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P / (1 - values[i - 1].square()).sqrt();
+        rnodes[i].D[0] = rnodes[i - 1].P / (1 - values.col(i-1).square()).sqrt();
     }
 };
 
@@ -192,7 +192,7 @@ template <>
 struct Derivative<Operon::NodeType::Acos> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = -rnodes[i - 1].P / (1 - values[i - 1].square()).sqrt();
+        rnodes[i].D[0] = -rnodes[i - 1].P / (1 - values.col(i-1).square()).sqrt();
     }
 };
 
@@ -200,7 +200,7 @@ template <>
 struct Derivative<Operon::NodeType::Atan> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P / (1 + values[i - 1].square());
+        rnodes[i].D[0] = rnodes[i - 1].P / (1 + values.col(i-1).square());
     }
 };
 
@@ -208,7 +208,7 @@ template <>
 struct Derivative<Operon::NodeType::Sqrt> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P / (2 * values[i]);
+        rnodes[i].D[0] = rnodes[i - 1].P / (2 * values.col(i));
     }
 };
 
@@ -216,7 +216,7 @@ template <>
 struct Derivative<Operon::NodeType::Sqrtabs> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P * values[i - 1].sign() / (2 * values[i]);
+        rnodes[i].D[0] = rnodes[i - 1].P * values.col(i-1).sign() / (2 * values.col(i));
     }
 };
 
@@ -224,7 +224,7 @@ template <>
 struct Derivative<Operon::NodeType::Cbrt> {
     inline auto operator()(auto const& /*nodes*/, auto const& values, auto& rnodes, auto i)
     {
-        rnodes[i].D[0] = rnodes[i - 1].P / (3 * values[i].square());
+        rnodes[i].D[0] = rnodes[i - 1].P / (3 * values.col(i).square());
     }
 };
 } // namespace Operon::Autodiff::Reverse

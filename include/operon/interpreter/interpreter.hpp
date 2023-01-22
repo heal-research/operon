@@ -28,7 +28,7 @@ struct GenericInterpreter {
 
     // evaluate a tree and return a vector of values
     template <typename T = Operon::Scalar, typename F = Dispatch::Noop>
-    requires std::invocable<F, Operon::Vector<Dispatch::Array<T>>, int>
+    requires std::invocable<F, Dispatch::Matrix<T>&, int>
     auto operator()(Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T const> coeff = {}, F&& callback = F{}) const noexcept -> Operon::Vector<T>
     {
         Operon::Vector<T> result(range.Size());
@@ -37,7 +37,7 @@ struct GenericInterpreter {
     }
 
     template <typename T = Operon::Scalar, typename F = Dispatch::Noop>
-    requires std::invocable<F, Operon::Vector<Dispatch::Array<T>>, int>
+    requires std::invocable<F, Dispatch::Matrix<T>&, int>
     void operator()(Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T> result, Operon::Span<T const> coeff = {}, F&& callback = F{}) const noexcept
     {
         using Callable = Dispatch::Callable<T>;
@@ -45,7 +45,7 @@ struct GenericInterpreter {
         EXPECT(!nodes.empty());
 
         auto constexpr S{ static_cast<int>(Dispatch::BatchSize<T>) };
-        Operon::Vector<Dispatch::Array<T>> m(nodes.size(), Dispatch::Array<T>::Zero());
+        Dispatch::Matrix<T> m = decltype(m)::Zero(S, nodes.size());
 
         using NodeMeta = std::tuple<T, Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>, std::optional<Callable const>>;
         Operon::Vector<NodeMeta> meta; meta.reserve(nodes.size());
@@ -63,7 +63,7 @@ struct GenericInterpreter {
                 std::tuple_element_t<1, NodeMeta>(ptr, numRows),
                 dtable_.template TryGet<T>(n.HashValue)
             });
-            if (n.IsConstant()) { m[i].setConstant(param); }
+            if (n.IsConstant()) { m.col(i).setConstant(param); }
         }
 
         for (int row = 0; row < numRows; row += S) {
@@ -73,14 +73,14 @@ struct GenericInterpreter {
             for (size_t i = 0; i < nodes.size(); ++i) {
                 auto const& [ param, values, func ] = meta[i];
                 if (nodes[i].IsVariable()) {
-                    m[i].segment(0, remainingRows) = param * values.segment(row, remainingRows).template cast<T>();
+                    m.col(i).segment(0, remainingRows) = param * values.segment(row, remainingRows).template cast<T>();
                 } else if (func) {
                     std::invoke(*func, m, nodes, i, rg);
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
             if (result.size() == range.Size()) {
-                Eigen::Map<Eigen::Array<T, -1, 1>>(result.data(), result.size()).segment(row, remainingRows) = m.back().segment(0, remainingRows);
+                Eigen::Map<Eigen::Array<T, -1, 1>>(result.data(), result.size()).segment(row, remainingRows) = m.col(m.cols()-1).segment(0, remainingRows);
             }
             callback(m, row);
         }
