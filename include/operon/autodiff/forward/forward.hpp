@@ -18,19 +18,19 @@ public:
         : interpreter_(interpreter) { }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range) const {
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<Operon::Scalar const> coeff) const {
         Eigen::Array<Operon::Scalar, -1, -1, StorageOrder> jacobian(static_cast<int>(range.Size()), std::ssize(coeff));
-        this->operator()<StorageOrder>(tree, dataset, coeff, range, {/* empty */}, { jacobian.data(), static_cast<std::size_t>(jacobian.size()) });
+        this->operator()<StorageOrder>(tree, dataset, range, coeff, {/* empty */}, { jacobian.data(), static_cast<std::size_t>(jacobian.size()) });
         return jacobian;
     }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Span<Operon::Scalar> jacobian) const{
-        this->operator()<StorageOrder>(tree, dataset, coeff, range, {/* empty */}, jacobian);
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<Operon::Scalar const> coeff, Operon::Span<Operon::Scalar> jacobian) const{
+        this->operator()<StorageOrder>(tree, dataset, range, coeff, {/* empty */}, jacobian);
     }
 
     template<int StorageOrder = Eigen::ColMajor>
-    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> coeff, Operon::Range const range, Operon::Span<Operon::Scalar> residual, Operon::Span<Operon::Scalar> jacobian) const
+    auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<Operon::Scalar const> coeff, Operon::Span<Operon::Scalar> residual, Operon::Span<Operon::Scalar> jacobian) const
     {
         auto const& nodes = tree.Nodes();
         std::vector<Dual> inputs(coeff.size());
@@ -53,6 +53,10 @@ public:
             }
 
             interpreter_.template operator()<Dual>(tree, dataset, range, outputs, inputs);
+
+            for (auto i = s; i < r; ++i) {
+                inputs[i].v[i - s] = 0.0;
+            }
 
             // fill in the jacobian trying to exploit its layout for efficiency
             if constexpr (StorageOrder == Eigen::ColMajor) {

@@ -24,13 +24,13 @@ template<typename T>
 static auto constexpr BatchSize{ 512UL / sizeof(T) };
 
 template<typename T>
-using Array = Eigen::Array<T, BatchSize<T>, 1>;
+using Matrix = Eigen::Array<T, BatchSize<T>, -1>;
 
 template<typename T>
-using Ref = Eigen::Ref<Array<T>>;
+using Ref = Eigen::Ref<typename Matrix<T>::ColXpr>;
 
 template<typename T>
-using Callable = std::function<void(Operon::Vector<Array<T>>&, Operon::Vector<Node> const&, size_t, Operon::Range)>;
+using Callable = std::function<void(Matrix<T>&, Operon::Vector<Node> const&, size_t, Operon::Range)>;
 
 // dispatching mechanism
 // compared to the simple/naive way of evaluating n-ary symbols, this method has the following advantages:
@@ -39,10 +39,10 @@ using Callable = std::function<void(Operon::Vector<Array<T>>&, Operon::Vector<No
 //    if arity > 4, one accumulation is performed every 4 args
 template<NodeType Type, typename T>
 requires Node::IsNary<Type>
-static inline void NaryOp(Operon::Vector<Dispatch::Array<T>>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, Operon::Range /*unused*/)
+static inline void NaryOp(Matrix<T>& m, Operon::Vector<Node> const& nodes, size_t parentIndex, Operon::Range /*unused*/)
 {
     static_assert(Type < NodeType::Aq);
-    auto result = Ref<T>(m[parentIndex]);
+    auto result = Ref<T>(m.col(parentIndex));
     const auto f = [](bool cont, decltype(result) res, auto&&... args) {
         if (cont) {
             ContinuedFunction<Type>{}(res, std::forward<decltype(args)>(args)...);
@@ -56,26 +56,26 @@ static inline void NaryOp(Operon::Vector<Dispatch::Array<T>>& m, Operon::Vector<
 
     bool continued = false;
 
-    using R = Eigen::Ref<Dispatch::Array<T>>; 
+    using R = Dispatch::Ref<T>;
 
     int arity = nodes[parentIndex].Arity;
     while (arity > 0) {
         switch (arity) {
             case 1: {
-                        f(continued, result, R(m[arg1]));
+                        f(continued, result, R(m.col(arg1)));
                         arity = 0;
                         break;
                     }
             case 2: {
                         auto arg2 = nextArg(arg1);
-                        f(continued, result, R(m[arg1]), R(m[arg2]));
+                        f(continued, result, R(m.col(arg1)), R(m.col(arg2)));
                         arity = 0;
                         break;
                     }
             case 3: {
                         auto arg2 = nextArg(arg1);
                         auto arg3 = nextArg(arg2);
-                        f(continued, result, R(m[arg1]), R(m[arg2]), R(m[arg3]));
+                        f(continued, result, R(m.col(arg1)), R(m.col(arg2)), R(m.col(arg3)));
                         arity = 0;
                         break;
                     }
@@ -83,7 +83,7 @@ static inline void NaryOp(Operon::Vector<Dispatch::Array<T>>& m, Operon::Vector<
                          auto arg2 = nextArg(arg1);
                          auto arg3 = nextArg(arg2);
                          auto arg4 = nextArg(arg3);
-                         f(continued, result, R(m[arg1]), R(m[arg2]), R(m[arg3]), R(m[arg4]));
+                         f(continued, result, R(m.col(arg1)), R(m.col(arg2)), R(m.col(arg3)), R(m.col(arg4)));
                          arity -= 4;
                          arg1 = nextArg(arg4);
                          break;
@@ -95,18 +95,18 @@ static inline void NaryOp(Operon::Vector<Dispatch::Array<T>>& m, Operon::Vector<
 
 template<NodeType Type, typename T>
 requires Node::IsBinary<Type>
-static inline void BinaryOp(Operon::Vector<Dispatch::Array<T>>& m, Operon::Vector<Node> const& nodes, size_t i, Operon::Range /*unused*/)
+static inline void BinaryOp(Matrix<T>& m, Operon::Vector<Node> const& nodes, size_t i, Operon::Range /*unused*/)
 {
     auto j = i - 1;
     auto k = j - nodes[j].Length - 1;
-    Function<Type>{}(Ref<T>(m[i]), Ref<T>(m[j]), Ref<T>(m[k]));
+    Function<Type>{}(Ref<T>(m.col(i)), Ref<T>(m.col(j)), Ref<T>(m.col(k)));
 }
 
 template<NodeType Type, typename T>
 requires Node::IsUnary<Type>
-static inline void UnaryOp(Operon::Vector<Array<T>>& m, Operon::Vector<Node> const& /*unused*/, size_t i, Operon::Range /*unused*/)
+static inline void UnaryOp(Matrix<T>& m, Operon::Vector<Node> const& /*unused*/, size_t i, Operon::Range /*unused*/)
 {
-    Function<Type>{}(Ref<T>(m[i]), Ref<T>(m[i-1]));
+    Function<Type>{}(Ref<T>(m.col(i)), Ref<T>(m.col(i-1)));
 }
 
 struct Noop {
@@ -142,7 +142,7 @@ private:
     };
 
     template<typename F>
-    requires (std::is_invocable_r_v<void, F, Dispatch::Array<Ts>&, Vector<Node> const&, size_t, Operon::Range> && ...)
+    requires (std::is_invocable_r_v<void, F, Dispatch::Ref<Ts>&, Vector<Node> const&, size_t, Operon::Range> && ...)
     static constexpr auto MakeTuple(F&& f)
     {
         return std::make_tuple(Callable<Ts>(std::forward<F&&>(f))...);
