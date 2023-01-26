@@ -30,9 +30,12 @@ TEST_CASE("comparison benchmark" * dt::test_suite("[performance]")) {
         variables.insert({v.Name, v.Hash});
     }
     auto tree = Operon::InfixParser::Parse(str, variables);
-    for (auto& node : tree.Nodes()) { node.Optimize = node.IsVariable(); }
-    fmt::print("F1: {}\n", Operon::InfixFormatter::Format(tree, ds));
+    auto& nodes = tree.Nodes();
+    for (auto& node : nodes) { node.Optimize = node.IsVariable(); }
 
+
+    fmt::print("F1: {}\n", Operon::InfixFormatter::Format(tree, ds));
+    fmt::print("coefficients to optimize: {}\n", std::count_if(nodes.begin(), nodes.end(), [](auto const& node) { return node.Optimize; }));
 
     Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
     Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
