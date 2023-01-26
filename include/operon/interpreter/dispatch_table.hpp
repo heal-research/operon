@@ -150,9 +150,18 @@ private:
 
     // return the index of Callable<T> in Tuple 
     template<typename T>
-    static auto constexpr IndexOf = []<auto... Idx>(std::index_sequence<Idx...>) {
-        return -1 + ((std::is_same_v<T, std::tuple_element_t<Idx, Tuple>> ? Idx + 1 : 0) + ...);
-    }(std::index_sequence_for<Ts...>{});
+    static auto constexpr TypeIndexImpl() {
+        std::size_t i{0};
+        for (bool x : { std::is_same_v<T, Ts>... }) {
+            if (x) { break; }
+            ++i;
+        }
+        return i;
+    }
+
+    template<typename T>
+    requires (TypeIndexImpl<T>() < sizeof...(Ts))
+    static auto constexpr TypeIndex = TypeIndexImpl<T>();
 
 public:
     DispatchTable()
@@ -196,10 +205,8 @@ public:
     template<typename T>
     [[nodiscard]] inline auto Get(Operon::Hash const h) const -> Dispatch::Callable<T> const&
     {
-        constexpr int64_t idx = IndexOf<Dispatch::Callable<T>>;
-        static_assert(idx >= 0, "Tuple does not contain type T");
         if (auto it = map_.find(h); it != map_.end()) {
-            return std::get<static_cast<size_t>(idx)>(it->second);
+            return std::get<static_cast<size_t>(TypeIndex<T>)>(it->second);
         }
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
@@ -212,10 +219,8 @@ public:
     template<typename T>
     [[nodiscard]] inline auto TryGet(Operon::Hash const h) const noexcept -> std::optional<Dispatch::Callable<T>>
     {
-        constexpr int64_t idx = IndexOf<Dispatch::Callable<T>>;
-        static_assert(idx >= 0, "Tuple does not contain type T");
         if (auto it = map_.find(h); it != map_.end()) {
-            return { std::get<static_cast<size_t>(idx)>(it->second) };
+            return { std::get<TypeIndex<T>>(it->second) };
         }
         return {};
     }

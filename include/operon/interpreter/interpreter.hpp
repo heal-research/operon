@@ -45,6 +45,7 @@ struct GenericInterpreter {
         EXPECT(!nodes.empty());
 
         auto constexpr S{ static_cast<int>(Dispatch::BatchSize<T>) };
+        auto const nn{ std::ssize(nodes) };
         Dispatch::Matrix<T> m = decltype(m)::Zero(S, nodes.size());
 
         using NodeMeta = std::tuple<T, Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>, std::optional<Callable const>>;
@@ -52,7 +53,7 @@ struct GenericInterpreter {
 
         size_t idx = 0;
         int numRows = static_cast<int>(range.Size());
-        for (size_t i = 0; i < nodes.size(); ++i) {
+        for (auto i = 0; i < nn; ++i) {
             auto const& n = nodes[i];
 
             auto const* ptr = n.IsVariable() ? dataset.GetValues(n.HashValue).subspan(range.Start(), numRows).data() : nullptr;
@@ -70,19 +71,19 @@ struct GenericInterpreter {
             auto remainingRows = std::min(S, numRows - row);
             Operon::Range rg(range.Start() + row, range.Start() + row + remainingRows);
 
-            for (size_t i = 0; i < nodes.size(); ++i) {
+            for (auto i = 0; i < nn; ++i) {
                 auto const& [ param, values, func ] = meta[i];
                 if (nodes[i].IsVariable()) {
-                    m.col(i).segment(0, remainingRows) = param * values.segment(row, remainingRows).template cast<T>();
+                    m.col(i).head(remainingRows) = param * values.segment(row, remainingRows).template cast<T>();
                 } else if (func) {
                     std::invoke(*func, m, nodes, i, rg);
                 }
             }
             // the final result is found in the last section of the buffer corresponding to the root node
             if (result.size() == range.Size()) {
-                Eigen::Map<Eigen::Array<T, -1, 1>>(result.data(), result.size()).segment(row, remainingRows) = m.col(m.cols()-1).segment(0, remainingRows);
+                Eigen::Map<Eigen::Array<T, -1, 1>>(result.data(), result.size()).segment(row, remainingRows) = m.col(m.cols()-1).head(remainingRows);
             }
-            callback(m, row);
+            std::invoke(callback, m, row);
         }
     }
 
@@ -94,13 +95,9 @@ private:
 };
 
 using Interpreter = GenericInterpreter<Operon::Scalar, Operon::Dual>;
-//using Interpreter = GenericInterpreter<Operon::Scalar>;
 
 // convenience method to interpret many trees in parallel (mostly useful from the python wrapper)
 auto OPERON_EXPORT EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const& dataset, Operon::Range range, size_t nthread = 0) -> std::vector<std::vector<Operon::Scalar>> ;
 auto OPERON_EXPORT EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const& dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread) -> void;
-
 } // namespace Operon
-
-
 #endif
