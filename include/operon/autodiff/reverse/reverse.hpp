@@ -14,35 +14,50 @@ template<typename Interpreter>
 class DerivativeCalculator {
     Interpreter const& interpreter_;
 
-    auto ComputeDerivative(auto const& nodes, auto const& values, auto& rnodes, auto i) const -> void {
+    auto ComputeDerivative(auto const& nodes, auto const& primal, auto& rnodes, auto i) const -> void {
         switch(nodes[i].Type) {
-        case NodeType::Add: { Derivative<NodeType::Add>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Sub: { Derivative<NodeType::Sub>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Mul: { Derivative<NodeType::Mul>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Div: { Derivative<NodeType::Div>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Pow: { Derivative<NodeType::Pow>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Aq: { Derivative<NodeType::Aq>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Exp: { Derivative<NodeType::Exp>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Log: { Derivative<NodeType::Log>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Logabs: { Derivative<NodeType::Logabs>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Log1p: { Derivative<NodeType::Log1p>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Sin: { Derivative<NodeType::Sin>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Cos: { Derivative<NodeType::Cos>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Tan: { Derivative<NodeType::Tan>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Tanh: { Derivative<NodeType::Tanh>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Asin: { Derivative<NodeType::Asin>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Acos: { Derivative<NodeType::Acos>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Atan: { Derivative<NodeType::Atan>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Sqrt: { Derivative<NodeType::Sqrt>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Sqrtabs: { Derivative<NodeType::Sqrtabs>{}(nodes, values, rnodes, i); return; }
-        case NodeType::Cbrt: { Derivative<NodeType::Cbrt>{}(nodes, values, rnodes, i); return; }
+        case NodeType::Add: { Derivative<NodeType::Add>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Sub: { Derivative<NodeType::Sub>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Mul: { Derivative<NodeType::Mul>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Div: { Derivative<NodeType::Div>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Pow: { Derivative<NodeType::Pow>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Aq: { Derivative<NodeType::Aq>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Exp: { Derivative<NodeType::Exp>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Log: { Derivative<NodeType::Log>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Logabs: { Derivative<NodeType::Logabs>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Log1p: { Derivative<NodeType::Log1p>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Sin: { Derivative<NodeType::Sin>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Cos: { Derivative<NodeType::Cos>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Tan: { Derivative<NodeType::Tan>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Tanh: { Derivative<NodeType::Tanh>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Asin: { Derivative<NodeType::Asin>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Acos: { Derivative<NodeType::Acos>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Atan: { Derivative<NodeType::Atan>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Sqrt: { Derivative<NodeType::Sqrt>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Sqrtabs: { Derivative<NodeType::Sqrtabs>{}(nodes, primal, rnodes, i); return; }
+        case NodeType::Cbrt: { Derivative<NodeType::Cbrt>{}(nodes, primal, rnodes, i); return; }
         default: { throw std::runtime_error("unsupported node type"); }
         }
     }
 
-    struct RNode {
-        Eigen::Array<Operon::Scalar, Dispatch::BatchSize<Operon::Scalar>, 1> P;              // primal
-        std::vector<decltype(P)> D; // derivatives
+    static auto constexpr BatchSize{ Dispatch::BatchSize<Operon::Scalar> };
+
+    // a node of the reverse computational graph
+    class RNode {
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> w_{nullptr, BatchSize, 1};
+        Eigen::Array<Operon::Scalar, BatchSize, -1> d_;
+        int64_t len_{BatchSize};
+
+    public:
+        auto Length() const { return len_; }
+        auto SetLength(auto len) { len_ = len; }
+        auto SetWeight(auto const* ptr) {
+            new (&w_) decltype(w_)(ptr, len_, 1);
+        }
+        auto Resize(auto ncol) { d_.resize(BatchSize, ncol); }
+
+        auto W() { return w_.head(len_); }
+        auto D(auto i) { return d_.col(i).head(len_); }
     };
 
 public:
@@ -65,55 +80,54 @@ public:
     auto operator()(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<Operon::Scalar const> coeff, Operon::Span<Operon::Scalar> residual, Operon::Span<Operon::Scalar> jacobian) const
     {
         auto const& nodes = tree.Nodes();
+        auto const nn{ std::ssize(nodes) };
         auto const np{ static_cast<int>(coeff.size()) }; // number of parameters
         auto const nr{ static_cast<int>(range.Size()) }; // number of residuals
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1, StorageOrder>> jac(jacobian.data(), nr, np);
         jac.setConstant(0);
 
-
         auto constexpr S{ static_cast<int>(Dispatch::BatchSize<Operon::Scalar>) };
-        Dispatch::Matrix<Operon::Scalar> weights(S, std::ssize(nodes));
-        std::vector<RNode> rnodes(nodes.size());
+        Eigen::Array<Operon::Scalar, S, 1> one = decltype(one)::Ones(S, 1);
 
-        for (auto i{0UL}; i < nodes.size(); ++i) {
-            rnodes[i].P.setConstant(1);
+        std::vector<RNode> rnodes(nn);
+        for (auto i = 0; i < nn; ++i) {
+            rnodes[i].SetWeight(one.data());
             if (nodes[i].Arity > 0) {
-                rnodes[i].D.resize(nodes[i].Arity);
+                rnodes[i].Resize(nodes[i].Arity);
             }
         }
 
-        auto callback = [&](auto const& values, auto row) {
+        Dispatch::Matrix<Operon::Scalar> adj(S, nn);
+
+        auto reverse = [&](auto const& primal, auto row) {
             auto const len = std::min(S, nr - row);
 
-            // backward pass - compute derivatives
-            for (auto i = 0UL; i < nodes.size(); ++i) {
-                weights.col(i).setConstant(0);
+            // forward pass - populate intermediate primal (weights and partial derivatives)
+            for (auto i = 0; i < nn; ++i) {
+                rnodes[i].SetLength(len);
+                adj.col(i).setConstant(0);
                 auto const& n = nodes[i];
                 if (n.IsVariable()) {
                     auto s { dataset.GetValues(n.HashValue).subspan(row, len) };
-                    rnodes[i].P.segment(0, len) = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(s.data(), std::ssize(s));
+                    rnodes[i].SetWeight(s.data());
                 } else if (n.Arity > 0) {
-                    ComputeDerivative(nodes, values, rnodes, i);
+                    ComputeDerivative(nodes, primal.topRows(len), rnodes, static_cast<std::size_t>(i));
                 }
             }
 
-            // forward pass - update weights
-            weights.col(weights.cols()-1) = rnodes.back().P;
-            for (auto i = std::ssize(nodes)-1; i >= 0; --i) {
+            // backward pass - propagate adjoints and fill the jacobian
+            adj.col(nn-1) = rnodes.back().W();
+            auto c{np};
+            for (auto i = nn-1; i >= 0; --i) {
+                if (nodes[i].Optimize) { jac.col(--c).segment(row, len) = adj.col(i).head(len); }
                 if (nodes[i].IsLeaf()) { continue; }
                 for (auto [k, j] : Enumerate(nodes, static_cast<std::size_t>(i))) {
-                    weights.col(j).segment(0, len) += weights.col(i).segment(0, len) * rnodes[i].D[k].segment(0, len);
+                    adj.col(static_cast<int>(j)).head(len) += adj.col(i).head(len) * rnodes[i].D(k);
                 }
-            }
-
-            // fill jacobian
-            for (auto i = 0, j = 0; i < std::ssize(nodes); ++i) {
-                if (!nodes[i].Optimize) { continue; }
-                jac.col(j++).segment(row, len) = weights.col(i).segment(0, len);
             }
         };
 
-        interpreter_.template operator()<Operon::Scalar>(tree, dataset, range, residual, coeff, callback);
+        interpreter_.template operator()<Operon::Scalar>(tree, dataset, range, residual, coeff, reverse);
     }
 
     [[nodiscard]] auto GetInterpreter() const -> Interpreter const& { return interpreter_; }
