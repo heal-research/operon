@@ -47,20 +47,20 @@ auto Tree::Reduce() -> Tree&
         if (s.IsLeaf() || !s.IsCommutative()) {
             continue;
         }
-
+        auto arity{ s.Arity };
         for (auto& p : Children(i)) {
             if (s.HashValue == p.HashValue) {
                 p.IsEnabled = false;
-                s.Arity = static_cast<uint16_t>(s.Arity + p.Arity - 1);
+                arity = static_cast<uint16_t>(arity + p.Arity - 1);
                 reduced = true;
             }
         }
+        s.Arity = arity;
     }
 
     // if anything was reduced (nodes were disabled), copy remaining enabled nodes
     if (reduced) {
-        // erase-remove idiom https://en.wikipedia.org/wiki/Erase%E2%80%93remove_idiom
-        nodes_.erase(remove_if(nodes_.begin(), nodes_.end(), [](Node const& s) { return !s.IsEnabled; }), nodes_.end());
+        std::erase_if(nodes_, [](auto const& n) { return !n.IsEnabled; });
     }
     // else, nothing to do
     return this->UpdateNodes();
