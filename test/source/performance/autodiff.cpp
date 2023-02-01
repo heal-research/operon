@@ -6,6 +6,7 @@
 
 #include "operon/autodiff/autodiff.hpp"
 #include "operon/autodiff/forward/forward.hpp"
+#include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/formatter/formatter.hpp"
@@ -14,45 +15,75 @@
 #include "operon/parser/infix.hpp"
 
 namespace dt = doctest;
+namespace nb = ankerl::nanobench;
 
 namespace Operon::Test {
 
 TEST_CASE("comparison benchmark" * dt::test_suite("[performance]")) {
     Operon::RandomGenerator rng(0);
 
-    constexpr auto nrow{30000};
+    Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
+    //Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
+    Operon::Autodiff::Reverse::DerivativeCalculator dc{ interpreter };
+
+    constexpr auto nrow{50000};
     constexpr auto ncol{10};
     auto ds = Operon::Test::Util::RandomDataset(rng, nrow, ncol);
-    std::string str{ "10 * sin(3.141592654 * X1 * X2) + 20 * (X3 - 0.5) ^ 2 + 10 * X4 + 5 * X5" };
+    std::string f1{ "10 * sin(3.141592654 * X1 * X2) + 20 * (X3 - 0.5) ^ 2 + 10 * X4 + 5 * X5" };
+    std::string f2{"X1 * X2 + X3 * X4 + X5 * X6 + X1 * X7 * X9 + X3 * X6 * X10"};
 
     Operon::Map<std::string, Operon::Hash> variables;
     for (auto&& v : ds.Variables()) {
         variables.insert({v.Name, v.Hash});
     }
-    auto tree = Operon::InfixParser::Parse(str, variables);
+    auto tree = Operon::InfixParser::Parse(f1, variables);
     auto& nodes = tree.Nodes();
-    for (auto& node : nodes) { node.Optimize = node.IsVariable(); }
+    for (auto i = 0; i < std::ssize(nodes); ++i) {
+        auto& n = nodes[i];
+        n.Optimize = n.IsVariable();
 
+        // replace the raise to the power of 2 with a square primitive (more efficient)
+        if (n.IsPow()) {
+            auto j = i-1;
+            auto k = j - (nodes[j].Length + 1);
+            if (nodes[k].IsConstant() && nodes[k].Value == 2) {
+                nodes[k].IsEnabled = false;
+                nodes[i].Type = NodeType::Square;
+                nodes[i].Arity -= 1;
+            }
+        }
+    }
+    std::erase_if(nodes, [](auto const& n) { return !n.IsEnabled; });
+
+    auto benchmark = [&](auto const& tree) {
+        nb::Bench b;
+        b.timeUnit(std::chrono::microseconds(1), "us");
+        //b.output(nullptr);
+
+        auto coeff = tree.GetCoefficients();
+        for (auto rows = 1000UL; rows <= 50000; rows += 1000) {
+            b.run(fmt::format("rows = {}", rows), [&]() {
+                Operon::Range range{0, rows};
+                Eigen::Array<Operon::Scalar, -1, -1> jacobian = dc(tree, ds, range, coeff);
+            });
+        }
+
+        b.render(nb::templates::csv(), std::cout);
+    };
 
     fmt::print("F1: {}\n", Operon::InfixFormatter::Format(tree, ds));
     fmt::print("coefficients to optimize: {}\n", std::count_if(nodes.begin(), nodes.end(), [](auto const& node) { return node.Optimize; }));
+    benchmark(tree);
 
-    Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
-    Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
 
-    ankerl::nanobench::Bench b;
-    b.timeUnit(std::chrono::microseconds(1), "us");
-    //b.output(nullptr);
-
-    for (auto rows = 1000UL; rows <= 50000; rows += 1000) {
-        b.run(fmt::format("rows = {}", rows), [&]() {
-            Operon::Range range{0, rows};
-            auto coeff = tree.GetCoefficients();
-            Eigen::Matrix<Operon::Scalar, -1, -1> jac = dc(tree, ds, range, coeff);
-        });
+    tree = Operon::InfixParser::Parse(f2, variables);
+    for (auto& n : tree.Nodes()) {
+        n.Optimize = n.IsVariable();
     }
+    fmt::print("F2: {}\n", Operon::InfixFormatter::Format(tree, ds));
+    fmt::print("coefficients to optimize: {}\n", std::count_if(tree.Nodes().begin(), tree.Nodes().end(), [](auto const& node) { return node.Optimize; }));
+    benchmark(tree);
 
-    b.render(ankerl::nanobench::templates::csv(), std::cout);
 }
 
 TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
@@ -61,7 +92,7 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
 
     Operon::RandomGenerator rng(0);
     auto ds = Operon::Test::Util::RandomDataset(rng, nrow, ncol);
-    ankerl::nanobench::Bench b;
+    nb::Bench b;
     //b.output(nullptr);
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
@@ -171,11 +202,11 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
     constexpr auto m{50};
     constexpr auto r{20};
 
-    ankerl::nanobench::Bench b;
+    nb::Bench b;
     Operon::PrimitiveSet pset;
     Operon::PrimitiveSetConfig psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos;
     pset.SetConfig(psetcfg);
-        Operon::BalancedTreeCreator creator(pset, ds.Variables());
+    Operon::BalancedTreeCreator creator(pset, ds.Variables());
 
     SUBCASE("forward") {
         Operon::Autodiff::Forward::DerivativeCalculator calcForward{ interpreter };
@@ -187,7 +218,7 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
         benchmark(b, calcReverse, creator, "reverse", n, m, r);
     }
 
-    b.render(ankerl::nanobench::templates::csv(), std::cout);
+    b.render(nb::templates::csv(), std::cout);
 }
 
 } // namespace Operon::Test
