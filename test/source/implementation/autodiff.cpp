@@ -5,6 +5,7 @@
 #include "../operon_test.hpp"
 
 #include "nanobench.h"
+#include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/formatter/formatter.hpp"
@@ -25,7 +26,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     constexpr auto ncol{3};;
 
     Operon::Dataset::Matrix values(1, 2);
-    values << 2, 5; // NOLINT
+    values << 2, 3; // NOLINT
 
     Operon::RandomGenerator rng(0);
     Operon::Dataset ds(values);
@@ -35,11 +36,11 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         variables.insert({v.Name, v.Hash});
     }
 
-    Operon::GenericInterpreter<Operon::Scalar> interpreter;
-    Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreterDual;
+    Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
+    auto constexpr print{ true };
 
-    Operon::Autodiff::Reverse::DerivativeCalculator rcalc{ interpreter };
-    Operon::Autodiff::Forward::DerivativeCalculator fcalc{ interpreterDual };
+    Operon::Autodiff::Reverse::DerivativeCalculator rcalc{ interpreter, print };
+    Operon::Autodiff::Forward::DerivativeCalculator fcalc{ interpreter };
 
     Operon::Range range{0, ds.Rows()};
 
@@ -47,7 +48,11 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
     auto derive = [&](std::string const& expr) {
         fmt::print(fmt::emphasis::bold, "f(x, y) = {}\n", expr);
-        auto tree = Operon::InfixParser::Parse(expr, variables);
+        auto tree = Operon::InfixParser::Parse(expr, variables, /*reduce=*/true);
+        for (auto& n : tree.Nodes()) {
+            n.Optimize = true;
+            if (n.Arity > 0) { n.Value = 2; }
+        }
         fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
 
         std::vector<Operon::Scalar> y(ds.Rows());
@@ -61,6 +66,18 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     };
 
     SUBCASE("0.51 * x") { derive("0.51 * x"); }
+
+    SUBCASE("0.51 * 0.74") { derive("0.51 * 0.74"); }
+
+    SUBCASE("2.53 / 1.46") { derive("2.53 / 1.46"); }
+
+    SUBCASE("sin(2)") { derive("sin(2)"); }
+
+    SUBCASE("y * sin(x) | at (x, y) = (2, 2)") { derive("sin(2)"); }
+
+    SUBCASE("sin(x) + cos(y) | at (x, y) = (2, 3)") { derive("sin(2) + cos(3)"); }
+
+    SUBCASE("0.5 * sin(x) + 0.7 * cos(y) | at (x, y) = (2, 3)") { derive("0.5 * sin(2) + 0.7 * cos(3)"); }
 
     SUBCASE("cos(sin(3))") { derive("cos(sin(3))"); }
 
@@ -109,8 +126,8 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     SUBCASE("random trees") {
         using Operon::NodeType;
         Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic |
-                Operon::NodeType::Pow | Operon::NodeType::Aq |
-                Operon::NodeType::Exp | Operon::NodeType::Log |
+                Operon::NodeType::Pow | Operon::NodeType::Aq | Operon::NodeType::Square |
+                Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Abs |
                 Operon::NodeType::Logabs | Operon::NodeType::Log1p |
                 Operon::NodeType::Sin | Operon::NodeType::Asin |
                 Operon::NodeType::Cos | Operon::NodeType::Acos |
@@ -126,17 +143,21 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         constexpr auto mindepth{1};
         constexpr auto maxdepth{1000};
 
-        std::uniform_int_distribution<size_t> dist(1, maxsize);
-        std::bernoulli_distribution d(0.7);
+        std::uniform_int_distribution<size_t> length(1, maxsize);
+        std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
+        std::bernoulli_distribution bernoulli(0.5);
 
         // comparison precision
         constexpr auto epsilon{1e-4};
+        Operon::Autodiff::Reverse::DerivativeCalculator rcalc{ interpreter };
 
         for (auto i = 0; i < n; ++i) {
-            auto tree = btc(rng, dist(rng), mindepth, maxdepth);
+            auto tree = btc(rng, length(rng), mindepth, maxdepth);
             for (auto& node : tree.Nodes()) {
-                if (node.IsLeaf()) { node.Optimize = d(rng); }
+                node.Optimize = bernoulli(rng);
+                node.Value = dist(rng);
             }
+            //tree.Nodes().back().Optimize = false; // it does not make sense to optimize the tree root?
             initializer(rng, tree);
 
             auto parameters = tree.GetCoefficients();
