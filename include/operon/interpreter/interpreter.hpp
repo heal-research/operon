@@ -28,7 +28,7 @@ struct GenericInterpreter {
 
     // evaluate a tree and return a vector of values
     template <typename T = Operon::Scalar, typename F = Dispatch::Noop>
-    requires std::invocable<F, Dispatch::Matrix<T>&, int>
+    requires std::invocable<F, Dispatch::Matrix<T> const&, int>
     auto operator()(Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T const> coeff = {}, F&& callback = F{}) const noexcept -> Operon::Vector<T>
     {
         Operon::Vector<T> result(range.Size());
@@ -37,7 +37,7 @@ struct GenericInterpreter {
     }
 
     template <typename T = Operon::Scalar, typename F = Dispatch::Noop>
-    requires std::invocable<F, Dispatch::Matrix<T>&, int>
+    requires std::invocable<F, Dispatch::Matrix<T> const&, int>
     void operator()(Tree const& tree, Dataset const& dataset, Range const range, Operon::Span<T> result, Operon::Span<T const> coeff = {}, F&& callback = F{}) const noexcept
     {
         using Callable = Dispatch::Callable<T>;
@@ -52,38 +52,41 @@ struct GenericInterpreter {
         Operon::Vector<NodeMeta> meta; meta.reserve(nodes.size());
 
         size_t idx = 0;
-        int numRows = static_cast<int>(range.Size());
+        int len = static_cast<int>(range.Size());
         for (auto i = 0; i < nn; ++i) {
             auto const& n = nodes[i];
 
-            auto const* ptr = n.IsVariable() ? dataset.GetValues(n.HashValue).subspan(range.Start(), numRows).data() : nullptr;
-            auto const param = (!coeff.empty() && n.Optimize) ? coeff[idx++] : T{n.Value};
+            auto const* ptr = n.IsVariable() ? dataset.GetValues(n.HashValue).subspan(range.Start(), len).data() : nullptr;
+            auto const coefficient = (!coeff.empty() && n.Optimize) ? coeff[idx++] : T{n.Value};
 
             meta.push_back({
-                param,
-                std::tuple_element_t<1, NodeMeta>(ptr, numRows),
+                coefficient,
+                std::tuple_element_t<1, NodeMeta>(ptr, len),
                 dtable_.template TryGet<T>(n.HashValue)
             });
-            if (n.IsConstant()) { m.col(i).setConstant(param); }
+            if (n.IsConstant()) { m.col(i).setConstant(coefficient); }
         }
 
-        for (int row = 0; row < numRows; row += S) {
-            auto remainingRows = std::min(S, numRows - row);
+        for (int row = 0; row < len; row += S) {
+            auto remainingRows = std::min(S, len - row);
             Operon::Range rg(range.Start() + row, range.Start() + row + remainingRows);
 
             for (auto i = 0; i < nn; ++i) {
                 auto const& [ param, values, func ] = meta[i];
                 if (nodes[i].IsVariable()) {
-                    m.col(i).head(remainingRows) = param * values.segment(row, remainingRows).template cast<T>();
+                    m.col(i).head(remainingRows) = values.segment(row, remainingRows).template cast<T>();
+                    m.col(i).head(remainingRows) *= param;
                 } else if (func) {
                     std::invoke(*func, m, nodes, i, rg);
+                    m.col(i).head(remainingRows) *= param;
                 }
             }
+            std::invoke(callback, m, row);
+
             // the final result is found in the last section of the buffer corresponding to the root node
             if (result.size() == range.Size()) {
                 Eigen::Map<Eigen::Array<T, -1, 1>>(result.data(), result.size()).segment(row, remainingRows) = m.col(m.cols()-1).head(remainingRows);
             }
-            std::invoke(callback, m, row);
         }
     }
 

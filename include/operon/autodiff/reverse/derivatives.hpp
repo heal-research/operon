@@ -20,7 +20,7 @@ inline auto Indices(auto const& nodes, auto i)
 // derivatives
 template <Operon::NodeType N = Operon::NodeType::Add>
 struct Derivative {
-    inline auto operator()(auto const& nodes, auto const /*unused*/, auto trace, auto i, auto j)
+    inline auto operator()(auto const& nodes, auto const /*unused*/, auto trace, auto /*weights*/, auto i, auto j)
     {
         trace.middleCols(j, nodes[i].Arity).setConstant(1);
     }
@@ -28,7 +28,7 @@ struct Derivative {
 
 template <>
 struct Derivative<Operon::NodeType::Sub> {
-    inline auto operator()(auto const& nodes, auto const /*unused*/, auto trace, auto i, auto j)
+    inline auto operator()(auto const& nodes, auto const /*unused*/, auto trace, auto /*weights*/, auto i, auto j)
     {
         auto const& n = nodes[i];
         if (n.Arity == 1) {
@@ -43,25 +43,25 @@ struct Derivative<Operon::NodeType::Sub> {
 
 template <>
 struct Derivative<Operon::NodeType::Mul> {
-    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto weights, auto i, auto j)
     {
         auto const& n = nodes[i];
         for (auto [k, a] : Enumerate(nodes, i)) {
-            trace.col(j+k) = primal.col(i) / primal.col(a);
+            trace.col(j+k) = primal.col(i) / primal.col(a) / weights[i];
         }
     }
 };
 
 template <>
 struct Derivative<Operon::NodeType::Div> {
-    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto weights, auto i, auto j)
     {
         auto const& n = nodes[i];
         if (n.Arity == 1) {
             trace.col(j) = -primal.col(i-1).square().inverse();
         } else {
             for (auto [k, a] : Enumerate(nodes, i)) {
-                trace.col(j+k) = (k == 0 ? +1 : -1) * primal.col(i) / primal.col(a);
+                trace.col(j+k) = (k == 0 ? +1 : -1) * primal.col(i) / primal.col(a) / weights[i];
             }
         }
     }
@@ -70,38 +70,56 @@ struct Derivative<Operon::NodeType::Div> {
 // binary symbols
 template <>
 struct Derivative<Operon::NodeType::Aq> {
-    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto weights, auto i, auto j)
     {
         auto a = i - 1;
         auto b = a - (nodes[a].Length + 1);
-        trace.col(j)   = primal.col(i) / primal.col(a);
-        trace.col(j+1) = -primal.col(b) * primal.col(i).pow(3) / primal.col(a).square();
+        auto p = primal.col(i) / weights[i];
+        trace.col(j)   = p / primal.col(a);
+        trace.col(j+1) = -primal.col(b) * p.pow(3) / primal.col(a).square();
     }
 };
 
 template <>
 struct Derivative<Operon::NodeType::Pow> {
-    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto weights, auto i, auto j)
     {
         auto a = i - 1;
         auto b = a - (nodes[a].Length + 1);
-        trace.col(j)   = primal.col(a).pow(primal.col(b) - 1) * primal.col(b);
-        trace.col(j+1) = primal.col(i) * primal.col(a).log();
+        trace.col(j)   = primal.col(i) * primal.col(b) / (primal.col(a) * weights[i]);
+        trace.col(j+1) = primal.col(i) * primal.col(a).log() / weights[i];
+    }
+};
+
+template <>
+struct Derivative<Operon::NodeType::Square> {
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
+    {
+        trace.col(j) = 2 * primal.col(i-1);
+    }
+};
+
+template <>
+struct Derivative<Operon::NodeType::Abs> {
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
+    {
+        trace.col(j) = primal.col(i-1).sign();
     }
 };
 
 // unary symbols
 template <>
 struct Derivative<Operon::NodeType::Exp> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto weights, auto i, auto j)
     {
-        trace.col(j) = primal.col(i);
+        //trace.col(j) = primal.col(i-1).exp();
+        trace.col(j) = primal.col(i) / weights[i];
     }
 };
 
 template <>
 struct Derivative<Operon::NodeType::Log> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
         trace.col(j) = primal.col(i-1).inverse();
     }
@@ -109,7 +127,7 @@ struct Derivative<Operon::NodeType::Log> {
 
 template <>
 struct Derivative<Operon::NodeType::Logabs> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
         trace.col(j) = primal.col(i-1).sign() / primal.col(i-1).abs();
     }
@@ -117,7 +135,7 @@ struct Derivative<Operon::NodeType::Logabs> {
 
 template <>
 struct Derivative<Operon::NodeType::Log1p> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
         trace.col(j) = (primal.col(i-1) + 1).inverse();
     }
@@ -125,7 +143,7 @@ struct Derivative<Operon::NodeType::Log1p> {
 
 template <>
 struct Derivative<Operon::NodeType::Sin> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
         trace.col(j) = primal.col(i-1).cos();
     }
@@ -133,7 +151,7 @@ struct Derivative<Operon::NodeType::Sin> {
 
 template <>
 struct Derivative<Operon::NodeType::Cos> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
         trace.col(j) = -primal.col(i-1).sin();
     }
@@ -141,23 +159,23 @@ struct Derivative<Operon::NodeType::Cos> {
 
 template <>
 struct Derivative<Operon::NodeType::Tan> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
-        trace.col(j) = 1 + primal.col(i).square();
+        trace.col(j) = 1 + primal.col(i-1).tan().square();
     }
 };
 
 template <>
 struct Derivative<Operon::NodeType::Tanh> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
-        trace.col(j) = 1 - primal.col(i).square();
+        trace.col(j) = 1 - primal.col(i-1).tanh().square();
     }
 };
 
 template <>
 struct Derivative<Operon::NodeType::Asin> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
         trace.col(j) = (1 - primal.col(i-1).square()).sqrt().inverse();
     }
@@ -165,7 +183,7 @@ struct Derivative<Operon::NodeType::Asin> {
 
 template <>
 struct Derivative<Operon::NodeType::Acos> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
         trace.col(j) = -(1 - primal.col(i-1).square()).sqrt().inverse();
     }
@@ -173,7 +191,7 @@ struct Derivative<Operon::NodeType::Acos> {
 
 template <>
 struct Derivative<Operon::NodeType::Atan> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
     {
         trace.col(j) = (1 + primal.col(i-1).square()).inverse();
     }
@@ -181,25 +199,25 @@ struct Derivative<Operon::NodeType::Atan> {
 
 template <>
 struct Derivative<Operon::NodeType::Sqrt> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto weights, auto i, auto j)
     {
-        trace.col(j) = (2 * primal.col(i)).inverse();
+        trace.col(j) = weights[i] * (2 * primal.col(i)).inverse();
     }
 };
 
 template <>
 struct Derivative<Operon::NodeType::Sqrtabs> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto weights, auto i, auto j)
     {
-        trace.col(j) = primal.col(i-1).sign() / (2 * primal.col(i));
+        trace.col(j) = weights[i] * primal.col(i-1).sign() / (2 * primal.col(i));
     }
 };
 
 template <>
 struct Derivative<Operon::NodeType::Cbrt> {
-    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto i, auto j)
+    inline auto operator()(auto const& /*nodes*/, auto const primal, auto trace, auto weights, auto i, auto j)
     {
-        trace.col(j) = (3 * primal.col(i).square()).inverse();
+        trace.col(j) = (3 * (primal.col(i) / weights[i]).square()).inverse();
     }
 };
 } // namespace Operon::Autodiff::Reverse
