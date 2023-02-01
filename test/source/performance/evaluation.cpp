@@ -9,6 +9,21 @@
 #endif
 
 #include "../operon_test.hpp"
+#include "operon/algorithms/gp.hpp"
+#include "operon/algorithms/nsga2.hpp"
+#include "operon/core/problem.hpp"
+#include "operon/core/pset.hpp"
+#include "operon/core/tree.hpp"
+#include "operon/operators/creator.hpp"
+#include "operon/operators/crossover.hpp"
+#include "operon/operators/evaluator.hpp"
+#include "operon/operators/generator.hpp"
+#include "operon/operators/initializer.hpp"
+#include "operon/operators/mutation.hpp"
+#include "operon/operators/non_dominated_sorter.hpp"
+#include "operon/operators/reinserter.hpp"
+#include "operon/operators/selector.hpp"
+#include "operon/interpreter/interpreter.hpp"
 
 namespace Operon::Test {
     auto TotalNodes(const std::vector<Tree>& trees) -> std::size_t {
