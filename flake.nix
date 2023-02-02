@@ -17,12 +17,11 @@
           overlays = [ foolnotion.overlay ];
         };
 
-        llvm = pkgs.llvmPackages_14;
-        stdenv = pkgs.overrideCC llvm.stdenv (
-          llvm.clang.override { gccForLibs = pkgs.gcc12.cc; }
+        stdenv_ = pkgs.overrideCC pkgs.llvmPackages_15.stdenv (
+          pkgs.clang_15.override { gccForLibs = pkgs.gcc12.cc; }
         );
 
-        operon = stdenv.mkDerivation {
+        operon = stdenv_.mkDerivation {
           name = "operon";
           src = self;
 
@@ -39,6 +38,7 @@
 
           buildInputs = (with pkgs; [
             aria-csv
+            ceres-solver
             cpp-sort
             cxxopts
             doctest
@@ -46,9 +46,7 @@
             eve
             fast_float
             fmt_9
-            git
             jemalloc
-            mold
             openlibm
             pkg-config
             pratt-parser.packages.${system}.default
@@ -79,12 +77,10 @@
           });
         };
 
-        devShells.default = stdenv.mkDerivation {
+        devShells.default = stdenv_.mkDerivation {
           name = "operon";
 
           nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
-            bear
-            clang_14
             clang-tools
             cppcheck
             include-what-you-use
