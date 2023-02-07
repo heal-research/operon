@@ -43,7 +43,7 @@ public:
         , test_(std::move(testRange))
         , validation_(std::move(validationRange))
     {
-        target_ = dataset_.Variables().back();
+        target_ = dataset_.GetVariables().back();
         SetDefaultInputs();
     }
 
@@ -77,7 +77,7 @@ public:
     // set all variables except the target as inputs
     auto SetDefaultInputs() -> void {
         inputs_.clear();
-        for (auto const& v : dataset_.Variables()) {
+        for (auto const& v : dataset_.GetVariables()) {
             if (v.Hash != target_.Hash) { inputs_.insert(v.Hash); }
         }
     }

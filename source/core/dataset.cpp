@@ -14,18 +14,34 @@ namespace Operon {
 
 // internal implementation details
 namespace {
-    const auto DefaultVariables = [](size_t count) {
-        Hasher hash;
-
-        std::vector<Variable> vars(count);
-        for (size_t i = 0; i < vars.size(); ++i) {
-            vars[i].Name = fmt::format("X{}", i+1);
-            vars[i].Index = static_cast<int64_t>(i);
-            vars[i].Hash = hash(vars[i].Name); // NOLINT
+    auto VariablesFromNames(auto const& names) {
+        Hasher hasher;
+        Dataset::Variables vars;
+        for (auto i = 0; i < std::ssize(names); ++i) {
+            auto const& name = names[i];
+            auto hash = hasher(name);
+            auto index = i;
+            vars.insert({hash, {name, hash, index}});
         }
-        std::sort(vars.begin(), vars.end(), [](auto &a, auto &b) { return a.Hash < b.Hash; });
         return vars;
-    };
+    }
+
+    auto DefaultVariables(size_t count) {
+        std::vector<std::string> names(count);
+        for (auto i = 0; i < count; ++i) {
+            names[i] = fmt::format("X{}", i+1);
+        }
+        return VariablesFromNames(names);
+    }
+
+    auto MatrixFromValues(auto const& values) {
+        Dataset::Matrix m(std::ssize(values.front()), std::ssize(values));
+        using M = Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const>;
+        for (auto i = 0; i < m.cols(); ++i) {
+            m.col(i) = M(values[i].data(), m.rows());
+        }
+        return m;
+    }
 } // namespace
 
 auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matrix
@@ -46,13 +62,12 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
     if (hasHeader) {
         --nrow; // for matrix allocation, don't care about column names
         for (auto const& row : parser) {
-            for (auto const& field : row) {
-                Variable v { field, hash(field), ncol++ };
-                variables_.push_back(v);
+            for (auto const& f : row) {
+                auto h = hash(f);
+                variables_.insert({ h, { f, h, ncol++ } });
             }
             break; // read only the first row
         }
-        std::sort(variables_.begin(), variables_.end(), [](auto& a, auto& b) { return a.Hash < b.Hash; });
         m.resize(nrow, static_cast<Eigen::Index>(ncol));
     }
 
@@ -73,7 +88,7 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
         if (ncol == 0) {
             ENSURE(!hasHeader);
             ncol = static_cast<int64_t>(vec.size());
-            m.resize(nrow, static_cast<Eigen::Index>(ncol));
+            m.resize(nrow, ncol);
             variables_ = DefaultVariables(ncol);
         }
         m.row(rowIdx) = Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>>(vec.data(), static_cast<Eigen::Index>(vec.size()));
@@ -84,7 +99,9 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
 }
 
 Dataset::Dataset(std::vector<std::vector<Operon::Scalar>> const& vals)
-    : Dataset(DefaultVariables(vals.size()), vals)
+    : values_(MatrixFromValues(vals))
+    , map_(values_.data(), values_.rows(), values_.cols())
+    , variables_(DefaultVariables(vals.size()))
 {
 }
 
@@ -101,6 +118,17 @@ Dataset::Dataset(Matrix vals)
 {
 }
 
+Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<Operon::Scalar>> const& vals)
+    : values_(MatrixFromValues(vals))
+    , map_(values_.data(), values_.rows(), values_.cols())
+{
+    Hasher hasher;
+    for (auto i = 0; i < map_.cols(); ++i) {
+        auto h = hasher(vars[i]);
+        variables_.insert({h, { vars[i], h, i } });
+    }
+}
+
 Dataset::Dataset(Matrix::Scalar const* data, Eigen::Index rows, Eigen::Index cols) // NOLINT
     : variables_(DefaultVariables(static_cast<size_t>(cols)))
     , map_(data, rows, cols)
@@ -113,20 +141,31 @@ void Dataset::SetVariableNames(std::vector<std::string> const& names)
         auto msg = fmt::format("The number of columns ({}) does not match the number of column names ({}).", map_.cols(), names.size());
         throw std::runtime_error(msg);
     }
-
-    for (auto i = 0; i < map_.cols(); ++i) {
-        Variable v { names[i], Hasher{}(names[i]), i };
-        variables_[i] = v;
-    }
-
-    std::sort(variables_.begin(), variables_.end(), [&](auto& a, auto& b) { return a.Hash < b.Hash; });
+    variables_ = VariablesFromNames(names);
 }
 
-auto Dataset::VariableNames() -> std::vector<std::string>
+auto Dataset::VariableNames() const -> std::vector<std::string>
 {
     std::vector<std::string> names;
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(names), [](const Variable& v) { return v.Name; });
+    names.reserve(variables_.size());
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(names), [](auto const& p) { return p.second.Name; });
     return names;
+}
+
+auto Dataset::VariableHashes() const -> std::vector<Operon::Hash>
+{
+    std::vector<Operon::Hash> hashes;
+    hashes.reserve(variables_.size());
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(hashes), [](auto const& p) { return p.second.Hash; });
+    return hashes;
+}
+
+auto Dataset::VariableIndices() const -> std::vector<Operon::Hash>
+{
+    std::vector<std::size_t> indices;
+    indices.reserve(variables_.size());
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(indices), [](auto const& p) { return p.second.Index; });
+    return indices;
 }
 
 auto Dataset::GetValues(std::string const& name) const noexcept -> Operon::Span<const Operon::Scalar>
@@ -136,11 +175,9 @@ auto Dataset::GetValues(std::string const& name) const noexcept -> Operon::Span<
 
 auto Dataset::GetValues(Operon::Hash hashValue) const noexcept -> Operon::Span<const Operon::Scalar>
 {
-    auto it = std::partition_point(variables_.begin(), variables_.end(), [&](const auto& v) { return v.Hash < hashValue; });
-    bool variableExists = it != variables_.end() && it->Hash == hashValue;
-    ENSURE(variableExists);
-    auto idx = static_cast<Eigen::Index>(it->Index);
-    return {map_.col(idx).data(), static_cast<size_t>(map_.rows())};
+    auto it = variables_.find(hashValue);
+    ENSURE(it != variables_.end());
+    return {map_.col(it->second.Index).data(), static_cast<size_t>(map_.rows())};
 }
 
 // this method needs to take an int argument to differentiate it from GetValues(Operon::Hash)
@@ -156,8 +193,9 @@ auto Dataset::GetVariable(std::string const& name) const noexcept -> std::option
 
 auto Dataset::GetVariable(Operon::Hash hashValue) const noexcept -> std::optional<Variable>
 {
-    auto it = std::partition_point(variables_.begin(), variables_.end(), [&](const auto& v) { return v.Hash < hashValue; });
-    return it != variables_.end() && it->Hash == hashValue ? std::make_optional(*it) : std::nullopt;
+    auto it = variables_.find(hashValue);
+    if (it == variables_.end()) { return std::nullopt; }
+    return it->second;
 }
 
 void Dataset::Shuffle(Operon::RandomGenerator& random)
