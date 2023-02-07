@@ -11,7 +11,7 @@
 namespace Operon::Autodiff::Forward {
 template<typename Interpreter>
 class DerivativeCalculator {
-    Interpreter const& interpreter_;
+    std::reference_wrapper<Interpreter const> interpreter_;
 
 public:
     explicit DerivativeCalculator(Interpreter const& interpreter)
@@ -52,7 +52,7 @@ public:
                 inputs[i].v[i - s] = 1.0;
             }
 
-            interpreter_.template operator()<Dual>(tree, dataset, range, outputs, inputs);
+            interpreter_.get().template operator()<Dual>(tree, dataset, range, outputs, inputs);
 
             for (auto i = s; i < r; ++i) {
                 inputs[i].v[i - s] = 0.0;
@@ -76,7 +76,7 @@ public:
         }
     }
 
-    [[nodiscard]] auto GetInterpreter() const -> Interpreter const& { return interpreter_; }
+    [[nodiscard]] auto GetInterpreter() const -> Interpreter const& { return interpreter_.get(); }
 };
 } // namespace Operon::Autodiff::Forward
 
