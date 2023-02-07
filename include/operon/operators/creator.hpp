@@ -15,7 +15,7 @@ class PrimitiveSet;
 
 // the creator builds a new tree using the existing pset and allowed inputs
 struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
-    CreatorBase(PrimitiveSet const& pset, Operon::Span<Variable const> variables)
+    CreatorBase(PrimitiveSet const& pset, Operon::Span<Operon::Hash const> variables)
         : pset_(pset)
         , variables_(variables)
     {
@@ -24,11 +24,11 @@ struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, siz
     [[nodiscard]] auto GetPrimitiveSet() const -> PrimitiveSet const& { return pset_.get(); }
     void SetPrimitiveSet(PrimitiveSet const& pset) { pset_ = pset; }
 
-    [[nodiscard]] auto Variables() const -> Operon::Span<Variable const> { return variables_; }
+    [[nodiscard]] auto Variables() const -> Operon::Span<Operon::Hash const> { return variables_; }
 
 private:
     std::reference_wrapper<PrimitiveSet const> pset_;
-    Operon::Span<const Variable> variables_;
+    Operon::Span<Operon::Hash const> variables_;
 };
 
 // this tree creator expands bread-wise using a "horizon" of open expansion slots
@@ -36,7 +36,7 @@ private:
 // if the depth is not limiting, the target length is guaranteed to be reached
 class OPERON_EXPORT BalancedTreeCreator final : public CreatorBase {
 public:
-    BalancedTreeCreator(PrimitiveSet const& pset, Operon::Span<Variable const> variables, double bias = 0.0) 
+    BalancedTreeCreator(PrimitiveSet const& pset, Operon::Span<Operon::Hash const> variables, double bias = 0.0)
         : CreatorBase(pset, variables)
         , irregularityBias_(bias)
     {
@@ -53,7 +53,7 @@ private:
 
 class OPERON_EXPORT GrowTreeCreator final : public CreatorBase {
     public:
-        GrowTreeCreator(PrimitiveSet const& pset, Operon::Span<Variable const> variables)
+        GrowTreeCreator(PrimitiveSet const& pset, Operon::Span<Operon::Hash const> variables)
             : CreatorBase(pset, variables) 
         { }
 
@@ -62,7 +62,7 @@ class OPERON_EXPORT GrowTreeCreator final : public CreatorBase {
 
 class OPERON_EXPORT ProbabilisticTreeCreator final : public CreatorBase {
 public:
-    ProbabilisticTreeCreator(PrimitiveSet const& pset, Operon::Span<Variable const> variables, double bias = 0.0)
+    ProbabilisticTreeCreator(PrimitiveSet const& pset, Operon::Span<Operon::Hash const> variables, double bias = 0.0)
         : CreatorBase(pset, variables)
         , irregularityBias_(bias)
     {
