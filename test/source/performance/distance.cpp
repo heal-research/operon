@@ -46,9 +46,7 @@ TEST_CASE("Intersection performance")
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
 
     auto target = "Y";
-    auto variables = ds.Variables();
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+    auto variables = ds.GetVariables();
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
@@ -56,7 +54,7 @@ TEST_CASE("Intersection performance")
     grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log);
 
     std::vector<Tree> trees(n);
-    BalancedTreeCreator btc(grammar, Operon::Span<Variable const>{ inputs.data(), inputs.size() });
+    BalancedTreeCreator btc(grammar, ds.VariableHashes());
     UniformCoefficientInitializer coeffInit;
     std::generate(trees.begin(), trees.end(), [&]() { auto tree = btc(rd, sizeDistribution(rd), 0, maxDepth); coeffInit(rd, tree); return tree; });
 

@@ -15,13 +15,13 @@ namespace Operon::Test {
 TEST_CASE("Evaluation correctness")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto range = Range { 0, ds.Rows() };
+    auto range = Range { 0, ds.Rows<std::size_t>() };
 
     Interpreter interpreter;
     auto const& X = ds.Values(); // NOLINT
 
     Operon::Map<std::string, Operon::Hash> vars;
-    for (auto const& v : ds.Variables()) {
+    for (auto const& v : ds.GetVariables()) {
         fmt::print("{} : {} {}\n", v.Name, v.Hash, v.Index);
         vars[v.Name] = v.Hash;
     }
@@ -48,18 +48,35 @@ TEST_CASE("Evaluation correctness")
         estimatedValues = interpreter.operator()<Operon::Scalar>(tree, ds, range);
         auto res3 = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res3(i)) < eps; }));
+
+        Operon::Node node(Operon::NodeType::Fmax);
+        node.Arity = 3;
+        auto a = Operon::Node::Constant(2);
+        auto b = Operon::Node::Constant(3);
+        auto c = Operon::Node::Constant(4);
+        tree = Operon::Tree({a, b, c, node});
+        fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
+        estimatedValues = interpreter.operator()<Operon::Scalar>(tree, ds, range);
+        CHECK(estimatedValues[0] == 4);
+
+        node = Operon::Node(Operon::NodeType::Sub);
+        node.Arity = 1;
+        tree = Operon::Tree({Operon::Node::Constant(2), node});
+        fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
+        estimatedValues = interpreter.operator()<Operon::Scalar>(tree, ds, range);
+        CHECK(estimatedValues[0] == -2);
     }
 }
 
 TEST_CASE("parameter optimization")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto range = Range { 0, ds.Rows() };
+    auto range = Range { 0, ds.Rows<std::size_t>() };
 
     auto const& X = ds.Values(); // NOLINT
 
     Operon::Map<std::string, Operon::Hash> vars;
-    for (auto v : ds.Variables()) {
+    for (auto v : ds.GetVariables()) {
         fmt::print("{} : {}\n", v.Name, v.Hash);
         vars[v.Name] = v.Hash;
     }

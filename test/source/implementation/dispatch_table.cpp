@@ -17,7 +17,7 @@ namespace Operon::Test {
         using DispatchTable = Operon::DispatchTable<Operon::Scalar>;
         using Interpreter = Operon::GenericInterpreter<Operon::Scalar>;
 
-        Operon::Variable x{ "X", Operon::Hash{1234}, 0 };
+        std::string x{"x"};
         std::vector<Operon::Scalar> v{0};
         Operon::Dataset ds({x}, {v});
 

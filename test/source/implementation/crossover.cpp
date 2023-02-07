@@ -19,11 +19,14 @@ TEST_CASE("Crossover")
 {
     auto target = "Y";
     auto ds = Operon::Dataset("./data/Poly-10.csv", true);
-    auto variables = ds.Variables();
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
+    auto variables = ds.GetVariables();
+    std::vector<Operon::Hash> inputs;
+    for (auto const& v : variables) {
+        if (v.Name != target) { inputs.push_back(v.Hash); }
+    }
 
-    Range range { 0, 250 };
+    auto const nrow { ds.Rows<std::size_t>() };
+    Range range { 0, nrow };
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);

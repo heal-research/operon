@@ -7,6 +7,7 @@
 
 #include "operon/analyzers/diversity.hpp"
 #include "operon/core/dataset.hpp"
+#include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/operators/creator.hpp"
@@ -24,7 +25,10 @@ TEST_CASE("diversity")
     values << 1, 1; // don't care
 
     Dataset ds(values);
-    BalancedTreeCreator btc(grammar, ds.Variables());
+    auto const nrow{ ds.Rows<std::size_t>() };
+    auto const ncol{ ds.Cols<std::size_t>() };
+    Problem problem(std::move(ds), Range{0, nrow/2}, Range{nrow/2, nrow});
+    BalancedTreeCreator btc(grammar, problem.InputVariables());
 
     constexpr size_t minLength{1};
     constexpr size_t maxLength{100};
