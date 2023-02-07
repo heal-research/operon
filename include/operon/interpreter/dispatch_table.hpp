@@ -44,50 +44,44 @@ static inline void NaryOp(Matrix<T>& m, Operon::Vector<Node> const& nodes, size_
     static_assert(Type < NodeType::Aq);
     auto result = Ref<T>(m.col(parentIndex));
     const auto f = [](bool cont, decltype(result) res, auto&&... args) {
-        if (cont) {
-            ContinuedFunction<Type>{}(res, std::forward<decltype(args)>(args)...);
-        } else {
-            Function<Type>{}(res, std::forward<decltype(args)>(args)...);
-        }
+        if (cont) { res = Func<Type, false>{}(res, Func<Type, true>{}(args...)); }
+        else      { res = Func<Type, false>{}(args...); }
     };
     const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
-
     auto arg1 = parentIndex - 1;
-
     bool continued = false;
-
     using R = Dispatch::Ref<T>;
 
     int arity = nodes[parentIndex].Arity;
     while (arity > 0) {
         switch (arity) {
-            case 1: {
-                        f(continued, result, R(m.col(arg1)));
-                        arity = 0;
-                        break;
-                    }
-            case 2: {
-                        auto arg2 = nextArg(arg1);
-                        f(continued, result, R(m.col(arg1)), R(m.col(arg2)));
-                        arity = 0;
-                        break;
-                    }
-            case 3: {
-                        auto arg2 = nextArg(arg1);
-                        auto arg3 = nextArg(arg2);
-                        f(continued, result, R(m.col(arg1)), R(m.col(arg2)), R(m.col(arg3)));
-                        arity = 0;
-                        break;
-                    }
-            default: {
-                         auto arg2 = nextArg(arg1);
-                         auto arg3 = nextArg(arg2);
-                         auto arg4 = nextArg(arg3);
-                         f(continued, result, R(m.col(arg1)), R(m.col(arg2)), R(m.col(arg3)), R(m.col(arg4)));
-                         arity -= 4;
-                         arg1 = nextArg(arg4);
-                         break;
-                     }
+        case 1: {
+            f(continued, result, R(m.col(arg1)));
+            arity = 0;
+            break;
+        }
+        case 2: {
+            auto arg2 = nextArg(arg1);
+            f(continued, result, R(m.col(arg1)), R(m.col(arg2)));
+            arity = 0;
+            break;
+        }
+        case 3: {
+            auto arg2 = nextArg(arg1);
+            auto arg3 = nextArg(arg2);
+            f(continued, result, R(m.col(arg1)), R(m.col(arg2)), R(m.col(arg3)));
+            arity = 0;
+            break;
+        }
+        default: {
+            auto arg2 = nextArg(arg1);
+            auto arg3 = nextArg(arg2);
+            auto arg4 = nextArg(arg3);
+            f(continued, result, R(m.col(arg1)), R(m.col(arg2)), R(m.col(arg3)), R(m.col(arg4)));
+            arity -= 4;
+            arg1 = nextArg(arg4);
+            break;
+        }
         }
         continued = true;
     }
@@ -99,14 +93,14 @@ static inline void BinaryOp(Matrix<T>& m, Operon::Vector<Node> const& nodes, siz
 {
     auto j = i - 1;
     auto k = j - nodes[j].Length - 1;
-    Function<Type>{}(Ref<T>(m.col(i)), Ref<T>(m.col(j)), Ref<T>(m.col(k)));
+    m.col(i) = Func<Type, false>{}(Ref<T>(m.col(j)), Ref<T>(m.col(k)));
 }
 
 template<NodeType Type, typename T>
 requires Node::IsUnary<Type>
 static inline void UnaryOp(Matrix<T>& m, Operon::Vector<Node> const& /*unused*/, size_t i, Operon::Range /*unused*/)
 {
-    Function<Type>{}(Ref<T>(m.col(i)), Ref<T>(m.col(i-1)));
+    m.col(i) = Func<Type, false>{}(Ref<T>(m.col(i-1)));
 }
 
 struct Noop {
@@ -220,7 +214,7 @@ public:
     [[nodiscard]] inline auto TryGet(Operon::Hash const h) const noexcept -> std::optional<Dispatch::Callable<T>>
     {
         if (auto it = map_.find(h); it != map_.end()) {
-            return { std::get<TypeIndex<T>>(it->second) };
+            return std::optional{ std::get<TypeIndex<T>>(it->second) };
         }
         return {};
     }

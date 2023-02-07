@@ -9,287 +9,179 @@
 
 namespace Operon
 {
-    template<Operon::NodeType N = NodeType::Add>
-    struct Function 
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t; }
-
-        template<typename R, typename T, typename... Tn>
-        inline void operator()(R r, T t1, Tn... tn) { r = t1 + (tn + ...); }
+    template<Operon::NodeType = NodeType::Add, bool Continued = false>
+    struct Func {
+        auto operator()(auto... args) { return (args + ...); }
     };
 
-    template<>
-    struct Function<NodeType::Sub>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = -t; }
-
-        template<typename R, typename T, typename... Tn>
-        inline void operator()(R r, T t1, Tn... tn) { r = t1 - (tn + ...); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Mul, Continued> {
+        auto operator()(auto... args) { return (args * ...); }
     };
 
-    template<>
-    struct Function<NodeType::Mul>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t; }
-
-        template<typename R, typename T, typename... Tn>
-        inline void operator()(R r, T t1, Tn... tn) { r = t1 * (tn * ...); }
+    template<bool B>
+    struct Func<Operon::NodeType::Sub, B> {
+        auto operator()(auto first, auto... rest) {
+            if constexpr (sizeof...(rest) == 0) {
+                return -first;
+            } else if constexpr (B) {
+                return -first - (rest + ...);
+            } else {
+                return first - (rest + ...);
+            }
+        }
     };
 
-    template<>
-    struct Function<NodeType::Div>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.inverse(); }
-
-        template<typename R, typename T, typename... Tn>
-        inline void operator()(R r, T t1, Tn... tn) { r = t1 / (tn * ...); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Div, Continued> {
+        auto operator()(auto first, auto... rest) {
+            if constexpr (sizeof...(rest) == 0) {
+                return first.inverse();
+            } else if constexpr (Continued) {
+                return (first * (rest * ...));
+            } else {
+                return first / (rest * ...);
+            }
+        }
     };
 
-    template<>
-    struct Function<NodeType::Fmin>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t; }
-        
-        template<typename R, typename T, typename... Tn>
-        inline void operator()(R r, T t1, Tn... tn) { r = (t1.min(tn), ...); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Fmin, Continued> {
+        auto operator()(auto first, auto... rest) {
+            if constexpr (sizeof...(rest) == 0) { return first; }
+            else { return (first.min(rest), ...); }
+        };
     };
 
-    template<>
-    struct Function<NodeType::Fmax>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t; }
-        
-        template<typename R, typename T, typename... Tn>
-        inline void operator()(R r, T t1, Tn... tn) { r = (t1.max(tn), ...); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Fmax, Continued> {
+        auto operator()(auto first, auto... rest) {
+            if constexpr (sizeof...(rest) == 0) { return first; }
+            else { return (first.max(rest), ...); }
+        };
     };
 
-    // continuations for n-ary functions (add, sub, mul, div, fmin, fmax)
-    template<NodeType N = NodeType::Add>
-    struct ContinuedFunction
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r += t; }
-
-        template<typename R, typename T, typename... Ts>
-        inline void operator()(R r, T t1, Ts... tn) { r += t1 + (tn + ...); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Aq, Continued> {
+        auto operator()(auto a, auto b) {
+            auto x = typename decltype(a)::Scalar{1};
+            return a / (x + b.square()).sqrt();
+        };
     };
 
-    template<>
-    struct ContinuedFunction<NodeType::Sub>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r -= t; }
-
-        template<typename R, typename T, typename... Ts>
-        inline void operator()(R r, T t1, Ts... tn) { r -= t1 + (tn + ...); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Pow, Continued> {
+        auto operator()(auto a, auto b) {
+            return a.pow(b);
+        };
     };
 
-    template<>
-    struct ContinuedFunction<NodeType::Mul>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r *= t; }
-
-        template<typename R, typename T, typename... Ts>
-        inline void operator()(R r, T t1, Ts... tn) { r *= t1 * (tn * ...); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Abs, Continued> {
+        auto operator()(auto a) { return a.abs(); };
     };
 
-    template<>
-    struct ContinuedFunction<NodeType::Div>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r /= t; }
-
-        template<typename R, typename T, typename... Ts>
-        inline void operator()(R r, T t1, Ts... tn) { r /= t1 * (tn * ...); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Log, Continued> {
+        auto operator()(auto a) { return a.log(); };
     };
 
-    template<>
-    struct ContinuedFunction<NodeType::Fmin>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = r.min(t); }
-
-        template<typename R, typename T, typename... Ts>
-        inline void operator()(R r, T t1, Ts... tn) { r = r.min((t1.min(tn), ...)); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Logabs, Continued> {
+        auto operator()(auto a) { return a.abs().log(); };
     };
 
-    template<>
-    struct ContinuedFunction<NodeType::Fmax>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = r.max(t); }
-
-        template<typename R, typename T, typename... Ts>
-        inline void operator()(R r, T t1, Ts... tn) { r = r.max((t1.max(tn), ...)); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Log1p, Continued> {
+        auto operator()(auto a) { return a.log1p(); };
     };
 
-    // bin... and unary functions
-    template<>
-    struct Function<NodeType::Aq>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t1, T t2) { r = t1 / (typename T::Scalar{1.0} + t2.square()).sqrt(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Exp, Continued> {
+        auto operator()(auto a) { return a.exp(); };
     };
 
-    template<>
-    struct Function<NodeType::Pow>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t1, T t2) { r = t1.pow(t2); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Ceil, Continued> {
+        auto operator()(auto a) { return a.ceil(); };
     };
 
-    template<>
-    struct Function<NodeType::Abs>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.abs(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Floor, Continued> {
+        auto operator()(auto a) { return a.floor(); };
     };
 
-    template<>
-    struct Function<NodeType::Log>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.log(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Sin, Continued> {
+        auto operator()(auto a) { return a.sin(); };
     };
 
-    template<>
-    struct Function<NodeType::Logabs>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.abs().log(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Cos, Continued> {
+        auto operator()(auto a) { return a.cos(); };
     };
 
-    template<>
-    struct Function<NodeType::Log1p>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.log1p(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Tan, Continued> {
+        auto operator()(auto a) { return a.tan(); };
     };
 
-    template<>
-    struct Function<NodeType::Ceil>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.ceil(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Asin, Continued> {
+        auto operator()(auto a) { return a.asin(); };
     };
 
-    template<>
-    struct Function<NodeType::Floor>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.floor(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Acos, Continued> {
+        auto operator()(auto a) { return a.acos(); };
     };
 
-    template<>
-    struct Function<NodeType::Exp>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.exp(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Atan, Continued> {
+        auto operator()(auto a) { return a.atan(); };
     };
 
-    template<>
-    struct Function<NodeType::Sin>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.sin(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Sinh, Continued> {
+        auto operator()(auto a) { return a.sinh(); };
     };
 
-    template<>
-    struct Function<NodeType::Cos>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.cos(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Cosh, Continued> {
+        auto operator()(auto a) { return a.cosh(); };
     };
 
-    template<>
-    struct Function<NodeType::Tan>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.tan(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Tanh, Continued> {
+        auto operator()(auto a) { return a.tanh(); };
     };
 
-    template<>
-    struct Function<NodeType::Asin>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.asin(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Sqrt, Continued> {
+        auto operator()(auto a) { return a.sqrt(); };
     };
 
-    template<>
-    struct Function<NodeType::Acos>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.acos(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Sqrtabs, Continued> {
+        auto operator()(auto a) { return a.abs().sqrt(); };
     };
 
-    template<>
-    struct Function<NodeType::Atan>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.atan(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Cbrt, Continued> {
+        auto operator()(auto a) {
+            using T = typename decltype(a)::Scalar;
+            return a.unaryExpr([](T const& v) { return ceres::cbrt(v); });
+        };
     };
 
-    template<>
-    struct Function<NodeType::Sinh>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.sinh(); }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Square, Continued> {
+        auto operator()(auto a) { return a.square(); };
     };
 
-    template<>
-    struct Function<NodeType::Cosh>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.cosh(); }
-    };
-
-    template<>
-    struct Function<NodeType::Tanh>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.tanh(); }
-    };
-
-    template<>
-    struct Function<NodeType::Sqrt>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.sqrt(); }
-    };
-
-    template<>
-    struct Function<NodeType::Sqrtabs>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.abs().sqrt(); }
-    };
-
-    template<>
-    struct Function<NodeType::Cbrt>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.unaryExpr([](typename T::Scalar const& v) { return ceres::cbrt(v); }); }
-    };
-
-    template<>
-    struct Function<NodeType::Square>
-    {
-        template<typename R, typename T>
-        inline void operator()(R r, T t) { r = t.square(); }
-    };
-
-    template<>
-    struct Function<NodeType::Dynamic>
-    {
-        template<typename R, typename T>
-        inline void operator()(R /*unused*/, T /*unused*/) { /* do nothing */ }
+    template<bool Continued>
+    struct Func<Operon::NodeType::Dynamic, Continued> {
+        auto operator()(auto /*unused*/) { /* nothing */ };
     };
 } // namespace Operon
 
