@@ -140,17 +140,20 @@ auto main(int argc, char** argv) -> int
             return EXIT_FAILURE;
         }
 
-        std::vector<Operon::Variable> inputs;
+        std::vector<Operon::Hash> inputs;
         if (result.count("inputs") == 0) {
             auto variables = dataset->Variables();
-            std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& var) { return var.Name != targetName; });
+            for (auto const& v : variables) {
+                if (v.Name == targetName) { continue; }
+                inputs.push_back(v.Hash);
+            }
         } else {
             auto str = result["inputs"].as<std::string>();
             auto tokens = Operon::Split(str, ',');
 
             for (auto const& tok : tokens) {
                 if (auto res = dataset->GetVariable(tok); res.has_value()) {
-                    inputs.push_back(res.value());
+                    inputs.push_back(res->Hash);
                 } else {
                     fmt::print(stderr, "error: variable {} does not exist in the dataset.", tok);
                     return EXIT_FAILURE;
@@ -159,9 +162,10 @@ auto main(int argc, char** argv) -> int
         }
 
         auto target = dataset->GetVariable(targetName).value();
-        Operon::Problem problem(*dataset, inputs, target, trainingRange, testRange);
-        //auto problem = Operon::Problem(*dataset).Inputs(inputs).Target(target).TrainingRange(trainingRange).TestRange(testRange);
-        problem.GetPrimitiveSet().SetConfig(primitiveSetConfig);
+        Operon::Problem problem(*dataset, trainingRange, testRange);
+        problem.SetTarget(target.Hash);
+        problem.SetInputs(inputs);
+        problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
         std::unique_ptr<Operon::CreatorBase> creator;
         creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.InputVariables());
@@ -219,16 +223,11 @@ auto main(int argc, char** argv) -> int
         errorEvaluator.SetBudget(config.Evaluations);
         Operon::LengthEvaluator lengthEvaluator(problem, maxLength);
         Operon::ComplexityEvaluator complexityEvaluator(problem);
-        //Operon::ShapeEvaluator shapeEvaluator(problem);
-        //Operon::DiversityEvaluator divEvaluator(problem, Operon::HashMode::Relaxed, 10);
 
         Operon::MultiEvaluator evaluator(problem);
         evaluator.SetBudget(config.Evaluations);
         evaluator.Add(errorEvaluator);
         evaluator.Add(lengthEvaluator);
-        //evaluator.Add(complexityEvaluator);
-        //evaluator.Add(shapeEvaluator);
-        //evaluator.Add(divEvaluator);
 
         EXPECT(problem.TrainingRange().Size() > 0);
 

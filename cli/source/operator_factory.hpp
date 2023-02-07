@@ -33,7 +33,7 @@ auto ParseReinserter(std::string const& str, ComparisonCallback&& comp) -> std::
 
 auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<SelectorBase>;
 
-auto ParseCreator(std::string const& str, PrimitiveSet const& pset, Operon::Span<Variable const> inputs) -> std::unique_ptr<CreatorBase>;
+auto ParseCreator(std::string const& str, PrimitiveSet const& pset, Operon::Span<Operon::Hash const> inputs) -> std::unique_ptr<CreatorBase>;
 
 auto ParseEvaluator(std::string const& str, Problem& problem, Interpreter& interpreter) -> std::unique_ptr<EvaluatorBase>;
 

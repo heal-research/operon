@@ -95,7 +95,7 @@ private:
 };
 
 struct OPERON_EXPORT ChangeVariableMutation : public MutatorBase {
-    explicit ChangeVariableMutation(const Operon::Span<const Variable> vars)
+    explicit ChangeVariableMutation(Operon::Span<Operon::Hash const> vars)
         : variables(vars)
     {
     }
@@ -103,7 +103,7 @@ struct OPERON_EXPORT ChangeVariableMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 
 private:
-    const Operon::Span<Variable const> variables;
+    const Operon::Span<Operon::Hash const> variables;
 };
 
 struct OPERON_EXPORT ChangeFunctionMutation : public MutatorBase {
