@@ -9,3 +9,4 @@ prefix/
 CMakeLists.txt.user
 CMakeUserPresets.json
 project-include-after.cmake
+.direnv
