@@ -75,11 +75,10 @@ namespace Operon::Test {
         auto ds = Util::RandomDataset(rd, nrow, ncol);
         fmt::print("dataset rows: {}, cols: {}\n", nrow, ncol);
         auto target = "Y";
-        auto variables = ds.Variables();
-        std::vector<Variable> inputs;
-        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+        auto variables = ds.GetVariables();
+        auto inputs = ds.VariableHashes();
+        std::erase(inputs, ds.GetVariable(target)->Hash);
 
-        //Range range = { 0, ds.Rows() };
         Range range = { 0, nrow };
 
         PrimitiveSet pset;
@@ -189,14 +188,13 @@ namespace Operon::Test {
         Operon::RandomGenerator rd(1234);
         auto ds = Util::RandomDataset(rd, nrow, ncol);
 
-        auto variables = ds.Variables();
-        auto target = variables.back();
-        std::vector<Variable> inputs;
-        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target.Name; });
-        Range range = { 0, ds.Rows() };
+        auto variables = ds.GetVariables();
+        auto target = variables.back().Name;
+        auto inputs = ds.VariableHashes();
+        std::erase(inputs, ds.GetVariable(target)->Hash);
+        Range range = { 0, ds.Rows<std::size_t>() };
 
-        //auto problem = Problem(ds).Inputs(inputs).Target(target).TrainingRange(range).TestRange(range);
-        Operon::Problem problem(ds, inputs, target, range, range);
+        Operon::Problem problem(ds, range, range);
         problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
@@ -263,11 +261,11 @@ namespace Operon::Test {
         Operon::RandomGenerator rd(1234);
         auto ds = Util::RandomDataset(rd, nrow, ncol);
 
-        auto variables = ds.Variables();
+        auto variables = ds.GetVariables();
         auto target = variables.back().Name;
-        std::vector<Variable> inputs;
-        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target; });
-        Range range = { 0, ds.Rows() };
+        auto inputs = ds.VariableHashes();
+        std::erase(inputs, ds.GetVariable(target)->Hash);
+        Range range = { 0, ds.Rows<std::size_t>() };
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
         Operon::PrimitiveSet pset;
@@ -294,7 +292,7 @@ namespace Operon::Test {
 
         std::vector<Variable> inputs;
         const auto *targetName = "Y";
-        auto variables = ds.Variables();
+        auto variables = ds.GetVariables();
         std::copy_if(variables.begin(),
                 variables.end(),
                 std::back_inserter(inputs),
@@ -302,11 +300,12 @@ namespace Operon::Test {
         auto result = ds.GetVariable(targetName);
         ENSURE(result);
         auto target = result.value();
+        auto const nrow{ds.Rows<std::size_t>()};
 
-        Range trainingRange(0, ds.Rows() / 2);
-        Range testRange(ds.Rows() / 2, ds.Rows());
+        Range trainingRange(0, nrow / 2);
+        Range testRange(nrow / 2, nrow);
 
-        Operon::Problem problem(ds, inputs, target, trainingRange, testRange);
+        Operon::Problem problem(ds, trainingRange, testRange);
         problem.GetPrimitiveSet().SetConfig(PrimitiveSet::Arithmetic);
         BalancedTreeCreator creator(problem.GetPrimitiveSet(), problem.InputVariables(), 0.0);
 
@@ -389,11 +388,11 @@ namespace Operon::Test {
         Operon::RandomGenerator rd(1234);
         auto ds = Util::RandomDataset(rd, nrow, ncol);
 
-        auto variables = ds.Variables();
+        auto variables = ds.GetVariables();
         auto target = variables.back().Name;
-        std::vector<Variable> inputs;
-        std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto const& v) { return v.Name != target; });
-        Range range = { 0, ds.Rows() };
+        auto inputs = ds.VariableHashes();
+        std::erase(inputs, ds.GetVariable(target)->Hash);
+        Range range = { 0, ds.Rows<std::size_t>() };
         Operon::Interpreter interpreter;
 
         //Operon::PrimitiveSet base(Operon::PrimitiveSet::Arithmetic);

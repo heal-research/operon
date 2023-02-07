@@ -33,7 +33,7 @@ TEST_CASE("comparison benchmark" * dt::test_suite("[performance]")) {
     std::string f2{"X1 * X2 + X3 * X4 + X5 * X6 + X1 * X7 * X9 + X3 * X6 * X10"};
 
     Operon::Map<std::string, Operon::Hash> variables;
-    for (auto&& v : ds.Variables()) {
+    for (auto&& v : ds.GetVariables()) {
         variables.insert({v.Name, v.Hash});
     }
     auto tree = Operon::InfixParser::Parse(f1, variables);
@@ -97,14 +97,14 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
     Operon::PrimitiveSet pset{ Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt };
-    Operon::BalancedTreeCreator creator(pset, ds.Variables());
+    Operon::BalancedTreeCreator creator(pset, ds.VariableHashes());
 
     auto constexpr initialSize{20};
     auto benchmark = [&](ankerl::nanobench::Bench& bench, auto const& dc, auto&& f, std::string const& prefix, std::size_t n, std::size_t s) {
         std::vector<Operon::Tree> trees(n);
         double a{0};
         auto z{initialSize}; // max size
-        Operon::Range range{0, ds.Rows()};
+        Operon::Range range{0, ds.Rows<std::size_t>()};
         std::vector<Operon::Scalar> y(ds.Rows());
         Operon::Span<Operon::Scalar> target{y.data(), y.size()};
 
@@ -154,13 +154,13 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
 
 TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto range = Range { 0, ds.Rows() };
+    auto range = Range { 0, ds.Rows<std::size_t>() };
 
     Interpreter interpreter;
     auto const& X = ds.Values(); // NOLINT
 
     Operon::Map<std::string, Operon::Hash> vars;
-    for (auto const& v : ds.Variables()) {
+    for (auto const& v : ds.GetVariables()) {
         fmt::print("{} : {} {}\n", v.Name, v.Hash, v.Index);
         vars[v.Name] = v.Hash;
     }
@@ -174,7 +174,7 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
         std::vector<Operon::Tree> trees(n);
         double a{0};
         auto z{20}; // max size
-        Operon::Range range{0, ds.Rows()};
+        Operon::Range range{0, ds.Rows<std::size_t>()};
         std::vector<Operon::Scalar> y(ds.Rows());
         Operon::Span<Operon::Scalar> target{y.data(), y.size()};
 
@@ -206,7 +206,7 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
     Operon::PrimitiveSet pset;
     Operon::PrimitiveSetConfig psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos;
     pset.SetConfig(psetcfg);
-    Operon::BalancedTreeCreator creator(pset, ds.Variables());
+    Operon::BalancedTreeCreator creator(pset, ds.VariableHashes());
 
     SUBCASE("forward") {
         Operon::Autodiff::Forward::DerivativeCalculator calcForward{ interpreter };

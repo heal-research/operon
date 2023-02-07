@@ -8,6 +8,7 @@
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/core/problem.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
@@ -32,7 +33,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     Operon::Dataset ds(values);
     ds.SetVariableNames({"x", "y"});
     Operon::Map<std::string, Operon::Hash> variables;
-    for (auto&& v : ds.Variables()) {
+    for (auto&& v : ds.GetVariables()) {
         variables.insert({v.Name, v.Hash});
     }
 
@@ -42,7 +43,8 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     Operon::Autodiff::Reverse::DerivativeCalculator rcalc{ interpreter, print };
     Operon::Autodiff::Forward::DerivativeCalculator fcalc{ interpreter };
 
-    Operon::Range range{0, ds.Rows()};
+    Operon::Range range{0, ds.Rows<std::size_t>()};
+    Operon::Problem problem(ds, range, {0, 1});
 
     Operon::DispatchTable<Operon::Scalar> dtable;
 
@@ -135,7 +137,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                 Operon::NodeType::Tanh | Operon::NodeType::Cbrt |
                 Operon::NodeType::Sqrt | Operon::NodeType::Sqrtabs);
         //Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic);
-        Operon::BalancedTreeCreator btc(pset, ds.Variables());
+        Operon::BalancedTreeCreator btc(pset, problem.InputVariables());
         Operon::UniformCoefficientInitializer initializer;
 
         constexpr auto n{1'000'000};
