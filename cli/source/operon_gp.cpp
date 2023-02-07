@@ -48,7 +48,7 @@ auto main(int argc, char** argv) -> int
     config.TimeLimit = result["timelimit"].as<size_t>();
     config.Seed = std::random_device {}();
 
-    // parse remaining config options
+    // parse remaining configuration
     Operon::Range trainingRange;
     Operon::Range testRange;
     std::unique_ptr<Operon::Dataset> dataset;
@@ -110,19 +110,24 @@ auto main(int argc, char** argv) -> int
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;
         }
-        if (auto res = dataset->GetVariable(targetName); !res.has_value()) {
+
+        // set the target
+        Operon::Variable target;
+        auto res = dataset->GetVariable(targetName);
+        if (!res) {
             fmt::print(stderr, "error: target variable {} does not exist in the dataset.", targetName);
             return EXIT_FAILURE;
         }
+        target = *res;
         if (result.count("train") == 0) {
-            trainingRange = Operon::Range{ 0, 2 * dataset->Rows() / 3 }; // by default use 66% of the data as training
+            trainingRange = Operon::Range{ 0, 2 * dataset->Rows<std::size_t>() / 3 }; // by default use 66% of the data as training
         }
         if (result.count("test") == 0) {
             // if no test range is specified, we try to infer a reasonable range based on the trainingRange
             if (trainingRange.Start() > 0) {
                 testRange = Operon::Range{ 0, trainingRange.Start() };
             } else if (trainingRange.End() < dataset->Rows()) {
-                testRange = Operon::Range{ trainingRange.End(), dataset->Rows() };
+                testRange = Operon::Range{ trainingRange.End(), dataset->Rows<std::size_t>() };
             } else {
                 testRange = Operon::Range{ 0, 1};
             }
@@ -140,11 +145,8 @@ auto main(int argc, char** argv) -> int
 
         std::vector<Operon::Hash> inputs;
         if (result.count("inputs") == 0) {
-            auto variables = dataset->Variables();
-            for (auto const& v : variables) {
-                if (v.Name == targetName) { continue; }
-                inputs.push_back(v.Hash);
-            }
+            inputs = dataset->VariableHashes();
+            std::erase(inputs, target.Hash);
         } else {
             auto str = result["inputs"].as<std::string>();
             auto tokens = Operon::Split(str, ',');
@@ -158,8 +160,6 @@ auto main(int argc, char** argv) -> int
                 }
             }
         }
-
-        auto target = dataset->GetVariable(targetName).value();
         Operon::Problem problem(*dataset, trainingRange, testRange);
         problem.SetTarget(target.Hash);
         problem.SetInputs(inputs);
@@ -170,6 +170,9 @@ auto main(int argc, char** argv) -> int
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(*creator);
+
+        auto const initialMinDepth = result["creator-mindepth"].as<std::size_t>();
+        auto const initialMaxDepth = result["creator-mindepth"].as<std::size_t>();
         treeInitializer.ParameterizeDistribution(amin+1, maxLength);
         treeInitializer.SetMinDepth(1);
         treeInitializer.SetMaxDepth(1000); // NOLINT
@@ -212,10 +215,8 @@ auto main(int argc, char** argv) -> int
         mutator.Add(discretePoint, 1.0);
 
         auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
-
         Operon::Interpreter interpreter;
         Operon::Evaluator evaluator(problem, interpreter, *error, scale);
-
         evaluator.SetLocalOptimizationIterations(config.Iterations);
         evaluator.SetBudget(config.Evaluations);
 

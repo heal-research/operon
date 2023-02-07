@@ -110,21 +110,26 @@ auto main(int argc, char** argv) -> int
 
         if (showPrimitiveSet) {
             Operon::PrintPrimitives(primitiveSetConfig);
-            return 0;
+            return EXIT_SUCCESS;
         }
-        if (auto res = dataset->GetVariable(targetName); !res.has_value()) {
+
+        // set the target
+        Operon::Variable target;
+        auto res = dataset->GetVariable(targetName);
+        if (!res) {
             fmt::print(stderr, "error: target variable {} does not exist in the dataset.", targetName);
             return EXIT_FAILURE;
         }
+        target = *res;
         if (result.count("train") == 0) {
-            trainingRange = Operon::Range{ 0, 2 * dataset->Rows() / 3 }; // by default use 66% of the data as training
+            trainingRange = Operon::Range{ 0, 2 * dataset->Rows<std::size_t>() / 3 }; // by default use 66% of the data as training
         }
         if (result.count("test") == 0) {
             // if no test range is specified, we try to infer a reasonable range based on the trainingRange
             if (trainingRange.Start() > 0) {
                 testRange = Operon::Range{ 0, trainingRange.Start() };
             } else if (trainingRange.End() < dataset->Rows()) {
-                testRange = Operon::Range{ trainingRange.End(), dataset->Rows() };
+                testRange = Operon::Range{ trainingRange.End(), dataset->Rows<std::size_t>() };
             } else {
                 testRange = Operon::Range{ 0, 1};
             }
@@ -142,11 +147,8 @@ auto main(int argc, char** argv) -> int
 
         std::vector<Operon::Hash> inputs;
         if (result.count("inputs") == 0) {
-            auto variables = dataset->Variables();
-            for (auto const& v : variables) {
-                if (v.Name == targetName) { continue; }
-                inputs.push_back(v.Hash);
-            }
+            inputs = dataset->VariableHashes();
+            std::erase(inputs, target.Hash);
         } else {
             auto str = result["inputs"].as<std::string>();
             auto tokens = Operon::Split(str, ',');
@@ -160,8 +162,6 @@ auto main(int argc, char** argv) -> int
                 }
             }
         }
-
-        auto target = dataset->GetVariable(targetName).value();
         Operon::Problem problem(*dataset, trainingRange, testRange);
         problem.SetTarget(target.Hash);
         problem.SetInputs(inputs);
@@ -264,8 +264,6 @@ auto main(int argc, char** argv) -> int
         };
 
         Operon::Individual best(1);
-        //auto const& pop = gp.Parents();
-
         auto getSize = [](Operon::Individual const& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Operon::Node) * ind.Genotype.Nodes().capacity(); };
 
         tf::Executor exe(threads);

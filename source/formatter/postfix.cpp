@@ -33,7 +33,7 @@ auto PostfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, st
 auto PostfixFormatter::Format(Tree const& tree, Dataset const& dataset, int decimalPrecision) -> std::string
 {
     Operon::Map<Operon::Hash, std::string> variableNames;
-    for (auto const& var : dataset.Variables()) {
+    for (auto const& var : dataset.GetVariables()) {
         variableNames.insert({ var.Hash, var.Name });
     }
     return Format(tree, variableNames, decimalPrecision);
