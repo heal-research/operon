@@ -30,7 +30,7 @@ TEST_SUITE("[implementation]")
 
         Operon::PrimitiveSet pset;
         pset.SetConfig((PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log) & ~NodeType::Variable);
-        Operon::BalancedTreeCreator btc(pset, ds.Variables());
+        Operon::BalancedTreeCreator btc(pset, ds.VariableHashes());
 
         // generate trees
         Operon::Vector<Operon::Tree> trees;
@@ -45,7 +45,7 @@ TEST_SUITE("[implementation]")
 
         // map variables
         Operon::Map<std::string, Operon::Hash> vars;
-        for (auto const& v : ds.Variables()) {
+        for (auto const& v : ds.GetVariables()) {
             vars.insert({ v.Name, v.Hash });
         }
 
@@ -232,7 +232,7 @@ TEST_SUITE("[performance]")
         Operon::PrimitiveSet pset;
         pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Tan);
         Operon::RandomGenerator rng(1234);
-        Operon::BalancedTreeCreator btc(pset, ds.Variables());
+        Operon::BalancedTreeCreator btc(pset, ds.VariableHashes());
 
         // generate trees
         Operon::Vector<Operon::Tree> trees;
@@ -248,7 +248,7 @@ TEST_SUITE("[performance]")
 
         // map dataset variables for parsing
         Operon::Map<std::string, Operon::Hash> map;
-        for (auto const& v : ds.Variables()) {
+        for (auto const& v : ds.GetVariables()) {
             map.insert({ v.Name, v.Hash });
         }
         // benchmark parsing performance

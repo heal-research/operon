@@ -22,7 +22,7 @@ TEST_CASE("Selection Distribution")
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
-    auto variables = ds.Variables();
+    auto variables = ds.GetVariables();
     std::vector<Variable> inputs;
     std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
 

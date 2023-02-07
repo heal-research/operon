@@ -103,11 +103,11 @@ auto CalculateHistogram(const std::vector<size_t>& values) -> std::vector<size_t
 
 TEST_CASE("GROW")
 {
-    const auto *target = "Y";
+    auto const* target = "Y";
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto variables = ds.Variables();
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
+    auto variables = ds.GetVariables();
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable(target)->Hash);
     size_t const maxDepth = 10;
     size_t const maxLength = 100;
 
@@ -218,9 +218,10 @@ TEST_CASE("BTC")
 {
     const auto *target = "Y";
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto variables = ds.Variables();
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
+    auto variables = ds.GetVariables();
+
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable(target)->Hash);
     size_t const maxDepth = 1000;
     size_t const maxLength = 100;
 
@@ -331,9 +332,9 @@ TEST_CASE("PTC2")
 {
     const auto *target = "Y";
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto variables = ds.Variables();
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
+    auto variables = ds.GetVariables();
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable(target)->Hash);
     size_t const maxDepth = 1000;
     size_t const maxLength = 100;
 

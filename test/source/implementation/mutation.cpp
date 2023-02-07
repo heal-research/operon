@@ -17,11 +17,11 @@ TEST_CASE("InsertSubtreeMutation")
 {
     auto target = "Y";
     auto ds = Dataset("../data/Poly-10.csv", true);
-    auto variables = ds.Variables();
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](auto& v) { return v.Name != target; });
-    size_t maxDepth = 1000,
-           maxLength = 100;
+    auto variables = ds.GetVariables();
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable(target)->Hash);
+    auto const maxDepth{1000};
+    auto const maxLength{100};
 
     Range range { 0, 250 };
 

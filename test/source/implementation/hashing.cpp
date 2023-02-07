@@ -76,9 +76,9 @@ TEST_CASE("Hash-based distance") {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
 
     auto target = "Y";
-    auto variables = ds.Variables();
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+    auto variables = ds.GetVariables();
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable(target)->Hash); // remove target
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
@@ -121,9 +121,9 @@ TEST_CASE("Hash collisions") {
     auto ds = Dataset("../data/Poly-10.csv", true);
 
     auto target = "Y";
-    auto variables = ds.Variables();
-    std::vector<Variable> inputs;
-    std::copy_if(variables.begin(), variables.end(), std::back_inserter(inputs), [&](const auto& v) { return v.Name != target; });
+    auto variables = ds.GetVariables();
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable(target)->Hash);
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
