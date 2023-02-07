@@ -124,7 +124,7 @@ public:
 
     [[nodiscard]] auto GetValues(const std::string& name) const noexcept -> Operon::Span<const Operon::Scalar>;
     [[nodiscard]] auto GetValues(Operon::Hash hashValue) const noexcept -> Operon::Span<const Operon::Scalar>;
-    [[nodiscard]] auto GetValues(int index) const noexcept -> Operon::Span<const Operon::Scalar>;
+    [[nodiscard]] auto GetValues(int64_t index) const noexcept -> Operon::Span<const Operon::Scalar>;
     [[nodiscard]] auto GetValues(Variable const& variable) const noexcept -> Operon::Span<const Operon::Scalar> { return GetValues(variable.Hash); }
 
     [[nodiscard]] auto GetVariable(const std::string& name) const noexcept -> std::optional<Variable>;

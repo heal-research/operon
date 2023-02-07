@@ -18,7 +18,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     auto init = [&](Node& node) {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {
-                node.HashValue = Random::Sample(random, variables.begin(), variables.end())->Hash;
+                node.HashValue = *Random::Sample(random, variables.begin(), variables.end());
                 node.CalculatedHashValue = node.HashValue;
             }
             node.Value = 1; 
