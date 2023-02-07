@@ -29,7 +29,7 @@ struct CostFunction {
         , dataset_{dataset}
         , target_{target}
         , range_{range}
-        , derivativeCalculator_{calculator}
+        , dcalc_{calculator}
         , numResiduals_{range.Size()}
         , numParameters_{ParameterCount(tree)}
     { }
@@ -40,12 +40,12 @@ struct CostFunction {
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
         if (jacobian != nullptr) {
-            derivativeCalculator_.template operator()<StorageOrder>(tree_, dataset_, range_, params, { jacobian, numResiduals_ * numParameters_ });
+            dcalc_.get().template operator()<StorageOrder>(tree_, dataset_, range_, params, { jacobian, numResiduals_ * numParameters_ });
         }
 
         if (residuals != nullptr) {
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> res(residuals, numResiduals_);
-            auto const& interpreter = derivativeCalculator_.GetInterpreter();
+            auto const& interpreter = dcalc_.get().GetInterpreter();
             interpreter.template operator()<Operon::Scalar>(tree_, dataset_, range_, { residuals, numResiduals_ }, params);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.subspan(range_.Start(), range_.Size()).data(), numResiduals_);
             res -= y;
@@ -86,10 +86,10 @@ struct CostFunction {
     [[nodiscard]] auto inputs() const -> int { return NumParameters(); } // NOLINT
 
 private:
-    Operon::Tree const& tree_;
-    Operon::Dataset const& dataset_;
+    std::reference_wrapper<Tree const> tree_;
+    std::reference_wrapper<Dataset const> dataset_;
+    std::reference_wrapper<DerivativeCalculator const> dcalc_;
     Operon::Range const range_; // NOLINT
-    DerivativeCalculator const& derivativeCalculator_;
     Operon::Span<Operon::Scalar const> target_;
     std::size_t numResiduals_;
     std::size_t numParameters_;
