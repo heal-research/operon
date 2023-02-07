@@ -55,13 +55,13 @@ auto main(int argc, char** argv) -> int
     Operon::Dataset ds(result["dataset"].as<std::string>(), /*hasHeader=*/true);
     auto infix = result.unmatched().front();
     Operon::Map<std::string, Operon::Hash> vars;
-    for (auto const& v : ds.Variables()) {
+    for (auto const& v : ds.GetVariables()) {
         vars.insert({ v.Name, v.Hash });
     }
     auto model = Operon::InfixParser::Parse(infix, vars);
 
     Operon::Interpreter interpreter;
-    Operon::Range range{0, ds.Rows()};
+    Operon::Range range{0, ds.Rows<std::size_t>()};
     if (result["range"].count() > 0) {
         size_t a{0};
         size_t b{0};

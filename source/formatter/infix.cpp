@@ -91,7 +91,7 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
 auto InfixFormatter::Format(Tree const& tree, Dataset const& dataset, int decimalPrecision) -> std::string
 {
     Operon::Map<Operon::Hash, std::string> variableNames;
-    for (auto const& var : dataset.Variables()) {
+    for (auto const& var : dataset.GetVariables()) {
         variableNames.insert({ var.Hash, var.Name });
     }
     fmt::memory_buffer result;
