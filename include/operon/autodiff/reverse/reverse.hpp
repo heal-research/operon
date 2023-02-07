@@ -12,7 +12,7 @@
 namespace Operon::Autodiff::Reverse {
 template<typename Interpreter>
 class DerivativeCalculator {
-    Interpreter const& interpreter_;
+    std::reference_wrapper<Interpreter const> interpreter_;
     bool print_{false};
 
     auto ComputeDerivative(auto const& nodes, auto const primal, auto trace, auto weights, auto i, auto j) const {
@@ -145,7 +145,7 @@ public:
             }
         };
 
-        interpreter_(tree, dataset, range, residual, coeff, reverse);
+        interpreter_.get().template operator()<Operon::Scalar>(tree, dataset, range, residual, coeff, reverse);
 
         if (print_) {
             auto str = WriteTrace(nodes, dataset, partial, adj);
