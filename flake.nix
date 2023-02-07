@@ -47,6 +47,7 @@
             fast_float
             fmt_9
             jemalloc
+            ninja
             openlibm
             pkg-config
             pratt-parser.packages.${system}.default
