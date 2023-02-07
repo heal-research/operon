@@ -74,8 +74,7 @@ struct GenericInterpreter {
             for (auto i = 0; i < nn; ++i) {
                 auto const& [ param, values, func ] = meta[i];
                 if (nodes[i].IsVariable()) {
-                    m.col(i).head(remainingRows) = values.segment(row, remainingRows).template cast<T>();
-                    m.col(i).head(remainingRows) *= param;
+                    m.col(i).head(remainingRows) = param * values.segment(row, remainingRows).template cast<T>();
                 } else if (func) {
                     std::invoke(*func, m, nodes, i, rg);
                     m.col(i).head(remainingRows) *= param;
