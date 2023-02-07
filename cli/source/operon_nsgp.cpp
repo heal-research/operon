@@ -222,7 +222,6 @@ auto main(int argc, char** argv) -> int
         errorEvaluator.SetLocalOptimizationIterations(config.Iterations);
         errorEvaluator.SetBudget(config.Evaluations);
         Operon::LengthEvaluator lengthEvaluator(problem, maxLength);
-        Operon::ComplexityEvaluator complexityEvaluator(problem);
 
         Operon::MultiEvaluator evaluator(problem);
         evaluator.SetBudget(config.Evaluations);

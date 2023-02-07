@@ -32,6 +32,11 @@ struct OPERON_EXPORT ErrorMetric {
     virtual ~ErrorMetric() = default;
 };
 
+struct OPERON_EXPORT SSE : public ErrorMetric {
+    auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double override;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
+};
+
 struct OPERON_EXPORT MSE : public ErrorMetric {
     auto operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double override;
     auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
@@ -73,6 +78,8 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
 
     static constexpr size_t DefaultLocalOptimizationIterations = 50;
     static constexpr size_t DefaultEvaluationBudget = 100'000;
+
+    static auto constexpr ErrMax { std::numeric_limits<Operon::Scalar>::max() };
 
     using ReturnType = OperatorBase::ReturnType;
 
@@ -144,7 +151,7 @@ private:
 
 class OPERON_EXPORT Evaluator : public EvaluatorBase {
 public:
-    Evaluator(Problem& problem, Interpreter& interp, ErrorMetric const& error = MSE{}, bool linearScaling = true)
+    Evaluator(Problem& problem, Interpreter const& interp, ErrorMetric const& error = MSE{}, bool linearScaling = true)
         : EvaluatorBase(problem)
         , interpreter_(interp)
         , error_(error)
@@ -152,14 +159,13 @@ public:
     {
     }
 
-    auto GetInterpreter() -> Interpreter& { return interpreter_; }
     auto GetInterpreter() const -> Interpreter const& { return interpreter_; }
 
     auto
     operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
-    std::reference_wrapper<Interpreter> interpreter_;
+    std::reference_wrapper<Interpreter const> interpreter_;
     std::reference_wrapper<ErrorMetric const> error_;
     bool scaling_{false};
 };
@@ -235,17 +241,6 @@ public:
     }
 };
 
-class ComplexityEvaluator : public EvaluatorBase {
-public:
-    explicit ComplexityEvaluator(Operon::Problem& problem)
-        : EvaluatorBase(problem)
-    {
-    }
-
-    auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
-};
-
 class OPERON_EXPORT DiversityEvaluator : public EvaluatorBase {
 public:
     explicit DiversityEvaluator(Operon::Problem& problem, Operon::HashMode hashmode = Operon::HashMode::Strict, std::size_t sampleSize = 100)
@@ -263,6 +258,73 @@ private:
     Operon::HashMode hashmode_{Operon::HashMode::Strict};
     std::size_t sampleSize_{};
 };
+
+class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator {
+public:
+    explicit MinimumDescriptionLengthEvaluator(Operon::Problem& problem, Interpreter const& interpreter)
+        : Evaluator(problem, interpreter, mse_)
+    {
+    }
+
+    auto LocalOptimizationIterations() const {
+        return Evaluator::LocalOptimizationIterations();
+    }
+
+    auto SetLocalOptimizationIterations(auto iterations) {
+        Evaluator::SetLocalOptimizationIterations(iterations);
+    }
+
+    auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+private:
+    Operon::MSE mse_;
+};
+
+class OPERON_EXPORT BayesianInformationCriterionEvaluator final : public Evaluator {
+public:
+    explicit BayesianInformationCriterionEvaluator(Operon::Problem& problem, Interpreter const& interpreter)
+        : Evaluator(problem, interpreter, mse_)
+    {
+    }
+
+    auto LocalOptimizationIterations() const {
+        return Evaluator::LocalOptimizationIterations();
+    }
+
+    auto SetLocalOptimizationIterations(auto iterations) {
+        Evaluator::SetLocalOptimizationIterations(iterations);
+    }
+
+    auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+private:
+    Operon::MSE mse_;
+};
+
+class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator {
+public:
+    explicit AkaikeInformationCriterionEvaluator(Operon::Problem& problem, Interpreter const& interpreter)
+        : Evaluator(problem, interpreter, sse_)
+    {
+    }
+
+    auto LocalOptimizationIterations() const {
+        return Evaluator::LocalOptimizationIterations();
+    }
+
+    auto SetLocalOptimizationIterations(auto iterations) {
+        Evaluator::SetLocalOptimizationIterations(iterations);
+    }
+
+    auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+private:
+    Operon::SSE sse_;
+};
+
 
 } // namespace Operon
 #endif
