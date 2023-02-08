@@ -15,16 +15,19 @@
 namespace Operon {
 
 class Problem {
-private:
-    template<typename T>
-    auto GetVariable(std::conditional_t<std::is_integral_v<T>, T, T const&> t) -> Operon::Variable {
+    auto GetVariable(auto t) -> Operon::Variable {
         if (auto v = dataset_.GetVariable(t); v.has_value()) { return *v; }
         throw std::runtime_error(fmt::format("a variable identified by {} {} does not exist in the dataset", typeid(t).name(), t));
     }
 
-    template<typename T>
-    auto HasVariable(std::conditional_t<std::is_integral_v<T>, T, T const&> t) -> bool {
+    auto HasVariable(auto t) -> bool {
         return dataset_.GetVariable(t).has_value();
+    }
+
+    auto ValidateInputs(auto const& inputs) {
+        using T = typename std::remove_cvref_t<decltype(inputs)>::value_type;
+        static_assert(std::is_same_v<T, std::string> || std::is_same_v<T, Operon::Hash>, "the inputs must be strings or hashes");
+        for (auto const& x : inputs) { (void) GetVariable(x); }
     }
 
     Dataset dataset_;
@@ -61,16 +64,11 @@ public:
     auto SetValidationRange(Operon::Range range) { validation_ = range; }
     auto SetValidationRange(int begin, int end) { validation_ = Operon::Range(begin, end); }
 
-    auto SetInputs(std::vector<std::string> const& inputs) {
-        for (auto const& s : inputs) {
-            auto v = GetVariable<std::string>(s);
-        }
-    }
-
-    auto SetInputs(std::vector<Operon::Hash> const& inputs) {
+    auto SetInputs(auto const& inputs) {
+        ValidateInputs(inputs);
         inputs_.clear();
-        for (auto v : inputs) {
-            inputs_.insert(GetVariable<Operon::Hash>(v).Hash);
+        for (auto const& x : inputs) {
+            inputs_.insert(GetVariable(x).Hash);
         }
     }
 
@@ -101,14 +99,14 @@ public:
     void StandardizeData(Range range)
     {
         for (auto const& v : inputs_) {
-            dataset_.Standardize(GetVariable<int>(v).Index, range);
+            dataset_.Standardize(GetVariable<Operon::Hash>(v).Index, range);
         }
     }
 
     void NormalizeData(Range range)
     {
         for (auto const& v : inputs_) {
-            dataset_.Normalize(GetVariable<int>(v).Index, range);
+            dataset_.Normalize(GetVariable<Operon::Hash>(v).Index, range);
         }
     }
 };
