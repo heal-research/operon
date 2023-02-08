@@ -173,10 +173,13 @@ auto Dataset::GetValues(std::string const& name) const noexcept -> Operon::Span<
     return GetValues(Hasher{}(name));
 }
 
-auto Dataset::GetValues(Operon::Hash hashValue) const noexcept -> Operon::Span<const Operon::Scalar>
+auto Dataset::GetValues(Operon::Hash hash) const noexcept -> Operon::Span<const Operon::Scalar>
 {
-    auto it = variables_.find(hashValue);
-    ENSURE(it != variables_.end());
+    auto it = variables_.find(hash);
+    if (it == variables_.end()) {
+        fmt::print(stderr, "GetValues: cannot find variable with hash value {}", hash);
+        std::abort();
+    }
     return {map_.col(it->second.Index).data(), static_cast<size_t>(map_.rows())};
 }
 
