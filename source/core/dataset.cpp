@@ -191,9 +191,9 @@ auto Dataset::GetVariable(std::string const& name) const noexcept -> std::option
     return GetVariable(Hasher{}(name));
 }
 
-auto Dataset::GetVariable(Operon::Hash hashValue) const noexcept -> std::optional<Variable>
+auto Dataset::GetVariable(Operon::Hash hash) const noexcept -> std::optional<Variable>
 {
-    auto it = variables_.find(hashValue);
+    auto it = variables_.find(hash);
     if (it == variables_.end()) { return std::nullopt; }
     return it->second;
 }
