@@ -222,13 +222,14 @@ void Dataset::Normalize(size_t i, Range range)
     values_.col(j) = (values_.col(j).array() - min) / (max - min);
 }
 
-void Dataset::PermuteRows(std::vector<Eigen::Index> const& indices) {
+void Dataset::PermuteRows(std::vector<Eigen::Index> const& indices)
+{
     if (IsView()) { throw std::runtime_error("Cannot shuffle. Dataset does not own the data.\n"); }
     ENSURE(values_.rows() == indices.size());
     Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values_.rows());
     std::copy(indices.begin(), indices.end(), perm.indices().begin());
     values_.matrix().applyOnTheLeft(perm); // permute rows
-};
+}
 
 // standardize column i using mean and stddev calculated over the specified range
 void Dataset::Standardize(size_t i, Range range)

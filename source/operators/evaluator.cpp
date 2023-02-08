@@ -88,8 +88,10 @@ namespace Operon {
         return -(r * r);
     }
 
-    template<typename T, std::enable_if_t<std::is_arithmetic_v<T>, bool> = true>
-    auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target) -> std::pair<double, double> {
+    template<typename T>
+    auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target) -> std::pair<double, double>
+    requires std::is_arithmetic_v<T>
+    {
         auto stats = vstat::bivariate::accumulate<T>(estimated.data(), target.data(), estimated.size());
         auto a = stats.covariance / stats.variance_x; // scale
         if (!std::isfinite(a)) {
@@ -219,21 +221,17 @@ namespace Operon {
 
         auto values = interpreter(ind.Genotype, dataset, range);
         auto target = dataset.GetValues(problem.TargetVariable()).subspan(range.Start(), range.Size());
-
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> yhat(values.data(), std::ssize(values));
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target.data(), std::ssize(target));
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> c(coeff.data(), std::ssize(coeff));
-
-        auto s = (j.transpose() * j).diagonal().array().log().sum() / 2.0 + c.abs().log().sum();
-        auto mld = std::log(error) + static_cast<double>(k) * std::log(n) - static_cast<double>(p) / 2.0 * std::log(3.0) + s;
+        auto s = (j.transpose() * j).diagonal().array().log().sum() / 2 + c.abs().log().sum();
+        auto mld = std::log(error) + static_cast<double>(k) * std::log(n) - static_cast<double>(p) / 2 * std::log(3) + s;
         if (!std::isfinite(mld)) { mld = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mld) };
     }
 
     auto BayesianInformationCriterionEvaluator::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto const& tree = ind.Genotype;
-        auto ncoef = std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize);
-        auto nrows = Evaluator::GetProblem().TrainingRange().Size();
+        auto ncoef = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
+        auto nrows = static_cast<Operon::Scalar>(Evaluator::GetProblem().TrainingRange().Size());
         auto error = Evaluator::operator()(rng, ind, buf).front();
         auto bic = nrows * std::log(error) + ncoef * std::log(nrows);
         if (!std::isfinite(bic)) { bic = EvaluatorBase::ErrMax; }
@@ -242,10 +240,10 @@ namespace Operon {
 
     auto AkaikeInformationCriterionEvaluator::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto const& tree = ind.Genotype;
-        auto ncoef = std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize);
-        auto nrows = Evaluator::GetProblem().TrainingRange().Size();
+        auto ncoef = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
+        auto nrows = static_cast<Operon::Scalar>(Evaluator::GetProblem().TrainingRange().Size());
         auto error = Evaluator::operator()(rng, ind, buf).front();
-        auto aik = 2.0 * ncoef + nrows * std::log(error);
+        auto aik = 2 * ncoef + nrows * std::log(error);
         if (!std::isfinite(aik)) { aik = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(aik) };
     }
