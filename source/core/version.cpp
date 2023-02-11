@@ -20,7 +20,7 @@ auto Version() -> std::string {
         }// NOLINT
         fmt::format_to(std::back_inserter(buf), ", taskflow {}", OPERON_TF_VERSION);// NOLINT
         fmt::format_to(std::back_inserter(buf), "\n");
-        fmt::format_to(std::back_inserter(buf), "compiler: {}-{}, flags: {}\n", OPERON_COMPILER_ID, OPERON_COMPILER_VERSION, OPERON_COMPILER_FLAGS);
+        fmt::format_to(std::back_inserter(buf), "compiler: {} {}, flags: {}\n", OPERON_COMPILER_ID, OPERON_COMPILER_VERSION, OPERON_COMPILER_FLAGS);
         return { buf.begin(), buf.end() };
 }
 
