@@ -28,7 +28,7 @@ TEST_CASE("diversity")
     auto const nrow{ ds.Rows<std::size_t>() };
     auto const ncol{ ds.Cols<std::size_t>() };
     Problem problem(std::move(ds), Range{0, nrow/2}, Range{nrow/2, nrow});
-    BalancedTreeCreator btc(grammar, problem.InputVariables());
+    BalancedTreeCreator btc(grammar, problem.GetInputs());
 
     constexpr size_t minLength{1};
     constexpr size_t maxLength{100};

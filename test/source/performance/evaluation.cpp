@@ -307,7 +307,7 @@ namespace Operon::Test {
 
         Operon::Problem problem(ds, trainingRange, testRange);
         problem.GetPrimitiveSet().SetConfig(PrimitiveSet::Arithmetic);
-        BalancedTreeCreator creator(problem.GetPrimitiveSet(), problem.InputVariables(), 0.0);
+        BalancedTreeCreator creator(problem.GetPrimitiveSet(), problem.GetInputs(), 0.0);
 
         const size_t maxDepth = 1000;
         const size_t maxLength = 50;
@@ -326,7 +326,7 @@ namespace Operon::Test {
         auto mutator = MultiMutation {};
         auto onePoint = OnePointMutation<std::uniform_real_distribution<Operon::Scalar>> {};
         onePoint.ParameterizeDistribution(Operon::Scalar{-2}, Operon::Scalar{+2});
-        auto changeVar = ChangeVariableMutation { problem.InputVariables() };
+        auto changeVar = ChangeVariableMutation { problem.GetInputs() };
         auto changeFunc = ChangeFunctionMutation { problem.GetPrimitiveSet() };
         auto replaceSubtree = ReplaceSubtreeMutation { creator, coeffInit, maxDepth, maxLength };
         auto insertSubtree = InsertSubtreeMutation { creator, coeffInit, maxDepth, maxLength };

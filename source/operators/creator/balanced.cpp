@@ -12,7 +12,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     auto const& pset = GetPrimitiveSet();
     auto [minFunctionArity, maxFunctionArity] = pset.FunctionArityLimits();
 
-    auto const& variables = Variables();
+    auto const& variables = GetVariables();
     auto init = [&](Node& node) {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {
