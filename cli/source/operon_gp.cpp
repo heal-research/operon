@@ -166,7 +166,7 @@ auto main(int argc, char** argv) -> int
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
         std::unique_ptr<Operon::CreatorBase> creator;
-        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.InputVariables());
+        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs());
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(*creator);
@@ -197,7 +197,7 @@ auto main(int argc, char** argv) -> int
         Operon::SubtreeCrossover crossover{ crossoverInternalProbability, maxDepth, maxLength };
         Operon::MultiMutation mutator{};
 
-        Operon::ChangeVariableMutation changeVar { problem.InputVariables() };
+        Operon::ChangeVariableMutation changeVar { problem.GetInputs() };
         Operon::ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
         Operon::ReplaceSubtreeMutation replaceSubtree { *creator, *coeffInitializer, maxDepth, maxLength };
         Operon::InsertSubtreeMutation insertSubtree { *creator, *coeffInitializer, maxDepth, maxLength };

@@ -15,27 +15,27 @@
 namespace Operon {
 
 class Problem {
-    auto GetVariable(auto t) -> Operon::Variable {
+    [[nodiscard]] auto GetVariable(auto t) const -> Operon::Variable {
         if (auto v = dataset_.GetVariable(t); v.has_value()) { return *v; }
         throw std::runtime_error(fmt::format("a variable identified by {} {} does not exist in the dataset", typeid(t).name(), t));
     }
 
-    auto HasVariable(auto t) -> bool {
+    auto HasVariable(auto t) const -> bool {
         return dataset_.GetVariable(t).has_value();
     }
 
-    auto ValidateInputs(auto const& inputs) {
+    auto ValidateInputs(auto const& inputs) const {
         using T = typename std::remove_cvref_t<decltype(inputs)>::value_type;
         static_assert(std::is_same_v<T, std::string> || std::is_same_v<T, Operon::Hash>, "the inputs must be strings or hashes");
         for (auto const& x : inputs) { (void) GetVariable(x); }
     }
 
     Dataset dataset_;
-    PrimitiveSet pset_;
     Range training_;
     Range test_;
     Range validation_;
 
+    PrimitiveSet pset_;
     Operon::Variable target_;
     Operon::Set<Operon::Hash> inputs_;
 
@@ -72,6 +72,10 @@ public:
         }
     }
 
+    [[nodiscard]] auto GetInputs() const -> std::vector<Operon::Hash> const& {
+        return inputs_.values();
+    }
+
     // set all variables except the target as inputs
     auto SetDefaultInputs() -> void {
         inputs_.clear();
@@ -85,7 +89,13 @@ public:
     [[nodiscard]] auto ValidationRange() const -> Range { return validation_; }
 
     [[nodiscard]] auto TargetVariable() const -> Variable const& { return target_; }
-    [[nodiscard]] auto InputVariables() const -> std::vector<Operon::Hash> const& { return inputs_.values(); }
+    [[nodiscard]] auto InputVariables() const -> std::vector<Variable>
+    {
+        std::vector<Variable> variables; variables.reserve(inputs_.size());
+        std::transform(inputs_.values().begin(), inputs_.values().end(), std::back_inserter(variables),
+            [&](auto h) { return GetVariable<Operon::Hash>(h); });
+        return variables;
+    }
 
     [[nodiscard]] auto GetPrimitiveSet() const -> PrimitiveSet const& { return pset_; }
     auto GetPrimitiveSet() -> PrimitiveSet& { return pset_; }

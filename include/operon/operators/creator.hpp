@@ -17,18 +17,19 @@ class PrimitiveSet;
 struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
     CreatorBase(PrimitiveSet const& pset, Operon::Span<Operon::Hash const> variables)
         : pset_(pset)
-        , variables_(variables)
+        , variables_(variables.begin(), variables.end())
     {
     }
 
     [[nodiscard]] auto GetPrimitiveSet() const -> PrimitiveSet const& { return pset_.get(); }
     void SetPrimitiveSet(PrimitiveSet const& pset) { pset_ = pset; }
 
-    [[nodiscard]] auto Variables() const -> Operon::Span<Operon::Hash const> { return variables_; }
+    [[nodiscard]] auto GetVariables() const -> Operon::Span<Operon::Hash const> { return variables_; }
+    auto SetVariables(Operon::Span<Operon::Hash const> variables) { variables_ = std::vector<Operon::Hash>(variables.begin(), variables.end()); }
 
 private:
     std::reference_wrapper<PrimitiveSet const> pset_;
-    Operon::Span<Operon::Hash const> variables_;
+    std::vector<Operon::Hash> variables_;
 };
 
 // this tree creator expands bread-wise using a "horizon" of open expansion slots

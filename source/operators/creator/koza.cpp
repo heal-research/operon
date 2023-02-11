@@ -18,7 +18,7 @@ auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t /*args*
     size_t minFunctionArity = std::get<0>(t);
     size_t maxFunctionArity = std::get<1>(t);
 
-    auto const& variables = Variables();
+    auto const& variables = GetVariables();
     auto init = [&](Node& node) {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {
