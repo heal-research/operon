@@ -168,7 +168,7 @@ auto main(int argc, char** argv) -> int
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
         std::unique_ptr<Operon::CreatorBase> creator;
-        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.InputVariables());
+        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs());
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(*creator);
@@ -199,7 +199,7 @@ auto main(int argc, char** argv) -> int
         Operon::SubtreeCrossover crossover{ crossoverInternalProbability, maxDepth, maxLength };
         Operon::MultiMutation mutator{};
 
-        Operon::ChangeVariableMutation changeVar { problem.InputVariables() };
+        Operon::ChangeVariableMutation changeVar { problem.GetInputs() };
         Operon::ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
         Operon::ReplaceSubtreeMutation replaceSubtree { *creator, *coeffInitializer, maxDepth, maxLength };
         Operon::InsertSubtreeMutation insertSubtree { *creator, *coeffInitializer, maxDepth, maxLength };
@@ -222,6 +222,7 @@ auto main(int argc, char** argv) -> int
         errorEvaluator.SetLocalOptimizationIterations(config.Iterations);
         errorEvaluator.SetBudget(config.Evaluations);
         Operon::LengthEvaluator lengthEvaluator(problem, maxLength);
+        Operon::MinimumDescriptionLengthEvaluator mdlEvaluator(problem, interpreter);
 
         Operon::MultiEvaluator evaluator(problem);
         evaluator.SetBudget(config.Evaluations);
@@ -386,6 +387,7 @@ auto main(int argc, char** argv) -> int
 
         gp.Run(executor, random, report);
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 6));
+        fmt::print("minimum description length: {}\n", mdlEvaluator(random, best, {}));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;
