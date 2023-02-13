@@ -150,9 +150,7 @@ namespace Operon {
             ResidualEvaluations += summary.FunctionEvaluations;
             JacobianEvaluations += summary.JacobianEvaluations;
 
-            if (summary.Success) {
-                genotype.SetCoefficients(coefficients);
-            }
+            if (summary.Success) { genotype.SetCoefficients(coefficients); }
             auto t1 = std::chrono::steady_clock::now();
             CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1-t0).count();
         }
@@ -199,51 +197,72 @@ namespace Operon {
     auto MinimumDescriptionLengthEvaluator::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         // call the base method of the evaluator in order to optimize the coefficients
         // this also returns the error which we are going to use
-        auto error = Evaluator::operator()(rng, ind, buf).front();
+        auto mse = Evaluator::operator()(rng, ind, buf).front();
 
         // compute the minimum description length
-        Operon::Set<Operon::Hash> uniqueFunctions;
-        for (auto const& n : ind.Genotype.Nodes()) {
-            if (n.IsLeaf()) { continue; }
-            uniqueFunctions.insert(n.HashValue);
-        }
-        auto const n { uniqueFunctions.size() };
-        auto const k { ind.Genotype.Length() };
-
         auto const& interpreter = Evaluator::GetInterpreter();
         Autodiff::Reverse::DerivativeCalculator calc{ interpreter };
         auto const& problem = Evaluator::GetProblem();
         auto const& dataset = problem.GetDataset();
-        auto const range = problem.TrainingRange();
-        auto const coeff = ind.Genotype.GetCoefficients();
-        auto const p { coeff.size() };
-        Eigen::Matrix<Operon::Scalar, -1, -1> j = calc(ind.Genotype, dataset, range, coeff);
+        auto const& nodes = ind.Genotype.Nodes();
+        auto coeff = ind.Genotype.GetCoefficients();
+        auto range = problem.TrainingRange();
 
-        auto values = interpreter(ind.Genotype, dataset, range);
-        auto target = dataset.GetValues(problem.TargetVariable()).subspan(range.Start(), range.Size());
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> c(coeff.data(), std::ssize(coeff));
-        auto s = (j.transpose() * j).diagonal().array().log().sum() / 2 + c.abs().log().sum();
-        auto mld = std::log(error) + static_cast<double>(k) * std::log(n) - static_cast<double>(p) / 2 * std::log(3) + s;
+        auto const p { static_cast<double>(coeff.size()) };
+        auto const n { static_cast<double>(range.Size()) };
+
+        // codelength of the complexity
+        // count number of unique functions
+        // - count weight * variable as three nodes
+        // - compute complexity c of the remaining numerical values
+        //   (that are not part of the coefficients that are optimized)
+        Operon::Set<Operon::Hash> uniqueFunctions;
+        auto c{0.0};
+        auto k{0.0};
+        for (auto const& n : ind.Genotype.Nodes()) {
+            if (n.IsLeaf() && !n.Optimize) {
+                c += std::log(std::abs(n.Value));
+            }
+            k += 1;
+            uniqueFunctions.insert(n.HashValue);
+            if (n.IsVariable()) {
+                uniqueFunctions.insert(static_cast<Operon::Hash>(NodeType::Mul));
+                k += 2;
+            }
+        }
+        auto q { static_cast<double>(uniqueFunctions.size()) };
+        auto cComplexity = static_cast<double>(k) * std::log(q) + c;
+
+        // codelength of the parameters
+        Eigen::Matrix<Operon::Scalar, -1, -1> j = calc(ind.Genotype, dataset, range, coeff);      // jacobian
+        Eigen::Matrix<Operon::Scalar, -1, -1> f = j.transpose() * j;                              // approximation of the fisher matrix
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> t(coeff.data(), std::ssize(coeff)); // theta
+        auto cParameters = -p/2 * std::log(3) + (f.diagonal().array() / mse).log().sum() / 2 + t.abs().log().sum();
+
+        // codelength of the negative log-likelihood
+        auto cLikelihood = 0.5 * n * (std::log(Operon::Math::Tau) + std::log(mse) + 1); // NOLINT
+
+        auto mld = cComplexity + cParameters + cLikelihood;
         if (!std::isfinite(mld)) { mld = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mld) };
     }
 
     auto BayesianInformationCriterionEvaluator::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto const& tree = ind.Genotype;
-        auto ncoef = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
-        auto nrows = static_cast<Operon::Scalar>(Evaluator::GetProblem().TrainingRange().Size());
-        auto error = Evaluator::operator()(rng, ind, buf).front();
-        auto bic = nrows * std::log(error) + ncoef * std::log(nrows);
+        auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
+        auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem().TrainingRange().Size());
+        auto mse = Evaluator::operator()(rng, ind, buf).front();
+        auto bic = n * std::log(mse) + p * std::log(n);
         if (!std::isfinite(bic)) { bic = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(bic) };
     }
 
     auto AkaikeInformationCriterionEvaluator::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+        auto mse = Evaluator::operator()(rng, ind, buf).front();
         auto const& tree = ind.Genotype;
-        auto ncoef = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
-        auto nrows = static_cast<Operon::Scalar>(Evaluator::GetProblem().TrainingRange().Size());
-        auto error = Evaluator::operator()(rng, ind, buf).front();
-        auto aik = 2 * ncoef + nrows * std::log(error);
+        auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
+        auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem().TrainingRange().Size());
+        auto aik = n/2 * (std::log(Operon::Math::Tau) + std::log(mse) + 1);
         if (!std::isfinite(aik)) { aik = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(aik) };
     }
