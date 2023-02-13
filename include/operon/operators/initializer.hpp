@@ -73,13 +73,13 @@ struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
     auto MaxDepth() const -> size_t { return maxDepth_; }
 
     void SetCreator(CreatorBase const& creator) { creator_ = creator; }
-    [[nodiscard]] auto Creator() const -> CreatorBase const& { return creator_; }
+    [[nodiscard]] auto Creator() const -> CreatorBase const& { return creator_.get(); }
 
     static constexpr size_t DefaultMaxDepth { 1000 }; // we don't want a depth restriction to limit the achievable shapes/lengths
 
 private:
     mutable typename Dist::param_type params_;
-    Operon::CreatorBase& creator_;
+    std::reference_wrapper<Operon::CreatorBase const> creator_;
     size_t minDepth_ { 1 };
     size_t maxDepth_ { DefaultMaxDepth };
 };
