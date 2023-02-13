@@ -121,15 +121,15 @@ public:
     [[nodiscard]] auto VariableIndices() const -> std::vector<std::size_t>;
 
     [[nodiscard]] auto GetValues(std::string const& name) const noexcept -> Operon::Span<const Operon::Scalar>;
-    [[nodiscard]] auto GetValues(Operon::Hash hashValue) const noexcept -> Operon::Span<const Operon::Scalar>;
+    [[nodiscard]] auto GetValues(Operon::Hash hash) const noexcept -> Operon::Span<const Operon::Scalar>;
     [[nodiscard]] auto GetValues(int64_t index) const noexcept -> Operon::Span<const Operon::Scalar>;
     [[nodiscard]] auto GetValues(Variable const& variable) const noexcept -> Operon::Span<const Operon::Scalar> { return GetValues(variable.Hash); }
 
     [[nodiscard]] auto GetVariable(const std::string& name) const noexcept -> std::optional<Variable>;
-    [[nodiscard]] auto GetVariable(Operon::Hash hashValue) const noexcept -> std::optional<Variable>;
+    [[nodiscard]] auto GetVariable(Operon::Hash hash) const noexcept -> std::optional<Variable>;
 
     [[nodiscard]] auto GetVariables() const noexcept -> std::vector<Operon::Variable> {
-        std::vector<Operon::Variable> variables; variables.resize(variables_.size());
+        std::vector<Operon::Variable> variables; variables.reserve(variables_.size());
         auto const& values = variables_.values();
         std::transform(values.begin(), values.end(), std::back_inserter(variables), [](auto const& p) { return p.second; });
         return variables;
