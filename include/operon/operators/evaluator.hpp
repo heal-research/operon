@@ -306,7 +306,7 @@ private:
 class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator {
 public:
     explicit AkaikeInformationCriterionEvaluator(Operon::Problem& problem, Interpreter const& interpreter)
-        : Evaluator(problem, interpreter, sse_)
+        : Evaluator(problem, interpreter, mse_)
     {
     }
 
@@ -322,7 +322,7 @@ public:
     operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
-    Operon::SSE sse_;
+    Operon::MSE mse_;
 };
 
 
