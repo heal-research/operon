@@ -14,6 +14,7 @@
 #include "operon/core/variable.hpp"
 #include "operon/hash/hash.hpp"
 #include "operon/operators/creator.hpp"
+#include "operon/operators/initializer.hpp"
 
 
 namespace Operon::Test {
@@ -91,12 +92,14 @@ TEST_CASE("Hash-based distance") {
     std::vector<Operon::Vector<Operon::Hash>> treeHashes(n);
 
     auto btc = BalancedTreeCreator { grammar, inputs };
+    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
 
     std::iota(indices.begin(), indices.end(), 0);
     std::generate(seeds.begin(), seeds.end(), [&](){ return rd(); });
     std::transform(indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::RandomGenerator rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
+        initializer(rand, tree);
         return tree;
     });
 
@@ -135,12 +138,15 @@ TEST_CASE("Hash collisions") {
     std::vector<Tree> trees(n);
 
     auto btc = BalancedTreeCreator { grammar, inputs };
+    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
+    initializer.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
     std::iota(indices.begin(), indices.end(), 0);
     std::generate(seeds.begin(), seeds.end(), [&](){ return rd(); });
     std::transform(indices.begin(), indices.end(), trees.begin(), [&](auto i) {
         Operon::RandomGenerator rand(seeds[i]);
         auto tree = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
+        initializer(rand, tree);
         return tree.Hash(Operon::HashMode::Strict);
     });
 
