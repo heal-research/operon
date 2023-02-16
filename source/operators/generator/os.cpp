@@ -20,37 +20,35 @@ namespace Operon {
 
         size_t first = FemaleSelector()(random);
 
-
         std::optional<Individual> p1{ population[first] };
         std::optional<Individual> p2;
 
-        Individual child(p1.value().Fitness.size());
+        Individual child(p1->Size());
 
         if (doCrossover) {
-            auto second = MaleSelector()(random);
-            child.Genotype = Crossover()(random, population[first].Genotype, population[second].Genotype);
-            p2 = population[second];
+            p2 = population[ MaleSelector()(random) ];
+            child.Genotype = Crossover()(random, p1->Genotype, p2->Genotype);
         }
 
         if (doMutation) {
             child.Genotype = doCrossover
                 ? Mutator()(random, std::move(child.Genotype))
-                : Mutator()(random, population[first].Genotype);
+                : Mutator()(random, p1->Genotype);
         }
 
         child.Fitness = Evaluator()(random, child, buf);
         bool accept{false};
 
-        if (p2.has_value()) {
+        if (p2) {
             Individual q(child.Size());
             for (size_t i = 0; i < child.Size(); ++i) {
-                auto f1 = p1.value()[i];
-                auto f2 = p2.value()[i];
+                auto f1 = (*p1)[i];
+                auto f2 = (*p2)[i];
                 q[i] = std::max(f1, f2) - static_cast<Operon::Scalar>(comparisonFactor_) * std::abs(f1 - f2);
                 accept = Operon::ParetoDominance{}(child.Fitness, q.Fitness) != Dominance::Right;
             }
         } else {
-            accept = Operon::ParetoDominance{}(child.Fitness, p1.value().Fitness) != Dominance::Right;
+            accept = Operon::ParetoDominance{}(child.Fitness, p1->Fitness) != Dominance::Right;
         }
         return accept ? std::make_optional(child) : std::nullopt;
     }
