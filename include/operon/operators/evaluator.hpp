@@ -92,6 +92,8 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
     {
     }
 
+    virtual auto ObjectiveCount() const -> std::size_t { return 1UL; }
+
     auto TotalEvaluations() const -> size_t { return ResidualEvaluations + JacobianEvaluations; }
 
     void SetLocalOptimizationIterations(size_t value) { iterations_ = value; }
@@ -187,6 +189,10 @@ public:
         for (auto const& e : evaluators_) {
             e.get().Prepare(pop);
         }
+    }
+
+    auto ObjectiveCount() const -> std::size_t override {
+        return std::transform_reduce(evaluators_.begin(), evaluators_.end(), 0UL, std::plus{}, [](auto const& eval) { return eval.get().ObjectiveCount(); });
     }
 
     auto

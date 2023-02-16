@@ -64,6 +64,10 @@ public:
         , parents_(individuals_.data(), config.PopulationSize)
         , offspring_(individuals_.data() + config.PopulationSize, config.PoolSize)
     {
+        auto const nobj { GetGenerator().Evaluator().ObjectiveCount() };
+        for (auto& ind : individuals_) {
+            ind.Fitness.resize(nobj, EvaluatorBase::ErrMax);
+        }
     }
 
     [[nodiscard]] auto Parents() const -> Operon::Span<Individual const> { return { parents_.data(), parents_.size() }; }
