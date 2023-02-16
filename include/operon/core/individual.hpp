@@ -30,7 +30,7 @@ struct Individual {
     {
     }
     explicit Individual(size_t nObj)
-        : Fitness(nObj, 0.0)
+        : Fitness(nObj, std::numeric_limits<Operon::Scalar>::max())
     {
     }
 };
