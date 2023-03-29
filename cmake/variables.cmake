@@ -18,7 +18,7 @@ if(PROJECT_IS_TOP_LEVEL)
   option(USE_OPENLIBM         ${OPENLIBM_DESCRIPTION}             ON)
   option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
   option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION} ON)
-  option(USE_CERES       ${USE_CERES_DESCRIPTION}       OFF)
+  option(USE_CERES            ${USE_CERES_DESCRIPTION}       OFF)
   
   # provide a summary of configured options
   include(FeatureSummary)
