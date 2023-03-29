@@ -78,6 +78,21 @@
           });
         };
 
+        apps.operon-gp = {
+          type = "app";
+          program = "${packages.default}/bin/operon_gp";
+        };
+
+        apps.operon-nsgp = {
+          type = "app";
+          program = "${packages.default}/bin/operon_nsgp";
+        };
+
+        apps.parse-model = {
+          type = "app";
+          program = "${packages.default}/bin/operon_parse_model";
+        };
+
         devShells.default = stdenv_.mkDerivation {
           name = "operon";
 
