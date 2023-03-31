@@ -194,6 +194,41 @@ namespace Operon {
         return EvaluatorBase::ReturnType { -distance / static_cast<Operon::Scalar>(sampleSize_) };
     }
 
+    auto
+    AggregateEvaluator::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
+    {
+        using vstat::univariate::accumulate;
+        auto f = evaluator_.get()(rng, ind, buf);
+        switch(aggtype_) {
+            case AggregateType::Min: {
+                return { *std::min_element(f.begin(), f.end()) };
+            }
+            case AggregateType::Max: {
+                return { *std::max_element(f.begin(), f.end()) };
+            }
+            case AggregateType::Median: {
+                auto const sz { std::ssize(f) };
+                auto const a = f.begin() + sz / 2;
+                std::nth_element(f.begin(), a, f.end());
+                if (sz % 2 == 0) {
+                    auto const b = std::max_element(f.begin(), a);
+                    return { (*a + *b) / 2 };
+                }
+                return { *a };
+            }
+            case AggregateType::Mean: {
+                return { static_cast<Operon::Scalar>(accumulate<Operon::Scalar>(f.begin(), f.end()).mean) };
+            }
+            case AggregateType::HarmonicMean: {
+                auto stats = accumulate<Operon::Scalar>(f.begin(), f.end(), [](auto x) { return 1/x; });
+                return { static_cast<Operon::Scalar>(stats.count / stats.sum) };
+            }
+            case AggregateType::Sum: {
+                return { static_cast<Operon::Scalar>(vstat::univariate::accumulate<Operon::Scalar>(f.begin(), f.end()).sum) };
+            }
+        }
+    }
+
     auto MinimumDescriptionLengthEvaluator::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         // call the base method of the evaluator in order to optimize the coefficients
         // this also returns the error which we are going to use
