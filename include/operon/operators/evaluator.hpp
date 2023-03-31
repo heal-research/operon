@@ -124,7 +124,7 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
     size_t budget_ = DefaultEvaluationBudget;
 };
 
-class UserDefinedEvaluator : public EvaluatorBase {
+class OPERON_EXPORT UserDefinedEvaluator : public EvaluatorBase {
 public:
     UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> func)
         : EvaluatorBase(problem)
@@ -179,7 +179,7 @@ public:
     {
     }
 
-    void Add(EvaluatorBase const& evaluator)
+    auto Add(EvaluatorBase const& evaluator)
     {
         evaluators_.push_back(std::ref(evaluator));
     }
@@ -225,9 +225,29 @@ private:
     std::vector<std::reference_wrapper<EvaluatorBase const>> evaluators_;
 };
 
+class OPERON_EXPORT AggregateEvaluator final : public EvaluatorBase {
+public:
+    enum class AggregateType : int { Min, Max, Median, Mean, HarmonicMean, Sum };
+
+    explicit AggregateEvaluator(EvaluatorBase& evaluator)
+        : EvaluatorBase(evaluator.GetProblem()), evaluator_(evaluator)
+    {
+    }
+
+    auto SetAggregateType(AggregateType type) { aggtype_ = type; }
+    auto GetAggregateType() const { return aggtype_; }
+
+    auto
+    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+private:
+    std::reference_wrapper<EvaluatorBase const> evaluator_;
+    AggregateType aggtype_{AggregateType::Mean};
+};
+
 // a couple of useful user-defined evaluators (mostly to avoid calling lambdas from python)
 // TODO: think about a better design
-class LengthEvaluator : public UserDefinedEvaluator {
+class OPERON_EXPORT LengthEvaluator : public UserDefinedEvaluator {
 public:
     explicit LengthEvaluator(Operon::Problem& problem, size_t maxlength = 1)
         : UserDefinedEvaluator(problem, [maxlength](Operon::RandomGenerator& /*unused*/, Operon::Individual& ind) {
@@ -237,7 +257,7 @@ public:
     }
 };
 
-class ShapeEvaluator : public UserDefinedEvaluator {
+class OPERON_EXPORT ShapeEvaluator : public UserDefinedEvaluator {
 public:
     explicit ShapeEvaluator(Operon::Problem& problem)
         : UserDefinedEvaluator(problem, [](Operon::RandomGenerator& /*unused*/, Operon::Individual& ind) {
@@ -330,7 +350,6 @@ public:
 private:
     Operon::MSE mse_;
 };
-
 
 } // namespace Operon
 #endif
