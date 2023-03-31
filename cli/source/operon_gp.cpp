@@ -280,8 +280,8 @@ auto main(int argc, char** argv) -> int
             });
 
             // scale values
-            Operon::Scalar a{};
-            Operon::Scalar b{};
+            Operon::Scalar a{1.0};
+            Operon::Scalar b{0.0};
             auto linearScaling = taskflow.emplace([&]() {
                 auto [a_, b_] = Operon::FitLeastSquares(estimatedTrain, targetTrain);
                 a = static_cast<Operon::Scalar>(a_);
