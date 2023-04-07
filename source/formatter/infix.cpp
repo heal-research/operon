@@ -47,6 +47,22 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 fmt::format_to(std::back_inserter(current), " / (sqrt(1 + ");
                 FormatNode(tree, variableNames, k, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), " ^ 2))");
+            } else if (s.Type == NodeType::Fmin) {
+                auto j = i - 1;
+                auto k = j - tree[j].Length - 1;
+                fmt::format_to(std::back_inserter(current), "min(");
+                FormatNode(tree, variableNames, j, current, decimalPrecision);
+                fmt::format_to(std::back_inserter(current), ", ");
+                FormatNode(tree, variableNames, k, current, decimalPrecision);
+                fmt::format_to(std::back_inserter(current), ")");
+            } else if (s.Type == NodeType::Fmax) {
+                auto j = i - 1;
+                auto k = j - tree[j].Length - 1;
+                fmt::format_to(std::back_inserter(current), "max(");
+                FormatNode(tree, variableNames, j, current, decimalPrecision);
+                fmt::format_to(std::back_inserter(current), ", ");
+                FormatNode(tree, variableNames, k, current, decimalPrecision);
+                fmt::format_to(std::back_inserter(current), ")");
             } else {
                 size_t count = 0;
                 for (auto j : tree.Indices(i)) {
