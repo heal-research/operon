@@ -121,6 +121,19 @@ static constexpr auto MakeCall() -> Dispatch::Callable<T>
 }
 };
 
+namespace detail {
+    // return the index of type T in Tuple
+    template<typename T, typename... Ts>
+    static auto constexpr TypeIndexImpl() {
+        std::size_t i{0};
+        for (bool x : { std::is_same_v<T, Ts>... }) {
+            if (x) { break; }
+            ++i;
+        }
+        return i;
+    }
+} // namespace detail
+
 template<typename... Ts>
 struct DispatchTable {
     using Tuple    = std::tuple<Dispatch::Callable<Ts>...>;
@@ -142,20 +155,9 @@ private:
         return std::make_tuple(Callable<Ts>(std::forward<F&&>(f))...);
     }
 
-    // return the index of Callable<T> in Tuple 
     template<typename T>
-    static auto constexpr TypeIndexImpl() {
-        std::size_t i{0};
-        for (bool x : { std::is_same_v<T, Ts>... }) {
-            if (x) { break; }
-            ++i;
-        }
-        return i;
-    }
-
-    template<typename T>
-    requires (TypeIndexImpl<T>() < sizeof...(Ts))
-    static auto constexpr TypeIndex = TypeIndexImpl<T>();
+    requires (detail::TypeIndexImpl<T, Ts...>() < sizeof...(Ts))
+    static auto constexpr TypeIndex = detail::TypeIndexImpl<T, Ts...>();
 
 public:
     DispatchTable()
