@@ -5,6 +5,7 @@
 #define OPERON_AUTODIFF_REVERSE_DERIVATIVES_HPP
 
 #include "operon/core/subtree.hpp"
+#include <functional>
 
 namespace Operon::Autodiff::Reverse {
 inline auto Enumerate(auto const& nodes, auto i)
@@ -16,6 +17,21 @@ inline auto Indices(auto const& nodes, auto i)
 {
     return Subtree<Node const> { nodes, static_cast<std::size_t>(i) }.Indices();
 }
+
+namespace detail {
+    template<typename Compare>
+    struct FComp {
+        auto operator()(auto x, auto y) const {
+            using T = std::common_type_t<decltype(x), decltype(y)>;
+            if ((std::isnan(x) && std::isnan(y)) || (x == y)) {
+                return std::numeric_limits<T>::quiet_NaN();
+            }
+            if (std::isnan(x)) { return T{0}; }
+            if (std::isnan(y)) { return T{1}; }
+            return static_cast<Operon::Scalar>(Compare{}(x, y));
+        }
+    };
+} // namespace detail
 
 // derivatives
 template <Operon::NodeType N = Operon::NodeType::Add>
@@ -88,6 +104,28 @@ struct Derivative<Operon::NodeType::Pow> {
         auto b = a - (nodes[a].Length + 1);
         trace.col(j)   = primal.col(i) * primal.col(b) / (primal.col(a) * weights[i]);
         trace.col(j+1) = primal.col(i) * primal.col(a).log() / weights[i];
+    }
+};
+
+template <>
+struct Derivative<Operon::NodeType::Fmin> {
+    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
+    {
+        auto a = i - 1;
+        auto b = a - (nodes[a].Length + 1);
+        trace.col(j) = primal.col(a).binaryExpr(primal.col(b), detail::FComp<std::less<>>{});
+        trace.col(j+1) = (trace.col(j) - 1).abs(); 
+    }
+};
+
+template <>
+struct Derivative<Operon::NodeType::Fmax> {
+    inline auto operator()(auto const& nodes, auto const primal, auto trace, auto /*weights*/, auto i, auto j)
+    {
+        auto a = i - 1;
+        auto b = a - (nodes[a].Length + 1);
+        trace.col(j) = primal.col(a).binaryExpr(primal.col(b), detail::FComp<std::greater<>>{});
+        trace.col(j+1) = (trace.col(j) - 1).abs(); 
     }
 };
 

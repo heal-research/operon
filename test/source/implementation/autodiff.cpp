@@ -135,6 +135,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                 Operon::NodeType::Cos | Operon::NodeType::Acos |
                 Operon::NodeType::Tan | Operon::NodeType::Atan |
                 Operon::NodeType::Tanh | Operon::NodeType::Cbrt |
+                Operon::NodeType::Fmin | Operon::NodeType::Fmax |
                 Operon::NodeType::Sqrt | Operon::NodeType::Sqrtabs);
         //Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic);
         Operon::BalancedTreeCreator btc(pset, problem.GetInputs());
