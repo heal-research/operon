@@ -221,4 +221,74 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
     b.render(nb::templates::csv(), std::cout);
 }
 
+TEST_CASE("deeply nested performance" * dt::test_suite("[performance]")) {
+    auto constexpr nr { 1000 };
+    auto constexpr np { 1000 };
+
+    Operon::RandomGenerator rng(0);
+    auto ds = Operon::Test::Util::RandomDataset(rng, nr, 1);
+
+    auto variable = Operon::Node(Operon::NodeType::Variable);
+    variable.HashValue = ds.GetVariable("X1")->Hash;
+    auto constant = Operon::Node(Operon::NodeType::Constant);
+    auto cosine   = Operon::Node(Operon::NodeType::Cos);
+    auto addition = Operon::Node(Operon::NodeType::Add);
+
+    auto makeNestedExpr = [&](int n) {
+        std::vector<Operon::Node> inner { variable, constant, addition, cosine };
+
+        for (auto i = 0; i < n-1; ++i) {
+            decltype(inner) outer { constant, addition, cosine };
+            std::copy(outer.begin(), outer.end(), std::back_inserter(inner));
+        }
+
+        Operon::Tree tree(inner);
+        tree.UpdateNodes();
+        for (auto& node : tree.Nodes()) {
+            node.Optimize = node.IsConstant();
+        }
+
+        return tree;
+    };
+
+    Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
+
+    nb::Bench b;
+    b.timeUnit(std::chrono::milliseconds(1), "ms");
+
+    Operon::Range r(0, ds.Rows());
+
+
+    auto bench = [&](std::string const& name, auto const& dc) {
+        auto tree = makeNestedExpr(1);
+        fmt::print("n = 1: {}\n", Operon::InfixFormatter::Format(tree, ds));
+        b.epochIterations(1000).run(fmt::format("{};{}", name, 1), [&]() {
+            auto c = tree.GetCoefficients();
+            dc(tree, ds, r, c);
+        });
+
+        for (auto n = 100; n <= np; n += 100) {
+            auto tree = makeNestedExpr(n);
+
+            b.run(fmt::format("{};{}", name, n), [&]() {
+                auto c = tree.GetCoefficients();
+                dc(tree, ds, r, c);
+            });
+        }
+    };
+
+    SUBCASE("forward") {
+        Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
+        bench("forward", dc);
+    }
+
+    SUBCASE("reverse") {
+        Operon::Autodiff::Reverse::DerivativeCalculator dc{ interpreter };
+        bench("reverse", dc);
+    }
+
+    b.render(nb::templates::csv(), std::cout);
+}
+
+
 } // namespace Operon::Test
