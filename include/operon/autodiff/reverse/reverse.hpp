@@ -15,30 +15,34 @@ class DerivativeCalculator {
     std::reference_wrapper<Interpreter const> interpreter_;
     bool print_{false};
 
-    auto ComputeDerivative(auto const& nodes, auto const primal, auto trace, auto weights, auto i, auto j) const {
+    auto ComputeDerivative(auto const& nodes, auto primal, auto trace, auto weights, auto i, auto j) const {
+        auto df = [&]<auto N>() { Derivative<N>{}(nodes, primal, trace, weights, i, j); };
+
         switch(nodes[i].Type) {
-        case NodeType::Add:     { Derivative<NodeType::Add>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Sub:     { Derivative<NodeType::Sub>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Mul:     { Derivative<NodeType::Mul>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Div:     { Derivative<NodeType::Div>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Pow:     { Derivative<NodeType::Pow>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Aq:      { Derivative<NodeType::Aq>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Square:  { Derivative<NodeType::Square>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Abs:     { Derivative<NodeType::Abs>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Exp:     { Derivative<NodeType::Exp>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Log:     { Derivative<NodeType::Log>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Logabs:  { Derivative<NodeType::Logabs>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Log1p:   { Derivative<NodeType::Log1p>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Sin:     { Derivative<NodeType::Sin>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Cos:     { Derivative<NodeType::Cos>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Tan:     { Derivative<NodeType::Tan>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Tanh:    { Derivative<NodeType::Tanh>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Asin:    { Derivative<NodeType::Asin>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Acos:    { Derivative<NodeType::Acos>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Atan:    { Derivative<NodeType::Atan>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Sqrt:    { Derivative<NodeType::Sqrt>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Sqrtabs: { Derivative<NodeType::Sqrtabs>{}(nodes, primal, trace, weights, i, j); return; }
-        case NodeType::Cbrt:    { Derivative<NodeType::Cbrt>{}(nodes, primal, trace, weights, i, j); return; }
+        case NodeType::Add:     { df.template operator()<NodeType::Add>(); return; }
+        case NodeType::Sub:     { df.template operator()<NodeType::Sub>(); return; }
+        case NodeType::Mul:     { df.template operator()<NodeType::Mul>(); return; }
+        case NodeType::Div:     { df.template operator()<NodeType::Div>(); return; }
+        case NodeType::Pow:     { df.template operator()<NodeType::Pow>(); return; }
+        case NodeType::Aq:      { df.template operator()<NodeType::Aq>(); return; }
+        case NodeType::Square:  { df.template operator()<NodeType::Square>(); return; }
+        case NodeType::Fmin:    { df.template operator()<NodeType::Fmin>(); return; }
+        case NodeType::Fmax:    { df.template operator()<NodeType::Fmax>(); return; }
+        case NodeType::Abs:     { df.template operator()<NodeType::Abs>(); return; }
+        case NodeType::Exp:     { df.template operator()<NodeType::Exp>(); return; }
+        case NodeType::Log:     { df.template operator()<NodeType::Log>(); return; }
+        case NodeType::Logabs:  { df.template operator()<NodeType::Logabs>(); return; }
+        case NodeType::Log1p:   { df.template operator()<NodeType::Log1p>(); return; }
+        case NodeType::Sin:     { df.template operator()<NodeType::Sin>(); return; }
+        case NodeType::Cos:     { df.template operator()<NodeType::Cos>(); return; }
+        case NodeType::Tan:     { df.template operator()<NodeType::Tan>(); return; }
+        case NodeType::Tanh:    { df.template operator()<NodeType::Tanh>(); return; }
+        case NodeType::Asin:    { df.template operator()<NodeType::Asin>(); return; }
+        case NodeType::Acos:    { df.template operator()<NodeType::Acos>(); return; }
+        case NodeType::Atan:    { df.template operator()<NodeType::Atan>(); return; }
+        case NodeType::Sqrt:    { df.template operator()<NodeType::Sqrt>(); return; }
+        case NodeType::Sqrtabs: { df.template operator()<NodeType::Sqrtabs>(); return; }
+        case NodeType::Cbrt:    { df.template operator()<NodeType::Cbrt>(); return; }
         default:                { throw std::runtime_error("unsupported node type"); }
         }
     }
