@@ -124,7 +124,7 @@ namespace Operon {
         auto computeFitness = [&]() {
             ++ResidualEvaluations;
             Operon::Vector<Operon::Scalar> estimatedValues;
-            if (buf.size() < trainingRange.Size()) {
+            if (buf.size() != trainingRange.Size()) {
                 estimatedValues.resize(trainingRange.Size());
                 buf = { estimatedValues.data(), estimatedValues.size() };
             }
@@ -134,7 +134,7 @@ namespace Operon {
                 auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
                 std::transform(buf.begin(), buf.end(), buf.begin(), [a=a,b=b](auto x) { return a * x + b; });
             }
-            ENSURE(!buf.empty() && buf.size() == targetValues.size());
+            ENSURE(buf.size() >= targetValues.size());
             return error_(buf, targetValues);
         };
 
@@ -225,6 +225,9 @@ namespace Operon {
             }
             case AggregateType::Sum: {
                 return { static_cast<Operon::Scalar>(vstat::univariate::accumulate<Operon::Scalar>(f.begin(), f.end()).sum) };
+            }
+            default: {
+                throw std::runtime_error("Unknown AggregateType");
             }
         }
     }
