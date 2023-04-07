@@ -100,6 +100,7 @@
             clang-tools
             cppcheck
             include-what-you-use
+            cmake-language-server
           ]);
 
           buildInputs = operon.buildInputs ++ (with pkgs; [
