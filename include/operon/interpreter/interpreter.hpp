@@ -83,6 +83,8 @@ struct GenericInterpreter {
             std::invoke(callback, m, row);
 
             // the final result is found in the last section of the buffer corresponding to the root node
+            // sometimes the interpreter is used to fill in the primal trace for reverce-mode autodiff to compute the Jacobian
+            // in this case, the residual is not needed and memory for it is not allocated, so we need the check below
             if (result.size() == range.Size()) {
                 Eigen::Map<Eigen::Array<T, -1, 1>>(result.data(), result.size()).segment(row, remainingRows) = m.col(m.cols()-1).head(remainingRows);
             }
