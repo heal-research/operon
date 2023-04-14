@@ -280,9 +280,9 @@ namespace Operon {
         // codelength of the negative log-likelihood
         auto cLikelihood = 0.5 * n * (std::log(Operon::Math::Tau) + std::log(mse) + 1); // NOLINT
 
-        auto mld = cComplexity + cParameters + cLikelihood;
-        if (!std::isfinite(mld)) { mld = EvaluatorBase::ErrMax; }
-        return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mld) };
+        auto mdl = cComplexity + cParameters + cLikelihood;
+        if (!std::isfinite(mdl)) { mdl = EvaluatorBase::ErrMax; }
+        return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mdl) };
     }
 
     auto BayesianInformationCriterionEvaluator::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
