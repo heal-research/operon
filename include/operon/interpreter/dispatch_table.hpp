@@ -155,8 +155,8 @@ private:
         return std::make_tuple(Callable<Ts>(std::forward<F&&>(f))...);
     }
 
-    template<typename T>
-    requires (detail::TypeIndexImpl<T, Ts...>() < sizeof...(Ts))
+    template<typename T, auto SZ = sizeof...(Ts)>
+    requires (detail::TypeIndexImpl<T, Ts...>() < SZ)
     static auto constexpr TypeIndex = detail::TypeIndexImpl<T, Ts...>();
 
 public:
