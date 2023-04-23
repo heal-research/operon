@@ -32,18 +32,18 @@ namespace detail {
             auto p = detail::MakeUnique<uint64_t[]>(nb, E{0}); // NOLINT
             rankset.push_back(std::move(p));
         }
-        auto& curr = rankset[r];                      // the pareto front of the current individual
-        auto& next = rankset[r+1UL];                  // next (worse rank) pareto front
+        auto& curr = rankset[r];                          // the pareto front of the current individual
+        auto& next = rankset[r+1UL];                      // next (worse rank) pareto front
 
-        for (std::size_t j = o; j < nb; ++j) {        // iterate over bitset blocks
-            auto x = s[j] & curr[j];                  // final set as intersection of dominance set and rank set
+        for (std::size_t j = o; j < nb; ++j) {            // iterate over bitset blocks
+            auto x = s[j] & curr[j];                      // final set as intersection of dominance set and rank set
             if (x != 0) {
-            curr[j] &= ~x;                            // remove intersection result from current rank set
-            next[j] |= x;                             // add intersection result to next rank set
-            for (; x != 0; x &= (x - 1)) {            // iterate over set bits of v
-                auto k = j * D + std::countr_zero(x); // get index of dominated individual
-                ++rank[k];                            // increment rank
-            }
+                curr[j] &= ~x;                            // remove intersection result from current rank set
+                next[j] |= x;                             // add intersection result to next rank set
+                for (; x != 0; x &= (x - 1)) {            // iterate over set bits of v
+                    auto k = j * D + std::countr_zero(x); // get index of dominated individual
+                    ++rank[k];                            // increment rank
+                }
             }
         }
     }
