@@ -8,7 +8,7 @@
 #include <optional>
 #include <utility>
 
-#include "operon/autodiff/forward/dual.hpp"
+#include "operon/autodiff/dual.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"

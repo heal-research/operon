@@ -5,7 +5,6 @@
 #include "../operon_test.hpp"
 
 #include "operon/autodiff/autodiff.hpp"
-#include "operon/autodiff/forward/forward.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
@@ -23,8 +22,8 @@ TEST_CASE("comparison benchmark" * dt::test_suite("[performance]")) {
     Operon::RandomGenerator rng(0);
 
     Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
-    //Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
-    Operon::Autodiff::Reverse::DerivativeCalculator dc{ interpreter };
+    //Operon::Autodiff::DerivativeCalculator dc{ interpreter };
+    Operon::Autodiff::DerivativeCalculator dc{ interpreter };
 
     constexpr auto nrow{50000};
     constexpr auto ncol{10};
@@ -135,17 +134,22 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
     };
 
     SUBCASE("residual") {
-        Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
+        Operon::Autodiff::DerivativeCalculator dc{ interpreter };
         benchmark(b, dc, residual, "residual;", n, m);
     }
 
+    SUBCASE("jet") {
+        Operon::Autodiff::DerivativeCalculator dc{ interpreter };
+        benchmark(b, dc, jacobian, "jet;jacobian", n, m);
+    }
+
     SUBCASE("forward") {
-        Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
+        Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Forward> dc{ interpreter };
         benchmark(b, dc, jacobian, "forward;jacobian", n, m);
     }
 
     SUBCASE("reverse") {
-        Operon::Autodiff::Reverse::DerivativeCalculator dc{ interpreter };
+        Operon::Autodiff::DerivativeCalculator dc{ interpreter };
         benchmark(b, dc, jacobian, "reverse;jacobian", n, m);
     }
 
@@ -208,14 +212,19 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
     pset.SetConfig(psetcfg);
     Operon::BalancedTreeCreator creator(pset, ds.VariableHashes());
 
+    SUBCASE("jet") {
+        Operon::Autodiff::DerivativeCalculator dc{ interpreter };
+        benchmark(b, dc, creator, "jet", n, m, r);
+    }
+
     SUBCASE("forward") {
-        Operon::Autodiff::Forward::DerivativeCalculator calcForward{ interpreter };
-        benchmark(b, calcForward, creator, "forward", n, m, r);
+        Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Forward> dc{ interpreter };
+        benchmark(b, dc, creator, "forward", n, m, r);
     }
 
     SUBCASE("reverse") {
-        Operon::Autodiff::Reverse::DerivativeCalculator calcReverse{ interpreter };
-        benchmark(b, calcReverse, creator, "reverse", n, m, r);
+        Operon::Autodiff::DerivativeCalculator dc{ interpreter };
+        benchmark(b, dc, creator, "reverse", n, m, r);
     }
 
     b.render(nb::templates::csv(), std::cout);
@@ -256,34 +265,40 @@ TEST_CASE("deeply nested performance" * dt::test_suite("[performance]")) {
     nb::Bench b;
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
-    Operon::Range r(0, ds.Rows());
 
 
     auto bench = [&](std::string const& name, auto const& dc) {
         auto tree = makeNestedExpr(1);
-        fmt::print("n = 1: {}\n", Operon::InfixFormatter::Format(tree, ds));
-        b.epochIterations(1000).run(fmt::format("{};{}", name, 1), [&]() {
-            auto c = tree.GetCoefficients();
-            dc(tree, ds, r, c);
-        });
 
-        for (auto n = 100; n <= np; n += 100) {
-            auto tree = makeNestedExpr(n);
-
-            b.run(fmt::format("{};{}", name, n), [&]() {
+        for (auto r : { 1, 10, 100, 1000 }) {
+            Operon::Range rg(0, r);
+            b.run(fmt::format("{};{}", name, 1), [&]() {
                 auto c = tree.GetCoefficients();
-                dc(tree, ds, r, c);
+                dc(tree, ds, rg, c);
             });
+            for (auto n = 100; n <= np; n += 100) {
+                auto tree = makeNestedExpr(n);
+
+                b.run(fmt::format("{};{};{}", name, r, n), [&]() {
+                    auto c = tree.GetCoefficients();
+                    dc(tree, ds, rg, c);
+                });
+            }
         }
     };
 
+    SUBCASE("jet") {
+        Operon::Autodiff::DerivativeCalculator dc{ interpreter, Autodiff::AutodiffMode::ForwardJet };
+        bench("jet", dc);
+    }
+
     SUBCASE("forward") {
-        Operon::Autodiff::Forward::DerivativeCalculator dc{ interpreter };
+        Operon::Autodiff::DerivativeCalculator dc{ interpreter, Autodiff::AutodiffMode::Forward };
         bench("forward", dc);
     }
 
     SUBCASE("reverse") {
-        Operon::Autodiff::Reverse::DerivativeCalculator dc{ interpreter };
+        Operon::Autodiff::DerivativeCalculator dc{ interpreter, Autodiff::AutodiffMode::Reverse };
         bench("reverse", dc);
     }
 

@@ -107,7 +107,7 @@ TEST_CASE("parameter optimization")
 #else
     using Interpreter = Operon::GenericInterpreter<Operon::Scalar>;
     Interpreter interpreter;
-    using DerivativeCalculator = Operon::Autodiff::Reverse::DerivativeCalculator<Interpreter>;
+    using DerivativeCalculator = Operon::Autodiff::DerivativeCalculator<Interpreter>;
     DerivativeCalculator dc{ interpreter };
 #endif
 
