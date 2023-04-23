@@ -143,7 +143,7 @@ namespace Operon {
         if (iter > 0) {
             auto t0 = std::chrono::steady_clock::now();
             //Autodiff::Forward::DerivativeCalculator calc(this->GetInterpreter());
-            Autodiff::Reverse::DerivativeCalculator calc{ this->GetInterpreter() };
+            Autodiff::DerivativeCalculator calc{ this->GetInterpreter() };
             NonlinearLeastSquaresOptimizer<decltype(calc), OptimizerType::Eigen> opt(calc, ind.Genotype, dataset);
             OptimizerSummary summary{};
             auto coefficients = opt.Optimize(targetValues, trainingRange, iter, summary);
@@ -239,7 +239,7 @@ namespace Operon {
 
         // compute the minimum description length
         auto const& interpreter = Evaluator::GetInterpreter();
-        Autodiff::Reverse::DerivativeCalculator calc{ interpreter };
+        Autodiff::DerivativeCalculator calc{ interpreter };
         auto const& problem = Evaluator::GetProblem();
         auto const& dataset = problem.GetDataset();
         auto const& nodes = ind.Genotype.Nodes();

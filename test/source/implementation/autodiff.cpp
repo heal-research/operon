@@ -38,10 +38,11 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     }
 
     Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
-    auto constexpr print{ true };
+    auto constexpr print{ false };
 
-    Operon::Autodiff::Reverse::DerivativeCalculator rcalc{ interpreter, print };
-    Operon::Autodiff::Forward::DerivativeCalculator fcalc{ interpreter };
+    Operon::Autodiff::DerivativeCalculator rcalc{ interpreter, Autodiff::AutodiffMode::Reverse, print };
+    Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Forward> ffcalc{ interpreter };
+    Operon::Autodiff::DerivativeCalculator fcalc{ interpreter };
 
     Operon::Range range{0, ds.Rows<std::size_t>()};
     Operon::Problem problem(ds, range, {0, 1});
@@ -52,8 +53,8 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         fmt::print(fmt::emphasis::bold, "f(x, y) = {}\n", expr);
         auto tree = Operon::InfixParser::Parse(expr, variables, /*reduce=*/true);
         for (auto& n : tree.Nodes()) {
-            n.Optimize = true;
-            if (n.Arity > 0) { n.Value = 2; }
+            n.Optimize = n.IsLeaf();
+            //if (n.Arity > 0) { n.Value = 2; }
         }
         fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
 
@@ -62,9 +63,11 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         auto parameters = tree.GetCoefficients();
         auto jfwd = fcalc(tree, ds, range, { parameters.data(), parameters.size() });
         auto jrev = rcalc(tree, ds, range, { parameters.data(), parameters.size() });
+        auto jfwd2 = ffcalc(tree, ds, range, { parameters });
 
         std::cout << "J_forward: " << jfwd << "\n";
-        std::cout << "J_reverse: " << jrev << "\n\n";
+        std::cout << "J_reverse: " << jrev << "\n";
+        std::cout << "J_fforward: " << jfwd2 << "\n\n";
     };
 
     SUBCASE("0.51 * x") { derive("0.51 * x"); }
@@ -152,7 +155,6 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
         // comparison precision
         constexpr auto epsilon{1e-4};
-        Operon::Autodiff::Reverse::DerivativeCalculator rcalc{ interpreter };
 
         for (auto i = 0; i < n; ++i) {
             auto tree = btc(rng, length(rng), mindepth, maxdepth);
@@ -165,20 +167,24 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
             auto parameters = tree.GetCoefficients();
 
-            // forward mode
-            auto jfwd = fcalc(tree, ds, range, { parameters.data(), parameters.size() });
+            // forward mode (using duals)
+            auto jjet = fcalc(tree, ds, range, { parameters.data(), parameters.size() });
+
+            // forward mode (operon)
+            auto jfwd = ffcalc(tree, ds, range, { parameters.data(), parameters.size() });
 
             // reverse mode
             auto jrev = rcalc(tree, ds, range, { parameters.data(), parameters.size() });
 
             constexpr auto precision{20};
-            auto finite{ std::isfinite(jfwd.sum()) };
-            auto areEqual{ jfwd.isApprox(jrev, epsilon) };
+            auto finite{ std::isfinite(jjet.sum()) };
+            auto areEqual{ jjet.isApprox(jfwd, epsilon) };
             auto ok = !finite || areEqual;
 
             if(!ok) {
                 fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds, precision));
-                std::cout << std::setprecision(precision) << "J_forward: " << jfwd << "\n";
+                std::cout << std::setprecision(precision) << "J_dualfwd: " << jjet << "\n";
+                std::cout << std::setprecision(precision) << "J_forward: " << jfwd << "\n\n";
                 std::cout << std::setprecision(precision) << "J_reverse: " << jrev << "\n\n";
             }
             CHECK(ok);
