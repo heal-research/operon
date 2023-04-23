@@ -3,7 +3,7 @@
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:nixos/nixpkgs/staging-next";
+    nixpkgs.url = "github:nixos/nixpkgs/master";
     pratt-parser.url = "github:foolnotion/pratt-parser-calculator";
     vstat.url = "github:heal-research/vstat/cpp20-eve";
     foolnotion.url = "github:foolnotion/nur-pkg";
