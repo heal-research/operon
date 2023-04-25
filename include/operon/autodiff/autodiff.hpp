@@ -198,8 +198,10 @@ public:
 
                 for (auto i = 0; i < nn; ++i) {
                     if (nodes[i].IsLeaf()) { continue; }
-                    for (auto j : Indices(nodes, i)) {
-                        dot.col(i).head(len) += dot.col(static_cast<int64_t>(j)).head(len) * trace.col(static_cast<int64_t>(j)).head(len) * param[i];
+                    for (auto x : Indices(nodes, i)) {
+                        auto j{ static_cast<int64_t>(x) };
+                        if (nodes[j].IsLeaf() && j != c) { continue; }
+                        dot.col(i).head(len) += dot.col(j).head(len) * trace.col(j).head(len) * param[i];
                     }
                 }
 
