@@ -40,9 +40,9 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
     auto constexpr print{ false };
 
-    Operon::Autodiff::DerivativeCalculator rcalc{ interpreter, Autodiff::AutodiffMode::Reverse, print };
-    Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Forward> ffcalc{ interpreter };
-    Operon::Autodiff::DerivativeCalculator fcalc{ interpreter };
+    Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Reverse> rcalc{ interpreter};
+    Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Forward> ffcalc{ interpreter};
+    Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::ForwardJet> fcalc{ interpreter};
 
     Operon::Range range{0, ds.Rows<std::size_t>()};
     Operon::Problem problem(ds, range, {0, 1});
@@ -178,7 +178,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
             constexpr auto precision{20};
             auto finite{ std::isfinite(jjet.sum()) };
-            auto areEqual{ jjet.isApprox(jfwd, epsilon) };
+            auto areEqual{ jjet.isApprox(jrev, epsilon) };
             auto ok = !finite || areEqual;
 
             if(!ok) {
