@@ -10,6 +10,7 @@
 #include <memory>                                    // for allocator, allocator_tra...
 #include <optional>                                  // for optional
 #include <taskflow/taskflow.hpp>                     // for taskflow, subflow
+#include <taskflow/algorithm/for_each.hpp>   // for taskflow.for_each_index
 #include <vector>                                    // for vector, vector::size_type
 #include <fmt/ranges.h>
 
