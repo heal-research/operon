@@ -57,7 +57,6 @@ struct Subtree {
         }
 
         inline auto operator==(Sentinel /*unused*/) const -> bool { return Iter.Done(); }
-        inline auto operator!=(Sentinel /*unused*/) const -> bool { return !Iter.Done(); }
 
         inline auto operator*() const -> reference { return { Index, *Iter }; }
         inline auto operator*() -> reference { return { Index, *Iter }; }
@@ -106,7 +105,6 @@ struct Subtree {
         }
 
         inline auto operator==(Sentinel /*unused*/) const -> bool { return Done(); }
-        inline auto operator!=(Sentinel /*unused*/) const -> bool { return !Done(); }
 
         inline auto operator*() const -> reference {
             if constexpr (ReturnIndices) { return Child; }
