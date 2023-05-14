@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 #include <thread>
 #include <taskflow/taskflow.hpp>
+#include <taskflow/algorithm/for_each.hpp>   // for taskflow.for_each_index
 #if TF_MINOR_VERSION > 2
 #include <taskflow/algorithm/reduce.hpp>
 #endif
