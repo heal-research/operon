@@ -40,6 +40,8 @@ class DerivativeCalculator {
         case NodeType::Sin:     { df.template operator()<NodeType::Sin>(); return; }
         case NodeType::Cos:     { df.template operator()<NodeType::Cos>(); return; }
         case NodeType::Tan:     { df.template operator()<NodeType::Tan>(); return; }
+        case NodeType::Sinh:    { df.template operator()<NodeType::Sinh>(); return; }
+        case NodeType::Cosh:    { df.template operator()<NodeType::Cosh>(); return; }
         case NodeType::Tanh:    { df.template operator()<NodeType::Tanh>(); return; }
         case NodeType::Asin:    { df.template operator()<NodeType::Asin>(); return; }
         case NodeType::Acos:    { df.template operator()<NodeType::Acos>(); return; }
@@ -51,7 +53,7 @@ class DerivativeCalculator {
         }
     }
 
-    auto WriteTrace(auto const& nodes, auto const& dataset, auto const& trace, auto const& adjoint) const // NOLINT
+    auto WriteTrace(auto const& nodes, auto const& dataset, auto const& trace) const // NOLINT
     {
         auto const nn{ std::ssize(nodes) };
         std::string str;
@@ -74,7 +76,7 @@ class DerivativeCalculator {
             if (n.IsLeaf()) { continue; }
 
             for(auto [k, j] : Enumerate(nodes, i)) {
-                fmt::format_to(out, "\tn{} -> n{} [label=\"{:.3f}\"]\n", j, i, adjoint.row(0)(j));
+                fmt::format_to(out, "\tn{} -> n{} [label=\"{:.3f}\"]\n", j, i, trace.row(0)(j));
             }
         }
 
@@ -84,9 +86,6 @@ class DerivativeCalculator {
 
 public:
     explicit DerivativeCalculator(Interpreter const& interpreter, bool print = false)
-        : DerivativeCalculator(interpreter, AutodiffMode::Reverse, print) { }
-
-    explicit DerivativeCalculator(Interpreter const& interpreter, AutodiffMode /*mode*/, bool print = false)
         : interpreter_(interpreter), print_(print) { }
 
     template<int StorageOrder = Eigen::ColMajor>
@@ -212,7 +211,7 @@ public:
         interpreter_.get().template operator()<Operon::Scalar>(tree, dataset, range, residual, coeff, forward);
 
         if (print_) {
-            auto str = WriteTrace(nodes, dataset, trace, dot);
+            auto str = WriteTrace(nodes, dataset, trace);
             fmt::print("{}\n", str);
         }
     }
@@ -229,7 +228,7 @@ public:
         jac.setConstant(0);
 
         auto constexpr S{ static_cast<int>(Dispatch::BatchSize<Operon::Scalar>) };
-        Dispatch::Matrix<Operon::Scalar> adj(S, nn);
+
         Dispatch::Matrix<Operon::Scalar> trace(S, nn);
 
         std::vector<Operon::Scalar> param(nn);
@@ -240,26 +239,29 @@ public:
             k += nodes[i].Optimize;
         }
 
+        trace.col(nn-1).setConstant(1);
+
         auto reverse = [&](auto const& primal, auto row) {
             auto const len = std::min(S, nr - row);
 
-            // forward pass - compute partial derivatives
+            // forward pass - compute trace
             for (auto i = 0; i < nn; ++i) {
-                adj.col(i).setConstant(0);
                 if (nodes[i].Arity > 0) {
                     ComputeTrace(nodes, primal.topRows(len), trace.topRows(len), Operon::Span<Operon::Scalar>{ param }, i);
                 }
             }
 
             // backward pass - propagate adjoints
-            adj.col(nn-1).setConstant(1);
             for (auto i = nn-1; i >= 0; --i) {
                 if (nodes[i].Optimize) {
-                    jac.col(idx[i]).segment(row, len) = adj.col(i).head(len) * primal.col(i).head(len) / param[i];
+                    jac.col(idx[i]).segment(row, len) = trace.col(i).head(len) * primal.col(i).head(len) / param[i];
                 }
+
                 if (nodes[i].IsLeaf()) { continue; }
+
                 for (auto j : Indices(nodes, i)) {
-                    adj.col(static_cast<int64_t>(j)).head(len) += adj.col(i).head(len) * trace.col(static_cast<int64_t>(j)).head(len) * param[i];
+                    auto const x { static_cast<int64_t>(j) };
+                    trace.col(x).head(len) *= trace.col(i).head(len) * param[i];
                 }
             }
         };
@@ -267,7 +269,7 @@ public:
         interpreter_.get().template operator()<Operon::Scalar>(tree, dataset, range, residual, coeff, reverse);
 
         if (print_) {
-            auto str = WriteTrace(nodes, dataset, trace, adj);
+            auto str = WriteTrace(nodes, dataset, trace);
             fmt::print("{}\n", str);
         }
     }
