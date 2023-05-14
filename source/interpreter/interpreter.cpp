@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include <taskflow/taskflow.hpp>
+#include <taskflow/algorithm/for_each.hpp>   // for taskflow.for_each_index
 #include "operon/interpreter/interpreter.hpp"
 
 namespace Operon {
