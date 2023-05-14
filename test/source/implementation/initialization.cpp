@@ -16,7 +16,7 @@ namespace Operon::Test {
 TEST_CASE("Sample nodes from grammar")
 {
     PrimitiveSet grammar;
-    grammar.SetConfig(PrimitiveSet::Full);
+    grammar.SetConfig(static_cast<NodeType>(~uint32_t{0}));
     Operon::RandomGenerator rd(std::random_device {}());
 
     std::vector<double> observed(NodeTypes::Count, 0);

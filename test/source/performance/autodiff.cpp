@@ -22,7 +22,6 @@ TEST_CASE("comparison benchmark" * dt::test_suite("[performance]")) {
     Operon::RandomGenerator rng(0);
 
     Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
-    //Operon::Autodiff::DerivativeCalculator dc{ interpreter };
     Operon::Autodiff::DerivativeCalculator dc{ interpreter };
 
     constexpr auto nrow{50000};
@@ -154,6 +153,44 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
     }
 
     b.render(ankerl::nanobench::templates::csv(), std::cout);
+}
+
+TEST_CASE("reverse mode" * dt::test_suite("[performance]")) {
+    constexpr auto nrow{1000};
+    constexpr auto ncol{10};
+
+    Operon::RandomGenerator rng(0);
+    auto ds = Operon::Test::Util::RandomDataset(rng, nrow, ncol);
+    nb::Bench b;
+    //b.output(nullptr);
+    b.timeUnit(std::chrono::milliseconds(1), "ms");
+
+    Operon::PrimitiveSet pset{ Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt };
+    Operon::BalancedTreeCreator creator(pset, ds.VariableHashes());
+
+    Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
+    Operon::Autodiff::DerivativeCalculator dc{ interpreter };
+
+    constexpr auto maxlength{ 100 };
+    constexpr auto maxdepth { 10 };
+    constexpr auto numtrees { 10000 };
+
+    std::vector<Operon::Tree> trees;
+    trees.reserve(numtrees);
+
+    std::uniform_int_distribution<size_t> dist(1, maxlength);
+    for (auto i = 0; i < numtrees; ++i) {
+        trees.push_back(creator(rng, dist(rng), 1, maxdepth));
+    }
+    auto totalnodes = std::transform_reduce(trees.begin(), trees.end(), 0.0, std::plus{}, [](auto const& tree) { return tree.Length(); });
+    fmt::print("average nodes: {}\n", totalnodes / numtrees);
+    Operon::Range range(0, ds.Rows());
+    b.batch(numtrees).run("rev", [&]() {
+        for (auto const& tree : trees) {
+            auto coeff { tree.GetCoefficients() };
+            dc(tree, ds, range, coeff);
+        }
+    });
 }
 
 TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
@@ -288,17 +325,17 @@ TEST_CASE("deeply nested performance" * dt::test_suite("[performance]")) {
     };
 
     SUBCASE("jet") {
-        Operon::Autodiff::DerivativeCalculator dc{ interpreter, Autodiff::AutodiffMode::ForwardJet };
+        Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::ForwardJet> dc{ interpreter };
         bench("jet", dc);
     }
 
     SUBCASE("forward") {
-        Operon::Autodiff::DerivativeCalculator dc{ interpreter, Autodiff::AutodiffMode::Forward };
+        Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Forward> dc{ interpreter };
         bench("forward", dc);
     }
 
     SUBCASE("reverse") {
-        Operon::Autodiff::DerivativeCalculator dc{ interpreter, Autodiff::AutodiffMode::Reverse };
+        Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Reverse> dc{ interpreter };
         bench("reverse", dc);
     }
 
