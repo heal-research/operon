@@ -11,42 +11,42 @@ namespace Operon {
         EXPECT(minArity <= maxArity);
         EXPECT(!pset_.empty());
 
-        std::vector<Node> candidates; candidates.reserve(pset_.size());
+        std::vector<Primitive> candidates;
+        candidates.reserve(pset_.size());
+
+        auto sum{0UL};
         for (auto const& [k, v] : pset_) {
-            auto [node, freq, min_arity, max_arity] = v;
+            auto const& [node, freq, min_arity, max_arity] = v;
             if (!(node.IsEnabled && freq > 0)) { continue; }
             if (minArity > max_arity || maxArity < min_arity) { continue; }
-            candidates.push_back(node);
+            sum += freq;
+            candidates.push_back(v);
         }
 
-        // throw an error if arity requirements are unreasonable (TODO: maybe here return optional)
         if (candidates.empty()) {
             // arity requirements unreasonable
             throw std::runtime_error(fmt::format("PrimitiveSet::SampleRandomSymbol: unable to find suitable symbol with arity between {} and {}\n", minArity, maxArity));
         }
 
-        auto sum = std::transform_reduce(candidates.begin(), candidates.end(), 0.0, std::plus{}, [&](auto& n) { return Frequency(n.HashValue); });
+        Operon::Node result { Operon::NodeType::Constant };
 
-        auto r = std::uniform_real_distribution<double>(0., sum)(random);
-        auto c = 0.0;
-
-        Node node(NodeType::Constant);
-        for (auto const& candidate : candidates) {
-            node = candidate;
-            c += static_cast<double>(Frequency(node.HashValue));
-
-            if (c > r) {
+        auto c { std::uniform_real_distribution<Operon::Scalar>(0, sum)(random) };
+        auto s { 0UL };
+        for (auto const& [node, freq, min_arity, max_arity] : candidates) {
+            s += freq;
+            if (c < s) {
                 auto amin = std::max(minArity, MinimumArity(node.HashValue));
                 auto amax = std::min(maxArity, MaximumArity(node.HashValue));
                 auto arity = std::uniform_int_distribution<size_t>(amin, amax)(random);
-                node.Arity = static_cast<uint16_t>(arity);
+                result = node;
+                result.Arity = static_cast<uint16_t>(arity);
                 break;
             }
         }
 
-        ENSURE(IsEnabled(node.HashValue));
-        ENSURE(Frequency(node.HashValue) > 0);
+        ENSURE(IsEnabled(result.HashValue));
+        ENSURE(Frequency(result.HashValue) > 0);
 
-        return node;
+        return result;
     }
 } // namespace Operon
