@@ -17,9 +17,11 @@
           overlays = [ foolnotion.overlay ];
         };
 
-        stdenv_ = pkgs.overrideCC pkgs.llvmPackages_15.stdenv (
-          pkgs.clang_15.override { gccForLibs = pkgs.gcc12.cc; }
-        );
+        #stdenv_ = pkgs.overrideCC pkgs.llvmPackages_16.stdenv (
+        #  pkgs.clang_16.override { gccForLibs = pkgs.gcc12.cc; }
+        #);
+        #stdenv_ = pkgs.llvmPackages_16.libcxxStdenv;
+        stdenv_ = pkgs.llvmPackages_16.stdenv;
 
         operon = stdenv_.mkDerivation {
           name = "operon";
