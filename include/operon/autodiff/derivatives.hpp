@@ -49,7 +49,8 @@ struct Derivative {
     inline auto operator()(auto const& nodes, auto const /*unused*/, auto trace, auto /*weights*/, auto i)
     {
         for (auto j : Indices(nodes, i)) {
-            trace.col(j).setConstant(1);
+            auto col = trace.col(j);
+            fill(col, 1);
         }
     }
 };
@@ -60,10 +61,12 @@ struct Derivative<Operon::NodeType::Sub> {
     {
         auto const& n = nodes[i];
         if (n.Arity == 1) {
-            trace.col(i-1).setConstant(-1);
+            auto col = trace.col(i-1);
+            fill(col, -1);
         } else {
             for (auto [k, j] : Enumerate(nodes, i)) {
-                trace.col(j).setConstant(k == 0 ? +1 : -1);
+                auto col = trace.col(j);
+                fill(col, k == 0 ? +1 : -1);
             }
         }
     }
