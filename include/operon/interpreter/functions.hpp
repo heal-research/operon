@@ -13,6 +13,7 @@ namespace Operon {
     template<typename T, typename U = std::remove_cvref_t<T>> concept EigenDense = std::is_base_of_v<Eigen::DenseBase<U>, U>;
     template<typename T, typename U = std::remove_cvref_t<T>> concept EigenArray = std::is_base_of_v<Eigen::ArrayBase<U>, U>;
     template<typename T, typename U = std::remove_cvref_t<T>> concept EigenMatrix = std::is_base_of_v<Eigen::MatrixBase<U>, U>;
+    template<typename T, typename U = std::remove_cvref_t<T>> concept EigenMap = std::is_base_of_v<Eigen::MapBase<U>, U>;
     template<typename T, typename U = std::remove_cvref_t<T>> concept Arithmetic = std::is_arithmetic_v<T>;
 
     template<typename T, typename U = std::remove_cvref_t<T>>
@@ -50,7 +51,7 @@ namespace Operon {
     inline auto fmin(Arithmetic auto x, Arithmetic auto y) { return std::max(x, y); }
 
     // Eigen data types
-    inline auto fill(EigenArray auto const& x, scalar_t<decltype(x)> v) { x.setConstant(v); }
+    inline auto fill(EigenDense auto& x, scalar_t<decltype(x)> v) { x.setConstant(v); }
     inline auto acos(EigenArray auto const& x) { return x.acos(); }
     inline auto asin(EigenArray auto const& x) { return x.asin(); }
     inline auto atan(EigenArray auto const& x) { return x.atan(); }
