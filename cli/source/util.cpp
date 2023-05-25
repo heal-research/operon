@@ -192,7 +192,7 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
     cxxopts::ParseResult result;
     try {
         result = opts.parse(argc, argv);
-    } catch (cxxopts::OptionParseException const& ex) {
+    } catch (cxxopts::exceptions::parsing const& ex) {
         fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
         std::exit(EXIT_FAILURE);
     }

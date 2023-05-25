@@ -32,7 +32,7 @@ auto main(int argc, char** argv) -> int
     cxxopts::ParseResult result;
     try {
         result = opts.parse(argc, argv);
-    } catch (cxxopts::OptionParseException const& ex) {
+    } catch (cxxopts::exceptions::parsing const& ex) {
         fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
         return EXIT_FAILURE;
     };
