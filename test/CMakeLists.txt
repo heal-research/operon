@@ -27,7 +27,6 @@ add_executable(operon_test
     source/implementation/nondominatedsort.cpp
     source/implementation/random.cpp
     source/performance/autodiff.cpp
-    source/performance/creator.cpp
     source/performance/distance.cpp
     source/performance/evaluation.cpp
     source/performance/nondominatedsort.cpp
