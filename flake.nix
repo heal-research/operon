@@ -57,7 +57,7 @@
             taskflow
             unordered_dense
             vstat.packages.${system}.default
-            xxhash_cpp
+            xxHash
           ]);
         };
 

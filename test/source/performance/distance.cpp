@@ -71,6 +71,15 @@ TEST_CASE("Intersection performance")
     auto avgLen = std::transform_reduce(trees.begin(), trees.end(), 0.0, std::plus<>{}, [](auto const& t) { return t.Length(); }) / static_cast<double>(n);
     auto totalOps = trees.size() * (trees.size() - 1) / 2; 
 
+    SUBCASE("Hashing performance") {
+        ankerl::nanobench::Bench b;
+        b.performanceCounters(true).relative(true);
+
+        b.batch(totalOps).run("xxhash", [&]() {
+            std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) { return hashFunc(tree, Operon::HashMode::Strict); });
+        });
+    }
+
     SUBCASE("Performance 64-bit") {
         ankerl::nanobench::Bench b;
         b.performanceCounters(true).relative(true);

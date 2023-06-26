@@ -6,14 +6,16 @@
 
 #include "operon/hash/metrohash64.hpp"
 #include <cstdint>
-#include <include/xxhash.hpp>
+
+#define XXH_INLINE_ALL
+#include <xxhash.h>
 
 namespace Operon {
 
 auto Hasher::operator()(uint8_t const* key, size_t len) const noexcept -> uint64_t
 {
     if constexpr (Operon::HashFunc == HashFunction::XXHash) {
-        return xxh::xxhash3<std::numeric_limits<Operon::Hash>::digits>(key, len);
+        return XXH64(key, len, 0);
     } else if constexpr(Operon::HashFunc == HashFunction::MetroHash) {
         uint64_t h = 0;
         HashUtil::MetroHash64::Hash(key, len, reinterpret_cast<uint8_t*>(&h)); // NOLINT
