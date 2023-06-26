@@ -90,7 +90,7 @@ find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
-find_package(xxhash_cpp REQUIRED)
+find_package(xxHash REQUIRED)
 
 # ---- Optional dependencies
 set(HAVE_CERES FALSE)
@@ -191,7 +191,7 @@ target_link_libraries(operon_operon PRIVATE
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense
     vstat::vstat
-    xxhash_cpp::xxhash_cpp
+    xxHash::xxhash
 )
 
 if (USE_OPENLIBM AND openlibm_FOUND)
