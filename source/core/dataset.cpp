@@ -160,7 +160,7 @@ auto Dataset::VariableHashes() const -> std::vector<Operon::Hash>
     return hashes;
 }
 
-auto Dataset::VariableIndices() const -> std::vector<Operon::Hash>
+auto Dataset::VariableIndices() const -> std::vector<std::size_t>
 {
     std::vector<std::size_t> indices;
     indices.reserve(variables_.size());
