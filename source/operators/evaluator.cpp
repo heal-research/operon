@@ -3,11 +3,7 @@
 
 #include "operon/autodiff/autodiff.hpp"
 #include "operon/core/distance.hpp"
-#include "operon/error_metrics/correlation_coefficient.hpp"
-#include "operon/error_metrics/mean_absolute_error.hpp"
-#include "operon/error_metrics/mean_squared_error.hpp"
-#include "operon/error_metrics/normalized_mean_squared_error.hpp"
-#include "operon/error_metrics/r2_score.hpp"
+#include "operon/error_metrics/error_metrics.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
@@ -17,13 +13,22 @@
 namespace Operon {
     auto SSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
     {
-        return vstat::univariate::accumulate<Operon::Scalar>(estimated.data(), target.data(), estimated.size(), [](auto a, auto b) { auto e = a - b; return e * e; }).sum;
+        return SumSquaredErrors(estimated.begin(), estimated.end(), target.begin());
+    }
+
+    auto SSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights) const noexcept -> double
+    {
+        return SumSquaredErrors(estimated.begin(), estimated.end(), target.begin(), weights.begin());
     }
 
     auto SSE::operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double
     {
-        using T = typename std::iterator_traits<Iterator>::value_type;
-        return vstat::univariate::accumulate<T>(beg1, end1, beg2, [](auto a, auto b) { auto e = a - b; return e * e; }).sum;
+        return SumSquaredErrors(beg1, end1, beg2);
+    }
+
+    auto SSE::operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double
+    {
+        return SumSquaredErrors(beg1, end1, beg2, beg3);
     }
 
     auto MSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
@@ -31,9 +36,19 @@ namespace Operon {
         return MeanSquaredError(estimated.begin(), estimated.end(), target.begin());
     }
 
+    auto MSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights) const noexcept -> double
+    {
+        return MeanSquaredError(estimated.begin(), estimated.end(), target.begin(), weights.begin());
+    }
+
     auto MSE::operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double
     {
         return MeanSquaredError(beg1, end1, beg2);
+    }
+
+    auto MSE::operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double
+    {
+        return MeanSquaredError(beg1, end1, beg2, beg3);
     }
 
     auto RMSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
@@ -41,9 +56,19 @@ namespace Operon {
         return RootMeanSquaredError(estimated.begin(), estimated.end(), target.begin());
     }
 
+    auto RMSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights) const noexcept -> double
+    {
+        return RootMeanSquaredError(estimated.begin(), estimated.end(), target.begin(), weights.begin());
+    }
+
     auto RMSE::operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double
     {
         return RootMeanSquaredError(beg1, end1, beg2);
+    }
+
+    auto RMSE::operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double
+    {
+        return RootMeanSquaredError(beg1, end1, beg2, beg3);
     }
 
     auto NMSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
@@ -51,9 +76,19 @@ namespace Operon {
         return NormalizedMeanSquaredError(estimated.begin(), estimated.end(), target.begin());
     }
 
+    auto NMSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights) const noexcept -> double
+    {
+        return NormalizedMeanSquaredError(estimated.begin(), estimated.end(), target.begin(), weights.begin());
+    }
+
     auto NMSE::operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double
     {
         return NormalizedMeanSquaredError(beg1, end1, beg2);
+    }
+
+    auto NMSE::operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double
+    {
+        return NormalizedMeanSquaredError(beg1, end1, beg2, beg3);
     }
 
     auto MAE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
@@ -61,9 +96,19 @@ namespace Operon {
         return MeanAbsoluteError(estimated.begin(), estimated.end(), target.begin());
     }
 
+    auto MAE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights) const noexcept -> double
+    {
+        return MeanAbsoluteError(estimated.begin(), estimated.end(), target.begin(), weights.begin());
+    }
+
     auto MAE::operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double
     {
         return MeanAbsoluteError(beg1, end1, beg2);
+    }
+
+    auto MAE::operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double
+    {
+        return MeanAbsoluteError(beg1, end1, beg2, beg3);
     }
 
     auto R2::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
@@ -71,9 +116,19 @@ namespace Operon {
         return -R2Score(estimated.begin(), estimated.end(), target.begin());
     }
 
+    auto R2::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights) const noexcept -> double
+    {
+        return -R2Score(estimated.begin(), estimated.end(), target.begin(), weights.begin());
+    }
+
     auto R2::operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double
     {
         return -R2Score(beg1, end1, beg2);
+    }
+
+    auto R2::operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double
+    {
+        return -R2Score(beg1, end1, beg2, beg3);
     }
 
     auto C2::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
@@ -82,9 +137,21 @@ namespace Operon {
         return -(r * r);
     }
 
+    auto C2::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights) const noexcept -> double
+    {
+        auto r = CorrelationCoefficient(estimated.begin(), estimated.end(), target.begin(), weights.begin());
+        return -(r * r);
+    }
+
     auto C2::operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double
     {
         auto r = CorrelationCoefficient(beg1, end1, beg2);
+        return -(r * r);
+    }
+
+    auto C2::operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double
+    {
+        auto r = CorrelationCoefficient(beg1, end1, beg2, beg3);
         return -(r * r);
     }
 
