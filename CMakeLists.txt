@@ -90,7 +90,22 @@ find_package(fmt REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
-find_package(xxHash REQUIRED)
+find_package(xxHash)
+
+if(xxHash_FOUND)
+    target_link_libraries(operon_operon PRIVATE xxHash::xxhash)
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(xxhash IMPORTED_TARGET xxhash)
+    if (NOT xxhash_FOUND)
+        pkg_check_modules(xxhash IMPORTED_TARGET libxxhash)
+    endif()
+    if(xxhash_FOUND)
+        target_link_libraries(operon_operon PRIVATE PkgConfig::xxhash)
+    else()
+        message(FATAL_ERROR "xxHash dependency could not be found.")
+    endif()
+endif()
 
 # ---- Optional dependencies
 set(HAVE_CERES FALSE)
@@ -191,7 +206,6 @@ target_link_libraries(operon_operon PRIVATE
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense
     vstat::vstat
-    xxHash::xxhash
 )
 
 if (USE_OPENLIBM AND openlibm_FOUND)
