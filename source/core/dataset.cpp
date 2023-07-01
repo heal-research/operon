@@ -243,7 +243,7 @@ void Dataset::Standardize(size_t i, Range range)
     auto start = static_cast<Eigen::Index>(range.Start());
     auto n = static_cast<Eigen::Index>(range.Size());
     auto seg = values_.col(j).segment(start, n);
-    auto stats = vstat::univariate::accumulate<Matrix::Scalar>(seg.data(), seg.size());
+    auto stats = vstat::univariate::accumulate<Matrix::Scalar>(seg.begin(), seg.end());
     auto stddev = std::sqrt(stats.variance);
     values_.col(j) = (values_.col(j).array() - stats.mean) / stddev;
 }

@@ -39,7 +39,7 @@ inline auto MeanAbsoluteError(Operon::Span<T const> x, Operon::Span<T const> y) 
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(!x.empty());
-    return vstat::univariate::accumulate<T>(x.data(), y.data(), x.size(), [](auto a, auto b) { return std::abs(a-b); }).mean;
+    return vstat::univariate::accumulate<T>(x.begin(), x.end(), y.begin(), [](auto a, auto b) { return std::abs(a-b); }).mean;
 }
 
 template<typename T>
@@ -48,7 +48,7 @@ inline auto MeanAbsoluteError(Operon::Span<T const> x, Operon::Span<T const> y, 
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(!x.empty());
-    return vstat::univariate::accumulate<T>(x.data(), y.data(), w.data(), x.size(), [](auto a, auto b) { return std::abs(a-b); }).mean;
+    return vstat::univariate::accumulate<T>(x.begin(), x.end(), y.begin(), w.begin(), [](auto a, auto b) { return std::abs(a-b); }).mean;
 }
 
 } // namespace Operon
