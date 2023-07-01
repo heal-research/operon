@@ -4,6 +4,7 @@
 #ifndef OPERON_TEST_HPP
 #define OPERON_TEST_HPP
 
+#include "thirdparty/elki_stats.hpp"
 #include "thirdparty/nanobench.h"
 
 #include "operon/core/dataset.hpp"

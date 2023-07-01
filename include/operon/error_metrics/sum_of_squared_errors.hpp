@@ -12,7 +12,7 @@
 namespace Operon {
 
 template<typename InputIt1, typename InputIt2>
-inline auto SumSquaredErrors(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept -> double
+inline auto SumOfSquaredErrors(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
     using V2 = typename std::iterator_traits<InputIt2>::value_type;
@@ -24,7 +24,7 @@ inline auto SumSquaredErrors(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) no
 }
 
 template<typename InputIt1, typename InputIt2, typename InputIt3>
-inline auto SumSquaredErrors(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 begin3) noexcept -> double
+inline auto SumOfSquaredErrors(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 begin3) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
     using V2 = typename std::iterator_traits<InputIt2>::value_type;

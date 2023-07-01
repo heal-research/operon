@@ -13,22 +13,22 @@
 namespace Operon {
     auto SSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
     {
-        return SumSquaredErrors(estimated.begin(), estimated.end(), target.begin());
+        return SumOfSquaredErrors(estimated.begin(), estimated.end(), target.begin());
     }
 
     auto SSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> weights) const noexcept -> double
     {
-        return SumSquaredErrors(estimated.begin(), estimated.end(), target.begin(), weights.begin());
+        return SumOfSquaredErrors(estimated.begin(), estimated.end(), target.begin(), weights.begin());
     }
 
     auto SSE::operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double
     {
-        return SumSquaredErrors(beg1, end1, beg2);
+        return SumOfSquaredErrors(beg1, end1, beg2);
     }
 
     auto SSE::operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double
     {
-        return SumSquaredErrors(beg1, end1, beg2, beg3);
+        return SumOfSquaredErrors(beg1, end1, beg2, beg3);
     }
 
     auto MSE::operator()(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) const noexcept -> double
@@ -159,7 +159,7 @@ namespace Operon {
     auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target) -> std::pair<double, double>
     requires std::is_arithmetic_v<T>
     {
-        auto stats = vstat::bivariate::accumulate<T>(estimated.data(), target.data(), estimated.size());
+        auto stats = vstat::bivariate::accumulate<T>(std::cbegin(estimated), std::cend(estimated), std::cbegin(target));
         auto a = stats.covariance / stats.variance_x; // scale
         if (!std::isfinite(a)) {
             a = 1;
