@@ -49,6 +49,7 @@ add_library(
     source/core/pset.cpp
     source/core/tree.cpp
     source/core/version.cpp
+    source/formatter/dot.cpp
     source/formatter/infix.cpp
     source/formatter/postfix.cpp
     source/formatter/tree.cpp
