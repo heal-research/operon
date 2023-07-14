@@ -35,6 +35,11 @@ public:
     static auto Format(Tree const& tree, Dataset const& dataset, int decimalPrecision = 2) -> std::string;
     static auto Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2) -> std::string;
 };
+
+struct OPERON_EXPORT DotFormatter {
+    static auto Format(Tree const& tree, Dataset const& dataset, int decimalPrecision = 2) -> std::string;
+    static auto Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision = 2) -> std::string;
+};
 } // namespace Operon
 
 #endif
