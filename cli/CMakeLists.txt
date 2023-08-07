@@ -24,7 +24,9 @@ function(add_operon_cli NAME)
     if(MSVC)
         target_compile_options(${NAME} PRIVATE "/std:c++latest")
     else()
-        target_link_options(${NAME} PRIVATE "-Wl,--no-undefined")
+        if (UNIX AND NOT APPLE)
+            target_link_options(${NAME} PRIVATE "-Wl,--no-undefined")
+        endif()
     endif()
 
     install(TARGETS ${NAME}
