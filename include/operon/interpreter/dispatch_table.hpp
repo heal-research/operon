@@ -333,7 +333,6 @@ public:
 }; // struct DispatchTable
 
 using DefaultDispatch = DispatchTable<Operon::Scalar, Operon::Seq<std::size_t, Dispatch::DefaultBatchSize<Operon::Scalar>>>;
-//using DefaultDispatch = DispatchTable<Operon::Scalar, Operon::Seq<std::size_t, 1UL>>;
 } // namespace Operon
 
 #endif
