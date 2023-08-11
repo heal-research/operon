@@ -6,11 +6,16 @@
 #include <fmt/format.h>                        // for format
 #include <tuple>
 #include <scn/scan/scan.h>
+#include "operon/interpreter/dispatch_table.hpp"
 #include "operon/operators/creator.hpp"    // for CreatorBase, BalancedTreeC...
 #include "operon/operators/evaluator.hpp"  // for Evaluator, EvaluatorBase
 #include "operon/operators/generator.hpp"  // for OffspringGeneratorBase
 #include "operon/operators/reinserter.hpp"  // for OffspringGeneratorBase
 #include "operon/operators/selector.hpp"
+#include "operon/optimizer/optimizer.hpp"
+
+#include <cxxopts.hpp>
+
 
 namespace Operon { class PrimitiveSet; }
 namespace Operon { class Problem; }
@@ -56,7 +61,7 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
     return selector;
 }
 
-auto ParseCreator(std::string const& str, PrimitiveSet const& pset, Operon::Span<Operon::Hash const> inputs) -> std::unique_ptr<CreatorBase>
+auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<Operon::Hash> const& inputs) -> std::unique_ptr<CreatorBase>
 {
     std::unique_ptr<CreatorBase> creator;
 
@@ -76,21 +81,23 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, Operon::Span
     return creator;
 }
 
-auto ParseEvaluator(std::string const& str, Problem& problem, Interpreter& interpreter) -> std::unique_ptr<EvaluatorBase>
+auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& dtable) -> std::unique_ptr<EvaluatorBase>
 {
+    using T = DefaultDispatch;
+
     std::unique_ptr<EvaluatorBase> evaluator;
     if (str == "r2") {
-        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::R2{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::R2{}, true);
     } else if (str == "c2") {
-        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::C2{}, false);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::C2{}, false);
     } else if (str == "nmse") {
-        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::NMSE{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::NMSE{}, true);
     } else if (str == "mse") {
-        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::MSE{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::MSE{}, true);
     } else if (str == "rmse") {
-        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::RMSE{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::RMSE{}, true);
     } else if (str == "mae") {
-        evaluator = std::make_unique<Operon::Evaluator>(problem, interpreter, Operon::MAE{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::MAE{}, true);
     } else {
         throw std::runtime_error(fmt::format("Unknown metric {}\n", str));
     }
@@ -147,6 +154,10 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
     }
     return generator;
+}
+
+auto ParseOptimizer(std::string const& str, Problem const& problem, DefaultDispatch const& dtable) -> std::unique_ptr<OptimizerBase<DefaultDispatch>> {
+    throw std::runtime_error("not implemented");
 }
 
 } // namespace Operon

@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cstdlib>
 
-#include <cxxopts.hpp>
 #include <fmt/core.h>
 
 #include <memory>
@@ -27,6 +26,7 @@
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
+#include "operon/optimizer/optimizer.hpp"
 
 #include "util.hpp"
 #include "operator_factory.hpp"
@@ -37,7 +37,7 @@ auto main(int argc, char** argv) -> int
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);
 
     // parse and set default values
-    Operon::GeneticAlgorithmConfig config;
+    Operon::GeneticAlgorithmConfig config{};
     config.Generations = result["generations"].as<size_t>();
     config.PopulationSize = result["population-size"].as<size_t>();
     config.PoolSize = result["pool-size"].as<size_t>();
@@ -174,8 +174,8 @@ auto main(int argc, char** argv) -> int
         auto const initialMinDepth = result["creator-mindepth"].as<std::size_t>();
         auto const initialMaxDepth = result["creator-mindepth"].as<std::size_t>();
         treeInitializer.ParameterizeDistribution(amin+1, maxLength);
-        treeInitializer.SetMinDepth(1);
-        treeInitializer.SetMaxDepth(1000); // NOLINT
+        treeInitializer.SetMinDepth(initialMinDepth);
+        treeInitializer.SetMaxDepth(initialMaxDepth); // NOLINT
                                            //
         std::unique_ptr<Operon::CoefficientInitializerBase> coeffInitializer;
         std::unique_ptr<Operon::MutatorBase> onePoint;
@@ -215,10 +215,13 @@ auto main(int argc, char** argv) -> int
         mutator.Add(discretePoint, 1.0);
 
         auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
-        Operon::Interpreter interpreter;
-        Operon::Evaluator evaluator(problem, interpreter, *error, scale);
-        evaluator.SetLocalOptimizationIterations(config.Iterations);
+        Operon::DefaultDispatch dtable;
+        Operon::Evaluator evaluator(problem, dtable, *error, scale);
         evaluator.SetBudget(config.Evaluations);
+
+        auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(dtable, problem);
+        optimizer->SetIterations(config.Iterations);
+        evaluator.SetOptimizer(optimizer.get());
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
@@ -271,12 +274,14 @@ auto main(int argc, char** argv) -> int
 
             tf::Taskflow taskflow;
 
+            using DT = Operon::DefaultDispatch;
+
             auto evalTrain = taskflow.emplace([&]() {
-                estimatedTrain = interpreter(best.Genotype, problem.GetDataset(), trainingRange);
+                estimatedTrain = Operon::Interpreter<Operon::Scalar, DT>::Evaluate(best.Genotype, problem.GetDataset(), trainingRange);
             });
 
             auto evalTest = taskflow.emplace([&]() {
-                estimatedTest = interpreter(best.Genotype, problem.GetDataset(), testRange);
+                estimatedTest = Operon::Interpreter<Operon::Scalar, DT>::Evaluate(best.Genotype, problem.GetDataset(), testRange);
             });
 
             // scale values
@@ -291,11 +296,11 @@ auto main(int argc, char** argv) -> int
                 auto const sz = nodes.size();
                 if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
                     nodes.emplace_back(Operon::Node::Constant(a));
-                    nodes.emplace_back(Operon::Node(Operon::NodeType::Mul));
+                    nodes.emplace_back(Operon::NodeType::Mul);
                 }
                 if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
                     nodes.emplace_back(Operon::Node::Constant(b));
-                    nodes.emplace_back(Operon::Node(Operon::NodeType::Add));
+                    nodes.emplace_back(Operon::NodeType::Add);
                 }
                 if (nodes.size() > sz) {
                     best.Genotype.UpdateNodes();
