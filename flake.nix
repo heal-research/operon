@@ -4,12 +4,19 @@
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
     nixpkgs.url = "github:nixos/nixpkgs/master";
+    foolnotion.url = "github:foolnotion/nur-pkg";
+    lbfgs.url = "github:foolnotion/lbfgs";
     pratt-parser.url = "github:foolnotion/pratt-parser-calculator";
     vstat.url = "github:heal-research/vstat/cpp20-eve";
-    foolnotion.url = "github:foolnotion/nur-pkg";
+
+    # make everything follow nixpkgs
+    foolnotion.inputs.nixpkgs.follows = "nixpkgs";
+    lbfgs.inputs.nixpkgs.follows = "nixpkgs";
+    pratt-parser.inputs.nixpkgs.follows = "nixpkgs";
+    vstat.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, flake-utils, nixpkgs, foolnotion, pratt-parser, vstat }:
+  outputs = { self, flake-utils, nixpkgs, foolnotion, pratt-parser, vstat, lbfgs }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -17,11 +24,11 @@
           overlays = [ foolnotion.overlay ];
         };
 
-        #stdenv_ = pkgs.overrideCC pkgs.llvmPackages_16.stdenv (
-        #  pkgs.clang_16.override { gccForLibs = pkgs.gcc12.cc; }
-        #);
+        stdenv_ = pkgs.overrideCC pkgs.llvmPackages_16.stdenv (
+          pkgs.clang_16.override { gccForLibs = pkgs.gcc13.cc; }
+        );
         #stdenv_ = pkgs.llvmPackages_16.libcxxStdenv;
-        stdenv_ = pkgs.llvmPackages_16.stdenv;
+        # stdenv_ = pkgs.llvmPackages_16.stdenv;
 
         operon = stdenv_.mkDerivation {
           name = "operon";
@@ -36,7 +43,7 @@
             "-DUSE_SINGLE_PRECISION=ON"
           ];
 
-          nativeBuildInputs = with pkgs; [ cmake gcc12 ];
+          nativeBuildInputs = with pkgs; [ cmake ];
 
           buildInputs = (with pkgs; [
             aria-csv
@@ -48,6 +55,7 @@
             eve
             fast_float
             fmt_9
+            icu
             jemalloc
             ninja
             openlibm
@@ -57,7 +65,12 @@
             taskflow
             unordered_dense
             vstat.packages.${system}.default
+            lbfgs.packages.${system}.default
+            ned14-outcome
+            ned14-quickcpplib
+            ned14-status-code
             xxHash
+            (mold.override { stdenv = stdenv_; })
           ]);
         };
 
@@ -99,7 +112,7 @@
           name = "operon";
 
           nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
-            clang-tools
+            clang-tools_16
             cppcheck
             include-what-you-use
             cmake-language-server
@@ -108,16 +121,15 @@
           buildInputs = operon.buildInputs ++ (with pkgs; [
             gdb
             graphviz
-            hotspot
             hyperfine
-            linuxPackages.perf
-            pyprof2calltree
-            qcachegrind
+            linuxPackages_latest.perf
             seer
             valgrind
+            hotspot
           ]);
 
           shellHook = ''
+            export LD_LIBRARY_PATH=$CMAKE_LIBRARY_PATH
             alias bb="cmake --build build -j"
           '';
         };

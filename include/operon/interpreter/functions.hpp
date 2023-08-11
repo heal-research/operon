@@ -17,7 +17,10 @@ namespace Operon {
     template<typename T, typename U = std::remove_cvref_t<T>> concept Arithmetic = std::is_arithmetic_v<T>;
 
     template<typename T, typename U = std::remove_cvref_t<T>>
-    requires (EigenRef<U> || EigenDense<U>)
+    concept HasScalar = requires { typename U::Scalar; } or requires { typename U::Base::Scalar; };
+
+    template<typename T, typename U = std::remove_cvref_t<T>>
+    requires HasScalar<U>
     using scalar_t = std::conditional_t<EigenRef<U>, typename U::Base::Scalar, typename U::Scalar>;
 
     // arithmetic data types ( float, double, etc.)
@@ -69,7 +72,7 @@ namespace Operon {
     inline auto square(EigenArray auto const& x)  { return x.square(); }
     inline auto sqrt(EigenArray auto const& x)    { return x.sqrt(); }
     inline auto sqrtabs(EigenArray auto const& x) { return x.abs().sqrt(); }
-    inline auto cbrt(EigenArray auto const& x)    { return x.unaryExpr([](auto v) { return ceres::cbrt(v); }); }
+    inline auto cbrt(EigenArray auto const& x)    { return x.unaryExpr([](auto v) { return v; }); }
 
     inline auto abs(EigenArray auto const& x)   { return x.abs(); }
     inline auto ceil(EigenArray auto const& x)  { return x.ceil(); }

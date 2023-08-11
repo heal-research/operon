@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <utility>
 
 #include "constants.hpp"
 #include "operon/random/random.hpp"
@@ -54,6 +55,8 @@ template <class Key,
           class Bucket = ankerl::unordered_dense::bucket_type::standard>
 using SegmentedSet = ankerl::unordered_dense::detail::table<Key, void, Hash, KeyEqual, AllocatorOrContainer, Bucket, true>;
 
+template<typename T, T... Ints>
+using Seq = std::integer_sequence<T, Ints...>;
 
 #if defined(USE_SINGLE_PRECISION)
 using Scalar = float;
