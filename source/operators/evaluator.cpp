@@ -11,6 +11,7 @@
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
 
+#include <operon/operon_export.hpp>
 #include <taskflow/taskflow.hpp>
 #include <chrono>
 #include <ranges>
@@ -182,7 +183,7 @@ namespace Operon {
         return FitLeastSquaresImpl<double>(estimated, target);
     }
 
-    template<> auto
+    template<> auto OPERON_EXPORT
     Evaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
         ++CallCount;
@@ -301,8 +302,8 @@ namespace Operon {
         }
     }
 
-    template<>
-    auto MinimumDescriptionLengthEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+    template<> auto OPERON_EXPORT
+    MinimumDescriptionLengthEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto const& problem = Evaluator::GetProblem();
         auto const range = problem.TrainingRange();
         auto const& dataset = problem.GetDataset();
@@ -396,8 +397,8 @@ namespace Operon {
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mdl) };
     }
 
-    template<>
-    auto BayesianInformationCriterionEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+    template<> auto OPERON_EXPORT
+    BayesianInformationCriterionEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto const& tree = ind.Genotype;
         auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
         auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem().TrainingRange().Size());
@@ -407,8 +408,8 @@ namespace Operon {
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(bic) };
     }
 
-    template<>
-    auto AkaikeInformationCriterionEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+    template<> auto OPERON_EXPORT
+    AkaikeInformationCriterionEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto mse = Evaluator::operator()(rng, ind, buf).front();
         auto const& tree = ind.Genotype;
         auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));

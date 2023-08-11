@@ -43,7 +43,7 @@
             "-DUSE_SINGLE_PRECISION=ON"
           ];
 
-          nativeBuildInputs = with pkgs; [ cmake ];
+          nativeBuildInputs = with pkgs; [ cmake git ];
 
           buildInputs = (with pkgs; [
             aria-csv
@@ -57,7 +57,6 @@
             fmt_9
             icu
             jemalloc
-            ninja
             openlibm
             pkg-config
             pratt-parser.packages.${system}.default
