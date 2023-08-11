@@ -3,16 +3,20 @@
 
 #include <string>
 
-#include <cxxopts.hpp>
-#include <fmt/core.h>
-#include <scn/scn.h>
 
 #include "operon/core/dataset.hpp"
+#include "operon/core/types.hpp"
 #include "operon/formatter/formatter.hpp"
+#include "operon/interpreter/dispatch_table.hpp"
+#include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "util.hpp"
+
+#include <cxxopts.hpp>
+#include <fmt/core.h>
+#include <scn/scn.h>
 
 auto main(int argc, char** argv) -> int
 {
@@ -60,7 +64,7 @@ auto main(int argc, char** argv) -> int
     }
     auto model = Operon::InfixParser::Parse(infix, vars);
 
-    Operon::Interpreter interpreter;
+    Operon::DefaultDispatch dtable;
     Operon::Range range{0, ds.Rows<std::size_t>()};
     if (result["range"].count() > 0) {
         size_t a{0};
@@ -77,7 +81,7 @@ auto main(int argc, char** argv) -> int
         fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
     }
 
-    auto est = interpreter(model, ds, range);
+    auto est = Operon::Interpreter<Operon::Scalar, decltype(dtable)>::Evaluate(model, ds, range);
 
     std::string format = result["format"].as<std::string>();
     if (result["target"].count() > 0) {
@@ -101,6 +105,19 @@ auto main(int argc, char** argv) -> int
         auto rmse = Operon::RMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto nmse = Operon::NMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
 
+        Operon::Problem problem(ds, range, range);
+        Operon::RandomGenerator rng{0};
+        Operon::Individual ind;
+        ind.Genotype = model;
+
+        Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch> interpreter{dtable, ds, ind.Genotype};
+        auto target = problem.TargetValues(range);
+        Operon::GaussianLikelihood lik{rng, interpreter, target, range};
+        // Operon::MinimumDescriptionLengthEvaluator<Operon::DefaultDispatch> mdlEval{problem, dtable, lik};
+        // auto mdl = mdlEval(rng, ind, {}).front();
+
+        auto mdl = 0;
+
         std::vector<std::tuple<std::string, double, std::string>> stats{
             {"slope", a, format},
             {"intercept", b, format},
@@ -110,6 +127,7 @@ auto main(int argc, char** argv) -> int
             {"mse", mse, format},
             {"rmse", rmse, format},
             {"nmse", nmse, format},
+            {"mdl", mdl, format}
         };
         Operon::PrintStats(stats);
     } else {
