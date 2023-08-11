@@ -17,17 +17,17 @@ auto Tree::UpdateNodes() -> Tree&
         s.Depth = 1;
         s.Length = s.Arity;
         s.Parent = 0;
+
         if (s.IsLeaf()) {
             continue;
         }
-        auto j = i - 1;
-        for (size_t k = 0; k < s.Arity; ++k) {
-            auto& p = nodes_[j];
-            s.Length = static_cast<uint16_t>(s.Length + p.Length);
+
+        for (auto& p : Tree::Nodes(nodes_, i)) {
+            s.Length += p.Length;
             s.Depth = std::max(s.Depth, p.Depth);
-            p.Parent = static_cast<uint16_t>(i);
-            j -= p.Length + 1;
+            p.Parent = i;
         }
+
         ++s.Depth;
     }
     nodes_.back().Level = 1;

@@ -107,9 +107,33 @@ public:
     [[nodiscard]] auto Children(size_t i) const { return Subtree<Node const>{nodes_, i}.Nodes(); }
     [[nodiscard]] auto Indices(size_t i) const { return Subtree<Node const>{nodes_, i}.Indices(); }
 
+    // convenience methods
+    static inline auto Indices(auto const& nodes, auto i) {
+        return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.Indices();
+    }
+
+    static inline auto EnumerateIndices(auto const& nodes, auto i) {
+        return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.EnumerateIndices();
+    }
+
+    static inline auto Nodes(auto const& nodes, auto i) {
+        return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.Nodes();
+    }
+
+    static inline auto Nodes(auto& nodes, auto i) {
+        return Subtree<Node> { nodes, static_cast<std::size_t>(i) }.Nodes();
+    }
+
+    static inline auto EnumerateNodes(auto const& nodes, auto i) {
+        return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.EnumerateNodes();
+    }
+
+    static inline auto EnumerateNodes(auto& nodes, auto i) {
+        return Subtree<Node>{ nodes, static_cast<std::size_t>(i) }.EnumerateNodes();
+    }
+
 private:
     Operon::Vector<Node> nodes_;
 };
 } // namespace Operon
 #endif // TREE_H
-
