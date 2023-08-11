@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#ifndef OPERON_OPTIMIZER_TINY_HPP
-#define OPERON_OPTIMIZER_TINY_HPP
+#ifndef OPERON_LM_COST_FUNCTION_HPP
+#define OPERON_LM_COST_FUNCTION_HPP
 
 #include <Eigen/Core>
 #include "operon/interpreter/interpreter.hpp"
@@ -14,8 +14,8 @@ namespace Operon {
 // - the AutodiffCalculator will compute and return the Jacobian matrix
 // - the StorageOrder specifies the format of the jacobian (row-major for the big Ceres solver, column-major for the tiny solver)
 
-template<typename DTable, int StorageOrder = Eigen::ColMajor>
-struct CostFunction {
+template<typename T = Operon::Scalar, int StorageOrder = Eigen::ColMajor>
+struct LMCostFunction {
     static auto constexpr Storage{ StorageOrder };
     using Scalar = Operon::Scalar;
 
@@ -24,14 +24,12 @@ struct CostFunction {
         NUM_PARAMETERS = Eigen::Dynamic, // NOLINT
     };
 
-    explicit CostFunction(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> target, Operon::Range const range, DTable const& dtable)
-        : tree_{tree}
-        , dataset_{dataset}
+    explicit LMCostFunction(InterpreterBase<T> const& interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range)
+        : interpreter_(interpreter)
         , target_{target}
         , range_{range}
-        , dtable_{dtable}
         , numResiduals_{range.Size()}
-        , numParameters_{ParameterCount(tree)}
+        , numParameters_{static_cast<std::size_t>(interpreter.GetTree().CoefficientsCount())}
     { }
 
     inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
@@ -40,16 +38,16 @@ struct CostFunction {
         EXPECT(parameters != nullptr);
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
-        Interpreter<Operon::Scalar, DTable> interpreter{dtable_.get(), dataset_, tree_};
+        auto const& interpreter = interpreter_.get();
 
         if (jacobian != nullptr) {
             Operon::Span<Operon::Scalar> jac{jacobian, static_cast<size_t>(numResiduals_ * numParameters_)};
-            interpreter.JacRev(params, range_, jac);
+            interpreter_.get().JacRev(params, range_, jac);
         }
 
         if (residuals != nullptr) {
             Operon::Span<Operon::Scalar> res{ residuals, static_cast<size_t>(numResiduals_) };
-            interpreter.Evaluate(params, range_, res);
+            interpreter_.get().Evaluate(params, range_, res);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, numResiduals_);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), numResiduals_);
             x -= y;
@@ -83,7 +81,6 @@ struct CostFunction {
     {
         static_assert(StorageOrder == Eigen::ColMajor, "Eigen::LevenbergMarquardt requires the Jacobian to be stored in column-major format.");
         Evaluate(input.data(), nullptr, jacobian.data());
-        //std::cout << "jacobian:\n" << jacobian << "\n";
         return 0;
     }
 
@@ -91,19 +88,11 @@ struct CostFunction {
     [[nodiscard]] auto inputs() const -> int { return NumParameters(); } // NOLINT
 
 private:
-    std::reference_wrapper<Tree const> tree_;
-    std::reference_wrapper<Dataset const> dataset_;
-    std::reference_wrapper<DTable const> dtable_;
-
+    std::reference_wrapper<InterpreterBase<T> const> interpreter_;
     Operon::Range const range_; // NOLINT
     Operon::Span<Operon::Scalar const> target_;
     std::size_t numResiduals_;
     std::size_t numParameters_;
-
-    inline auto ParameterCount(auto const& tree) const -> std::size_t {
-        auto const& nodes = tree.Nodes();
-        return std::count_if(nodes.cbegin(), nodes.cend(), [](auto const& n) { return n.Optimize; });
-    }
 };
 } // namespace Operon
 
