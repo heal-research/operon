@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+
+#include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
+#include "operon/optimizer/solvers/sgd.hpp"
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -28,6 +31,7 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
+#include "operon/optimizer/optimizer.hpp"
 
 #include "util.hpp"
 #include "operator_factory.hpp"
@@ -217,10 +221,14 @@ auto main(int argc, char** argv) -> int
         mutator.Add(discretePoint, 1.0);
 
         auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
-        Operon::Interpreter interpreter;
-        Operon::Evaluator errorEvaluator(problem, interpreter, *error, scale);
-        errorEvaluator.SetLocalOptimizationIterations(config.Iterations);
+        Operon::DefaultDispatch dtable;
+        fmt::print("batch size: {}\n", Operon::DefaultDispatch::BatchSize<Operon::Scalar>);
+
+        auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(dtable, problem);
+        optimizer->SetIterations(config.Iterations);
+        Operon::Evaluator errorEvaluator(problem, dtable, *error, scale);
         errorEvaluator.SetBudget(config.Evaluations);
+        errorEvaluator.SetOptimizer(optimizer.get());
         Operon::LengthEvaluator lengthEvaluator(problem, maxLength);
 
         Operon::MultiEvaluator evaluator(problem);
@@ -279,12 +287,14 @@ auto main(int argc, char** argv) -> int
 
             tf::Taskflow taskflow;
 
+            using DT = Operon::DefaultDispatch;
+
             auto evalTrain = taskflow.emplace([&]() {
-                estimatedTrain = interpreter(best.Genotype, problem.GetDataset(), trainingRange);
+                estimatedTrain = Operon::Interpreter<Operon::Scalar, DT>::Evaluate(best.Genotype, problem.GetDataset(), trainingRange);
             });
 
             auto evalTest = taskflow.emplace([&]() {
-                estimatedTest = interpreter(best.Genotype, problem.GetDataset(), testRange);
+                estimatedTest = Operon::Interpreter<Operon::Scalar, DT>::Evaluate(best.Genotype, problem.GetDataset(), testRange);
             });
 
             // scale values
@@ -299,11 +309,11 @@ auto main(int argc, char** argv) -> int
                 auto const sz = nodes.size();
                 if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
                     nodes.emplace_back(Operon::Node::Constant(a));
-                    nodes.emplace_back(Operon::Node(Operon::NodeType::Mul));
+                    nodes.emplace_back(Operon::NodeType::Mul);
                 }
                 if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
                     nodes.emplace_back(Operon::Node::Constant(b));
-                    nodes.emplace_back(Operon::Node(Operon::NodeType::Add));
+                    nodes.emplace_back(Operon::NodeType::Add);
                 }
                 if (nodes.size() > sz) {
                     best.Genotype.UpdateNodes();
@@ -385,7 +395,7 @@ auto main(int argc, char** argv) -> int
         };
 
         gp.Run(executor, random, report);
-        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 6));
+        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;
