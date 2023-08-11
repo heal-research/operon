@@ -5,6 +5,9 @@
 #include <thread>
 #include <taskflow/taskflow.hpp>
 #include <taskflow/algorithm/for_each.hpp>   // for taskflow.for_each_index
+#include <utility>
+#include <vstat/vstat.hpp>
+
 #if TF_MINOR_VERSION > 2
 #include <taskflow/algorithm/reduce.hpp>
 #endif
@@ -27,13 +30,8 @@
 #include "operon/interpreter/interpreter.hpp"
 
 namespace Operon::Test {
-    auto TotalNodes(const std::vector<Tree>& trees) -> std::size_t {
-#ifdef _MSC_VER
-        auto totalNodes = std::reduce(trees.begin(), trees.end(), 0UL, [](size_t partial, const auto& t) { return partial + t.Length(); });
-#else
-        auto totalNodes = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus<> {}, [](auto& tree) { return tree.Length(); });
-#endif
-        return totalNodes;
+    auto TotalNodes(const std::vector<Tree>& trees) {
+        return vstat::univariate::accumulate<Operon::Scalar>(trees.begin(), trees.end(), [](auto const& t) { return t.Length(); }).sum;
     }
 
     namespace nb = ankerl::nanobench;
@@ -48,15 +46,16 @@ namespace Operon::Test {
         return ptr;
     }
 
-    template <typename T>
-    void Evaluate(tf::Executor& executor, Interpreter const& interpreter, std::vector<Tree> const& trees, Dataset const& ds, Range range)
+    template <typename T, typename DTable>
+    void Evaluate(tf::Executor& executor, DTable const& dt, std::vector<Tree> const& trees, Dataset const& ds, Range range)
     {
         tf::Taskflow taskflow;
         std::vector<std::vector<T>> results(executor.num_workers());
         for (auto& res: results) { res.resize(range.Size()); }
         taskflow.for_each_index(size_t{0}, trees.size(), size_t{1}, [&](auto i) {
             auto& res = results[executor.this_worker_id()];
-            interpreter.operator()<T>(trees[i], ds, range, {res.data(), res.size()});
+            auto coeff = trees[i].GetCoefficients();
+            Operon::Interpreter<T, DTable>{dt, ds, trees[i]}.Evaluate({coeff}, range, {res}); 
         });
         executor.run(taskflow).wait();
     }
@@ -89,7 +88,8 @@ namespace Operon::Test {
 
         std::vector<Tree> trees(n);
 
-        Interpreter interpreter;
+        using DTable = DispatchTable<Operon::Scalar, Operon::Seq<std::size_t, Dispatch::DefaultBatchSize<Operon::Scalar>>>;
+        DTable dtable;
 
         auto test = [&](tf::Executor& executor, nb::Bench& b, PrimitiveSetConfig cfg, const std::string& name) {
             pset.SetConfig(cfg);
@@ -100,7 +100,7 @@ namespace Operon::Test {
 
             auto totalOps = TotalNodes(trees) * range.Size();
             b.batch(totalOps);
-            b.run(name, [&]() { Evaluate<Operon::Scalar>(executor, interpreter, trees, ds, range); });
+            b.run(name, [&]() { Evaluate<Operon::Scalar>(executor, dtable, trees, ds, range); });
         };
 
         SUBCASE("arithmetic") {
@@ -217,7 +217,6 @@ namespace Operon::Test {
         Operon::Vector<Operon::Scalar> buf(range.Size());
 
         auto test = [&](std::string const& name, EvaluatorBase&& evaluator) {
-            evaluator.SetLocalOptimizationIterations(0);
             evaluator.SetBudget(std::numeric_limits<size_t>::max());
             tf::Executor executor(std::thread::hardware_concurrency());
             tf::Taskflow taskflow;
@@ -237,59 +236,60 @@ namespace Operon::Test {
             });
         };
 
-        Interpreter interpreter;
-        test("c2",        Operon::Evaluator(problem, interpreter, Operon::C2{}, /*linearScaling=*/false));
-        test("c2 + ls",   Operon::Evaluator(problem, interpreter, Operon::C2{}, /*linearScaling=*/true));
-        test("r2",        Operon::Evaluator(problem, interpreter, Operon::R2{}, /*linearScaling=*/false));
-        test("r2 + ls",   Operon::Evaluator(problem, interpreter, Operon::R2{}, /*linearScaling=*/true));
-        test("nmse",      Operon::Evaluator(problem, interpreter, Operon::NMSE{}, /*linearScaling=*/false));
-        test("nmse + ls", Operon::Evaluator(problem, interpreter, Operon::NMSE{}, /*linearScaling=*/true));
-        test("mae",       Operon::Evaluator(problem, interpreter, Operon::MAE{}, /*linearScaling=*/false));
-        test("mae + ls",  Operon::Evaluator(problem, interpreter, Operon::MAE{}, /*linearScaling=*/true));
-        test("mse",       Operon::Evaluator(problem, interpreter, Operon::MSE{}, /*linearScaling=*/false));
-        test("mse + ls",  Operon::Evaluator(problem, interpreter, Operon::MSE{}, /*linearScaling=*/true));
+        using DTable = DefaultDispatch;
+        DTable dtable;
+
+        test("c2",        Operon::Evaluator(problem, dtable, Operon::C2{}, /*linearScaling=*/false));
+        test("c2 + ls",   Operon::Evaluator(problem, dtable, Operon::C2{}, /*linearScaling=*/true));
+        test("r2",        Operon::Evaluator(problem, dtable, Operon::R2{}, /*linearScaling=*/false));
+        test("r2 + ls",   Operon::Evaluator(problem, dtable, Operon::R2{}, /*linearScaling=*/true));
+        test("nmse",      Operon::Evaluator(problem, dtable, Operon::NMSE{}, /*linearScaling=*/false));
+        test("nmse + ls", Operon::Evaluator(problem, dtable, Operon::NMSE{}, /*linearScaling=*/true));
+        test("mae",       Operon::Evaluator(problem, dtable, Operon::MAE{}, /*linearScaling=*/false));
+        test("mae + ls",  Operon::Evaluator(problem, dtable, Operon::MAE{}, /*linearScaling=*/true));
+        test("mse",       Operon::Evaluator(problem, dtable, Operon::MSE{}, /*linearScaling=*/false));
+        test("mse + ls",  Operon::Evaluator(problem, dtable, Operon::MSE{}, /*linearScaling=*/true));
     }
 
-    TEST_CASE("Parallel interpreter")
-    {
-        const size_t n         = 1000;
-        const size_t maxLength = 100;
-        const size_t maxDepth  = 1000;
+    //TEST_CASE("Parallel interpreter")
+    //{
+    //    const size_t n         = 1000;
+    //    const size_t maxLength = 100;
+    //    const size_t maxDepth  = 1000;
 
-        constexpr size_t nrow = 10000;
-        constexpr size_t ncol = 10;
+    //    constexpr size_t nrow = 10000;
+    //    constexpr size_t ncol = 10;
 
-        Operon::RandomGenerator rd(1234);
-        auto ds = Util::RandomDataset(rd, nrow, ncol);
+    //    Operon::RandomGenerator rd(1234);
+    //    auto ds = Util::RandomDataset(rd, nrow, ncol);
 
-        auto variables = ds.GetVariables();
-        auto target = variables.back().Name;
-        auto inputs = ds.VariableHashes();
-        std::erase(inputs, ds.GetVariable(target)->Hash);
-        Range range = { 0, ds.Rows<std::size_t>() };
+    //    auto variables = ds.GetVariables();
+    //    auto target = variables.back().Name;
+    //    auto inputs = ds.VariableHashes();
+    //    std::erase(inputs, ds.GetVariable(target)->Hash);
+    //    Range range = { 0, ds.Rows<std::size_t>() };
 
-        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        Operon::PrimitiveSet pset;
-        pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
-        auto creator = BalancedTreeCreator { pset, inputs };
+    //    std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+    //    Operon::PrimitiveSet pset;
+    //    pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
+    //    auto creator = BalancedTreeCreator { pset, inputs };
 
-        std::vector<Tree> trees(n);
-        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+    //    std::vector<Tree> trees(n);
+    //    std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
-        nb::Bench b;
-        b.relative(true).epochs(10).minEpochIterations(100).performanceCounters(true);
-        Operon::Interpreter interpreter;
-        std::vector<size_t> threads(std::thread::hardware_concurrency());
-        std::iota(threads.begin(), threads.end(), 1);
-        std::vector<Operon::Scalar> result(trees.size() * range.Size());
-        for (auto t : threads) {
-            b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, ds, range, result, t); });
-        }
-    }
+    //    nb::Bench b;
+    //    b.relative(true).epochs(10).minEpochIterations(100).performanceCounters(true);
+    //    std::vector<size_t> threads(std::thread::hardware_concurrency());
+    //    std::iota(threads.begin(), threads.end(), 1);
+    //    std::vector<Operon::Scalar> result(trees.size() * range.Size());
+    //    for (auto t : threads) {
+    //        b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, ds, range, result, t); });
+    //    }
+    //}
 
     TEST_CASE("NSGA2")
     {
-        auto ds = Dataset("/home/bogdb/projects/operon-archive/data/Friedman-I.csv", /*hasHeader=*/true);
+        auto ds = Dataset("./data/Friedman-I.csv", /*hasHeader=*/true);
 
         std::vector<Variable> inputs;
         const auto *targetName = "Y";
@@ -339,8 +339,10 @@ namespace Operon::Test {
         mutator.Add(insertSubtree, 1.0);
         mutator.Add(removeSubtree, 1.0);
 
-        Interpreter interpreter;
-        Evaluator c2eval(problem, interpreter, Operon::C2{}, /*linearScaling=*/false);
+        using DTable = DefaultDispatch;
+        DTable dtable;
+
+        Evaluator c2eval(problem, dtable, Operon::C2{}, /*linearScaling=*/false);
         LengthEvaluator lenEval(problem);
 
         MultiEvaluator evaluator(problem);
@@ -394,7 +396,8 @@ namespace Operon::Test {
         auto inputs = ds.VariableHashes();
         std::erase(inputs, ds.GetVariable(target)->Hash);
         Range range = { 0, ds.Rows<std::size_t>() };
-        Operon::Interpreter interpreter;
+        using DTable = DefaultDispatch;
+        DTable dtable;
 
         //Operon::PrimitiveSet base(Operon::PrimitiveSet::Arithmetic);
         auto primitives = NodeType::Constant;
@@ -408,7 +411,7 @@ namespace Operon::Test {
 
             b.batch(range.Size()).epochs(10).epochIterations(1000).run(node.Name(), [&]() {
                 auto tree = creator(rd, sizeDistribution(rd), 0, maxDepth);
-                return interpreter.operator()<Operon::Scalar>(tree, ds, range);
+                return Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, range);
             });
         }
     }

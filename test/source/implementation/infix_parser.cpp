@@ -73,13 +73,15 @@ TEST_SUITE("[implementation]")
         Range range{0, 1};
         size_t count{0};
 
-        Interpreter interpreter;
+        using DTable = DispatchTable<Operon::Scalar>;
+        DTable dtable;
+
         for (int i = 0; i < nTrees; ++i) {
             bool isOk = true;
             auto const& t1 = trees[i];
             auto const& t2 = parsedTrees[i];
-            auto v1 = interpreter(t1, ds, range)[0];
-            auto v2 = interpreter(t2, ds, range)[0];
+            auto v1 = Interpreter<Operon::Scalar, DTable>::Evaluate(t1, ds, range)[0];
+            auto v2 = Interpreter<Operon::Scalar, DTable>::Evaluate(t2, ds, range)[0];
 
             isOk &= (!std::isfinite(v1) || !std::isfinite(v2) || std::abs(v1-v2) < 1e-6);
 
@@ -210,10 +212,11 @@ TEST_SUITE("[implementation]")
 
             Dataset::Matrix m(1,1);
             Operon::Dataset ds(m);
-            Range r(0, 1);
-            Interpreter interpreter;
-            auto v1 = interpreter.operator()<Operon::Scalar>(t1, ds, r)[0];
-            auto v2 = interpreter.operator()<Operon::Scalar>(t2, ds, r)[0];
+            Range range(0, 1);
+            using DTable = DispatchTable<Operon::Scalar>;
+            DTable dtable;
+            auto v1 = Interpreter<Operon::Scalar, DTable>::Evaluate(t1, ds, range)[0];
+            auto v2 = Interpreter<Operon::Scalar, DTable>::Evaluate(t2, ds, range)[0];
 
             fmt::print("{} = {}\n", InfixFormatter::Format(t1, map, 3), v1);
             fmt::print("{} = {}\n", InfixFormatter::Format(t2, map, 3), v2);

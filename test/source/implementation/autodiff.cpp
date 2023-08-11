@@ -2,19 +2,20 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include <doctest/doctest.h>
+#include <random>
+
 #include "../operon_test.hpp"
 
-#include "nanobench.h"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/formatter/formatter.hpp"
+#include "operon/interpreter/interpreter.hpp"
+#include "operon/interpreter/tape.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
-#include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
-#include "operon/autodiff/autodiff.hpp"
 
 #include <iomanip>
 
@@ -29,7 +30,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     Operon::Dataset::Matrix values(1, 2);
     values << 2, 3; // NOLINT
 
-    Operon::RandomGenerator rng(0);
+    Operon::RandomGenerator rng(1234UL);
     Operon::Dataset ds(values);
     ds.SetVariableNames({"x", "y"});
     Operon::Map<std::string, Operon::Hash> variables;
@@ -37,17 +38,11 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         variables.insert({v.Name, v.Hash});
     }
 
-    Operon::GenericInterpreter<Operon::Scalar, Operon::Dual> interpreter;
+    Operon::DispatchTable<Operon::Scalar> dtable;
     auto constexpr print{ false };
-
-    Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Reverse> rcalc{ interpreter};
-    Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::Forward> ffcalc{ interpreter};
-    Operon::Autodiff::DerivativeCalculator<decltype(interpreter), Operon::Autodiff::AutodiffMode::ForwardJet> fcalc{ interpreter};
 
     Operon::Range range{0, ds.Rows<std::size_t>()};
     Operon::Problem problem(ds, range, {0, 1});
-
-    Operon::DispatchTable<Operon::Scalar> dtable;
 
     auto derive = [&](std::string const& expr) {
         fmt::print(fmt::emphasis::bold, "f(x, y) = {}\n", expr);
@@ -58,16 +53,47 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         }
         fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
 
+        fmt::print("{}\n", Operon::DotFormatter::Format(tree, ds));
+        //auto revMap = Operon::Tape{tree}.Map();
+        //auto const& nodes = tree.Nodes();
+        //for (auto i = 0; i < std::ssize(nodes); ++i) {
+        //    auto u = tree.Splice(i);
+        //    if (nodes[i].Optimize) {
+        //        auto it = revMap.find(i);
+        //        ENSURE(it != revMap.end());
+        //        fmt::print("∂f/∂{} => {}\n", Operon::InfixFormatter::Format(u, ds), Operon::InfixFormatter::Format(it->second, ds));
+        //    }
+        //    if (nodes[i].IsLeaf()) { continue; }
+        //    for (auto j : Tree::Indices(nodes, i)) {
+        //        auto v = tree.Splice(j);
+        //        auto it = revMap.find(j);
+        //        ENSURE(it != revMap.end());
+        //        fmt::print("∂{}/∂{} => {}\n\n", Operon::InfixFormatter::Format(u, ds), Operon::InfixFormatter::Format(v, ds), Operon::InfixFormatter::Format(it->second, ds));
+        //    }
+        //}
+        //for (auto&& [i, v] : revMap) {
+        //    auto u = tree.Splice(i);
+        //    fmt::print(fmt::fg(fmt::color::red), "subtree {}: ADJ({}) => {}\n", i, Operon::InfixFormatter::Format(u, ds), Operon::InfixFormatter::Format(v, ds));
+        //    fmt::print("{}\n", Operon::DotFormatter::Format(u, ds));
+        //    fmt::print("{}\n", Operon::DotFormatter::Format(v, ds));
+        //}
+
         std::vector<Operon::Scalar> y(ds.Rows());
         Operon::Span<Operon::Scalar> target{y.data(), y.size()};
         auto parameters = tree.GetCoefficients();
-        auto jfwd = fcalc(tree, ds, range, { parameters.data(), parameters.size() });
-        auto jrev = rcalc(tree, ds, range, { parameters.data(), parameters.size() });
-        auto jfwd2 = ffcalc(tree, ds, range, { parameters });
 
-        std::cout << "J_forward: " << jfwd << "\n";
-        std::cout << "J_reverse: " << jrev << "\n";
-        std::cout << "J_fforward: " << jfwd2 << "\n\n";
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter{dtable, ds, tree};
+        auto rev = interpreter.JacRev(parameters, range);
+        auto fwd = interpreter.JacFwd(parameters, range);
+        std::cout << "rev: " << rev << "\n";
+        std::cout << "fwd: " << rev << "\n";
+
+        //Operon::DispatchTable<Operon::Scalar, Operon::Dual> dt;
+        //Autodiff::DerivativeCalculator<decltype(dt)> dc(dt);
+        //Eigen::Array<Operon::Scalar, -1, -1> jacobian(range.Size(), parameters.size());
+        //std::vector<Operon::Scalar> result(range.Size());
+        //dc.ForwardModeJet(tree, ds, range, parameters, {result}, {jacobian.data(), range.Size() * parameters.size()});
+        //std::cout << "jet: " << jacobian << "\n";
     };
 
     SUBCASE("0.51 * x") { derive("0.51 * x"); }
@@ -76,11 +102,15 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
     SUBCASE("2.53 / 1.46") { derive("2.53 / 1.46"); }
 
+    SUBCASE("3 ^ 2") { derive("3 ^ 2"); }
+
     SUBCASE("sin(2)") { derive("sin(2)"); }
 
     SUBCASE("y * sin(x) | at (x, y) = (2, 2)") { derive("sin(2)"); }
 
     SUBCASE("sin(x) + cos(y) | at (x, y) = (2, 3)") { derive("sin(2) + cos(3)"); }
+
+    SUBCASE("sin(x) * cos(y) | at (x, y) = (2, 3)") { derive("sin(2) * cos(3)"); }
 
     SUBCASE("0.5 * sin(x) + 0.7 * cos(y) | at (x, y) = (2, 3)") { derive("0.5 * sin(2) + 0.7 * cos(3)"); }
 
@@ -128,6 +158,31 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
     SUBCASE("atan(x)") { derive("atan(x)"); }
 
+    SUBCASE("Expr A") {
+        std::string const expr = "((0.78 / ((-1.12) * X8)) / (((((-0.61) * X3) * 0.82) / (((-0.22) * X6) / 1.77)) / (((-0.16) - 0.50) - (((-0.46) * X4) - ((-0.03) * X9)))))";
+
+
+        Operon::Dataset ds("./data/Poly-10.csv", /*hasHeader=*/true);
+        Operon::Map<std::string, Operon::Hash> vars;
+        for (auto const& v : ds.GetVariables()) {
+            vars.insert({ v.Name, v.Hash });
+        }
+
+        auto tree = InfixParser::Parse(expr, vars);
+        auto coeff = tree.GetCoefficients();
+        Operon::Range range(0, 10);
+
+        DispatchTable<Operon::Scalar> dt;
+        auto jacrev = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{dt, ds, tree}.JacRev(coeff, range); 
+        auto jacfwd = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{dt, ds, tree}.JacFwd(coeff, range); 
+
+        std::cout << "jacrev:\n" << jacrev << "\n\n";
+        std::cout << "jacfwd:\n" << jacfwd << "\n\n";
+
+        auto vals = Interpreter<Operon::Scalar, decltype(dt)>::Evaluate(tree, ds, range);
+        fmt::print("values: {}\n", vals);
+    }
+
     SUBCASE("random trees") {
         using Operon::NodeType;
         Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic |
@@ -136,6 +191,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                 Operon::NodeType::Logabs | Operon::NodeType::Log1p |
                 Operon::NodeType::Sin | Operon::NodeType::Asin |
                 Operon::NodeType::Cos | Operon::NodeType::Acos |
+                Operon::NodeType::Sinh | Operon::NodeType::Cosh |
                 Operon::NodeType::Tan | Operon::NodeType::Atan |
                 Operon::NodeType::Tanh | Operon::NodeType::Cbrt |
                 Operon::NodeType::Fmin | Operon::NodeType::Fmax |
@@ -167,25 +223,18 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
             auto parameters = tree.GetCoefficients();
 
-            // forward mode (using duals)
-            auto jjet = fcalc(tree, ds, range, { parameters.data(), parameters.size() });
-
-            // forward mode (operon)
-            auto jfwd = ffcalc(tree, ds, range, { parameters.data(), parameters.size() });
-
-            // reverse mode
-            auto jrev = rcalc(tree, ds, range, { parameters.data(), parameters.size() });
+            Eigen::Array<Operon::Scalar, -1, -1> jfwd = Operon::Interpreter<Operon::Scalar, decltype(dtable)>{dtable, ds, tree}.JacFwd(parameters, range);
+            Eigen::Array<Operon::Scalar, -1, -1> jrev = Operon::Interpreter<Operon::Scalar, decltype(dtable)>{dtable, ds, tree}.JacRev(parameters, range);
 
             constexpr auto precision{20};
-            auto finite{ std::isfinite(jjet.sum()) };
-            auto areEqual{ jjet.isApprox(jrev, epsilon) };
+            auto finite{ std::isfinite(jrev.sum()) };
+            auto areEqual{ jrev.isApprox(jfwd, epsilon) };
             auto ok = !finite || areEqual;
 
             if(!ok) {
                 fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds, precision));
-                std::cout << std::setprecision(precision) << "J_dualfwd: " << jjet << "\n";
-                std::cout << std::setprecision(precision) << "J_forward: " << jfwd << "\n\n";
-                std::cout << std::setprecision(precision) << "J_reverse: " << jrev << "\n\n";
+                std::cout << std::setprecision(precision) << "J_forward: " << jfwd << "\n";
+                std::cout << std::setprecision(precision) << "J_reverse: " << jrev << "\n";
             }
             CHECK(ok);
         }

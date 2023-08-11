@@ -39,7 +39,9 @@ target_include_directories(operon_test PRIVATE ${PROJECT_SOURCE_DIR}/source/thir
 if(MSVC)
     target_compile_options(operon_test PUBLIC "/std:c++latest")
 else()
-    target_link_options(operon_test PUBLIC "-Wl,--no-undefined")
+    if (UNIX AND NOT APPLE)
+        target_link_options(operon_test PUBLIC "-Wl,--no-undefined")
+    endif()
 endif()
 
 add_test(NAME operon_test COMMAND operon_test)
