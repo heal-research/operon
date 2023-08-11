@@ -81,9 +81,7 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
         if (s.size() == 1) {
             auto s2 = s[0] * s[0];
             auto ssr = vstat::univariate::accumulate<Scalar>(x.begin(), x.end(), y.begin(), detail::Gaussian{}).sum;
-            auto res = z * (n * std::log(Operon::Math::Tau * s2) + ssr / s2) ;
-            fmt::print("res = {}\n", res);
-            return res;
+            return z * (n * std::log(Operon::Math::Tau * s2) + ssr / s2) ;
         }
 
         if (s.size() == x.size()) {

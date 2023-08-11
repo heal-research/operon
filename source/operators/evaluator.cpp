@@ -389,9 +389,6 @@ namespace Operon {
         cParameters -= p/2 * std::log(3);
 
         auto cLikelihood = optimizer->ComputeLikelihood(buffer, targetValues, sigma_);
-        fmt::print("sErr: {}\n", sigma_);
-        fmt::print("cc: {}, cp: {}, cl: {}\n", cComplexity, cParameters, cLikelihood);
-
         auto mdl = cComplexity + cParameters + cLikelihood;
         if (!std::isfinite(mdl)) { mdl = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mdl) };
