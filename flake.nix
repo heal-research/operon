@@ -69,7 +69,6 @@
             ned14-quickcpplib
             ned14-status-code
             xxHash
-            (mold.override { stdenv = stdenv_; })
           ]);
         };
 
@@ -125,6 +124,7 @@
             seer
             valgrind
             hotspot
+            (mold.override { stdenv = stdenv_; })
           ]);
 
           shellHook = ''
