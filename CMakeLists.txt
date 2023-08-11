@@ -88,6 +88,8 @@ find_package(Threads REQUIRED)
 find_package(cpp-sort REQUIRED)
 find_package(eve REQUIRED)
 find_package(fmt REQUIRED)
+find_package(lbfgs REQUIRED)
+find_package(outcome REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
@@ -199,6 +201,8 @@ target_link_libraries(operon_operon PUBLIC
     Threads::Threads
     fmt::fmt
     pratt-parser::pratt-parser # required by infix parser
+    vstat::vstat
+    lbfgs::lbfgs
 )
 
 target_link_libraries(operon_operon PRIVATE
@@ -206,7 +210,6 @@ target_link_libraries(operon_operon PRIVATE
     Taskflow::Taskflow
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense
-    vstat::vstat
 )
 
 if (USE_OPENLIBM AND openlibm_FOUND)

@@ -5,6 +5,7 @@
 #define OPERON_EVALUATOR_HPP
 
 #include <atomic>
+#include <functional>
 #include <utility>
 
 #include "operon/collections/projection.hpp"
@@ -14,6 +15,8 @@
 #include "operon/core/types.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operon_export.hpp"
+#include "operon/optimizer/likelihood/likelihood_base.hpp"
+#include "operon/optimizer/optimizer.hpp"
 
 namespace Operon {
 
@@ -87,12 +90,11 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target) noexcept -> std::pair<double, double>;
 
 struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
-    mutable std::atomic_ulong ResidualEvaluations{0}; // NOLINT
-    mutable std::atomic_ulong JacobianEvaluations{0}; // NOLINT
-    mutable std::atomic_ulong CallCount{0};           // NOLINT
-    mutable std::atomic_ulong CostFunctionTime{0};    // NOLINT
+    mutable std::atomic_ulong ResidualEvaluations { 0 }; // NOLINT
+    mutable std::atomic_ulong JacobianEvaluations { 0 }; // NOLINT
+    mutable std::atomic_ulong CallCount { 0 }; // NOLINT
+    mutable std::atomic_ulong CostFunctionTime { 0 }; // NOLINT
 
-    static constexpr size_t DefaultLocalOptimizationIterations = 50;
     static constexpr size_t DefaultEvaluationBudget = 100'000;
 
     static auto constexpr ErrMax { std::numeric_limits<Operon::Scalar>::max() };
@@ -112,9 +114,6 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
 
     auto TotalEvaluations() const -> size_t { return ResidualEvaluations + JacobianEvaluations; }
 
-    void SetLocalOptimizationIterations(size_t value) { iterations_ = value; }
-    auto LocalOptimizationIterations() const -> size_t { return iterations_; }
-
     void SetBudget(size_t value) { budget_ = value; }
     auto Budget() const -> size_t { return budget_; }
     auto BudgetExhausted() const -> bool { return TotalEvaluations() >= Budget(); }
@@ -133,10 +132,9 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
         CostFunctionTime = 0;
     }
 
-    private:
+private:
     mutable Operon::Span<Operon::Individual const> population_;
     std::reference_wrapper<Problem> problem_;
-    size_t iterations_ = DefaultLocalOptimizationIterations;
     size_t budget_ = DefaultEvaluationBudget;
 };
 
@@ -167,24 +165,31 @@ private:
     std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> fptr_; // workaround for pybind11
 };
 
+template <typename DTable>
 class OPERON_EXPORT Evaluator : public EvaluatorBase {
+    using TInterpreter = Operon::Interpreter<Operon::Scalar, DTable>;
+
 public:
-    Evaluator(Problem& problem, Interpreter const& interp, ErrorMetric const& error = MSE{}, bool linearScaling = true)
+    explicit Evaluator(Problem& problem, DTable const& dtable, ErrorMetric const& error = MSE {}, bool linearScaling = true)
         : EvaluatorBase(problem)
-        , interpreter_(interp)
+        , dtable_(dtable)
         , error_(error)
         , scaling_(linearScaling)
     {
     }
 
-    auto GetInterpreter() const -> Interpreter const& { return interpreter_; }
+    auto GetDispatchTable() const { return dtable_.get(); }
+
+    auto GetOptimizer() const { return optimizer_; }
+    auto SetOptimizer(OptimizerBase<DTable> const* optimizer) { optimizer_ = optimizer; }
 
     auto
     operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
-    std::reference_wrapper<Interpreter const> interpreter_;
+    std::reference_wrapper<DTable const> dtable_;
     std::reference_wrapper<ErrorMetric const> error_;
+    OptimizerBase<DTable> const* optimizer_{nullptr};
     bool scaling_{false};
 };
 
@@ -207,8 +212,9 @@ public:
         }
     }
 
-    auto ObjectiveCount() const -> std::size_t override {
-        return std::transform_reduce(evaluators_.begin(), evaluators_.end(), 0UL, std::plus{}, [](auto const& eval) { return eval.get().ObjectiveCount(); });
+    auto ObjectiveCount() const -> std::size_t override
+    {
+        return std::transform_reduce(evaluators_.begin(), evaluators_.end(), 0UL, std::plus {}, [](auto const& eval) { return eval.get().ObjectiveCount(); });
     }
 
     auto
@@ -217,10 +223,10 @@ public:
         EvaluatorBase::ReturnType fit;
         fit.reserve(ind.Size());
 
-        auto resEval{0UL};
-        auto jacEval{0UL};
-        auto eval{0UL};
-        auto cft{0UL};
+        auto resEval { 0UL };
+        auto jacEval { 0UL };
+        auto eval { 0UL };
+        auto cft { 0UL };
         for (auto const& ev : evaluators_) {
             auto f = ev(rng, ind, buf);
             std::copy(f.begin(), f.end(), std::back_inserter(fit));
@@ -243,10 +249,16 @@ private:
 
 class OPERON_EXPORT AggregateEvaluator final : public EvaluatorBase {
 public:
-    enum class AggregateType : int { Min, Max, Median, Mean, HarmonicMean, Sum };
+    enum class AggregateType : int { Min,
+        Max,
+        Median,
+        Mean,
+        HarmonicMean,
+        Sum };
 
     explicit AggregateEvaluator(EvaluatorBase& evaluator)
-        : EvaluatorBase(evaluator.GetProblem()), evaluator_(evaluator)
+        : EvaluatorBase(evaluator.GetProblem())
+        , evaluator_(evaluator)
     {
     }
 
@@ -258,7 +270,7 @@ public:
 
 private:
     std::reference_wrapper<EvaluatorBase const> evaluator_;
-    AggregateType aggtype_{AggregateType::Mean};
+    AggregateType aggtype_ { AggregateType::Mean };
 };
 
 // a couple of useful user-defined evaluators (mostly to avoid calling lambdas from python)
@@ -286,7 +298,9 @@ public:
 class OPERON_EXPORT DiversityEvaluator : public EvaluatorBase {
 public:
     explicit DiversityEvaluator(Operon::Problem& problem, Operon::HashMode hashmode = Operon::HashMode::Strict, std::size_t sampleSize = 100)
-        : EvaluatorBase(problem), hashmode_(hashmode), sampleSize_(sampleSize)
+        : EvaluatorBase(problem)
+        , hashmode_(hashmode)
+        , sampleSize_(sampleSize)
     {
     }
 
@@ -297,23 +311,39 @@ public:
 
 private:
     mutable Operon::Map<Operon::Hash, std::vector<Operon::Hash>> divmap_;
-    Operon::HashMode hashmode_{Operon::HashMode::Strict};
-    std::size_t sampleSize_{};
+    Operon::HashMode hashmode_ { Operon::HashMode::Strict };
+    std::size_t sampleSize_ {};
 };
 
-class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator {
+template <typename DTable>
+class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
+    using Base = Evaluator<DTable>;
+
 public:
-    explicit MinimumDescriptionLengthEvaluator(Operon::Problem& problem, Interpreter const& interpreter)
-        : Evaluator(problem, interpreter, mse_)
+    explicit MinimumDescriptionLengthEvaluator(Operon::Problem& problem, DTable const& dtable)
+        : Base(problem, dtable, sse_)
+        , sigma_(1, 1) // assume unit variance by default
     {
     }
 
-    auto LocalOptimizationIterations() const {
-        return Evaluator::LocalOptimizationIterations();
-    }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) { sigma_ = std::move(sigma); }
 
-    auto SetLocalOptimizationIterations(auto iterations) {
-        Evaluator::SetLocalOptimizationIterations(iterations);
+    auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+private:
+    Operon::SSE sse_;
+    mutable std::vector<Operon::Scalar> sigma_;
+};
+
+template <typename DTable>
+class OPERON_EXPORT BayesianInformationCriterionEvaluator final : public Evaluator<DTable> {
+    using Base = Evaluator<DTable>;
+
+public:
+    explicit BayesianInformationCriterionEvaluator(Operon::Problem& problem, DTable const& dtable)
+        : Base(problem, dtable, mse_)
+    {
     }
 
     auto
@@ -323,41 +353,14 @@ private:
     Operon::MSE mse_;
 };
 
-class OPERON_EXPORT BayesianInformationCriterionEvaluator final : public Evaluator {
+template <typename DTable>
+class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator<DTable> {
+    using Base = Evaluator<DTable>;
+
 public:
-    explicit BayesianInformationCriterionEvaluator(Operon::Problem& problem, Interpreter const& interpreter)
-        : Evaluator(problem, interpreter, mse_)
+    explicit AkaikeInformationCriterionEvaluator(Operon::Problem& problem, DTable const& dtable)
+        : Base(problem, dtable, mse_)
     {
-    }
-
-    auto LocalOptimizationIterations() const {
-        return Evaluator::LocalOptimizationIterations();
-    }
-
-    auto SetLocalOptimizationIterations(auto iterations) {
-        Evaluator::SetLocalOptimizationIterations(iterations);
-    }
-
-    auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
-
-private:
-    Operon::MSE mse_;
-};
-
-class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator {
-public:
-    explicit AkaikeInformationCriterionEvaluator(Operon::Problem& problem, Interpreter const& interpreter)
-        : Evaluator(problem, interpreter, mse_)
-    {
-    }
-
-    auto LocalOptimizationIterations() const {
-        return Evaluator::LocalOptimizationIterations();
-    }
-
-    auto SetLocalOptimizationIterations(auto iterations) {
-        Evaluator::SetLocalOptimizationIterations(iterations);
     }
 
     auto

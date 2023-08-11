@@ -11,12 +11,13 @@ namespace Operon {
         tf::Executor executor(nthread);
         tf::Taskflow taskflow;
         std::vector<std::vector<Operon::Scalar>> result(trees.size());
-        Operon::Interpreter interpreter;
+        Operon::DefaultDispatch dtable;
+        using INT = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>;
 
         taskflow.for_each_index(size_t{0}, size_t{trees.size()}, size_t{1}, [&](size_t i) {
             result[i].resize(range.Size());
             Operon::Span<Operon::Scalar> s{result[i].data(), result[i].size()};
-            interpreter(trees[i], dataset, range, s);
+            INT{dtable, dataset, trees[i]}.Evaluate({}, range, s);
         });
         executor.run(taskflow);
         executor.wait_for_all();
@@ -27,11 +28,12 @@ namespace Operon {
         if (nthread == 0) { nthread = std::thread::hardware_concurrency(); }
         tf::Executor executor(nthread);
         tf::Taskflow taskflow;
-        Operon::Interpreter interpreter;
+        Operon::DefaultDispatch dtable;
+        using INT = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>;
 
         taskflow.for_each_index(size_t{0}, size_t{trees.size()}, size_t{1}, [&](size_t i) {
             auto res = result.subspan(i * range.Size(), range.Size());
-            interpreter(trees[i], dataset, range, res);
+            INT{dtable, dataset, trees[i]}.Evaluate({}, range, res);
         });
         executor.run(taskflow);
         executor.wait_for_all();
