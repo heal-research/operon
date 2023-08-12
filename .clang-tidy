@@ -12,6 +12,7 @@ Checks: "*,\
   -llvmlibc-*,\
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,\
   -cppcoreguidelines-macro-usage,\
+  -cppcoreguidelines-owning-memory,\
   -altera-struct-pack-align,\
   -altera-id-dependent-backward-branch,\
   -bugprone-easily-swappable-parameters,\
