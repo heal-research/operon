@@ -18,7 +18,6 @@
 #include <unsupported/Eigen/LevenbergMarquardt>
 
 #include "dynamic_cost_function.hpp"
-#include "gd_cost_function.hpp"
 #include "likelihood/gaussian_likelihood.hpp"
 #include "likelihood/poisson_likelihood.hpp"
 #include "lm_cost_function.hpp"

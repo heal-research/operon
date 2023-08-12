@@ -222,7 +222,6 @@ auto main(int argc, char** argv) -> int
 
         auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
         Operon::DefaultDispatch dtable;
-        fmt::print("batch size: {}\n", Operon::DefaultDispatch::BatchSize<Operon::Scalar>);
 
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(dtable, problem);
         optimizer->SetIterations(config.Iterations);
