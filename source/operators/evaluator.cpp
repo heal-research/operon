@@ -313,8 +313,6 @@ namespace Operon {
         auto const* optimizer = Evaluator::GetOptimizer();
         EXPECT(optimizer != nullptr);
 
-        optimizer->SetIterations(100);
-
         // this call will optimize the tree coefficients and compute the SSE
         auto const& tree = ind.Genotype;
         Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, ind.Genotype};
