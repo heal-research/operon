@@ -214,7 +214,7 @@ namespace Operon {
             return error_(buf, targetValues);
         };
 
-        if (optimizer_ != nullptr) {
+        if (optimizer_ != nullptr && optimizer_->Iterations() > 0) {
             auto t0 = std::chrono::steady_clock::now();
             auto summary = optimizer_->Optimize(rng, tree);
             // auto coefficients = opt.Optimize(targetValues, trainingRange, iter, summary);
