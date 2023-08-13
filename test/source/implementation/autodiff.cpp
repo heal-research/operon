@@ -12,7 +12,6 @@
 #include "operon/core/problem.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
-#include "operon/interpreter/tape.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/parser/infix.hpp"
@@ -54,29 +53,6 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
 
         fmt::print("{}\n", Operon::DotFormatter::Format(tree, ds));
-        //auto revMap = Operon::Tape{tree}.Map();
-        //auto const& nodes = tree.Nodes();
-        //for (auto i = 0; i < std::ssize(nodes); ++i) {
-        //    auto u = tree.Splice(i);
-        //    if (nodes[i].Optimize) {
-        //        auto it = revMap.find(i);
-        //        ENSURE(it != revMap.end());
-        //        fmt::print("∂f/∂{} => {}\n", Operon::InfixFormatter::Format(u, ds), Operon::InfixFormatter::Format(it->second, ds));
-        //    }
-        //    if (nodes[i].IsLeaf()) { continue; }
-        //    for (auto j : Tree::Indices(nodes, i)) {
-        //        auto v = tree.Splice(j);
-        //        auto it = revMap.find(j);
-        //        ENSURE(it != revMap.end());
-        //        fmt::print("∂{}/∂{} => {}\n\n", Operon::InfixFormatter::Format(u, ds), Operon::InfixFormatter::Format(v, ds), Operon::InfixFormatter::Format(it->second, ds));
-        //    }
-        //}
-        //for (auto&& [i, v] : revMap) {
-        //    auto u = tree.Splice(i);
-        //    fmt::print(fmt::fg(fmt::color::red), "subtree {}: ADJ({}) => {}\n", i, Operon::InfixFormatter::Format(u, ds), Operon::InfixFormatter::Format(v, ds));
-        //    fmt::print("{}\n", Operon::DotFormatter::Format(u, ds));
-        //    fmt::print("{}\n", Operon::DotFormatter::Format(v, ds));
-        //}
 
         std::vector<Operon::Scalar> y(ds.Rows());
         Operon::Span<Operon::Scalar> target{y.data(), y.size()};
