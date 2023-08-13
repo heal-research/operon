@@ -54,7 +54,7 @@
             eigen
             eve
             fast_float
-            fmt_9
+            fmt
             icu
             jemalloc
             openlibm
