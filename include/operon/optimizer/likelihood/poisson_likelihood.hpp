@@ -21,8 +21,7 @@ namespace detail {
             return a - b * std::log(a);
         }
 
-        template<typename T>
-        requires std::is_arithmetic_v<T>
+        template<Operon::Arithmetic T>
         auto operator()(T const a, T const b, T const w) const -> T {
             auto const z = w * a; // weight * f(x)
             return z - b * std::log(z);
@@ -35,8 +34,7 @@ namespace detail {
             return std::exp(a) - a * b;
         }
 
-        template<typename T>
-        requires std::is_arithmetic_v<T>
+        template<Operon::Arithmetic T>
         auto operator()(T const a, T const b, T const w) const -> T {
             a *= w;
             return std::exp(a) - a * b;
@@ -104,7 +102,12 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         using Matrix = LikelihoodBase<T>::Matrix;
         Eigen::Map<Matrix const> m(jac.data(), rows, cols);
         Eigen::Map<Vector const> s{pred.data(), std::ssize(pred)};
-        return (s.array().exp().matrix().asDiagonal() * m).transpose() * m;
+
+        if constexpr (LogInput) {
+            return (s.array().exp().matrix().asDiagonal() * m).transpose() * m;
+        } else {
+            return (s.array().inverse().matrix().asDiagonal() * m).transpose() * m;
+        }
     }
 
     auto NumParameters() const -> std::size_t { return np_; }
