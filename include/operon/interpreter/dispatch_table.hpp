@@ -332,7 +332,7 @@ public:
     [[nodiscard]] auto Contains(Operon::Hash hash) const noexcept -> bool { return map_.contains(hash); }
 }; // struct DispatchTable
 
-using DefaultDispatch = DispatchTable<Operon::Scalar, Operon::Seq<std::size_t, Dispatch::DefaultBatchSize<Operon::Scalar>>>;
+using DefaultDispatch = DispatchTable<Operon::Scalar>;
 } // namespace Operon
 
 #endif
