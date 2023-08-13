@@ -7,6 +7,7 @@
 #include "operon/error_metrics/mean_squared_error.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
+#include "operon/operators/creator.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
@@ -75,6 +76,29 @@ TEST_CASE("Evaluation correctness")
         estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(estimatedValues[0] == -2);
     }
+}
+
+TEST_CASE("Batch evaluation")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range { 0, ds.Rows<std::size_t>() };
+
+    using DTable = DispatchTable<Operon::Scalar>;
+
+    Operon::Problem problem{ds, range, range};
+    Operon::PrimitiveSet pset{PrimitiveSet::Arithmetic};
+    Operon::BalancedTreeCreator creator{pset, ds.VariableHashes()};
+
+    Operon::RandomGenerator rng{0};
+    auto constexpr n{10};
+
+    std::vector<Operon::Tree> trees;
+    std::vector<Operon::Scalar> result(range.Size() * n);    for (auto i = 0; i < n; ++i) {
+        trees.push_back(creator(rng, 20, 10, 20));
+    }
+
+    Operon::EvaluateTrees(trees, ds, range, {result.data(), result.size()});
+    Operon::EvaluateTrees(trees, ds, range);
 }
 
 TEST_CASE("parameter optimization")
