@@ -155,7 +155,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
         if (n.IsLeaf()) {
             n.CalculatedHashValue = n.HashValue;
             if (mode == Operon::HashMode::Strict) {
-                n.CalculatedHashValue += hasher(reinterpret_cast<uint8_t const*>(&n.Value), sizeof(n.Value));
+                n.CalculatedHashValue += hasher(std::bit_cast<uint8_t const*>(&n.Value), sizeof(n.Value));
             }
             continue;
         }
@@ -171,7 +171,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
         std::transform(begin, end, std::back_inserter(hashes), [&](auto j) { return nodes_[j].CalculatedHashValue; });
         hashes.push_back(n.HashValue);
 
-        n.CalculatedHashValue = hasher(reinterpret_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); // NOLINT
+        n.CalculatedHashValue = hasher(std::bit_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); // NOLINT
         childIndices.clear();
         hashes.clear();
     }
