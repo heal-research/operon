@@ -18,7 +18,7 @@ auto Hasher::operator()(uint8_t const* key, size_t len) const noexcept -> uint64
         return XXH64(key, len, 0);
     } else if constexpr(Operon::HashFunc == HashFunction::MetroHash) {
         uint64_t h = 0;
-        HashUtil::MetroHash64::Hash(key, len, reinterpret_cast<uint8_t*>(&h)); // NOLINT
+        HashUtil::MetroHash64::Hash(key, len, std::bit_cast<uint8_t*>(&h));
         return h;
     } else if constexpr(Operon::HashFunc == HashFunction::FNV1Hash) {
         uint64_t h = 14695981039346656037ULL; // NOLINT
@@ -33,7 +33,7 @@ auto Hasher::operator()(uint8_t const* key, size_t len) const noexcept -> uint64
 
 auto Hasher::operator()(std::string_view key) const noexcept -> uint64_t
 {
-    return (*this)(reinterpret_cast<uint8_t const*>(key.data()), key.size());
+    return (*this)(std::bit_cast<uint8_t const*>(key.data()), key.size());
 }
 
 auto Hasher::operator()(std::string const& key) const noexcept -> uint64_t
