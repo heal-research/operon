@@ -179,7 +179,8 @@ auto main(int argc, char** argv) -> int
 
         auto const initialMinDepth = result["creator-mindepth"].as<std::size_t>();
         auto const initialMaxDepth = result["creator-mindepth"].as<std::size_t>();
-        treeInitializer.ParameterizeDistribution(amin+1, maxLength);
+        auto const initialMaxLength = result["creator-maxlength"].as<std::size_t>();
+        treeInitializer.ParameterizeDistribution(amin+1, initialMaxLength);
         treeInitializer.SetMinDepth(initialMinDepth);
         treeInitializer.SetMaxDepth(initialMaxDepth); // NOLINT
 
@@ -223,10 +224,11 @@ auto main(int argc, char** argv) -> int
         auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
         Operon::DefaultDispatch dtable;
 
-        auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(dtable, problem);
-        optimizer->SetIterations(config.Iterations);
         Operon::Evaluator errorEvaluator(problem, dtable, *error, scale);
         errorEvaluator.SetBudget(config.Evaluations);
+
+        auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(dtable, problem);
+        optimizer->SetIterations(config.Iterations);
         errorEvaluator.SetOptimizer(optimizer.get());
         Operon::LengthEvaluator lengthEvaluator(problem, maxLength);
 
