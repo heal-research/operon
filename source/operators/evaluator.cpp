@@ -317,8 +317,8 @@ namespace Operon {
         auto const& tree = ind.Genotype;
         Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, ind.Genotype};
         auto summary = optimizer->Optimize(rng, tree);
-        auto& coeff = summary.FinalParameters;
-        auto const p { static_cast<double>(coeff.size()) };
+        auto parameters = summary.Success ? summary.FinalParameters : tree.GetCoefficients();
+        auto const p { static_cast<double>(parameters.size()) };
         auto const n { range.Size() };
 
         std::vector<Operon::Scalar> buffer;
@@ -327,7 +327,7 @@ namespace Operon {
             buf = Operon::Span<Operon::Scalar>(buffer);
         }
 
-        interpreter.Evaluate(tree.GetCoefficients(), range, buf);
+        interpreter.Evaluate(parameters, range, buf);
         auto estimatedValues = buf;
         auto targetValues = problem.TargetValues(range);
 
@@ -341,11 +341,10 @@ namespace Operon {
         auto cComplexity { 0.0 };
 
         // codelength of the parameters
-        auto parameters = ind.Genotype.GetCoefficients();
         Eigen::Matrix<Operon::Scalar, -1, -1> j = interpreter.JacRev(parameters, range); // jacobian
         auto fm = optimizer->ComputeFisherMatrix(buffer, {j.data(), static_cast<std::size_t>(j.size())}, sigma_);
         auto ii = fm.diagonal().array();
-        ENSURE(ii.size() == coeff.size());
+        ENSURE(ii.size() == parameters.size());
 
         auto cParameters { 0.0 };
         auto constexpr eps = std::numeric_limits<Operon::Scalar>::epsilon(); // machine epsilon for zero comparison
@@ -360,7 +359,7 @@ namespace Operon {
             if (n.Optimize) {
                 // this branch computes the description length of the parameters to be optimized
                 auto const di = std::sqrt(12 / ii(j));
-                auto const ci = std::abs(coeff[j]);
+                auto const ci = std::abs(parameters[j]);
 
                 if (!(std::isfinite(ci) && std::isfinite(di)) || ci / di < 1) {
                     //ind.Genotype[i].Optimize = false;
