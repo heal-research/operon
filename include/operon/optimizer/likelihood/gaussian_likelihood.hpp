@@ -44,12 +44,13 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
         , jac_{bs_, np_}
     { }
 
-    using Scalar   = LikelihoodBase<T>::Scalar;
+    using Scalar   = typename LikelihoodBase<T>::Scalar;
     using scalar_t = Scalar; // needed by lbfgs library NOLINT
 
-    using Vector   = LikelihoodBase<T>::Vector;
-    using Ref      = LikelihoodBase<T>::Ref;
-    using Cref     = LikelihoodBase<T>::Cref;
+    using Vector   = typename LikelihoodBase<T>::Vector;
+    using Ref      = typename LikelihoodBase<T>::Ref;
+    using Cref     = typename LikelihoodBase<T>::Cref;
+    using Matrix   = typename LikelihoodBase<T>::Matrix;
 
     // this loss can be used by the SGD or LBFGS optimizers
     auto operator()(Cref x, Ref g) const noexcept -> Operon::Scalar final {
@@ -99,12 +100,11 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
         return std::numeric_limits<Operon::Scalar>::quiet_NaN();
     }
 
-    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> sigma) -> LikelihoodBase<T>::Matrix
+    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> sigma) -> Matrix 
     {
         EXPECT(!sigma.empty());
         auto const rows = pred.size();
         auto const cols = jac.size() / pred.size();
-        using Matrix = LikelihoodBase<T>::Matrix;
         Eigen::Map<Matrix const> m(jac.data(), rows, cols);
         typename LikelihoodBase<T>::Matrix f = m.transpose() * m;
         if (sigma.size() == 1) {
