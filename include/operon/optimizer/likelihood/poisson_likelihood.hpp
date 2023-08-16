@@ -44,12 +44,6 @@ namespace detail {
 
 template<typename T = Operon::Scalar, bool LogInput = true>
 struct PoissonLikelihood : public LikelihoodBase<T> {
-    using Scalar = T;
-    using Vector = Eigen::Matrix<Scalar, -1, 1>;
-    using Ref    = Eigen::Ref<Vector>;
-    using Cref   = Eigen::Ref<Vector const> const&;
-
-    using scalar_t = T; // for lbfgs solver NOLINT
 
     PoissonLikelihood(Operon::RandomGenerator& rng, InterpreterBase<T> const& interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
         : LikelihoodBase<T>(interpreter)
@@ -61,6 +55,14 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         , nr_{range_.Size()}
         , jac_{bs_, np_}
     { }
+
+    using Scalar   = typename LikelihoodBase<T>::Scalar;
+    using scalar_t = Scalar; // needed by lbfgs library NOLINT
+
+    using Vector   = typename LikelihoodBase<T>::Vector;
+    using Ref      = typename LikelihoodBase<T>::Ref;
+    using Cref     = typename LikelihoodBase<T>::Cref;
+    using Matrix   = typename LikelihoodBase<T>::Matrix;
 
     // this loss can be used by the SGD or LBFGS optimizers
     auto operator()(Cref x, Ref g) const noexcept -> Operon::Scalar final {
@@ -95,11 +97,10 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         return vstat::univariate::accumulate<Operon::Scalar>(x.begin(), x.end(), y.begin(), F{}).sum;
     }
 
-    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> /*not used*/) -> LikelihoodBase<T>::Matrix
+    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> /*not used*/) -> Matrix 
     {
         auto const rows = pred.size();
         auto const cols = jac.size() / pred.size();
-        using Matrix = LikelihoodBase<T>::Matrix;
         Eigen::Map<Matrix const> m(jac.data(), rows, cols);
         Eigen::Map<Vector const> s{pred.data(), std::ssize(pred)};
 
