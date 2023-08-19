@@ -7,8 +7,6 @@
 namespace Operon {
 
 namespace detail {
-    constexpr int INSERTIONSORT = 7;
-
     class BitsetManager {
         using word_t = uint64_t; // NOLINT
 
@@ -170,7 +168,7 @@ namespace detail {
 } // namespace detail
 
     auto
-    MergeSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result {
+    MergeSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*eps*/) const -> NondominatedSorterBase::Result {
         auto n = pop.size();
         auto m = pop.front().Size();
         detail::BitsetManager bsm(n);
@@ -194,11 +192,11 @@ namespace detail {
         }
 
         size_t solutionId{0};
-        bool dominance{false};
         std::stable_sort(population.begin(), population.end(), [&](auto const& a, auto const& b) { return Operon::Less{}(a[1], b[1]); });
+        auto dominance{false};
         for (decltype(n) p = 0; p < n; p++) {
             solutionId = static_cast<size_t>(population[p][sortIndex]);
-            dominance |= bsm.InitializeSolutionBitset(solutionId);
+            dominance = dominance || bsm.InitializeSolutionBitset(solutionId);
             bsm.UpdateIncrementalBitset(solutionId);
             if (2 == m) {
                 auto initSolId = static_cast<size_t>(population[p][solId]);
@@ -218,7 +216,7 @@ namespace detail {
                     auto initSolId = static_cast<int>(population[p][solId]);
                     solutionId = static_cast<int>(population[p][sortIndex]);
                     if (obj < lastObjective) {
-                        dominance |= bsm.UpdateSolutionDominance(solutionId);
+                        dominance = dominance || bsm.UpdateSolutionDominance(solutionId);
                     } else {
                         bsm.ComputeSolutionRanking(solutionId, initSolId);
                     }

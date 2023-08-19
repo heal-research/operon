@@ -55,7 +55,7 @@ template<typename T>
 inline auto R2Score(Operon::Span<T const> x, Operon::Span<T const> y, Operon::Span<T const> w) noexcept -> double
 {
     EXPECT(y.size() == x.size());
-    return R2Score(x.begin(), x.end(), y.begin());
+    return R2Score(x.begin(), x.end(), y.begin(), w.begin());
 }
 } // namespace Operon
 

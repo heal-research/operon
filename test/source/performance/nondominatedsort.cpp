@@ -20,9 +20,6 @@ namespace nb = ankerl::nanobench;
 
 namespace Operon::Test {
 
-constexpr size_t MinEpochIterations { 50 };
-constexpr size_t Seed { 1234 };
-
 template <typename Dist>
 auto InitializePop(Operon::RandomGenerator& random, Dist& dist, size_t n, size_t m) -> std::vector<Individual>
 {
@@ -41,7 +38,6 @@ auto InitializePop(Operon::RandomGenerator& random, Dist& dist, size_t n, size_t
 TEST_CASE("non-dominated sort performance")
 {
     Operon::RandomGenerator rd{0};
-    constexpr int reps{16};
 
     auto run_sorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m)
     {
@@ -53,7 +49,6 @@ TEST_CASE("non-dominated sort performance")
         });
     };
 
-    constexpr int N{20000};
     constexpr int M{20};
 
     std::vector<int> ns { 1000, 2500, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000 }; // NOLINT

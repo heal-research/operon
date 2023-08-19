@@ -103,9 +103,7 @@ namespace detail {
 
     template <>
     struct Diff<Operon::NodeType::Aq> {
-        auto operator()(auto const& nodes, auto const& primal, auto& trace, int i, int j) {
-            auto const& n = nodes[i];
-
+        auto operator()(auto const& /*nodes*/, auto const& primal, auto& trace, int i, int j) {
             if (j == i-1) {
                 // first arg
                 trace.col(j) = primal.col(i) / primal.col(j);

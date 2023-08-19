@@ -150,13 +150,13 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
     } else if (name == "poly") {
         generator = std::make_unique<PolygenicOffspringGenerator>(eval, cx, mut, femSel, maleSel);
         size_t polygenicSize{PolygenicOffspringGenerator::DefaultBroodSize};
-        if (tok.size() > 1) { auto result = scn::scan(tok[1], "{}", polygenicSize); }
+        if (tok.size() > 1) { (void) scn::scan(tok[1], "{}", polygenicSize); }
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
     }
     return generator;
 }
 
-auto ParseOptimizer(std::string const& str, Problem const& problem, DefaultDispatch const& dtable) -> std::unique_ptr<OptimizerBase<DefaultDispatch>> {
+auto ParseOptimizer(std::string const& /*str*/, Problem const& /*problem*/, DefaultDispatch const& /*dtable*/) -> std::unique_ptr<OptimizerBase<DefaultDispatch>> {
     throw std::runtime_error("not implemented");
 }
 

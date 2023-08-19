@@ -257,7 +257,7 @@ namespace Operon {
 
         Operon::Scalar distance{0};
         std::vector<double> distances(sampleSize_);
-        for (auto i = 0; i < sampleSize_; ++i) {
+        for (auto i = 0UL; i < sampleSize_; ++i) {
             auto const& rhs = Operon::Random::Sample(random, values.begin(), values.end())->second;
             distance += static_cast<Operon::Scalar>(Operon::Distance::Jaccard(lhs, rhs));
         }
@@ -319,17 +319,16 @@ namespace Operon {
         auto summary = optimizer->Optimize(rng, tree);
         auto parameters = summary.Success ? summary.FinalParameters : tree.GetCoefficients();
         auto const p { static_cast<double>(parameters.size()) };
-        auto const n { range.Size() };
 
         std::vector<Operon::Scalar> buffer;
         if (buf.size() < range.Size()) {
             buffer.resize(range.Size());
             buf = Operon::Span<Operon::Scalar>(buffer);
         }
-
         interpreter.Evaluate(parameters, range, buf);
+
         auto estimatedValues = buf;
-        auto targetValues = problem.TargetValues(range);
+        auto targetValues    = problem.TargetValues(range);
 
         // codelength of the complexity
         // count number of unique functions
@@ -342,9 +341,9 @@ namespace Operon {
 
         // codelength of the parameters
         Eigen::Matrix<Operon::Scalar, -1, -1> j = interpreter.JacRev(parameters, range); // jacobian
-        auto fm = optimizer->ComputeFisherMatrix(buffer, {j.data(), static_cast<std::size_t>(j.size())}, sigma_);
+        auto fm = optimizer->ComputeFisherMatrix(estimatedValues, {j.data(), static_cast<std::size_t>(j.size())}, sigma_);
         auto ii = fm.diagonal().array();
-        ENSURE(ii.size() == parameters.size());
+        ENSURE(ii.size() == p);
 
         auto cParameters { 0.0 };
         auto constexpr eps = std::numeric_limits<Operon::Scalar>::epsilon(); // machine epsilon for zero comparison
@@ -385,7 +384,7 @@ namespace Operon {
 
         cParameters -= p/2 * std::log(3);
 
-        auto cLikelihood = optimizer->ComputeLikelihood(buffer, targetValues, sigma_);
+        auto cLikelihood = optimizer->ComputeLikelihood(estimatedValues, targetValues, sigma_);
         auto mdl = cComplexity + cParameters + cLikelihood;
         if (!std::isfinite(mdl)) { mdl = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mdl) };
@@ -405,8 +404,6 @@ namespace Operon {
     template<> auto OPERON_EXPORT
     AkaikeInformationCriterionEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto mse = Evaluator::operator()(rng, ind, buf).front();
-        auto const& tree = ind.Genotype;
-        auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
         auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem().TrainingRange().Size());
         auto aik = n/2 * (std::log(Operon::Math::Tau) + std::log(mse) + 1);
         if (!std::isfinite(aik)) { aik = EvaluatorBase::ErrMax; }

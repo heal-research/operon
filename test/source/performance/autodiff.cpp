@@ -158,7 +158,7 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
         std::vector<Operon::Scalar> y(ds.Rows());
         Operon::Span<Operon::Scalar> target{y.data(), y.size()};
 
-        constexpr auto iterations{50};
+        //constexpr auto iterations{50};
 
         do {
             std::uniform_int_distribution<size_t> dist(1, z);

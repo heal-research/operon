@@ -15,7 +15,7 @@
 #include "operon/interpreter/interpreter.hpp"  // for Interpreter
 #include "operon/optimizer/optimizer.hpp"
 #include "util.hpp"                            // for Split
-namespace Operon { class EvaluatorBase; }
+namespace Operon { struct EvaluatorBase; }
 namespace Operon { class KeepBestReinserter; }
 namespace Operon { class OffspringGeneratorBase; }
 namespace Operon { class PrimitiveSet; }

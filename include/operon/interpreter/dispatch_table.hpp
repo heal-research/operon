@@ -25,10 +25,6 @@ namespace concepts {
     concept ArrayBase = std::is_base_of_v<Eigen::ArrayBase<Derived>, Derived>;
 } // namespace concepts
 
-// forward declarations
-struct Dataset;
-struct Tree;
-
 // data types used by the dispatch table and the interpreter
 struct Dispatch {
 

@@ -23,13 +23,10 @@ namespace dt = doctest;
 namespace Operon::Test {
 
 TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
-    constexpr auto nrow{10};
-    constexpr auto ncol{3};;
-
     Operon::Dataset::Matrix values(1, 2);
     values << 2, 3; // NOLINT
 
-    Operon::RandomGenerator rng(1234UL);
+    Operon::RandomGenerator rng(0UL);
     Operon::Dataset ds(values);
     ds.SetVariableNames({"x", "y"});
     Operon::Map<std::string, Operon::Hash> variables;
@@ -38,7 +35,6 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     }
 
     Operon::DispatchTable<Operon::Scalar> dtable;
-    auto constexpr print{ false };
 
     Operon::Range range{0, ds.Rows<std::size_t>()};
     Operon::Problem problem(ds, range, {0, 1});
@@ -146,7 +142,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
         auto tree = InfixParser::Parse(expr, vars);
         auto coeff = tree.GetCoefficients();
-        Operon::Range range(0, 10);
+        Operon::Range range(0, 10); // NOLINT
 
         DispatchTable<Operon::Scalar> dt;
         auto jacrev = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{dt, ds, tree}.JacRev(coeff, range); 
@@ -183,7 +179,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
         std::uniform_int_distribution<size_t> length(1, maxsize);
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
-        std::bernoulli_distribution bernoulli(0.5);
+        std::bernoulli_distribution bernoulli(0.5); // NOLINT
 
         // comparison precision
         constexpr auto epsilon{1e-4};

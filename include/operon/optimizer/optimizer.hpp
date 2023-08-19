@@ -125,7 +125,7 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase<DTable> {
 };
 
 template <typename DTable>
-struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> : public OptimizerBase<DTable> {
+struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public OptimizerBase<DTable> {
     explicit LevenbergMarquardtOptimizer(DTable const& dtable, Problem const& problem)
         : OptimizerBase<DTable>{dtable, problem}
     {
@@ -146,7 +146,6 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> : public Optimi
         lm.setMaxfev(static_cast<int>(iterations+1));
 
         auto x0 = tree.GetCoefficients();
-        Eigen::ComputationInfo info{};
         OptimizerSummary summary;
         summary.InitialParameters = x0;
         if (!x0.empty()) {
