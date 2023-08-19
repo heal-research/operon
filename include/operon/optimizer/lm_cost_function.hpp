@@ -38,8 +38,6 @@ struct LMCostFunction {
         EXPECT(parameters != nullptr);
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
-        auto const& interpreter = interpreter_.get();
-
         if (jacobian != nullptr) {
             Operon::Span<Operon::Scalar> jac{jacobian, static_cast<size_t>(numResiduals_ * numParameters_)};
             interpreter_.get().JacRev(params, range_, jac);
@@ -89,8 +87,8 @@ struct LMCostFunction {
 
 private:
     std::reference_wrapper<InterpreterBase<T> const> interpreter_;
-    Operon::Range const range_; // NOLINT
     Operon::Span<Operon::Scalar const> target_;
+    Operon::Range const range_; // NOLINT
     std::size_t numResiduals_;
     std::size_t numParameters_;
 };

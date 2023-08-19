@@ -27,7 +27,7 @@ namespace Operon::Test {
         Operon::RandomGenerator rng{1234}; // NOLINT
         std::uniform_real_distribution<double> ureal(0, 1);
 
-        for (auto i = 0; i < n; ++i) {
+        for (auto i = 0UL; i < n; ++i) {
             x[i] = ureal(rng);
             y[i] = ureal(rng);
             z[i] = ureal(rng);

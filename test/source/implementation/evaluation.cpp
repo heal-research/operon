@@ -83,8 +83,6 @@ TEST_CASE("Batch evaluation")
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto range = Range { 0, ds.Rows<std::size_t>() };
 
-    using DTable = DispatchTable<Operon::Scalar>;
-
     Operon::Problem problem{ds, range, range};
     Operon::PrimitiveSet pset{PrimitiveSet::Arithmetic};
     Operon::BalancedTreeCreator creator{pset, ds.VariableHashes()};
@@ -148,7 +146,6 @@ TEST_CASE("parameter optimization")
 
     Operon::Problem problem{ds, range, range};
 
-    auto constexpr iterations { 1000 };
     auto constexpr batchSize { 32 };
 
 #if defined(HAVE_CERES)
@@ -162,7 +159,6 @@ TEST_CASE("parameter optimization")
         fmt::print("final tree: {}\n", InfixFormatter::Format(tree, ds));
     }
 #endif
-    auto constexpr precision { 4 };
     auto const dim { tree.CoefficientsCount() };
 
     std::vector<std::unique_ptr<UpdateRule::LearningRateUpdateRule<Operon::Scalar> const>> rules;
@@ -178,10 +174,9 @@ TEST_CASE("parameter optimization")
 
     auto testOptimizer = [&](OptimizerBase<DTable>& optimizer, std::string const& name) {
         fmt::print(fmt::fg(fmt::color::orange), "=== {} Solver ===\n", name);
-        auto t = tree;
-        auto summary = optimizer.Optimize(rng, t);
+        auto summary = optimizer.Optimize(rng, tree);
         fmt::print("batch size: {}\n", batchSize);
-        fmt::print("expression: {}\n", InfixFormatter::Format(t, ds));
+        fmt::print("expression: {}\n", InfixFormatter::Format(tree, ds));
         fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
         fmt::print("final parameters: {}\n\n", summary.FinalParameters);
     };
@@ -231,39 +226,5 @@ TEST_CASE("parameter optimization")
             testOptimizer(optimizer, fmt::format("sgd / poisson / {}", rule->Name()));
         }
     }
-}
-
-TEST_CASE("poisson regression")
-{
-    auto ds = Operon::Dataset { "./data/competition_awards_data.csv", /*hasHeader=*/true };
-    Operon::Map<std::string, Operon::Hash> vars;
-    for (const auto& v : ds.GetVariables()) {
-        // fmt::print("{} : {}\n", v.Name, v.Hash);
-        vars[v.Name] = v.Hash;
-    }
-    auto tree = Operon::InfixParser::Parse("Score", vars);
-    auto range = Range { 0, ds.Rows<std::size_t>() };
-    auto target = ds.GetValues("Awards");
-
-    Operon::Problem problem{ds, range, range};
-
-    using DTable = DispatchTable<Operon::Scalar>;
-    DTable dtable;
-
-    Operon::RandomGenerator rng{0};
-
-    Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, ds, tree };
-
-    auto constexpr iterations { 100 };
-    auto constexpr batchSize { 16 };
-
-    UpdateRule::Constant<Operon::Scalar> updateRule(tree.CoefficientsCount(), 0.001);
-    SGDOptimizer optimizer { dtable, problem, updateRule };
-
-    auto summary = optimizer.Optimize(rng, tree);
-    fmt::print("batch size: {}\n", batchSize);
-    // fmt::print("expression: {}\n", InfixFormatter::Format(model, ds));
-    fmt::print("iterations: {}, initial cost: {}, final cost: {}\n", summary.Iterations, summary.InitialCost, summary.FinalCost);
-    fmt::print("final parameters: {}\n\n", summary.FinalParameters);
 }
 } // namespace Operon::Test

@@ -106,7 +106,7 @@ public:
 
     [[nodiscard]] auto TargetValues() const -> Operon::Span<Operon::Scalar const> { return dataset_.GetValues(target_.Index); }
     [[nodiscard]] auto TargetValues(Operon::Range range) const -> Operon::Span<Operon::Scalar const> {
-        return dataset_.GetValues(target_.Index).subspan(training_.Start(), training_.Size());
+        return dataset_.GetValues(target_.Index).subspan(range.Start(), range.Size());
     }
 
     void StandardizeData(Range range)

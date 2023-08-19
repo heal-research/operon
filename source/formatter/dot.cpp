@@ -32,7 +32,7 @@ auto DotFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::strin
         return s.Name();
     };
 
-    for (auto i = 0; i < tree.Length(); ++i) {
+    for (auto i = 0UL; i < tree.Length(); ++i) {
         auto label = format(tree[i]);
         fmt::format_to(std::back_inserter(result), "\t{} [label=\"{}\"]\n", i, label);
 

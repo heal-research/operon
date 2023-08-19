@@ -487,19 +487,16 @@ struct SGDSolver {
     {
         auto const& fun = functor_.get();
 
-        auto const np = fun.NumParameters();
-        auto const no = fun.NumObservations();
+        EXPECT(x0.size() == static_cast<Eigen::Index>(fun.NumParameters()));
 
-        EXPECT(x0.size() == np);
-
-        Vector grad(np);
+        Vector grad(x0.size());
         Vector x = x0;
-        Vector beta(np);
+        Vector beta(x0.size());
 
         static constexpr auto tol { 1e-8 };
 
         for (epochs_ = 0; epochs_ < epochs; ++epochs_) {
-            auto f = functor_(x, grad);
+            //auto f = functor_(x, grad);
             // apply learning rate to grad and write result in beta
             update_.get().Update(grad, beta);
             if ((beta.abs() < tol).all()) {
@@ -507,11 +504,6 @@ struct SGDSolver {
                 break;
             }
             x -= beta;
-            // std::cout << "===== epoch " << epochs_ << " =====\n";
-            // std::cout << "x   : " << x.transpose() << "\n";
-            // std::cout << "grad: " << grad.transpose() << "\n";
-            // std::cout << "beta: " << beta.transpose() << "\n";
-            // std::cout << update_.get() << "\n";
         }
 
         return x;

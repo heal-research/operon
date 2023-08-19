@@ -26,7 +26,7 @@ TEST_CASE("diversity")
 
     Dataset ds(values);
     auto const nrow{ ds.Rows<std::size_t>() };
-    auto const ncol{ ds.Cols<std::size_t>() };
+    //auto const ncol{ ds.Cols<std::size_t>() };
     Problem problem(std::move(ds), Range{0, nrow/2}, Range{nrow/2, nrow});
     BalancedTreeCreator btc(grammar, problem.GetInputs());
 

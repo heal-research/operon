@@ -76,7 +76,7 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
     static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> s) noexcept -> Scalar {
         EXPECT(!s.empty());
         static_assert(std::is_arithmetic_v<Scalar>);
-        auto const n{ x.size() };
+        auto const n{ std::ssize(x) };
         constexpr Scalar z{0.5};
 
         if (s.size() == 1) {

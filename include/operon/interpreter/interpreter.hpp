@@ -58,15 +58,13 @@ struct Interpreter : public InterpreterBase<T> {
         InitContext(coeff, range);
 
         auto res = primal_.col(primal_.cols()-1);
-        auto const& dt = dtable_.get();
-
         auto const len{ static_cast<int64_t>(range.Size()) };
 
         constexpr int64_t S{ BatchSize };
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/false);
 
-            if (result.size() == len) {
+            if (std::ssize(result) == len) {
                 auto rem = std::min(S, len - row);
                 Eigen::Map<Eigen::Array<T, -1, 1>>(result.data(), result.size()).segment(row, rem) = res.head(rem);
             }
@@ -81,11 +79,9 @@ struct Interpreter : public InterpreterBase<T> {
 
     inline auto JacRev(Operon::Span<Operon::Scalar const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
         InitContext(coeff, range);
-        auto res = primal_.col(primal_.cols()-1);
-        auto const& dt = dtable_.get();
         auto const len{ static_cast<int64_t>(range.Size()) };
         auto const& nodes = tree_.get().Nodes();
-        auto const nn   { std::ssize(nodes) };
+        auto const nn { std::ssize(nodes) };
 
         constexpr int64_t S{ BatchSize };
         trace_ = Eigen::Array<T, S, -1>::Zero(S, nn);
@@ -108,8 +104,6 @@ struct Interpreter : public InterpreterBase<T> {
 
     auto JacFwd(Operon::Span<Operon::Scalar const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
         InitContext(coeff, range);
-        auto res = primal_.col(primal_.cols()-1);
-        auto const& dt = dtable_.get();
         auto const len{ static_cast<int>(range.Size()) };
         auto const& nodes = tree_.get().Nodes();
         auto const nn   { std::ssize(nodes) };
@@ -198,7 +192,6 @@ private:
     }
 
     inline auto ForwardTrace(Operon::Range range, int row, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
-        auto const start { static_cast<int64_t>(range.Start()) };
         auto const len   { static_cast<int64_t>(range.Size()) };
         auto const& nodes{ tree_.get().Nodes() };
         auto const nn { std::ssize(nodes) };
@@ -231,7 +224,6 @@ private:
     }
 
     auto ReverseTrace(Operon::Range range, int row, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
-        auto const start { static_cast<int64_t>(range.Start()) };
         auto const len   { static_cast<int64_t>(range.Size()) };
         auto const& nodes{ tree_.get().Nodes() };
         auto const nn    { std::ssize(nodes) };
