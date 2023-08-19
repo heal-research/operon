@@ -74,7 +74,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     using Ptr = std::unique_ptr<uint64_t[], std::add_pointer_t<void(uint64_t*)>>; // NOLINT
     using Operon::Scalar;
 
-    auto set = [](auto&& range, int i) { range[i / D] |= (1UL << (D - i % D));}; // set bit i
+    //auto set = [](auto&& range, int i) { range[i / D] |= (1UL << (D - i % D));}; // set bit i
     auto reset = [](auto&& range, int i) { range[i / D] &= ~(1UL << (i % D)); }; // unset bit i
 
     // initialization
@@ -117,7 +117,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
             if (o == static_cast<int>(nb)) { continue; }
             // compute the intersections of the dominance sets (most runtime intensive part)
             if (i != std::get<0>(items.front())) {
-                for (std::size_t j = o; j < nb; ++j) { s[j] &= q[j]; }
+                for (auto j = o; j < nb; ++j) { s[j] &= q[j]; }
                 while (o < static_cast<int>(nb) && s[o] == ZEROS) { ++o; }
             }
             if (obj == m-1) { detail::UpdateRanks(it, rank, rs); }

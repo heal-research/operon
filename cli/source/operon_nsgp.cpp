@@ -125,21 +125,22 @@ auto main(int argc, char** argv) -> int
             return EXIT_FAILURE;
         }
         target = *res;
+        auto const rows{ dataset->Rows<std::size_t>() };
         if (result.count("train") == 0) {
-            trainingRange = Operon::Range{ 0, 2 * dataset->Rows<std::size_t>() / 3 }; // by default use 66% of the data as training
+            trainingRange = Operon::Range{ 0, 2 * rows / 3 }; // by default use 66% of the data as training
         }
         if (result.count("test") == 0) {
             // if no test range is specified, we try to infer a reasonable range based on the trainingRange
             if (trainingRange.Start() > 0) {
                 testRange = Operon::Range{ 0, trainingRange.Start() };
-            } else if (trainingRange.End() < dataset->Rows()) {
+            } else if (trainingRange.End() < rows) {
                 testRange = Operon::Range{ trainingRange.End(), dataset->Rows<std::size_t>() };
             } else {
                 testRange = Operon::Range{ 0, 1};
             }
         }
         // validate training range
-        if (trainingRange.Start() >= dataset->Rows() || trainingRange.End() > dataset->Rows()) {
+        if (trainingRange.Start() >= rows || trainingRange.End() > rows) {
             fmt::print(stderr, "error: the training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start(), trainingRange.End(), dataset->Rows());
             return EXIT_FAILURE;
         }

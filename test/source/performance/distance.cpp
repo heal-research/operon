@@ -45,7 +45,6 @@ TEST_CASE("Intersection performance")
     Operon::RandomGenerator rd(1234);
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
 
-    auto target = "Y";
     auto variables = ds.GetVariables();
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
@@ -68,7 +67,6 @@ TEST_CASE("Intersection performance")
 
     std::uniform_int_distribution<size_t> dist(0U, trees.size()-1);
 
-    auto avgLen = std::transform_reduce(trees.begin(), trees.end(), 0.0, std::plus<>{}, [](auto const& t) { return t.Length(); }) / static_cast<double>(n);
     auto totalOps = trees.size() * (trees.size() - 1) / 2; 
 
     SUBCASE("Hashing performance") {

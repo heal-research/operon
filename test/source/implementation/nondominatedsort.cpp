@@ -306,7 +306,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
 
         for (size_t nn = 1000; nn <= 10000; nn += 1000) {
             for (size_t mm = 2; mm <= 5; ++mm) {
-                for (int i = 0; i < reps; ++i) {
+                for (auto i = 0UL; i < reps; ++i) {
                     std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
                     auto pop = initializePop(rd, dist, nn, mm);
                     auto fronts = RankIntersectSorter{}(pop);
@@ -324,15 +324,14 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         fmt::print("name,n,m,lc,sv,dc,rc,ops,mean_rk,mean_nd\n");
         for (size_t n = 100; n <= 2000; n += 100) {
             for (size_t m = 2; m <= 2; ++m) {
-                double lc;
-                double dc;
-                double rc;
-                double sv;
-                double ops;
-                double mean_rank;
-                double mean_front_size;
-                double mean_nd; 
-                lc = dc = rc = ops = sv = mean_rank = mean_front_size = mean_nd = 0;
+                double lc{0};
+                double dc{0};
+                double rc{0};
+                double sv{0};
+                double ops{0};
+                double mean_rank{0};
+                double mean_front_size{0};
+                double mean_nd{0}; 
                 for (size_t r = 0; r < reps; ++r) {
                     auto pop = initializePop(rd, dist, n, m);
                     auto fronts = sorter(pop);
@@ -342,21 +341,21 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
                         rk += i * fronts[i].size();
                     }
                     rk /= n;
-                    mean_rank += rk;
-                    mean_front_size += static_cast<double>(n) / static_cast<double>(fronts.size());
+                    mean_rank = mean_rank + rk;
+                    mean_front_size = mean_front_size + static_cast<double>(n) / static_cast<double>(fronts.size());
 
                     auto [lc_, sv_, dc_, rc_, ops_, rk_, nd_, el_] = sorter.Stats;
-                    lc += static_cast<double>(lc_);
-                    sv += static_cast<double>(sv_);
-                    dc += static_cast<double>(dc_);
-                    rc += static_cast<double>(rc_);
-                    ops += static_cast<double>(ops_);
+                    lc = lc + static_cast<double>(lc_);
+                    sv = sv + static_cast<double>(sv_);
+                    dc = dc + static_cast<double>(dc_);
+                    rc = rc + static_cast<double>(rc_);
+                    ops = ops + static_cast<double>(ops_);
                     //mean_rank += rk_;
-                    mean_nd += nd_;
+                    mean_nd = mean_nd + nd_;
                     sorter.Reset();
                 }
-                auto r = (double)reps;
-                //fmt::print("{},{},{},{},{},{},{},{},{},{}\n", name, n, m, lc/r, sv/r, dc/r, rc/r, ops/r, mean_rank/r, mean_front_size/r);
+                auto r = static_cast<double>(reps);
+                fmt::print("{},{},{},{},{},{},{},{},{},{}\n", name, n, m, lc/r, sv/r, dc/r, rc/r, ops/r, mean_rank/r, mean_front_size/r);
             }
         }
     };

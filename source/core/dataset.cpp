@@ -28,7 +28,7 @@ namespace {
 
     auto DefaultVariables(size_t count) {
         std::vector<std::string> names(count);
-        for (auto i = 0; i < count; ++i) {
+        for (auto i = 0UL; i < count; ++i) {
             names[i] = fmt::format("X{}", i+1);
         }
         return VariablesFromNames(names);
@@ -99,9 +99,9 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
 }
 
 Dataset::Dataset(std::vector<std::vector<Operon::Scalar>> const& vals)
-    : values_(MatrixFromValues(vals))
+    : variables_(DefaultVariables(vals.size()))
+    , values_(MatrixFromValues(vals))
     , map_(values_.data(), values_.rows(), values_.cols())
-    , variables_(DefaultVariables(vals.size()))
 {
 }
 
@@ -228,7 +228,7 @@ void Dataset::Normalize(size_t i, Range range)
 void Dataset::PermuteRows(std::vector<Eigen::Index> const& indices)
 {
     if (IsView()) { throw std::runtime_error("Cannot shuffle. Dataset does not own the data.\n"); }
-    ENSURE(values_.rows() == indices.size());
+    ENSURE(values_.rows() == std::ssize(indices));
     Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values_.rows());
     std::copy(indices.begin(), indices.end(), perm.indices().begin());
     values_.matrix().applyOnTheLeft(perm); // permute rows

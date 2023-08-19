@@ -185,8 +185,6 @@ TEST_SUITE("[implementation]")
     {
         auto model_str = "1 + 2 + 3 + 4";
 
-        Hasher hasher;
-
         Operon::Map<std::string, Operon::Hash> vars_map;
         Operon::Map<Operon::Hash, std::string> vars_names;
 

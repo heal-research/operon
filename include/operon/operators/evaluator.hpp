@@ -106,7 +106,7 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
     {
     }
 
-    virtual void Prepare(Operon::Span<Individual const> pop) const
+    virtual void Prepare(Operon::Span<Individual const> /*pop*/) const
     {
     }
 
