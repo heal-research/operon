@@ -3,6 +3,7 @@
 
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/core/individual.hpp"
+#include <bit>
 
 namespace Operon {
 
@@ -12,7 +13,7 @@ namespace detail {
 
         static constexpr size_t FIRST_WORD_RANGE = 0;
         static constexpr size_t LAST_WORD_RANGE = 1;
-        static constexpr word_t WORD_MASK = ~word_t{0};
+        static constexpr word_t WORD_MASK = ~word_t{0UL};
         static constexpr size_t WORD_SIZE = std::numeric_limits<word_t>::digits;
 
         std::vector<std::vector<word_t>> bitsets_;
@@ -21,7 +22,8 @@ namespace detail {
         std::vector<int> ranking_, ranking0_;
         int maxRank_ = 0;
         std::vector<word_t> incrementalBitset_;
-        size_t incBsFstWord_{}, incBsLstWord_{};
+        size_t incBsFstWord_{std::numeric_limits<int>::max()};
+        size_t incBsLstWord_{0};
 
     public:
         [[nodiscard]] auto GetRanking() const -> std::vector<int> const& { return ranking0_; }
@@ -57,8 +59,9 @@ namespace detail {
 
         void ComputeSolutionRanking(size_t solutionId, size_t initSolId)
         {
-            size_t fw = bsRanges_[solutionId][FIRST_WORD_RANGE];
-            size_t lw = bsRanges_[solutionId][LAST_WORD_RANGE];
+            auto fw = bsRanges_[solutionId][FIRST_WORD_RANGE];
+            auto lw = bsRanges_[solutionId][LAST_WORD_RANGE];
+
             if (lw > incBsLstWord_) {
                 lw = incBsLstWord_;
             }
@@ -68,23 +71,23 @@ namespace detail {
             if (fw > lw) {
                 return;
             }
-            word_t word = 0;
+            word_t word{};
             size_t i = 0;
             int rank = 0;
             size_t offset = 0;
 
             for (; fw <= lw; fw++) {
                 word = bitsets_[solutionId][fw] & incrementalBitset_[fw];
+
                 if (word != 0) {
                     i = std::countr_zero(static_cast<word_t>(word));
-                    offset = static_cast<size_t>(fw) * WORD_SIZE;
+                    offset = fw * WORD_SIZE;
                     do {
                         if (ranking_[offset + i] >= rank) {
                             rank = ranking_[offset + i] + 1;
                         }
                         i++;
-                        word_t w = word >> i; // NOLINT
-                        i += static_cast<bool>(w) ? std::countr_zero(w) : WORD_SIZE;
+                        i += std::countr_zero(word >> i);
                     } while (i < WORD_SIZE && rank <= wordRanking_[fw]);
                     if (rank > maxRank_) {
                         maxRank_ = rank;
@@ -120,7 +123,7 @@ namespace detail {
                 return false;
             }
             if (wordIndex == incBsFstWord_) { //only 1 word in common
-                bitsets_[solutionId] = std::vector<word_t>(wordIndex + 1);
+                bitsets_[solutionId].resize(wordIndex + 1);
                 auto intersection = incrementalBitset_[incBsFstWord_] & ~(WORD_MASK << solutionId);
                 if (intersection != 0) {
                     bsRanges_[solutionId][FIRST_WORD_RANGE] = wordIndex;
@@ -129,7 +132,7 @@ namespace detail {
                 }
                 return intersection != 0;
             }
-            //more than one word in common
+            // more than one word in common
             auto lw = incBsLstWord_ < wordIndex ? incBsLstWord_ : wordIndex;
             bsRanges_[solutionId][FIRST_WORD_RANGE] = incBsFstWord_;
             bsRanges_[solutionId][LAST_WORD_RANGE] = lw;
@@ -155,7 +158,7 @@ namespace detail {
         BitsetManager() = default;
 
         // constructor
-        explicit BitsetManager(size_t nSolutions) : incBsFstWord_(std::numeric_limits<int>::max())
+        explicit BitsetManager(size_t nSolutions)
         {
             ranking_.resize(nSolutions, 0);
             ranking0_.resize(nSolutions, 0);
@@ -196,7 +199,7 @@ namespace detail {
         auto dominance{false};
         for (decltype(n) p = 0; p < n; p++) {
             solutionId = static_cast<size_t>(population[p][sortIndex]);
-            dominance = dominance || bsm.InitializeSolutionBitset(solutionId);
+            dominance |= bsm.InitializeSolutionBitset(solutionId);
             bsm.UpdateIncrementalBitset(solutionId);
             if (2 == m) {
                 auto initSolId = static_cast<size_t>(population[p][solId]);
