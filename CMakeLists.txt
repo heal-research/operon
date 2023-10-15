@@ -66,6 +66,7 @@ add_library(
     source/operators/generator/os.cpp
     source/operators/generator/poly.cpp
     source/operators/mutation.cpp
+    source/operators/non_dominated_sorter/best_order_sort.cpp
     source/operators/non_dominated_sorter/deductive_sort.cpp
     source/operators/non_dominated_sorter/dominance_degree_sort.cpp
     source/operators/non_dominated_sorter/efficient_sort.cpp
@@ -231,7 +232,7 @@ else()
     target_compile_options(operon_operon PRIVATE "-fno-math-errno")
 endif()
 
-target_compile_definitions(operon_operon PUBLIC 
+target_compile_definitions(operon_operon PUBLIC
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
     "$<$<BOOL:${HAVE_CERES}>:HAVE_CERES>"
     )

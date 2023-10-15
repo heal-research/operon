@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include <doctest/doctest.h>
+#include <fstream>
 
 #include "nanobench.h"
 #include "operon/core/dataset.hpp"
@@ -69,7 +70,9 @@ TEST_CASE("non-dominated sort performance")
         nb::Bench bench;
         bench.performanceCounters(true);
         test(bench, "RS", Operon::RankIntersectSorter{});
-        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
+
+        std::ofstream fs("./rs.csv");
+        bench.render(ankerl::nanobench::templates::csv(), fs);
     }
 
     SUBCASE("RO")
@@ -77,7 +80,8 @@ TEST_CASE("non-dominated sort performance")
         nb::Bench bench;
         bench.performanceCounters(true);
         test(bench, "RO", Operon::RankOrdinalSorter{});
-        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
+        std::ofstream fs("./ro.csv");
+        bench.render(ankerl::nanobench::templates::csv(), fs);
     }
 
     SUBCASE("RS N=25000 M=10")
@@ -87,7 +91,7 @@ TEST_CASE("non-dominated sort performance")
         const int n{25000};
         const int m{10};
         run_sorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
-        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
+        bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
 
     SUBCASE("MNDS")
@@ -95,7 +99,8 @@ TEST_CASE("non-dominated sort performance")
         nb::Bench bench;
         bench.performanceCounters(true);
         test(bench, "MNDS", Operon::MergeSorter{});
-        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
+        std::ofstream fs("./mnds.csv");
+        bench.render(ankerl::nanobench::templates::csv(), fs);
     }
 
     SUBCASE("MNDS N=25000 M=10")
@@ -105,6 +110,35 @@ TEST_CASE("non-dominated sort performance")
         const int n{25000};
         const int m{10};
         run_sorter(bench, "MNDS", Operon::MergeSorter{}, n, m);
+        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
+    }
+
+    SUBCASE("BOS")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        test(bench, "BOS", Operon::BestOrderSorter{});
+        std::ofstream fs("./bos.csv");
+        bench.render(ankerl::nanobench::templates::csv(), fs);
+    }
+
+    SUBCASE("BOS N=25000 M=10")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        const int n{25000};
+        const int m{10};
+        run_sorter(bench, "BOS", Operon::BestOrderSorter{}, n, m);
+        bench.render(ankerl::nanobench::templates::csv(), std::cout);;
+    }
+
+    SUBCASE("BOS N=50000 M=10")
+    {
+        nb::Bench bench;
+        bench.performanceCounters(true);
+        const int n{50000};
+        const int m{10};
+        run_sorter(bench, "BOS", Operon::BestOrderSorter{}, n, m);
         bench.render(ankerl::nanobench::templates::csv(), std::cout);;
     }
 }
