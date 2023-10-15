@@ -27,8 +27,6 @@
         stdenv_ = pkgs.overrideCC pkgs.llvmPackages_16.stdenv (
           pkgs.clang_16.override { gccForLibs = pkgs.gcc13.cc; }
         );
-        #stdenv_ = pkgs.llvmPackages_16.libcxxStdenv;
-        # stdenv_ = pkgs.llvmPackages_16.stdenv;
 
         operon = stdenv_.mkDerivation {
           name = "operon";
@@ -118,6 +116,7 @@
 
           buildInputs = operon.buildInputs ++ (with pkgs; [
             gdb
+            gcc13
             graphviz
             hyperfine
             linuxPackages_latest.perf
