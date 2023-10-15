@@ -116,6 +116,11 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         MergeSorter ms;
         fronts = ms(pop);
         print(fronts);
+
+        fmt::print("BOS\n");
+        BestOrderSorter bos;
+        fronts = bos(pop);
+        print(fronts);
     }
 
     SUBCASE("test 2")
@@ -187,7 +192,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         std::iota(indices.begin(), indices.end(), 0);
         std::stable_sort(indices.begin(), indices.end(), [&](auto i, auto j) { return LexicographicalComparison{}(pop[i], pop[j]); });
         fmt::print("indices: {}\n", indices);
-        
+
         std::stable_sort(pop.begin(), pop.end(), LexicographicalComparison{});
 
         fmt::print("RS\n");
@@ -239,7 +244,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
 
     SUBCASE("basic")
     {
-        size_t n = 7;
+        size_t n = 333;
         size_t m = 2;
 
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
@@ -262,42 +267,41 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         Operon::Span<Operon::Individual const> s(pop.begin(), r);
 
         //auto fronts = DeductiveSorter{}(s, eps);
-        //std::cout << "deductive sort\n"; 
+        //std::cout << "deductive sort\n";
         //print(fronts);
 
 
         auto fronts = RankOrdinalSorter{}(s, eps);
-        std::cout << "rank ordinal\n"; 
+        std::cout << "rank ordinal\n";
         print(fronts);
 
         fronts = RankIntersectSorter{}(s, eps);
-        std::cout << "rank intersect\n"; 
+        std::cout << "rank intersect\n";
         print(fronts);
 
-        //fronts = FastNondominatedSorter{}(pop);
-        //std::cout << "nds sort\n"; 
-        //print(fronts);
+        fronts = HierarchicalSorter{}(s, eps);
+        std::cout << "hierarchical sort\n";
+        print(fronts);
 
-        //fronts = HierarchicalSorter{}(s, eps);
-        //std::cout << "hierarchical sort\n";
-        //print(fronts);
+        fronts = DominanceDegreeSorter{}(s, eps);
+        std::cout << "dominance degree sort\n";
+        print(fronts);
 
-        //fronts = DominanceDegreeSorter{}(s, eps);
-        //std::cout << "dominance degree sort\n";
-        //print(fronts);
+        fronts = EfficientSequentialSorter{}(s, eps);
+        std::cout << "ens-ss\n";
+        print(fronts);
 
-        //fronts = EfficientSequentialSorter{}(s, eps);
-        //std::cout << "ens-ss\n";
-        //print(fronts);
-
-        //fronts = EfficientBinarySorter{}(s, eps);
-        //std::cout << "ens-bs\n";
-        //print(fronts);
+        fronts = EfficientBinarySorter{}(s, eps);
+        std::cout << "ens-bs\n";
+        print(fronts);
 
         fronts = MergeSorter{}(s, eps);
         std::cout << "mnds\n";
         print(fronts);
 
+        fronts = BestOrderSorter{}(s, eps);
+        std::cout << "bos\n";
+        print(fronts);
     }
 
     SUBCASE("bit density")
@@ -331,7 +335,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
                 double ops{0};
                 double mean_rank{0};
                 double mean_front_size{0};
-                double mean_nd{0}; 
+                double mean_nd{0};
                 for (size_t r = 0; r < reps; ++r) {
                     auto pop = initializePop(rd, dist, n, m);
                     auto fronts = sorter(pop);
