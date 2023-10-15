@@ -32,17 +32,17 @@ namespace detail {
             auto p = detail::MakeUnique<uint64_t[]>(nb, E{0}); // NOLINT
             rankset.push_back(std::move(p));
         }
-        auto& curr = rankset[r];                          // the pareto front of the current individual
-        auto& next = rankset[r+1UL];                      // next (worse rank) pareto front
+        auto& curr = rankset[r];                           // the pareto front of the current individual
+        auto& next = rankset[r+1UL];                       // next (worse rank) pareto front
 
-        for (std::size_t j = o; j < nb; ++j) {            // iterate over bitset blocks
-            auto x = s[j] & curr[j];                      // final set as intersection of dominance set and rank set
+        auto b = static_cast<int>(i / D) + o;
+        for (std::size_t j = b, k = o; j < nb; ++j, ++k) { // iterate over bitset blocks
+            auto x = s[k] & curr[j];                       // final set as intersection of dominance set and rank set
             if (x != 0) {
-                curr[j] &= ~x;                            // remove intersection result from current rank set
-                next[j] |= x;                             // add intersection result to next rank set
-                for (; x != 0; x &= (x - 1)) {            // iterate over set bits of v
-                    auto k = j * D + std::countr_zero(x); // get index of dominated individual
-                    ++rank[k];                            // increment rank
+                curr[j] &= ~x;                             // remove intersection result from current rank set
+                next[j] |= x;                              // add intersection result to next rank set
+                for (; x != 0; x &= (x - 1)) {             // iterate over set bits of v
+                    ++rank[j * D + std::countr_zero(x)];   // increment rank
                 }
             }
         }
@@ -69,9 +69,9 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     std::size_t constexpr ONES{~ZEROS};
     std::size_t constexpr D{std::numeric_limits<uint64_t>::digits};
     int const nb{static_cast<int>(n / D + static_cast<std::size_t>(n % D != 0))};
-    std::size_t const ub = D * nb - n; // number of unused bits at the end of the last block (must be set to zero) 
+    std::size_t const ub = D * nb - n; // number of unused bits at the end of the last block (must be set to zero)
 
-    using Ptr = std::unique_ptr<uint64_t[], std::add_pointer_t<void(uint64_t*)>>; // NOLINT
+    using Bitset = std::unique_ptr<uint64_t[], std::add_pointer_t<void(uint64_t*)>>; // NOLINT
     using Operon::Scalar;
 
     //auto set = [](auto&& range, int i) { range[i / D] |= (1UL << (D - i % D));}; // set bit i
@@ -81,19 +81,18 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     auto q = detail::MakeUnique<uint64_t[]>(nb, ONES); // NOLINT
     q[nb-1] >>= ub; // zero unused region
 
-    std::vector<std::tuple<int, int, Scalar, Ptr>> items;
+    std::vector<std::tuple<int, int, Scalar, Bitset>> items;
     items.reserve(n);
 
-    auto b = 0; // current non-zero block
     for (auto i = 0; i < n; ++i) {
         reset(q, i); // reset bit i
-        b += static_cast<int>(q[i / D] == 0); // advance lower bound when a block becomes zero
-        auto p = detail::MakeUnique<uint64_t[]>(nb); // NOLINT
-        std::copy_n(q.get() + b, nb - b, p.get() + b); // initialize bitset with q
-        items.emplace_back(i, b, pop[i][0], std::move(p));
+        auto b = static_cast<int>(i / D);
+        auto p = detail::MakeUnique<uint64_t[]>(nb-b); // NOLINT
+        std::copy_n(q.get() + b, nb - b, p.get()); // initialize bitset with q
+        items.emplace_back(i, 0, pop[i][0], std::move(p));
     }
 
-    std::vector<Ptr> rs; // NOLINT
+    std::vector<Bitset> rs; // NOLINT
     rs.push_back(detail::MakeUnique<uint64_t[]>(nb, ONES)); // vector of sets keeping track of individuals whose rank was updated NOLINT
     rs[0][nb-1] >>= ub; // zero unused region
 
@@ -107,18 +106,21 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
         q[nb-1] >>= ub; // zero unused region
 
         for (auto& it : items) {
-            auto& [i, o, v, s] = it;
+            auto& [i, o, v, p] = it;
+            auto b = static_cast<int>(i / D);
             reset(q, i); // reset bit i
             if (i == std::get<0>(items.back())) {
                // last individual cannot dominate anyone else
-               o = static_cast<int>(nb);
+               b = static_cast<int>(nb);
                continue;
             }
-            if (o == static_cast<int>(nb)) { continue; }
+            if (b == static_cast<int>(nb)) { continue; }
             // compute the intersections of the dominance sets (most runtime intensive part)
             if (i != std::get<0>(items.front())) {
-                for (auto j = o; j < nb; ++j) { s[j] &= q[j]; }
-                while (o < static_cast<int>(nb) && s[o] == ZEROS) { ++o; }
+                auto* sp = p.get();
+                auto const* qp = q.get();
+                std::transform(qp+b+o, qp+nb, sp+o, sp+o, std::bit_and{});
+                while (o < static_cast<int>(nb-b) && sp[o] == ZEROS) { ++o; }
             }
             if (obj == m-1) { detail::UpdateRanks(it, rank, rs); }
         }

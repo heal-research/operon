@@ -3,12 +3,13 @@
 
 #include "operon/core/individual.hpp"
 #include "operon/operators/non_dominated_sorter.hpp"
+#include <cpp-sort/sorters/merge_sorter.h>
 #include <Eigen/Core>
 
 namespace Operon {
 
 // rank-based non-dominated sorting - ordinal version - see https://arxiv.org/abs/2203.13654
-auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
+auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*not used*/) const -> NondominatedSorterBase::Result
 {
 #if EIGEN_VERSION_AT_LEAST(3, 4, 0)
     using Vec = Eigen::Array<Eigen::Index, -1, 1>;
@@ -24,12 +25,12 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
     p.col(0) = Vec::LinSpaced(n, 0, n - 1);
     r(0, p.col(0)) = Vec::LinSpaced(n, 0, n - 1);
 
-    Operon::Less cmp;
     std::vector<Operon::Scalar> buf(n); // buffer to store fitness values to avoid pointer indirections during sorting
+    cppsort::merge_sorter sorter;
     for (auto i = 1; i < m; ++i) {
         std::transform(pop.begin(), pop.end(), buf.begin(), [i](auto const& ind) { return ind[i]; });
         p.col(i) = p.col(i - 1); // this is a critical part of the approach
-        std::stable_sort(p.col(i).begin(), p.col(i).end(), [&](auto a, auto b) { return cmp(buf[a], buf[b], eps); });
+        sorter(p.col(i), [&](auto j) { return buf[j]; });
         r(i, p.col(i)) = Vec::LinSpaced(n, 0, n - 1);
     }
 
