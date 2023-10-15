@@ -7,19 +7,6 @@
 #include <ranges>
 
 namespace Operon {
-
-namespace detail {
-    inline auto GetFronts(std::vector<int> const& rank)
-    {
-        std::vector<std::vector<std::size_t>> fronts;
-        fronts.resize(*std::max_element(rank.begin(), rank.end()) + 1UL);
-        for (std::size_t i = 0UL; i < rank.size(); ++i) {
-            fronts[rank[i]].push_back(i);
-        }
-        return fronts;
-    }
-} // namespace detail
-
 // best order sort https://doi.org/10.1145/2908961.2931684
 auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*unused*/) const -> NondominatedSorterBase::Result
 {
