@@ -18,7 +18,7 @@ namespace Operon {
         std::vector<uint64_t> sorted(nb);
 
         auto set = [](auto&& range, auto i) { range[i / d] |= (1UL << (d - i % d));}; // set bit i
-        auto reset = [](auto&& range, auto i) { range[i / d] &= ~(1UL << (i % d)); }; // unset bit i
+        [[maybe_unused]] auto reset = [](auto&& range, auto i) { range[i / d] &= ~(1UL << (i % d)); }; // unset bit i
         auto get = [](auto&& range, auto i) -> bool { return range[i / d] & (1UL << (d - i % d)); };
 
         auto dominatedOrSorted = [&](std::size_t i) { return get(sorted, i) || get(dominated, i); };
