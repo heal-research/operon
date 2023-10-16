@@ -7,12 +7,12 @@
 namespace Operon {
 
     template<EfficientSortStrategy SearchStrategy>
-    inline auto EfficientSortImpl(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) -> NondominatedSorterBase::Result
+    inline auto EfficientSortImpl(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*unused*/) -> NondominatedSorterBase::Result
     {
         // check if individual i is dominated by any individual in the front f
         auto dominated = [&](auto const& f, size_t i) {
             return std::any_of(f.rbegin(), f.rend(), [&](size_t j) {
-                return ParetoDominance{}(pop[j].Fitness, pop[i].Fitness, eps) == Dominance::Left;
+                return ParetoDominance{}(pop[j].Fitness, pop[i].Fitness) == Dominance::Left;
             });
         };
 
@@ -20,11 +20,9 @@ namespace Operon {
         for (size_t i = 0; i < pop.size(); ++i) {
             decltype(fronts)::iterator it;
             if constexpr (SearchStrategy == EfficientSortStrategy::Binary) { // binary search
-                it = std::partition_point(fronts.begin(), fronts.end(),
-                        [&](auto const& f) { return dominated(f, i); });
+                it = std::partition_point(fronts.begin(), fronts.end(), [&](auto const& f) { return dominated(f, i); });
             } else { // sequential search
-                it = std::find_if(fronts.begin(), fronts.end(),
-                        [&](auto const& f) { return !dominated(f, i); });
+                it = std::find_if(fronts.begin(), fronts.end(), [&](auto const& f) { return !dominated(f, i); });
             }
             if (it == fronts.end()) {
                 fronts.push_back({i});
