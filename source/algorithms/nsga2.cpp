@@ -9,6 +9,7 @@
 #include <limits>                                    // for numeric_limits
 #include <memory>                                    // for allocator, allocator_tra...
 #include <optional>                                  // for optional
+#include <ranges>                                    // for ranges
 #include <taskflow/taskflow.hpp>                     // for taskflow, subflow
 #include <taskflow/algorithm/for_each.hpp>   // for taskflow.for_each_index
 #include <vector>                                    // for vector, vector::size_type
@@ -64,7 +65,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     auto less = [eps](auto const& lhs, auto const& rhs) { return Operon::Less{}(lhs.Fitness, rhs.Fitness, eps); };
     auto eq = [eps](auto const& lhs, auto const& rhs) { return Operon::Equal{}(lhs.Fitness, rhs.Fitness, eps); };
     // sort the population lexicographically
-    std::stable_sort(pop.begin(), pop.end(), less);
+    std::stable_sort(pop.begin(), pop.end(), [](auto const& a, auto const& b){ return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });
     // mark the duplicates for stable_partition
     for(auto i = pop.begin(); i < pop.end(); ) {
         i->Rank = 0;
