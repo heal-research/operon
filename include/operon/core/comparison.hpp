@@ -13,8 +13,8 @@
 
 namespace Operon {
 
-enum class Dominance : int { Left = 0,
-    Equal = 1,
+enum class Dominance : int { Equal = 0,
+    Left = 1,
     Right = 2,
     None = 3 };
 
@@ -77,31 +77,40 @@ struct LessEqual {
 template <bool CheckNan = false>
 struct ParetoDominance {
     template<std::forward_iterator Input1, std::forward_iterator Input2>
-    inline auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2, typename std::iterator_traits<Input1>::value_type eps = 0.0) const noexcept -> Dominance
+    inline auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2) const noexcept -> Dominance
     {
-        bool better { false };
-        bool worse { false };
-        Operon::Less<CheckNan> cmp;
+        uint8_t r{0};
         for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
-            better |= cmp(*first1, *first2, eps);
-            worse |= cmp(*first2, *first1, eps);
+            r |= (*first1 < *first2);
+            r |= (*first1 > *first2) << 1;
         }
-        if (better) {
-            return worse ? Dominance::None : Dominance::Left;
+        return static_cast<Dominance>(r);
+    }
+
+    template<std::forward_iterator Input1, std::forward_iterator Input2>
+    inline auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2, typename std::iterator_traits<Input1>::value_type eps) const noexcept -> Dominance
+    {
+        Operon::Less<CheckNan> cmp;
+        uint8_t r{0};
+        for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
+            r |= cmp(*first1, *first2, eps);
+            r |= cmp(*first2, *first1, eps) << 1;
         }
-        if (worse) {
-            return better ? Dominance::None : Dominance::Right;
-        }
-        return Dominance::Equal;
+        return static_cast<Dominance>(r);
     }
 
     template<std::ranges::forward_range R1, std::ranges::forward_range R2>
-    inline auto operator()(R1&& r1, R2&& r2, Operon::Scalar eps = 0.0) const noexcept -> Dominance
+    inline auto operator()(R1&& r1, R2&& r2) const noexcept -> Dominance
+    {
+        return (*this)(std::begin(r1), std::end(r1), std::begin(r2), std::end(r2));
+    }
+
+    template<std::ranges::forward_range R1, std::ranges::forward_range R2>
+    inline auto operator()(R1&& r1, R2&& r2, Operon::Scalar eps) const noexcept -> Dominance
     {
         return (*this)(std::begin(r1), std::end(r1), std::begin(r2), std::end(r2), eps);
     }
 };
 
 } // namespace Operon
-
 #endif
