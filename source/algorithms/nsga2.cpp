@@ -62,7 +62,6 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
 auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 {
     auto eps = static_cast<Operon::Scalar>(GetConfig().Epsilon);
-    auto less = [eps](auto const& lhs, auto const& rhs) { return Operon::Less{}(lhs.Fitness, rhs.Fitness, eps); };
     auto eq = [eps](auto const& lhs, auto const& rhs) { return Operon::Equal{}(lhs.Fitness, rhs.Fitness, eps); };
     // sort the population lexicographically
     std::stable_sort(pop.begin(), pop.end(), [](auto const& a, auto const& b){ return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });

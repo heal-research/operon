@@ -51,7 +51,7 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
     auto addSolutionToRankSet = [&](auto s, auto j) {
         auto r = rank[s];
         auto& ss = solutionSets[j];
-        if (r >= ss.size()) {
+        if (r >= std::ssize(ss)) {
             ss.resize(r+1UL);
         }
         ss[r].push_back(s);
@@ -75,7 +75,7 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
         for (auto k = 0; k < rc; ++k) {
             bool dominated = false;
 
-            if (k >= solutionSets[j].size()) {
+            if (k >= std::ssize(solutionSets[j])) {
                 solutionSets[j].resize(k+1UL);
             }
 
