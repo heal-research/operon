@@ -219,7 +219,7 @@ namespace detail {
                     auto initSolId = static_cast<int>(population[p][solId]);
                     solutionId = static_cast<int>(population[p][sortIndex]);
                     if (obj < lastObjective) {
-                        dominance = dominance || bsm.UpdateSolutionDominance(solutionId);
+                        dominance |= bsm.UpdateSolutionDominance(solutionId);
                     } else {
                         bsm.ComputeSolutionRanking(solutionId, initSolId);
                     }
