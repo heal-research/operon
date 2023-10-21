@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <bit>
+#include <cpp-sort/sorters/merge_sorter.h>
+
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/core/individual.hpp"
-#include <bit>
 
 namespace Operon {
 
@@ -176,60 +178,36 @@ namespace detail {
         auto m = pop.front().Size();
         detail::BitsetManager bsm(n);
 
-        std::vector<int> ranking;
-
-        auto const solId = m;
-        auto const sortIndex = solId + 1;
-
-        std::vector<std::vector<Operon::Scalar>> population;
-        std::vector<std::vector<Operon::Scalar>> work;
-
-        work.resize(n);
-        population.resize(n);
-
-        for (size_t i = 0; i < n; ++i) {
-            population[i].resize(sortIndex + 1);
-            std::copy_n(pop[i].Fitness.begin(), m, population[i].begin());
-            population[i][solId] = static_cast<Operon::Scalar>(i);
-            population[i][sortIndex] = static_cast<Operon::Scalar>(i); // because pop is already sorted when passed to Sort
+        cppsort::merge_sorter sorter;
+        std::vector<std::tuple<int, Operon::Scalar>> items;
+        items.reserve(n);
+        for (auto i = 0; i < n; ++i) {
+            items.emplace_back(i, pop[i][0]);
         }
 
-        size_t solutionId{0};
-        std::stable_sort(population.begin(), population.end(), [&](auto const& a, auto const& b) { return Operon::Less{}(a[1], b[1]); });
-        auto dominance{false};
-        for (decltype(n) p = 0; p < n; p++) {
-            solutionId = static_cast<size_t>(population[p][sortIndex]);
-            dominance |= bsm.InitializeSolutionBitset(solutionId);
-            bsm.UpdateIncrementalBitset(solutionId);
-            if (2 == m) {
-                auto initSolId = static_cast<size_t>(population[p][solId]);
-                bsm.ComputeSolutionRanking(solutionId, initSolId);
-            }
-        }
+        for (auto obj = 1; obj < m; ++obj) {
+            for (auto& [i, v] : items) { v = pop[i][obj]; }
+            sorter(items, [&](auto t){ return std::get<1>(t); });
+            if (obj > 1) { bsm.ClearIncrementalBitset(); }
 
-        if (m > 2) {
-            dominance = false;
-            decltype(m) lastObjective = m - 1;
-            work = population;
-            for (auto obj = 2UL; obj < m; obj++) {
-                std::stable_sort(population.begin(), population.end(), [&](auto const& a, auto const& b) { return Operon::Less{}(a[obj], b[obj]); });
-                bsm.ClearIncrementalBitset();
-                dominance = false;
-                for (decltype(n) p = 0; p < n; p++) {
-                    auto initSolId = static_cast<int>(population[p][solId]);
-                    solutionId = static_cast<int>(population[p][sortIndex]);
-                    if (obj < lastObjective) {
-                        dominance |= bsm.UpdateSolutionDominance(solutionId);
-                    } else {
-                        bsm.ComputeSolutionRanking(solutionId, initSolId);
-                    }
-                    bsm.UpdateIncrementalBitset(solutionId);
+            auto dominance{false};
+            for (auto i = 0; i < n; ++i) {
+                auto [j, v] = items[i];
+                if (obj == 1) {
+                    dominance |= bsm.InitializeSolutionBitset(j);
+                } else if (obj < m-1) {
+                    dominance |= bsm.UpdateSolutionDominance(j);
                 }
+                if (obj == m-1) {
+                    bsm.ComputeSolutionRanking(j, j);
+                }
+                bsm.UpdateIncrementalBitset(j);
             }
+
+            if (!dominance) { break; }
         }
 
-        ranking = bsm.GetRanking();
-
+        auto ranking = bsm.GetRanking();
         auto rmax = *std::max_element(ranking.begin(), ranking.end());
         std::vector<std::vector<size_t>> fronts(rmax + 1);
         for (auto i = 0UL; i < n; i++) {
