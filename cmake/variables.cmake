@@ -9,20 +9,17 @@ if(PROJECT_IS_TOP_LEVEL)
   option(BUILD_SHARED_LIBS "Build shared libs." OFF)
 
   # compile and link-time options
-  set(OPENLIBM_DESCRIPTION             "Link against Julia's openlibm, a high performance mathematical library [default=OFF].")
   set(JEMALLOC_DESCRIPTION             "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support [default=OFF].")
   set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes [default=OFF].")
   set(USE_CERES_DESCRIPTION            "Use the non-linear least squares optimizer from Ceres solver to tune model coefficients (if OFF, Eigen::LevenbergMarquardt will be used instead).")
-  
+
   # option descriptions
-  option(USE_OPENLIBM         ${OPENLIBM_DESCRIPTION}             ON)
   option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
   option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION} ON)
   option(USE_CERES            ${USE_CERES_DESCRIPTION}       OFF)
-  
+
   # provide a summary of configured options
   include(FeatureSummary)
-  add_feature_info(USE_OPENLIBM         USE_OPENLIBM         ${OPENLIBM_DESCRIPTION})
   add_feature_info(USE_JEMALLOC         USE_JEMALLOC         ${JEMALLOC_DESCRIPTION})
   add_feature_info(USE_SINGLE_PRECISION USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION})
   add_feature_info(USE_CERES            USE_CERES            ${USE_CERES_DESCRIPTION})

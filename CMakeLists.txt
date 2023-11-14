@@ -122,13 +122,6 @@ else()
     set(Ceres_VERSION "n/a")
 endif()
 
-if (USE_OPENLIBM)
-    find_package(PkgConfig)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(openlibm IMPORTED_TARGET openlibm)
-    endif()
-endif()
-
 if (USE_JEMALLOC)
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
@@ -212,10 +205,6 @@ target_link_libraries(operon_operon PRIVATE
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense
 )
-
-if (USE_OPENLIBM AND openlibm_FOUND)
-    target_link_libraries(operon_operon PUBLIC PkgConfig::openlibm)
-endif()
 
 if (USE_CERES AND Ceres_FOUND)
     target_link_libraries(operon_operon PUBLIC Ceres::ceres)
