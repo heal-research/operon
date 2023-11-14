@@ -5,6 +5,7 @@
 
 #include <cpp-sort/sorters/merge_sorter.h>
 #include <ranges>
+#include <eve/module/algo.hpp>
 
 namespace Operon {
 // best order sort https://doi.org/10.1145/2908961.2931684
@@ -59,13 +60,11 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
 
     // algorithm 4 in the original paper
     auto dominationCheck = [&](auto s, auto t) {
-        // return std::ranges::none_of(comparisonSets[t], [&](auto i){return sortedIndices[s][i] < sortedIndices[t][i]; });
-        for (auto i = 0; i < m; ++i) {
-            if (sortedIndices[s][i] < sortedIndices[t][i]) {
-                return false;
-            }
-        }
-        return true;
+        auto const& a = sortedIndices[s];
+        auto const& b = sortedIndices[t];
+        return m == 2
+            ? std::ranges::none_of(std::ranges::iota_view{0, m}, [&](auto i) { return a[i] < b[i]; })
+            : eve::algo::none_of(eve::views::zip(a, b), [](auto t) { auto [x, y] = t; return x < y; });
     };
 
     // algorithm 3 in the original paper

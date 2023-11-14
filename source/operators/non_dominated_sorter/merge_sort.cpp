@@ -85,9 +85,8 @@ namespace detail {
                     i = std::countr_zero(static_cast<word_t>(word));
                     offset = fw * WORD_SIZE;
                     do {
-                        if (ranking_[offset + i] >= rank) {
-                            rank = ranking_[offset + i] + 1;
-                        }
+                        auto r = ranking_[offset+i];
+                        if (r >= rank) { rank = ranking_[offset + i] + 1; }
                         i++;
                         i += std::countr_zero(word >> i);
                     } while (i < WORD_SIZE && rank <= wordRanking_[fw]);
@@ -170,25 +169,36 @@ namespace detail {
             incrementalBitset_.resize(nSolutions / WORD_SIZE + static_cast<uint64_t>(nSolutions % WORD_SIZE != 0));
         }
     };
+
+    struct Item {
+        int Index;
+        Operon::Scalar Value;
+
+        friend auto operator<(Item a, Item b) { return a.Value < b.Value; }
+    };
 } // namespace detail
 
     auto
     MergeSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*eps*/) const -> NondominatedSorterBase::Result {
-        auto n = pop.size();
-        auto m = pop.front().Size();
+        auto const n = static_cast<int>(pop.size());
+        auto const m = static_cast<int>(pop.front().Size());
+
         detail::BitsetManager bsm(n);
 
         cppsort::merge_sorter sorter;
-        std::vector<std::tuple<int, Operon::Scalar>> items;
+        std::vector<detail::Item> items;
         items.reserve(n);
         for (auto i = 0; i < n; ++i) {
-            items.emplace_back(i, pop[i][0]);
+            items.emplace_back(i, pop[i][1]);
         }
+        sorter(items);
 
         for (auto obj = 1; obj < m; ++obj) {
-            for (auto& [i, v] : items) { v = pop[i][obj]; }
-            sorter(items, [&](auto t){ return std::get<1>(t); });
-            if (obj > 1) { bsm.ClearIncrementalBitset(); }
+            if (obj > 1) {
+                for (auto& [i, v] : items) { v = pop[i][obj]; }
+                sorter(items);
+                bsm.ClearIncrementalBitset();
+            }
 
             auto dominance{false};
             for (auto i = 0; i < n; ++i) {
@@ -210,7 +220,7 @@ namespace detail {
         auto ranking = bsm.GetRanking();
         auto rmax = *std::max_element(ranking.begin(), ranking.end());
         std::vector<std::vector<size_t>> fronts(rmax + 1);
-        for (auto i = 0UL; i < n; i++) {
+        for (auto i = 0; i < n; i++) {
             fronts[ranking[i]].push_back(i);
         }
 
