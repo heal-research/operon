@@ -19,7 +19,7 @@
 
 project = 'operon'
 copyright = '2020'
-author = ''
+author = 'HEAL Research'
 
 
 # -- General configuration ---------------------------------------------------
@@ -29,7 +29,6 @@ author = ''
 # ones.
 extensions = [
     'recommonmark',
-    'sphinx_rtd_theme'
 ]
 
 master_doc = 'index'
@@ -48,17 +47,13 @@ exclude_patterns = []
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'sphinx_rtd_theme'
-
+html_theme = 'furo'
 html_theme_options = {
-#    'logo': 'logo.png',
-#    'github_user': 'foolnotion',
-#    'github_repo': 'operon',
+    "light_logo": "logo_mini_light.png",
+    "dark_logo": "logo_mini_dark.png",
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-
-
