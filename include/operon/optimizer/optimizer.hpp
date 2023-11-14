@@ -230,7 +230,7 @@ struct NonlinearLeastSquaresOptimizer<T, OptimizerType::Ceres> : public Optimize
 #endif
 
 template<typename DTable, Concepts::Likelihood LossFunction = GaussianLikelihood<Operon::Scalar>>
-struct LBFGSOptimizer : public OptimizerBase<DTable> {
+struct LBFGSOptimizer final : public OptimizerBase<DTable> {
     LBFGSOptimizer(DTable const& dtable, Problem const& problem)
         : OptimizerBase<DTable>{dtable, problem}
     {
@@ -251,7 +251,7 @@ struct LBFGSOptimizer : public OptimizerBase<DTable> {
         LossFunction loss{rng, interpreter, target, range, batchSize};
 
         auto cost = [&](auto const& coeff) {
-            auto pred = interpreter.Evaluate(coeff, range); 
+            auto pred = interpreter.Evaluate(coeff, range);
             return 0.5 * Operon::SumOfSquaredErrors(pred.begin(), pred.end(), target.begin());
         };
 
@@ -273,7 +273,7 @@ struct LBFGSOptimizer : public OptimizerBase<DTable> {
 
         summary.FinalParameters = coeff;
         auto const f1 = cost(coeff);
-        summary.FinalCost = f1; 
+        summary.FinalCost = f1;
         summary.Success = detail::CheckSuccess(f0, f1);
         auto const funEvals = loss.FunctionEvaluations();
         auto const jacEvals = loss.JacobianEvaluations();
@@ -293,9 +293,9 @@ struct LBFGSOptimizer : public OptimizerBase<DTable> {
     }
 };
 
-template<typename DTable, Concepts::Likelihood LossFunction = GaussianLikelihood<Operon::Scalar>>
-struct SGDOptimizer : public OptimizerBase<DTable> {
-    SGDOptimizer(DTable const& dtable, Problem const& problem, UpdateRule::LearningRateUpdateRule<Operon::Scalar> const& update)
+template<typename DTable, typename UpdateRule, Concepts::Likelihood LossFunction = GaussianLikelihood<Operon::Scalar>>
+struct SGDOptimizer final : public OptimizerBase<DTable> {
+    SGDOptimizer(DTable const& dtable, Problem const& problem, UpdateRule const& update)
         : OptimizerBase<DTable>{dtable, problem}
         , update_{update}
     { }
@@ -313,7 +313,6 @@ struct SGDOptimizer : public OptimizerBase<DTable> {
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
         LossFunction loss{rng, interpreter, target, range, batchSize};
-        SGDSolver solver(loss, update_.get());
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
@@ -325,6 +324,8 @@ struct SGDOptimizer : public OptimizerBase<DTable> {
         OptimizerSummary summary;
         summary.InitialParameters = coeff;
         summary.InitialCost = f0;
+        auto rule = update_.get().Clone(coeff.size());
+        SGDSolver solver(loss, rule);
 
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
         auto x = solver.Optimize(x0, iterations);
@@ -353,7 +354,7 @@ struct SGDOptimizer : public OptimizerBase<DTable> {
     }
 
     private:
-    std::reference_wrapper<UpdateRule::LearningRateUpdateRule<Operon::Scalar> const> update_;
+    std::reference_wrapper<UpdateRule const> update_;
 };
 } // namespace Operon
 #endif
