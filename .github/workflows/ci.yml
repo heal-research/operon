@@ -3,11 +3,11 @@ name: Continuous Integration
 on:
   push:
     branches:
-    - cpp20
+    - main
 
   pull_request:
     branches:
-    - cpp20
+    - main
 
 jobs:
   lint:
