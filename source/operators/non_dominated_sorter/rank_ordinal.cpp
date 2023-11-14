@@ -5,18 +5,22 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 #include <cpp-sort/sorters/merge_sorter.h>
 #include <Eigen/Core>
+#include <ranges>
+#include <eve/module/algo.hpp>
+
+#include <iostream>
 
 namespace Operon {
 
 // rank-based non-dominated sorting - ordinal version - see https://arxiv.org/abs/2203.13654
 auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*not used*/) const -> NondominatedSorterBase::Result
 {
-#if EIGEN_VERSION_AT_LEAST(3, 4, 0)
-    using Vec = Eigen::Array<Eigen::Index, -1, 1>;
-    using Mat = Eigen::Array<Eigen::Index, -1, -1>;
+    static_assert(EIGEN_VERSION_AT_LEAST(3, 4, 0), "RankOrdinal requires Eigen >= 3.4.0");
+    using Vec = Eigen::Array<int, -1, 1>;
+    using Mat = Eigen::Array<int, -1, -1>;
 
-    const auto n = static_cast<Eigen::Index>(pop.size());
-    const auto m = static_cast<Eigen::Index>(pop.front().Size());
+    const auto n = static_cast<int>(pop.size());
+    const auto m = static_cast<int>(pop.front().Size());
     assert(m >= 2);
 
     // 1) sort indices according to the stable sorting rules
@@ -34,6 +38,8 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
         r(i, p.col(i)) = Vec::LinSpaced(n, 0, n - 1);
     }
 
+    // std::cout << p.transpose() << "\n\n";
+
     // 2) save min and max positions as well as the column index for the max position
     Vec maxc(n);
     Vec maxp(n);
@@ -47,11 +53,17 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
     // 3) compute ranks / fronts
     Vec rank = Vec::Zero(n); // individual ranks
     for (auto i : p(Eigen::seq(0, n - 2), 0)) {
-        if (maxp(i) == n - 1) {
+        if (maxp(i) == n-1) {
             continue;
         }
-        for (auto j : p(Eigen::seq(maxp(i) + 1, n - 1), maxc(i))) {
-            rank(j) += static_cast<int64_t>(rank(i) == rank(j) && (r.col(i) < r.col(j)).all());
+        for (auto j : p(Eigen::seq(maxp(i)+1, n-1), maxc(i))) {
+            if (rank(i) != rank(j)) { continue; }
+            //rank(j) += static_cast<int>((r.col(i) < r.col(j)).all());
+            auto k = m == 2
+                ? (r.col(i) < r.col(j)).all()
+                : eve::algo::all_of(eve::views::zip(std::span<int>(r.col(i).data(), r.col(i).size()), std::span<int>(r.col(j).data(), r.col(j).size())),
+                                    [](auto t) { auto [a, b] = t; return a < b; });
+            rank(j) += static_cast<int>(k);
         }
     }
     std::vector<std::vector<size_t>> fronts(rank.maxCoeff() + 1);
@@ -59,8 +71,5 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
         fronts[rank(i)].push_back(i);
     }
     return fronts;
-#else
-    throw std::runtime_error("RankOrdinal requires Eigen >= 3.4.0");
-#endif
 }
 } // namespace Operon

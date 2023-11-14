@@ -12,14 +12,14 @@ namespace Operon {
 
         std::size_t constexpr d = std::numeric_limits<uint64_t>::digits;
         auto const s = static_cast<int>(pop.size());
-        auto const nb = s / d + (s % d != 0);
+        auto const nb = s / d + static_cast<std::size_t>(s % d != 0);
 
         std::vector<uint64_t> dominated(nb);
         std::vector<uint64_t> sorted(nb);
 
         auto set = [](auto&& range, auto i) { range[i / d] |= (1UL << (d - i % d));}; // set bit i
         [[maybe_unused]] auto reset = [](auto&& range, auto i) { range[i / d] &= ~(1UL << (i % d)); }; // unset bit i
-        auto get = [](auto&& range, auto i) -> bool { return range[i / d] & (1UL << (d - i % d)); };
+        auto get = [](auto&& range, auto i) -> bool { return range[i / d] & (1UL << (d - i % d)); }; // return bit i
 
         auto dominatedOrSorted = [&](std::size_t i) { return get(sorted, i) || get(dominated, i); };
 
@@ -32,9 +32,7 @@ namespace Operon {
                 for (size_t j = i + 1; j < pop.size(); ++j) {
                     if (dominatedOrSorted(j)) { continue; }
 
-                    auto const& lhs = pop[i];
-                    auto const& rhs = pop[j];
-                    auto res = ParetoDominance{}(lhs.Fitness, rhs.Fitness);
+                    auto res = ParetoDominance{}(pop[i].Fitness, pop[j].Fitness);
                     if (res == Dominance::Right) { set(dominated, i); }
                     if (res == Dominance::Left) { set(dominated, j); }
 
