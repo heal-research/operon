@@ -23,6 +23,7 @@ auto PostfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, st
             } else {
                 throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.HashValue));
             }
+            break;
         }
         default: {
             fmt::format_to(std::back_inserter(current), fmt::runtime(s.Name()));
@@ -43,7 +44,7 @@ auto PostfixFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::s
 {
     fmt::memory_buffer result;
     for (auto i = 0UL; i < tree.Length(); ++i) {
-        if (i == tree[i].Parent - tree[tree[i].Parent].Length) {
+        if (static_cast<int>(i) == tree[i].Parent - tree[tree[i].Parent].Length) {
             fmt::format_to(std::back_inserter(result), "(");
         }
         FormatNode(tree, variableNames, i, result, decimalPrecision);
