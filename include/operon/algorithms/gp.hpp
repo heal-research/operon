@@ -10,7 +10,6 @@
 #include <thread>                          // for thread
 #include <utility>                         // for move
 #include "operon/algorithms/config.hpp"    // for GeneticAlgorithmConfig
-#include "operon/algorithms/solution_archive.hpp"
 #include "operon/core/individual.hpp"      // for Individual
 #include "operon/core/types.hpp"           // for Span, Vector, RandomGenerator
 #include "operon/operators/evaluator.hpp"  // for EvaluatorBase
@@ -38,7 +37,6 @@ class OPERON_EXPORT GeneticProgrammingAlgorithm {
     Operon::Vector<Individual> individuals_;
     Operon::Span<Individual> parents_;
     Operon::Span<Individual> offspring_;
-    Operon::SolutionArchive archive_;
 
     size_t generation_{0};
 
@@ -59,7 +57,6 @@ public:
     [[nodiscard]] auto Parents() const -> Operon::Span<Individual const> { return { parents_.data(), parents_.size() }; }
     [[nodiscard]] auto Offspring() const -> Operon::Span<Individual const> { return { offspring_.data(), offspring_.size() }; }
     [[nodiscard]] auto Individuals() const -> Operon::Vector<Operon::Individual> const& { return individuals_; }
-    [[nodiscard]] auto Archive() const -> Operon::Span<Operon::Individual const> { return archive_.Solutions(); }
 
     [[nodiscard]] auto GetProblem() const -> const Problem& { return problem_.get(); }
     [[nodiscard]] auto GetConfig() const -> const GeneticAlgorithmConfig& { return config_.get(); }
@@ -75,7 +72,6 @@ public:
     {
         generation_ = 0;
         GetGenerator().Evaluator().Reset();
-        archive_.Clear();
     }
 
     auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator&/*rng*/, std::function<void()> /*report*/ = nullptr) -> void;
@@ -84,4 +80,3 @@ public:
 } // namespace Operon
 
 #endif
-
