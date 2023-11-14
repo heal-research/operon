@@ -3,6 +3,7 @@
 #ifndef OPERON_SOLVER_SGD_HPP
 #define OPERON_SOLVER_SGD_HPP
 
+#include "operon/core/types.hpp"
 #include <Eigen/Dense>
 #include <cmath>
 #include <cstdint>
@@ -14,19 +15,29 @@
 namespace Operon {
 
 namespace UpdateRule {
-    template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
+    template <typename Derived>
     struct LearningRateUpdateRule {
+        using T = Operon::Scalar;
+        using U = Eigen::Array<T, -1, 1>;
+
         // apply the learning rate to the gradient
-        virtual auto Update(Eigen::Ref<U const> const& gradient) const -> U = 0;
+        [[nodiscard]] virtual auto Update(Eigen::Ref<U const> const& gradient) const -> U = 0;
         virtual auto Update(Eigen::Ref<U const> const& gradient, Eigen::Ref<U> result) const -> void = 0;
 
         virtual auto Print(std::ostream&) const -> std::ostream& = 0;
+        virtual auto SetDimension(int dim) const -> void = 0;
+        virtual auto Clone(int dim) const -> Derived = 0;
 
-        friend auto operator<<(std::ostream& os, LearningRateUpdateRule<T> const& rule) -> std::ostream&
+        friend auto operator<<(std::ostream& os, LearningRateUpdateRule<Derived> const& rule) -> std::ostream&
         {
             os << rule.Name() << "\n";
             return rule.Print(os);
         }
+
+        LearningRateUpdateRule(const LearningRateUpdateRule&) = delete;
+        LearningRateUpdateRule(LearningRateUpdateRule&&) = delete;
+        auto operator=(const LearningRateUpdateRule&) -> LearningRateUpdateRule& = delete;
+        auto operator=(LearningRateUpdateRule&&) -> LearningRateUpdateRule& = delete;
 
         explicit LearningRateUpdateRule(std::string name)
             : name_(std::move(name))
@@ -42,13 +53,19 @@ namespace UpdateRule {
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Constant : public LearningRateUpdateRule<T> {
+    class Constant : public LearningRateUpdateRule<Constant<T, U>> {
+    public:
+        using Scalar = T;
+        using Vector = U;
+
+    private:
+        using Base = LearningRateUpdateRule<Constant<T, U>>;
+
         T r_;
 
     public:
-        Constant() = default;
-        explicit Constant(Eigen::Index /*dim*/, T r = 1e-1)
-            : LearningRateUpdateRule<T, U>("constant")
+        explicit Constant(Eigen::Index /*dim*/= 0, T r = 1e-1)
+            : Base("constant")
             , r_(r)
         {
         }
@@ -72,17 +89,29 @@ namespace UpdateRule {
             os << "learning rate: " << r_ << "\n";
             return os;
         }
+
+        virtual auto SetDimension(int /*unused*/) const -> void final { }
+
+        virtual auto Clone(int dim) const -> Constant<T, U> final {
+            Constant<T, U> clone(dim, r_);
+            return clone;
+        }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Momentum : public LearningRateUpdateRule<T, U> {
+    class Momentum : public LearningRateUpdateRule<Momentum<T, U>> {
+        using Base = LearningRateUpdateRule<Momentum<T, U>>;
+
         T r_; // learning rate
         T b_; // beta
         mutable U m_; // first moment
 
     public:
+        using Scalar = T;
+        using Vector = U;
+
         explicit Momentum(Eigen::Index dim, T r = 0.01, T b = 0.9)
-            : LearningRateUpdateRule<T, U>("momentum")
+            : Base("momentum")
             , r_ { r }
             , b_ { b }
             , m_ { U::Zero(dim) }
@@ -110,18 +139,36 @@ namespace UpdateRule {
                << "first moment : " << m_.transpose() << "\n";
             return os;
         }
+
+        virtual auto SetDimension(int dim) const -> void final
+        {
+            if (m_.size() != dim) {
+                m_ = U::Zero(dim);
+            }
+        }
+
+        virtual auto Clone(int dim) const -> Momentum<T, U> final
+        {
+            if (dim == 0) { dim = m_.size(); }
+            return Momentum<T, U>(dim, r_, b_);
+        }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class RmsProp : public LearningRateUpdateRule<T, U> {
+    class RmsProp : public LearningRateUpdateRule<RmsProp<T, U>> {
+        using Base = LearningRateUpdateRule<RmsProp<T, U>>;
+
         T r_; // learning rate
         T b_; // beta
         T e_; // epsilon
         mutable U m_; // second moment
 
     public:
+        using Scalar = T;
+        using Vector = U;
+
         explicit RmsProp(Eigen::Index dim, T r = 0.01, T b = 0.9, T e = 1e-6)
-            : LearningRateUpdateRule<T, U>("rmsprop")
+            : Base("rmsprop")
             , r_ { r }
             , b_ { b }
             , e_ { e }
@@ -151,10 +198,25 @@ namespace UpdateRule {
                << "moment       : " << m_.transpose() << "\n";
             return os;
         }
+
+        virtual auto SetDimension(int dim) const -> void final
+        {
+            if (m_.size() != dim) {
+                m_ = U::Zero(dim);
+            }
+        }
+
+        virtual auto Clone(int dim) const -> RmsProp<T, U> final
+        {
+            if (dim == 0) { dim = m_.size(); }
+            return RmsProp<T, U>(dim, r_, b_);
+        }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class AdaDelta : public LearningRateUpdateRule<T, U> {
+    class AdaDelta : public LearningRateUpdateRule<AdaDelta<T, U>> {
+        using Base = LearningRateUpdateRule<AdaDelta<T, U>>;
+
         T b_; // beta
         T e_; // epsilon
         mutable U m_; // moment gradient
@@ -162,8 +224,11 @@ namespace UpdateRule {
         mutable U d_; // previous delta
 
     public:
+        using Scalar = T;
+        using Vector = U;
+
         explicit AdaDelta(Eigen::Index dim, T b = 0.9, T e = 1e-6)
-            : LearningRateUpdateRule<T, U>("adadelta")
+            : Base("adadelta")
             , b_ { b }
             , e_ { e }
             , m_ { U::Zero(dim) }
@@ -197,10 +262,27 @@ namespace UpdateRule {
                << "prev delta   : " << d_.transpose() << "\n";
             return os;
         }
+
+        virtual auto SetDimension(int dim) const -> void final
+        {
+            if (m_.size() != dim) {
+                m_ = U::Zero(dim);
+                s_ = U::Zero(dim);
+                d_ = U::Zero(dim);
+            }
+        }
+
+        virtual auto Clone(int dim) const -> AdaDelta<T, U> final
+        {
+            if (dim == 0) { dim = m_.size(); }
+            return AdaDelta<T, U>(dim, b_, e_);
+        }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class AdaMax : public LearningRateUpdateRule<T, U> {
+    class AdaMax : public LearningRateUpdateRule<AdaMax<T, U>> {
+        using Base = LearningRateUpdateRule<AdaMax<T, U>>;
+
         T r_; // base learning rate
         T b1_; // exponential decay rate first moment
         T b2_; // exponential decay rate second moment
@@ -208,8 +290,11 @@ namespace UpdateRule {
         mutable U v_; // second moment
 
     public:
+        using Scalar = T;
+        using Vector = U;
+
         explicit AdaMax(Eigen::Index dim, T r = 0.01, T b1 = 0.9, T b2 = 0.999)
-            : LearningRateUpdateRule<T, U>("adamax")
+            : Base("adamax")
             , r_ { r }
             , b1_ { b1 }
             , b2_ { b2 }
@@ -242,10 +327,26 @@ namespace UpdateRule {
                << "m2           : " << v_.transpose() << "\n";
             return os;
         }
+
+        virtual auto SetDimension(int dim) const -> void final
+        {
+            if (m_.size() != dim) {
+                m_ = U::Zero(dim);
+                v_ = U::Zero(dim);
+            }
+        }
+
+        virtual auto Clone(int dim) const -> AdaMax<T, U> final
+        {
+            if (dim == 0) { dim = m_.size(); }
+            return AdaMax<T, U>(dim, r_, b1_, b2_);
+        }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Adam : public LearningRateUpdateRule<T, U> {
+    class Adam : public LearningRateUpdateRule<Adam<T, U>> {
+        using Base = LearningRateUpdateRule<Adam<T, U>>;
+
         T r_; // base learning rate
         T e_; // epsilon
         T b1_; // exponential decay rate first moment
@@ -257,9 +358,12 @@ namespace UpdateRule {
         mutable uint64_t t_ { 0 }; // time step
 
     public:
+        using Scalar = T;
+        using Vector = U;
+
         Adam() = default;
         explicit Adam(Eigen::Index dim, T r = 0.01, T e = 1e-8, T b1 = 0.9, T b2 = 0.999, bool debias = false)
-            : LearningRateUpdateRule<T, U>("adam")
+            : Base("adam")
             , r_ { r }
             , e_ { e }
             , b1_ { b1 }
@@ -306,10 +410,26 @@ namespace UpdateRule {
             os << "b2:    " << b2_ << "\n";
             return os;
         }
+
+        virtual auto SetDimension(int dim) const -> void final
+        {
+            if (m_.size() != dim) {
+                m_ = U::Zero(dim);
+                v_ = U::Zero(dim);
+            }
+        }
+
+         virtual auto Clone(int dim) const -> Adam<T, U> final
+         {
+            if (dim == 0) { dim = m_.size(); }
+            return Adam<T, U>(dim, r_, e_, b1_, b2_, debias_);
+         }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class YamAdam : public LearningRateUpdateRule<T, U> {
+    class YamAdam : public LearningRateUpdateRule<YamAdam<T, U>> {
+        using Base = LearningRateUpdateRule<YamAdam<T, U>>;
+
         T e_ { 1e-6 }; // epsilon
         mutable U m_ { 0.0 }; // first moment
         mutable U v_ { 0.0 }; // second moment
@@ -320,7 +440,7 @@ namespace UpdateRule {
 
     public:
         explicit YamAdam(Eigen::Index dim, T e = 1e-6)
-            : LearningRateUpdateRule<T, U>("yamadam")
+            : Base("yamadam")
             , e_ { e }
             , m_ { U::Zero(dim) }
             , v_ { U::Zero(dim) }
@@ -361,10 +481,30 @@ namespace UpdateRule {
             os << "dp:     " << dp_.transpose() << "\n";
             return os;
         }
+
+        virtual auto SetDimension(int dim) const -> void final
+        {
+            if (m_.size() != dim) {
+                m_ = U::Zero(dim);
+                v_ = U::Zero(dim);
+                s_ = U::Zero(dim);
+                d_ = U::Zero(dim);
+                b_ = U::Zero(dim);
+                dp_ = U::Zero(dim);
+            }
+        }
+
+        virtual auto Clone(int dim) const -> YamAdam<T, U> final
+        {
+            if (dim == 0) { dim = m_.size(); }
+            return YamAdam<T, U>(dim, e_);
+        }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class AmsGrad : public LearningRateUpdateRule<T, U> {
+    class AmsGrad : public LearningRateUpdateRule<AmsGrad<T, U>> {
+        using Base = LearningRateUpdateRule<AmsGrad<T, U>>;
+
         T r_; // learning rate
         T e_; // epsilon
         T b1_; // exponential decay rate first moment
@@ -374,7 +514,7 @@ namespace UpdateRule {
 
     public:
         explicit AmsGrad(Eigen::Index dim, T r = 0.01, T e = 1e-6, T b1 = 0.9, T b2 = 0.999)
-            : LearningRateUpdateRule<T, U>("amsgrad")
+            : Base("amsgrad")
             , r_ { r }
             , e_ { e }
             , b1_ { b1 }
@@ -409,14 +549,30 @@ namespace UpdateRule {
                << "b2   : " << b2_ << "\n";
             return os;
         }
+
+        virtual auto SetDimension(int dim) const -> void final
+        {
+            if (m_.size() != dim) {
+                m_ = U::Zero(dim);
+                v_ = U::Zero(dim);
+            }
+        }
+
+        virtual auto Clone(int dim) const -> AmsGrad<T, U> final
+        {
+            if (dim == 0) { dim = m_.size(); }
+            return AmsGrad<T, U>(dim, r_, e_, b1_, b2_);
+        }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Yogi : public LearningRateUpdateRule<T, U> {
+    class Yogi : public LearningRateUpdateRule<Yogi<T, U>> {
+        using Base = LearningRateUpdateRule<Yogi<T, U>>;
+
         T r_; // learning rate
         T e_; // epsilon
-        U b1_; // exponential decay rate first moment
-        U b2_; // exponential decay rate second moment
+        T b1_; // exponential decay rate first moment
+        T b2_; // exponential decay rate second moment
         mutable U m_; // first moment
         mutable U v_; // second moment
 
@@ -425,11 +581,11 @@ namespace UpdateRule {
 
     public:
         explicit Yogi(Eigen::Index dim, T r = 0.01, T e = 1e-8, T b1 = 0.9, T b2 = 0.999, bool debias = false)
-            : LearningRateUpdateRule<T, U>("yogi")
+            : Base("yogi")
             , r_ { r }
             , e_ { e }
-            , b1_ { U::Constant(dim, b1) }
-            , b2_ { U::Constant(dim, b2) }
+            , b1_ { b1 }
+            , b2_ { b2 }
             , m_ { U::Zero(dim) }
             , v_ { U::Zero(dim) }
             , debias_ { debias }
@@ -465,9 +621,23 @@ namespace UpdateRule {
                << "eps  : " << e_ << "\n"
                << "m1   : " << m_.transpose() << "\n"
                << "m2   : " << v_.transpose() << "\n"
-               << "b1   : " << b1_.transpose() << "\n"
-               << "b2   : " << b2_.transpose() << "\n";
+               << "b1   : " << b1_ << "\n"
+               << "b2   : " << b2_ << "\n";
             return os;
+        }
+
+        virtual auto SetDimension(int dim) const -> void final
+        {
+            if (m_.size() != dim) {
+                m_ = U::Zero(dim);
+                v_ = U::Zero(dim);
+            }
+        }
+
+        virtual auto Clone(int dim) const -> Yogi<T, U> final
+        {
+            if (dim == 0) { dim = m_.size(); }
+            return Yogi<T, U>(dim, r_, e_, b1_, b2_, debias_);
         }
     };
 } // namespace UpdateRule
@@ -496,7 +666,7 @@ struct SGDSolver {
         static constexpr auto tol { 1e-8 };
 
         for (epochs_ = 0; epochs_ < epochs; ++epochs_) {
-            //auto f = functor_(x, grad);
+            fun(x, grad);
             // apply learning rate to grad and write result in beta
             update_.get().Update(grad, beta);
             if ((beta.abs() < tol).all()) {
@@ -515,7 +685,7 @@ private:
     std::reference_wrapper<Functor const> functor_;
     std::reference_wrapper<Update const> update_;
 
-    mutable int epochs_ { 0 };
+    mutable int epochs_ {1000};
     mutable bool converged_ { false };
 };
 } // namespace Operon
