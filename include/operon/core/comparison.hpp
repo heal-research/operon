@@ -80,11 +80,14 @@ struct ParetoDominance {
     inline auto operator()(Input1 first1, Input1 last1, Input2 first2, Input2 last2) const noexcept -> Dominance
     {
         uint8_t r{0};
+        uint8_t v{0};
         for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
-            r |= (*first1 < *first2);
-            r |= (*first1 > *first2) << 1;
+            auto const a = *first1;
+            auto const b = *first2;
+            r |= (a < b);
+            v |= (a > b);
         }
-        return static_cast<Dominance>(r);
+        return static_cast<Dominance>(r | static_cast<uint8_t>(v << 1U));
     }
 
     template<std::forward_iterator Input1, std::forward_iterator Input2>
@@ -92,11 +95,14 @@ struct ParetoDominance {
     {
         Operon::Less<CheckNan> cmp;
         uint8_t r{0};
+        uint8_t v{0};
         for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
-            r |= cmp(*first1, *first2, eps);
-            r |= cmp(*first2, *first1, eps) << 1;
+            auto const a = *first1;
+            auto const b = *first2;
+            r |= cmp(a, b, eps);
+            v |= cmp(b, a, eps);
         }
-        return static_cast<Dominance>(r);
+        return static_cast<Dominance>(r | static_cast<uint8_t>(v << 1U));
     }
 
     template<std::ranges::forward_range R1, std::ranges::forward_range R2>
