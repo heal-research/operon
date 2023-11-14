@@ -1,6 +1,10 @@
-<p align="left">
+<picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./rtd/_static/logo_mini_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="./rtd/_static/logo_mini_light.png">
     <img src="./rtd/_static/logo_mini.png" height="80px" />
-</p>
+</picture>
+
+<br/>
 
 # Modern C++ framework for Symbolic Regression
 
@@ -27,9 +31,9 @@ In symbolic regression, the programs represent mathematical expressions typicall
 
 The project requires CMake and a C++17 compliant compiler (C++20 if you're on the `cpp20` branch). The recommended way to build Operon is via either [nix](https://github.com/NixOS/nix) or [vcpkg](https://github.com/microsoft/vcpkg).
 
-Check out [https://github.com/heal-research/operon/blob/master/BUILDING.md](BUILD.md) for detailed build instructions and how to enable/disable certain features. 
+Check out [https://github.com/heal-research/operon/blob/master/BUILDING.md](BUILD.md) for detailed build instructions and how to enable/disable certain features.
 
-### Nix 
+### Nix
 
 First, you have to [install nix](https://nixos.org/download.html) and [enable flakes](https://nixos.wiki/wiki/Flakes).
 For a portable install, see [nix-portable](https://github.com/DavHau/nix-portable).
@@ -45,7 +49,7 @@ nix build github:heal-research/operon --no-write-lock-file
 ```
 
 
-### Vcpkg 
+### Vcpkg
 
 Select the build generator appropriate for your system and point CMake to the `vcpkg.cmake` toolchain file
 
@@ -61,7 +65,7 @@ The file `CMakePresets.json` contains some presets that you may find useful. For
 
 Python bindings for the Operon library are available as a separate project: [PyOperon](https://github.com/heal-research/pyoperon), which also includes a [scikit-learn](https://scikit-learn.org/stable/index.html) compatible regressor.
 
-## Bibtex info 
+## Bibtex info
 
 If you find _Operon_ useful you can cite our work as:
 ```
@@ -108,4 +112,3 @@ _Operon_ was also featured in a recent survey of symbolic regression methods, wh
 }
 
 ```
-
