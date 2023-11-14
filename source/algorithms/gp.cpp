@@ -96,7 +96,6 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                 }
             }).name("generate offspring");
             auto reinsert = subflow.emplace([&]() { reinserter(random, parents_, offspring_); }).name("reinsert");
-            auto updateArchive = subflow.emplace([&]() { archive_.Insert(parents_); }).name("update solution archive");
             auto incrementGeneration = subflow.emplace([&]() { ++generation_; }).name("increment generation");
             auto reportProgress = subflow.emplace([&](){ if (report) { std::invoke(report); } }).name("report progress");
 
@@ -104,8 +103,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             keepElite.precede(prepareGenerator);
             prepareGenerator.precede(generateOffspring);
             generateOffspring.precede(reinsert);
-            reinsert.precede(updateArchive);
-            updateArchive.precede(incrementGeneration);
+            reinsert.precede(incrementGeneration);
             incrementGeneration.precede(reportProgress);
         }, // loop body (evolutionary main loop)
         [&]() { return 0; }, // jump back to the next iteration
