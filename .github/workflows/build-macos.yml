@@ -18,8 +18,8 @@ jobs:
     runs-on: macos-13
     if: github.ref_name == 'main'
     steps:
-    - uses: actions/checkout@v2
-    - uses: cachix/install-nix-action@v16
+    - uses: actions/checkout@v3
+    - uses: cachix/install-nix-action@v22
 
     - name: Build
       working-directory: ${{github.workspace}}
