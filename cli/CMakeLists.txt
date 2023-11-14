@@ -20,6 +20,10 @@ function(add_operon_cli NAME)
 
     target_link_libraries(${NAME} PRIVATE operon::operon cxxopts::cxxopts scn::scn)
     target_compile_features(${NAME} PRIVATE cxx_std_20)
+    set_target_properties(${NAME} PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+    )
 
     if(MSVC)
         target_compile_options(${NAME} PRIVATE "/std:c++latest")
