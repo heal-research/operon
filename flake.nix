@@ -35,7 +35,6 @@
             "-DBUILD_SHARED_LIBS=${if pkgs.stdenv.hostPlatform.isStatic then "OFF" else "ON"}"
             "-DBUILD_TESTING=OFF"
             "-DCMAKE_BUILD_TYPE=Release"
-            "-DUSE_OPENLIBM=ON"
             "-DUSE_SINGLE_PRECISION=ON"
           ];
 
@@ -53,7 +52,6 @@
             fmt
             icu
             jemalloc
-            openlibm
             pkg-config
             pratt-parser.packages.${system}.default
             scnlib
