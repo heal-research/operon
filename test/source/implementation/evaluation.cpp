@@ -159,18 +159,18 @@ TEST_CASE("parameter optimization")
         fmt::print("final tree: {}\n", InfixFormatter::Format(tree, ds));
     }
 #endif
-    // auto const dim { tree.CoefficientsCount() };
+    auto const dim { tree.CoefficientsCount() };
 
-    // std::vector<std::unique_ptr<UpdateRule::LearningRateUpdateRule<Operon::Scalar> const>> rules;
-    // rules.emplace_back(new UpdateRule::Constant<Operon::Scalar>(dim, 1e-3)); // NOLINT
-    // rules.emplace_back(new UpdateRule::Momentum<Operon::Scalar>(dim));
-    // rules.emplace_back(new UpdateRule::RmsProp<Operon::Scalar>(dim));
-    // rules.emplace_back(new UpdateRule::AdaDelta<Operon::Scalar>(dim));
-    // rules.emplace_back(new UpdateRule::AdaMax<Operon::Scalar>(dim));
-    // rules.emplace_back(new UpdateRule::Adam<Operon::Scalar>(dim));
-    // rules.emplace_back(new UpdateRule::YamAdam<Operon::Scalar>(dim));
-    // rules.emplace_back(new UpdateRule::AmsGrad<Operon::Scalar>(dim));
-    // rules.emplace_back(new UpdateRule::Yogi<Operon::Scalar>(dim));
+    std::vector<std::unique_ptr<UpdateRule::LearningRateUpdateRule const>> rules;
+    rules.emplace_back(new UpdateRule::Constant<Operon::Scalar>(dim, 1e-3)); // NOLINT
+    rules.emplace_back(new UpdateRule::Momentum<Operon::Scalar>(dim));
+    rules.emplace_back(new UpdateRule::RmsProp<Operon::Scalar>(dim));
+    rules.emplace_back(new UpdateRule::AdaDelta<Operon::Scalar>(dim));
+    rules.emplace_back(new UpdateRule::AdaMax<Operon::Scalar>(dim));
+    rules.emplace_back(new UpdateRule::Adam<Operon::Scalar>(dim));
+    rules.emplace_back(new UpdateRule::YamAdam<Operon::Scalar>(dim));
+    rules.emplace_back(new UpdateRule::AmsGrad<Operon::Scalar>(dim));
+    rules.emplace_back(new UpdateRule::Yogi<Operon::Scalar>(dim));
 
     auto testOptimizer = [&](OptimizerBase<DTable>& optimizer, std::string const& name) {
         fmt::print(fmt::fg(fmt::color::orange), "=== {} Solver ===\n", name);
@@ -213,18 +213,18 @@ TEST_CASE("parameter optimization")
 
     SUBCASE("sgd / gaussian")
     {
-        // for (auto const& rule : rules) {
-        //     SGDOptimizer<DTable, GaussianLikelihood<Operon::Scalar>> optimizer { dtable, problem, *(rule) };
-        //     testOptimizer(optimizer, fmt::format("sgd / gaussian / {}", rule->Name()));
-        // }
+        for (auto const& rule : rules) {
+            SGDOptimizer<DTable, GaussianLikelihood<Operon::Scalar>> optimizer { dtable, problem, *rule };
+            testOptimizer(optimizer, fmt::format("sgd / gaussian / {}", rule->Name()));
+        }
     }
 
     SUBCASE("sgd / poisson")
     {
-        // for (auto const& rule : rules) {
-        //     SGDOptimizer<DTable, PoissonLikelihood<Operon::Scalar>> optimizer { dtable, problem, *(rule) };
-        //     testOptimizer(optimizer, fmt::format("sgd / poisson / {}", rule->Name()));
-        // }
+        for (auto const& rule : rules) {
+            SGDOptimizer<DTable, PoissonLikelihood<Operon::Scalar>> optimizer { dtable, problem, *rule };
+            testOptimizer(optimizer, fmt::format("sgd / poisson / {}", rule->Name()));
+        }
     }
 }
 } // namespace Operon::Test
