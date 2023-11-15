@@ -293,11 +293,16 @@ struct LBFGSOptimizer final : public OptimizerBase<DTable> {
     }
 };
 
-template<typename DTable, typename UpdateRule, Concepts::Likelihood LossFunction = GaussianLikelihood<Operon::Scalar>>
+template<typename DTable, Concepts::Likelihood LossFunction = GaussianLikelihood<Operon::Scalar>>
 struct SGDOptimizer final : public OptimizerBase<DTable> {
-    SGDOptimizer(DTable const& dtable, Problem const& problem, UpdateRule const& update)
+    SGDOptimizer(DTable const& dtable, Problem const& problem)
         : OptimizerBase<DTable>{dtable, problem}
-        , update_{update}
+        , update_{std::make_unique<UpdateRule::Constant<Operon::Scalar>>(Operon::Scalar{0.01})}
+    { }
+
+    SGDOptimizer(DTable const& dtable, Problem const& problem, UpdateRule::LearningRateUpdateRule const& update)
+        : OptimizerBase<DTable>{dtable, problem}
+        , update_{std::move(update.Clone(0))}
     { }
 
     [[nodiscard]] auto Optimize(Operon::RandomGenerator& rng, Operon::Tree const& tree) const -> OptimizerSummary final
@@ -324,8 +329,8 @@ struct SGDOptimizer final : public OptimizerBase<DTable> {
         OptimizerSummary summary;
         summary.InitialParameters = coeff;
         summary.InitialCost = f0;
-        auto rule = update_.get().Clone(coeff.size());
-        SGDSolver solver(loss, rule);
+        auto rule = update_->Clone(coeff.size());
+        SGDSolver<LossFunction> solver(loss, *rule);
 
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
         auto x = solver.Optimize(x0, iterations);
@@ -353,8 +358,14 @@ struct SGDOptimizer final : public OptimizerBase<DTable> {
         return LossFunction::ComputeFisherMatrix(pred, jac, sigma);
     }
 
+    auto SetUpdateRule(std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update) {
+        update_ = std::move(update);
+    }
+
+    auto UpdateRule() const { return update_.get(); }
+
     private:
-    std::reference_wrapper<UpdateRule const> update_;
+    std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update_{nullptr};
 };
 } // namespace Operon
 #endif

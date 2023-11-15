@@ -9,13 +9,13 @@
 #include <cstdint>
 #include <fmt/core.h>
 #include <iostream>
+#include <memory>
 #include <ostream>
 #include <utility>
 
 namespace Operon {
 
 namespace UpdateRule {
-    template <typename Derived>
     struct LearningRateUpdateRule {
         using T = Operon::Scalar;
         using U = Eigen::Array<T, -1, 1>;
@@ -26,9 +26,9 @@ namespace UpdateRule {
 
         virtual auto Print(std::ostream&) const -> std::ostream& = 0;
         virtual auto SetDimension(int dim) const -> void = 0;
-        virtual auto Clone(int dim) const -> Derived = 0;
+        [[nodiscard]] virtual auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> = 0;
 
-        friend auto operator<<(std::ostream& os, LearningRateUpdateRule<Derived> const& rule) -> std::ostream&
+        friend auto operator<<(std::ostream& os, LearningRateUpdateRule const& rule) -> std::ostream&
         {
             os << rule.Name() << "\n";
             return rule.Print(os);
@@ -53,24 +53,28 @@ namespace UpdateRule {
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Constant : public LearningRateUpdateRule<Constant<T, U>> {
+    class Constant : public LearningRateUpdateRule {
     public:
         using Scalar = T;
         using Vector = U;
 
     private:
-        using Base = LearningRateUpdateRule<Constant<T, U>>;
+        using Base = LearningRateUpdateRule;
 
-        T r_;
+        T r_{0.1};
 
     public:
-        explicit Constant(Eigen::Index /*dim*/= 0, T r = 1e-1)
+        explicit Constant(Eigen::Index /*dim*/= 0, T r = 0.1)
             : Base("constant")
             , r_(r)
         {
         }
 
-        auto Update(Eigen::Ref<U const> const& gradient) const -> U final
+        explicit Constant(T r = 0.1) : Constant(0, r)
+        {
+        }
+
+        [[nodiscard]] auto Update(Eigen::Ref<U const> const& gradient) const -> U final
         {
             U result(gradient.size());
             Update(gradient, result);
@@ -83,27 +87,26 @@ namespace UpdateRule {
             result = r_ * gradient;
         }
 
-        virtual auto Print(std::ostream& os) const -> std::ostream& final
+        auto Print(std::ostream& os) const -> std::ostream& final
         {
             os << "constant learning rate update rule\n";
             os << "learning rate: " << r_ << "\n";
             return os;
         }
 
-        virtual auto SetDimension(int /*unused*/) const -> void final { }
+        auto SetDimension(int /*unused*/) const -> void final { }
 
-        virtual auto Clone(int dim) const -> Constant<T, U> final {
-            Constant<T, U> clone(dim, r_);
-            return clone;
+        [[nodiscard]] auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final {
+            return std::make_unique<Constant<T, U>>(dim, r_);
         }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Momentum : public LearningRateUpdateRule<Momentum<T, U>> {
-        using Base = LearningRateUpdateRule<Momentum<T, U>>;
+    class Momentum : public LearningRateUpdateRule {
+        using Base = LearningRateUpdateRule;
 
-        T r_; // learning rate
-        T b_; // beta
+        T r_{0.01}; // learning rate
+        T b_{0.9}; // beta
         mutable U m_; // first moment
 
     public:
@@ -132,7 +135,7 @@ namespace UpdateRule {
             result = r_ * m_;
         }
 
-        virtual auto Print(std::ostream& os) const -> std::ostream& final
+        auto Print(std::ostream& os) const -> std::ostream& final
         {
             os << "learning rate: " << r_ << "\n"
                << "beta         : " << b_ << "\n"
@@ -140,27 +143,27 @@ namespace UpdateRule {
             return os;
         }
 
-        virtual auto SetDimension(int dim) const -> void final
+        auto SetDimension(int dim) const -> void final
         {
             if (m_.size() != dim) {
                 m_ = U::Zero(dim);
             }
         }
 
-        virtual auto Clone(int dim) const -> Momentum<T, U> final
+        auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
             if (dim == 0) { dim = m_.size(); }
-            return Momentum<T, U>(dim, r_, b_);
+            return std::make_unique<Momentum<T, U>>(dim, r_, b_);
         }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class RmsProp : public LearningRateUpdateRule<RmsProp<T, U>> {
-        using Base = LearningRateUpdateRule<RmsProp<T, U>>;
+    class RmsProp : public LearningRateUpdateRule {
+        using Base = LearningRateUpdateRule;
 
-        T r_; // learning rate
-        T b_; // beta
-        T e_; // epsilon
+        T r_{0.01}; // learning rate
+        T b_{0.9};  // beta
+        T e_{1e-6}; // epsilon
         mutable U m_; // second moment
 
     public:
@@ -190,7 +193,7 @@ namespace UpdateRule {
             result = r_ / (m_.sqrt() + e_) * gradient;
         }
 
-        virtual auto Print(std::ostream& os) const -> std::ostream& final
+        auto Print(std::ostream& os) const -> std::ostream& final
         {
             os << "learning rate: " << r_ << "\n"
                << "beta         : " << b_ << "\n"
@@ -199,26 +202,26 @@ namespace UpdateRule {
             return os;
         }
 
-        virtual auto SetDimension(int dim) const -> void final
+        auto SetDimension(int dim) const -> void final
         {
             if (m_.size() != dim) {
                 m_ = U::Zero(dim);
             }
         }
 
-        virtual auto Clone(int dim) const -> RmsProp<T, U> final
+        auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
             if (dim == 0) { dim = m_.size(); }
-            return RmsProp<T, U>(dim, r_, b_);
+            return std::make_unique<RmsProp<T, U>>(dim, r_, b_);
         }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class AdaDelta : public LearningRateUpdateRule<AdaDelta<T, U>> {
-        using Base = LearningRateUpdateRule<AdaDelta<T, U>>;
+    class AdaDelta : public LearningRateUpdateRule {
+        using Base = LearningRateUpdateRule;
 
-        T b_; // beta
-        T e_; // epsilon
+        T b_{0.9}; // beta
+        T e_{1e-6}; // epsilon
         mutable U m_; // moment gradient
         mutable U s_; // moment delta
         mutable U d_; // previous delta
@@ -253,7 +256,7 @@ namespace UpdateRule {
             result = d_;
         }
 
-        virtual auto Print(std::ostream& os) const -> std::ostream& final
+        auto Print(std::ostream& os) const -> std::ostream& final
         {
             os << "beta         : " << b_ << "\n"
                << "epsilon      : " << e_ << "\n"
@@ -263,7 +266,7 @@ namespace UpdateRule {
             return os;
         }
 
-        virtual auto SetDimension(int dim) const -> void final
+        auto SetDimension(int dim) const -> void final
         {
             if (m_.size() != dim) {
                 m_ = U::Zero(dim);
@@ -272,20 +275,20 @@ namespace UpdateRule {
             }
         }
 
-        virtual auto Clone(int dim) const -> AdaDelta<T, U> final
+        auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
             if (dim == 0) { dim = m_.size(); }
-            return AdaDelta<T, U>(dim, b_, e_);
+            return std::make_unique<AdaDelta<T, U>>(dim, b_, e_);
         }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class AdaMax : public LearningRateUpdateRule<AdaMax<T, U>> {
-        using Base = LearningRateUpdateRule<AdaMax<T, U>>;
+    class AdaMax : public LearningRateUpdateRule {
+        using Base = LearningRateUpdateRule;
 
-        T r_; // base learning rate
-        T b1_; // exponential decay rate first moment
-        T b2_; // exponential decay rate second moment
+        T r_{0.01}; // base learning rate
+        T b1_{0.9}; // exponential decay rate first moment
+        T b2_{0.999}; // exponential decay rate second moment
         mutable U m_; // first moment
         mutable U v_; // second moment
 
@@ -318,7 +321,7 @@ namespace UpdateRule {
             result = r_ * m_ / v_;
         }
 
-        virtual auto Print(std::ostream& os) const -> std::ostream& final
+        auto Print(std::ostream& os) const -> std::ostream& final
         {
             os << "learning rate: " << r_ << "\n"
                << "b1           : " << b1_ << "\n"
@@ -328,7 +331,7 @@ namespace UpdateRule {
             return os;
         }
 
-        virtual auto SetDimension(int dim) const -> void final
+        auto SetDimension(int dim) const -> void final
         {
             if (m_.size() != dim) {
                 m_ = U::Zero(dim);
@@ -336,21 +339,21 @@ namespace UpdateRule {
             }
         }
 
-        virtual auto Clone(int dim) const -> AdaMax<T, U> final
+        auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
             if (dim == 0) { dim = m_.size(); }
-            return AdaMax<T, U>(dim, r_, b1_, b2_);
+            return std::make_unique<AdaMax<T, U>>(dim, r_, b1_, b2_);
         }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Adam : public LearningRateUpdateRule<Adam<T, U>> {
-        using Base = LearningRateUpdateRule<Adam<T, U>>;
+    class Adam : public LearningRateUpdateRule {
+        using Base = LearningRateUpdateRule;
 
-        T r_; // base learning rate
-        T e_; // epsilon
-        T b1_; // exponential decay rate first moment
-        T b2_; // exponential decay rate second moment
+        T r_{0.01}; // base learning rate
+        T e_{1e-8}; // epsilon
+        T b1_{0.9}; // exponential decay rate first moment
+        T b2_{0.999}; // exponential decay rate second moment
         mutable U m_; // first moment
         mutable U v_; // second moment
 
@@ -361,7 +364,6 @@ namespace UpdateRule {
         using Scalar = T;
         using Vector = U;
 
-        Adam() = default;
         explicit Adam(Eigen::Index dim, T r = 0.01, T e = 1e-8, T b1 = 0.9, T b2 = 0.999, bool debias = false)
             : Base("adam")
             , r_ { r }
@@ -399,7 +401,7 @@ namespace UpdateRule {
             result = r_ * m_ / (v_.sqrt() + e_);
         }
 
-        virtual auto Print(std::ostream& os) const -> std::ostream& final
+        auto Print(std::ostream& os) const -> std::ostream& final
         {
             os << "adam\n";
             os << "lrate: " << r_ << "\n";
@@ -411,7 +413,7 @@ namespace UpdateRule {
             return os;
         }
 
-        virtual auto SetDimension(int dim) const -> void final
+        auto SetDimension(int dim) const -> void final
         {
             if (m_.size() != dim) {
                 m_ = U::Zero(dim);
@@ -419,16 +421,16 @@ namespace UpdateRule {
             }
         }
 
-         virtual auto Clone(int dim) const -> Adam<T, U> final
-         {
-            if (dim == 0) { dim = m_.size(); }
-            return Adam<T, U>(dim, r_, e_, b1_, b2_, debias_);
-         }
+        auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
+        {
+           if (dim == 0) { dim = m_.size(); }
+           return std::make_unique<Adam<T, U>>(dim, r_, e_, b1_, b2_, debias_);
+        }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class YamAdam : public LearningRateUpdateRule<YamAdam<T, U>> {
-        using Base = LearningRateUpdateRule<YamAdam<T, U>>;
+    class YamAdam : public LearningRateUpdateRule {
+        using Base = LearningRateUpdateRule;
 
         T e_ { 1e-6 }; // epsilon
         mutable U m_ { 0.0 }; // first moment
@@ -470,7 +472,7 @@ namespace UpdateRule {
             result = d_;
         }
 
-        virtual auto Print(std::ostream& os) const -> std::ostream& final
+        auto Print(std::ostream& os) const -> std::ostream& final
         {
             os << "eps:   " << e_ << "\n";
             os << "m1:    " << m_.transpose() << "\n";
@@ -482,7 +484,7 @@ namespace UpdateRule {
             return os;
         }
 
-        virtual auto SetDimension(int dim) const -> void final
+        auto SetDimension(int dim) const -> void final
         {
             if (m_.size() != dim) {
                 m_ = U::Zero(dim);
@@ -494,16 +496,16 @@ namespace UpdateRule {
             }
         }
 
-        virtual auto Clone(int dim) const -> YamAdam<T, U> final
+        auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
             if (dim == 0) { dim = m_.size(); }
-            return YamAdam<T, U>(dim, e_);
+            return std::make_unique<YamAdam<T, U>>(dim, e_);
         }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class AmsGrad : public LearningRateUpdateRule<AmsGrad<T, U>> {
-        using Base = LearningRateUpdateRule<AmsGrad<T, U>>;
+    class AmsGrad : public LearningRateUpdateRule {
+        using Base = LearningRateUpdateRule;
 
         T r_; // learning rate
         T e_; // epsilon
@@ -539,7 +541,7 @@ namespace UpdateRule {
             result = r_ * m_ / (v_.sqrt() + e_);
         }
 
-        virtual auto Print(std::ostream& os) const -> std::ostream& final
+        auto Print(std::ostream& os) const -> std::ostream& final
         {
             os << "lrate: " << r_ << "\n"
                << "eps  : " << e_ << "\n"
@@ -550,7 +552,7 @@ namespace UpdateRule {
             return os;
         }
 
-        virtual auto SetDimension(int dim) const -> void final
+        auto SetDimension(int dim) const -> void final
         {
             if (m_.size() != dim) {
                 m_ = U::Zero(dim);
@@ -558,21 +560,21 @@ namespace UpdateRule {
             }
         }
 
-        virtual auto Clone(int dim) const -> AmsGrad<T, U> final
+        auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
             if (dim == 0) { dim = m_.size(); }
-            return AmsGrad<T, U>(dim, r_, e_, b1_, b2_);
+            return std::make_unique<AmsGrad<T,U>>(dim, r_, e_, b1_, b2_);
         }
     };
 
     template <std::floating_point T, typename U = Eigen::Array<T, -1, 1>>
-    class Yogi : public LearningRateUpdateRule<Yogi<T, U>> {
-        using Base = LearningRateUpdateRule<Yogi<T, U>>;
+    class Yogi : public LearningRateUpdateRule {
+        using Base = LearningRateUpdateRule;
 
-        T r_; // learning rate
-        T e_; // epsilon
-        T b1_; // exponential decay rate first moment
-        T b2_; // exponential decay rate second moment
+        T r_{0.01}; // learning rate
+        T e_{1e-8}; // epsilon
+        T b1_{0.9}; // exponential decay rate first moment
+        T b2_{0.999}; // exponential decay rate second moment
         mutable U m_; // first moment
         mutable U v_; // second moment
 
@@ -608,14 +610,14 @@ namespace UpdateRule {
             v_ -= (T { 1 } - b2_) * (v_ - gradient.square()).sign() * gradient.square();
 
             if (debias_) {
-                m_ /= (T { 1 } - b1_.pow(t_));
-                v_ /= (T { 1 } - b2_.pow(t_));
+                m_ /= (T { 1 } - std::pow(b1_, t_));
+                v_ /= (T { 1 } - std::pow(b2_, t_));
             }
 
             result = r_ * m_ / (v_.sqrt() + e_);
         }
 
-        virtual auto Print(std::ostream& os) const -> std::ostream& final
+        auto Print(std::ostream& os) const -> std::ostream& final
         {
             os << "lrate: " << r_ << "\n"
                << "eps  : " << e_ << "\n"
@@ -626,7 +628,7 @@ namespace UpdateRule {
             return os;
         }
 
-        virtual auto SetDimension(int dim) const -> void final
+        auto SetDimension(int dim) const -> void final
         {
             if (m_.size() != dim) {
                 m_ = U::Zero(dim);
@@ -634,20 +636,20 @@ namespace UpdateRule {
             }
         }
 
-        virtual auto Clone(int dim) const -> Yogi<T, U> final
+        auto Clone(int dim) const -> std::unique_ptr<LearningRateUpdateRule> final
         {
             if (dim == 0) { dim = m_.size(); }
-            return Yogi<T, U>(dim, r_, e_, b1_, b2_, debias_);
+            return std::make_unique<Yogi<T, U>>(dim, r_, e_, b1_, b2_, debias_);
         }
     };
 } // namespace UpdateRule
 
-template <typename Functor, typename Update>
+template <typename Functor>
 struct SGDSolver {
     using Scalar = typename Functor::Scalar;
     using Vector = Eigen::Array<Scalar, -1, 1>;
 
-    explicit SGDSolver(Functor const& functor, Update const& update)
+    explicit SGDSolver(Functor const& functor, UpdateRule::LearningRateUpdateRule const& update)
         : functor_(functor)
         , update_(update)
     {
@@ -683,7 +685,7 @@ struct SGDSolver {
 
 private:
     std::reference_wrapper<Functor const> functor_;
-    std::reference_wrapper<Update const> update_;
+    std::reference_wrapper<UpdateRule::LearningRateUpdateRule const> update_;
 
     mutable int epochs_ {1000};
     mutable bool converged_ { false };
