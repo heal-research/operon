@@ -95,7 +95,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     cppsort::merge_sorter sorter;
     std::vector<detail::Item> items(n);
     for (auto i = 0; i < n; ++i) {
-        items[i] = {i, pop[i][1] };
+        items[i] = { i, pop[i][1] };
     }
     sorter(items);
 
