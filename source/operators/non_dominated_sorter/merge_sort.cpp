@@ -186,10 +186,9 @@ namespace detail {
         detail::BitsetManager bsm(n);
 
         cppsort::merge_sorter sorter;
-        std::vector<detail::Item> items;
-        items.reserve(n);
+        std::vector<detail::Item> items(n);
         for (auto i = 0; i < n; ++i) {
-            items.emplace_back(i, pop[i][1]);
+            items[i] = { i, pop[i][1] };
         }
         sorter(items);
 
