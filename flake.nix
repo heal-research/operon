@@ -24,7 +24,7 @@
           overlays = [ foolnotion.overlay ];
         };
 
-        stdenv_ = pkgs.stdenvAdapters.useMoldLinker pkgs.llvmPackages_16.stdenv;
+        stdenv_ = pkgs.llvmPackages_16.stdenv;
 
         operon = stdenv_.mkDerivation {
           name = "operon";
@@ -119,7 +119,6 @@
             seer
             valgrind
             hotspot
-            (mold.override { stdenv = stdenv_; })
           ]);
 
           shellHook = ''
