@@ -302,7 +302,7 @@ struct SGDOptimizer final : public OptimizerBase<DTable> {
 
     SGDOptimizer(DTable const& dtable, Problem const& problem, UpdateRule::LearningRateUpdateRule const& update)
         : OptimizerBase<DTable>{dtable, problem}
-        , update_{std::move(update.Clone(0))}
+        , update_{update.Clone(0)}
     { }
 
     [[nodiscard]] auto Optimize(Operon::RandomGenerator& rng, Operon::Tree const& tree) const -> OptimizerSummary final
