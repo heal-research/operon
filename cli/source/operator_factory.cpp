@@ -57,7 +57,7 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
     } else if (name == "random") {
         selector = std::make_unique<Operon::RandomSelector>();
     }
-        
+
     return selector;
 }
 
@@ -81,51 +81,55 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     return creator;
 }
 
-auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& dtable) -> std::unique_ptr<EvaluatorBase>
+auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& dtable, bool scale) -> std::unique_ptr<EvaluatorBase>
 {
     using T = DefaultDispatch;
 
     std::unique_ptr<EvaluatorBase> evaluator;
     if (str == "r2") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::R2{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::R2{}, scale);
     } else if (str == "c2") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::C2{}, false);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::C2{}, scale);
     } else if (str == "nmse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::NMSE{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::NMSE{}, scale);
     } else if (str == "mse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::MSE{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::MSE{}, scale);
     } else if (str == "rmse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::RMSE{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::RMSE{}, scale);
     } else if (str == "mae") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::MAE{}, true);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::MAE{}, scale);
+    } else if (str == "mdl") {
+        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T>>(problem, dtable);
+    } else if (str == "gauss") {
+        evaluator = std::make_unique<Operon::GaussianLikelihoodEvaluator<T>>(problem, dtable);
     } else {
         throw std::runtime_error(fmt::format("Unknown metric {}\n", str));
     }
     return evaluator;
 }
 
-auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<ErrorMetric>, bool>
-{
-    std::unique_ptr<ErrorMetric> error;
-    bool scale{true};
-    if (str == "r2") {
-        error = std::make_unique<Operon::R2>();
-    } else if (str == "c2") {
-        scale = false;
-        error = std::make_unique<Operon::C2>();
-    } else if (str == "nmse") {
-        error = std::make_unique<Operon::NMSE>();
-    } else if (str == "mse") {
-        error = std::make_unique<Operon::MSE>();
-    } else if (str == "rmse") {
-        error = std::make_unique<Operon::RMSE>();
-    } else if (str == "mae") {
-        error = std::make_unique<Operon::MAE>();
-    } else {
-        throw std::runtime_error(fmt::format("Unknown metric {}\n", str));
-    }
-    return std::make_tuple(std::move(error), scale);
-}
+// auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<ErrorMetric>, bool>
+// {
+//     std::unique_ptr<ErrorMetric> error;
+//     bool scale{true};
+//     if (str == "r2") {
+//         error = std::make_unique<Operon::R2>();
+//     } else if (str == "c2") {
+//         scale = false;
+//         error = std::make_unique<Operon::C2>();
+//     } else if (str == "nmse") {
+//         error = std::make_unique<Operon::NMSE>();
+//     } else if (str == "mse") {
+//         error = std::make_unique<Operon::MSE>();
+//     } else if (str == "rmse") {
+//         error = std::make_unique<Operon::RMSE>();
+//     } else if (str == "mae") {
+//         error = std::make_unique<Operon::MAE>();
+//     } else {
+//         throw std::runtime_error(fmt::format("Unknown metric {}\n", str));
+//     }
+//     return std::make_tuple(std::move(error), scale);
+// }
 
 auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel) -> std::unique_ptr<OffspringGeneratorBase>
 {

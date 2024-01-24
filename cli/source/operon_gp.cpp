@@ -215,14 +215,14 @@ auto main(int argc, char** argv) -> int
         mutator.Add(removeSubtree, 1.0);
         mutator.Add(discretePoint, 1.0);
 
-        auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
         Operon::DefaultDispatch dtable;
-        Operon::Evaluator evaluator(problem, dtable, *error, scale);
-        evaluator.SetBudget(config.Evaluations);
+        auto scale = result["linear-scaling"].as<bool>();
+        auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+        evaluator->SetBudget(config.Evaluations);
 
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(dtable, problem);
         optimizer->SetIterations(config.Iterations);
-        evaluator.SetOptimizer(optimizer.get());
+        dynamic_cast<Operon::Evaluator<Operon::DefaultDispatch>*>(evaluator.get())->SetOptimizer(optimizer.get());
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
@@ -231,7 +231,7 @@ auto main(int argc, char** argv) -> int
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *evaluator, crossover, mutator, *femaleSelector, *maleSelector);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
 
         Operon::RandomGenerator random(config.Seed);
@@ -372,10 +372,10 @@ auto main(int argc, char** argv) -> int
                 T{ "nmse_te", nmseTest, format },
                 T{ "avg_fit", avgQuality, format },
                 T{ "avg_len", avgLength, format },
-                T{ "eval_cnt", evaluator.CallCount , ":>" },
-                T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
-                T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
-                T{ "opt_time", evaluator.CostFunctionTime,    ":>" },
+                T{ "eval_cnt", evaluator->CallCount , ":>" },
+                T{ "res_eval", evaluator->ResidualEvaluations, ":>" },
+                T{ "jac_eval", evaluator->JacobianEvaluations, ":>" },
+                T{ "opt_time", evaluator->CostFunctionTime,    ":>" },
                 T{ "seed", config.Seed, ":>" },
                 T{ "elapsed", elapsed, ":>"},
             };
@@ -391,4 +391,3 @@ auto main(int argc, char** argv) -> int
 
     return 0;
 }
-
