@@ -305,7 +305,8 @@ public:
     {
     }
 
-    auto SetSigma(std::vector<Operon::Scalar> sigma) { sigma_ = std::move(sigma); }
+    auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const { sigma_ = std::move(sigma); }
 
     auto
     operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
@@ -347,6 +348,26 @@ public:
 
 private:
     Operon::MSE mse_;
+};
+
+template<typename DTable>
+class OPERON_EXPORT GaussianLikelihoodEvaluator final : public Evaluator<DTable> {
+    using Base = Evaluator<DTable>;
+
+    public:
+    explicit GaussianLikelihoodEvaluator(Operon::Problem& problem, DTable const& dtable)
+        : Base(problem, dtable)
+    {
+    }
+
+    auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+    auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const { sigma_ = std::move(sigma); }
+
+private:
+    mutable std::vector<Operon::Scalar> sigma_;
 };
 
 } // namespace Operon
