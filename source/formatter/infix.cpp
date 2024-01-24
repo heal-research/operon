@@ -20,6 +20,12 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
             throw std::runtime_error(fmt::format("A key with hash value {} could not be found in the variable map.\n", s.HashValue));
         }
     } else {
+        if (s.Value != 1) {
+            fmt::format_to(std::back_inserter(current), "(");
+            auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}f}}"), decimalPrecision);
+            fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
+            fmt::format_to(std::back_inserter(current), " * ");
+        }
         if (s.Type < NodeType::Abs) // add, sub, mul, div, aq, fmax, fmin, pow
         {
             fmt::format_to(std::back_inserter(current), "(");
@@ -101,6 +107,9 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 fmt::format_to(std::back_inserter(current), ")");
             }
         }
+        if (s.Value != 1) {
+            fmt::format_to(std::back_inserter(current), ")");
+        }
     }
 }
 
@@ -123,4 +132,3 @@ auto InfixFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::str
 }
 
 } // namespace Operon
-
