@@ -96,7 +96,6 @@ TEST_CASE("Evaluation correctness")
     }
 }
 
-#if OPERON_MATH_FAST_V1
 TEST_CASE("relative accuracy")
 {
     auto constexpr N{10'000};
@@ -138,36 +137,77 @@ TEST_CASE("relative accuracy")
 
     auto div = [](auto a, auto b) { return a / b; };
     auto aq = [](auto a, auto b) { return a / std::sqrt(1 + b*b); };
+    auto inv = [](auto x) { return 1/x; };
+    auto isqrt = [](auto x) { return 1/std::sqrt(x); };
+
+    auto constexpr nan = std::numeric_limits<Operon::Scalar>::quiet_NaN();
 
     // auto constexpr lim = Operon::Scalar{std::numeric_limits<Operon::Scalar>::max()};
     auto constexpr lim = Operon::Scalar{10};
 
-    SUBCASE("[-1, +1]") {
-        testRange("log", UnaryFunction{std::log}, UnaryFunction{Backend::detail::fast_v1::Log}, {0, lim});
-        testRange("exp", UnaryFunction{std::exp}, UnaryFunction{Backend::detail::fast_v1::Exp}, {-lim, lim});
-        testRange("sin", UnaryFunction{std::sin}, UnaryFunction{Backend::detail::fast_v1::Sin}, {-lim, +lim});
-        testRange("cos", UnaryFunction{std::cos}, UnaryFunction{Backend::detail::fast_v1::Cos}, {-lim, +lim});
-        testRange("tanh", UnaryFunction{std::tanh}, UnaryFunction{Backend::detail::fast_v1::Tanh}, {-lim, +lim});
-        testRange("sqrt", UnaryFunction{std::sqrt}, UnaryFunction{Backend::detail::fast_v1::Sqrt}, {0, lim});
-        testRange("div", BinaryFunction{div}, BinaryFunction{Backend::detail::fast_v1::Div}, {-lim, lim});
-        testRange("aq",  BinaryFunction{aq}, BinaryFunction{Backend::detail::fast_v1::Aq}, {-lim, lim});
-        testRange("pow", BinaryFunction{std::pow}, BinaryFunction{Backend::detail::fast_v1::Pow}, {-lim, lim});
-    }
-}
+    #if defined(OPERON_MATH_FAST_V1)
+    namespace backend = Backend::detail::fast_v1;
 
-TEST_CASE("arithmetic edge cases") {
-    namespace v1 = Backend::detail::fast_v1;
-    auto constexpr nan = std::numeric_limits<Operon::Scalar>::quiet_NaN();
-    fmt::print("log(nan): {} {}\n", v1::Log(nan), std::log(nan));
-    fmt::print("exp(nan): {} {}\n", v1::Exp(nan), std::exp(nan));
-    fmt::print("sin(nan): {} {}\n", v1::Sin(nan), std::sin(nan));
-    fmt::print("cos(nan): {} {}\n", v1::Cos(nan), std::cos(nan));
-    fmt::print("tanh(nan): {} {}\n", v1::Tanh(nan), std::tanh(nan));
-    fmt::print("sqrt(nan): {} {}\n", v1::Sqrt(nan), std::sqrt(nan));
-    fmt::print("div(nan, x): {} {}\n", v1::Div(nan, 2), nan / 2);
-    fmt::print("aq(nan, x): {} {}\n", v1::Aq(nan, 2), nan / std::sqrt(5));
+    SUBCASE("[-1, +1]") {
+        testRange("inv_v1", UnaryFunction{inv}, UnaryFunction{backend::Inv}, {0.001, lim});
+        testRange("inv_v2", UnaryFunction{inv}, UnaryFunction{backend::Inv2}, {0.001, lim});
+        testRange("isqrt_v1", UnaryFunction{isqrt}, UnaryFunction{backend::ISqrt}, {0.001, lim});
+        testRange("isqrt_v2", UnaryFunction{isqrt}, UnaryFunction{backend::ISqrt2}, {0.001, lim});
+        testRange("log", UnaryFunction{std::log}, UnaryFunction{backend::Log}, {0, lim});
+        testRange("exp_v1", UnaryFunction{std::exp}, UnaryFunction{backend::Exp}, {-lim, lim});
+        testRange("exp_v2", UnaryFunction{std::exp}, UnaryFunction{backend::Exp2}, {-lim, lim});
+        testRange("sin_v1", UnaryFunction{std::sin}, UnaryFunction{backend::Sin}, {-lim, +lim});
+        testRange("sin_v2", UnaryFunction{std::sin}, UnaryFunction{backend::Sin2}, {-lim, +lim});
+        testRange("cos_v1", UnaryFunction{std::cos}, UnaryFunction{backend::Cos}, {-lim, +lim});
+        testRange("cos_v2", UnaryFunction{std::cos}, UnaryFunction{backend::Cos2}, {-lim, +lim});
+        testRange("tanh_v1", UnaryFunction{std::tanh}, UnaryFunction{backend::Tanh}, {-lim, +lim});
+        testRange("tanh_v2", UnaryFunction{std::tanh}, UnaryFunction{backend::TanhAlt}, {-lim, +lim});
+        testRange("sqrt", UnaryFunction{std::sqrt}, UnaryFunction{backend::Sqrt}, {0, lim});
+        testRange("div", BinaryFunction{div}, BinaryFunction{backend::Div}, {-lim, lim});
+        testRange("aq",  BinaryFunction{aq}, BinaryFunction{backend::Aq}, {-lim, lim});
+        testRange("pow", BinaryFunction{std::pow}, BinaryFunction{backend::Pow}, {-lim, lim});
+    }
+
+    SUBCASE("edge cases") {
+        fmt::print("log(nan): {} {}\n", backend::Log(nan), std::log(nan));
+        fmt::print("exp(nan): {} {}\n", backend::Exp(nan), std::exp(nan));
+        fmt::print("sin(nan): {} {}\n", backend::Sin(nan), std::sin(nan));
+        fmt::print("cos(nan): {} {}\n", backend::Cos(nan), std::cos(nan));
+        fmt::print("tanh(nan): {} {}\n", backend::Tanh(nan), std::tanh(nan));
+        fmt::print("sqrt(nan): {} {}\n", backend::Sqrt(nan), std::sqrt(nan));
+        fmt::print("div(nan, x): {} {}\n", backend::Div(nan, 2), nan / 2);
+        fmt::print("aq(nan, x): {} {}\n", backend::Aq(nan, 2), nan / std::sqrt(5));
+    }
+    #endif
+
+    #if defined(OPERON_MATH_VDT)
+    namespace backend = Backend::detail::vdt;
+    SUBCASE("[-1, +1]") {
+        testRange("inv", UnaryFunction{inv}, UnaryFunction{backend::Inv}, {0.001, lim});
+        testRange("isqrt", UnaryFunction{isqrt}, UnaryFunction{backend::ISqrt}, {0.001, lim});
+        testRange("log", UnaryFunction{std::log}, UnaryFunction{backend::Log}, {0, lim});
+        testRange("exp", UnaryFunction{std::exp}, UnaryFunction{backend::Exp}, {-lim, lim});
+        testRange("sin", UnaryFunction{std::sin}, UnaryFunction{backend::Sin}, {-lim, +lim});
+        testRange("cos", UnaryFunction{std::cos}, UnaryFunction{backend::Cos}, {-lim, +lim});
+        testRange("tanh", UnaryFunction{std::tanh}, UnaryFunction{backend::Tanh}, {-lim, +lim});
+        testRange("sqrt", UnaryFunction{std::sqrt}, UnaryFunction{backend::Sqrt}, {0, lim});
+        testRange("div", BinaryFunction{div}, BinaryFunction{backend::Div}, {-lim, lim});
+        testRange("aq",  BinaryFunction{aq}, BinaryFunction{backend::Aq}, {-lim, lim});
+        testRange("pow", BinaryFunction{std::pow}, BinaryFunction{backend::Pow}, {-lim, lim});
+    }
+
+    SUBCASE("edge cases") {
+        fmt::print("log(nan): {} {}\n", backend::Log(nan), std::log(nan));
+        fmt::print("exp(nan): {} {}\n", backend::Exp(nan), std::exp(nan));
+        fmt::print("sin(nan): {} {}\n", backend::Sin(nan), std::sin(nan));
+        fmt::print("cos(nan): {} {}\n", backend::Cos(nan), std::cos(nan));
+        fmt::print("tanh(nan): {} {}\n", backend::Tanh(nan), std::tanh(nan));
+        fmt::print("sqrt(nan): {} {}\n", backend::Sqrt(nan), std::sqrt(nan));
+        fmt::print("div(nan, x): {} {}\n", backend::Div(nan, 2), nan / 2);
+        fmt::print("aq(nan, x): {} {}\n", backend::Aq(nan, 2), nan / std::sqrt(5));
+    }
+    #endif
 }
-#endif
 
 TEST_CASE("Batch evaluation")
 {
