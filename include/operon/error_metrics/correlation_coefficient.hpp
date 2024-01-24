@@ -39,7 +39,7 @@ inline auto CorrelationCoefficient(Operon::Span<T const> x, Operon::Span<T const
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(!x.empty());
-    return vstat::bivariate::accumulate<T>(x.data(), y.data(), x.size()).correlation;
+    return vstat::bivariate::accumulate<T>(x.begin(), x.end(), y.begin()).correlation;
 }
 
 template<typename T>
@@ -48,8 +48,33 @@ inline auto CorrelationCoefficient(Operon::Span<T const> x, Operon::Span<T const
     static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(!x.empty());
-    return vstat::bivariate::accumulate<T>(x.data(), y.data(), w.data(), x.size()).correlation;
+    return vstat::bivariate::accumulate<T>(x.begin(), x.end(), y.begin(), w.begin()).correlation;
 }
+
+template<typename InputIt1, typename InputIt2>
+inline auto SquaredCorrelation(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept -> double {
+    auto r = CorrelationCoefficient(begin1, end1, begin2);
+    return r * r;
+}
+
+template<typename InputIt1, typename InputIt2, typename InputIt3>
+inline auto SquaredCorrelation(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 begin3) noexcept -> double {
+    auto r = CorrelationCoefficient(begin1, end1, begin2, begin3);
+    return r * r;
+}
+
+template<typename T>
+inline auto SquaredCorrelation(Operon::Span<T const> x, Operon::Span<T const> y) -> double {
+    auto r = CorrelationCoefficient(x, y);
+    return r * r;
+}
+
+template<typename T>
+inline auto SquaredCorrelation(Operon::Span<T const> x, Operon::Span<T const> y, Operon::Span<T const> w) -> double {
+    auto r = CorrelationCoefficient(x, y, w);
+    return r * r;
+}
+
 } // namespace Operon
 
 #endif
