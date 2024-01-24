@@ -300,8 +300,7 @@ class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<D
 
 public:
     explicit MinimumDescriptionLengthEvaluator(Operon::Problem& problem, DTable const& dtable)
-        : Base(problem, dtable, sse_)
-        , sigma_(1, 1) // assume unit variance by default
+        : Base(problem, dtable, sse_), sigma_(1, 0.001)
     {
     }
 
@@ -356,7 +355,7 @@ class OPERON_EXPORT GaussianLikelihoodEvaluator final : public Evaluator<DTable>
 
     public:
     explicit GaussianLikelihoodEvaluator(Operon::Problem& problem, DTable const& dtable)
-        : Base(problem, dtable)
+        : Base(problem, dtable), sigma_(1, 0.001)
     {
     }
 

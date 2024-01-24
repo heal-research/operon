@@ -71,7 +71,6 @@ namespace Operon {
         if (optimizer_ != nullptr && optimizer_->Iterations() > 0) {
             auto t0 = std::chrono::steady_clock::now();
             auto summary = optimizer_->Optimize(rng, tree);
-            // auto coefficients = opt.Optimize(targetValues, trainingRange, iter, summary);
             ResidualEvaluations += summary.FunctionEvaluations;
             JacobianEvaluations += summary.JacobianEvaluations;
             if (summary.Success) { tree.SetCoefficients(summary.FinalParameters); }
