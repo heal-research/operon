@@ -27,7 +27,7 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
     //b.output(nullptr);
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
-    Operon::PrimitiveSet pset{ Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt };
+    Operon::PrimitiveSet pset{ Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt | Operon::NodeType::Pow | Operon::NodeType::Tanh };
     Operon::BalancedTreeCreator creator(pset, ds.VariableHashes());
 
     auto constexpr initialSize{20};
@@ -125,6 +125,83 @@ TEST_CASE("reverse mode" * dt::test_suite("[performance]")) {
             INT{dtable, ds, tree}.JacRev(coeff, range);
         }
     });
+}
+
+TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
+    auto constexpr N = 100;
+
+    Operon::RandomGenerator rng(0);
+    std::uniform_real_distribution<Operon::Scalar> dist;
+
+    auto ds = Util::RandomDataset(rng, Backend::BatchSize<Operon::Scalar> * 100, 1);
+    Range rg(0, ds.Rows());
+
+    auto generate = [&](Node n) {
+        std::vector<Node> nodes{n};
+        for (auto k = 0; k < n.Arity; ++k) {
+            nodes.push_back(Node::Constant(dist(rng)));
+            nodes.back().Optimize = true;
+        }
+        std::ranges::reverse(nodes);
+        return Tree{nodes}.UpdateNodes();
+    };
+
+    nb::Bench b;
+    b.output(nullptr);
+
+    Operon::DefaultDispatch dt;
+
+    std::string name = "eigen";
+
+    for (auto i = 0UL; i < NodeTypes::Count; ++i) {
+        auto t = static_cast<NodeType>(1UL << i);
+        Node n{t}; n.Value = dist(rng);
+        if (n.IsLeaf()) { continue; }
+        if (t == NodeType::Dynamic) { continue; }
+        std::vector<Tree> trees;
+        trees.reserve(N);
+        for (auto j = 0; j < N; ++j) {
+            trees.push_back(generate(n));
+        }
+
+        std::vector<Operon::Scalar> out(ds.Rows());
+
+        b.title(name).batch(N * (n.Arity + 1) * ds.Rows()).run(fmt::format("{}\";\"res", n.Name()), [&]() {
+            auto sum = 0.;
+            for (auto const& tree : trees) {
+                auto coeff = tree.GetCoefficients();
+                Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>(dt, ds, tree).Evaluate(coeff, rg, out);
+                sum += std::reduce(out.begin(), out.end());
+            }
+            return sum;
+        });
+    }
+
+    for (auto i = 0UL; i < NodeTypes::Count; ++i) {
+        auto t = static_cast<NodeType>(1UL << i);
+        Node n{t}; n.Value = dist(rng);
+        if (n.IsLeaf()) { continue; }
+        if (t == NodeType::Dynamic) { continue; }
+        std::vector<Tree> trees;
+        trees.reserve(N);
+        for (auto j = 0; j < N; ++j) {
+            trees.push_back(generate(n));
+        }
+
+        std::vector<Operon::Scalar> jac(ds.Rows() * (n.Arity + 1));
+
+        b.title(name).batch(N * (n.Arity + 1) * ds.Rows()).run(fmt::format("{}\";\"jac", n.Name()), [&]() {
+            auto sum = 0.;
+            for (auto const& tree : trees) {
+                auto coeff = tree.GetCoefficients();
+                Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>(dt, ds, tree).JacRev(coeff, rg, jac);
+                sum += std::reduce(jac.begin(), jac.end());
+            }
+            return sum;
+        });
+    }
+
+    b.render(nb::templates::csv(), std::cout);
 }
 
 TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
