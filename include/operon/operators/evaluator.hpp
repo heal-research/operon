@@ -20,70 +20,49 @@
 
 namespace Operon {
 
+enum class ErrorType : int { SSE, MSE, NMSE, RMSE, MAE, R2, C2 };
+
 struct OPERON_EXPORT ErrorMetric {
     using Iterator = Operon::Span<Operon::Scalar const>::iterator;
     using ProjIterator = ProjectionIterator<Iterator>;
 
-    ErrorMetric() = default;
-    ErrorMetric(ErrorMetric const&) = default;
-    ErrorMetric(ErrorMetric&&) = default;
-    auto operator=(ErrorMetric const&) -> ErrorMetric& = default;
-    auto operator=(ErrorMetric&&) -> ErrorMetric& = default;
+    explicit ErrorMetric(ErrorType type) : type_(type) { }
 
-    virtual auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double = 0;
-    virtual auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double = 0;
-    virtual auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double = 0;
-    virtual auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double = 0;
-    virtual ~ErrorMetric() = default;
+    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double;
+    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double;
+
+    private:
+    ErrorType type_;
 };
 
 struct OPERON_EXPORT SSE : public ErrorMetric {
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double override;
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double override;
+    SSE() : ErrorMetric(ErrorType::SSE) {}
 };
 
 struct OPERON_EXPORT MSE : public ErrorMetric {
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double override;
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double override;
+    MSE() : ErrorMetric(ErrorType::MSE) {}
 };
 
 struct OPERON_EXPORT NMSE : public ErrorMetric {
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double override;
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double override;
+    NMSE() : ErrorMetric(ErrorType::NMSE) {}
 };
 
 struct OPERON_EXPORT RMSE : public ErrorMetric {
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double override;
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double override;
+    RMSE() : ErrorMetric(ErrorType::RMSE) {}
 };
 
 struct OPERON_EXPORT MAE : public ErrorMetric {
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double override;
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double override;
+    MAE() : ErrorMetric(ErrorType::MAE) {}
 };
 
 struct OPERON_EXPORT R2 : public ErrorMetric {
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double override;
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double override;
+    R2() : ErrorMetric(ErrorType::R2) {}
 };
 
 struct OPERON_EXPORT C2 : public ErrorMetric {
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double override;
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double override;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double override;
+    C2() : ErrorMetric(ErrorType::C2) {}
 };
 
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept -> std::pair<double, double>;
@@ -170,7 +149,7 @@ class OPERON_EXPORT Evaluator : public EvaluatorBase {
     using TInterpreter = Operon::Interpreter<Operon::Scalar, DTable>;
 
 public:
-    explicit Evaluator(Problem& problem, DTable const& dtable, ErrorMetric const& error = MSE {}, bool linearScaling = true)
+    explicit Evaluator(Problem& problem, DTable const& dtable, ErrorMetric error = MSE{}, bool linearScaling = true)
         : EvaluatorBase(problem)
         , dtable_(dtable)
         , error_(error)
@@ -188,7 +167,7 @@ public:
 
 private:
     std::reference_wrapper<DTable const> dtable_;
-    std::reference_wrapper<ErrorMetric const> error_;
+    ErrorMetric error_;
     OptimizerBase<DTable> const* optimizer_{nullptr};
     bool scaling_{false};
 };
