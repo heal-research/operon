@@ -277,4 +277,44 @@ namespace Operon {
         if (!std::isfinite(aik)) { aik = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(aik) };
     }
+
+    template<> auto OPERON_EXPORT
+    GaussianLikelihoodEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename Evaluator::ReturnType {
+        ++CallCount;
+
+        auto const& problem = Evaluator::GetProblem();
+        auto const range = problem.TrainingRange();
+        auto const& dataset = problem.GetDataset();
+        auto const& dtable = Evaluator::GetDispatchTable();
+        auto const* optimizer = Evaluator::GetOptimizer();
+        EXPECT(optimizer != nullptr);
+
+        // this call will optimize the tree coefficients and compute the SSE
+        auto& tree = ind.Genotype;
+        Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, ind.Genotype};
+        auto parameters = tree.GetCoefficients();
+        if (optimizer != nullptr && optimizer->Iterations() > 0) {
+            auto summary = optimizer->Optimize(rng, tree);
+            if (summary.Success) {
+                parameters = summary.FinalParameters;
+                tree.SetCoefficients(parameters);
+                ResidualEvaluations += summary.FunctionEvaluations;
+                JacobianEvaluations += summary.JacobianEvaluations;
+            }
+        }
+
+        std::vector<Operon::Scalar> buffer;
+        if (buf.size() < range.Size()) {
+            buffer.resize(range.Size());
+            buf = Operon::Span<Operon::Scalar>(buffer);
+        }
+        ++ResidualEvaluations;
+        interpreter.Evaluate(parameters, range, buf);
+
+        auto estimatedValues = buf;
+        auto targetValues    = problem.TargetValues(range);
+
+        auto lik = Operon::GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(estimatedValues, targetValues, sigma_);
+        return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(lik) };
+    }
 } // namespace Operon
