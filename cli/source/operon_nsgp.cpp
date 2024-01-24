@@ -222,20 +222,19 @@ auto main(int argc, char** argv) -> int
         mutator.Add(removeSubtree, 1.0);
         mutator.Add(discretePoint, 1.0);
 
-        auto const& [error, scale] = Operon::ParseErrorMetric(result["error-metric"].as<std::string>());
         Operon::DefaultDispatch dtable;
-
-        Operon::Evaluator errorEvaluator(problem, dtable, *error, scale);
-        errorEvaluator.SetBudget(config.Evaluations);
+        auto scale = result["linear-scaling"].as<bool>();
+        auto errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+        errorEvaluator->SetBudget(config.Evaluations);
 
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(dtable, problem);
         optimizer->SetIterations(config.Iterations);
-        errorEvaluator.SetOptimizer(optimizer.get());
+        dynamic_cast<Operon::Evaluator<Operon::DefaultDispatch>*>(errorEvaluator.get())->SetOptimizer(optimizer.get());
         Operon::LengthEvaluator lengthEvaluator(problem, maxLength);
 
         Operon::MultiEvaluator evaluator(problem);
         evaluator.SetBudget(config.Evaluations);
-        evaluator.Add(errorEvaluator);
+        evaluator.Add(*errorEvaluator);
         evaluator.Add(lengthEvaluator);
 
         EXPECT(problem.TrainingRange().Size() > 0);
@@ -405,4 +404,3 @@ auto main(int argc, char** argv) -> int
 
     return 0;
 }
-
