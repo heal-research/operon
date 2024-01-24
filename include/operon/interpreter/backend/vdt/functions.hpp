@@ -88,6 +88,12 @@ namespace Operon::Backend {
             else { return ::vdt::fast_isqrt(x); }
         }
 
+        inline auto Sqrt(Operon::Scalar x) -> Operon::Scalar {
+            static_assert(std::is_arithmetic_v<decltype(x)>);
+            if constexpr (std::is_same_v<Operon::Scalar, float>) { return x * ::vdt::fast_isqrtf(x); }
+            else { return x * ::vdt::fast_isqrt(x); }
+        }
+
         inline auto Floor(Operon::Scalar x) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
             return static_cast<Operon::Scalar>(::vdt::details::fpfloor(x));
@@ -96,6 +102,16 @@ namespace Operon::Backend {
         inline auto Div(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
             return x * Inv(y);
+        }
+
+        inline auto Aq(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
+            static_assert(std::is_arithmetic_v<decltype(x)>);
+            return x * ISqrt(Operon::Scalar{1} + y * y);
+        }
+
+        inline auto Pow(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
+            static_assert(std::is_arithmetic_v<decltype(x)>);
+            return std::pow(x, y);
         }
     } // namespace detail::vdt
 
@@ -142,9 +158,7 @@ namespace Operon::Backend {
             if constexpr (sizeof...(rest) == 0) {
                 res[i] = detail::vdt::Inv(first[i]);
             } else {
-                // res[i] = first[i] * detail::vdt::Inv((rest[i] * ...));
-                // res[i] = detail::vdt::Div(first[i], (rest[i] * ...));
-                res[i] = first[i] / (rest[i] * ...); // this seems to be much faster than the above
+                res[i] = detail::vdt::Div(first[i], (rest[i] * ...));
             }
         }
     }
@@ -166,17 +180,12 @@ namespace Operon::Backend {
     // binary functions
     template<typename T, std::size_t S>
     auto Aq(T* res, T* a, T* b) {
-        for (auto i = 0UL; i < S; ++i) {
-            auto v = b[i];
-            res[i] = a[i] * detail::vdt::ISqrt((T{1} + v * v));
-        }
+        std::transform(a, a+S, b, res, detail::vdt::Aq);
     }
 
     template<typename T, std::size_t S>
     auto Pow(T* res, T* a, T* b) {
-        for (auto i = 0UL; i < S; ++i) {
-            res[i] = std::pow(a[i], b[i]);
-        }
+        std::transform(a, a+S, b, res, detail::vdt::Pow);
     }
 
     // unary functions
@@ -187,17 +196,17 @@ namespace Operon::Backend {
 
     template<typename T, std::size_t S>
     auto Neg(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, std::negate{});
+        std::transform(arg, arg+S, res, std::negate{});
     }
 
     template<typename T, std::size_t S>
     auto Inv(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Inv);
+        std::transform(arg, arg+S, res, detail::vdt::Inv);
     }
 
     template<typename T, std::size_t S>
     auto Abs(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, [](auto x) { return std::abs(x); });
+        std::transform(arg, arg+S, res, [](auto x) { return std::abs(x); });
     }
 
     template<typename T, std::size_t S>
@@ -207,92 +216,92 @@ namespace Operon::Backend {
 
     template<typename T, std::size_t S>
     auto Ceil(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, [](auto x) { return std::ceil(x); });
+        std::transform(arg, arg+S, res, [](auto x) { return std::ceil(x); });
     }
 
     template<typename T, std::size_t S>
     auto Floor(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Floor);
+        std::transform(arg, arg+S, res, detail::vdt::Floor);
     }
 
     template<typename T, std::size_t S>
     auto Exp(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Exp);
+        std::transform(arg, arg+S, res, detail::vdt::Exp);
     }
 
     template<typename T, std::size_t S>
     auto Log(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Log);
+        std::transform(arg, arg+S, res, detail::vdt::Log);
     }
 
     template<typename T, std::size_t S>
     auto Log1p(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Log1p);
+        std::transform(arg, arg+S, res, detail::vdt::Log1p);
     }
 
     template<typename T, std::size_t S>
     auto Logabs(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Logabs);
+        std::transform(arg, arg+S, res, detail::vdt::Logabs);
     }
 
     template<typename T, std::size_t S>
     auto Sin(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Sin);
+        std::transform(arg, arg+S, res, detail::vdt::Sin);
     }
 
     template<typename T, std::size_t S>
     auto Cos(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Cos);
+        std::transform(arg, arg+S, res, detail::vdt::Cos);
     }
 
     template<typename T, std::size_t S>
     auto Tan(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Tan);
+        std::transform(arg, arg+S, res, detail::vdt::Tan);
     }
 
     template<typename T, std::size_t S>
     auto Asin(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Asin);
+        std::transform(arg, arg+S, res, detail::vdt::Asin);
     }
 
     template<typename T, std::size_t S>
     auto Acos(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Acos);
+        std::transform(arg, arg+S, res, detail::vdt::Acos);
     }
 
     template<typename T, std::size_t S>
     auto Atan(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Atan);
+        std::transform(arg, arg+S, res, detail::vdt::Atan);
     }
 
     template<typename T, std::size_t S>
     auto Sinh(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, [](auto x) { return std::sinh(x); });
+        std::transform(arg, arg+S, res, [](auto x) { return std::sinh(x); });
     }
 
     template<typename T, std::size_t S>
     auto Cosh(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, [](auto x) { return std::cosh(x); });
+        std::transform(arg, arg+S, res, [](auto x) { return std::cosh(x); });
     }
 
     template<typename T, std::size_t S>
     auto Tanh(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, detail::vdt::Tanh);
+        std::transform(arg, arg+S, res, detail::vdt::Tanh);
     }
 
     template<typename T, std::size_t S>
     auto Sqrt(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, [](auto x) { return x * detail::vdt::ISqrt(x); });
+        std::transform(arg, arg+S, res, detail::vdt::Sqrt);
     }
 
     template<typename T, std::size_t S>
     auto Sqrtabs(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, [](auto x) { return std::abs(x) * detail::vdt::ISqrt(std::abs(x)); });
+        std::transform(arg, arg+S, res, [](auto x) { return detail::vdt::Sqrt(std::abs(x)); });
     }
 
     template<typename T, std::size_t S>
     auto Cbrt(T* res, T* arg) {
-        std::ranges::transform(std::span{arg, S}, res, [](auto x) { return std::cbrt(x); });
+        std::transform(arg, arg+S, res, [](auto x) { return std::cbrt(x); });
     }
 } // namespace Operon::Backend
 
