@@ -15,16 +15,8 @@
 #include "operon/core/types.hpp"
 #include "derivatives.hpp"
 
+
 namespace Operon {
-
-namespace concepts {
-    template<typename Derived>
-    concept MatrixBase = std::is_base_of_v<Eigen::MatrixBase<Derived>, Derived>;
-
-    template<typename Derived>
-    concept ArrayBase = std::is_base_of_v<Eigen::ArrayBase<Derived>, Derived>;
-} // namespace concepts
-
 // data types used by the dispatch table and the interpreter
 struct Dispatch {
 
@@ -32,50 +24,49 @@ template<typename T>
 //requires std::is_arithmetic_v<T>
 static auto constexpr DefaultBatchSize{ 512UL / sizeof(T) };
 
-template<concepts::ArrayBase A>
-using Callable = std::function<void(Operon::Vector<Node> const&, A&, size_t, Operon::Range)>;
+template<typename T, std::size_t S>
+using Callable = std::function<void(Operon::Vector<Node> const&, Backend::View<T, S>, size_t, Operon::Range)>;
 
-template<concepts::ArrayBase A>
-using CallableDiff = std::function<void(Operon::Vector<Node> const&, A const&, A&, int, int)>;
+template<typename T, std::size_t S>
+using CallableDiff = std::function<void(Operon::Vector<Node> const&, Backend::View<T const, S>, Backend::View<T, S>, int, int)>;
 
 // dispatching mechanism
 // compared to the simple/naive way of evaluating n-ary symbols, this method has the following advantages:
 // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments
 // 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
 //    if arity > 4, one accumulation is performed every 4 args
-template<NodeType Type, concepts::ArrayBase A>
+template<NodeType Type, typename T, std::size_t S>
 requires Node::IsNary<Type>
-static inline void NaryOp(Operon::Vector<Node> const& nodes, A& m, size_t parentIndex, Operon::Range /*unused*/)
+static inline void NaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> data, size_t parentIndex, Operon::Range /*unused*/)
 {
-    using R = Eigen::Ref<decltype(m.col(0))>;
     static_assert(Type < NodeType::Aq);
-    auto result = R(m.col(parentIndex));
-    const auto f = [](bool cont, decltype(result) res, auto&&... args) {
-        if (cont) { res = Func<Type, false>{}(res, Func<Type, true>{}(args...)); }
-        else      { res = Func<Type, false>{}(args...); }
-    };
     const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
     auto arg1 = parentIndex - 1;
     bool continued = false;
+
+    auto const call = [&](bool continued, int result, auto... args) {
+        if (continued) { Func<T, Type, true , S>{}(data, result, args...); }
+        else           { Func<T, Type, false, S>{}(data, result, args...); }
+    };
 
     int arity = nodes[parentIndex].Arity;
     while (arity > 0) {
         switch (arity) {
         case 1: {
-            f(continued, result, R(m.col(arg1)));
+            call(continued, parentIndex, arg1);
             arity = 0;
             break;
         }
         case 2: {
             auto arg2 = nextArg(arg1);
-            f(continued, result, R(m.col(arg1)), R(m.col(arg2)));
+            call(continued, parentIndex, arg1, arg2);
             arity = 0;
             break;
         }
         case 3: {
             auto arg2 = nextArg(arg1);
             auto arg3 = nextArg(arg2);
-            f(continued, result, R(m.col(arg1)), R(m.col(arg2)), R(m.col(arg3)));
+            call(continued, parentIndex, arg1, arg2, arg3);
             arity = 0;
             break;
         }
@@ -83,7 +74,7 @@ static inline void NaryOp(Operon::Vector<Node> const& nodes, A& m, size_t parent
             auto arg2 = nextArg(arg1);
             auto arg3 = nextArg(arg2);
             auto arg4 = nextArg(arg3);
-            f(continued, result, R(m.col(arg1)), R(m.col(arg2)), R(m.col(arg3)), R(m.col(arg4)));
+            call(continued, parentIndex, arg1, arg2, arg3, arg4);
             arity -= 4;
             arg1 = nextArg(arg4);
             break;
@@ -93,22 +84,20 @@ static inline void NaryOp(Operon::Vector<Node> const& nodes, A& m, size_t parent
     }
 }
 
-template<NodeType Type, concepts::ArrayBase A>
+template<NodeType Type, typename T, std::size_t S>
 requires Node::IsBinary<Type>
-static inline void BinaryOp(Operon::Vector<Node> const& nodes, A& m, size_t i, Operon::Range /*unused*/)
+static inline void BinaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
 {
-    using R = Eigen::Ref<decltype(m.col(0))>;
     auto j = i - 1;
     auto k = j - nodes[j].Length - 1;
-    m.col(i) = Func<Type, false>{}(R(m.col(j)), R(m.col(k)));
+    Func<T, Type, false>{}(m, i, j, k);
 }
 
-template<NodeType Type, concepts::ArrayBase A>
+template<NodeType Type, typename T, std::size_t S>
 requires Node::IsUnary<Type>
-static inline void UnaryOp(Operon::Vector<Node> const& /*unused*/, A& m, size_t i, Operon::Range /*unused*/)
+static inline void UnaryOp(Operon::Vector<Node> const& /*unused*/, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
 {
-    using R = Eigen::Ref<decltype(m.col(0))>;
-    m.col(i) = Func<Type, false>{}(R(m.col(i-1)));
+    Func<T, Type, false>{}(m, i, i-1);
 }
 
 struct Noop {
@@ -116,34 +105,34 @@ struct Noop {
     void operator()(Args&&... /*unused*/) {}
 };
 
-template<NodeType Type, concepts::ArrayBase A>
-static inline void DiffOp(Operon::Vector<Node> const& nodes, A const& primal, A& trace, int i, int j) {
-    Diff<Type>{}(nodes, primal, trace, i, j);
+template<NodeType Type, typename T, std::size_t S>
+static inline void DiffOp(Operon::Vector<Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T, S> trace, int i, int j) {
+   Diff<T, Type, S>{}(nodes, primal, trace, i, j);
 };
 
-template<NodeType Type, concepts::ArrayBase A>
-static constexpr auto MakeFunctionCall() -> Dispatch::Callable<A>
+template<NodeType Type, typename T, std::size_t S>
+static constexpr auto MakeFunctionCall() -> Dispatch::Callable<T, S>
 {
     if constexpr (Node::IsNary<Type>) {
-        return Callable<A>{NaryOp<Type, A>};
+        return Callable<T, S>{NaryOp<Type, T, S>};
     } else if constexpr (Node::IsBinary<Type>) {
-        return Callable<A>{BinaryOp<Type, A>};
+        return Callable<T, S>{BinaryOp<Type, T, S>};
     } else if constexpr (Node::IsUnary<Type>) {
-        return Callable<A>{UnaryOp<Type, A>};
+        return Callable<T, S>{UnaryOp<Type, T, S>};
     }
 }
 
-template<NodeType Type, concepts::ArrayBase A>
-static constexpr auto MakeDiffCall() -> Dispatch::CallableDiff<A>
+template<NodeType Type, typename T, std::size_t S>
+static constexpr auto MakeDiffCall() -> Dispatch::CallableDiff<T, S>
 {
     // this constexpr if here returns NOOP in case of non-arithmetic types (duals)
-    if constexpr (std::is_arithmetic_v<typename A::Scalar>) {
-        return CallableDiff<A>{DiffOp<Type, A>};
+    if constexpr (std::is_arithmetic_v<T>) {
+        return CallableDiff<T, S>{DiffOp<Type, T, S>};
     } else {
         return Dispatch::Noop{};
     }
 }
-};
+}; // struct Dispatch
 
 namespace detail {
     // return the index of type T in Tuple
@@ -192,29 +181,42 @@ public:
     static constexpr typename Ext::value_type BatchSize = Sizes[TypeIndex<T>];
 
     template<typename T>
-    using Array = Eigen::Array<T, BatchSize<T>, -1>;
+    using Backend = Backend::View<T, BatchSize<T>>;
 
     template<typename T>
-    using Callable = Dispatch::Callable<Array<T>>;
+    using Callable = Dispatch::Callable<T, BatchSize<T>>;
+
+    template<typename T>
+    using CallableDiff = Dispatch::CallableDiff<T, BatchSize<T>>;
 
 private:
+    template<NodeType Type, typename T>
+    static constexpr auto MakeFunction() {
+        return Dispatch::MakeFunctionCall<Type, T, BatchSize<T>>();
+    };
+
+    template<NodeType Type, typename T>
+    static constexpr auto MakeDerivative() {
+        return Dispatch::MakeDiffCall<Type, T, BatchSize<T>>();
+    };
+
     template<NodeType Type>
     static constexpr auto MakeTuple()
     {
         return []<auto... Idx>(std::index_sequence<Idx...>){
             return std::make_tuple(
-                std::make_tuple(Dispatch::MakeFunctionCall<Type, Array<std::tuple_element_t<Idx, Tup>>>()...),
-                std::make_tuple(Dispatch::MakeDiffCall<Type, Array<std::tuple_element_t<Idx, Tup>>>()...)
+                std::make_tuple(MakeFunction<Type, std::tuple_element_t<Idx, Tup>>()...),
+                std::make_tuple(MakeDerivative<Type, std::tuple_element_t<Idx, Tup>>()...)
             );
         }(std::index_sequence_for<Typ>{});
     };
 
     using TFun = decltype([]<auto... Idx>(std::index_sequence<Idx...>){
-                    return std::make_tuple(Dispatch::Callable<Array<std::tuple_element_t<Idx, Typ>>>{}...);
+                    return std::make_tuple(Callable<std::tuple_element_t<Idx, Typ>>{}...);
                  }(std::index_sequence_for<Typ>{}));
 
     using TDif = decltype([]<auto... Idx>(std::index_sequence<Idx...>){
-                    return std::make_tuple(Dispatch::CallableDiff<Array<std::tuple_element_t<Idx, Typ>>>{}...);
+                    return std::make_tuple(CallableDiff<std::tuple_element_t<Idx, Typ>>{}...);
                  }(std::index_sequence_for<Typ>{}));
 
     using Tuple = std::tuple<TFun, TDif>;
@@ -259,19 +261,19 @@ public:
     auto GetMap() const -> Map const& { return map_; }
 
     template<typename T>
-    inline auto GetFunction(Operon::Hash const h) -> Dispatch::Callable<Array<T>>&
+    inline auto GetFunction(Operon::Hash const h) -> Callable<T>&
     {
-        return const_cast<Dispatch::Callable<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->GetFunction(h)); // NOLINT
+        return const_cast<Callable<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->GetFunction(h)); // NOLINT
     }
 
     template<typename T>
-    inline auto GetDerivative(Operon::Hash const h) -> Dispatch::CallableDiff<Array<T>>&
+    inline auto GetDerivative(Operon::Hash const h) -> CallableDiff<T>&
     {
-        return const_cast<Dispatch::CallableDiff<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->GetDerivative(h)); // NOLINT
+        return const_cast<CallableDiff<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->GetDerivative(h)); // NOLINT
     }
 
     template<typename T>
-    [[nodiscard]] inline auto GetFunction(Operon::Hash const h) const -> Dispatch::Callable<Array<T>> const&
+    [[nodiscard]] inline auto GetFunction(Operon::Hash const h) const -> Callable<T> const&
     {
         if (auto it = map_.find(h); it != map_.end()) {
             return std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<0>(it->second));
@@ -280,7 +282,7 @@ public:
     }
 
     template<typename T>
-    [[nodiscard]] inline auto GetDerivative(Operon::Hash const h) const -> Dispatch::CallableDiff<Array<T>> const&
+    [[nodiscard]] inline auto GetDerivative(Operon::Hash const h) const -> CallableDiff<T> const&
     {
         if (auto it = map_.find(h); it != map_.end()) {
             return std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<1>(it->second));
@@ -288,8 +290,8 @@ public:
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
 
-    template<typename T, typename A = Array<T>>
-    [[nodiscard]] inline auto Get(Operon::Hash const h) const -> std::tuple<Dispatch::Callable<A>, Dispatch::CallableDiff<A>>
+    template<typename T>
+    [[nodiscard]] inline auto Get(Operon::Hash const h) const -> std::tuple<Callable<T>, CallableDiff<T>>
     {
         if (auto it = map_.find(h); it != map_.end()) {
             return std::get<static_cast<size_t>(TypeIndex<T>)>(it->second);
@@ -308,7 +310,7 @@ public:
     }
 
     template<typename T>
-    [[nodiscard]] inline auto TryGetFunction(Operon::Hash const h) const noexcept -> std::optional<Dispatch::Callable<Array<T>>>
+    [[nodiscard]] inline auto TryGetFunction(Operon::Hash const h) const noexcept -> std::optional<Callable<T>>
     {
         if (auto it = map_.find(h); it != map_.end()) {
             return std::optional{ std::get<TypeIndex<T>>(std::get<0>(it->second)) };
@@ -317,7 +319,7 @@ public:
     }
 
     template<typename T>
-    [[nodiscard]] inline auto TryGetDerivative(Operon::Hash const h) const noexcept -> std::optional<Dispatch::CallableDiff<Array<T>>>
+    [[nodiscard]] inline auto TryGetDerivative(Operon::Hash const h) const noexcept -> std::optional<CallableDiff<T>>
     {
         if (auto it = map_.find(h); it != map_.end()) {
             return std::optional{ std::get<TypeIndex<T>>(std::get<1>(it->second)) };

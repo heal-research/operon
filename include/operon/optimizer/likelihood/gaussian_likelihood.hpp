@@ -17,13 +17,13 @@ namespace Operon {
 
 namespace detail {
     struct Gaussian {
-        template<Operon::Arithmetic T>
+        template<Operon::Concepts::Arithmetic T>
         auto operator()(T const x, T const y) const -> T {
             auto const e = x - y;
             return e * e;
         }
 
-        template<Operon::Arithmetic T>
+        template<Operon::Concepts::Arithmetic T>
         auto operator()(T const x, T const y, T const w) const -> T {
             auto const e = w * (x - y);
             return e * e;
@@ -100,7 +100,7 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
         return std::numeric_limits<Operon::Scalar>::quiet_NaN();
     }
 
-    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> sigma) -> Matrix 
+    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> sigma) -> Matrix
     {
         EXPECT(!sigma.empty());
         auto const rows = pred.size();
