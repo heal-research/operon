@@ -85,10 +85,24 @@ namespace Operon::Backend {
             if (x == +0) { return +inf; }
 
             auto xt = x * 0.5F;
-            auto xi = std::bit_cast<uint32_t>(x);
+            auto xi = std::bit_cast<int32_t>(x);
             xi = fast_sqrt_constant - (xi >> 1U);
             auto xf = std::bit_cast<float>(xi);
             xf = xf * (float{1.5} - (xt * (xf * xf)));
+            return xf;
+        }
+
+        inline auto constexpr ISqrt2(Operon::Scalar x) -> Operon::Scalar {
+            constexpr auto nan{ std::numeric_limits<Operon::Scalar>::quiet_NaN() };
+            constexpr auto inf{ std::numeric_limits<Operon::Scalar>::infinity() };
+            if (x < 0) { return nan; }
+            if (x == -0) { return -inf; }
+            if (x == +0) { return +inf; }
+
+            auto xi = std::bit_cast<int32_t>(x);
+            xi = (0xBE6EB3BE - xi) >> 1U;
+            auto xf = std::bit_cast<float>(xi);
+            xf = xf * (1.5F - (0.5F * x * (xf * xf)));
             return xf;
         }
 
