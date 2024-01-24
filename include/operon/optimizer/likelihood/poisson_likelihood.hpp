@@ -16,12 +16,12 @@ namespace Operon {
 
 namespace detail {
     struct Poisson {
-        template<Operon::Arithmetic T>
+        template<Operon::Concepts::Arithmetic T>
         auto operator()(T const a, T const b) const -> T {
             return a - b * std::log(a);
         }
 
-        template<Operon::Arithmetic T>
+        template<Operon::Concepts::Arithmetic T>
         auto operator()(T const a, T const b, T const w) const -> T {
             auto const z = w * a; // weight * f(x)
             return z - b * std::log(z);
@@ -29,12 +29,12 @@ namespace detail {
     };
 
     struct PoissonLog {
-        template<Operon::Arithmetic T>
+        template<Operon::Concepts::Arithmetic T>
         auto operator()(T const a, T const b) const -> T {
             return std::exp(a) - a * b;
         }
 
-        template<Operon::Arithmetic T>
+        template<Operon::Concepts::Arithmetic T>
         auto operator()(T const a, T const b, T const w) const -> T {
             a *= w;
             return std::exp(a) - a * b;
