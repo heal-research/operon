@@ -96,6 +96,7 @@ TEST_CASE("Evaluation correctness")
     }
 }
 
+#if defined(OPERON_MATH_VDT) || defined(OPERON_MATH_FAST_V1)
 TEST_CASE("relative accuracy")
 {
     auto constexpr N{10'000};
@@ -160,6 +161,8 @@ TEST_CASE("relative accuracy")
         testRange("sin_v2", UnaryFunction{std::sin}, UnaryFunction{backend::Sin2}, {-lim, +lim});
         testRange("cos_v1", UnaryFunction{std::cos}, UnaryFunction{backend::Cos}, {-lim, +lim});
         testRange("cos_v2", UnaryFunction{std::cos}, UnaryFunction{backend::Cos2}, {-lim, +lim});
+        testRange("sinh", UnaryFunction{std::sinh}, UnaryFunction{backend::Sinh}, {-lim, +lim});
+        testRange("cosh", UnaryFunction{std::cosh}, UnaryFunction{backend::Cosh}, {-lim, +lim});
         testRange("tanh_v1", UnaryFunction{std::tanh}, UnaryFunction{backend::Tanh}, {-lim, +lim});
         testRange("tanh_v2", UnaryFunction{std::tanh}, UnaryFunction{backend::TanhAlt}, {-lim, +lim});
         testRange("sqrt", UnaryFunction{std::sqrt}, UnaryFunction{backend::Sqrt}, {0, lim});
@@ -189,6 +192,8 @@ TEST_CASE("relative accuracy")
         testRange("exp", UnaryFunction{std::exp}, UnaryFunction{backend::Exp}, {-lim, lim});
         testRange("sin", UnaryFunction{std::sin}, UnaryFunction{backend::Sin}, {-lim, +lim});
         testRange("cos", UnaryFunction{std::cos}, UnaryFunction{backend::Cos}, {-lim, +lim});
+        testRange("sinh", UnaryFunction{std::sinh}, UnaryFunction{backend::Sinh}, {-lim, +lim});
+        testRange("cosh", UnaryFunction{std::cosh}, UnaryFunction{backend::Cosh}, {-lim, +lim});
         testRange("tanh", UnaryFunction{std::tanh}, UnaryFunction{backend::Tanh}, {-lim, +lim});
         testRange("sqrt", UnaryFunction{std::sqrt}, UnaryFunction{backend::Sqrt}, {0, lim});
         testRange("div", BinaryFunction{div}, BinaryFunction{backend::Div}, {-lim, lim});
@@ -208,6 +213,7 @@ TEST_CASE("relative accuracy")
     }
     #endif
 }
+#endif
 
 TEST_CASE("Batch evaluation")
 {

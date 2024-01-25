@@ -212,6 +212,9 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
         constexpr auto n{1'000'000};
 
+        // n-ary
+        pset.SetConfig(NodeType::Fmin | NodeType::Fmax);
+
         // unary
         pset.SetConfig(NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Sqrt | NodeType::Tanh | NodeType::Constant);
         auto trees = generateTrees(pset, n/2, 2);
