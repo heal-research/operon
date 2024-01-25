@@ -56,7 +56,6 @@ namespace detail {
 
         if (n.Arity == 1) {
             auto m = Col(trace, j);
-            static_assert(std::is_same_v<decltype(m), Map<T, S>>);
             Col(trace, j) = -T{1} / (Col(primal, j) * Col(primal, j));
         } else {
             Col(trace, j) = (j == i-1 ? T{1} : T{-1}) * Col(primal, i) / Col(primal, j);

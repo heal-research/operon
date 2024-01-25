@@ -222,6 +222,34 @@ namespace Operon::Backend {
             return std::bit_cast<float>(a);
         }
 
+        inline auto Pow2(Operon::Scalar x, Operon::Scalar y) {
+            auto log2 = [](Operon::Scalar x) {
+                auto i = std::bit_cast<std::uint32_t>(x);
+                auto f = std::bit_cast<float>((i & 0x007FFFFF) | 0x3f000000);
+                auto y = i * 1.1920928955078125e-7f;
+                return y - 124.22551499f - 1.498030302f * f - 1.72587999f / (0.3520887068f + f);
+            };
+
+            auto pow2 = [](Operon::Scalar p) {
+                float offset = (p < 0) ? 1.0f : 0.0f;
+                float clipp = (p < -126) ? -126.0f : p;
+                float z = clipp - static_cast<int32_t>(clipp) + offset;
+                auto i = std::uint32_t((1 << 23) * (clipp + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z));
+                return std::bit_cast<float>(i);
+            };
+            return pow2(y * log2(x));
+        }
+
+        inline auto constexpr Sinh(Operon::Scalar x) -> Operon::Scalar {
+            auto const e = Exp(x);
+            return Div(e*e - Operon::Scalar{1}, e+e);
+        }
+
+        inline auto constexpr Cosh(Operon::Scalar x) -> Operon::Scalar {
+            auto const e = Exp(x);
+            return Div(e*e + Operon::Scalar{1}, e+e);
+        }
+
         inline auto constexpr Tanh(Operon::Scalar x) -> Operon::Scalar {
             constexpr auto nan { std::numeric_limits<Operon::Scalar>::quiet_NaN() };
             if (std::isnan(x)) { return nan; }
@@ -275,21 +303,21 @@ namespace Operon::Backend {
 
     // unary functions
     template<typename T, std::size_t S>
-    auto Add(T* res, auto*... args) {
+    auto Add(T* res, auto const*... args) {
         for (auto i = 0UL; i < S; ++i) {
             res[i] = (args[i] + ...);
         }
     }
 
     template<typename T, std::size_t S>
-    auto Mul(T* res, auto*... args) {
+    auto Mul(T* res, auto const*... args) {
         for (auto i = 0UL; i < S; ++i) {
             res[i] = (args[i] * ...);
         }
     }
 
     template<typename T, std::size_t S>
-    auto Sub(T* res, auto* first, auto*... rest) {
+    auto Sub(T* res, auto const* first, auto const*... rest) {
         for (auto i = 0UL; i < S; ++i) {
             if constexpr (sizeof...(rest) == 0) {
                 res[i] = -first[i];
@@ -300,7 +328,7 @@ namespace Operon::Backend {
     }
 
     template<typename T, std::size_t S>
-    auto Div(T* res, auto* first, auto*... rest) {
+    auto Div(T* res, auto const* first, auto const*... rest) {
         for (auto i = 0UL; i < S; ++i) {
             if constexpr (sizeof...(rest) == 0) {
                 res[i] = detail::fast_v1::Inv(first[i]);
@@ -311,14 +339,14 @@ namespace Operon::Backend {
     }
 
     template<typename T, std::size_t S>
-    auto Min(T* res, auto*... args) {
+    auto Min(T* res, auto const*... args) {
         for (auto i = 0UL; i < S; ++i) {
             res[i] = std::min({args[i]...});
         }
     }
 
     template<typename T, std::size_t S>
-    auto Max(T* res, auto*... args) {
+    auto Max(T* res, auto const*... args) {
         for (auto i = 0UL; i < S; ++i) {
             res[i] = std::max({args[i]...});
         }
@@ -326,128 +354,128 @@ namespace Operon::Backend {
 
     // binary functions
     template<typename T, std::size_t S>
-    auto Aq(T* res, T* a, T* b) {
+    auto Aq(T* res, T const* a, T const* b) {
         std::transform(a, a+S, b, res, detail::fast_v1::Aq);
     }
 
     template<typename T, std::size_t S>
-    auto Pow(T* res, T* a, T* b) {
+    auto Pow(T* res, T const* a, T const* b) {
         std::transform(a, a+S, b, res, detail::fast_v1::Pow);
     }
 
     // unary functions
     template<typename T, std::size_t S>
-    auto Cpy(T* res, T* arg) {
+    auto Cpy(T* res, T const* arg) {
         std::ranges::copy_n(arg, S, res);
     }
 
     template<typename T, std::size_t S>
-    auto Neg(T* res, T* arg) {
+    auto Neg(T* res, T const* arg) {
         std::transform(arg, arg+S, res, std::negate{});
     }
 
     template<typename T, std::size_t S>
-    auto Inv(T* res, T* arg) {
+    auto Inv(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Inv);
     }
 
     template<typename T, std::size_t S>
-    auto Abs(T* res, T* arg) {
+    auto Abs(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::abs(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Ceil(T* res, T* arg) {
+    auto Ceil(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::ceil(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Floor(T* res, T* arg) {
+    auto Floor(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::floor(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Exp(T* res, T* arg) {
+    auto Exp(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Exp);
     }
 
     template<typename T, std::size_t S>
-    auto Log(T* res, T* arg) {
+    auto Log(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Log);
     }
 
     template<typename T, std::size_t S>
-    auto Log1p(T* res, T* arg) {
+    auto Log1p(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Log1p);
     }
 
     template<typename T, std::size_t S>
-    auto Logabs(T* res, T* arg) {
+    auto Logabs(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Logabs);
     }
 
     template<typename T, std::size_t S>
-    auto Sin(T* res, T* arg) {
+    auto Sin(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Sin);
     }
 
     template<typename T, std::size_t S>
-    auto Cos(T* res, T* arg) {
+    auto Cos(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Cos);
     }
 
     template<typename T, std::size_t S>
-    auto Tan(T* res, T* arg) {
+    auto Tan(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Tan);
     }
 
     template<typename T, std::size_t S>
-    auto Asin(T* res, T* arg) {
+    auto Asin(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::asin(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Acos(T* res, T* arg) {
+    auto Acos(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::acos(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Atan(T* res, T* arg) {
+    auto Atan(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::atan(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Sinh(T* res, T* arg) {
+    auto Sinh(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::sinh(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Cosh(T* res, T* arg) {
+    auto Cosh(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::cosh(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Tanh(T* res, T* arg) {
+    auto Tanh(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Tanh);
     }
 
     template<typename T, std::size_t S>
-    auto Sqrt(T* res, T* arg) {
+    auto Sqrt(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Sqrt);
     }
 
     template<typename T, std::size_t S>
-    auto Sqrtabs(T* res, T* arg) {
+    auto Sqrtabs(T* res, T const* arg) {
         std::transform(arg, arg+S, res, detail::fast_v1::Sqrtabs);
     }
 
     template<typename T, std::size_t S>
-    auto Square(T* res, T* arg) {
+    auto Square(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return x * x; });
     }
 
     template<typename T, std::size_t S>
-    auto Cbrt(T* res, T* arg) {
+    auto Cbrt(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::cbrt(x); });
     }
 } // namespace Operon::Backend

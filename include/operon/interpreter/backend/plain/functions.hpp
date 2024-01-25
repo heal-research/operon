@@ -21,21 +21,21 @@ namespace Operon::Backend {
 
     // unary functions
     template<typename T, std::size_t S>
-    auto Add(T* res, auto*... args) {
+    auto Add(T* res, auto const*... args) {
         for (auto i = 0UL; i < S; ++i) {
             res[i] = (args[i] + ...);
         }
     }
 
     template<typename T, std::size_t S>
-    auto Mul(T* res, auto*... args) {
+    auto Mul(T* res, auto const*... args) {
         for (auto i = 0UL; i < S; ++i) {
             res[i] = (args[i] * ...);
         }
     }
 
     template<typename T, std::size_t S>
-    auto Sub(T* res, auto* first, auto*... rest) {
+    auto Sub(T* res, auto const* first, auto const*... rest) {
         for (auto i = 0UL; i < S; ++i) {
             if constexpr (sizeof...(rest) == 0) {
                 res[i] = -first[i];
@@ -46,7 +46,7 @@ namespace Operon::Backend {
     }
 
     template<typename T, std::size_t S>
-    auto Div(T* res, auto* first, auto*... rest) {
+    auto Div(T* res, auto const* first, auto const*... rest) {
         for (auto i = 0UL; i < S; ++i) {
             if constexpr (sizeof...(rest) == 0) {
                 res[i] = T{1} / first[i];
@@ -57,14 +57,14 @@ namespace Operon::Backend {
     }
 
     template<typename T, std::size_t S>
-    auto Min(T* res, auto*... args) {
+    auto Min(T* res, auto const*... args) {
         for (auto i = 0UL; i < S; ++i) {
             res[i] = std::min({args[i]...});
         }
     }
 
     template<typename T, std::size_t S>
-    auto Max(T* res, auto*... args) {
+    auto Max(T* res, auto const*... args) {
         for (auto i = 0UL; i < S; ++i) {
             res[i] = std::max({args[i]...});
         }
@@ -72,128 +72,128 @@ namespace Operon::Backend {
 
     // binary functions
     template<typename T, std::size_t S>
-    auto Aq(T* res, T* a, T* b) {
+    auto Aq(T* res, T const* a, T const* b) {
         std::transform(a, a+S, b, res, [](auto x, auto y) { return x / std::sqrt(T{1} + y*y); });
     }
 
     template<typename T, std::size_t S>
-    auto Pow(T* res, T* a, T* b) {
+    auto Pow(T* res, T const* a, T const* b) {
         std::transform(a, a+S, b, res, [](auto x, auto y) { return std::pow(x, y); });
     }
 
     // unary functions
     template<typename T, std::size_t S>
-    auto Cpy(T* res, T* arg) {
-        std::ranges::copy_n(arg, S, res);
+    auto Cpy(T* res, T const* arg) {
+        std::copy_n(arg, S, res);
     }
 
     template<typename T, std::size_t S>
-    auto Neg(T* res, T* arg) {
+    auto Neg(T* res, T const* arg) {
         std::transform(arg, arg+S, res, std::negate{});
     }
 
     template<typename T, std::size_t S>
-    auto Inv(T* res, T* arg) {
+    auto Inv(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return T{1} / x; });
     }
 
     template<typename T, std::size_t S>
-    auto Abs(T* res, T* arg) {
+    auto Abs(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::abs(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Square(T* res, T* arg) {
+    auto Square(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return x * x; });
     }
 
     template<typename T, std::size_t S>
-    auto Ceil(T* res, T* arg) {
+    auto Ceil(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::ceil(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Floor(T* res, T* arg) {
+    auto Floor(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::floor(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Exp(T* res, T* arg) {
+    auto Exp(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::exp(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Log(T* res, T* arg) {
+    auto Log(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::log(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Log1p(T* res, T* arg) {
+    auto Log1p(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::log1p(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Logabs(T* res, T* arg) {
+    auto Logabs(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::log(std::abs(x)); });
     }
 
     template<typename T, std::size_t S>
-    auto Sin(T* res, T* arg) {
+    auto Sin(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::sin(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Cos(T* res, T* arg) {
+    auto Cos(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::cos(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Tan(T* res, T* arg) {
+    auto Tan(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::tan(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Asin(T* res, T* arg) {
+    auto Asin(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::asin(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Acos(T* res, T* arg) {
+    auto Acos(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::acos(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Atan(T* res, T* arg) {
+    auto Atan(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::atan(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Sinh(T* res, T* arg) {
+    auto Sinh(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::sinh(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Cosh(T* res, T* arg) {
+    auto Cosh(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::cosh(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Tanh(T* res, T* arg) {
+    auto Tanh(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::tanh(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Sqrt(T* res, T* arg) {
+    auto Sqrt(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::sqrt(x); });
     }
 
     template<typename T, std::size_t S>
-    auto Sqrtabs(T* res, T* arg) {
+    auto Sqrtabs(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto v){ return std::sqrt(std::abs(v)); });
     }
 
     template<typename T, std::size_t S>
-    auto Cbrt(T* res, T* arg) {
+    auto Cbrt(T* res, T const* arg) {
         std::transform(arg, arg+S, res, [](auto x) { return std::cbrt(x); });
     }
 } // namespace Operon::Backend
