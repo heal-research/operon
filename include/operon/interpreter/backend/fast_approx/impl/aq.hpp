@@ -11,6 +11,6 @@ namespace Operon::Backend::detail::fast_approx {
         auto constexpr p{9999999980506447872.F};
         return std::abs(x2) > p ? DivImpl<P>(x1, std::abs(x2)) : x1 * ISqrtImpl<P>(1 + x2*x2);
     }
-}  // namespace Operon::Backend::detail::fast_ap
+} // namespace Operon::Backend::detail::fast_approx
 
 #endif
