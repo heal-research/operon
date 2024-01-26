@@ -25,15 +25,15 @@ namespace Operon::Backend {
         }
 
         inline auto constexpr Log(Operon::Scalar x) -> Operon::Scalar {
-            return fast_approx::LogImpl(x);
+            return fast_approx::LogImpl<Precision>(x);
         }
 
         inline auto constexpr Log1p(Operon::Scalar x) -> Operon::Scalar {
-            return fast_approx::Log1pImpl(x);
+            return fast_approx::Log1pImpl<Precision>(x);
         }
 
         inline auto constexpr Logabs(Operon::Scalar x) -> Operon::Scalar {
-            return fast_approx::LogabsImpl(x);
+            return fast_approx::LogabsImpl<Precision>(x);
         }
 
         inline auto constexpr Exp(Operon::Scalar x) -> Operon::Scalar {
