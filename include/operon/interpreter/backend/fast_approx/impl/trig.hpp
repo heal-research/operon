@@ -22,7 +22,7 @@ namespace Operon::Backend::detail::fast_approx {
             x *= tp;
             x -= a + std::floor(x + a);
             x *= b * (std::abs(x) - c);
-            for (auto i = 0UL; i < P; ++i) {
+            if constexpr (P >= 1) {
                 x += d * x * (std::abs(x) - 1.F); // another step for extra precision
             }
             return x;
