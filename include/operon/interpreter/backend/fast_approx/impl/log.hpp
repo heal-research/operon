@@ -18,7 +18,6 @@ namespace Operon::Backend::detail::fast_approx {
             auto bx = std::bit_cast<std::uint32_t>(x);
             auto ex = bx >> 23U;
             auto t = static_cast<std::int32_t>(ex) - static_cast<std::int32_t>(127);
-            std::uint32_t s = (t < 0) ? (-t) : t;
             bx = 1065353216 | (bx & 8388607);
             x = std::bit_cast<float>(bx);
             if constexpr (P == 1) {
