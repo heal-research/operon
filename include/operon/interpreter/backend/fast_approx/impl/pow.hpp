@@ -2,6 +2,8 @@
 #define OPERON_BACKEND_FAST_APPROX_POW_HPP
 
 #include "inv.hpp"
+#include "exp.hpp"
+#include "log.hpp"
 
 namespace Operon::Backend::detail::fast_approx {
     inline auto constexpr PowV1(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
@@ -33,7 +35,7 @@ namespace Operon::Backend::detail::fast_approx {
                 float offset = (p < 0) ? 1.0f : 0.0f;
                 float clipp = (p < -126) ? -126.0f : p;
                 float z = clipp - static_cast<int32_t>(clipp) + offset;
-                auto i = std::uint32_t((1 << 23) * (clipp + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z));
+                auto i = std::uint32_t((1 << 23U) * (clipp + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z));
                 return std::bit_cast<float>(i);
             };
             return pow2(y * log2(x));
@@ -42,7 +44,8 @@ namespace Operon::Backend::detail::fast_approx {
         template<std::size_t P = 0>
         inline auto PowImpl(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
             if constexpr (P == 0) { return PowV1(x, y); }
-            else { return PowV2(x, y); }
+            // else { return PowV2(x, y); }
+            else { return ExpImpl<P>(y * LogImpl<P>(x)); }
         }
 } // namespace Operon::Backend::detail::fast_approx
 

@@ -14,6 +14,7 @@
 #include "impl/pow.hpp"
 #include "impl/sqrt.hpp"
 #include "impl/trig.hpp"
+#include "impl/tanh.hpp"
 
 namespace Operon::Backend {
     namespace detail::fast_approx {
@@ -82,26 +83,8 @@ namespace Operon::Backend {
             return fast_approx::PowImpl<Precision>(x, y);
         }
 
-        // fast_approx: tanh uses the less precise division operation
         inline auto constexpr Tanh(Operon::Scalar x) -> Operon::Scalar {
-            constexpr auto nan { std::numeric_limits<Operon::Scalar>::quiet_NaN() };
-            if (std::isnan(x)) { return nan; }
-            if (x < -85) { return -1.F; }
-            if (x > +85) { return +1.F; }
-
-            auto expZeroShift = [](auto x) {
-                constexpr auto shift{23U};
-                constexpr auto ff{127U};
-                auto a = Div((1U << shift), std::numbers::ln2_v<Operon::Scalar>);
-                auto b = (ff * (1U << shift));
-                auto f = a * x + b;
-                auto i = static_cast<int32_t>(f);
-                return std::bit_cast<float>(i);
-            };
-
-            auto a = expZeroShift(x);
-            auto b = expZeroShift(-x);
-            return Div(a-b, a+b);
+            return fast_approx::TanhImpl<Precision>(x);
         }
 
         inline auto constexpr Aq(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
