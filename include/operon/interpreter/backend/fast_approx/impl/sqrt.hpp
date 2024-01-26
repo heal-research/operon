@@ -19,7 +19,7 @@ namespace Operon::Backend::detail::fast_approx {
         auto xi = std::bit_cast<int32_t>(x);
         xi = fast_sqrt_constant - (xi >> 1U);
         auto xf = std::bit_cast<float>(xi);
-        if constexpr (P >= 1) {
+        for (auto i = 0UL; i < P; ++i) {
             xf = xf * (float{1.5} - (xt * (xf * xf)));
         }
         return xf;
@@ -30,7 +30,16 @@ namespace Operon::Backend::detail::fast_approx {
         constexpr auto nan = std::numeric_limits<Operon::Scalar>::quiet_NaN();
         if (x < 0) { return nan; }
         if (x == 0) { return 0; }
-        return x * ISqrtImpl<P>(x);
+        if constexpr (P == 0) {
+            auto xi = std::bit_cast<int32_t>(x);
+            xi -= 0x3F800000;
+            xi = ((((xi >> 31U) & 1) << 31U) | ((xi >> 1U) & 0x7FFFFFFF));
+            xi += 0x3F800000;
+            xi &= 0xFFFFFFFF;
+            return std::bit_cast<float>(xi);
+        } else {
+            return x * ISqrtImpl<P>(x);
+        }
     }
 
     template<std::size_t P = 0>
