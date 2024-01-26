@@ -17,6 +17,10 @@
 #include "operon/interpreter/backend/vdt.hpp"
 #elif defined(OPERON_MATH_FAST_V1)
 #include "operon/interpreter/backend/fast_v1.hpp"
+#elif defined(OPERON_MATH_FAST_V2)
+#include "operon/interpreter/backend/fast_v2.hpp"
+#elif defined(OPERON_MATH_FAST_V3)
+#include "operon/interpreter/backend/fast_v3.hpp"
 #endif
 
 namespace Operon {

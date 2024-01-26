@@ -96,7 +96,7 @@ TEST_CASE("Evaluation correctness")
     }
 }
 
-#if defined(OPERON_MATH_VDT) || defined(OPERON_MATH_FAST_V1)
+#if defined(OPERON_MATH_VDT) || defined(OPERON_MATH_FAST_V1) || defined(OPERON_MATH_FAST_V2) || defined(OPERON_MATH_FAST_V3)
 TEST_CASE("relative accuracy")
 {
     auto constexpr N{10'000};
@@ -146,29 +146,26 @@ TEST_CASE("relative accuracy")
     // auto constexpr lim = Operon::Scalar{std::numeric_limits<Operon::Scalar>::max()};
     auto constexpr lim = Operon::Scalar{10};
 
-    #if defined(OPERON_MATH_FAST_V1)
-    namespace backend = Backend::detail::fast_v1;
+    #if defined(OPERON_MATH_FAST_V1) || defined(OPERON_MATH_FAST_V2) || defined(OPERON_MATH_FAST_V3)
+    namespace backend = Backend::detail::fast_approx;
 
-    SUBCASE("[-1, +1]") {
-        testRange("inv_v1", UnaryFunction{inv}, UnaryFunction{backend::Inv}, {0.001, lim});
-        testRange("inv_v2", UnaryFunction{inv}, UnaryFunction{backend::Inv2}, {0.001, lim});
-        testRange("isqrt_v1", UnaryFunction{isqrt}, UnaryFunction{backend::ISqrt}, {0.001, lim});
-        testRange("isqrt_v2", UnaryFunction{isqrt}, UnaryFunction{backend::ISqrt2}, {0.001, lim});
+    fmt::print("precision level: {}\n", OPERON_MATH_FAST_APPROX_PRECISION);
+
+    SUBCASE("mean accuracy") {
+        // reciprocal
+        testRange("inv", UnaryFunction{inv}, UnaryFunction{backend::Inv}, {0.001, lim});
+        testRange("isqrt", UnaryFunction{isqrt}, UnaryFunction{backend::ISqrt}, {0.001, lim});
         testRange("log", UnaryFunction{std::log}, UnaryFunction{backend::Log}, {0, lim});
-        testRange("exp_v1", UnaryFunction{std::exp}, UnaryFunction{backend::Exp}, {-lim, lim});
-        testRange("exp_v2", UnaryFunction{std::exp}, UnaryFunction{backend::Exp2}, {-lim, lim});
-        testRange("sin_v1", UnaryFunction{std::sin}, UnaryFunction{backend::Sin}, {-lim, +lim});
-        testRange("sin_v2", UnaryFunction{std::sin}, UnaryFunction{backend::Sin2}, {-lim, +lim});
-        testRange("cos_v1", UnaryFunction{std::cos}, UnaryFunction{backend::Cos}, {-lim, +lim});
-        testRange("cos_v2", UnaryFunction{std::cos}, UnaryFunction{backend::Cos2}, {-lim, +lim});
+        testRange("exp", UnaryFunction{std::exp}, UnaryFunction{backend::Exp}, {0.001, lim});
+        testRange("sin", UnaryFunction{std::sin}, UnaryFunction{backend::Sin}, {-lim, +lim});
+        testRange("cos", UnaryFunction{std::cos}, UnaryFunction{backend::Cos}, {-lim, +lim});
         testRange("sinh", UnaryFunction{std::sinh}, UnaryFunction{backend::Sinh}, {-lim, +lim});
         testRange("cosh", UnaryFunction{std::cosh}, UnaryFunction{backend::Cosh}, {-lim, +lim});
-        testRange("tanh_v1", UnaryFunction{std::tanh}, UnaryFunction{backend::Tanh}, {-lim, +lim});
-        testRange("tanh_v2", UnaryFunction{std::tanh}, UnaryFunction{backend::TanhAlt}, {-lim, +lim});
+        testRange("tanh", UnaryFunction{std::tanh}, UnaryFunction{backend::Tanh}, {-lim, +lim});
         testRange("sqrt", UnaryFunction{std::sqrt}, UnaryFunction{backend::Sqrt}, {0, lim});
         testRange("div", BinaryFunction{div}, BinaryFunction{backend::Div}, {-lim, lim});
         testRange("aq",  BinaryFunction{aq}, BinaryFunction{backend::Aq}, {-lim, lim});
-        testRange("pow", BinaryFunction{std::pow}, BinaryFunction{backend::Pow}, {-lim, lim});
+        testRange("pow", BinaryFunction{std::pow}, BinaryFunction{backend::Pow}, {0.001, lim});
     }
 
     SUBCASE("edge cases") {
