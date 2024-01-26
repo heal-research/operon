@@ -157,6 +157,10 @@ elseif(MATH_BACKEND STREQUAL "Stl")
     target_compile_definitions(operon_operon PUBLIC OPERON_MATH_STL)
 elseif (MATH_BACKEND STREQUAL "Fast_v1")
     target_compile_definitions(operon_operon PUBLIC OPERON_MATH_FAST_V1)
+elseif (MATH_BACKEND STREQUAL "Fast_v2")
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_FAST_V2)
+elseif (MATH_BACKEND STREQUAL "Fast_v3")
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_FAST_V3)
 endif()
 
 # print summary of enabled/disabled features
