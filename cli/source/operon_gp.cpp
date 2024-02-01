@@ -383,7 +383,7 @@ auto main(int argc, char** argv) -> int
         };
 
         gp.Run(executor, random, report);
-        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 6));
+        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 8));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;
