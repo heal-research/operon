@@ -396,7 +396,18 @@ auto main(int argc, char** argv) -> int
         };
 
         gp.Run(executor, random, report);
-        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
+	fmt::print("Best individual:\n");
+        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 8));
+
+        auto const& pop = gp.Parents();
+
+	// print all solutions in the first front
+	fmt::print("All individuals in the Pareto front:\n");
+	for(auto ind = pop.begin(); ind < pop.end(); ind++) {
+	  if(ind->Rank == 0) {
+            fmt::print("{}\n", Operon::InfixFormatter::Format(ind->Genotype, problem.GetDataset(), 8));
+	  }
+	}
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;
