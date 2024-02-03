@@ -11,6 +11,7 @@ namespace Operon::Backend::detail::fast_approx {
         constexpr auto inf{ std::numeric_limits<Operon::Scalar>::infinity() };
         constexpr auto fast_sqrt_constant{static_cast<float>(0x5F3759DF)};
 
+        if (std::isnan(x)) { return nan; }
         if (x < 0) { return nan; }
         if (x == -0) { return -inf; }
         if (x == +0) { return +inf; }
@@ -28,6 +29,7 @@ namespace Operon::Backend::detail::fast_approx {
     template<std::size_t P = 0>
     inline auto constexpr SqrtImpl(Operon::Scalar x) -> Operon::Scalar {
         constexpr auto nan = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+        if (std::isnan(x)) { return nan; }
         if (x < 0) { return nan; }
         if (x == 0) { return 0; }
         if constexpr (P == 0) {

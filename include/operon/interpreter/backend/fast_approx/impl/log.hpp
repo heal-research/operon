@@ -12,6 +12,7 @@ namespace Operon::Backend::detail::fast_approx {
         if (x < 0) { return nan; }
         if (x == 0) { return -inf; }
         if (x == 1) { return 0.F; }
+        if (x == inf) { return inf; }
         if constexpr (P == 0) {
             return (std::bit_cast<int32_t>(x) - 1065353217) * 8.262958405176314e-8F;
         } else {

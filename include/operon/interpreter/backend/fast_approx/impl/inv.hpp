@@ -41,6 +41,7 @@ template<std::size_t P = 0>
         constexpr auto inf{ std::numeric_limits<Operon::Scalar>::infinity() };
         constexpr auto nan = std::numeric_limits<Operon::Scalar>::quiet_NaN();
         if (x == 0) { return y == 0 ? nan : 0.F; }
+        if (std::isnan(x)) { return nan; }
         if (y == -0) { return -inf; }
         if (y == +0) { return +inf; }
         return x * InvImpl<P>(y);
