@@ -15,12 +15,29 @@ namespace Operon::Backend {
         // we need wrappers due to VDT calling conventions
         inline auto Exp(Operon::Scalar x) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
+            auto constexpr nan{ std::numeric_limits<Operon::Scalar>::quiet_NaN() };
+            auto constexpr inf{ std::numeric_limits<Operon::Scalar>::infinity() };
+
+            if (std::isnan(x)) { return nan; }
+            if (x == 0) { return 1.F; }
+            if (x == -inf) { return 0; }
+            if (x == +inf) { return inf; }
+
             if constexpr (std::is_same_v<Operon::Scalar, float>) { return ::vdt::fast_expf(x); }
             else { return ::vdt::fast_exp(x); }
         }
 
         inline auto Log(Operon::Scalar x) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
+            auto constexpr nan{ std::numeric_limits<Operon::Scalar>::quiet_NaN() };
+            auto constexpr inf{ std::numeric_limits<Operon::Scalar>::infinity() };
+
+            if (std::isnan(x)) { return nan; }
+            if (x < 0) { return nan; }
+            if (x == 0) { return -inf; }
+            if (x == 1) { return 0.F; }
+            if (x == inf) { return inf; }
+
             if constexpr (std::is_same_v<Operon::Scalar, float>) { return ::vdt::fast_logf(x); }
             else { return ::vdt::fast_log(x); }
         }
@@ -41,12 +58,24 @@ namespace Operon::Backend {
 
         inline auto ISqrt(Operon::Scalar x) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
+            auto constexpr nan{ std::numeric_limits<Operon::Scalar>::quiet_NaN() };
+            auto constexpr inf{ std::numeric_limits<Operon::Scalar>::infinity() };
+
+            if (std::isnan(x)) { return nan; }
+            if (x < 0) { return nan; }
+            if (x == -0) { return -inf; }
+            if (x == +0) { return +inf; }
+
             if constexpr (std::is_same_v<Operon::Scalar, float>) { return ::vdt::fast_isqrtf(x); }
             else { return ::vdt::fast_isqrt(x); }
         }
 
         inline auto Sqrt(Operon::Scalar x) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
+            constexpr auto nan = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+            if (std::isnan(x)) { return nan; }
+            if (x < 0) { return nan; }
+            if (x == 0) { return 0; }
             if constexpr (std::is_same_v<Operon::Scalar, float>) { return x * ::vdt::fast_isqrtf(x); }
             else { return x * ::vdt::fast_isqrt(x); }
         }
@@ -76,6 +105,17 @@ namespace Operon::Backend {
 
         inline auto Pow(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
+            auto constexpr nan{ std::numeric_limits<Operon::Scalar>::quiet_NaN() };
+            auto constexpr inf{ std::numeric_limits<Operon::Scalar>::infinity() };
+
+            if (std::isnan(x)) { return nan; }
+            if (std::isnan(y)) { return nan; }
+            if (x == 0) { return y < 0 ? inf : x; }
+            if (x < 0) { return nan; }
+            if (y == 0) { return 1.F; }
+            if (y == -inf) { return 0; }
+            if (y == +inf) { return inf; }
+
             return Exp(y * Log(x));
         }
 
@@ -99,12 +139,16 @@ namespace Operon::Backend {
 
         inline auto Cos(Operon::Scalar x) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
+            if (!std::isfinite(x)) { return std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
+            if (x == 0) { return 1.F; }
             if constexpr (std::is_same_v<Operon::Scalar, float>) { return ::vdt::fast_cosf(x); }
             else { return ::vdt::fast_cos(x); }
         }
 
         inline auto Sin(Operon::Scalar x) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
+            if (!std::isfinite(x)) { return std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
+            if (x == 0) { return x; }
             if constexpr (std::is_same_v<Operon::Scalar, float>) { return ::vdt::fast_sinf(x); }
             else { return ::vdt::fast_sin(x); }
         }
@@ -127,8 +171,25 @@ namespace Operon::Backend {
 
         inline auto Tanh(Operon::Scalar x) -> Operon::Scalar {
             static_assert(std::is_arithmetic_v<decltype(x)>);
-            if constexpr (std::is_same_v<Operon::Scalar, float>) { return ::vdt::fast_tanhf(x); }
-            else { return ::vdt::fast_tanh(x); }
+            constexpr auto nan { std::numeric_limits<Operon::Scalar>::quiet_NaN() };
+            if (std::isnan(x)) { return nan; }
+            if (x == 0) { return 0; }
+
+            //if constexpr (std::is_same_v<Operon::Scalar, float>) { return ::vdt::fast_tanhf(x); }
+            //else { return ::vdt::fast_tanh(x); }
+            if constexpr (std::is_same_v<Operon::Scalar, float>) {
+                auto const a = ::vdt::fast_expf(x);
+                auto const b = ::vdt::fast_expf(-x);
+                // auto const b = ::vdt::invf(a);
+                return Div(a-b, a+b);
+                // return ::vdt::fast_tanhf(x);
+            } else {
+                auto const a = ::vdt::fast_exp(x);
+                auto const b = ::vdt::fast_exp(-x);
+                // auto const b = ::vdt::inv(a);
+                return Div(a-b, a+b);
+                // return ::vdt::fast_tanh(x);
+            }
         }
     } // namespace detail::vdt
 
