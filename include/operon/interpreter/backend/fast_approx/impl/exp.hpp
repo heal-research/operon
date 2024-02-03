@@ -5,6 +5,8 @@
 
 namespace Operon::Backend::detail::fast_approx {
     inline auto constexpr ExpV1(Operon::Scalar x) -> Operon::Scalar {
+        if (std::isnan(x)) { return std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
+        if (x == 0) { return 1.F; }
         if (x < -85.F) { return 0; }
         if (x > +85.F) { return std::numeric_limits<float>::infinity(); }
 
@@ -13,11 +15,14 @@ namespace Operon::Backend::detail::fast_approx {
         return std::bit_cast<float>(i);
     }
 
+    // http://stackoverflow.com/questions/10552280/fast-exp-calculation-possible-to-improve-accuracy-without-losing-too-much-perfo/10792321#10792321
     inline auto constexpr ExpV2(Operon::Scalar x) -> Operon::Scalar {
+        if (std::isnan(x)) { return std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
+        if (x == 0) { return 1.F; }
         if (x < -85.F) { return 0; }
         if (x > +85.F) { return std::numeric_limits<float>::infinity(); }
 
-        float t = x * 1.442695041f;
+        float t = x * 1.442695041F;
         float fi = std::floor(t);
         float f = t - fi;
         int i = static_cast<int32_t>(fi);
@@ -27,6 +32,8 @@ namespace Operon::Backend::detail::fast_approx {
     }
 
     inline auto constexpr ExpV3(Operon::Scalar x) -> Operon::Scalar {
+        if (std::isnan(x)) { return std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
+        if (x == 0) { return 1.F; }
         if (x < -85.F) { return 0; }
         if (x > +85.F) { return std::numeric_limits<float>::infinity(); }
 

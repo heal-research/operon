@@ -5,11 +5,11 @@
 #include "inv.hpp"
 
 namespace Operon::Backend::detail::fast_approx {
-
     template<std::size_t P = 0>
     inline auto constexpr TanhImpl(Operon::Scalar x) -> Operon::Scalar {
             constexpr auto nan { std::numeric_limits<Operon::Scalar>::quiet_NaN() };
             if (std::isnan(x)) { return nan; }
+            if (x == 0) { return 0; }
 
             if constexpr (P == 0) {
                 if (x <= -3) {
@@ -41,6 +41,6 @@ namespace Operon::Backend::detail::fast_approx {
                 return DivImpl<P>(a-b, a+b);
             }
         }
-}
+}  // namespace Operon::Backend::detail::fast_approx
 
 #endif
