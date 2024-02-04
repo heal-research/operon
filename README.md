@@ -9,10 +9,10 @@
 # Modern C++ framework for Symbolic Regression
 
 [![License](https://img.shields.io/github/license/heal-research/operon?style=flat)](https://github.com/heal-research/operon/blob/master/LICENSE)
-[![build-linux](https://github.com/heal-research/operon/actions/workflows/build-linux.yml/badge.svg?branch=cpp20)](https://github.com/heal-research/operon/actions/workflows/build-linux.yml)
-[![build-windows](https://github.com/heal-research/operon/actions/workflows/build-windows.yml/badge.svg?branch=cpp20)](https://github.com/heal-research/operon/actions/workflows/build-windows.yml)
+[![build-linux](https://github.com/heal-research/operon/actions/workflows/build-linux.yml/badge.svg?branch=main)](https://github.com/heal-research/operon/actions/workflows/build-linux.yml)
+[![build-windows](https://github.com/heal-research/operon/actions/workflows/build-windows.yml/badge.svg?branch=main)](https://github.com/heal-research/operon/actions/workflows/build-windows.yml)
 [![Documentation Status](https://readthedocs.org/projects/operongp/badge/?version=latest)](https://operongp.readthedocs.io/en/latest/?badge=latest)
-[![Gitter chat](https://badges.gitter.im/operongp/gitter.png)](https://gitter.im/operongp/community)
+[![Matrix Channel](https://badges.gitter.im/operongp/gitter.png)](https://gitter.im/operongp/community)
 
 *Operon* is a modern C++ framework for [symbolic regression](https://en.wikipedia.org/wiki/Symbolic_regression) that uses [genetic programming](https://en.wikipedia.org/wiki/Genetic_programming) to explore a hypothesis space of possible mathematical expressions in order to find the best-fitting model for a given [regression target](https://en.wikipedia.org/wiki/Regression_analysis).
 Its main purpose is to help develop accurate and interpretable white-box models in the area of [system identification](https://en.wikipedia.org/wiki/System_identification). More in-depth documentation available at https://operongp.readthedocs.io/.
