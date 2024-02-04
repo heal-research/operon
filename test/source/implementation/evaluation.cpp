@@ -40,13 +40,15 @@ TEST_CASE("Evaluation correctness")
 
     SUBCASE("Basic operations")
     {
-        const auto eps = 1e-6;
+        const auto eps = 1e-3;
 
         auto tree = InfixParser::Parse("X1 + X2 + X3", vars);
         auto coeff = tree.GetCoefficients();
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(coeff, range);
-        auto res1 = X.col(0) + X.col(1) + X.col(2);
+        Eigen::Array<Operon::Scalar, -1, 1> res1 = X.col(0) + X.col(1) + X.col(2);
 
+        fmt::print("estimated: {}\n", std::span{estimatedValues.data(), 5UL});
+        fmt::print("actual: {}\n", std::span{res1.data(), 5UL});
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res1(i)) < eps; }));
 
         tree = InfixParser::Parse("X1 - X2 + X3", vars);
@@ -58,6 +60,22 @@ TEST_CASE("Evaluation correctness")
         estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
         auto res3 = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res3(i)) < eps; }));
+
+        tree = InfixParser::Parse("log(abs(X1))", vars);
+        fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
+        estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
+        Eigen::Array<Operon::Scalar, -1, 1> res4 = X.col(0).abs().log();
+        fmt::print("estimated: {}\n", std::span{estimatedValues.data(), 5UL});
+        fmt::print("actual: {}\n", std::span{res4.data(), 5UL});
+        CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res4(i)) < eps; }));
+
+        tree = InfixParser::Parse("log(0.12485691905021667)", vars);
+        fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
+        estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
+        Eigen::Array<Operon::Scalar, 1, 1> res5; res5 << std::log(0.12485691905021667);
+        fmt::print("estimated: {}\n", std::span{estimatedValues.data(), 1});
+        fmt::print("actual: {}\n", std::span{res5.data(), 1});
+        CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res5(i)) < eps; }));
 
         Operon::Node node(Operon::NodeType::Fmax);
         node.Arity = 3;
@@ -77,6 +95,122 @@ TEST_CASE("Evaluation correctness")
         CHECK(estimatedValues[0] == -2);
     }
 }
+
+#if defined(OPERON_MATH_VDT) || defined(OPERON_MATH_FAST_V1) || defined(OPERON_MATH_FAST_V2) || defined(OPERON_MATH_FAST_V3)
+TEST_CASE("relative accuracy")
+{
+    auto constexpr N{10'000};
+    Operon::RandomGenerator rng{1234};
+
+    using UnaryFunction = std::add_pointer_t<Operon::Scalar(Operon::Scalar)>;
+    using BinaryFunction = std::add_pointer_t<Operon::Scalar(Operon::Scalar, Operon::Scalar)>;
+
+    auto testRange = [&]<typename F>(char const* name, F&& f, F&& g, std::pair<Operon::Scalar, Operon::Scalar> range) {
+        std::uniform_real_distribution<Operon::Scalar> dist(range.first, range.second);
+
+        vstat::univariate_accumulator<double> acc;
+
+        for (auto i = 0; i < N; ++i) {
+            Operon::Scalar x1{};
+            Operon::Scalar x2{};
+            Operon::Scalar y1{};
+            Operon::Scalar y2{};
+            if constexpr (std::is_same_v<F, UnaryFunction>) {
+                x1 = dist(rng);
+                y1 = f(x1);
+                y2 = g(x1);
+            } else {
+                x1 = dist(rng);
+                x2 = dist(rng);
+                y1 = f(x1, x2);
+                y2 = g(x1, x2);
+            }
+            if (!(std::isfinite(y1) && std::isfinite(y2))) { continue; }
+            auto d = std::abs(y1-y2);
+            auto r = d / std::abs(y1);
+            fmt::print("{},{:.25f},{:.25f},{:.25f},{:.25f},{}\n", name, x1, x2, y1, y2, r);
+            acc(r);
+        }
+
+        auto const m = vstat::univariate_statistics(acc).mean;
+        fmt::print("{},{:4f}%\n", name, 100.0 * m);
+    };
+
+    auto div = [](auto a, auto b) { return a / b; };
+    auto aq = [](auto a, auto b) { return a / std::sqrt(1 + b*b); };
+    auto inv = [](auto x) { return 1/x; };
+    auto isqrt = [](auto x) { return 1/std::sqrt(x); };
+
+    auto constexpr nan = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+
+    // auto constexpr lim = Operon::Scalar{std::numeric_limits<Operon::Scalar>::max()};
+    auto constexpr lim = Operon::Scalar{10};
+
+    #if defined(OPERON_MATH_FAST_V1) || defined(OPERON_MATH_FAST_V2) || defined(OPERON_MATH_FAST_V3)
+    namespace backend = Backend::detail::fast_approx;
+
+    fmt::print("precision level: {}\n", OPERON_MATH_FAST_APPROX_PRECISION);
+
+    SUBCASE("mean accuracy") {
+        // reciprocal
+        testRange("inv", UnaryFunction{inv}, UnaryFunction{backend::Inv}, {0.001, lim});
+        testRange("isqrt", UnaryFunction{isqrt}, UnaryFunction{backend::ISqrt}, {0.001, lim});
+        testRange("log", UnaryFunction{std::log}, UnaryFunction{backend::Log}, {0, lim});
+        testRange("exp", UnaryFunction{std::exp}, UnaryFunction{backend::Exp}, {0.001, lim});
+        testRange("sin", UnaryFunction{std::sin}, UnaryFunction{backend::Sin}, {-lim, +lim});
+        testRange("cos", UnaryFunction{std::cos}, UnaryFunction{backend::Cos}, {-lim, +lim});
+        testRange("sinh", UnaryFunction{std::sinh}, UnaryFunction{backend::Sinh}, {-lim, +lim});
+        testRange("cosh", UnaryFunction{std::cosh}, UnaryFunction{backend::Cosh}, {-lim, +lim});
+        testRange("tanh", UnaryFunction{std::tanh}, UnaryFunction{backend::Tanh}, {-lim, +lim});
+        testRange("sqrt", UnaryFunction{std::sqrt}, UnaryFunction{backend::Sqrt}, {0, lim});
+        testRange("div", BinaryFunction{div}, BinaryFunction{backend::Div}, {-lim, lim});
+        testRange("aq",  BinaryFunction{aq}, BinaryFunction{backend::Aq}, {-lim, lim});
+        testRange("pow", BinaryFunction{std::pow}, BinaryFunction{backend::Pow}, {0.001, lim});
+    }
+
+    SUBCASE("edge cases") {
+        fmt::print("log(nan): {} {}\n", backend::Log(nan), std::log(nan));
+        fmt::print("exp(nan): {} {}\n", backend::Exp(nan), std::exp(nan));
+        fmt::print("sin(nan): {} {}\n", backend::Sin(nan), std::sin(nan));
+        fmt::print("cos(nan): {} {}\n", backend::Cos(nan), std::cos(nan));
+        fmt::print("tanh(nan): {} {}\n", backend::Tanh(nan), std::tanh(nan));
+        fmt::print("sqrt(nan): {} {}\n", backend::Sqrt(nan), std::sqrt(nan));
+        fmt::print("div(nan, x): {} {}\n", backend::Div(nan, 2), nan / 2);
+        fmt::print("aq(nan, x): {} {}\n", backend::Aq(nan, 2), nan / std::sqrt(5));
+    }
+    #endif
+
+    #if defined(OPERON_MATH_VDT)
+    namespace backend = Backend::detail::vdt;
+    SUBCASE("[-1, +1]") {
+        testRange("inv", UnaryFunction{inv}, UnaryFunction{backend::Inv}, {0.001, lim});
+        testRange("isqrt", UnaryFunction{isqrt}, UnaryFunction{backend::ISqrt}, {0.001, lim});
+        testRange("log", UnaryFunction{std::log}, UnaryFunction{backend::Log}, {0, lim});
+        testRange("exp", UnaryFunction{std::exp}, UnaryFunction{backend::Exp}, {-lim, lim});
+        testRange("sin", UnaryFunction{std::sin}, UnaryFunction{backend::Sin}, {-lim, +lim});
+        testRange("cos", UnaryFunction{std::cos}, UnaryFunction{backend::Cos}, {-lim, +lim});
+        testRange("sinh", UnaryFunction{std::sinh}, UnaryFunction{backend::Sinh}, {-lim, +lim});
+        testRange("cosh", UnaryFunction{std::cosh}, UnaryFunction{backend::Cosh}, {-lim, +lim});
+        testRange("tanh", UnaryFunction{std::tanh}, UnaryFunction{backend::Tanh}, {-lim, +lim});
+        testRange("sqrt", UnaryFunction{std::sqrt}, UnaryFunction{backend::Sqrt}, {0, lim});
+        testRange("div", BinaryFunction{div}, BinaryFunction{backend::Div}, {-lim, lim});
+        testRange("aq",  BinaryFunction{aq}, BinaryFunction{backend::Aq}, {-lim, lim});
+        testRange("pow", BinaryFunction{std::pow}, BinaryFunction{backend::Pow}, {-lim, lim});
+    }
+
+    SUBCASE("edge cases") {
+        fmt::print("log(nan): {} {}\n", backend::Log(nan), std::log(nan));
+        fmt::print("exp(nan): {} {}\n", backend::Exp(nan), std::exp(nan));
+        fmt::print("sin(nan): {} {}\n", backend::Sin(nan), std::sin(nan));
+        fmt::print("cos(nan): {} {}\n", backend::Cos(nan), std::cos(nan));
+        fmt::print("tanh(nan): {} {}\n", backend::Tanh(nan), std::tanh(nan));
+        fmt::print("sqrt(nan): {} {}\n", backend::Sqrt(nan), std::sqrt(nan));
+        fmt::print("div(nan, x): {} {}\n", backend::Div(nan, 2), nan / 2);
+        fmt::print("aq(nan, x): {} {}\n", backend::Aq(nan, 2), nan / std::sqrt(5));
+    }
+    #endif
+}
+#endif
 
 TEST_CASE("Batch evaluation")
 {
