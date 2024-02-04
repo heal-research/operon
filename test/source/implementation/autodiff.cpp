@@ -12,11 +12,15 @@
 #include "operon/core/problem.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
+#include "operon/interpreter/dual.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/parser/infix.hpp"
 
+
 #include <iomanip>
+#include <iostream>
+#include <fstream>
 
 namespace dt = doctest;
 
@@ -24,7 +28,7 @@ namespace Operon::Test {
 
 TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     Operon::Dataset::Matrix values(1, 2);
-    values << 2, 3; // NOLINT
+    values << 1, 1; // NOLINT
 
     Operon::RandomGenerator rng(0UL);
     Operon::Dataset ds(values);
@@ -48,17 +52,24 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         }
         fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
 
-        fmt::print("{}\n", Operon::DotFormatter::Format(tree, ds));
+        // fmt::print("{}\n", Operon::DotFormatter::Format(tree, ds));
 
         std::vector<Operon::Scalar> y(ds.Rows());
         Operon::Span<Operon::Scalar> target{y.data(), y.size()};
         auto parameters = tree.GetCoefficients();
 
+        auto [res, jac] = Util::Autodiff(tree, ds, range);
+
         Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter{dtable, ds, tree};
+        auto est = interpreter.Evaluate(parameters, range);
         auto rev = interpreter.JacRev(parameters, range);
         auto fwd = interpreter.JacFwd(parameters, range);
+        std::cout << "x = " << values(0) << ", y = " << values(1) << ", e = " << est[0] << "\n";
+        // std::cout << "xad: " << ders_xad.transpose() << "\n";
+        fmt::print("jac: {}\n", jac);
         std::cout << "rev: " << rev << "\n";
         std::cout << "fwd: " << rev << "\n";
+
 
         //Operon::DispatchTable<Operon::Scalar, Operon::Dual> dt;
         //Autodiff::DerivativeCalculator<decltype(dt)> dc(dt);
@@ -66,6 +77,34 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         //std::vector<Operon::Scalar> result(range.Size());
         //dc.ForwardModeJet(tree, ds, range, parameters, {result}, {jacobian.data(), range.Size() * parameters.size()});
         //std::cout << "jet: " << jacobian << "\n";
+    };
+
+    auto generateTrees = [&](auto pset, auto n, auto l) {
+        constexpr auto mindepth{1};
+        constexpr auto maxdepth{1000};
+        // constexpr auto pi = std::numbers::pi_v<Operon::Scalar>;
+        std::uniform_int_distribution<size_t> length(1, l);
+        std::bernoulli_distribution bernoulli(0.5); // NOLINT
+        // std::uniform_real_distribution<Operon::Scalar> dist(-pi, +pi);
+        std::uniform_real_distribution<Operon::Scalar> dist(-10.F, +10.F);
+        Operon::BalancedTreeCreator btc(pset, ds.VariableHashes());
+
+        std::vector<Operon::Tree> trees;
+        trees.reserve(n);
+
+        for (auto i = 0; i < n; ++i) {
+            auto tree = btc(rng, l, mindepth, maxdepth);
+            for (auto& node : tree.Nodes()) {
+                node.Optimize = bernoulli(rng) || node.IsLeaf();
+                // node.Optimize = node.IsLeaf();
+                if (node.IsLeaf()) {
+                    node.Value = dist(rng);
+                }
+            }
+            trees.push_back(tree);
+        }
+
+        return trees;
     };
 
     SUBCASE("0.51 * x") { derive("0.51 * x"); }
@@ -133,7 +172,6 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     SUBCASE("Expr A") {
         std::string const expr = "((0.78 / ((-1.12) * X8)) / (((((-0.61) * X3) * 0.82) / (((-0.22) * X6) / 1.77)) / (((-0.16) - 0.50) - (((-0.46) * X4) - ((-0.03) * X9)))))";
 
-
         Operon::Dataset ds("./data/Poly-10.csv", /*hasHeader=*/true);
         Operon::Map<std::string, Operon::Hash> vars;
         for (auto const& v : ds.GetVariables()) {
@@ -145,8 +183,8 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         Operon::Range range(0, 10); // NOLINT
 
         DispatchTable<Operon::Scalar> dt;
-        auto jacrev = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{dt, ds, tree}.JacRev(coeff, range); 
-        auto jacfwd = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{dt, ds, tree}.JacFwd(coeff, range); 
+        auto jacrev = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{dt, ds, tree}.JacRev(coeff, range);
+        auto jacfwd = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{dt, ds, tree}.JacFwd(coeff, range);
 
         std::cout << "jacrev:\n" << jacrev << "\n\n";
         std::cout << "jacfwd:\n" << jacfwd << "\n\n";
@@ -157,60 +195,152 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
     SUBCASE("random trees") {
         using Operon::NodeType;
-        Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic |
-                Operon::NodeType::Pow | Operon::NodeType::Aq | Operon::NodeType::Square |
-                Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Abs |
-                Operon::NodeType::Logabs | Operon::NodeType::Log1p |
-                Operon::NodeType::Sin | Operon::NodeType::Asin |
-                Operon::NodeType::Cos | Operon::NodeType::Acos |
-                Operon::NodeType::Sinh | Operon::NodeType::Cosh |
-                Operon::NodeType::Tan | Operon::NodeType::Atan |
-                Operon::NodeType::Tanh | Operon::NodeType::Cbrt |
-                Operon::NodeType::Fmin | Operon::NodeType::Fmax |
-                Operon::NodeType::Sqrt | Operon::NodeType::Sqrtabs);
-        //Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic);
-        Operon::BalancedTreeCreator btc(pset, problem.GetInputs());
-        Operon::UniformCoefficientInitializer initializer;
+        // Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic |
+        //         Operon::NodeType::Pow | Operon::NodeType::Aq | Operon::NodeType::Square |
+        //         Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Abs |
+        //         Operon::NodeType::Logabs | Operon::NodeType::Log1p |
+        //         Operon::NodeType::Sin | Operon::NodeType::Asin |
+        //         Operon::NodeType::Cos | Operon::NodeType::Acos |
+        //         Operon::NodeType::Sinh | Operon::NodeType::Cosh |
+        //         Operon::NodeType::Tan | Operon::NodeType::Atan |
+        //         Operon::NodeType::Tanh | Operon::NodeType::Cbrt |
+        //         Operon::NodeType::Fmin | Operon::NodeType::Fmax |
+        //         Operon::NodeType::Sqrt | Operon::NodeType::Sqrtabs);
+        // Operon::PrimitiveSet pset(Operon::PrimitiveSet::Arithmetic |
+        //     Operon::NodeType::Exp | Operon::NodeType::Log |
+        //     Operon::NodeType::Pow | Operon::NodeType::Sqrt |
+        //     Operon::NodeType::Sin | Operon::NodeType::Cos |
+        //     Operon::NodeType::Tanh
+        // );
+
+
+        Operon::PrimitiveSet pset;
 
         constexpr auto n{1'000'000};
-        constexpr auto maxsize{5};
-        constexpr auto mindepth{1};
-        constexpr auto maxdepth{1000};
 
-        std::uniform_int_distribution<size_t> length(1, maxsize);
-        std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
-        std::bernoulli_distribution bernoulli(0.5); // NOLINT
+        // n-ary
+        pset.SetConfig(NodeType::Fmin | NodeType::Fmax);
+
+        // unary
+        pset.SetConfig(NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Sqrt | NodeType::Tanh | NodeType::Constant);
+        auto trees = generateTrees(pset, n/2, 2);
+
+        // binary
+        pset.SetConfig(NodeType::Div | NodeType::Aq | NodeType::Pow | NodeType::Constant);
+        auto tmp = generateTrees(pset, n/2, 3);
+        std::ranges::copy(tmp, std::back_inserter(trees));
+
+        fmt::print("{}\n", Operon::InfixFormatter::Format(tmp.front(), ds));
 
         // comparison precision
-        constexpr auto epsilon{1e-4};
+        auto testPrecision = [&](auto epsilon) {
+            auto count{0UL};
 
-        for (auto i = 0; i < n; ++i) {
-            auto tree = btc(rng, length(rng), mindepth, maxdepth);
-            for (auto& node : tree.Nodes()) {
-                node.Optimize = bernoulli(rng);
-                node.Value = dist(rng);
+            Operon::Map<Operon::NodeType, std::tuple<std::size_t, float>> counts;
+            for (auto const& tree : trees) {
+                auto parameters = tree.GetCoefficients();
+
+                auto [res, jac] = Util::Autodiff(tree, ds, range);
+                Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> jjet(jac.data(), range.Size(), parameters.size());
+
+                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{dtable, ds, tree};
+
+                std::vector<Operon::Scalar> out(range.Size());
+                Util::EvaluateTree(tree, ds, range, parameters.data(), out.data());
+                auto res1 = interpreter.Evaluate(parameters, range);
+
+                Eigen::Array<Operon::Scalar, -1, -1> jfwd = interpreter.JacFwd(parameters, range);
+                Eigen::Array<Operon::Scalar, -1, -1> jrev = interpreter.JacRev(parameters, range);
+
+                auto f1 = std::isfinite(jjet.sum());
+                auto f2 = std::isfinite(jrev.sum());
+                auto ok = (!f1) || (f1 && f2 && jrev.isApprox(jjet, epsilon));
+
+                if(f1 && f2) {
+                    for (auto const& n : tree.Nodes()) {
+                        auto [it, ok] = counts.insert({n.Type, {0, 0}});
+                        std::get<0>(it->second) += 1;
+                        std::get<1>(it->second) += std::abs(((jjet - jrev).abs() / jjet.abs()).mean());
+                    }
+                }
+
+                if(!ok) {
+                    constexpr auto precision{20};
+                    fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds, precision));
+                    fmt::print("res0: {}\n", out);
+                    fmt::print("res1: {}\n", res1);
+                    // fmt::print("eps: {}, {}\n", epsilon, jrev.isApprox(jjet, epsilon));
+                    std::cout << std::setprecision(precision) << "x = " << ds.GetValues("x")[0] << ", y = " << ds.GetValues("y")[0] << "\n";
+                    std::cout << std::setprecision(precision) << "J_jet    : " << jjet << "\n";
+                    std::cout << std::setprecision(precision) << "J_forward: " << jfwd << "\n";
+                    std::cout << std::setprecision(precision) << "J_reverse: " << jrev << "\n";
+
+                }
+                count += ok;
+                CHECK(ok);
             }
-            //tree.Nodes().back().Optimize = false; // it does not make sense to optimize the tree root?
-            initializer(rng, tree);
-
-            auto parameters = tree.GetCoefficients();
-
-            Eigen::Array<Operon::Scalar, -1, -1> jfwd = Operon::Interpreter<Operon::Scalar, decltype(dtable)>{dtable, ds, tree}.JacFwd(parameters, range);
-            Eigen::Array<Operon::Scalar, -1, -1> jrev = Operon::Interpreter<Operon::Scalar, decltype(dtable)>{dtable, ds, tree}.JacRev(parameters, range);
-
-            constexpr auto precision{20};
-            auto finite{ std::isfinite(jrev.sum()) };
-            auto areEqual{ jrev.isApprox(jfwd, epsilon) };
-            auto ok = !finite || areEqual;
-
-            if(!ok) {
-                fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds, precision));
-                std::cout << std::setprecision(precision) << "J_forward: " << jfwd << "\n";
-                std::cout << std::setprecision(precision) << "J_reverse: " << jrev << "\n";
+            fmt::print("total: {}, passed: {}, failed: {}\n", n, count, n-count);
+            for (auto [k, v] : counts) {
+                Node n{k};
+                if (n.IsLeaf()) { continue; }
+                fmt::print("eps = {}, {}: {}%\n", epsilon, n.Name(), 100.F * std::get<1>(v) / std::get<0>(v));
             }
-            CHECK(ok);
+        };
+
+        for (auto eps : {1e-1}) {
+            testPrecision(eps);
         }
     }
+
+    SUBCASE("autodiff relative accuracy") {
+
+        auto constexpr N{10'000};
+
+        fmt::print("function,x,y_true,y_pred,j_true,j_pred\n");
+        auto testUnary = [&](Operon::NodeType type) {
+            Operon::PrimitiveSet pset(NodeType::Constant | type);
+            auto trees = generateTrees(pset, N, 2);
+
+            auto name = Node(type).Name();
+            if (name == "/") { name = "inv"; }
+
+            for (auto const& tree : trees) {
+                auto parameters = tree.GetCoefficients();
+                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{dtable, ds, tree};
+                auto est = Operon::Interpreter<float, Operon::DispatchTable<float>>::Evaluate(tree, ds, range);
+                auto [res, jet] = Util::Autodiff(tree, ds, range);
+                Eigen::Array<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, range);
+                auto const x = tree.Nodes().front().Value;
+                fmt::print("{},{:15.f},{:.15f},{:.15f},{:.15f},{:.15f}\n", name, x, res[0], est[0], jet[0], jac(0));
+            }
+        };
+
+        auto testBinary = [&](Operon::NodeType type) {
+            Operon::PrimitiveSet pset(NodeType::Constant | type);
+            auto trees = generateTrees(pset, N, 3);
+
+            auto name = Node(type).Name();
+
+            for (auto const& tree : trees) {
+                auto parameters = tree.GetCoefficients();
+                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{dtable, ds, tree};
+                auto est = Operon::Interpreter<float, Operon::DispatchTable<float>>::Evaluate(tree, ds, range);
+                auto [res, jet] = Util::Autodiff(tree, ds, range);
+                Eigen::Array<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, range);
+                auto const x = tree.Nodes().front().Value;
+                fmt::print("{},{:15.f},{:.15f},{:.15f},{:.15f},{:.15f}\n", name, x, res[0], est[0], jet[0], jac(0));
+                fmt::print("{},{:15.f},{:.15f},{:.15f},{:.15f},{:.15f}\n", name, x, res[0], est[0], jet[1], jac(1));
+            }
+        };
+
+        for (auto type : {NodeType::Div, NodeType::Exp, NodeType::Log, NodeType::Sin, NodeType::Cos, NodeType::Sqrt, NodeType::Tanh }) {
+            testUnary(type);
+        }
+
+        for (auto type : {NodeType::Div, NodeType::Aq, NodeType::Pow }) {
+            testBinary(type);
+        }
+    };
 }
 
 } // namespace Operon::Test

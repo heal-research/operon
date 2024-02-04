@@ -91,6 +91,7 @@ find_package(cpp-sort REQUIRED)
 find_package(eve REQUIRED)
 find_package(fmt REQUIRED)
 find_package(lbfgs REQUIRED)
+find_package(mdspan REQUIRED)
 find_package(outcome REQUIRED)
 find_package(pratt-parser REQUIRED)
 find_package(unordered_dense REQUIRED)
@@ -131,6 +132,35 @@ if (USE_JEMALLOC)
             target_link_libraries(operon_operon PUBLIC PkgConfig::jemalloc)
         endif()
     endif()
+endif()
+
+if(NOT MATH_BACKEND)
+    set(MATH_BACKEND "Eigen")
+endif()
+
+message(STATUS "MATH: ${MATH_BACKEND}")
+
+if (MATH_BACKEND STREQUAL "Fastor")
+    find_package(Fastor REQUIRED)
+    target_link_libraries(operon_operon PUBLIC Fastor::Fastor)
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_FASTOR)
+elseif (MATH_BACKEND STREQUAL "Eve")
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_EVE)
+elseif (MATH_BACKEND STREQUAL "Vdt")
+    find_package(vdt REQUIRED)
+    target_link_libraries(operon_operon PUBLIC vdt::vdt)
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_VDT)
+elseif (MATH_BACKEND STREQUAL "Eigen")
+    message(STATUS "Using Eigen backend")
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_EIGEN)
+elseif(MATH_BACKEND STREQUAL "Stl")
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_STL)
+elseif (MATH_BACKEND STREQUAL "Fast_v1")
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_FAST_V1)
+elseif (MATH_BACKEND STREQUAL "Fast_v2")
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_FAST_V2)
+elseif (MATH_BACKEND STREQUAL "Fast_v3")
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_FAST_V3)
 endif()
 
 # print summary of enabled/disabled features
@@ -195,6 +225,7 @@ target_link_libraries(operon_operon PUBLIC
     Eigen3::Eigen
     Threads::Threads
     fmt::fmt
+    std::mdspan
     pratt-parser::pratt-parser # required by infix parser
     vstat::vstat
     lbfgs::lbfgs

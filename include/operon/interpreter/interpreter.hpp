@@ -6,8 +6,7 @@
 
 #include <algorithm>
 #include <optional>
-#include <type_traits>
-#include <utility>
+#include <span>
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"
@@ -17,21 +16,42 @@
 
 namespace Operon {
 
+namespace detail {
+    // aligned allocation
+    template<class T>
+    struct Deleter {
+        auto operator()(T* p) const -> void {
+            std::free(p); // NOLINT
+        }
+    };
+
+    template<class T>
+    using AlignedUnique = std::unique_ptr<T[], Deleter<T>>;
+
+    template<class ElementType, size_t ByteAlignment>
+    auto AllocateAligned(auto const numElements) -> AlignedUnique<ElementType>
+    {
+        auto const numBytes = numElements * sizeof(ElementType);
+        auto* ptr = std::aligned_alloc(ByteAlignment, numBytes);
+        return AlignedUnique<ElementType>(static_cast<ElementType*>(ptr));
+    }
+}  // namespace detail
+
 enum class LikelihoodType : int { Gaussian, Poisson };
 
 template<typename T>
 struct InterpreterBase {
     // evaluate model output
-    virtual auto Evaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Range range, Operon::Span<T> result) const -> void = 0;
-    virtual auto Evaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Range range) const -> std::vector<T> = 0;
+    virtual auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const -> void = 0;
+    virtual auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> std::vector<T> = 0;
 
     // evaluate model jacobian in reverse mode
-    virtual auto JacRev(Operon::Span<Operon::Scalar const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void = 0;
-    virtual auto JacRev(Operon::Span<Operon::Scalar const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> = 0;
+    virtual auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void = 0;
+    virtual auto JacRev(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> = 0;
 
     // evaluate model jacobian in forward mode
-    virtual auto JacFwd(Operon::Span<Operon::Scalar const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void = 0;
-    virtual auto JacFwd(Operon::Span<Operon::Scalar const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> = 0;
+    virtual auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void = 0;
+    virtual auto JacFwd(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> = 0;
 
     // getters
     [[nodiscard]] virtual auto GetTree() const -> Operon::Tree const& = 0;
@@ -54,38 +74,40 @@ struct Interpreter : public InterpreterBase<T> {
     auto Primal() const { return primal_; }
     auto Trace() const { return trace_; }
 
-    inline auto Evaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Range range, Operon::Span<T> result) const -> void final {
+    inline auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const -> void final {
         InitContext(coeff, range);
 
-        auto res = primal_.col(primal_.cols()-1);
         auto const len{ static_cast<int64_t>(range.Size()) };
 
         constexpr int64_t S{ BatchSize };
+        auto* ptr = primal_.data_handle() + (primal_.extent(1) - 1) * S;
+
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/false);
 
             if (std::ssize(result) == len) {
                 auto rem = std::min(S, len - row);
-                Eigen::Map<Eigen::Array<T, -1, 1>>(result.data(), result.size()).segment(row, rem) = res.head(rem);
+                std::ranges::copy(std::span(ptr, rem), result.data() + row);
             }
         }
     }
 
-    inline auto Evaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Range range) const -> std::vector<T> final {
+    inline auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> std::vector<T> final {
         std::vector<T> res(range.Size());
         Evaluate(coeff, range, {res.data(), res.size()});
         return res;
     }
 
-    inline auto JacRev(Operon::Span<Operon::Scalar const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
+    inline auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
         InitContext(coeff, range);
         auto const len{ static_cast<int64_t>(range.Size()) };
         auto const& nodes = tree_.get().Nodes();
         auto const nn { std::ssize(nodes) };
 
         constexpr int64_t S{ BatchSize };
-        trace_ = Eigen::Array<T, S, -1>::Zero(S, nn);
-        trace_.col(nn-1).setConstant(T{1});
+        traceStorage_ = detail::AllocateAligned<T, Backend::DefaultAlignment>(S * nn);
+        trace_ = Backend::View<T, S>(traceStorage_.get(), S, nn);
+        Fill<T, S>(trace_, nn-1, T{1});
 
         Eigen::Map<Eigen::Array<T, -1, -1>> jac(jacobian.data(), len, coeff.size());
 
@@ -95,22 +117,23 @@ struct Interpreter : public InterpreterBase<T> {
         }
     }
 
-    inline auto JacRev(Operon::Span<Operon::Scalar const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final {
+    inline auto JacRev(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final {
         auto const nr{ static_cast<int64_t>(range.Size()) };
         Eigen::Array<T, -1, -1> jacobian(nr, coeff.size());
         JacRev(coeff, range, { jacobian.data(), static_cast<size_t>(jacobian.size()) });
         return jacobian;
     }
 
-    auto JacFwd(Operon::Span<Operon::Scalar const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
+    auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
         InitContext(coeff, range);
         auto const len{ static_cast<int>(range.Size()) };
         auto const& nodes = tree_.get().Nodes();
         auto const nn   { std::ssize(nodes) };
 
         constexpr int64_t S{ BatchSize };
-        trace_ = DTable::template Array<T>::Zero(S, nn);
-        trace_.col(nn-1).setConstant(T{1});
+        traceStorage_ = detail::AllocateAligned<T, Backend::DefaultAlignment>(S * nn);
+        trace_ = Backend::View<T, S>(traceStorage_.get(), S, nn);
+        Fill<T, S>(trace_, nn-1, T{1});
 
         Eigen::Map<Eigen::Array<T, -1, -1>> jac(jacobian.data(), len, coeff.size());
 
@@ -120,7 +143,7 @@ struct Interpreter : public InterpreterBase<T> {
         }
     }
 
-    inline auto JacFwd(Operon::Span<Operon::Scalar const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final {
+    inline auto JacFwd(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final {
         auto const nr{ static_cast<int64_t>(range.Size()) };
         Eigen::Array<T, -1, -1> jacobian(nr, coeff.size());
         JacFwd(coeff, range, { jacobian.data(), static_cast<size_t>(jacobian.size()) });
@@ -146,9 +169,9 @@ struct Interpreter : public InterpreterBase<T> {
 private:
     // private members
     using Data = std::tuple<T,
-          Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>,
-          std::optional<Dispatch::Callable<typename DTable::template Array<T>> const>,
-          std::optional<Dispatch::CallableDiff<typename DTable::template Array<T>> const> >;
+          std::span<Operon::Scalar const>,
+          std::optional<Dispatch::Callable<T, BatchSize> const>,
+          std::optional<Dispatch::CallableDiff<T, BatchSize> const> >;
 
     std::reference_wrapper<DTable const> dtable_;
     std::reference_wrapper<Operon::Dataset const> dataset_;
@@ -156,8 +179,12 @@ private:
 
     // mutable internal state (used by all the forward/reverse passes)
     mutable std::vector<Data> context_;
-    mutable typename DTable::template Array<T> primal_;
-    mutable typename DTable::template Array<T> trace_;
+
+    mutable Backend::View<T, BatchSize> primal_;
+    mutable Backend::View<T, BatchSize> trace_;
+
+    mutable detail::AlignedUnique<T> primalStorage_;
+    mutable detail::AlignedUnique<T> traceStorage_;
 
     // private methods
     inline auto ForwardPass(Operon::Range range, int row, bool trace = false) const -> void {
@@ -173,8 +200,10 @@ private:
         // forward pass - compute primal and trace
         for (auto i = 0L; i < nn; ++i) {
             auto const& [ p, v, f, df ] = context_[i];
+            auto* ptr = primal_.data_handle() + i * S;
+
             if (nodes[i].IsVariable()) {
-                primal_.col(i).head(rem) = p * v.segment(row, rem).template cast<T>();
+                std::ranges::transform(v.subspan(row, rem), ptr, [p](auto x) { return x * p; });
             } else if (f) {
                 std::invoke(*f, nodes, primal_, i, rg);
 
@@ -186,7 +215,9 @@ private:
                 }
 
                 // apply weight after partials are computed
-                if (p != T{1}) { primal_.col(i).head(rem) *= p; }
+                if (p != T{1}) {
+                    std::ranges::transform(std::span(ptr, rem), ptr, [p](auto x) { return x * p; });
+                }
             }
         }
     }
@@ -198,8 +229,11 @@ private:
         constexpr int64_t S{ BatchSize };
         auto const rem   { std::min(S, len - row) };
 
-        typename DTable::template Array<T> dot(S, nn);
+        Eigen::Array<T, S, -1> dot(S, nn);
         std::vector<int64_t> cidx(jac.cols());
+
+        Eigen::Map<Eigen::Array<T, S, -1>> primal(primal_.data_handle(), S, nn);
+        Eigen::Map<Eigen::Array<T, S, -1>> trace(trace_.data_handle(), S, nn);
 
         for (auto i = 0L, j = 0L; i < nn; ++i) {
             if (nodes[i].Optimize) { cidx[j++] = i; }
@@ -215,11 +249,11 @@ private:
                 for (auto x : Tree::Indices(nodes, i)) {
                     auto j{ static_cast<int64_t>(x) };
                     if (nodes[j].IsLeaf() && j != c) { continue; }
-                    dot.col(i).head(rem) += dot.col(j).head(rem) * trace_.col(j).head(rem) * std::get<0>(context_[i]);
+                    dot.col(i).head(rem) += dot.col(j).head(rem) * trace.col(j).head(rem) * std::get<0>(context_[i]);
                 }
             }
 
-            jac.col(k++).segment(row, rem) = dot.col(nn-1).head(rem) * primal_.col(c).head(rem) / std::get<0>(context_[c]);
+            jac.col(k++).segment(row, rem) = dot.col(nn-1).head(rem) * primal.col(c).head(rem) / std::get<0>(context_[c]);
         }
     }
 
@@ -231,30 +265,36 @@ private:
         auto const rem   { std::min(S, len - row) };
 
         auto k{jac.cols()};
+        Eigen::Map<Eigen::Array<T, S, -1>> primal(primal_.data_handle(), S, nn);
+        Eigen::Map<Eigen::Array<T, S, -1>> trace(trace_.data_handle(), S, nn);
+
         for (auto i = nn-1; i >= 0L; --i) {
             auto w = std::get<0>(context_[i]);
 
             if (nodes[i].Optimize) {
-                jac.col(--k).segment(row, rem) = trace_.col(i).head(rem) * primal_.col(i).head(rem) / w;
+                jac.col(--k).segment(row, rem) = trace.col(i).head(rem) * primal.col(i).head(rem) / w;
             }
 
             if (nodes[i].IsLeaf()) { continue; }
 
             for (auto j : Tree::Indices(nodes, i)) {
                 auto const x { static_cast<int64_t>(j) };
-                trace_.col(x).head(rem) *= trace_.col(i).head(rem) * w;
+                trace.col(x).head(rem) *= trace.col(i).head(rem) * w;
             }
         }
     }
 
     // init tree info into context_ and initializes primal_ columns
-    auto InitContext(Operon::Span<Operon::Scalar const> coeff, Operon::Range range) const {
+    auto InitContext(Operon::Span<T const> coeff, Operon::Range range) const {
         auto const& nodes{ tree_.get().Nodes() };
         auto const nr { static_cast<int64_t>(range.Size()) };
         auto const nn { std::ssize(nodes) };
 
         constexpr int64_t S{ BatchSize };
-        primal_ = Eigen::Array<T, S, -1>::Zero(S, nn);
+        primalStorage_ = detail::AllocateAligned<T, Backend::DefaultAlignment>(S * nn);
+        std::ranges::fill_n(primalStorage_.get(), S * nn, T{0});
+        primal_ = Backend::View<T, BatchSize>(primalStorage_.get(), S, nn);
+
         context_.clear();
         context_.reserve(nn);
 
@@ -263,14 +303,20 @@ private:
         for (int64_t i = 0, j = 0; i < nn; ++i) {
             auto const& n = nodes[i];
             auto const* ptr      = n.IsVariable() ? dataset_.get().GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
-            auto variableValues  = std::tuple_element_t<1, Data>(ptr, nr); 
+            auto variableValues  = std::tuple_element_t<1, Data>(ptr, nr);
             auto nodeCoefficient = (!coeff.empty() && n.Optimize) ? T{coeff[j++]} : T{n.Value};
             auto nodeFunction    = dt.template TryGetFunction<T>(n.HashValue);
             auto nodeDerivative  = dt.template TryGetDerivative<T>(n.HashValue);
 
+            if (!n.IsLeaf() && !nodeFunction) {
+                throw std::runtime_error(fmt::format("Missing primitive for node {}\n", n.Name()));
+            }
+
             context_.push_back({ nodeCoefficient, variableValues, nodeFunction, nodeDerivative });
 
-            if (n.IsConstant()) { primal_.col(i).setConstant(nodeCoefficient); }
+            if (n.IsConstant()) {
+                Fill<T, S>(primal_, i, T{nodeCoefficient});
+            }
         }
     }
 };
