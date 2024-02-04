@@ -55,7 +55,7 @@ namespace Operon::Test {
         taskflow.for_each_index(size_t{0}, trees.size(), size_t{1}, [&](auto i) {
             auto& res = results[executor.this_worker_id()];
             auto coeff = trees[i].GetCoefficients();
-            Operon::Interpreter<T, DTable>{dt, ds, trees[i]}.Evaluate({coeff}, range, {res}); 
+            Operon::Interpreter<T, DTable>{dt, ds, trees[i]}.Evaluate({coeff}, range, {res});
         });
         executor.run(taskflow).wait();
     }
@@ -103,29 +103,31 @@ namespace Operon::Test {
             b.run(name, [&]() { Evaluate<Operon::Scalar>(executor, dtable, trees, ds, range); });
         };
 
+        nb::Bench b;
+        // b.output(nullptr);
+
+        auto const max_concurrency = std::thread::hardware_concurrency();
+
         SUBCASE("arithmetic") {
             // single-thread
-            nb::Bench b;
             b.title("arithmetic").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+            for (size_t i = 1; i <= max_concurrency; ++i) {
                 tf::Executor executor(i);
                 test(executor, b, PrimitiveSet::Arithmetic, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + exp") {
-            nb::Bench b;
             b.title("arithmetic + exp").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+            for (size_t i = 1; i <= max_concurrency; ++i) {
                 tf::Executor executor(i);
                 test(executor, b, PrimitiveSet::Arithmetic | NodeType::Exp, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + log") {
-            nb::Bench b;
             b.title("arithmetic + log").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+            for (size_t i = 1; i <= max_concurrency; ++i) {
                 tf::Executor executor(i);
                 test(executor, b, PrimitiveSet::Arithmetic | NodeType::Log, fmt::format("N = {}", i));
             }
@@ -134,47 +136,45 @@ namespace Operon::Test {
         SUBCASE("arithmetic + sin") {
             nb::Bench b;
             b.title("arithmetic + sin").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+            for (size_t i = 1; i <= max_concurrency; ++i) {
                 tf::Executor executor(i);
                 test(executor, b, PrimitiveSet::Arithmetic | NodeType::Sin, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + cos") {
-            nb::Bench b;
             b.title("arithmetic + cos").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+            for (size_t i = 1; i <= max_concurrency; ++i) {
                 tf::Executor executor(i);
                 test(executor, b, PrimitiveSet::Arithmetic | NodeType::Cos, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + tan") {
-            nb::Bench b;
             b.title("arithmetic + tan").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+            for (size_t i = 1; i <= max_concurrency; ++i) {
                 tf::Executor executor(i);
                 test(executor, b, PrimitiveSet::Arithmetic | NodeType::Tan, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + sqrt") {
-            nb::Bench b;
             b.title("arithmetic + sqrt").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+            for (size_t i = 1; i <= max_concurrency; ++i) {
                 tf::Executor executor(i);
                 test(executor, b, PrimitiveSet::Arithmetic | NodeType::Sqrt, fmt::format("N = {}", i));
             }
         }
 
         SUBCASE("arithmetic + cbrt") {
-            nb::Bench b;
             b.title("arithmetic + cbrt").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-            for (size_t i = 1; i <= std::thread::hardware_concurrency(); ++i) {
+            for (size_t i = 1; i <= max_concurrency; ++i) {
                 tf::Executor executor(i);
                 test(executor, b, PrimitiveSet::Arithmetic | NodeType::Cbrt, fmt::format("N = {}", i));
             }
         }
+
+        // b.render(nb::templates::csv(), std::cout);
     }
 
     TEST_CASE("Evaluator performance")
@@ -236,6 +236,7 @@ namespace Operon::Test {
             });
         };
 
+
         using DTable = DefaultDispatch;
         DTable dtable;
 
@@ -251,41 +252,41 @@ namespace Operon::Test {
         test("mse + ls",  Operon::Evaluator(problem, dtable, Operon::MSE{}, /*linearScaling=*/true));
     }
 
-    //TEST_CASE("Parallel interpreter")
-    //{
-    //    const size_t n         = 1000;
-    //    const size_t maxLength = 100;
-    //    const size_t maxDepth  = 1000;
+    TEST_CASE("Parallel interpreter")
+    {
+       const size_t n         = 1000;
+       const size_t maxLength = 100;
+       const size_t maxDepth  = 1000;
 
-    //    constexpr size_t nrow = 10000;
-    //    constexpr size_t ncol = 10;
+       constexpr size_t nrow = 10000;
+       constexpr size_t ncol = 10;
 
-    //    Operon::RandomGenerator rd(1234);
-    //    auto ds = Util::RandomDataset(rd, nrow, ncol);
+       Operon::RandomGenerator rd(1234);
+       auto ds = Util::RandomDataset(rd, nrow, ncol);
 
-    //    auto variables = ds.GetVariables();
-    //    auto target = variables.back().Name;
-    //    auto inputs = ds.VariableHashes();
-    //    std::erase(inputs, ds.GetVariable(target)->Hash);
-    //    Range range = { 0, ds.Rows<std::size_t>() };
+       auto variables = ds.GetVariables();
+       auto target = variables.back().Name;
+       auto inputs = ds.VariableHashes();
+       std::erase(inputs, ds.GetVariable(target)->Hash);
+       Range range = { 0, ds.Rows<std::size_t>() };
 
-    //    std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    //    Operon::PrimitiveSet pset;
-    //    pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
-    //    auto creator = BalancedTreeCreator { pset, inputs };
+       std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+       Operon::PrimitiveSet pset;
+       pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
+       auto creator = BalancedTreeCreator { pset, inputs };
 
-    //    std::vector<Tree> trees(n);
-    //    std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+       std::vector<Tree> trees(n);
+       std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
-    //    nb::Bench b;
-    //    b.relative(true).epochs(10).minEpochIterations(100).performanceCounters(true);
-    //    std::vector<size_t> threads(std::thread::hardware_concurrency());
-    //    std::iota(threads.begin(), threads.end(), 1);
-    //    std::vector<Operon::Scalar> result(trees.size() * range.Size());
-    //    for (auto t : threads) {
-    //        b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, ds, range, result, t); });
-    //    }
-    //}
+       nb::Bench b;
+       b.relative(true).epochs(10).minEpochIterations(100).performanceCounters(true);
+       std::vector<size_t> threads(std::thread::hardware_concurrency());
+       std::iota(threads.begin(), threads.end(), 1);
+       std::vector<Operon::Scalar> result(trees.size() * range.Size());
+       for (auto t : threads) {
+           b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, ds, range, result, t); });
+       }
+    }
 
     TEST_CASE("NSGA2")
     {
@@ -416,4 +417,3 @@ namespace Operon::Test {
         }
     }
 } // namespace Operon::Test
-

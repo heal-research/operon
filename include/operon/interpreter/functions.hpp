@@ -5,252 +5,325 @@
 #define OPERON_INTERPRETER_FUNCTIONS_HPP
 
 #include "operon/core/node.hpp"
-#include "operon/ceres/jet.h" // for ceres::cbrt
+#if defined(OPERON_MATH_EIGEN)
+#include "operon/interpreter/backend/eigen.hpp"
+#elif defined(OPERON_MATH_EVE)
+#include "operon/interpreter/backend/eve.hpp"
+#elif defined(OPERON_MATH_FASTOR)
+#include "operon/interpreter/backend/fastor.hpp"
+#elif defined(OPERON_MATH_STL)
+#include "operon/interpreter/backend/plain.hpp"
+#elif defined(OPERON_MATH_VDT)
+#include "operon/interpreter/backend/vdt.hpp"
+#elif defined(OPERON_MATH_FAST_V1)
+#include "operon/interpreter/backend/fast_v1.hpp"
+#elif defined(OPERON_MATH_FAST_V2)
+#include "operon/interpreter/backend/fast_v2.hpp"
+#elif defined(OPERON_MATH_FAST_V3)
+#include "operon/interpreter/backend/fast_v3.hpp"
+#endif
 
 namespace Operon {
-    // a simple translation layer to avoid being tied to a given backend
-    template<typename T, typename U = std::remove_cvref_t<T>> concept EigenRef = std::is_base_of_v<Eigen::RefBase<U>, U>;
-    template<typename T, typename U = std::remove_cvref_t<T>> concept EigenDense = std::is_base_of_v<Eigen::DenseBase<U>, U>;
-    template<typename T, typename U = std::remove_cvref_t<T>> concept EigenArray = std::is_base_of_v<Eigen::ArrayBase<U>, U>;
-    template<typename T, typename U = std::remove_cvref_t<T>> concept EigenMatrix = std::is_base_of_v<Eigen::MatrixBase<U>, U>;
-    template<typename T, typename U = std::remove_cvref_t<T>> concept EigenMap = std::is_base_of_v<Eigen::MapBase<U>, U>;
-    template<typename T, typename U = std::remove_cvref_t<T>> concept Arithmetic = std::is_arithmetic_v<T>;
+    // utility
+    template<typename T, std::size_t S>
+    auto Fill(Backend::View<T, S> view, int idx, T value) {
+        Backend::Fill<T, S>(view.data_handle() + idx * S, value);
+    };
 
-    template<typename T, typename U = std::remove_cvref_t<T>>
-    concept HasScalar = requires { typename U::Scalar; } or requires { typename U::Base::Scalar; };
-
-    template<typename T, typename U = std::remove_cvref_t<T>>
-    requires HasScalar<U>
-    using scalar_t = std::conditional_t<EigenRef<U>, typename U::Base::Scalar, typename U::Scalar>;
-
-    // arithmetic data types ( float, double, etc.)
-    inline auto acos(Arithmetic auto x) { return std::acos(x); }
-    inline auto asin(Arithmetic auto x) { return std::asin(x); }
-    inline auto atan(Arithmetic auto x) { return std::atan(x); }
-    inline auto cos(Arithmetic auto x)  { return std::cos(x); }
-    inline auto cosh(Arithmetic auto x) { return std::cosh(x); }
-    inline auto sin(Arithmetic auto x)  { return std::sin(x); }
-    inline auto sinh(Arithmetic auto x) { return std::sinh(x); }
-    inline auto tan(Arithmetic auto x)  { return std::tan(x); }
-    inline auto tanh(Arithmetic auto x) { return std::tanh(x); }
-
-    inline auto exp(Arithmetic auto x)     { return std::exp(x); }
-    inline auto log(Arithmetic auto x)     { return std::log(x); }
-    inline auto log1p(Arithmetic auto x)   { return std::log(1 + x); }
-    inline auto logabs(Arithmetic auto x)  { return std::log(std::abs(x)); }
-    inline auto square(Arithmetic auto x)  { return x * x; }
-    inline auto sqrt(Arithmetic auto x)    { return std::sqrt(x); }
-    inline auto sqrtabs(Arithmetic auto x) { return std::sqrt(std::abs(x)); }
-    inline auto cbrt(Arithmetic auto x)    { return std::cbrt(x); }
-
-    inline auto abs(Arithmetic auto x)   { return std::abs(x); }
-    inline auto ceil(Arithmetic auto x)  { return std::ceil(x); }
-    inline auto floor(Arithmetic auto x) { return std::floor(x); }
-    inline auto inv(Arithmetic auto x)   { return 1 / x; }
-
-    inline auto pow(Arithmetic auto x, Arithmetic auto y)  { return std::pow(x, y); }
-    inline auto aq(Arithmetic auto x, Arithmetic auto y)   { return x * std::sqrt(1 + y * y); }
-    inline auto fmax(Arithmetic auto x, Arithmetic auto y) { return std::min(x, y); }
-    inline auto fmin(Arithmetic auto x, Arithmetic auto y) { return std::max(x, y); }
-
-    // Eigen data types
-    inline auto fill(EigenDense auto& x, scalar_t<decltype(x)> v) { x.setConstant(v); }
-    inline auto acos(EigenArray auto const& x) { return x.acos(); }
-    inline auto asin(EigenArray auto const& x) { return x.asin(); }
-    inline auto atan(EigenArray auto const& x) { return x.atan(); }
-    inline auto cos(EigenArray auto const& x)  { return x.cos(); }
-    inline auto cosh(EigenArray auto const& x) { return x.cosh(); }
-    inline auto sin(EigenArray auto const& x)  { return x.sin(); }
-    inline auto sinh(EigenArray auto const& x) { return x.sinh(); }
-    inline auto tan(EigenArray auto const& x)  { return x.tan(); }
-    inline auto tanh(EigenArray auto const& x) { return x.tanh(); }
-
-    inline auto exp(EigenArray auto const& x)     { return x.exp(); }
-    inline auto log(EigenArray auto const& x)     { return x.log(); }
-    inline auto log1p(EigenArray auto const& x)   { return x.log1p(); }
-    inline auto logabs(EigenArray auto const& x)  { return x.abs().log(); }
-    inline auto square(EigenArray auto const& x)  { return x.square(); }
-    inline auto sqrt(EigenArray auto const& x)    { return x.sqrt(); }
-    inline auto sqrtabs(EigenArray auto const& x) { return x.abs().sqrt(); }
-    inline auto cbrt(EigenArray auto const& x)    { return x.unaryExpr([](auto v) { return v; }); }
-
-    inline auto abs(EigenArray auto const& x)   { return x.abs(); }
-    inline auto ceil(EigenArray auto const& x)  { return x.ceil(); }
-    inline auto floor(EigenArray auto const& x) { return x.floor(); }
-    inline auto inv(EigenArray auto const& x)   { return x.inverse(); }
-
-    inline auto pow(EigenArray auto const& x, EigenArray auto const& y)  { return x.pow(y); }
-    inline auto aq(EigenArray auto const& x, EigenArray auto const& y)   { return x * inv(sqrt(scalar_t<decltype(x)>{1} + square(y))); }
-    inline auto fmax(EigenArray auto const& x, EigenArray auto const& y) { return x.max(y); }
-    inline auto fmin(EigenArray auto const& x, EigenArray auto const& y) { return x.min(y); }
-
-    // potentially other data types (Fastor, Armadillo, Eve)
-
-    template<Operon::NodeType = Operon::NodeType::Add, bool Continued = false>
+    // detect missing specializations
+    template<typename T, Operon::NodeType N = Operon::NodeTypes::NoType, bool C = false, std::size_t S = Backend::BatchSize<T>>
     struct Func {
-        auto operator()(auto... args) { return (args + ...); }
+        auto operator()(Backend::View<T, S> /*unused*/, std::integral auto /*unused*/, std::integral auto... /*unused*/) {
+            throw std::runtime_error(fmt::format("backend error: missing specialization for function: {}\n", Operon::Node{N}.Name()));
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Mul, Continued> {
-        auto operator()(auto... args) { return (args * ...); }
-    };
-
-    template<bool Continued>
-    struct Func<Operon::NodeType::Sub, Continued> {
-        auto operator()(auto first, auto... rest) {
-            if constexpr (sizeof...(rest) == 0) {
-                return -first;
-            } else if constexpr (Continued) {
-                return -first - (rest + ...);
+    // n-ary operations
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Add, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto... args) {
+            auto* h = view.data_handle();
+            if constexpr (C) {
+                Backend::Add<T, S>(h + result * S, h + result * S, (h + args * S)...);
             } else {
-                return first - (rest + ...);
+                Backend::Add<T, S>(h + result * S, (h + args * S)...);
             }
         }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Div, Continued> {
-        auto operator()(auto first, auto... rest) {
-            if constexpr (sizeof...(rest) == 0) {
-                return inv(first);
-            } else if constexpr (Continued) {
-                return (first * (rest * ...));
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Mul, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto... args) {
+            auto* h = view.data_handle();
+            if constexpr (C) {
+                Backend::Mul<T, S>(h + result * S, h + result * S, (h + args * S)...);
             } else {
-                return first / (rest * ...);
+                Backend::Mul<T, S>(h + result * S, (h + args * S)...);
             }
         }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Fmin, Continued> {
-        auto operator()(auto first, auto... rest) {
-            if constexpr (sizeof...(rest) == 0) { return first; }
-            else { return (fmin(first, rest), ...); }
-        };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Sub, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
+            auto* h = view.data_handle();
+
+            if constexpr (C) {
+                if constexpr (sizeof...(args) == 0) {
+                    Backend::Sub<T, S>(h + result * S, h + result * S, h + first * S);
+                } else {
+                    Backend::Sub<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
+                }
+            } else {
+                if constexpr (sizeof...(args) == 0) {
+                    Backend::Neg<T, S>(h + result * S, h + first * S);
+                } else {
+                    Backend::Sub<T, S>(h + result * S, h + first * S, (h + args * S)...);
+                }
+            }
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Fmax, Continued> {
-        auto operator()(auto first, auto... rest) {
-            if constexpr (sizeof...(rest) == 0) { return first; }
-            else { return (fmax(first, rest), ...); }
-        };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Div, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
+            auto* h = view.data_handle();
+
+            if constexpr (C) {
+                if constexpr (sizeof...(args) == 0) {
+                    Backend::Div<T, S>(h + result * S, h + result * S, h + first * S);
+                } else {
+                    Backend::Div<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
+                }
+            } else {
+                if constexpr (sizeof...(args) == 0) {
+                    Backend::Inv<T, S>(h + result * S, h + first * S);
+                } else {
+                    Backend::Div<T, S>(h + result * S, h + first * S, (h + args * S)...);
+                }
+            }
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Aq, Continued> {
-        auto operator()(auto a, auto b) { return aq(a, b); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Fmin, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
+            auto* h = view.data_handle();
+
+            if constexpr (C) {
+                if constexpr (sizeof...(args) == 0) {
+                    Backend::Min<T, S>(h + result * S, h + result * S, h + first * S);
+                } else {
+                    Backend::Min<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
+                }
+            } else {
+                if constexpr (sizeof...(args) == 0) {
+                    Backend::Cpy<T, S>(h + result * S, h + first * S);
+                } else {
+                    Backend::Min<T, S>(h + result * S, h + first * S, (h + args * S)...);
+                }
+            }
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Pow, Continued> {
-        auto operator()(auto a, auto b) { return pow(a, b); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Fmax, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
+            auto* h = view.data_handle();
+
+            if constexpr (C) {
+                if constexpr (sizeof...(args) == 0) {
+                    Backend::Max<T, S>(h + result * S, h + result * S, h + first * S);
+                } else {
+                    Backend::Max<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
+                }
+            } else {
+                if constexpr (sizeof...(args) == 0) {
+                    Backend::Cpy<T, S>(h + result * S, h + first * S);
+                } else {
+                    Backend::Max<T, S>(h + result * S, h + first * S, (h + args * S)...);
+                }
+            }
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Abs, Continued> {
-        auto operator()(auto a) { return abs(a); };
+    // binary operations
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Aq, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i, std::integral auto j) {
+            auto* h = view.data_handle();
+            Backend::Aq<T, S>(h + result * S, h + i * S, h + j * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Log, Continued> {
-        auto operator()(auto a) { return log(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Pow, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i, std::integral auto j) {
+            auto* h = view.data_handle();
+            Backend::Pow<T, S>(h + result * S, h + i * S, h + j * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Logabs, Continued> {
-        auto operator()(auto a) { return logabs(a); };
+    // unary operations
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Abs, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Abs<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Log1p, Continued> {
-        auto operator()(auto a) { return log1p(a); };
+    // unary operations
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Square, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Square<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Exp, Continued> {
-        auto operator()(auto a) { return exp(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Exp, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Exp<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Ceil, Continued> {
-        auto operator()(auto a) { return ceil(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Log, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Log<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Floor, Continued> {
-        auto operator()(auto a) { return floor(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Logabs, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Logabs<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Sin, Continued> {
-        auto operator()(auto a) { return sin(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Log1p, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Log1p<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Cos, Continued> {
-        auto operator()(auto a) { return cos(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Sqrt, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Sqrt<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Tan, Continued> {
-        auto operator()(auto a) { return tan(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Sqrtabs, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Sqrtabs<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Asin, Continued> {
-        auto operator()(auto a) { return asin(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Cbrt, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Cbrt<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Acos, Continued> {
-        auto operator()(auto a) { return acos(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Ceil, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Ceil<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Atan, Continued> {
-        auto operator()(auto a) { return atan(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Floor, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Floor<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Sinh, Continued> {
-        auto operator()(auto a) { return sinh(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Sin, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Sin<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Cosh, Continued> {
-        auto operator()(auto a) { return cosh(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Cos, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Cos<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Tanh, Continued> {
-        auto operator()(auto a) { return tanh(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Tan, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Tan<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Sqrt, Continued> {
-        auto operator()(auto a) { return sqrt(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Asin, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Asin<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Sqrtabs, Continued> {
-        auto operator()(auto a) { return sqrtabs(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Acos, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Acos<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Cbrt, Continued> {
-        auto operator()(auto a) { return cbrt(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Atan, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Atan<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Square, Continued> {
-        auto operator()(auto a) { return square(a); };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Sinh, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Sinh<T, S>(h + result * S, h + i * S);
+        }
     };
 
-    template<bool Continued>
-    struct Func<Operon::NodeType::Dynamic, Continued> {
-        auto operator()(auto /*unused*/) { /* nothing */ };
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Cosh, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Cosh<T, S>(h + result * S, h + i * S);
+        }
+    };
+
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Tanh, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Tanh<T, S>(h + result * S, h + i * S);
+        }
     };
 } // namespace Operon
 
