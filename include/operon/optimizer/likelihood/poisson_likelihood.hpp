@@ -17,27 +17,25 @@ namespace Operon {
 namespace detail {
     struct Poisson {
         template<Operon::Concepts::Arithmetic T>
-        auto operator()(T const a, T const b) const -> T {
-            return a - b * std::log(a);
+        auto operator()(T const x, T const y) const -> T {
+            return x - y * std::log(x) + std::lgamma(y+1);
         }
 
         template<Operon::Concepts::Arithmetic T>
-        auto operator()(T const a, T const b, T const w) const -> T {
-            auto const z = w * a; // weight * f(x)
-            return z - b * std::log(z);
+        auto operator()(T const x, T const y, T const w) const -> T {
+            return (*this)(w * x, y);
         }
     };
 
     struct PoissonLog {
         template<Operon::Concepts::Arithmetic T>
-        auto operator()(T const a, T const b) const -> T {
-            return std::exp(a) - a * b;
+        auto operator()(T const x, T const y) const -> T {
+            return std::exp(x) - x * y + std::lgamma(y+1);
         }
 
         template<Operon::Concepts::Arithmetic T>
-        auto operator()(T const a, T const b, T const w) const -> T {
-            a *= w;
-            return std::exp(a) - a * b;
+        auto operator()(T const x, T const y, T const w) const -> T {
+            return (*this)(x * w, y) + std::lgamma(y+1);
         }
     };
 } // namespace detail
@@ -50,10 +48,10 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         , rng_{rng}
         , target_(target)
         , range_(range)
-        , bs_(batchSize == 0 ? range.Size() : batchSize)
-        , np_{static_cast<std::size_t>(interpreter.GetTree().CoefficientsCount())}
-        , nr_{range_.Size()}
-        , jac_{bs_, np_}
+        , batchSize_(batchSize == 0 ? range.Size() : batchSize)
+        , numParameters_{static_cast<std::size_t>(interpreter.GetTree().CoefficientsCount())}
+        , numResiduals_{range_.Size()}
+        , jac_{batchSize_, numParameters_}
     { }
 
     using Scalar   = typename LikelihoodBase<T>::Scalar;
@@ -78,14 +76,14 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         // compute jacobian
         if constexpr (LogInput) {
             if (g.size() != 0) {
-                interpreter.JacRev(c, r, { jac_.data(), np_ * bs_ });
+                interpreter.JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
                 g = ((pmap.exp() - tmap).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
             }
             return (pmap.exp() - tmap * pmap).sum();
         } else {
             auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
             if (g.size() != 0) {
-                interpreter.JacRev(c, r, { jac_.data(), np_ * bs_ });
+                interpreter.JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
                 g = ((1 - tmap * pmap.inverse()).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
             }
             return (pmap - tmap * pmap.log()).sum();
@@ -97,7 +95,7 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         return vstat::univariate::accumulate<Operon::Scalar>(x.begin(), x.end(), y.begin(), F{}).sum;
     }
 
-    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> /*not used*/) -> Matrix 
+    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> /*not used*/) -> Matrix
     {
         auto const rows = pred.size();
         auto const cols = jac.size() / pred.size();
@@ -111,24 +109,24 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         }
     }
 
-    auto NumParameters() const -> std::size_t { return np_; }
-    auto NumObservations() const -> std::size_t { return nr_; }
+    auto NumParameters() const -> std::size_t { return numParameters_; }
+    auto NumObservations() const -> std::size_t { return numResiduals_; }
     auto FunctionEvaluations() const -> std::size_t { return feval_; }
     auto JacobianEvaluations() const -> std::size_t { return jeval_; }
 
 private:
     auto SelectRandomRange() const -> Operon::Range {
-        if (bs_ >= range_.Size()) { return range_; }
-        auto s = std::uniform_int_distribution<std::size_t>{0UL, range_.Size()-bs_}(rng_.get());
-        return Operon::Range{range_.Start() + s, range_.Start() + s + bs_};
+        if (batchSize_ >= range_.Size()) { return range_; }
+        auto s = std::uniform_int_distribution<std::size_t>{0UL, range_.Size()-batchSize_}(rng_.get());
+        return Operon::Range{range_.Start() + s, range_.Start() + s + batchSize_};
     }
 
     std::reference_wrapper<Operon::RandomGenerator> rng_;
     Operon::Span<Operon::Scalar const> target_;
     Operon::Range const range_; // NOLINT
-    std::size_t bs_; // batch size
-    std::size_t np_; // number of parameters to optimize
-    std::size_t nr_; // number of data points (rows)
+    std::size_t batchSize_; // batch size
+    std::size_t numParameters_; // number of parameters to optimize
+    std::size_t numResiduals_; // number of data points (rows)
     mutable Eigen::Array<Scalar, -1, -1> jac_;
     mutable std::size_t feval_{};
     mutable std::size_t jeval_{};

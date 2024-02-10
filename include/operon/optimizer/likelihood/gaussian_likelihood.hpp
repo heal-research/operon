@@ -16,7 +16,7 @@
 namespace Operon {
 
 namespace detail {
-    struct Gaussian {
+    struct SquaredResidual {
         template<Operon::Concepts::Arithmetic T>
         auto operator()(T const x, T const y) const -> T {
             auto const e = x - y;
@@ -45,7 +45,6 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
     { }
 
     using Scalar   = typename LikelihoodBase<T>::Scalar;
-    using scalar_t = Scalar; // needed by lbfgs library NOLINT
 
     using Vector   = typename LikelihoodBase<T>::Vector;
     using Ref      = typename LikelihoodBase<T>::Ref;
@@ -53,21 +52,21 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
     using Matrix   = typename LikelihoodBase<T>::Matrix;
 
     // this loss can be used by the SGD or LBFGS optimizers
-    auto operator()(Cref x, Ref g) const noexcept -> Operon::Scalar final {
+    auto operator()(Cref x, Ref grad) const noexcept -> Operon::Scalar final {
         ++feval_;
         auto const& interpreter = this->GetInterpreter();
         Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
-        auto r = SelectRandomRange();
-        auto p = interpreter.Evaluate(c, r);
-        auto t = target_.segment(r.Start(), r.Size());
-        Eigen::Map<Eigen::Array<Scalar, -1, 1> const> q{p.data(), std::ssize(p)};
-        auto e = q - t;
+        auto range = SelectRandomRange();
+        auto primal = interpreter.Evaluate(c, range);
+        auto target = target_.segment(range.Start(), range.Size());
+        Eigen::Map<Eigen::Array<Scalar, -1, 1> const> primalMap{primal.data(), std::ssize(primal)};
+        auto e = primalMap - target;
 
-        if (g.size() != 0) {
-            assert(g.size() == x.size());
+        if (grad.size() != 0) {
+            assert(grad.size() == x.size());
             ++jeval_;
-            interpreter.JacRev(c, r, {jac_.data(), np_ * bs_});
-            g = (e.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
+            interpreter.JacRev(c, range, {jac_.data(), np_ * bs_});
+            grad = (e.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
         }
 
         return static_cast<Operon::Scalar>(e.square().sum()) * Operon::Scalar{0.5};
@@ -81,7 +80,7 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
 
         if (s.size() == 1) {
             auto s2 = s[0] * s[0];
-            auto ssr = vstat::univariate::accumulate<Scalar>(x.begin(), x.end(), y.begin(), detail::Gaussian{}).sum;
+            auto ssr = vstat::univariate::accumulate<Scalar>(x.begin(), x.end(), y.begin(), detail::SquaredResidual{}).sum;
             return z * (n * std::log(Operon::Math::Tau * s2) + ssr / s2) ;
         }
 
