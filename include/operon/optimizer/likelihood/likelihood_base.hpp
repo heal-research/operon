@@ -19,7 +19,7 @@ namespace Concepts {
         Operon::Span<Operon::Scalar const> y,
         Operon::Span<Operon::Scalar const> z
     ) {
-        { T::ComputeLikelihood(x, y, z) } -> std::convertible_to<Operon::Scalar>;
+        { T::ComputeLikelihood(x, y, z) } -> std::same_as<Operon::Scalar>;
         { T::ComputeFisherMatrix(z, y, z) } -> std::convertible_to<Eigen::template Matrix<Operon::Scalar, -1, -1>>;
     };
 } // namespace Concepts
