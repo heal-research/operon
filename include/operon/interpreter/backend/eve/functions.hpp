@@ -7,8 +7,6 @@
 #include <eve/module/algo.hpp>
 #include <eve/module/core.hpp>
 #include <eve/module/math.hpp>
-#include <eve/detail/kumi.hpp>
-#include <eve/module/math/regular/pow.hpp>
 
 #include "operon/interpreter/backend/backend.hpp"
 #include "operon/core/node.hpp"
