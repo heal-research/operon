@@ -300,7 +300,7 @@ class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<D
 
 public:
     explicit MinimumDescriptionLengthEvaluator(Operon::Problem& problem, DTable const& dtable)
-        : Base(problem, dtable, sse_), sigma_(1, 0.001)
+        : Base(problem, dtable, SSE{}), sigma_(1, 0.001)
     {
     }
 
@@ -311,7 +311,6 @@ public:
     operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
-    Operon::SSE sse_;
     mutable std::vector<Operon::Scalar> sigma_;
 };
 
