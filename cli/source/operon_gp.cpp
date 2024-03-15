@@ -262,8 +262,6 @@ auto main(int argc, char** argv) -> int
         Operon::Individual best(1);
         auto getSize = [](Operon::Individual const& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Operon::Node) * ind.Genotype.Nodes().capacity(); };
 
-        tf::Executor exe(threads);
-
         auto report = [&]() {
             auto const& pop = gp.Parents();
             auto const& off = gp.Offspring();
@@ -352,7 +350,7 @@ auto main(int argc, char** argv) -> int
             calcStats.succeed(scaleTrain, scaleTest);
             calcStats.precede(calculateLength, calculateQuality, calculatePopMemory, calculateOffMemory);
 
-            exe.run(taskflow).wait();
+            executor.corun(taskflow);
 
             avgLength /= static_cast<double>(pop.size());
             avgQuality /= static_cast<double>(pop.size());
