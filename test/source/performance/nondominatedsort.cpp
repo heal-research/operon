@@ -21,7 +21,7 @@
 #include "operon/operators/selector.hpp"
 
 #include <filesystem>
-#include <scn/scn.h>
+#include <scn/scan.h>
 #include <ranges>
 #include <string_view>
 
@@ -523,9 +523,9 @@ TEST_CASE("dtlz2")
         std::string name = entry.path().string();
         if (name.find("rs") == std::string::npos) { continue; }
         std::cout << name << std::endl;
-        std::size_t n{}; // population size
-        std::size_t m{}; // number of objectives
-        std::ignore = scn::scan(name, "./csv/nsga2_DTLZ2_{}_{}_rs.csv", n, m);
+        auto result = scn::scan<std::size_t, std::size_t>(name, "./csv/nsga2_DTLZ2_{}_{}_rs.csv");
+        ENSURE(result);
+        auto [n, m] = result->values();
 
         // read part
         Value gen;
@@ -542,7 +542,7 @@ TEST_CASE("dtlz2")
                     ind = Operon::Individual(m);
                 } else {
                     std::string s(sv.begin(), sv.end());
-                    Operon::Scalar v{}; std::ignore = scn::scan(s, "{}", v);
+                    auto v = scn::scan<Operon::Scalar>(s, "{}")->value();
                     ind[c++] = v;
                 }
             }
