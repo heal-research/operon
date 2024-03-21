@@ -55,9 +55,11 @@
             fmt
             icu
             jemalloc
+            libassert
             mdspan
             pkg-config
             pratt-parser.packages.${system}.default
+            simdutf_4 # required by scnlib
             scnlib
             taskflow
             unordered_dense
@@ -113,7 +115,7 @@
             clang-tools_17
             cppcheck
             include-what-you-use
-            cmake-language-server
+            #cmake-language-server
           ]);
 
           buildInputs = operon.buildInputs ++ (with pkgs; [
