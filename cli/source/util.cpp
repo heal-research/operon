@@ -4,7 +4,7 @@
 #include "util.hpp"
 
 #include <memory>
-#include <scn/scn.h>
+#include <scn/scan.h>
 
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
@@ -80,9 +80,11 @@ auto FormatBytes(size_t bytes) -> std::string
 
 auto ParseRange(std::string const& str) -> std::pair<size_t, size_t>
 {
-    size_t a{0};
-    size_t b{0};
-    (void) scn::scan(str, "{}:{}", a, b);
+    auto result = scn::scan<size_t, size_t>(str, "{}:{}");
+    if (!result) {
+        throw std::runtime_error(fmt::format("could not parse range '{}'", str));
+    }
+    auto [a, b] = result->values();
     return std::make_pair(a, b);
 }
 
