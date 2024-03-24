@@ -131,7 +131,7 @@ void Tree::SetCoefficients(Operon::Span<Operon::Scalar const> coefficients)
 
 auto Tree::Depth() const noexcept -> size_t
 {
-    return nodes_.back().Depth;
+    return Empty() ? 0 : nodes_.back().Depth;
 }
 
 auto Tree::VisitationLength() const noexcept -> size_t
