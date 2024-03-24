@@ -9,7 +9,9 @@
 #include <operon/operon_export.hpp>        // for OPERON_EXPORT
 #include <thread>                          // for thread
 #include <utility>                         // for move
+
 #include "operon/algorithms/config.hpp"    // for GeneticAlgorithmConfig
+#include "operon/algorithms/ga_base.hpp"
 #include "operon/core/individual.hpp"      // for Individual
 #include "operon/core/types.hpp"           // for Span, Vector, RandomGenerator
 #include "operon/operators/evaluator.hpp"  // for EvaluatorBase
@@ -25,53 +27,11 @@ class ReinserterBase;
 struct CoefficientInitializerBase;
 struct TreeInitializerBase;
 
-class OPERON_EXPORT GeneticProgrammingAlgorithm {
-    std::reference_wrapper<const Problem> problem_;
-    std::reference_wrapper<const GeneticAlgorithmConfig> config_;
-
-    std::reference_wrapper<const TreeInitializerBase> treeInit_;
-    std::reference_wrapper<const CoefficientInitializerBase> coeffInit_;
-    std::reference_wrapper<const OffspringGeneratorBase> generator_;
-    std::reference_wrapper<const ReinserterBase> reinserter_;
-
-    Operon::Vector<Individual> individuals_;
-    Operon::Span<Individual> parents_;
-    Operon::Span<Individual> offspring_;
-
-    size_t generation_{0};
-
+class OPERON_EXPORT GeneticProgrammingAlgorithm : public GeneticAlgorithmBase {
 public:
-    explicit GeneticProgrammingAlgorithm(Problem const& problem, GeneticAlgorithmConfig const& config, TreeInitializerBase const& treeInit, CoefficientInitializerBase const& coeffInit, OffspringGeneratorBase const& generator, ReinserterBase const& reinserter)
-        : problem_(problem)
-        , config_(config)
-        , treeInit_(treeInit)
-        , coeffInit_(coeffInit)
-        , generator_(generator)
-        , reinserter_(reinserter)
-        , individuals_(config.PopulationSize + config.PoolSize)
-        , parents_(individuals_.data(), config.PopulationSize)
-        , offspring_(individuals_.data() + config.PopulationSize, config.PoolSize)
+    GeneticProgrammingAlgorithm(Problem const& problem, GeneticAlgorithmConfig const& config, TreeInitializerBase const& treeInit, CoefficientInitializerBase const& coeffInit, OffspringGeneratorBase const& generator, ReinserterBase const& reinserter)
+        : GeneticAlgorithmBase(problem, config, treeInit, coeffInit, generator, reinserter)
     {
-    }
-
-    [[nodiscard]] auto Parents() const -> Operon::Span<Individual const> { return { parents_.data(), parents_.size() }; }
-    [[nodiscard]] auto Offspring() const -> Operon::Span<Individual const> { return { offspring_.data(), offspring_.size() }; }
-    [[nodiscard]] auto Individuals() const -> Operon::Vector<Operon::Individual> const& { return individuals_; }
-
-    [[nodiscard]] auto GetProblem() const -> const Problem& { return problem_.get(); }
-    [[nodiscard]] auto GetConfig() const -> const GeneticAlgorithmConfig& { return config_.get(); }
-
-    [[nodiscard]] auto GetTreeInitializer() const -> TreeInitializerBase const& { return treeInit_.get(); }
-    [[nodiscard]] auto GetCoefficientInitializer() const -> CoefficientInitializerBase const& { return coeffInit_.get(); }
-    [[nodiscard]] auto GetGenerator() const -> const OffspringGeneratorBase& { return generator_.get(); }
-    [[nodiscard]] auto GetReinserter() const -> const ReinserterBase& { return reinserter_.get(); }
-
-    [[nodiscard]] auto Generation() const -> size_t { return generation_; }
-
-    auto Reset() -> void
-    {
-        generation_ = 0;
-        GetGenerator().Evaluator().Reset();
     }
 
     auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator&/*rng*/, std::function<void()> /*report*/ = nullptr) -> void;
