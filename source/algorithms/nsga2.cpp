@@ -130,26 +130,30 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     tf::Taskflow taskflow;
 
     auto stop = [&]() {
-        return generator.Terminate() || generation_ == config.Generations || elapsed() > static_cast<double>(config.TimeLimit);
+        return generator.Terminate() || Generation() == config.Generations || elapsed() > static_cast<double>(config.TimeLimit);
     };
+
+    auto& individuals = Individuals();
+    auto parents      = Parents();
+    auto offspring    = Offspring();
 
     // while loop control flow
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&](tf::Subflow& subflow) {
-            auto init = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
-                parents_[i].Genotype = treeInit(rngs[i]);
-                coeffInit(rngs[i], parents_[i].Genotype);
+            auto init = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
+                parents[i].Genotype = treeInit(rngs[i]);
+                coeffInit(rngs[i], parents[i].Genotype);
             }).name("initialize population");
-            auto prepareEval = subflow.emplace([&]() { evaluator.Prepare(parents_); }).name("prepare evaluator");
-            auto eval = subflow.for_each_index(size_t{0}, parents_.size(), size_t{1}, [&](size_t i) {
+            auto prepareEval = subflow.emplace([&]() { evaluator.Prepare(parents); }).name("prepare evaluator");
+            auto eval = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
                 auto id = executor.this_worker_id();
                 // make sure the worker has a large enough buffer
                 if (slots[id].size() < trainSize) {
                     slots[id].resize(trainSize);
                 }
-                parents_[i].Fitness = evaluator(rngs[i], parents_[i], slots[id]);
+                parents[i].Fitness = evaluator(rngs[i], parents[i], slots[id]);
             }).name("evaluate population");
-            auto nonDominatedSort = subflow.emplace([&]() { Sort(parents_); }).name("non-dominated sort");
+            auto nonDominatedSort = subflow.emplace([&]() { Sort(parents); }).name("non-dominated sort");
             auto reportProgress = subflow.emplace([&]() { if (report) { std::invoke(report); } }).name("report progress");
             init.precede(prepareEval);
             prepareEval.precede(eval);
@@ -158,21 +162,21 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
         }, // init
         stop, // loop condition
         [&](tf::Subflow& subflow) {
-            auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents_); }).name("prepare generator");
-            auto generateOffspring = subflow.for_each_index(size_t{0}, offspring_.size(), size_t{1}, [&](size_t i) {
+            auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents); }).name("prepare generator");
+            auto generateOffspring = subflow.for_each_index(size_t{0}, offspring.size(), size_t{1}, [&](size_t i) {
                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                 while (!stop()) {
                     auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, buf);
                     if (result) {
-                        offspring_[i] = std::move(*result);
-                        ENSURE(offspring_[i].Genotype.Length() > 0);
+                        offspring[i] = std::move(*result);
+                        ENSURE(offspring[i].Genotype.Length() > 0);
                         return;
                     }
                 }
             }).name("generate offspring");
-            auto nonDominatedSort = subflow.emplace([&]() { Sort(individuals_); }).name("non-dominated sort");
-            auto reinsert = subflow.emplace([&]() { reinserter.Sort(individuals_); }).name("reinsert");
-            auto incrementGeneration = subflow.emplace([&]() { ++generation_; }).name("increment generation");
+            auto nonDominatedSort = subflow.emplace([&]() { Sort(individuals); }).name("non-dominated sort");
+            auto reinsert = subflow.emplace([&]() { reinserter.Sort(individuals); }).name("reinsert");
+            auto incrementGeneration = subflow.emplace([&]() { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&]() { if (report) { std::invoke(report); } }).name("report progress");
 
             // set-up subflow graph
