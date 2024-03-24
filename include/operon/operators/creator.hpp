@@ -8,7 +8,6 @@
 
 #include "operon/core/operator.hpp"
 #include "operon/operon_export.hpp"
-#include "operon/core/variable.hpp"
 
 namespace Operon {
 
