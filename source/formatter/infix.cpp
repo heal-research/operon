@@ -113,22 +113,23 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
     }
 }
 
+
+
+auto InfixFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
+{
+    if (tree.Nodes().empty()) { return std::string{}; }
+    fmt::memory_buffer result;
+    FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
+    return { result.begin(), result.end() };
+}
+
 auto InfixFormatter::Format(Tree const& tree, Dataset const& dataset, int decimalPrecision) -> std::string
 {
     Operon::Map<Operon::Hash, std::string> variableNames;
     for (auto const& var : dataset.GetVariables()) {
         variableNames.insert({ var.Hash, var.Name });
     }
-    fmt::memory_buffer result;
-    FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
-    return { result.begin(), result.end() };
-}
-
-auto InfixFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
-{
-    fmt::memory_buffer result;
-    FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
-    return { result.begin(), result.end() };
+    return Format(tree, variableNames, decimalPrecision);
 }
 
 } // namespace Operon
