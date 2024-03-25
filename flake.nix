@@ -7,7 +7,7 @@
     foolnotion.url = "github:foolnotion/nur-pkg";
     lbfgs.url = "github:foolnotion/lbfgs";
     pratt-parser.url = "github:foolnotion/pratt-parser-calculator";
-    vstat.url = "github:heal-research/vstat/cpp20-eve";
+    vstat.url = "github:heal-research/vstat";
     vdt.url = "github:foolnotion/vdt/master";
 
     # make everything follow nixpkgs
