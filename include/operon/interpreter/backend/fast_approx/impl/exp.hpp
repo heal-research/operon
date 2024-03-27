@@ -49,7 +49,7 @@ namespace Operon::Backend::detail::fast_approx {
         return std::bit_cast<float>(static_cast<uint32_t>(x));
     }
 
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr ExpImpl(Operon::Scalar x) -> Operon::Scalar {
         if constexpr (P == 0) { return ExpV1(x); }
         else { return ExpV2(x); }

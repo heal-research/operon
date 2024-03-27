@@ -6,7 +6,7 @@
 #include "exp.hpp"
 
 namespace Operon::Backend::detail::fast_approx {
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr CosImpl(Operon::Scalar x) -> Operon::Scalar {
         if (!std::isfinite(x)) { return std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
         if (x == 0) { return 1.F; }
@@ -32,7 +32,7 @@ namespace Operon::Backend::detail::fast_approx {
         }
     }
 
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr SinImpl(Operon::Scalar x) -> Operon::Scalar {
         if (!std::isfinite(x)) { return std::numeric_limits<Operon::Scalar>::quiet_NaN(); }
         if (x == 0) { return x; }
@@ -48,7 +48,7 @@ namespace Operon::Backend::detail::fast_approx {
         }
     }
 
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr TanImpl(Operon::Scalar x) -> Operon::Scalar {
         if (x == 0) { return x; }
         return DivImpl<P>(SinImpl<P>(x), CosImpl<P>(x));

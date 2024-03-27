@@ -4,7 +4,7 @@
 #include "operon/core/types.hpp"
 
 namespace Operon::Backend::detail::fast_approx {
-template<std::size_t P = 0>
+template<int P = 0>
     inline auto constexpr InvImpl(Operon::Scalar x) -> Operon::Scalar {
         static_assert(std::is_same_v<Operon::Scalar, float>, "this function only works in single-precision mode.");
 
@@ -35,7 +35,7 @@ template<std::size_t P = 0>
         return xf * sx;
     }
 
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr DivImpl(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
         static_assert(std::is_same_v<Operon::Scalar, float>, "this function only works in single-precision mode.");
         constexpr auto inf{ std::numeric_limits<Operon::Scalar>::infinity() };

@@ -5,7 +5,7 @@
 #include "inv.hpp"
 
 namespace Operon::Backend::detail::fast_approx {
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr TanhImpl(Operon::Scalar x) -> Operon::Scalar {
             constexpr auto nan { std::numeric_limits<Operon::Scalar>::quiet_NaN() };
             if (std::isnan(x)) { return nan; }

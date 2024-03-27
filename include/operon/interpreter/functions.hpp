@@ -21,6 +21,8 @@
 #include "operon/interpreter/backend/fast_v2.hpp"
 #elif defined(OPERON_MATH_FAST_V3)
 #include "operon/interpreter/backend/fast_v3.hpp"
+#elif defined(OPERON_MATH_MAD_ARITHMETIC_FAST) || defined(OPERON_MATH_MAD_ARITHMETIC_FASTER) || defined(OPERON_MATH_MAD_ARITHMETIC_FASTEST) || defined(OPERON_MATH_MAD_TRANSCENDENTAL_FAST) || defined(OPERON_MATH_MAD_TRANSCENDENTAL_FASTER) || defined(OPERON_MATH_MAD_TRANSCENDENTAL_FASTEST)
+#include "operon/interpreter/backend/mad.hpp"
 #endif
 
 namespace Operon {
