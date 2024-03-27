@@ -4,7 +4,7 @@
 #include "operon/core/types.hpp"
 
 namespace Operon::Backend::detail::fast_approx {
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr ISqrtImpl(Operon::Scalar x) -> Operon::Scalar {
         static_assert(std::is_same_v<Operon::Scalar, float>, "this function only works in single-precision mode.");
         constexpr auto nan{ std::numeric_limits<Operon::Scalar>::quiet_NaN() };
@@ -26,7 +26,7 @@ namespace Operon::Backend::detail::fast_approx {
         return xf;
     }
 
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr SqrtImpl(Operon::Scalar x) -> Operon::Scalar {
         constexpr auto nan = std::numeric_limits<Operon::Scalar>::quiet_NaN();
         if (std::isnan(x)) { return nan; }
@@ -44,7 +44,7 @@ namespace Operon::Backend::detail::fast_approx {
         }
     }
 
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr SqrtabsImpl(Operon::Scalar x) {
         return SqrtImpl<P>(std::abs(x));
     }

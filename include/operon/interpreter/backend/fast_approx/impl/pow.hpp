@@ -41,7 +41,7 @@ namespace Operon::Backend::detail::fast_approx {
             return pow2(y * log2(x));
         }
 
-        template<std::size_t P = 0>
+        template<int P = 0>
         inline auto PowImpl(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
             if constexpr (P == 0) { return PowV1(x, y); }
             // else { return PowV2(x, y); }

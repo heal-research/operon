@@ -4,7 +4,7 @@
 #include "operon/core/types.hpp"
 
 namespace Operon::Backend::detail::fast_approx {
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr LogImpl(Operon::Scalar x) -> Operon::Scalar {
         constexpr auto inf { std::numeric_limits<Operon::Scalar>::infinity() };
         constexpr auto nan { std::numeric_limits<Operon::Scalar>::quiet_NaN() };
@@ -29,12 +29,12 @@ namespace Operon::Backend::detail::fast_approx {
         }
     }
 
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr Log1pImpl(Operon::Scalar x) -> Operon::Scalar  {
         return LogImpl<P>(1 + x);
     }
 
-    template<std::size_t P = 0>
+    template<int P = 0>
     inline auto constexpr LogabsImpl(Operon::Scalar x) -> Operon::Scalar  {
         return LogImpl<P>(std::abs(x));
     }

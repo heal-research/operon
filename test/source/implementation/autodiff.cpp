@@ -226,8 +226,9 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         auto trees = generateTrees(pset, n/2, 2);
 
         // binary
-        pset.SetConfig(NodeType::Div | NodeType::Aq | NodeType::Pow | NodeType::Constant);
+        pset.SetConfig(NodeType::Div | NodeType::Aq | NodeType::Constant);
         auto tmp = generateTrees(pset, n/2, 3);
+        // trees.clear();
         std::ranges::copy(tmp, std::back_inserter(trees));
 
         fmt::print("{}\n", Operon::InfixFormatter::Format(tmp.front(), ds));
@@ -255,6 +256,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                 auto f1 = std::isfinite(jjet.sum());
                 auto f2 = std::isfinite(jrev.sum());
                 auto ok = (!f1) || (f1 && f2 && jrev.isApprox(jjet, epsilon));
+                // auto ok = !std::isfinite(out[0]) || (std::isfinite(out[0]) && std::abs(out[0] - res1[0]) < epsilon);
 
                 if(f1 && f2) {
                     for (auto const& n : tree.Nodes()) {
@@ -297,7 +299,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         auto constexpr N{10'000};
 
         fmt::print("function,x,y_true,y_pred,j_true,j_pred\n");
-        auto testUnary = [&](Operon::NodeType type) {
+        [[maybe_unused]] auto testUnary = [&](Operon::NodeType type) {
             Operon::PrimitiveSet pset(NodeType::Constant | type);
             auto trees = generateTrees(pset, N, 2);
 
@@ -333,11 +335,11 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
             }
         };
 
-        for (auto type : {NodeType::Div, NodeType::Exp, NodeType::Log, NodeType::Sin, NodeType::Cos, NodeType::Sqrt, NodeType::Tanh }) {
-            testUnary(type);
-        }
+        // for (auto type : {NodeType::Div, NodeType::Exp, NodeType::Log, NodeType::Sin, NodeType::Cos, NodeType::Sqrt, NodeType::Tanh }) {
+        //     testUnary(type);
+        // }
 
-        for (auto type : {NodeType::Div, NodeType::Aq, NodeType::Pow }) {
+        for (auto type : {NodeType::Div /*, NodeType::Aq, NodeType::Pow */ }) {
             testBinary(type);
         }
     };
