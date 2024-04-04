@@ -36,6 +36,9 @@
 #include "util.hpp"
 #include "operator_factory.hpp"
 
+void Scale(Operon::Individual& ind, Operon::Span<float const> estimated, Operon::Span<float const> target, Operon::Scalar& a, Operon::Scalar& b);
+
+
 auto main(int argc, char** argv) -> int
 {
     auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
@@ -300,23 +303,8 @@ auto main(int argc, char** argv) -> int
             Operon::Scalar a{1.0};
             Operon::Scalar b{0.0};
             auto linearScaling = taskflow.emplace([&]() {
-                auto [a_, b_] = Operon::FitLeastSquares(estimatedTrain, targetTrain);
-                a = static_cast<Operon::Scalar>(a_);
-                b = static_cast<Operon::Scalar>(b_);
-                // add scaling terms to the tree
-                auto& nodes = best.Genotype.Nodes();
-                auto const sz = nodes.size();
-                if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
-                    nodes.emplace_back(Operon::Node::Constant(a));
-                    nodes.emplace_back(Operon::NodeType::Mul);
-                }
-                if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
-                    nodes.emplace_back(Operon::Node::Constant(b));
-                    nodes.emplace_back(Operon::NodeType::Add);
-                }
-                if (nodes.size() > sz) {
-                    best.Genotype.UpdateNodes();
-                }
+                if (scale)
+                    Scale(best, estimatedTrain, targetTrain, a, b);
             });
 
             double r2Train{};
@@ -327,13 +315,17 @@ auto main(int argc, char** argv) -> int
             double maeTest{};
 
             auto scaleTrain = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), std::ssize(estimatedTrain));
-                estimated = estimated * a + b;
+                if (scale) {
+                    Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), std::ssize(estimatedTrain));
+                    estimated = estimated * a + b;
+                }
             });
 
             auto scaleTest = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), std::ssize(estimatedTest));
-                estimated = estimated * a + b;
+                if (scale) {
+                    Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), std::ssize(estimatedTest));
+                    estimated = estimated * a + b;
+                }
             });
 
             auto calcStats = taskflow.emplace([&]() {
@@ -358,9 +350,13 @@ auto main(int argc, char** argv) -> int
             auto calculateOffMemory = taskflow.transform_reduce(off.begin(), off.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); });
 
             // define task graph
-            linearScaling.succeed(evalTrain, evalTest);
-            linearScaling.precede(scaleTrain, scaleTest);
-            calcStats.succeed(scaleTrain, scaleTest);
+            //if (scale) {
+                linearScaling.succeed(evalTrain, evalTest);
+                linearScaling.precede(scaleTrain, scaleTest);
+                calcStats.succeed(scaleTrain, scaleTest);
+            //} else {
+            //    calcStats.succeed(evalTrain, evalTest);
+            //}
             calcStats.precede(calculateLength, calculateQuality, calculatePopMemory, calculateOffMemory);
 
             executor.corun(taskflow);
@@ -394,22 +390,53 @@ auto main(int argc, char** argv) -> int
         };
 
         gp.Run(executor, random, report);
-	fmt::print("Best individual:\n");
+        fmt::print("Best individual:\n");
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, problem.GetDataset(), 8));
 
         auto const& pop = gp.Parents();
 
-	// print all solutions in the first front
-	fmt::print("All individuals in the Pareto front:\n");
-	for(auto ind = pop.begin(); ind < pop.end(); ind++) {
-	  if(ind->Rank == 0) {
-            fmt::print("{}\n", Operon::InfixFormatter::Format(ind->Genotype, problem.GetDataset(), 8));
-	  }
-	}
+        // print all solutions in the first front
+        if (result["show-pareto-front"].as<bool>()) {
+            fmt::print("All individuals in the Pareto front:\n");
+            for(auto ind = pop.begin(); ind < pop.end(); ind++) {
+              Operon::Individual cur = *ind;
+              if(cur.Rank == 0) {
+                  if (scale) {
+                      Operon::Scalar a{1.0};
+                      Operon::Scalar b{0.0};
+                      auto estimatedTrain = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>::Evaluate(cur.Genotype, problem.GetDataset(), trainingRange);
+                      Scale(cur, estimatedTrain, targetTrain, a, b);
+                  }
+                  fmt::print("{}\n", Operon::InfixFormatter::Format(cur.Genotype, problem.GetDataset(), 8));
+              }
+            }
+        }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;
     }
 
     return 0;
+}
+
+
+
+void Scale(Operon::Individual& ind, Operon::Span<float const> estimated, Operon::Span<float const> target, Operon::Scalar& a, Operon::Scalar& b) {
+    auto [a_, b_] = Operon::FitLeastSquares(estimated, target);
+    a = static_cast<Operon::Scalar>(a_);
+    b = static_cast<Operon::Scalar>(b_);
+    // add scaling terms to the tree
+    auto& nodes = ind.Genotype.Nodes();
+    auto const sz = nodes.size();
+    if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
+        nodes.emplace_back(Operon::Node::Constant(a));
+        nodes.emplace_back(Operon::NodeType::Mul);
+    }
+    if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
+        nodes.emplace_back(Operon::Node::Constant(b));
+        nodes.emplace_back(Operon::NodeType::Add);
+    }
+    if (nodes.size() > sz) {
+        ind.Genotype.UpdateNodes();
+    }
 }
