@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <type_traits>
+#include <vstat/univariate.hpp>
 #include <vstat/vstat.hpp>
 namespace Operon {
 
@@ -35,7 +36,7 @@ namespace detail {
 
         template<Operon::Concepts::Arithmetic T>
         auto operator()(T const x, T const y, T const w) const -> T {
-            return (*this)(x * w, y) + std::lgamma(y+1);
+            return (*this)(x * w, y);
         }
     };
 } // namespace detail
@@ -90,9 +91,27 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         }
     }
 
-    static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> /*not used*/) noexcept -> Scalar {
+    static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> w) -> Scalar {
         using F = std::conditional_t<LogInput, detail::PoissonLog, detail::Poisson>;
-        return vstat::univariate::accumulate<Operon::Scalar>(x.begin(), x.end(), y.begin(), F{}).sum;
+        vstat::univariate_accumulator<Operon::Scalar> acc;
+
+        if (w.empty()) {
+            for (auto i = 0; i < x.size(); ++i) {
+                acc(F{}(x[i], y[i]));
+            }
+        } else if (w.size() == 1) {
+            for (auto i = 0; i < x.size(); ++i) {
+                acc(F{}(x[i], y[i], w[0]));
+            }
+        } else if (w.size() == x.size()) {
+            for (auto i = 0; i < x.size(); ++i) {
+                acc(F{}(x[i], y[i], w[i]));
+            }
+        } else {
+            throw std::runtime_error("incompatible weights");
+        }
+
+        return vstat::univariate_statistics(acc).sum;
     }
 
     static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> /*not used*/) -> Matrix
