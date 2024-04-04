@@ -7,16 +7,18 @@
     foolnotion.url = "github:foolnotion/nur-pkg";
     lbfgs.url = "github:foolnotion/lbfgs";
     pratt-parser.url = "github:foolnotion/pratt-parser-calculator";
-    vstat.url = "github:heal-research/vstat/cpp20-eve";
+    vstat.url = "github:heal-research/vstat";
+    vdt.url = "github:foolnotion/vdt/master";
 
     # make everything follow nixpkgs
     foolnotion.inputs.nixpkgs.follows = "nixpkgs";
     lbfgs.inputs.nixpkgs.follows = "nixpkgs";
     pratt-parser.inputs.nixpkgs.follows = "nixpkgs";
     vstat.inputs.nixpkgs.follows = "nixpkgs";
+    vdt.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, flake-utils, nixpkgs, foolnotion, pratt-parser, vstat, lbfgs }:
+  outputs = { self, flake-utils, nixpkgs, foolnotion, pratt-parser, vdt, vstat, lbfgs }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -49,19 +51,25 @@
             eigen
             eve
             fast_float
+            fastor
             fmt
             icu
             jemalloc
+            libassert
+            mdspan
             pkg-config
             pratt-parser.packages.${system}.default
+            simdutf_4 # required by scnlib
             scnlib
             taskflow
             unordered_dense
+            vdt.packages.${system}.default
             vstat.packages.${system}.default
             lbfgs.packages.${system}.default
             ned14-outcome
             ned14-quickcpplib
             ned14-status-code
+            xad
             xxHash
           ]);
         };
@@ -107,7 +115,7 @@
             clang-tools_17
             cppcheck
             include-what-you-use
-            cmake-language-server
+            #cmake-language-server
           ]);
 
           buildInputs = operon.buildInputs ++ (with pkgs; [

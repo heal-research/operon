@@ -300,7 +300,7 @@ class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<D
 
 public:
     explicit MinimumDescriptionLengthEvaluator(Operon::Problem& problem, DTable const& dtable)
-        : Base(problem, dtable, sse_), sigma_(1, 0.001)
+        : Base(problem, dtable, SSE{}), sigma_(1, 0.001)
     {
     }
 
@@ -311,7 +311,6 @@ public:
     operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
-    Operon::SSE sse_;
     mutable std::vector<Operon::Scalar> sigma_;
 };
 
@@ -321,15 +320,12 @@ class OPERON_EXPORT BayesianInformationCriterionEvaluator final : public Evaluat
 
 public:
     explicit BayesianInformationCriterionEvaluator(Operon::Problem& problem, DTable const& dtable)
-        : Base(problem, dtable, mse_)
+        : Base(problem, dtable, MSE{})
     {
     }
 
     auto
     operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
-
-private:
-    Operon::MSE mse_;
 };
 
 template <typename DTable>
@@ -338,29 +334,64 @@ class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator
 
 public:
     explicit AkaikeInformationCriterionEvaluator(Operon::Problem& problem, DTable const& dtable)
-        : Base(problem, dtable, mse_)
+        : Base(problem, dtable, MSE{})
     {
     }
 
     auto
     operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
-
-private:
-    Operon::MSE mse_;
 };
 
-template<typename DTable>
-class OPERON_EXPORT GaussianLikelihoodEvaluator final : public Evaluator<DTable> {
+template<typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
+requires (DTable::template SupportsType<typename Likelihood::Scalar>)
+class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
     public:
-    explicit GaussianLikelihoodEvaluator(Operon::Problem& problem, DTable const& dtable)
+    explicit LikelihoodEvaluator(Operon::Problem& problem, DTable const& dtable)
         : Base(problem, dtable), sigma_(1, 0.001)
     {
     }
 
     auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
+        ++Base::CallCount;
+
+        auto const& problem = Base::Evaluator::GetProblem();
+        auto const range = problem.TrainingRange();
+        auto const& dataset = problem.GetDataset();
+        auto const& dtable = Base::Evaluator::GetDispatchTable();
+        auto const* optimizer = Base::Evaluator::GetOptimizer();
+        EXPECT(optimizer != nullptr);
+
+        // this call will optimize the tree coefficients and compute the SSE
+        auto& tree = ind.Genotype;
+        Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, ind.Genotype};
+        auto parameters = tree.GetCoefficients();
+        if (optimizer != nullptr && optimizer->Iterations() > 0) {
+            auto summary = optimizer->Optimize(rng, tree);
+            if (summary.Success) {
+                parameters = summary.FinalParameters;
+                tree.SetCoefficients(parameters);
+                Base::ResidualEvaluations += summary.FunctionEvaluations;
+                Base::JacobianEvaluations += summary.JacobianEvaluations;
+            }
+        }
+
+        std::vector<Operon::Scalar> buffer;
+        if (buf.size() < range.Size()) {
+            buffer.resize(range.Size());
+            buf = Operon::Span<Operon::Scalar>(buffer);
+        }
+        ++Base::ResidualEvaluations;
+        interpreter.Evaluate(parameters, range, buf);
+
+        auto estimatedValues = buf;
+        auto targetValues    = problem.TargetValues(range);
+
+        auto lik = Likelihood::ComputeLikelihood(estimatedValues, targetValues, sigma_);
+        return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(lik) };
+    }
 
     auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
     auto SetSigma(std::vector<Operon::Scalar> sigma) const { sigma_ = std::move(sigma); }
@@ -368,6 +399,12 @@ class OPERON_EXPORT GaussianLikelihoodEvaluator final : public Evaluator<DTable>
 private:
     mutable std::vector<Operon::Scalar> sigma_;
 };
+
+template<typename DTable>
+using GaussianLikelihoodEvaluator = LikelihoodEvaluator<DTable, GaussianLikelihood<Operon::Scalar>>;
+
+template<typename DTable>
+using PoissonLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>;
 
 } // namespace Operon
 #endif

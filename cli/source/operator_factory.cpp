@@ -5,7 +5,7 @@
 #include <stdexcept>                       // for runtime_error
 #include <fmt/format.h>                        // for format
 #include <tuple>
-#include <scn/scan/scan.h>
+#include <scn/scan.h>
 #include "operon/interpreter/dispatch_table.hpp"
 #include "operon/operators/creator.hpp"    // for CreatorBase, BalancedTreeC...
 #include "operon/operators/evaluator.hpp"  // for Evaluator, EvaluatorBase
@@ -24,6 +24,13 @@ namespace Operon { struct MutatorBase; }
 namespace Operon { struct Variable; }
 
 namespace Operon {
+
+namespace detail {
+    auto GetErrorString(std::string const& name, std::string const& arg) {
+        return fmt::format("unable to parse {} argument '{}'", name, arg);
+    }
+} // namespace detail
+
 auto ParseReinserter(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<ReinserterBase>
 {
     std::unique_ptr<ReinserterBase> reinserter;
@@ -31,6 +38,8 @@ auto ParseReinserter(std::string const& str, ComparisonCallback&& comp) -> std::
         reinserter = std::make_unique<KeepBestReinserter>(std::move(comp));
     } else if (str == "replace-worst") {
         reinserter = std::make_unique<ReplaceWorstReinserter>(std::move(comp));
+    } else {
+        throw std::invalid_argument(detail::GetErrorString("reinserter", str));
     }
     return reinserter;
 }
@@ -44,7 +53,11 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
     if (name == "tournament") {
         selector = std::make_unique<Operon::TournamentSelector>(std::move(comp));
         size_t tournamentSize{defaultTournamentSize};
-        if (tok.size() > 1) { (void) scn::scan(tok[1], "{}", tournamentSize); }
+        if (tok.size() > 1) {
+            auto result = scn::scan<std::size_t>(tok[1], "{}");
+            ENSURE(result);
+            tournamentSize = result->value();
+        }
         dynamic_cast<Operon::TournamentSelector*>(selector.get())->SetTournamentSize(tournamentSize);
     } else if (name == "proportional") {
         selector = std::make_unique<Operon::ProportionalSelector>(std::move(comp));
@@ -52,10 +65,16 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
     } else if (name == "rank") {
         selector = std::make_unique<Operon::RankTournamentSelector>(std::move(comp));
         size_t tournamentSize{defaultTournamentSize};
-        if (tok.size() > 1) { (void) scn::scan(tok[1], "{}", tournamentSize); }
+        if (tok.size() > 1) {
+            auto result = scn::scan<std::size_t>(tok[1], "{}");
+            ENSURE(result);
+            tournamentSize = result->value();
+        }
         dynamic_cast<Operon::RankTournamentSelector*>(selector.get())->SetTournamentSize(tournamentSize);
     } else if (name == "random") {
         selector = std::make_unique<Operon::RandomSelector>();
+    } else {
+        throw std::invalid_argument(detail::GetErrorString("selector", str));
     }
 
     return selector;
@@ -69,7 +88,11 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     auto name = tok[0];
 
     double bias{0}; // irregularity bias (used by btc and ptc20)
-    if(tok.size() > 1) { (void) scn::scan(tok[1], "{}", bias); }
+    if(tok.size() > 1) {
+        auto res = scn::scan<double>(tok[1], "{}");
+        ENSURE(res);
+        bias = res->value();
+    }
 
     if (str == "btc") {
         creator = std::make_unique<BalancedTreeCreator>(pset, inputs, bias);
@@ -77,6 +100,8 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
         creator = std::make_unique<ProbabilisticTreeCreator>(pset, inputs, bias);
     } else if (str == "grow") {
         creator = std::make_unique<GrowTreeCreator>(pset, inputs);
+    } else {
+        throw std::invalid_argument(detail::GetErrorString("creator", str));
     }
     return creator;
 }
@@ -103,33 +128,10 @@ auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& d
     } else if (str == "gauss") {
         evaluator = std::make_unique<Operon::GaussianLikelihoodEvaluator<T>>(problem, dtable);
     } else {
-        throw std::runtime_error(fmt::format("Unknown metric {}\n", str));
+        throw std::runtime_error(fmt::format("unable to parse evaluator metric '{}'\n", str));
     }
     return evaluator;
 }
-
-// auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<ErrorMetric>, bool>
-// {
-//     std::unique_ptr<ErrorMetric> error;
-//     bool scale{true};
-//     if (str == "r2") {
-//         error = std::make_unique<Operon::R2>();
-//     } else if (str == "c2") {
-//         scale = false;
-//         error = std::make_unique<Operon::C2>();
-//     } else if (str == "nmse") {
-//         error = std::make_unique<Operon::NMSE>();
-//     } else if (str == "mse") {
-//         error = std::make_unique<Operon::MSE>();
-//     } else if (str == "rmse") {
-//         error = std::make_unique<Operon::RMSE>();
-//     } else if (str == "mae") {
-//         error = std::make_unique<Operon::MAE>();
-//     } else {
-//         throw std::runtime_error(fmt::format("Unknown metric {}\n", str));
-//     }
-//     return std::make_tuple(std::move(error), scale);
-// }
 
 auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel) -> std::unique_ptr<OffspringGeneratorBase>
 {
@@ -141,21 +143,27 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
     } else if (name == "os") {
         size_t maxSelectionPressure{100};
         double comparisonFactor{0};
-        if (tok.size() > 1) { (void) scn::scan(tok[1], "{}", maxSelectionPressure); }
-        if (tok.size() > 2) { (void) scn::scan(tok[2], "{}", comparisonFactor); }
+        if (tok.size() > 1) {
+            maxSelectionPressure = scn::scan<size_t>(tok[1], "{}")->value();
+        }
+        if (tok.size() > 2) {
+            comparisonFactor = scn::scan<double>(tok[2], "{}")->value();
+        }
         generator = std::make_unique<OffspringSelectionGenerator>(eval, cx, mut, femSel, maleSel);
         dynamic_cast<OffspringSelectionGenerator*>(generator.get())->MaxSelectionPressure(maxSelectionPressure);
         dynamic_cast<OffspringSelectionGenerator*>(generator.get())->ComparisonFactor(comparisonFactor);
     } else if (name == "brood") {
         generator = std::make_unique<BroodOffspringGenerator>(eval, cx, mut, femSel, maleSel);
         size_t broodSize{BroodOffspringGenerator::DefaultBroodSize};
-        if (tok.size() > 1) { (void) scn::scan(tok[1], "{}", broodSize); }
+        if (tok.size() > 1) { broodSize = scn::scan<size_t>(tok[1], "{}")->value(); }
         dynamic_cast<BroodOffspringGenerator*>(generator.get())->BroodSize(broodSize);
     } else if (name == "poly") {
         generator = std::make_unique<PolygenicOffspringGenerator>(eval, cx, mut, femSel, maleSel);
         size_t polygenicSize{PolygenicOffspringGenerator::DefaultBroodSize};
-        if (tok.size() > 1) { (void) scn::scan(tok[1], "{}", polygenicSize); }
+        if (tok.size() > 1) { polygenicSize = scn::scan<size_t>(tok[1], "{}")->value(); }
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
+    } else {
+        throw std::invalid_argument(detail::GetErrorString("generator", str));
     }
     return generator;
 }

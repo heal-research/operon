@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <type_traits>
 #include "types.hpp"
-#include <bitset>
 
 namespace Operon {
 enum class NodeType : uint32_t {
@@ -64,6 +63,8 @@ struct NodeTypes {
     {
         return std::countr_zero(static_cast<uint32_t>(type));
     }
+
+    static auto constexpr NoType{NodeType{123456}};
 };
 
 inline constexpr auto operator&(NodeType lhs, NodeType rhs) -> NodeType { return static_cast<NodeType>(static_cast<UnderlyingNodeType>(lhs) & static_cast<UnderlyingNodeType>(rhs)); }
