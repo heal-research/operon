@@ -248,27 +248,27 @@ auto main(int argc, char** argv) -> int
 
         Operon::GeneticProgrammingAlgorithm gp { problem, config, treeInitializer, *coeffInitializer, *generator, *reinserter };
 
-        auto targetValues = problem.TargetValues();
-        auto targetTrain = targetValues.subspan(trainingRange.Start(), trainingRange.Size());
-        auto targetTest = targetValues.subspan(testRange.Start(), testRange.Size());
-
-        // some boilerplate for reporting results
-        const size_t idx { 0 };
-        auto getBest = [&](Operon::Span<Operon::Individual const> pop) -> Operon::Individual {
-            const auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
-            return *minElem;
-        };
-
-        Operon::Individual best(1);
-        auto getSize = [](Operon::Individual const& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Operon::Node) * ind.Genotype.Nodes().capacity(); };
-
-        tf::Executor exe(threads);
+        Operon::Individual best{};
 
         auto report = [&]() {
-            auto const& pop = gp.Parents();
-            auto const& off = gp.Offspring();
+            auto config = gp.GetConfig();
+            auto pop = gp.Parents();
+            auto off = gp.Offspring();
 
-            best = getBest(pop);
+            auto const& problem = gp.GetProblem();
+            auto trainingRange  = problem.TrainingRange();
+            auto testRange      = problem.TestRange();
+
+            auto targetValues = problem.TargetValues();
+            auto targetTrain  = targetValues.subspan(trainingRange.Start(), trainingRange.Size());
+            auto targetTest   = targetValues.subspan(testRange.Start(), testRange.Size());
+
+            auto const& evaluator = gp.GetGenerator().Evaluator();
+
+            // some boilerplate for reporting results
+            auto const idx{0UL};
+            auto cmp = Operon::SingleObjectiveComparison(idx);
+            best = *std::min_element(pop.begin(), pop.end(), cmp);
 
             Operon::Vector<Operon::Scalar> estimatedTrain;
             Operon::Vector<Operon::Scalar> estimatedTest;
@@ -341,6 +341,7 @@ auto main(int argc, char** argv) -> int
             double avgQuality = 0;
             double totalMemory = 0;
 
+            auto getSize = [](Operon::Individual const& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Operon::Node) * ind.Genotype.Nodes().capacity(); };
             auto calculateLength = taskflow.transform_reduce(pop.begin(), pop.end(), avgLength, std::plus{}, [](auto const& ind) { return ind.Genotype.Length(); });
             auto calculateQuality = taskflow.transform_reduce(pop.begin(), pop.end(), avgQuality, std::plus{}, [idx=idx](auto const& ind) { return ind[idx]; });
             auto calculatePopMemory = taskflow.transform_reduce(pop.begin(), pop.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); });
@@ -352,7 +353,7 @@ auto main(int argc, char** argv) -> int
             calcStats.succeed(scaleTrain, scaleTest);
             calcStats.precede(calculateLength, calculateQuality, calculatePopMemory, calculateOffMemory);
 
-            exe.run(taskflow).wait();
+            executor.corun(taskflow);
 
             avgLength /= static_cast<double>(pop.size());
             avgQuality /= static_cast<double>(pop.size());
@@ -372,10 +373,10 @@ auto main(int argc, char** argv) -> int
                 T{ "nmse_te", nmseTest, format },
                 T{ "avg_fit", avgQuality, format },
                 T{ "avg_len", avgLength, format },
-                T{ "eval_cnt", evaluator->CallCount , ":>" },
-                T{ "res_eval", evaluator->ResidualEvaluations, ":>" },
-                T{ "jac_eval", evaluator->JacobianEvaluations, ":>" },
-                T{ "opt_time", evaluator->CostFunctionTime,    ":>" },
+                T{ "eval_cnt", evaluator.CallCount , ":>" },
+                T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
+                T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
+                T{ "opt_time", evaluator.CostFunctionTime,    ":>" },
                 T{ "seed", config.Seed, ":>" },
                 T{ "elapsed", elapsed, ":>"},
             };

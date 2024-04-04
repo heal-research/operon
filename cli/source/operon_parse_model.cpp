@@ -16,7 +16,7 @@
 
 #include <cxxopts.hpp>
 #include <fmt/core.h>
-#include <scn/scn.h>
+#include <scn/scan.h>
 
 auto main(int argc, char** argv) -> int
 {
@@ -67,9 +67,9 @@ auto main(int argc, char** argv) -> int
     Operon::DefaultDispatch dtable;
     Operon::Range range{0, ds.Rows<std::size_t>()};
     if (result["range"].count() > 0) {
-        size_t a{0};
-        size_t b{0};
-        [[maybe_unused]] auto s = scn::scan(result["range"].as<std::string>(), "{}:{}", a, b);
+        auto res = scn::scan<std::size_t, std::size_t>(result["range"].as<std::string>(), "{}:{}");
+        ENSURE(res);
+        auto [a, b] = res->values();
         range = Operon::Range{a, b};
     }
 
@@ -90,7 +90,10 @@ auto main(int argc, char** argv) -> int
         Operon::Scalar a{0};
         Operon::Scalar b{0};
         if (result["scale"].count() > 0) {
-            [[maybe_unused]] auto s = scn::scan(result["scale"].as<std::string>(), "{}:{}", a, b);
+            auto res = scn::scan<Operon::Scalar, Operon::Scalar>(result["scale"].as<std::string>(), "{}:{}");
+            ENSURE(res);
+            a = std::get<0>(res->values());
+            b = std::get<1>(res->values());
         } else {
             auto [a_, b_] = Operon::FitLeastSquares(est, tgt);
             a = static_cast<Operon::Scalar>(a_);
