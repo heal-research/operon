@@ -26,7 +26,7 @@
           overlays = [ foolnotion.overlay ];
         };
 
-        stdenv_ = pkgs.llvmPackages_17.stdenv;
+        stdenv_ = pkgs.llvmPackages_18.stdenv;
 
         operon = stdenv_.mkDerivation {
           name = "operon";
@@ -112,7 +112,7 @@
           name = "operon";
 
           nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
-            clang-tools_17
+            clang-tools_18
             cppcheck
             include-what-you-use
             #cmake-language-server
