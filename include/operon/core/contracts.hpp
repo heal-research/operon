@@ -14,7 +14,7 @@
     { \
         fmt::print("Precondition {} failed at {}: {}\n", fmt::format(fmt::fg(fmt::terminal_color::green), "{}", #cond), __FILE__, __LINE__); \
         std::terminate(); \
-    } 
+    }
 
 #define ENSURE(cond) \
     if(!(cond)) \
@@ -24,4 +24,3 @@
     }
 // NOLINTEND(*)
 #endif
-
