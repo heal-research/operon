@@ -27,6 +27,7 @@ add_executable(operon_test
     source/implementation/initialization.cpp
     source/implementation/mutation.cpp
     source/implementation/nondominatedsort.cpp
+    source/implementation/poisson_regression.cpp
     source/implementation/random.cpp
     source/performance/autodiff.cpp
     source/performance/distance.cpp
