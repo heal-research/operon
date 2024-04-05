@@ -96,15 +96,15 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         vstat::univariate_accumulator<Operon::Scalar> acc;
 
         if (w.empty()) {
-            for (auto i = 0; i < x.size(); ++i) {
+            for (auto i = 0UL; i < x.size(); ++i) {
                 acc(F{}(x[i], y[i]));
             }
         } else if (w.size() == 1) {
-            for (auto i = 0; i < x.size(); ++i) {
+            for (auto i = 0UL; i < x.size(); ++i) {
                 acc(F{}(x[i], y[i], w[0]));
             }
         } else if (w.size() == x.size()) {
-            for (auto i = 0; i < x.size(); ++i) {
+            for (auto i = 0UL; i < x.size(); ++i) {
                 acc(F{}(x[i], y[i], w[i]));
             }
         } else {
