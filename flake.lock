@@ -97,11 +97,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1711220645,
-        "narHash": "sha256-A+hFByNhANZCVK2Ii95urQkRcNvym32MgWD0N2YfgmM=",
+        "lastModified": 1712319166,
+        "narHash": "sha256-j5Li13TbVLOD0KAx16MkZ1Am5sswSjGB3JPZNSjpizw=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "5d144f483fcefeb93f2117cd4c58d9ed26c9528e",
+        "rev": "dfcee20b25049b2bdae66d9c5ffd327ea5a00572",
         "type": "github"
       },
       "original": {
@@ -118,11 +118,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1711220645,
-        "narHash": "sha256-A+hFByNhANZCVK2Ii95urQkRcNvym32MgWD0N2YfgmM=",
+        "lastModified": 1712319166,
+        "narHash": "sha256-j5Li13TbVLOD0KAx16MkZ1Am5sswSjGB3JPZNSjpizw=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "5d144f483fcefeb93f2117cd4c58d9ed26c9528e",
+        "rev": "dfcee20b25049b2bdae66d9c5ffd327ea5a00572",
         "type": "github"
       },
       "original": {
@@ -136,11 +136,11 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1711220645,
-        "narHash": "sha256-A+hFByNhANZCVK2Ii95urQkRcNvym32MgWD0N2YfgmM=",
+        "lastModified": 1712319166,
+        "narHash": "sha256-j5Li13TbVLOD0KAx16MkZ1Am5sswSjGB3JPZNSjpizw=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "5d144f483fcefeb93f2117cd4c58d9ed26c9528e",
+        "rev": "dfcee20b25049b2bdae66d9c5ffd327ea5a00572",
         "type": "github"
       },
       "original": {
@@ -154,11 +154,11 @@
         "nixpkgs": "nixpkgs_3"
       },
       "locked": {
-        "lastModified": 1711220645,
-        "narHash": "sha256-A+hFByNhANZCVK2Ii95urQkRcNvym32MgWD0N2YfgmM=",
+        "lastModified": 1712319166,
+        "narHash": "sha256-j5Li13TbVLOD0KAx16MkZ1Am5sswSjGB3JPZNSjpizw=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "5d144f483fcefeb93f2117cd4c58d9ed26c9528e",
+        "rev": "dfcee20b25049b2bdae66d9c5ffd327ea5a00572",
         "type": "github"
       },
       "original": {
@@ -191,11 +191,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1711307772,
-        "narHash": "sha256-GLpSqBc/5g/AV4HfbBJ95FnJz4a8owH/UJP8P4BkakY=",
+        "lastModified": 1712318770,
+        "narHash": "sha256-shExu5MIhGyPwiFprg/AkYsal8zT4VdZpT0edfcabv8=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "30392650ee17f4dba3b8ddb6aed194a5cb876b35",
+        "rev": "12dbef936ba2d4bae37d4835c1fe00b5245c9c3a",
         "type": "github"
       },
       "original": {
@@ -207,11 +207,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1711307772,
-        "narHash": "sha256-GLpSqBc/5g/AV4HfbBJ95FnJz4a8owH/UJP8P4BkakY=",
+        "lastModified": 1712318770,
+        "narHash": "sha256-shExu5MIhGyPwiFprg/AkYsal8zT4VdZpT0edfcabv8=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "30392650ee17f4dba3b8ddb6aed194a5cb876b35",
+        "rev": "12dbef936ba2d4bae37d4835c1fe00b5245c9c3a",
         "type": "github"
       },
       "original": {
@@ -223,11 +223,11 @@
     },
     "nixpkgs_3": {
       "locked": {
-        "lastModified": 1711307772,
-        "narHash": "sha256-GLpSqBc/5g/AV4HfbBJ95FnJz4a8owH/UJP8P4BkakY=",
+        "lastModified": 1712318770,
+        "narHash": "sha256-shExu5MIhGyPwiFprg/AkYsal8zT4VdZpT0edfcabv8=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "30392650ee17f4dba3b8ddb6aed194a5cb876b35",
+        "rev": "12dbef936ba2d4bae37d4835c1fe00b5245c9c3a",
         "type": "github"
       },
       "original": {
@@ -376,16 +376,15 @@
         ]
       },
       "locked": {
-        "lastModified": 1710675892,
-        "narHash": "sha256-zlKiMQBKLm66rj7xOWpfugVCbSEAPiHZinWRSeoV/w4=",
+        "lastModified": 1711321977,
+        "narHash": "sha256-yGbdec6OexJt+4H5V1pzub9R5fH4J2l+vXQWEq0/ohU=",
         "owner": "heal-research",
         "repo": "vstat",
-        "rev": "06a8f15b22a0da523097f3fe500489c08a3ec086",
+        "rev": "428ec2385aebf44d9ba89064b2b2ef419fd6206a",
         "type": "github"
       },
       "original": {
         "owner": "heal-research",
-        "ref": "cpp20-eve",
         "repo": "vstat",
         "type": "github"
       }
