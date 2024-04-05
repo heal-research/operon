@@ -66,6 +66,9 @@
             vdt.packages.${system}.default
             vstat.packages.${system}.default
             lbfgs.packages.${system}.default
+            # ned14 deps
+            byte-lite
+            span-lite
             ned14-outcome
             ned14-quickcpplib
             ned14-status-code
