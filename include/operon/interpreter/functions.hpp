@@ -105,54 +105,20 @@ namespace Operon {
         }
     };
 
-    template<typename T, bool C, std::size_t S>
-    struct Func<T, Operon::NodeType::Fmin, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
-            auto* h = view.data_handle();
-
-            if constexpr (C) {
-                if constexpr (sizeof...(args) == 0) {
-                    Backend::Min<T, S>(h + result * S, h + result * S, h + first * S);
-                } else {
-                    Backend::Min<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
-                }
-            } else {
-                if constexpr (sizeof...(args) == 0) {
-                    Backend::Cpy<T, S>(h + result * S, h + first * S);
-                } else {
-                    Backend::Min<T, S>(h + result * S, h + first * S, (h + args * S)...);
-                }
-            }
-        }
-    };
-
-    template<typename T, bool C, std::size_t S>
-    struct Func<T, Operon::NodeType::Fmax, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
-            auto* h = view.data_handle();
-
-            if constexpr (C) {
-                if constexpr (sizeof...(args) == 0) {
-                    Backend::Max<T, S>(h + result * S, h + result * S, h + first * S);
-                } else {
-                    Backend::Max<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
-                }
-            } else {
-                if constexpr (sizeof...(args) == 0) {
-                    Backend::Cpy<T, S>(h + result * S, h + first * S);
-                } else {
-                    Backend::Max<T, S>(h + result * S, h + first * S, (h + args * S)...);
-                }
-            }
-        }
-    };
-
     // binary operations
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Aq, C, S> {
         auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i, std::integral auto j) {
             auto* h = view.data_handle();
             Backend::Aq<T, S>(h + result * S, h + i * S, h + j * S);
+        }
+    };
+
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Powabs, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i, std::integral auto j) {
+            auto* h = view.data_handle();
+            Backend::Powabs<T, S>(h + result * S, h + i * S, h + j * S);
         }
     };
 
@@ -203,14 +169,6 @@ namespace Operon {
         auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
             auto* h = view.data_handle();
             Backend::Logabs<T, S>(h + result * S, h + i * S);
-        }
-    };
-
-    template<typename T, bool C, std::size_t S>
-    struct Func<T, Operon::NodeType::Log1p, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Log1p<T, S>(h + result * S, h + i * S);
         }
     };
 
@@ -323,6 +281,14 @@ namespace Operon {
         auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
             auto* h = view.data_handle();
             Backend::Tanh<T, S>(h + result * S, h + i * S);
+        }
+    };
+
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Inv, C, S> {
+        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto* h = view.data_handle();
+            Backend::Inv<T, S>(h + result * S, h + i * S);
         }
     };
 } // namespace Operon

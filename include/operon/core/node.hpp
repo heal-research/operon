@@ -16,39 +16,38 @@ enum class NodeType : uint32_t {
     Mul      = 1U << 1U,
     Sub      = 1U << 2U,
     Div      = 1U << 3U,
-    Fmin     = 1U << 4U,
-    Fmax     = 1U << 5U,
 
     // binary symbols
-    Aq       = 1U << 6U,
-    Pow      = 1U << 7U,
+    Aq       = 1U << 4U,
+    Pow      = 1U << 5U,
+    Powabs   = 1U << 6U,
 
     // unary symbols
-    Abs      = 1U << 8U,
-    Acos     = 1U << 9U,
-    Asin     = 1U << 10U,
-    Atan     = 1U << 11U,
-    Cbrt     = 1U << 12U,
-    Ceil     = 1U << 13U,
-    Cos      = 1U << 14U,
-    Cosh     = 1U << 15U,
-    Exp      = 1U << 16U,
-    Floor    = 1U << 17U,
-    Log      = 1U << 18U,
-    Logabs   = 1U << 19U,
-    Log1p    = 1U << 20U,
-    Sin      = 1U << 21U,
-    Sinh     = 1U << 22U,
-    Sqrt     = 1U << 23U,
-    Sqrtabs  = 1U << 24U,
-    Tan      = 1U << 25U,
-    Tanh     = 1U << 26U,
-    Square   = 1U << 27U,
+    Abs      = 1U << 7U,
+    Acos     = 1U << 8U,
+    Asin     = 1U << 9U,
+    Atan     = 1U << 10U,
+    Cbrt     = 1U << 11U,
+    Ceil     = 1U << 12U,
+    Cos      = 1U << 13U,
+    Cosh     = 1U << 14U,
+    Exp      = 1U << 15U,
+    Floor    = 1U << 16U,
+    Log      = 1U << 17U,
+    Logabs   = 1U << 18U,
+    Sin      = 1U << 19U,
+    Sinh     = 1U << 20U,
+    Sqrt     = 1U << 21U,
+    Sqrtabs  = 1U << 22U,
+    Tan      = 1U << 23U,
+    Tanh     = 1U << 24U,
+    Square   = 1U << 25U,
+    Inv      = 1U << 26U,
 
     // nullary symbols (dynamic can be anything)
-    Dynamic  = 1U << 28U,
-    Constant = 1U << 29U,
-    Variable = 1U << 30U
+    Dynamic  = 1U << 27U,
+    Constant = 1U << 28U,
+    Variable = 1U << 29U
 };
 
 using PrimitiveSetConfig = NodeType;
@@ -172,7 +171,7 @@ struct Node {
     }
 
     [[nodiscard]] inline auto IsLeaf() const noexcept -> bool { return Arity == 0; }
-    [[nodiscard]] inline auto IsCommutative() const noexcept -> bool { return Is<NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax>(); }
+    [[nodiscard]] inline auto IsCommutative() const noexcept -> bool { return Is<NodeType::Add, NodeType::Mul>(); }
 
     template <NodeType... T>
     [[nodiscard]] inline auto Is() const -> bool { return ((Type == T) || ...); }
@@ -184,6 +183,7 @@ struct Node {
     [[nodiscard]] inline auto IsMultiplication() const -> bool { return Is<NodeType::Mul>(); }
     [[nodiscard]] inline auto IsDivision() const -> bool { return Is<NodeType::Div>(); }
     [[nodiscard]] inline auto IsAq() const -> bool { return Is<NodeType::Aq>(); }
+    [[nodiscard]] inline auto IsPowabs() const -> bool { return Is<NodeType::Powabs>(); }
     [[nodiscard]] inline auto IsPow() const -> bool { return Is<NodeType::Pow>(); }
     [[nodiscard]] inline auto IsExp() const -> bool { return Is<NodeType::Exp>(); }
     [[nodiscard]] inline auto IsLog() const -> bool { return Is<NodeType::Log>(); }
@@ -194,16 +194,17 @@ struct Node {
     [[nodiscard]] inline auto IsSquareRoot() const -> bool { return Is<NodeType::Sqrt>(); }
     [[nodiscard]] inline auto IsCubeRoot() const -> bool { return Is<NodeType::Cbrt>(); }
     [[nodiscard]] inline auto IsSquare() const -> bool { return Is<NodeType::Square>(); }
+    [[nodiscard]] inline auto IsInv() const -> bool { return Is<NodeType::Inv>(); }
     [[nodiscard]] inline auto IsDynamic() const -> bool { return Is<NodeType::Dynamic>(); }
 
     template<NodeType Type>
     static auto constexpr IsNary = Type < NodeType::Aq;
 
     template<NodeType Type>
-    static auto constexpr IsBinary = Type > NodeType::Fmax && Type < NodeType::Abs;
+    static auto constexpr IsBinary = Type >= NodeType::Aq && Type < NodeType::Abs;
 
     template<NodeType Type>
-    static auto constexpr IsUnary = Type > NodeType::Pow && Type < NodeType::Dynamic;
+    static auto constexpr IsUnary = Type > NodeType::Powabs && Type < NodeType::Dynamic;
 
     template<NodeType Type>
     static auto constexpr IsNullary = Type > NodeType::Square;
