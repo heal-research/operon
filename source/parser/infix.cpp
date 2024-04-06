@@ -75,7 +75,7 @@ namespace detail {
 
             ENSURE(tok.kind() == TokenKind::dynamic);
             Node n(static_cast<NodeType>(tok.opcode()));
-            if (n.Is<NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div, NodeType::Aq, NodeType::Pow, NodeType::Fmin, NodeType::Fmax>()) {
+            if (n.Is<NodeType::Add, NodeType::Sub, NodeType::Mul, NodeType::Div, NodeType::Aq, NodeType::Pow>()) {
                 rhs.push_back(n);
             } else {
                 throw std::runtime_error(fmt::format("led: unsupported token ", tok.name()));
@@ -94,8 +94,6 @@ namespace detail {
             { "/", Token(TokenKind::dynamic, "div", static_cast<size_t>(NodeType::Div), 20, pratt::associativity::left) },
             { "^", Token(TokenKind::dynamic, "pow", static_cast<size_t>(NodeType::Pow), 30, pratt::associativity::right) },
             { "pow", Token(TokenKind::dynamic, "pow", static_cast<size_t>(NodeType::Pow), 30, pratt::associativity::right) },
-            { "min", Token(TokenKind::dynamic, "min", static_cast<size_t>(NodeType::Fmin), 30, pratt::associativity::left) },
-            { "max", Token(TokenKind::dynamic, "max", static_cast<size_t>(NodeType::Fmax), 30, pratt::associativity::left) },
             { "abs", Token(TokenKind::dynamic, "abs", static_cast<size_t>(NodeType::Abs), 30, pratt::associativity::none) },
             { "ceil", Token(TokenKind::dynamic, "ceil", static_cast<size_t>(NodeType::Ceil), 30, pratt::associativity::none) },
             { "floor", Token(TokenKind::dynamic, "floor", static_cast<size_t>(NodeType::Floor), 30, pratt::associativity::none) },

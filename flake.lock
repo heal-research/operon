@@ -376,16 +376,15 @@
         ]
       },
       "locked": {
-        "lastModified": 1710675892,
-        "narHash": "sha256-zlKiMQBKLm66rj7xOWpfugVCbSEAPiHZinWRSeoV/w4=",
+        "lastModified": 1711321977,
+        "narHash": "sha256-yGbdec6OexJt+4H5V1pzub9R5fH4J2l+vXQWEq0/ohU=",
         "owner": "heal-research",
         "repo": "vstat",
-        "rev": "06a8f15b22a0da523097f3fe500489c08a3ec086",
+        "rev": "428ec2385aebf44d9ba89064b2b2ef419fd6206a",
         "type": "github"
       },
       "original": {
         "owner": "heal-research",
-        "ref": "cpp20-eve",
         "repo": "vstat",
         "type": "github"
       }

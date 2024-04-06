@@ -62,6 +62,21 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
+    auto Powabs(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+        if (j == i-1) {
+            auto const k = j - (nodes[j].Length + 1);
+            //                 cur               right              left
+            // Col(trace, j) = Col(primal, i) * Col(primal, k) / Col(primal, j);
+            
+            //                       left .* right .           * abs.(left) .^           (right .- 2)
+            Col(trace, j) = Col(primal, j) * Col(primal, k) * Col(primal, j).abs().pow(Col(primal, k) - T{2});
+        } else {
+            auto const k = i-1;
+            Col(trace, j) = Col(primal, i) * Col(primal, k).abs().log();
+        }
+    }
+
+    template<typename T, std::size_t S>
     auto Pow(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         if (j == i-1) {
             auto const k = j - (nodes[j].Length + 1);
@@ -182,6 +197,11 @@ namespace detail {
     template<typename T, std::size_t S>
     auto Cbrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         Col(trace, j) = (T{3} * Col(primal, i).square()).inverse();
+    }
+
+    template<typename T, std::size_t S>
+    auto Inv(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+         Col(trace, j) = -Col(primal, j).square().inverse();
     }
 }  // namespace Operon::Backend
 

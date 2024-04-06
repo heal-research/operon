@@ -44,25 +44,18 @@ namespace Operon {
         }
     };
 
-    template<typename T, std::size_t S>
-    struct Diff<T, Operon::NodeType::Fmin, S> {
-        auto operator()(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-            Backend::Min<T, S>(nodes, primal, trace, i, j);
-        }
-    };
-
-    template<typename T, std::size_t S>
-    struct Diff<T, Operon::NodeType::Fmax, S> {
-        auto operator()(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-            Backend::Max<T, S>(nodes, primal, trace, i, j);
-        }
-    };
-
     // binary functions
     template<typename T, std::size_t S>
     struct Diff<T, Operon::NodeType::Aq, S> {
         auto operator()(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
             Backend::Aq<T, S>(nodes, primal, trace, i, j);
+        }
+    };
+
+    template<typename T, std::size_t S>
+    struct Diff<T, Operon::NodeType::Powabs, S> {
+        auto operator()(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+            Backend::Powabs<T, S>(nodes, primal, trace, i, j);
         }
     };
 
@@ -159,13 +152,6 @@ namespace Operon {
     };
 
     template<typename T, std::size_t S>
-    struct Diff<T, Operon::NodeType::Log1p, S> {
-        auto operator()(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-            Backend::Log1p<T, S>(nodes, primal, trace, i, j);
-        }
-    };
-
-    template<typename T, std::size_t S>
     struct Diff<T, Operon::NodeType::Sin, S> {
         auto operator()(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
             Backend::Sin<T, S>(nodes, primal, trace, i, j);
@@ -211,6 +197,13 @@ namespace Operon {
     struct Diff<T, Operon::NodeType::Tanh, S> {
         auto operator()(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
             Backend::Tanh<T, S>(nodes, primal, trace, i, j);
+        }
+    };
+
+    template<typename T, std::size_t S>
+    struct Diff<T, Operon::NodeType::Inv, S> {
+        auto operator()(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+            Backend::Inv<T, S>(nodes, primal, trace, i, j);
         }
     };
 } // namespace Operon
