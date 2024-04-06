@@ -170,6 +170,7 @@ auto main(int argc, char** argv) -> int
                 }
             }
         }
+
         Operon::Problem problem(*dataset, trainingRange, testRange);
         problem.SetTarget(target.Hash);
         problem.SetInputs(inputs);
@@ -361,32 +362,46 @@ auto main(int argc, char** argv) -> int
 
             executor.corun(taskflow);
 
-            avgLength /= static_cast<double>(pop.size());
-            avgQuality /= static_cast<double>(pop.size());
+            // avgLength /= static_cast<double>(pop.size());
+            // avgQuality /= static_cast<double>(pop.size());
 
-            auto t1 = std::chrono::steady_clock::now();
-            auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
+            // auto t1 = std::chrono::steady_clock::now();
+            // auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
 
-            using T = std::tuple<std::string, double, std::string>;
-            auto const* format = ":>#8.3g"; // see https://fmt.dev/latest/syntax.html
-            std::array stats {
-                T{ "iteration", gp.Generation(), ":>" },
-                T{ "r2_tr", r2Train, format },
-                T{ "r2_te", r2Test, format },
-                T{ "mae_tr", maeTrain, format },
-                T{ "mae_te", maeTest, format },
-                T{ "nmse_tr", nmseTrain, format },
-                T{ "nmse_te", nmseTest, format },
-                T{ "avg_fit", avgQuality, format },
-                T{ "avg_len", avgLength, format },
-                T{ "eval_cnt", evaluator.CallCount , ":>" },
-                T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
-                T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
-                T{ "opt_time", evaluator.CostFunctionTime,    ":>" },
-                T{ "seed", config.Seed, ":>" },
-                T{ "elapsed", elapsed, ":>"},
-            };
-            Operon::PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
+            // using T = std::tuple<std::string, double, std::string>;
+            // auto const* format = ":>#8.3g"; // see https://fmt.dev/latest/syntax.html
+            // std::array stats {
+            //     T{ "iteration", gp.Generation(), ":>" },
+            //     T{ "r2_tr", r2Train, format },
+            //     T{ "r2_te", r2Test, format },
+            //     T{ "mae_tr", maeTrain, format },
+            //     T{ "mae_te", maeTest, format },
+            //     T{ "nmse_tr", nmseTrain, format },
+            //     T{ "nmse_te", nmseTest, format },
+            //     T{ "avg_fit", avgQuality, format },
+            //     T{ "avg_len", avgLength, format },
+            //     T{ "eval_cnt", evaluator.CallCount , ":>" },
+            //     T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
+            //     T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
+            //     T{ "opt_time", evaluator.CostFunctionTime,    ":>" },
+            //     T{ "seed", config.Seed, ":>" },
+            //     T{ "elapsed", elapsed, ":>"},
+            // };
+            // Operon::PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
+
+            // for detailed analysis of expressions in the population
+            int idx = 0;
+            for(auto ind = pop.begin(); ind < pop.end(); ind++) {
+              Operon::Individual cur = *ind;
+              if (scale) {
+                  Operon::Scalar a{1.0};
+                  Operon::Scalar b{0.0};
+                  auto estimatedTrain = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>::Evaluate(cur.Genotype, problem.GetDataset(), trainingRange);
+                  Scale(cur, estimatedTrain, targetTrain, a, b);
+              }
+              fmt::print("{};{};{};{:g}\n", gp.Generation(), idx, Operon::InfixFormatter::Format(cur.Genotype, problem.GetDataset(), 8), cur.Fitness[0]);
+              idx++;
+            }
         };
 
         gp.Run(executor, random, report);
