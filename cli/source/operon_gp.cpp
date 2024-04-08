@@ -31,6 +31,8 @@
 #include "util.hpp"
 #include "operator_factory.hpp"
 
+void Scale(Operon::Individual& ind, Operon::Span<float const> estimated, Operon::Span<float const> target, Operon::Scalar& a, Operon::Scalar& b);
+
 auto main(int argc, char** argv) -> int
 {
     auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
@@ -289,23 +291,8 @@ auto main(int argc, char** argv) -> int
             Operon::Scalar a{1.0};
             Operon::Scalar b{0.0};
             auto linearScaling = taskflow.emplace([&]() {
-                auto [a_, b_] = Operon::FitLeastSquares(estimatedTrain, targetTrain);
-                a = static_cast<Operon::Scalar>(a_);
-                b = static_cast<Operon::Scalar>(b_);
-                // add scaling terms to the tree
-                auto& nodes = best.Genotype.Nodes();
-                auto const sz = nodes.size();
-                if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
-                    nodes.emplace_back(Operon::Node::Constant(a));
-                    nodes.emplace_back(Operon::NodeType::Mul);
-                }
-                if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
-                    nodes.emplace_back(Operon::Node::Constant(b));
-                    nodes.emplace_back(Operon::NodeType::Add);
-                }
-                if (nodes.size() > sz) {
-                    best.Genotype.UpdateNodes();
-                }
+                if (scale)
+                    Scale(best, estimatedTrain, targetTrain, a, b);
             });
 
             double r2Train{};
@@ -316,13 +303,17 @@ auto main(int argc, char** argv) -> int
             double maeTest{};
 
             auto scaleTrain = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), std::ssize(estimatedTrain));
-                estimated = estimated * a + b;
+                if (scale) {
+                    Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), std::ssize(estimatedTrain));
+                    estimated = estimated * a + b;
+                }
             });
 
             auto scaleTest = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), std::ssize(estimatedTest));
-                estimated = estimated * a + b;
+                if (scale) {
+                    Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), std::ssize(estimatedTest));
+                    estimated = estimated * a + b;
+                }
             });
 
             auto calcStats = taskflow.emplace([&]() {
@@ -355,32 +346,44 @@ auto main(int argc, char** argv) -> int
 
             executor.corun(taskflow);
 
-            avgLength /= static_cast<double>(pop.size());
-            avgQuality /= static_cast<double>(pop.size());
-
-            auto t1 = std::chrono::steady_clock::now();
-            auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
-
-            using T = std::tuple<std::string, double, std::string>;
-            auto const* format = ":>#8.3g";
-            std::array stats {
-                T{ "iteration", gp.Generation(), ":>" },
-                T{ "r2_tr", r2Train, format },
-                T{ "r2_te", r2Test, format },
-                T{ "mae_tr", maeTrain, format },
-                T{ "mae_te", maeTest, format },
-                T{ "nmse_tr", nmseTrain, format },
-                T{ "nmse_te", nmseTest, format },
-                T{ "avg_fit", avgQuality, format },
-                T{ "avg_len", avgLength, format },
-                T{ "eval_cnt", evaluator.CallCount , ":>" },
-                T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
-                T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
-                T{ "opt_time", evaluator.CostFunctionTime,    ":>" },
-                T{ "seed", config.Seed, ":>" },
-                T{ "elapsed", elapsed, ":>"},
-            };
-            Operon::PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
+            // avgLength /= static_cast<double>(pop.size());
+            // avgQuality /= static_cast<double>(pop.size());
+// 
+            // auto t1 = std::chrono::steady_clock::now();
+            // auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
+// 
+            // using T = std::tuple<std::string, double, std::string>;
+            // auto const* format = ":>#8.3g";
+            // std::array stats {
+            //     T{ "iteration", gp.Generation(), ":>" },
+            //     T{ "r2_tr", r2Train, format },
+            //     T{ "r2_te", r2Test, format },
+            //     T{ "mae_tr", maeTrain, format },
+            //     T{ "mae_te", maeTest, format },
+            //     T{ "nmse_tr", nmseTrain, format },
+            //     T{ "nmse_te", nmseTest, format },
+            //     T{ "avg_fit", avgQuality, format },
+            //     T{ "avg_len", avgLength, format },
+            //     T{ "eval_cnt", evaluator.CallCount , ":>" },
+            //     T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
+            //     T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
+            //     T{ "opt_time", evaluator.CostFunctionTime,    ":>" },
+            //     T{ "seed", config.Seed, ":>" },
+            //     T{ "elapsed", elapsed, ":>"},
+            // };
+            // Operon::PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
+            int indidx = 0;
+            for(auto ind = pop.begin(); ind < pop.end(); ind++) {
+              Operon::Individual cur = *ind;
+              if (scale) {
+                  Operon::Scalar a{1.0};
+                  Operon::Scalar b{0.0};
+                  auto estimatedTrain = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>::Evaluate(cur.Genotype, problem.GetDataset(), trainingRange);
+                  Scale(cur, estimatedTrain, targetTrain, a, b);
+              }
+              fmt::print("{};{};{};{:g}\n", gp.Generation(), indidx, Operon::InfixFormatter::Format(cur.Genotype, problem.GetDataset(), 8), cur.Fitness[0]);
+              indidx++;
+            }
         };
 
         gp.Run(executor, random, report);
@@ -391,4 +394,24 @@ auto main(int argc, char** argv) -> int
     }
 
     return 0;
+}
+
+void Scale(Operon::Individual& ind, Operon::Span<float const> estimated, Operon::Span<float const> target, Operon::Scalar& a, Operon::Scalar& b) {
+    auto [a_, b_] = Operon::FitLeastSquares(estimated, target);
+    a = static_cast<Operon::Scalar>(a_);
+    b = static_cast<Operon::Scalar>(b_);
+    // add scaling terms to the tree
+    auto& nodes = ind.Genotype.Nodes();
+    auto const sz = nodes.size();
+    if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
+        nodes.emplace_back(Operon::Node::Constant(a));
+        nodes.emplace_back(Operon::NodeType::Mul);
+    }
+    if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
+        nodes.emplace_back(Operon::Node::Constant(b));
+        nodes.emplace_back(Operon::NodeType::Add);
+    }
+    if (nodes.size() > sz) {
+        ind.Genotype.UpdateNodes();
+    }
 }
