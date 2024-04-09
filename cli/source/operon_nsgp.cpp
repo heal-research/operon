@@ -399,7 +399,7 @@ auto main(int argc, char** argv) -> int
                   auto estimatedTrain = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>::Evaluate(cur.Genotype, problem.GetDataset(), trainingRange);
                   Scale(cur, estimatedTrain, targetTrain, a, b);
               }
-              fmt::print("{};{};{};{:g}\n", gp.Generation(), idx, Operon::InfixFormatter::Format(cur.Genotype, problem.GetDataset(), 8), cur.Fitness[0]);
+              // fmt::print("{};{};{};{}\n", gp.Generation(), evaluator.CallCount, Operon::InfixFormatter::Format(cur.Genotype, problem.GetDataset(), 8), cur.Fitness[0]);
               idx++;
             }
         };
