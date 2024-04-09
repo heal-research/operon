@@ -372,18 +372,18 @@ auto main(int argc, char** argv) -> int
             //     T{ "elapsed", elapsed, ":>"},
             // };
             // Operon::PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
-            int indidx = 0;
-            for(auto ind = pop.begin(); ind < pop.end(); ind++) {
-              Operon::Individual cur = *ind;
-              if (scale) {
-                  Operon::Scalar a{1.0};
-                  Operon::Scalar b{0.0};
-                  auto estimatedTrain = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>::Evaluate(cur.Genotype, problem.GetDataset(), trainingRange);
-                  Scale(cur, estimatedTrain, targetTrain, a, b);
-              }
-              fmt::print("{};{};{};{:g}\n", gp.Generation(), indidx, Operon::InfixFormatter::Format(cur.Genotype, problem.GetDataset(), 8), cur.Fitness[0]);
-              indidx++;
-            }
+            // int indidx = 0;
+            // for(auto ind = pop.begin(); ind < pop.end(); ind++) {
+            //   Operon::Individual cur = *ind;
+            //   if (scale) {
+            //       Operon::Scalar a{1.0};
+            //       Operon::Scalar b{0.0};
+            //       auto estimatedTrain = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>::Evaluate(cur.Genotype, problem.GetDataset(), trainingRange);
+            //       Scale(cur, estimatedTrain, targetTrain, a, b);
+            //   }
+            //   fmt::print("{};{};{};{:g}\n", gp.Generation(), indidx, Operon::InfixFormatter::Format(cur.Genotype, problem.GetDataset(), 8), cur.Fitness[0]);
+            //   indidx++;
+            // }
         };
 
         gp.Run(executor, random, report);
