@@ -86,7 +86,7 @@ namespace Operon {
             fit = EvaluatorBase::ErrMax;
         }
 
-        fmt::print("{},{},{},{}\n", 0, curCalls, Operon::InfixFormatter::Format(tree, problem.GetDataset(), 8), -fit);
+        fmt::print("{},{},{},{},{}\n", 0, curCalls, Operon::InfixFormatter::Format(tree, problem.GetDataset(), 8), -fit, tree.Length());
 
         return typename EvaluatorBase::ReturnType{ fit };
     }
