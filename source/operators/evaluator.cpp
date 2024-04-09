@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <fmt/core.h>
+#include <fmt/std.h>
+
 #include "operon/core/distance.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/dispatch_table.hpp"
@@ -40,7 +43,7 @@ namespace Operon {
     template<> auto OPERON_EXPORT
     Evaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
-        ++CallCount;
+        auto curCalls = ++CallCount;
         auto const& problem = GetProblem();
         auto const& dataset = problem.GetDataset();
 
@@ -82,6 +85,10 @@ namespace Operon {
         if (!std::isfinite(fit)) {
             fit = EvaluatorBase::ErrMax;
         }
+
+        // fmt::print("{}\n", CallCount);
+        fmt::print("{};{};{}\n", curCalls, Operon::InfixFormatter::Format(tree, problem.GetDataset(), 8), fit);
+
         return typename EvaluatorBase::ReturnType{ fit };
     }
 
