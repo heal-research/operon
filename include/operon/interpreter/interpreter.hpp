@@ -204,6 +204,8 @@ private:
 
             if (nodes[i].IsVariable()) {
                 std::ranges::transform(v.subspan(row, rem), ptr, [p](auto x) { return x * p; });
+            } else if (nodes[i].IsVariableWithoutCoeff()) {
+                // nothing to do
             } else if (f) {
                 std::invoke(*f, nodes, primal_, i, rg);
 
@@ -302,7 +304,7 @@ private:
         // aggregate necessary info about the tree into a context object
         for (int64_t i = 0, j = 0; i < nn; ++i) {
             auto const& n = nodes[i];
-            auto const* ptr      = n.IsVariable() ? dataset_.get().GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
+            auto const* ptr      = (n.IsVariable() || n.IsVariableWithoutCoeff()) ? dataset_.get().GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
             auto variableValues  = std::tuple_element_t<1, Data>(ptr, nr);
             auto nodeCoefficient = (!coeff.empty() && n.Optimize) ? T{coeff[j++]} : T{n.Value};
             auto nodeFunction    = dt.template TryGetFunction<T>(n.HashValue);

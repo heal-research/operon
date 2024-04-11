@@ -29,6 +29,12 @@ auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::
         } else {
             throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.HashValue));
         }
+    } else if (s.IsVariableWithoutCoeff()) {
+        if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
+            fmt::format_to(std::back_inserter(current), "{}", it->second);
+        } else {
+            throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.HashValue));
+        }
     } else {
         fmt::format_to(std::back_inserter(current), "{}", s.Name());
     }

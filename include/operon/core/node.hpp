@@ -47,7 +47,8 @@ enum class NodeType : uint32_t {
     // nullary symbols (dynamic can be anything)
     Dynamic  = 1U << 27U,
     Constant = 1U << 28U,
-    Variable = 1U << 29U
+    VarWithoutCoeff = 1U << 29U,
+    Variable = 1U << 30U,
 };
 
 using PrimitiveSetConfig = NodeType;
@@ -56,6 +57,7 @@ using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 struct NodeTypes {
     // magic number keeping track of the number of different node types
     static auto constexpr Count = std::countr_zero(static_cast<uint64_t>(NodeType::Variable)) + 1UL;
+    static auto constexpr LeafTypeCount = 4;
 
     // returns the index of the given type in the NodeType enum
     static auto GetIndex(NodeType type) -> size_t
@@ -125,7 +127,7 @@ struct Node {
         }
         Length = Arity;
         IsEnabled = true;
-        Optimize = IsLeaf(); // we only optimize leaf nodes
+        Optimize = IsLeaf() && Type != NodeType::VarWithoutCoeff; // we only optimize leaf nodes
         Value = 1.;
     }
 
@@ -178,6 +180,7 @@ struct Node {
 
     [[nodiscard]] inline auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
     [[nodiscard]] inline auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
+    [[nodiscard]] inline auto IsVariableWithoutCoeff() const -> bool { return Is<NodeType::VarWithoutCoeff>(); }
     [[nodiscard]] inline auto IsAddition() const -> bool { return Is<NodeType::Add>(); }
     [[nodiscard]] inline auto IsSubtraction() const -> bool { return Is<NodeType::Sub>(); }
     [[nodiscard]] inline auto IsMultiplication() const -> bool { return Is<NodeType::Mul>(); }
@@ -204,10 +207,10 @@ struct Node {
     static auto constexpr IsBinary = Type >= NodeType::Aq && Type < NodeType::Abs;
 
     template<NodeType Type>
-    static auto constexpr IsUnary = Type > NodeType::Powabs && Type < NodeType::Dynamic;
+    static auto constexpr IsUnary = Type >= NodeType::Abs && Type < NodeType::Dynamic;
 
     template<NodeType Type>
-    static auto constexpr IsNullary = Type > NodeType::Square;
+    static auto constexpr IsNullary = Type >= NodeType::Dynamic;
 };
 } // namespace Operon
 #endif

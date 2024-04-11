@@ -25,6 +25,14 @@ auto PostfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, st
             }
             break;
         }
+        case NodeType::VarWithoutCoeff: {
+            if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
+                fmt::format_to(std::back_inserter(current), "{}", it->second);
+            } else {
+                throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.HashValue));
+            }
+            break;
+        }
         default: {
             fmt::format_to(std::back_inserter(current), fmt::runtime(s.Name()));
         }

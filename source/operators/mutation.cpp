@@ -49,7 +49,7 @@ auto MultiMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
 auto ChangeVariableMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
     auto& nodes = tree.Nodes();
-    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsVariable(); });
+    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsVariable() || n.IsVariableWithoutCoeff(); });
     if (it == nodes.end()) {
         return tree; // no variables in the tree, nothing to do
     }
