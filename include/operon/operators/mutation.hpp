@@ -25,10 +25,11 @@ struct OPERON_EXPORT OnePointMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree override
     {
         auto& nodes = tree.Nodes();
-        // sample a random leaf
-        auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsLeaf(); });
-        EXPECT(it < nodes.end());
-        it->Value += Dist(params_)(random);
+        // sample a random node with an optimized value
+        auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.Optimize; });
+        if (it < nodes.end()) {
+            it->Value += Dist(params_)(random);
+        }
 
         return tree;
     }
@@ -48,7 +49,7 @@ struct OPERON_EXPORT MultiPointMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree override
     {
         for (auto& node : tree.Nodes()) {
-            if (node.IsLeaf()) {
+            if (node.Optimize) {
                 node.Value += Dist(params_)(random);
             }
         }

@@ -12,8 +12,10 @@ namespace Operon {
 auto DiscretePointMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
     auto& nodes = tree.Nodes();
-    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsLeaf(); });
-    ENSURE(it < nodes.end());
+    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.Optimize; });
+    if (it == nodes.end()) {
+        return tree; // no optimized coefficients in the tree, nothing to do
+    }
 
     auto s = std::reduce(weights_.cbegin(), weights_.cend(), Operon::Scalar { 0 }, std::plus {});
     auto r = std::uniform_real_distribution<Operon::Scalar>(0., s)(random);
