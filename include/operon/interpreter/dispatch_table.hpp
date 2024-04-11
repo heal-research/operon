@@ -39,7 +39,7 @@ template<NodeType Type, typename T, std::size_t S>
 requires Node::IsNary<Type>
 static inline void NaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> data, size_t parentIndex, Operon::Range /*unused*/)
 {
-    static_assert(Type < NodeType::Aq);
+    static_assert(Type <= NodeType::Div);
     const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
     auto arg1 = parentIndex - 1;
     bool continued = false;
@@ -230,7 +230,7 @@ public:
         auto constexpr f = [](auto i) { return static_cast<NodeType>(1U << i); };
         [&]<auto ...I>(std::index_sequence<I...>){
             (map_.insert({ Node(f(I)).HashValue, MakeTuple<f(I)>() }), ...);
-        }(std::make_index_sequence<NodeTypes::Count-3>{});
+        }(std::make_index_sequence<NodeTypes::Count - NodeTypes::LeafTypeCount>{});
     }
 
     ~DispatchTable() = default;

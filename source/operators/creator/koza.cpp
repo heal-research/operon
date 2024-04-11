@@ -21,7 +21,7 @@ auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t /*args*
     auto const& variables = GetVariables();
     auto init = [&](Node& node) {
         if (node.IsLeaf()) {
-            if (node.IsVariable()) {
+            if (node.IsVariable() || node.IsVariableWithoutCoeff()) {
                 node.HashValue = *Operon::Random::Sample(random, variables.begin(), variables.end());
                 node.CalculatedHashValue = node.HashValue;
             }

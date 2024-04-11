@@ -24,6 +24,12 @@ auto DotFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::strin
             }
             throw std::runtime_error(fmt::format("A key with hash value {} could not be found in the variable map.\n", s.HashValue));
         }
+        if (s.IsVariableWithoutCoeff()) {            
+            if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
+                return fmt::format("{}", it->second);
+            }
+            throw std::runtime_error(fmt::format("A key with hash value {} could not be found in the variable map.\n", s.HashValue));
+        }
         throw std::runtime_error("node is not a leaf (constant or variable)");
     };
 

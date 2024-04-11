@@ -139,7 +139,6 @@ namespace Operon {
         }
     };
 
-    // unary operations
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Square, C, S> {
         auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {

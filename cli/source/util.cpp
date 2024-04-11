@@ -44,6 +44,7 @@ static const Operon::Map<std::string, NodeType> Primitives {
     { "inv",      NodeType::Inv },
     { "dyn",      NodeType::Dynamic },
     { "constant", NodeType::Constant },
+    { "variable_without_coeff", NodeType::VarWithoutCoeff },
     { "variable", NodeType::Variable }
 };
 
