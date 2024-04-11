@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <optional>
 #include <span>
+#include <iostream>
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"
@@ -76,7 +77,6 @@ struct Interpreter : public InterpreterBase<T> {
 
     inline auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const -> void final {
         InitContext(coeff, range);
-
         auto const len{ static_cast<int64_t>(range.Size()) };
 
         constexpr int64_t S{ BatchSize };
@@ -205,7 +205,8 @@ private:
             if (nodes[i].IsVariable()) {
                 std::ranges::transform(v.subspan(row, rem), ptr, [p](auto x) { return x * p; });
             } else if (nodes[i].IsVariableWithoutCoeff()) {
-                // nothing to do
+                // TODO: better to just copy the memory
+                std::ranges::transform(v.subspan(row, rem), ptr, [](auto x) { return x; });
             } else if (f) {
                 std::invoke(*f, nodes, primal_, i, rg);
 
