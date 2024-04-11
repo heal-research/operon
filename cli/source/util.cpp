@@ -106,14 +106,14 @@ auto PrintPrimitives(NodeType config) -> void
     PrimitiveSet tmpSet;
     tmpSet.SetConfig(config);
     fmt::print("Built-in primitives:\n");
-    fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", "Symbol", "Description", "Enabled", "Frequency");
+    fmt::print("{:<8}\t{:<66}\t{:>7}\t\t{:>9}\n", "Symbol", "Description", "Enabled", "Frequency");
     for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
         auto type = static_cast<NodeType>(1U << i);
         auto hash = Node(type).HashValue;
         auto enabled = tmpSet.Contains(hash) && tmpSet.IsEnabled(hash);
         auto freq = enabled ? tmpSet.Frequency(hash) : 0U;
         Node node(type);
-        fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled, freq != 0U ? std::to_string(freq) : "-");
+        fmt::print("{:<8}\t{:<66}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled, freq != 0U ? std::to_string(freq) : "-");
     }
 }
 

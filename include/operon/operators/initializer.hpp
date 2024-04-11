@@ -23,7 +23,7 @@ struct OPERON_EXPORT CoefficientInitializer : public CoefficientInitializerBase 
     }
 
     CoefficientInitializer()
-        : CoefficientInitializer([](auto const& node) { return node.IsLeaf(); })
+        : CoefficientInitializer([](auto const& node) { return node.Optimize; })
     {
     }
 
