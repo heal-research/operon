@@ -95,7 +95,7 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 fmt::format_to(std::back_inserter(current), "))");
             } else if (s.Type == NodeType::Inv) {
                 // format inv(a) as 1 / (a)
-                fmt::format_to(std::back_inserter(current), "1 / (");
+                fmt::format_to(std::back_inserter(current), "(1 / ");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), ")");
             } else {
