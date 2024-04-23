@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <cpp-sort/sorters/merge_sorter.h>
+#include <cstdint>
 #include <algorithm>
 #include <iterator>
 #include <optional>
-#include <iostream>
 #include <type_traits>
-
-#include <cpp-sort/sorters/merge_sorter.h>
+#include <bit>
+#include <cstdlib>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <span>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"

@@ -2,10 +2,16 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include "operon/operators/mutation.hpp"
-#include "operon/core/variable.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <iterator>
+#include <numeric>
+#include <random>
+#include <type_traits>
+
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
-#include <numeric>
 
 namespace Operon {
 

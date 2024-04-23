@@ -1,8 +1,19 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <cstddef>
 #include <numeric>
+#include <algorithm>
+#include <functional>
+#include <limits>
+#include <random>
+#include <span>
+#include <utility>
+#include <vector>
+
 #include "operon/operators/selector.hpp"
+#include "operon/core/individual.hpp"
+#include "operon/core/types.hpp"
 
 namespace Operon {
 

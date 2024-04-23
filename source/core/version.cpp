@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <fmt/core.h>
+#include <fmt/format.h>
+#include <iterator>
+#include <string>
+
 #include "buildinfo.hpp"
 #include "operon/core/version.hpp"
 
