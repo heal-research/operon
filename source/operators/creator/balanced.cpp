@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <cstddef>
+#include <algorithm>
+#include <random>
+#include <span>
+#include <tuple>
+#include <vector>
+
 #include "operon/operators/creator.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
-#include "operon/core/variable.hpp"
+#include "operon/core/node.hpp"
+#include "operon/core/types.hpp"
+#include "operon/random/random.hpp"
 
 namespace Operon {
 auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*args*/, size_t /*args*/) const -> Tree

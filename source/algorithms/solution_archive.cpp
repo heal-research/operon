@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+
+#include <cstdint>
 #include <algorithm>
+#include <iterator>
+#include <span>
+#include <vector>
+
 #include "operon/algorithms/solution_archive.hpp"
-#include "operon/operators/non_dominated_sorter.hpp"
+#include "operon/core/comparison.hpp"
+#include "operon/core/individual.hpp"
+#include "operon/core/types.hpp"
 
 namespace Operon {
 

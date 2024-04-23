@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <cstddef>
+#include <cstdint>
 #include <algorithm>
 #include <numeric>
-#include <ranges>
+#include <functional>
+#include <iterator>
+#include <span>
+#include <vector>
 
 #include "operon/core/tree.hpp"
 #include "operon/hash/hash.hpp"
+#include "operon/core/constants.hpp"
+#include "operon/core/node.hpp"
+#include "operon/core/types.hpp"
 
 namespace Operon {
 auto Tree::UpdateNodes() -> Tree&

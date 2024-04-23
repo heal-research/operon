@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <cstddef>
+#include <algorithm>
+#include <random>
+#include <span>
+
 #include "operon/operators/creator.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
-#include "operon/core/variable.hpp"
+#include "operon/core/contracts.hpp"
+#include "operon/core/node.hpp"
+#include "operon/core/types.hpp"
+#include "operon/random/random.hpp"
 
 namespace Operon {
 auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t /*args*/, size_t minDepth, size_t maxDepth) const -> Tree
