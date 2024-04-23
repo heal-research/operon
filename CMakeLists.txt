@@ -93,6 +93,7 @@ find_package(cpp-sort REQUIRED)
 find_package(eve REQUIRED)
 find_package(fmt REQUIRED)
 find_package(lbfgs REQUIRED)
+find_package(libassert REQUIRED)
 find_package(mdspan REQUIRED)
 find_package(outcome REQUIRED)
 find_package(pratt-parser REQUIRED)
@@ -231,6 +232,7 @@ target_link_libraries(operon_operon PUBLIC
     pratt-parser::pratt-parser # required by infix parser
     vstat::vstat
     lbfgs::lbfgs
+    libassert::assert
 )
 
 target_link_libraries(operon_operon PRIVATE

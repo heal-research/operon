@@ -17,7 +17,8 @@ namespace Operon {
 class Problem {
     [[nodiscard]] auto GetVariable(auto t) const -> Operon::Variable {
         if (auto v = dataset_.GetVariable(t); v.has_value()) { return *v; }
-        throw std::runtime_error(fmt::format("a variable identified by {} {} does not exist in the dataset", typeid(t).name(), t));
+        PANIC("cannot map argument to any known variable");
+        // throw std::runtime_error(fmt::format("a variable identified by {} {} does not exist in the dataset", typeid(t).name(), t));
     }
 
     auto HasVariable(auto t) const -> bool {
@@ -126,4 +127,3 @@ public:
 } // namespace Operon
 
 #endif
-

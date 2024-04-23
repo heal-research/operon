@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include <pratt-parser/parser.hpp>
+#include <fmt/format.h>
+
 #include "operon/hash/hash.hpp"
 #include "operon/parser/infix.hpp"
 

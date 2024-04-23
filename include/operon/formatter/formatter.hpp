@@ -21,7 +21,7 @@ public:
 };
 
 class OPERON_EXPORT InfixFormatter {
-    static auto FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer& current, int decimalPrecision) -> void;
+    static auto FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, std::string& current, int decimalPrecision) -> void;
 
 public:
     static auto Format(Tree const& tree, Dataset const& dataset, int decimalPrecision = 2) -> std::string;
@@ -29,7 +29,7 @@ public:
 };
 
 class OPERON_EXPORT PostfixFormatter {
-    static auto FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer& current, int decimalPrecision) -> void;
+    static auto FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, std::string& current, int decimalPrecision) -> void;
 
 public:
     static auto Format(Tree const& tree, Dataset const& dataset, int decimalPrecision = 2) -> std::string;
@@ -43,4 +43,3 @@ struct OPERON_EXPORT DotFormatter {
 } // namespace Operon
 
 #endif
-

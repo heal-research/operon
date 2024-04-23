@@ -20,13 +20,7 @@ class PrimitiveSet {
 
     Operon::Map<Operon::Hash, Primitive> pset_;
 
-    [[nodiscard]] auto GetPrimitive(Operon::Hash hash) const -> Primitive const& {
-        auto it = pset_.find(hash);
-        if (it == pset_.end()) {
-            throw std::runtime_error(fmt::format("Unknown node hash {}\n", hash));
-        }
-        return it->second;
-    }
+    [[nodiscard]] auto GetPrimitive(Operon::Hash hash) const -> Primitive const&;
 
     auto GetPrimitive(Operon::Hash hash) -> Primitive& {
         return const_cast<Primitive&>(const_cast<PrimitiveSet const*>(this)->GetPrimitive(hash)); // NOLINT
@@ -97,7 +91,7 @@ public:
         return std::get<FREQUENCY>(p);
     }
 
-    void SetFrequency(Operon::Hash hash, size_t frequency) 
+    void SetFrequency(Operon::Hash hash, size_t frequency)
     {
         auto& p = GetPrimitive(hash);
         std::get<FREQUENCY>(p) = frequency;

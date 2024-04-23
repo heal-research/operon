@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include <doctest/doctest.h>
+#include <fmt/core.h>
 
 #include "operon/core/individual.hpp"
 

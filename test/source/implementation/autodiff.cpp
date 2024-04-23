@@ -2,6 +2,9 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include <doctest/doctest.h>
+#include <fmt/core.h>
+#include <fmt/color.h>
+#include <fmt/ranges.h>
 #include <random>
 
 #include "../operon_test.hpp"

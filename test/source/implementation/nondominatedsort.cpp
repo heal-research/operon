@@ -7,6 +7,8 @@
 #include <doctest/doctest.h>
 #include <random>
 #include <thread>
+#include <fmt/core.h>
+#include <fmt/color.h>
 #include <fmt/ranges.h>
 
 #include "operon/algorithms/nsga2.hpp"

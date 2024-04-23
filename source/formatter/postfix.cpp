@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <fmt/format.h>
+
 #include "operon/core/dataset.hpp"
 #include "operon/formatter/formatter.hpp"
 
 namespace Operon {
 
-auto PostfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, fmt::memory_buffer& current, int decimalPrecision) -> void
+auto PostfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, std::string& current, int decimalPrecision) -> void
 {
     auto const& s = tree[i];
 
@@ -42,7 +44,7 @@ auto PostfixFormatter::Format(Tree const& tree, Dataset const& dataset, int deci
 
 auto PostfixFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
 {
-    fmt::memory_buffer result;
+    std::string result;
     for (auto i = 0UL; i < tree.Length(); ++i) {
         if (static_cast<int>(i) == tree[i].Parent - tree[tree[i].Parent].Length) {
             fmt::format_to(std::back_inserter(result), "(");
