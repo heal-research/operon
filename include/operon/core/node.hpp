@@ -4,9 +4,10 @@
 #ifndef OPERON_CORE_NODE_HPP
 #define OPERON_CORE_NODE_HPP
 
-#include "operon/operon_export.hpp"
-#include <cstddef>
+#include <cstdint>
 #include <type_traits>
+
+#include "operon/operon_export.hpp"
 #include "types.hpp"
 
 namespace Operon {
@@ -210,4 +211,3 @@ struct Node {
 };
 } // namespace Operon
 #endif
-

@@ -4,10 +4,18 @@
 #ifndef OPERON_CROSSOVER_HPP
 #define OPERON_CROSSOVER_HPP
 
+#include <cstddef>
 #include <vector>
+#include <algorithm>
+#include <iterator>
+#include <type_traits>
+#include <utility>
 
+#include "operon/operon_export.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/tree.hpp"
+#include "operon/core/node.hpp"
+#include "operon/core/types.hpp"
 
 namespace Operon {
 // crossover takes two parent trees and returns a child

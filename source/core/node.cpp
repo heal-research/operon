@@ -2,10 +2,13 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include "operon/core/node.hpp"
+
 #include <iterator>       // for pair
 #include <unordered_map>  // for unordered_map, _Map_base<>::mapped_type
 #include <utility>        // for make_pair, pair
 #include <string>         // for string
+
+#include "operon/core/types.hpp"
 
 using std::pair;
 using std::string;

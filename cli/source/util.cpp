@@ -1,14 +1,26 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#include "util.hpp"
-
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <fmt/core.h>
+#include <fmt/format.h>
+#include <iterator>
+#include <limits>
 #include <memory>
 #include <scn/scan.h>
+#include <sstream>
+#include <stdexcept>
+
+#include "util.hpp"
 
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/version.hpp"
+#include "operon/core/types.hpp"
 
 using Operon::NodeType;
 

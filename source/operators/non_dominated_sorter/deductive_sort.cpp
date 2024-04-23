@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <cstdint>
+#include <algorithm>
+#include <cstddef>
+#include <limits>
+#include <span>
+#include <vector>
+
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/core/individual.hpp"
+#include "operon/core/comparison.hpp"
+#include "operon/core/types.hpp"
 
 namespace Operon {
     auto DeductiveSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*unused*/) const -> NondominatedSorterBase::Result

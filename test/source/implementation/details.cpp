@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <algorithm>
+#include <cstddef>
 #include <doctest/doctest.h>
 #include <fmt/core.h>
+#include <iterator>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "operon/core/individual.hpp"
+#include "operon/core/node.hpp"
+#include "operon/core/tree.hpp"
+#include "operon/core/types.hpp"
 
 namespace dt = doctest;
 

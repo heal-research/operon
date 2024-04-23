@@ -4,12 +4,19 @@
 #ifndef OPERON_MUTATION_HPP
 #define OPERON_MUTATION_HPP
 
+#include <cstddef>
 #include <utility>
+#include <functional>
+#include <vector>
 
+#include "operon/operon_export.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
-#include "operon/core/variable.hpp"
+#include "operon/core/contracts.hpp"
+#include "operon/core/node.hpp"
+#include "operon/core/types.hpp"
+#include "operon/random/random.hpp"
 
 namespace Operon {
 
@@ -147,7 +154,7 @@ private:
 
 struct OPERON_EXPORT ReplaceSubtreeMutation : public MutatorBase {
     ReplaceSubtreeMutation(CreatorBase& creator, CoefficientInitializerBase& coeffInit, size_t maxDepth, size_t maxLength)
-        : creator_(creator) 
+        : creator_(creator)
         , coefficientInitializer_(coeffInit)
         , maxDepth_(maxDepth)
         , maxLength_(maxLength)

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <random>
+
+#include "operon/core/contracts.hpp"
 #include "operon/operators/crossover.hpp"
+#include "operon/random/random.hpp"
 
 namespace Operon {
 
@@ -49,7 +53,7 @@ static auto SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tree
         return *Operon::Random::Sample(random, candidates.rbegin(), tail);
     }
     return *Operon::Random::Sample(random, candidates.begin(), head);
-   
+
 }
 
 auto SubtreeCrossover::FindCompatibleSwapLocations(Operon::RandomGenerator& random, Tree const& lhs, Tree const& rhs) const -> std::pair<size_t, size_t>
@@ -58,7 +62,7 @@ auto SubtreeCrossover::FindCompatibleSwapLocations(Operon::RandomGenerator& rand
     auto diff = static_cast<Signed>(lhs.Length() - maxLength_ + 1); // +1 to account for at least one node that gets swapped in
 
     auto i = SelectRandomBranch(random, lhs, internalProbability_, Limits{std::max(diff, Signed{1}), lhs.Length()}, Limits{size_t{1}, lhs.Depth()}, Limits{size_t{1}, lhs.Depth()});
-    // we have to make some small allowances here due to the fact that the provided trees 
+    // we have to make some small allowances here due to the fact that the provided trees
     // might actually be larger than the maxDepth and maxLength limits given here
     auto maxBranchDepth = static_cast<Signed>(maxDepth_ - lhs[i].Level);
     maxBranchDepth = std::max(maxBranchDepth, Signed{1});

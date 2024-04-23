@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <random>
 #include <type_traits>
+
 #include "operon/core/contracts.hpp"
 
 #include "jsf.hpp"
@@ -64,4 +65,3 @@ auto Sample(R& random, InputIterator start, InputIterator end, OutputIterator ou
 } // namespace Operon::Random
 
 #endif
-

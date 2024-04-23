@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#include <numeric>
-#include <fmt/format.h>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <fmt/core.h>
+#include <random>
+#include <stdexcept>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "operon/core/pset.hpp"
+#include "operon/core/contracts.hpp"
+#include "operon/core/node.hpp"
+#include "operon/core/types.hpp"
 
 namespace Operon {
     [[nodiscard]] auto PrimitiveSet::GetPrimitive(Operon::Hash hash) const -> Primitive const& {

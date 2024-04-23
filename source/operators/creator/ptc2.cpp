@@ -1,13 +1,22 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 #include <deque>
+#include <algorithm>
+#include <random>
+#include <span>
+#include <utility>
 
 #include "operon/operators/creator.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
-#include "operon/core/variable.hpp"
+#include "operon/core/contracts.hpp"
+#include "operon/core/node.hpp"
+#include "operon/core/types.hpp"
+#include "operon/random/random.hpp"
 
 namespace Operon {
 auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*args*/, size_t /*args*/) const -> Tree
@@ -21,7 +30,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
                 node.HashValue = *Random::Sample(random, variables.begin(), variables.end());
                 node.CalculatedHashValue = node.HashValue;
             }
-            node.Value = 1; 
+            node.Value = 1;
         }
     };
 

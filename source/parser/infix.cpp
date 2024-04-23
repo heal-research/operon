@@ -1,11 +1,23 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <algorithm>
+#include <ankerl/unordered_dense.h>
+#include <cstddef>
+#include <fmt/core.h>
+#include <functional>
+#include <iterator>
 #include <pratt-parser/parser.hpp>
-#include <fmt/format.h>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "operon/hash/hash.hpp"
 #include "operon/parser/infix.hpp"
+#include "operon/core/contracts.hpp"
+#include "operon/core/node.hpp"
+#include "operon/core/tree.hpp"
+#include "operon/core/types.hpp"
 
 namespace Operon {
 namespace detail {

@@ -5,7 +5,6 @@
 #define OPERON_TYPES_HPP
 
 #include <ankerl/unordered_dense.h>
-#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <utility>

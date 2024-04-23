@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#include <fmt/core.h>
-
+#include <algorithm>
+#include <cstddef>
 #include <doctest/doctest.h>
+#include <fmt/core.h>
+#include <random>
+#include <vector>
+
 #include "operon/random/random.hpp"
+#include "operon/random/romu.hpp"
 
 namespace dt = doctest;
 
