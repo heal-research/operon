@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include <doctest/doctest.h>
+#include <fmt/core.h>
+
 
 #include "operon/core/dataset.hpp"
 #include "operon/formatter/formatter.hpp"
@@ -67,7 +69,7 @@ TEST_CASE("Intersection performance")
 
     std::uniform_int_distribution<size_t> dist(0U, trees.size()-1);
 
-    auto totalOps = trees.size() * (trees.size() - 1) / 2; 
+    auto totalOps = trees.size() * (trees.size() - 1) / 2;
 
     SUBCASE("Hashing performance") {
         ankerl::nanobench::Bench b;
@@ -116,4 +118,3 @@ TEST_CASE("Intersection performance")
 }
 } // namespace Test
 } // namespace Operon
-

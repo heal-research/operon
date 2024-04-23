@@ -7,6 +7,10 @@
 #include "thirdparty/elki_stats.hpp"
 #include "thirdparty/nanobench.h"
 
+#include <fmt/core.h>
+#include <fmt/color.h>
+#include <fmt/ranges.h>
+
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/interpreter/backend/backend.hpp"

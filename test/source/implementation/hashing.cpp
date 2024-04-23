@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 #include <unordered_set>
 #include <vstat/vstat.hpp>
+#include <fmt/core.h>
 
 #include "operon/core/tree.hpp"
 #include "operon/core/dataset.hpp"

@@ -55,7 +55,9 @@
             fmt
             icu
             jemalloc
+            cpptrace
             libassert
+            libdwarf
             mdspan
             pkg-config
             pratt-parser.packages.${system}.default
@@ -74,6 +76,7 @@
             ned14-status-code
             xad
             xxHash
+            zstd
           ]);
         };
 

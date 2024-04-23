@@ -2,10 +2,19 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include <numeric>
+#include <fmt/format.h>
 
 #include "operon/core/pset.hpp"
 
 namespace Operon {
+    [[nodiscard]] auto PrimitiveSet::GetPrimitive(Operon::Hash hash) const -> Primitive const& {
+        auto it = pset_.find(hash);
+        if (it == pset_.end()) {
+            throw std::runtime_error(fmt::format("Unknown node hash {}\n", hash));
+        }
+        return it->second;
+    }
+
     auto PrimitiveSet::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const -> Node
     {
         EXPECT(minArity <= maxArity);

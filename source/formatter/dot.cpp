@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <fmt/format.h>
+
 #include "operon/core/dataset.hpp"
 #include "operon/formatter/formatter.hpp"
 
@@ -57,4 +59,3 @@ auto DotFormatter::Format(Tree const& tree, Dataset const& dataset, int decimalP
 }
 
 } // namespace Operon
-
