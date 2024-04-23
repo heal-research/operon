@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#include "operon/core/types.hpp" 
 #include <doctest/doctest.h>
 #include <random>
 #include <vstat/vstat.hpp>
+#include <fmt/core.h>
 
 #include "operon/core/dataset.hpp"
 #include "operon/formatter/formatter.hpp"
@@ -12,6 +12,7 @@
 #include "operon/core/variable.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"
+#include "operon/core/types.hpp"
 
 namespace Operon::Test {
 
@@ -44,7 +45,7 @@ TEST_CASE("Crossover")
         Operon::SubtreeCrossover cx(internalNodeProbability, maxDepth, maxLength);
         auto p1 = btc(rng, 7, 1, maxDepth); // NOLINT
         auto p2 = btc(rng, 5, 1, maxDepth); // NOLINT
-        auto child = cx(rng, p1, p2); 
+        auto child = cx(rng, p1, p2);
 
         fmt::print("parent 1\n{}\n", TreeFormatter::Format(p1, ds, 2));
         fmt::print("parent 2\n{}\n", TreeFormatter::Format(p2, ds, 2));
@@ -117,4 +118,3 @@ TEST_CASE("Crossover")
     }
 }
 }
-

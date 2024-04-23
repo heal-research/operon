@@ -4,6 +4,7 @@
 #include <vstat/vstat.hpp>
 #include <parser.hpp>
 #include <fast_float/fast_float.h>
+#include <fmt/format.h>
 
 #include "operon/core/constants.hpp"
 #include "operon/core/dataset.hpp"

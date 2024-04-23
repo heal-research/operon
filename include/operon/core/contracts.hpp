@@ -4,23 +4,10 @@
 #ifndef OPERON_CONTRACTS_HPP
 #define OPERON_CONTRACTS_HPP
 
-#include <fmt/color.h>
-#include <fmt/core.h>
-#include <fmt/ranges.h>
+#include <libassert/assert.hpp>
 
-// NOLINTBEGIN(*)
-#define EXPECT(cond) \
-    if(!(cond)) \
-    { \
-        fmt::print("Precondition {} failed at {}: {}\n", fmt::format(fmt::fg(fmt::terminal_color::green), "{}", #cond), __FILE__, __LINE__); \
-        std::terminate(); \
-    }
+// actually fall back to the libassert macros which are more powerful and featureful
+#define ENSURE ASSERT
+#define EXPECT ASSERT
 
-#define ENSURE(cond) \
-    if(!(cond)) \
-    { \
-        fmt::print("Precondition {} failed at {}: {}\n", fmt::format(fmt::fg(fmt::terminal_color::green), "{}", #cond), __FILE__, __LINE__); \
-        std::terminate(); \
-    }
-// NOLINTEND(*)
 #endif

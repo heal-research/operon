@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <fmt/core.h>
+
 #include <doctest/doctest.h>
 #include "operon/random/random.hpp"
 
 namespace dt = doctest;
 
-namespace Operon::Test { 
+namespace Operon::Test {
 
 TEST_CASE("random sampling" * dt::test_suite("[implementation]"))
 {

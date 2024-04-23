@@ -134,11 +134,11 @@ auto main(int argc, char** argv) -> int
         };
         Operon::PrintStats(stats);
     } else {
-        auto out = fmt::memory_buffer();
+        std::string out{};
         for (auto v : est) {
             fmt::format_to(std::back_inserter(out), fmt::runtime(fmt::format("{{{}}}\n", format)), v);
         }
-        fmt::print("{}", fmt::to_string(out));
+        fmt::print("{}", out);
     }
 
     return EXIT_SUCCESS;
