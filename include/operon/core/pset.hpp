@@ -20,7 +20,7 @@ class PrimitiveSet {
 
     Operon::Map<Operon::Hash, Primitive> pset_;
 
-    [[nodiscard]] auto GetPrimitive(Operon::Hash hash) const -> Primitive const&;
+    [[nodiscard]] auto OPERON_EXPORT GetPrimitive(Operon::Hash hash) const -> Primitive const&;
 
     auto GetPrimitive(Operon::Hash hash) -> Primitive& {
         return const_cast<Primitive&>(const_cast<PrimitiveSet const*>(this)->GetPrimitive(hash)); // NOLINT
