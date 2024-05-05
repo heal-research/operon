@@ -123,8 +123,10 @@ auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& d
         evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::RMSE{}, scale);
     } else if (str == "mae") {
         evaluator = std::make_unique<Operon::Evaluator<T>>(problem, dtable, Operon::MAE{}, scale);
-    } else if (str == "mdl") {
-        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T>>(problem, dtable);
+    } else if (str == "mdl_gauss") {
+        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(problem, dtable);
+    } else if (str == "mdl_poisson") {
+        evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, PoissonLikelihood<Operon::Scalar>>>(problem, dtable);
     } else if (str == "gauss") {
         evaluator = std::make_unique<Operon::GaussianLikelihoodEvaluator<T>>(problem, dtable);
     } else {
@@ -133,13 +135,13 @@ auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& d
     return evaluator;
 }
 
-auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel) -> std::unique_ptr<OffspringGeneratorBase>
+auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel, OptimizerBase const* opt) -> std::unique_ptr<OffspringGeneratorBase>
 {
     std::unique_ptr<OffspringGeneratorBase> generator;
     auto tok = Split(str, ':');
     auto name = tok[0];
     if (name == "basic") {
-        generator = std::make_unique<BasicOffspringGenerator>(eval, cx, mut, femSel, maleSel);
+        generator = std::make_unique<BasicOffspringGenerator>(eval, cx, mut, femSel, maleSel, opt);
     } else if (name == "os") {
         size_t maxSelectionPressure{100};
         double comparisonFactor{0};
@@ -149,16 +151,16 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
         if (tok.size() > 2) {
             comparisonFactor = scn::scan<double>(tok[2], "{}")->value();
         }
-        generator = std::make_unique<OffspringSelectionGenerator>(eval, cx, mut, femSel, maleSel);
+        generator = std::make_unique<OffspringSelectionGenerator>(eval, cx, mut, femSel, maleSel, opt);
         dynamic_cast<OffspringSelectionGenerator*>(generator.get())->MaxSelectionPressure(maxSelectionPressure);
         dynamic_cast<OffspringSelectionGenerator*>(generator.get())->ComparisonFactor(comparisonFactor);
     } else if (name == "brood") {
-        generator = std::make_unique<BroodOffspringGenerator>(eval, cx, mut, femSel, maleSel);
+        generator = std::make_unique<BroodOffspringGenerator>(eval, cx, mut, femSel, maleSel, opt);
         size_t broodSize{BroodOffspringGenerator::DefaultBroodSize};
         if (tok.size() > 1) { broodSize = scn::scan<size_t>(tok[1], "{}")->value(); }
         dynamic_cast<BroodOffspringGenerator*>(generator.get())->BroodSize(broodSize);
     } else if (name == "poly") {
-        generator = std::make_unique<PolygenicOffspringGenerator>(eval, cx, mut, femSel, maleSel);
+        generator = std::make_unique<PolygenicOffspringGenerator>(eval, cx, mut, femSel, maleSel, opt);
         size_t polygenicSize{PolygenicOffspringGenerator::DefaultBroodSize};
         if (tok.size() > 1) { polygenicSize = scn::scan<size_t>(tok[1], "{}")->value(); }
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
@@ -168,7 +170,7 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
     return generator;
 }
 
-auto ParseOptimizer(std::string const& /*str*/, Problem const& /*problem*/, DefaultDispatch const& /*dtable*/) -> std::unique_ptr<OptimizerBase<DefaultDispatch>> {
+auto ParseOptimizer(std::string const& /*str*/, Problem const& /*problem*/, DefaultDispatch const& /*dtable*/) -> std::unique_ptr<OptimizerBase> {
     throw std::runtime_error("not implemented");
 }
 

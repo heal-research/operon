@@ -185,6 +185,8 @@ private:
     }(Ext{});
 
 public:
+    using SupportedTypes = Tup;
+
     template<typename T>
     static constexpr typename Ext::value_type BatchSize = Sizes[TypeIndex<T>];
 

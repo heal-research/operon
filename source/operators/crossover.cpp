@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <fmt/core.h>
 #include <random>
 
 #include "operon/core/contracts.hpp"
@@ -78,11 +79,13 @@ auto SubtreeCrossover::FindCompatibleSwapLocations(Operon::RandomGenerator& rand
 auto SubtreeCrossover::operator()(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const -> Tree
 {
     auto [i, j] = FindCompatibleSwapLocations(random, lhs, rhs);
-
     auto child = Cross(lhs, rhs, i, j);
 
-    ENSURE(child.Depth() <= std::max(maxDepth_, lhs.Depth()));
-    ENSURE(child.Length() <= std::max(maxLength_, lhs.Length()));
+    auto maxDepth{std::max(maxDepth_, lhs.Depth())};
+    auto maxLength{std::max(maxLength_, lhs.Length())};
+
+    ENSURE(child.Depth() <= maxDepth);
+    ENSURE(child.Length() <= maxLength);
 
     return child;
 }
