@@ -101,12 +101,11 @@ namespace Operon::Test {
         Operon::SGDOptimizer<decltype(dt), Likelihood> optimizer{dt, problem};
         // Operon::LBFGSOptimizer<decltype(dt), Operon::PoissonLikelihood<>> optimizer{dt, problem};
         optimizer.SetIterations(100);
-        poissonEvaluator.SetOptimizer(&optimizer);
 
         Operon::CrowdedComparison cc;
         Operon::TournamentSelector selector{cc};
 
-        Operon::BasicOffspringGenerator gen{evaluator, crossover, mutator, selector, selector};
+        Operon::BasicOffspringGenerator gen{evaluator, crossover, mutator, selector, selector, &optimizer};
         Operon::RankIntersectSorter rankSorter;
         Operon::KeepBestReinserter reinserter{cc};
 
