@@ -5,10 +5,10 @@
 #define OPERON_LIKELIHOOD_BASE_HPP
 
 #include <Eigen/Core>
+#include <vstat/vstat.hpp>
 
 #include "operon/core/types.hpp"
 #include "operon/interpreter/interpreter.hpp"
-#include <vstat/vstat.hpp>
 
 namespace Operon {
 
@@ -29,8 +29,8 @@ struct LikelihoodBase {
     using Scalar = T;
     using Matrix = Eigen::Matrix<Scalar, -1, -1>;
     using Vector = Eigen::Matrix<Scalar, -1, 1>;
-    using Ref = Eigen::Ref<Vector>;
-    using Cref = Eigen::Ref<Vector const> const&;
+    using Ref    = Eigen::Ref<Vector>;
+    using Cref   = Eigen::Ref<Vector const> const&;
 
     using scalar_t = T; // for lbfgs solver NOLINT
 
