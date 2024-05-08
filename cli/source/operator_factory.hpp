@@ -26,6 +26,7 @@ namespace Operon { class SelectorBase; }
 namespace Operon { struct CreatorBase; }
 namespace Operon { struct CrossoverBase; }
 namespace Operon { struct ErrorMetric; }
+namespace Operon { class CoefficientOptimizer; }
 namespace Operon { struct MutatorBase; }
 namespace Operon { struct Variable; }
 
@@ -41,9 +42,9 @@ auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& d
 
 auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>;
 
-auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel) -> std::unique_ptr<OffspringGeneratorBase>;
+auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel, CoefficientOptimizer const* cOpt) -> std::unique_ptr<OffspringGeneratorBase>;
 
-auto ParseOptimizer(std::string const& str, Problem const& problem, DefaultDispatch const& dtable) -> std::unique_ptr<OptimizerBase<DefaultDispatch>>;
+auto ParseOptimizer(std::string const& str, Problem const& problem, DefaultDispatch const& dtable) -> std::unique_ptr<OptimizerBase>;
 
 } // namespace Operon
 

@@ -222,7 +222,8 @@ auto main(int argc, char** argv) -> int
 
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(dtable, problem);
         optimizer->SetIterations(config.Iterations);
-        dynamic_cast<Operon::Evaluator<Operon::DefaultDispatch>*>(evaluator.get())->SetOptimizer(optimizer.get());
+
+        Operon::CoefficientOptimizer cOpt{*optimizer, config.LamarckianProbability};
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
@@ -231,7 +232,7 @@ auto main(int argc, char** argv) -> int
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *evaluator, crossover, mutator, *femaleSelector, *maleSelector);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
 
         Operon::RandomGenerator random(config.Seed);

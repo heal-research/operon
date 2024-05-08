@@ -306,7 +306,7 @@ TEST_CASE("parameter optimization")
     rules.emplace_back(new UpdateRule::AmsGrad<Operon::Scalar>(dim));
     rules.emplace_back(new UpdateRule::Yogi<Operon::Scalar>(dim));
 
-    auto testOptimizer = [&](OptimizerBase<DTable>& optimizer, std::string const& name) {
+    auto testOptimizer = [&](OptimizerBase& optimizer, std::string const& name) {
         fmt::print(fmt::fg(fmt::color::orange), "=== {} Solver ===\n", name);
         auto summary = optimizer.Optimize(rng, tree);
         fmt::print("batch size: {}\n", batchSize);

@@ -192,6 +192,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("offspring-generator", "OffspringGenerator operator, with optional parameters separated by : (eg --offspring-generator brood:10:10)", cxxopts::value<std::string>()->default_value("basic"))
         ("reinserter", "Reinsertion operator merging offspring in the recombination pool back into the population", cxxopts::value<std::string>()->default_value("keep-best"))
         ("enable-symbols", "Comma-separated list of enabled symbols ("+symbols+")", cxxopts::value<std::string>())
+        ("local-search-probability", "Probability for local search", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
+        ("lamarckian-probability", "Probability that the local search improvements are saved back into the chromosome", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
         ("disable-symbols", "Comma-separated list of disabled symbols ("+symbols+")", cxxopts::value<std::string>())
         ("symbolic", "Operate in symbolic mode - no coefficient tuning or coefficient mutation", cxxopts::value<bool>()->default_value("false"))
         ("show-primitives", "Display the primitive set used by the algorithm")
