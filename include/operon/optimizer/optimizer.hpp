@@ -40,22 +40,25 @@ struct OptimizerSummary {
     bool Success{};
 };
 
-template<typename DTable = DefaultDispatch>
 class OptimizerBase {
-std::reference_wrapper<DTable const> dtable_;
 std::reference_wrapper<Problem const> problem_;
 // batch size for loss functions (default = 0 -> use entire data range)
 mutable std::size_t batchSize_{0};
 mutable std::size_t iterations_{100}; // NOLINT
 
 public:
-    explicit OptimizerBase(DTable const& dtable, Problem const& problem)
-        : dtable_{dtable}
-        , problem_{problem}
+    explicit OptimizerBase(Problem const& problem)
+        : problem_ { problem }
     {
     }
 
-    [[nodiscard]] auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
+    OptimizerBase(const OptimizerBase&) = default;
+    OptimizerBase(OptimizerBase&&) = delete;
+    auto operator=(const OptimizerBase&) -> OptimizerBase& = default;
+    auto operator=(OptimizerBase&&) -> OptimizerBase& = delete;
+
+    virtual ~OptimizerBase() = default;
+
     [[nodiscard]] auto GetProblem() const -> Problem const& { return problem_.get(); }
     [[nodiscard]] auto BatchSize() const -> std::size_t { return batchSize_; }
     [[nodiscard]] auto Iterations() const -> std::size_t { return iterations_; }
@@ -76,9 +79,9 @@ namespace detail {
 } // namespace detail
 
 template <typename DTable, OptimizerType = OptimizerType::Tiny>
-struct LevenbergMarquardtOptimizer : public OptimizerBase<DTable> {
+struct LevenbergMarquardtOptimizer : public OptimizerBase {
     explicit LevenbergMarquardtOptimizer(DTable const& dtable, Problem const& problem)
-        : OptimizerBase<DTable>{dtable, problem}
+        : OptimizerBase{problem}, dtable_{dtable}
     {
     }
 
@@ -114,20 +117,25 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase<DTable> {
         return summary;
     }
 
-    [[nodiscard]] virtual auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar
+    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
+
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar final
     {
         return GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(x, y, w);
     }
 
-    [[nodiscard]] virtual auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
         return GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(pred, jac, sigma);
     }
+
+    private:
+    std::reference_wrapper<DTable const> dtable_;
 };
 
 template <typename DTable>
-struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public OptimizerBase<DTable> {
+struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public OptimizerBase {
     explicit LevenbergMarquardtOptimizer(DTable const& dtable, Problem const& problem)
-        : OptimizerBase<DTable>{dtable, problem}
+        : OptimizerBase{problem}, dtable_{dtable}
     {
     }
 
@@ -171,14 +179,19 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         return summary;
     }
 
-    [[nodiscard]] virtual auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar
+    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
+
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar final
     {
         return GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(x, y, w);
     }
 
-    [[nodiscard]] virtual auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
         return GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(pred, jac, sigma);
     }
+
+    private:
+    std::reference_wrapper<DTable const> dtable_;
 };
 
 #if defined(HAVE_CERES)
@@ -230,9 +243,9 @@ struct NonlinearLeastSquaresOptimizer<T, OptimizerType::Ceres> : public Optimize
 #endif
 
 template<typename DTable, Concepts::Likelihood LossFunction = GaussianLikelihood<Operon::Scalar>>
-struct LBFGSOptimizer final : public OptimizerBase<DTable> {
+struct LBFGSOptimizer final : public OptimizerBase {
     LBFGSOptimizer(DTable const& dtable, Problem const& problem)
-        : OptimizerBase<DTable>{dtable, problem}
+        : OptimizerBase{problem}, dtable_{dtable}
     {
     }
 
@@ -283,6 +296,8 @@ struct LBFGSOptimizer final : public OptimizerBase<DTable> {
         return summary;
     }
 
+    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
+
     [[nodiscard]] virtual auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar
     {
         return LossFunction::ComputeLikelihood(x, y, w);
@@ -291,19 +306,26 @@ struct LBFGSOptimizer final : public OptimizerBase<DTable> {
     [[nodiscard]] virtual auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
         return LossFunction::ComputeFisherMatrix(pred, jac, sigma);
     }
+
+    private:
+    std::reference_wrapper<DTable const> dtable_;
 };
 
 template<typename DTable, Concepts::Likelihood LossFunction = GaussianLikelihood<Operon::Scalar>>
-struct SGDOptimizer final : public OptimizerBase<DTable> {
+struct SGDOptimizer final : public OptimizerBase {
     SGDOptimizer(DTable const& dtable, Problem const& problem)
-        : OptimizerBase<DTable>{dtable, problem}
+        : OptimizerBase{problem}
+        , dtable_{dtable}
         , update_{std::make_unique<UpdateRule::Constant<Operon::Scalar>>(Operon::Scalar{0.01})}
     { }
 
     SGDOptimizer(DTable const& dtable, Problem const& problem, UpdateRule::LearningRateUpdateRule const& update)
-        : OptimizerBase<DTable>{dtable, problem}
+        : OptimizerBase{problem}
+        , dtable_{dtable}
         , update_{update.Clone(0)}
     { }
+
+    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
 
     [[nodiscard]] auto Optimize(Operon::RandomGenerator& rng, Operon::Tree const& tree) const -> OptimizerSummary final
     {
@@ -365,6 +387,7 @@ struct SGDOptimizer final : public OptimizerBase<DTable> {
     auto UpdateRule() const { return update_.get(); }
 
     private:
+    std::reference_wrapper<DTable const> dtable_;
     std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update_{nullptr};
 };
 } // namespace Operon

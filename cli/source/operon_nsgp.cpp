@@ -51,6 +51,8 @@ auto main(int argc, char** argv) -> int
     config.Iterations = result["iterations"].as<size_t>();
     config.CrossoverProbability = result["crossover-probability"].as<Operon::Scalar>();
     config.MutationProbability = result["mutation-probability"].as<Operon::Scalar>();
+    config.LocalSearchProbability = result["local-search-probability"].as<Operon::Scalar>();
+    config.LamarckianProbability = result["lamarckian-probability"].as<Operon::Scalar>();
     config.TimeLimit = result["timelimit"].as<size_t>();
     config.Seed = std::random_device {}();
 
@@ -229,7 +231,6 @@ auto main(int argc, char** argv) -> int
 
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(dtable, problem);
         optimizer->SetIterations(config.Iterations);
-        dynamic_cast<Operon::Evaluator<Operon::DefaultDispatch>*>(errorEvaluator.get())->SetOptimizer(optimizer.get());
         Operon::LengthEvaluator lengthEvaluator(problem, maxLength);
 
         Operon::MultiEvaluator evaluator(problem);
@@ -243,8 +244,9 @@ auto main(int argc, char** argv) -> int
 
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
+        Operon::CoefficientOptimizer cOpt{*optimizer, config.LamarckianProbability};
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
 
         Operon::RandomGenerator random(config.Seed);
@@ -373,6 +375,8 @@ auto main(int argc, char** argv) -> int
 
             using T = std::tuple<std::string, double, std::string>;
             auto const* format = ":>#8.3g"; // see https://fmt.dev/latest/syntax.html
+
+            auto [resEval, jacEval, callCount, cfTime ] = evaluator.Stats();
             std::array stats {
                 T{ "iteration", gp.Generation(), ":>" },
                 T{ "r2_tr", r2Train, format },
@@ -383,10 +387,10 @@ auto main(int argc, char** argv) -> int
                 T{ "nmse_te", nmseTest, format },
                 T{ "avg_fit", avgQuality, format },
                 T{ "avg_len", avgLength, format },
-                T{ "eval_cnt", evaluator.CallCount , ":>" },
-                T{ "res_eval", evaluator.ResidualEvaluations, ":>" },
-                T{ "jac_eval", evaluator.JacobianEvaluations, ":>" },
-                T{ "opt_time", evaluator.CostFunctionTime,    ":>" },
+                T{ "eval_cnt", callCount, ":>" },
+                T{ "res_eval", resEval, ":>" },
+                T{ "jac_eval", jacEval, ":>" },
+                T{ "opt_time", cfTime, ":>" },
                 T{ "seed", config.Seed, ":>" },
                 T{ "elapsed", elapsed, ":>"},
             };

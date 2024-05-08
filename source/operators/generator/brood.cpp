@@ -5,43 +5,25 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 
 namespace Operon {
-    auto BroodOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
+    auto BroodOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
     {
-        std::uniform_real_distribution<double> uniformReal;
+        auto pop = this->FemaleSelector().Population();
 
-        auto population = this->FemaleSelector().Population();
+        auto const& p1 = pop[ FemaleSelector()(random) ];
+        auto const& p2 = pop[ MaleSelector()(random) ];
 
-        auto first = FemaleSelector()(random);
-        auto second = MaleSelector()(random);
-
-        // assuming the basic generator never fails
+        // the brood offspring generator creates a brood of offspring from the same two parents
         auto makeOffspring = [&]() {
-            Individual child(population[first].Fitness.size());
-            bool doCrossover = std::bernoulli_distribution(pCrossover)(random);
-            bool doMutation = std::bernoulli_distribution(pMutation)(random);
-
-            if (doCrossover) {
-                child.Genotype = Crossover()(random, population[first].Genotype, population[second].Genotype);
-            }
-
-            if (doMutation) {
-                child.Genotype = doCrossover
-                    ? Mutator()(random, std::move(child.Genotype))
-                    : Mutator()(random, population[first].Genotype);
-            }
-
-            auto f = Evaluator()(random, child, buf);
-            for (size_t i = 0; i < f.size(); ++i) {
-                child[i] = std::isfinite(f[i]) ? f[i] : std::numeric_limits<Operon::Scalar>::max();
-            }
-            return child;
+            RecombinationResult res{ {}, p1, p2 };
+            OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, buf, res);
+            return res ? res.Child.value() : res.Parent1.value();
         };
 
         std::vector<Individual> offspring(broodSize_);
         std::generate(offspring.begin(), offspring.end(), makeOffspring);
         SingleObjectiveComparison comp{0};
 
-        if (population.front().Size() > 1) {
+        if (pop.front().Size() > 1) {
             std::stable_sort(offspring.begin(), offspring.end(), LexicographicalComparison{});
             auto fronts = RankIntersectSorter{}(offspring);
             auto best = *std::min_element(fronts[0].begin(), fronts[0].end(), [&](auto i, auto j) { return comp(offspring[i], offspring[j]); });
