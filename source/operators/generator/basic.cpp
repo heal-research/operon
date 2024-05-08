@@ -4,9 +4,9 @@
 #include "operon/operators/generator.hpp"
 
 namespace Operon {
-    auto BasicOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
+    auto BasicOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
     {
-        auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf);
+        auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, buf);
         return res.Child;
     }
 } // namespace Operon

@@ -92,7 +92,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             auto generateOffspring = subflow.for_each_index(size_t{1}, offspring.size(), size_t{1}, [&](size_t i) {
                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                 while (!stop()) {
-                    if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf); result.has_value()) {
+                    if (auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, buf); result.has_value()) {
                         offspring[i] = std::move(result.value());
                         return;
                     }

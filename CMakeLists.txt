@@ -66,6 +66,7 @@ add_library(
     source/operators/generator/brood.cpp
     source/operators/generator/os.cpp
     source/operators/generator/poly.cpp
+    source/operators/local_search.cpp
     source/operators/mutation.cpp
     source/operators/non_dominated_sorter/best_order_sort.cpp
     source/operators/non_dominated_sorter/deductive_sort.cpp
