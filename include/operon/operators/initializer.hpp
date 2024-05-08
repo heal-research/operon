@@ -4,9 +4,11 @@
 #ifndef OPERON_INITIALIZER_HPP
 #define OPERON_INITIALIZER_HPP
 
+#include "operon/core/tree.hpp"
 #include "operon/operators/creator.hpp"
 
 namespace Operon {
+
 struct CoefficientInitializerBase : public OperatorBase<void, Tree&> {
 };
 

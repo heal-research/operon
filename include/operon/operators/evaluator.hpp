@@ -95,7 +95,18 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
 
     void SetBudget(size_t value) { budget_ = value; }
     auto Budget() const -> size_t { return budget_; }
-    auto BudgetExhausted() const -> bool { return TotalEvaluations() >= Budget(); }
+
+    // virtual because more complex evaluators (e.g. MultiEvaluator) might need to calculate it differently
+    virtual auto BudgetExhausted() const -> bool { return TotalEvaluations() >= Budget(); }
+
+    virtual auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> {
+        return std::tuple{
+            ResidualEvaluations.load(),
+            JacobianEvaluations.load(),
+            CallCount.load(),
+            CostFunctionTime.load()
+        };
+    }
 
     auto Population() const -> Operon::Span<Individual const> { return population_; }
     auto SetPopulation(Operon::Span<Operon::Individual const> pop) const { population_ = pop; }
@@ -159,16 +170,12 @@ public:
 
     auto GetDispatchTable() const { return dtable_.get(); }
 
-    auto GetOptimizer() const { return optimizer_; }
-    auto SetOptimizer(OptimizerBase<DTable> const* optimizer) { optimizer_ = optimizer; }
-
     auto
     operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
     std::reference_wrapper<DTable const> dtable_;
     ErrorMetric error_;
-    OptimizerBase<DTable> const* optimizer_{nullptr};
     bool scaling_{false};
 };
 
@@ -202,25 +209,40 @@ public:
         EvaluatorBase::ReturnType fit;
         fit.reserve(ind.Size());
 
-        auto resEval { 0UL };
-        auto jacEval { 0UL };
-        auto eval { 0UL };
-        auto cft { 0UL };
         for (auto const& ev : evaluators_) {
             auto f = ev(rng, ind, buf);
             std::copy(f.begin(), f.end(), std::back_inserter(fit));
-
-            resEval += ev.get().ResidualEvaluations;
-            jacEval += ev.get().JacobianEvaluations;
-            eval += ev.get().CallCount;
-            cft += ev.get().CostFunctionTime;
         }
-        ResidualEvaluations = resEval;
-        JacobianEvaluations = jacEval;
-        CallCount = eval;
-        CostFunctionTime = cft;
+
         return fit;
     }
+
+    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> final {
+        auto resEval{0UL};
+        auto jacEval{0UL};
+        auto callCnt{0UL};
+        auto cfTime{0UL};
+
+        for (auto const& eval : evaluators_) {
+            auto [re, je, cc, ct] = eval.get().Stats();
+            resEval += re;
+            jacEval += je;
+            callCnt += cc;
+            cfTime  += ct;
+        }
+
+        return std::tuple{resEval + ResidualEvaluations.load(),
+            jacEval + JacobianEvaluations.load(),
+            callCnt + CallCount.load(),
+            cfTime + CostFunctionTime.load()};
+    }
+
+    auto BudgetExhausted() const -> bool final {
+        auto [re, je, cc, ct] = Stats();
+        return re + je >= Budget();
+    }
+
+    auto Evaluators() const { return evaluators_; }
 
 private:
     std::vector<std::reference_wrapper<EvaluatorBase const>> evaluators_;
@@ -294,7 +316,7 @@ private:
     std::size_t sampleSize_ {};
 };
 
-template <typename DTable>
+template <typename DTable, typename Lik>
 class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
@@ -307,8 +329,94 @@ public:
     auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
     auto SetSigma(std::vector<Operon::Scalar> sigma) const { sigma_ = std::move(sigma); }
 
-    auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    auto operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
+        ++Base::CallCount;
+
+        auto const& problem = Base::GetProblem();
+        auto const range = problem.TrainingRange();
+        auto const& dataset = problem.GetDataset();
+        auto const& nodes = ind.Genotype.Nodes();
+        auto const& dtable = Base::GetDispatchTable();
+
+        // this call will optimize the tree coefficients and compute the SSE
+        auto& tree = ind.Genotype;
+        Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, ind.Genotype};
+        auto parameters = tree.GetCoefficients();
+
+        auto const p { static_cast<double>(parameters.size()) };
+
+        std::vector<Operon::Scalar> buffer;
+        if (buf.size() < range.Size()) {
+            buffer.resize(range.Size());
+            buf = Operon::Span<Operon::Scalar>(buffer);
+        }
+
+        ++Base::ResidualEvaluations;
+        interpreter.Evaluate(parameters, range, buf);
+
+
+        // codelength of the complexity
+        // count number of unique functions
+        // - count weight * variable as three nodes
+        // - compute complexity c of the remaining numerical values
+        //   (that are not part of the coefficients that are optimized)
+        Operon::Set<Operon::Hash> uniqueFunctions; // to count the number of unique functions
+        auto k{0.0}; // number of nodes
+        auto cComplexity { 0.0 };
+
+        // codelength of the parameters
+        ++Base::JacobianEvaluations;
+        Eigen::Matrix<Operon::Scalar, -1, -1> j = interpreter.JacRev(parameters, range); // jacobian
+        auto estimatedValues = buf;
+        auto fisherMatrix = Lik::ComputeFisherMatrix(estimatedValues, {j.data(), static_cast<std::size_t>(j.size())}, sigma_);
+        auto fisherDiag   = fisherMatrix.diagonal().array();
+        ENSURE(fisherDiag.size() == p);
+
+        auto cParameters { 0.0 };
+        auto constexpr eps = std::numeric_limits<Operon::Scalar>::epsilon(); // machine epsilon for zero comparison
+
+        for (auto i = 0, j = 0; i < std::ssize(nodes); ++i) {
+            auto const& n = nodes[i];
+
+            // count the number of nodes and the number of unique operators
+            k += n.IsVariable() ? 3 : 1;
+            uniqueFunctions.insert(n.HashValue);
+
+            if (n.Optimize) {
+                // this branch computes the description length of the parameters to be optimized
+                auto const di = std::sqrt(12 / fisherDiag(j));
+                auto const ci = std::abs(parameters[j]);
+
+                if (!(std::isfinite(ci) && std::isfinite(di)) || ci / di < 1) {
+                    //ind.Genotype[i].Optimize = false;
+                    //auto const v = ind.Genotype[i].Value;
+                    //ind.Genotype[i].Value = 0;
+                    //auto fit = (*this)(rng, ind, buf);
+                    //ind.Genotype[i].Optimize = true;
+                    //ind.Genotype[i].Value = v;
+                    //return fit;
+                } else {
+                    cParameters += 0.5 * std::log(fisherDiag(j)) + std::log(ci);
+                }
+                ++j;
+            } else {
+                // this branch computes the description length of the remaining tree structure
+                if (std::abs(n.Value) < eps) { continue; }
+                cComplexity += std::log(std::abs(n.Value));
+            }
+        }
+
+        auto q { static_cast<double>(uniqueFunctions.size()) };
+        if (q > 0) { cComplexity += static_cast<double>(k) * std::log(q); }
+
+        cParameters -= p/2 * std::log(3);
+
+        auto targetValues = problem.TargetValues(problem.TrainingRange());
+        auto cLikelihood  = Lik::ComputeLikelihood(estimatedValues, targetValues, sigma_);
+        auto mdl = cComplexity + cParameters + cLikelihood;
+        if (!std::isfinite(mdl)) { mdl = EvaluatorBase::ErrMax; }
+        return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mdl) };
+    }
 
 private:
     mutable std::vector<Operon::Scalar> sigma_;
@@ -354,29 +462,18 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
     }
 
     auto
-    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
+    operator()(Operon::RandomGenerator&  /*rng*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
         ++Base::CallCount;
 
         auto const& problem = Base::Evaluator::GetProblem();
         auto const range = problem.TrainingRange();
         auto const& dataset = problem.GetDataset();
         auto const& dtable = Base::Evaluator::GetDispatchTable();
-        auto const* optimizer = Base::Evaluator::GetOptimizer();
-        EXPECT(optimizer != nullptr);
 
         // this call will optimize the tree coefficients and compute the SSE
         auto& tree = ind.Genotype;
         Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, ind.Genotype};
         auto parameters = tree.GetCoefficients();
-        if (optimizer != nullptr && optimizer->Iterations() > 0) {
-            auto summary = optimizer->Optimize(rng, tree);
-            if (summary.Success) {
-                parameters = summary.FinalParameters;
-                tree.SetCoefficients(parameters);
-                Base::ResidualEvaluations += summary.FunctionEvaluations;
-                Base::JacobianEvaluations += summary.JacobianEvaluations;
-            }
-        }
 
         std::vector<Operon::Scalar> buffer;
         if (buf.size() < range.Size()) {
