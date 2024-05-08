@@ -104,8 +104,9 @@ namespace Operon::Test {
 
         Operon::CrowdedComparison cc;
         Operon::TournamentSelector selector{cc};
+        Operon::CoefficientOptimizer co{optimizer};
 
-        Operon::BasicOffspringGenerator gen{evaluator, crossover, mutator, selector, selector, &optimizer};
+        Operon::BasicOffspringGenerator gen{evaluator, crossover, mutator, selector, selector, &co};
         Operon::RankIntersectSorter rankSorter;
         Operon::KeepBestReinserter reinserter{cc};
 

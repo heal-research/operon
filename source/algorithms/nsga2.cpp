@@ -166,7 +166,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
             auto generateOffspring = subflow.for_each_index(size_t{0}, offspring.size(), size_t{1}, [&](size_t i) {
                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                 while (!stop()) {
-                    auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf);
+                    auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, buf);
                     if (result) {
                         offspring[i] = std::move(*result);
                         ENSURE(offspring[i].Genotype.Length() > 0);
