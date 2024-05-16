@@ -55,7 +55,6 @@ namespace detail {
         auto const& n = nodes[i];
 
         if (n.Arity == 1) {
-            auto m = Col(trace, j);
             Col(trace, j) = -T{1} / (Col(primal, j) * Col(primal, j));
         } else {
             Col(trace, j) = (j == i-1 ? T{1} : T{-1}) * Col(primal, i) / Col(primal, j);
