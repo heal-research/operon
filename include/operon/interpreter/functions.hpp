@@ -9,12 +9,18 @@
 #include "operon/interpreter/backend/eigen.hpp"
 #elif defined(OPERON_MATH_EVE)
 #include "operon/interpreter/backend/eve.hpp"
+#elif defined(OPERON_MATH_ARMA)
+#include "operon/interpreter/backend/arma.hpp"
+#elif defined(OPERON_MATH_BLAZE)
+#include "operon/interpreter/backend/blaze.hpp"
 #elif defined(OPERON_MATH_FASTOR)
 #include "operon/interpreter/backend/fastor.hpp"
 #elif defined(OPERON_MATH_STL)
 #include "operon/interpreter/backend/plain.hpp"
 #elif defined(OPERON_MATH_VDT)
 #include "operon/interpreter/backend/vdt.hpp"
+#elif defined(OPERON_MATH_XTENSOR)
+#include "operon/interpreter/backend/xtensor.hpp"
 #elif defined(OPERON_MATH_FAST_V1)
 #include "operon/interpreter/backend/fast_v1.hpp"
 #elif defined(OPERON_MATH_FAST_V2)
@@ -27,7 +33,8 @@ namespace Operon {
     // utility
     template<typename T, std::size_t S>
     auto Fill(Backend::View<T, S> view, int idx, T value) {
-        Backend::Fill<T, S>(view.data_handle() + idx * S, value);
+        auto* p = view.data_handle() + idx * S;
+        std::fill_n(p, S, value);
     };
 
     // detect missing specializations
