@@ -103,134 +103,221 @@ namespace Operon::Backend {
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Neg(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::minus);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::minus(W{arg+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Inv(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::rec);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::rec(W{arg+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Abs(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::abs);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::abs(W{arg+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Ceil(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::ceil);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::ceil(W{arg+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Floor(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::floor);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::floor(W{arg+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Square(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::sqr);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::sqr(W{arg+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Exp(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::exp);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::exp(W{arg+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Log(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::log);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::log(W{arg+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Log1p(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::log1p);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::log1p(W{arg+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Logabs(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::log_abs);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::log(eve::abs(W{arg+i})), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Sin(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::sin);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::sin(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Cos(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::cos);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::cos(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Tan(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::tan);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::tan(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Asin(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::asin);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::asin(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Acos(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::acos);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::acos(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Atan(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::atan);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::atan(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Sinh(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::sinh);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::sinh(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Cosh(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::cosh);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::cosh(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Tanh(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::tanh);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::tanh(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Sqrt(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::sqrt);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::sqrt(W{arg + i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Sqrtabs(T* res, T const* arg) {
-        auto sqrtabs = [](auto x){ return eve::sqrt(eve::abs(x)); };
-        eve::algo::transform_to(std::span{arg, S}, res, sqrtabs);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::sqrt(eve::abs(W{arg + i})), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Cbrt(T* res, T const* arg) {
-        eve::algo::transform_to(std::span{arg, S}, res, eve::cbrt);
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(eve::cbrt(W{arg + i}), res+i);
+        }
     }
 } // namespace Operon::Backend
 
