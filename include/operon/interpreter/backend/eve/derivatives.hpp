@@ -47,7 +47,7 @@ namespace detail {
     template<typename T, std::size_t S>
     auto Sub(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> /*primal*/, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto v = (nodes[i].Arity == 1 || j < i-1) ? T{-1} : T{+1};
-        std::ranges::fill_n(Ptr(trace, j), S, v);
+        std::fill_n(Ptr(trace, j), S, v);
     }
 
     template<typename T, std::size_t S>

@@ -175,21 +175,8 @@ namespace Operon::Backend {
             if (std::isnan(x)) { return nan; }
             if (x == 0) { return 0; }
 
-            //if constexpr (std::is_same_v<Operon::Scalar, float>) { return ::vdt::fast_tanhf(x); }
-            //else { return ::vdt::fast_tanh(x); }
-            if constexpr (std::is_same_v<Operon::Scalar, float>) {
-                auto const a = ::vdt::fast_expf(x);
-                auto const b = ::vdt::fast_expf(-x);
-                // auto const b = ::vdt::invf(a);
-                return Div(a-b, a+b);
-                // return ::vdt::fast_tanhf(x);
-            } else {
-                auto const a = ::vdt::fast_exp(x);
-                auto const b = ::vdt::fast_exp(-x);
-                // auto const b = ::vdt::inv(a);
-                return Div(a-b, a+b);
-                // return ::vdt::fast_tanh(x);
-            }
+            if constexpr (std::is_same_v<Operon::Scalar, float>) { return ::vdt::fast_tanhf(x); }
+            else { return ::vdt::fast_tanh(x); }
         }
     } // namespace detail::vdt
 
