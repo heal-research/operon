@@ -501,7 +501,10 @@ template<typename DTable>
 using GaussianLikelihoodEvaluator = LikelihoodEvaluator<DTable, GaussianLikelihood<Operon::Scalar>>;
 
 template<typename DTable>
-using PoissonLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>;
+using PoissonLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar, /*LogInput=*/false>>;
+
+template<typename DTable>
+using PoissonLogLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar, /*LogInput=*/true>>;
 
 } // namespace Operon
 #endif
