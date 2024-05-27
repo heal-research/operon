@@ -28,10 +28,10 @@ struct OPERON_EXPORT ErrorMetric {
 
     explicit ErrorMetric(ErrorType type) : type_(type) { }
 
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const noexcept -> double;
-    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const noexcept -> double;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const noexcept -> double;
-    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const noexcept -> double;
+    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const -> double;
+    auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> double;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const -> double;
+    auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const -> double;
 
     private:
     ErrorType type_;
