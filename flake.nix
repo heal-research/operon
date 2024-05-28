@@ -32,10 +32,10 @@
           name = "operon";
           src = self;
 
+          enableShared = true;
+
           cmakeFlags = [
-            "-DBUILD_CLI_PROGRAMS=ON"
-            "-DBUILD_SHARED_LIBS=${if pkgs.stdenv.hostPlatform.isStatic then "OFF" else "ON"}"
-            "-DBUILD_TESTING=OFF"
+            "--preset ${if pkgs.stdenv.hostPlatform.isx86_64 then "build-linux" else "build-osx"}"
             "-DCMAKE_BUILD_TYPE=Release"
             "-DUSE_SINGLE_PRECISION=ON"
           ];
@@ -88,18 +88,16 @@
         packages = {
           default = operon.overrideAttrs(old: {
             cmakeFlags = old.cmakeFlags ++ [
-              "-DCMAKE_CXX_FLAGS=${
-                if pkgs.stdenv.hostPlatform.isx86_64 then "-march=x86-64-v3" else ""
-              }"
+              "-DBUILD_CLI_PROGRAMS=ON"
             ];
           });
 
-          operon-generic = operon.overrideAttrs(old: {
-            cmakeFlags = old.cmakeFlags ++ [
-              "-DCMAKE_CXX_FLAGS=${
-                if pkgs.stdenv.hostPlatform.isx86_64 then "-march=x86-64" else ""
-              }"
-            ];
+          library = operon.overrideAttrs(old: {
+            enableShared = true;
+          });
+
+          library-static = operon.overrideAttrs(old: {
+            enableShared = false;
           });
         };
 
