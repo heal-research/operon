@@ -2,7 +2,7 @@
   description = "Operon development environment";
 
   inputs = {
-    flake-utils.url = "github:numtide/flake-utils";
+    flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:nixos/nixpkgs/master";
     foolnotion.url = "github:foolnotion/nur-pkg";
     lbfgs.url = "github:foolnotion/lbfgs";
@@ -18,129 +18,68 @@
     vdt.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, flake-utils, nixpkgs, foolnotion, pratt-parser, vdt, vstat, lbfgs }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ foolnotion.overlay ];
-        };
+  outputs = inputs@{ self, flake-parts, nixpkgs, foolnotion, pratt-parser, vdt, vstat, lbfgs }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = [ "x86_64-linux" "aarch64-darwin" ];
 
-        stdenv_ = pkgs.llvmPackages_18.stdenv;
-
-        operon = stdenv_.mkDerivation {
-          name = "operon";
-          src = self;
-
-          enableShared = true;
-
-          cmakeFlags = [
-            "--preset ${if pkgs.stdenv.hostPlatform.isx86_64 then "build-linux" else "build-osx"}"
-            "-DCMAKE_BUILD_TYPE=Release"
-            "-DUSE_SINGLE_PRECISION=ON"
-          ];
-
-          nativeBuildInputs = with pkgs; [ cmake git ];
-
-          buildInputs = (with pkgs; [
-            aria-csv
-            armadillo
-            blaze
-            ceres-solver
-            cpp-sort
-            cxxopts
-            doctest
-            eigen
-            eve
-            fast_float
-            fastor
-            fmt
-            icu
-            jemalloc
-            cpptrace
-            libassert
-            libdwarf
-            mdspan
-            pkg-config
-            pratt-parser.packages.${system}.default
-            simdutf_4 # required by scnlib
-            scnlib
-            sleef
-            taskflow
-            unordered_dense
-            vdt.packages.${system}.default
-            vstat.packages.${system}.default
-            lbfgs.packages.${system}.default
-            # ned14 deps
-            byte-lite
-            span-lite
-            ned14-outcome
-            ned14-quickcpplib
-            ned14-status-code
-            xad
-            xsimd
-            xxHash
-            zstd
-          ]);
-        };
-
-      in rec {
-        packages = {
-          default = operon.overrideAttrs(old: {
-            cmakeFlags = old.cmakeFlags ++ [
-              "-DBUILD_CLI_PROGRAMS=ON"
+      perSystem = { pkgs, system, ... }:
+        let
+          pkgs = import self.inputs.nixpkgs {
+            inherit system;
+            overlays = [
+              foolnotion.overlay
+              (final: prev: {
+                vdt   = vdt.packages.${system}.default;
+                vstat = vstat.packages.${system}.default;
+                lbfgs = lbfgs.packages.${system}.default;
+                pratt-parser = pratt-parser.packages.${system}.default;
+              })
             ];
-          });
+          };
+          stdenv = pkgs.llvmPackages_18.stdenv;
+          operon = import ./operon.nix { inherit stdenv pkgs; };
+        in
+        rec
+        {
+          packages = {
+            default = operon.overrideAttrs (old: {
+              cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" ];
+            });
 
-          library = operon.overrideAttrs(old: {
-            enableShared = true;
-          });
+            library = operon.overrideAttrs (old: {
+              enableShared = true;
+            });
 
-          library-static = operon.overrideAttrs(old: {
-            enableShared = false;
-          });
+            library-static = operon.overrideAttrs (old: {
+              enableShared = false;
+            });
+          };
+
+          devShells.default = stdenv.mkDerivation {
+            name = "operon";
+
+            nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
+              clang-tools_18
+              cppcheck
+              include-what-you-use
+              cmake-language-server
+            ]);
+
+            buildInputs = operon.buildInputs ++ (with pkgs; [
+              gdb
+              gcc13
+              graphviz
+              hyperfine
+              linuxPackages_latest.perf
+              seer
+              valgrind
+              hotspot
+            ]);
+          };
+
+          apps.operon-gp.program = "${packages.default}/bin/operon_gp";
+          apps.operon-nsgp.program = "${packages.default}/bin/operon_nsgp";
+          apps.operon-parse-model.program = "${packages.default}/bin/operon_parse_model";
         };
-
-        apps.operon-gp = {
-          type = "app";
-          program = "${packages.default}/bin/operon_gp";
-        };
-
-        apps.operon-nsgp = {
-          type = "app";
-          program = "${packages.default}/bin/operon_nsgp";
-        };
-
-        apps.parse-model = {
-          type = "app";
-          program = "${packages.default}/bin/operon_parse_model";
-        };
-
-        devShells.default = stdenv_.mkDerivation {
-          name = "operon";
-
-          nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
-            clang-tools_18
-            cppcheck
-            include-what-you-use
-            #cmake-language-server
-          ]);
-
-          buildInputs = operon.buildInputs ++ (with pkgs; [
-            gdb
-            gcc13
-            graphviz
-            hyperfine
-            linuxPackages_latest.perf
-            seer
-            valgrind
-            hotspot
-          ]);
-
-          shellHook = ''
-            export LD_LIBRARY_PATH=$CMAKE_LIBRARY_PATH
-            alias bb="cmake --build build -j"
-          '';
-        };
-      });
+    };
 }
