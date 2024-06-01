@@ -21,7 +21,7 @@ stdenv.mkDerivation {
     doctest
     eigen
     eve
-    fast_float
+    fast-float
     fmt
     icu
     jemalloc
