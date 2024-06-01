@@ -7,6 +7,7 @@ stdenv.mkDerivation rec {
 
   cmakePreset = {
     "x86_64-linux"   = "build-linux";
+    "x86_64-darwin"  = "build-linux";
     "aarch64-darwin" = "build-osx";
   }."${system}"; 
 
