@@ -1,12 +1,17 @@
-{ stdenv, pkgs }:
-stdenv.mkDerivation {
+{ stdenv, pkgs, system }:
+stdenv.mkDerivation rec {
   name = "operon";
   src = ./.;
 
   enableShared = true;
 
+  cmakePreset = {
+    "x86_64-linux"   = "build-linux";
+    "aarch64-darwin" = "build-osx";
+  }."${system}"; 
+
   cmakeFlags = [
-    "--preset ${if pkgs.stdenv.hostPlatform.isx86_64 then "build-linux" else "build-osx"}"
+    "--preset ${cmakePreset}"
     "-DUSE_SINGLE_PRECISION=ON"
   ];
   cmakeBuildType = "Release";
