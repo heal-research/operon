@@ -12,14 +12,17 @@ env:
 
 jobs:
   build:
+    strategy:
+      matrix:
+        os: [ macos-11, macos-12, macos-13 ]
     # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
     # You can convert this to a matrix build if you need cross-platform coverage.
     # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-    runs-on: macos-13
+    runs-on: ${{ matrix.os }} 
     if: github.ref_name == 'main'
     steps:
-    - uses: actions/checkout@v3
-    - uses: cachix/install-nix-action@v22
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v27
 
     - name: Build
       working-directory: ${{github.workspace}}

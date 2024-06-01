@@ -37,7 +37,7 @@
             ];
           };
           stdenv = pkgs.llvmPackages_18.stdenv;
-          operon = import ./operon.nix { inherit stdenv pkgs; };
+          operon = import ./operon.nix { inherit stdenv pkgs system; };
         in
         rec
         {
