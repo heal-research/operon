@@ -15,8 +15,6 @@ stdenv.mkDerivation {
 
   buildInputs = (with pkgs; [
     aria-csv
-    armadillo
-    blaze
     ceres-solver
     cpp-sort
     cxxopts
@@ -24,7 +22,6 @@ stdenv.mkDerivation {
     eigen
     eve
     fast_float
-    fastor
     fmt
     icu
     jemalloc
@@ -34,9 +31,8 @@ stdenv.mkDerivation {
     mdspan
     pkg-config
     pratt-parser
-    simdutf_4 # required by scnlib
+    simdutf # required by scnlib
     scnlib
-    sleef
     taskflow
     unordered_dense
     vdt
@@ -48,8 +44,6 @@ stdenv.mkDerivation {
     ned14-outcome
     ned14-quickcpplib
     ned14-status-code
-    xad
-    xsimd
     xxHash
     zstd
   ]);
