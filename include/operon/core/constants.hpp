@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cmath>
+#include <numbers>
 
 namespace Operon {
     // hashing mode for tree nodes:
@@ -16,7 +17,7 @@ namespace Operon {
         Relaxed = 0x2
     };
 
-    enum HashFunction { 
+    enum HashFunction {
         XXHash,
         MetroHash,
         FNV1Hash,
