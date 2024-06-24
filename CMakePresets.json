@@ -85,7 +85,7 @@
             "inherits": ["cpp-std", "cpp-build"],
             "environment": {
                 "CXX_WARNINGS": "-Wall -Wextra -pedantic",
-                "CXX_OPT": "-fsized-deallocation -fno-math-errno"
+                "CXX_OPT": "-fsized-deallocation -fno-math-errno -ffp-contract=off"
             }
         }
     ]
