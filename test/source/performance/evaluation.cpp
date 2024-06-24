@@ -65,9 +65,9 @@ namespace Operon::Test {
     TEST_CASE("Evaluation performance")
     {
         constexpr size_t n = 1000;
-        constexpr size_t maxLength = 100;
+        constexpr size_t maxLength = 50;
         constexpr size_t maxDepth = 1000;
-        constexpr size_t nrow = 10000;
+        constexpr size_t nrow = 5000;
         constexpr size_t ncol = 10;
 
         constexpr size_t minEpochIterations = 5;
@@ -139,6 +139,15 @@ namespace Operon::Test {
             for (size_t i = 1; i <= max_concurrency; ++i) {
                 tf::Executor executor(i);
                 test(executor, b, PrimitiveSet::Arithmetic | NodeType::Sin, fmt::format("N = {}", i));
+            }
+        }
+
+        SUBCASE("arithmetic + sin + cos + exp + log + sqrt + tanh") {
+            nb::Bench b;
+            b.title("arithmetic + sin").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
+            for (size_t i = 1; i <= max_concurrency; ++i) {
+                tf::Executor executor(i);
+                test(executor, b, PrimitiveSet::Arithmetic | NodeType::Sin | NodeType::Cos | NodeType::Log | NodeType::Exp | NodeType::Sqrt | NodeType::Tanh, fmt::format("N = {}", i));
             }
         }
 

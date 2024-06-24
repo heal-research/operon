@@ -23,7 +23,7 @@ namespace Operon::Backend::detail::mad {
         if (std::isinf(x) && !std::signbit(x)) {
             return std::numeric_limits<float>::infinity();
         }
-        if (x == 0 && std::signbit(x)) {
+        if (x == 0) {
             return -std::numeric_limits<float>::infinity();
         }
 

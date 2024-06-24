@@ -262,7 +262,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                     for (auto const& n : tree.Nodes()) {
                         auto [it, ok] = counts.insert({n.Type, {0, 0}});
                         std::get<0>(it->second) += 1;
-                        std::get<1>(it->second) += std::abs(((jjet - jrev).abs() / jjet.abs()).mean());
+                        std::get<1>(it->second) += std::abs(((jjet - jrev).abs() / (jjet.abs() + std::numeric_limits<Operon::Scalar>::epsilon())).mean());
                     }
                 }
 
@@ -276,7 +276,6 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                     std::cout << std::setprecision(precision) << "J_jet    : " << jjet << "\n";
                     std::cout << std::setprecision(precision) << "J_forward: " << jfwd << "\n";
                     std::cout << std::setprecision(precision) << "J_reverse: " << jrev << "\n";
-
                 }
                 count += ok;
                 CHECK(ok);
@@ -285,11 +284,11 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
             for (auto [k, v] : counts) {
                 Node n{k};
                 if (n.IsLeaf()) { continue; }
-                fmt::print("eps = {}, {}: {}%\n", epsilon, n.Name(), 100.F * std::get<1>(v) / std::get<0>(v));
+                fmt::print("{},{}%\n", n.Name(), 100.F * std::get<1>(v) / std::get<0>(v));
             }
         };
 
-        for (auto eps : {1e-1}) {
+        for (auto eps : {1e-4}) {
             testPrecision(eps);
         }
     }
