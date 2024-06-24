@@ -97,6 +97,10 @@ public:
     inline auto operator[](size_t i) const noexcept -> Node const& { return nodes_[i]; }
 
     [[nodiscard]] auto Length() const noexcept -> size_t { return nodes_.size(); }
+    [[nodiscard]] auto AdjustedLength() const noexcept -> size_t {
+        auto length = [](auto const& n) { return n.Value == Operon::Scalar{1} ? 1 : 3; };
+        return std::transform_reduce(nodes_.begin(), nodes_.end(), 0UL, std::plus{}, length);
+    }
     [[nodiscard]] auto VisitationLength() const noexcept -> size_t;
     [[nodiscard]] auto Depth() const noexcept -> size_t;
     [[nodiscard]] auto Empty() const noexcept -> bool { return nodes_.empty(); }

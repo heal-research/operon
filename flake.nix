@@ -26,7 +26,7 @@
           overlays = [ foolnotion.overlay ];
         };
 
-        stdenv_ = pkgs.llvmPackages_17.stdenv;
+        stdenv_ = pkgs.llvmPackages_18.stdenv;
 
         operon = stdenv_.mkDerivation {
           name = "operon";
@@ -66,6 +66,8 @@
             vdt.packages.${system}.default
             vstat.packages.${system}.default
             lbfgs.packages.${system}.default
+            byte-lite
+            span-lite
             ned14-outcome
             ned14-quickcpplib
             ned14-status-code
@@ -112,7 +114,7 @@
           name = "operon";
 
           nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
-            clang-tools_17
+            clang-tools_18
             cppcheck
             include-what-you-use
             #cmake-language-server

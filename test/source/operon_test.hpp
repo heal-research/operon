@@ -39,158 +39,307 @@ namespace Operon::Test::Util {
                 auto const v = n.Optimize ? coeff[idx++] : T{n.Value};
                 switch(n.Type) {
                     case NodeType::Constant: {
-                        buffer.col(i).segment(row, rem).setConstant(v);
+                        auto *s = buffer.col(i).data() + row;
+
+                        for (auto k = 0UL; k < rem; ++k) {
+                            s[k] = T{v};
+                        }
+
+                        // std::span s{buffer.col(i).data() + row, rem};
+                        // std::ranges::fill_n(s, rem, T{v});
+                        //buffer.col(i).segment(row, rem).setConstant(v);
                         break;
                     }
                     case NodeType::Variable: {
                         auto const* ptr = dataset.GetValues(n.HashValue).subspan(row, rem).data();
-                        buffer.col(i).segment(row, rem) = v * Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(ptr, rem, 1).template cast<T>();
+                        auto* s = buffer.col(i).data() + row;
+                        for (auto k = 0UL; k < rem; ++k) {
+                            s[k] = v * T{ptr[k]};
+                        }
+                        // buffer.col(i).segment(row, rem) = v * Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(ptr, rem, 1).template cast<T>();
                         break;
                     }
                     case NodeType::Add: {
-                        buffer.col(i).setConstant(T{0});
+                        std::span s{buffer.col(i).data(), S};
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = T{0};
+                        }
                         for (auto j : Tree::Indices(nodes, i)) {
-                            buffer.col(i) += buffer.col(j);
+                            std::span p{buffer.col(j).data(), S};
+                            for (auto k = 0UL; k < S; ++k) {
+                                s[k] += p[k];
+                            }
                         }
                         break;
                     }
                     case NodeType::Mul: {
-                        buffer.col(i).setConstant(T{1});
+                        std::span s{buffer.col(i).data(), S};
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = T{1};
+                        }
                         for (auto j : Tree::Indices(nodes, i)) {
-                            buffer.col(i) *= buffer.col(j);
+                            std::span p{buffer.col(j).data(), S};
+                            for (auto k = 0UL; k < S; ++k) {
+                                s[k] *= p[k];
+                            }
                         }
                         break;
                     }
                     case NodeType::Sub: {
+                        auto* s = buffer.col(i).data();
+                        auto const* p = buffer.col(i-1).data();
                         if (n.Arity == 1) {
-                            buffer.col(i) = -buffer.col(i-1);
+                            for (auto k = 0UL; k < S; ++k) {
+                                s[k] = -p[k];
+                            }
                         } else {
-                            buffer.col(i) = buffer.col(i-1);
+                            for (auto k = 0UL; k < S; ++k) {
+                                s[k] = p[k];
+                            }
                             for (auto j : Tree::Indices(nodes, i)) {
                                 if (j == i-1) { continue; }
-                                buffer.col(i) -= buffer.col(j);
+                                auto const* q = buffer.col(j).data();
+                                for (auto k = 0UL; k < S; ++k) {
+                                    s[k] -= q[k];
+                                }
                             }
                         }
                         break;
                     }
                     case NodeType::Div: {
+                        auto* s = buffer.col(i).data();
+                        auto const* p = buffer.col(i-1).data();
                         if (n.Arity == 1) {
-                            buffer.col(i) = buffer.col(i-1).inverse();
+                            for (auto k = 0UL; k < S; ++k) {
+                                s[k] = T{1} / p[k];
+                            }
                         } else {
-                            buffer.col(i) = buffer.col(i-1);
+                            for (auto k = 0UL; k < S; ++k) {
+                                s[k] = p[k];
+                            }
                             for (auto j : Tree::Indices(nodes, i)) {
                                 if (j == i-1) { continue; }
-                                buffer.col(i) /= buffer.col(j);
+                                auto const* q = buffer.col(j).data();
+                                for (auto k = 0UL; k < S; ++k) {
+                                    s[k] /= q[k];
+                                }
                             }
                         }
                         break;
                     }
                     case NodeType::Fmin: {
-                        buffer.col(i) = buffer.col(i-1);
+                        auto* s = buffer.col(i).data();
+                        auto const* p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = p[k];
+                        }
                         for (auto j : Tree::Indices(nodes, i)) {
                             if (j == i-1) { continue; }
-                            buffer.col(i) = buffer.col(i).min(buffer.col(j));
+                            auto const* q = buffer.col(j).data();
+                            for (auto k = 0UL; k < S; ++k) {
+                                s[k] = std::min(s[k], q[k]);
+                            }
                         }
                         break;
                     }
                     case NodeType::Fmax: {
-                        buffer.col(i) = buffer.col(i-1);
+                        auto* s = buffer.col(i).data();
+                        auto const* p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = p[k];
+                        }
                         for (auto j : Tree::Indices(nodes, i)) {
                             if (j == i-1) { continue; }
-                            buffer.col(i) = buffer.col(i).max(buffer.col(j));
+                            auto const* q = buffer.col(j).data();
+                            for (auto k = 0UL; k < S; ++k) {
+                                s[k] = std::max(s[k], q[k]);
+                            }
                         }
                         break;
                     }
                     case NodeType::Aq: {
                         auto j = i-1;
                         auto k = j - (nodes[j].Length + 1);
-                        buffer.col(i) = buffer.col(j) / (T{1} + buffer.col(k).square()).sqrt();
+
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(j).data();
+                        auto const *q = buffer.col(k).data();
+
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = p[k] / ceres::sqrt(T{1} + q[k] * q[k]);
+                        }
                         break;
                     }
                     case NodeType::Pow: {
                         auto j = i-1;
                         auto k = j - (nodes[j].Length + 1);
-                        buffer.col(i) = buffer.col(j).pow(buffer.col(k));
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(j).data();
+                        auto const *q = buffer.col(k).data();
+                        // buffer.col(i) = buffer.col(j).pow(buffer.col(k));
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::pow(p[k], q[k]);
+                        }
                         break;
                     }
                     case NodeType::Abs: {
-                        buffer.col(i) = buffer.col(i-1).abs();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::abs(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Acos: {
-                        buffer.col(i) = buffer.col(i-1).acos();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::acos(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Asin: {
-                        buffer.col(i) = buffer.col(i-1).asin();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::asin(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Atan: {
-                        buffer.col(i) = buffer.col(i-1).atan();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::atan(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Cbrt: {
-                        buffer.col(i) = buffer.col(i-1).unaryExpr([](auto x) { return ceres::cbrt(x); });
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::cbrt(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Ceil: {
-                        buffer.col(i) = buffer.col(i-1).ceil();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::ceil(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Cos: {
-                        buffer.col(i) = buffer.col(i-1).cos();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::cos(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Cosh: {
-                        buffer.col(i) = buffer.col(i-1).cosh();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::sin(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Exp: {
-                        buffer.col(i) = buffer.col(i-1).exp();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::exp(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Floor: {
-                        buffer.col(i) = buffer.col(i-1).floor();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::floor(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Log: {
-                        buffer.col(i) = buffer.col(i-1).log();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::log(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Logabs: {
-                        buffer.col(i) = buffer.col(i-1).abs().log();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::log(ceres::abs(p[k]));
+                        }
                         break;
                     }
                     case NodeType::Log1p: {
-                        buffer.col(i) = buffer.col(i-1).log1p();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::log(p[k]+T{1});
+                        }
                         break;
                     }
                     case NodeType::Sin: {
-                        buffer.col(i) = buffer.col(i-1).sin();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::sin(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Sinh: {
-                        buffer.col(i) = buffer.col(i-1).sinh();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::sinh(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Sqrt: {
-                        buffer.col(i) = buffer.col(i-1).sqrt();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::sqrt(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Sqrtabs: {
-                        buffer.col(i) = buffer.col(i-1).abs().sqrt();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::sqrt(ceres::abs(p[k]));
+                        }
                         break;
                     }
                     case NodeType::Square: {
-                        buffer.col(i) = buffer.col(i-1).square();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = p[k] * p[k];
+                        }
                         break;
                     }
                     case NodeType::Tan: {
-                        buffer.col(i) = buffer.col(i-1).tan();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::tan(p[k]);
+                        }
                         break;
                     }
                     case NodeType::Tanh: {
-                        buffer.col(i) = buffer.col(i-1).tanh();
+                        auto* s = buffer.col(i).data();
+                        auto const *p = buffer.col(i-1).data();
+                        for (auto k = 0UL; k < S; ++k) {
+                            s[k] = ceres::tanh(p[k]);
+                        }
                         break;
                     }
                     default: {

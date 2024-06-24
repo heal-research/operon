@@ -43,6 +43,7 @@ namespace Operon::Backend::detail::mad {
     template<int P = 0>
     inline auto constexpr SqrtImpl(Operon::Scalar x) -> Operon::Scalar {
         if (x < 0) { return std::numeric_limits<float>::quiet_NaN(); }
+        if (x == 0) { return x; }
         if (std::isnan(x)) { return x; }
         if (std::isinf(x)) { return x; }
         auto y = ISqrtImpl<P>(x);

@@ -25,16 +25,16 @@ namespace Operon::Backend::detail::mad {
     inline auto constexpr CosImpl(Operon::Scalar x) -> Operon::Scalar {
         constexpr auto inv_pi = std::numbers::inv_pi_v<float>;
 
+        // handle input special cases
+        if (std::isnan(x) || std::isinf(x) || std::abs(x) > 33567376.0F) {
+            return std::numeric_limits<float>::quiet_NaN();
+        }
+
         if constexpr (P == 0) {
             auto r = 0.5F * (x * inv_pi + 1.5F);
             r = 2 * (r - std::trunc(r)) + (r > 0 ? -1.F : +1.F);
             return 4 * r * (1 - std::abs(r));
         } else {
-            // handle input special cases
-            if (std::isnan(x) || std::isinf(x) || std::abs(x) > 33567376.0F) {
-                return std::numeric_limits<float>::quiet_NaN();
-            }
-
             constexpr auto DP1F = 0.78515625F;
             constexpr auto DP2F = 2.4187564849853515625e-4F;
             constexpr auto DP3F = 3.77489497744594108e-8F;
@@ -81,16 +81,17 @@ namespace Operon::Backend::detail::mad {
     inline auto constexpr SinImpl(Operon::Scalar x) -> Operon::Scalar {
         constexpr auto inv_pi = std::numbers::inv_pi_v<float>;
 
+        // handle input special cases
+        if (std::isnan(x) || std::isinf(x) || std::abs(x) > 31875756.0F) {
+            return std::numeric_limits<float>::quiet_NaN();
+        }
+
         if constexpr (P == 0) {
             auto r = (x * inv_pi + 1) * 0.5F;
             r = 2 * (r - std::trunc(r)) + (r > 0 ? -1.F : +1.F);
             r = 4 * r * (1 - std::abs(r));
             return r;
         } else {
-            if (std::isnan(x) || std::isinf(x) || std::abs(x) > 31875756.0F) {
-                return std::numeric_limits<float>::quiet_NaN();
-            }
-
             constexpr auto DP1F = 0.78515625F;
             constexpr auto DP2F = 2.4187564849853515625e-4F;
             constexpr auto DP3F = 3.77489497744594108e-8F;
@@ -107,7 +108,7 @@ namespace Operon::Backend::detail::mad {
             auto z = a * a;
 
             auto r = sp == 0
-                ? (((2.443315711809948e-5F * z - 1.388731625493765e-3F) * z + 4.166664568298827e-2) * z * z - 0.5F * z + 1.F)
+                ? (((2.443315711809948e-5F * z - 1.388731625493765e-3F) * z + 4.166664568298827e-2F) * z * z - 0.5F * z + 1.F)
                 : ((((-1.9515295891e-4F * z + 8.3321608736e-3F) * z - 1.6666654611e-1F) * z * a) + a);
 
             if (ss != 0) {

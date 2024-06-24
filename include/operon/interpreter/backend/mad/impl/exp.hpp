@@ -37,10 +37,6 @@ namespace Operon::Backend::detail::mad {
             return std::numeric_limits<float>::infinity();
         }
 
-        // if (std::isinf(x)) {
-
-        // }
-
         if constexpr (P == 0) {
             auto r = x * 12102203.161561485F + 1065054451.F;
             auto i = static_cast<int32_t>(r);
