@@ -309,14 +309,9 @@ public:
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
 
-    template<typename F>
-    void RegisterCallable(Operon::Hash hash, F&& f) {
-        map_[hash] = MakeTuple<F, Ts...>(std::forward<F&&>(f), Dispatch::Noop{});
-    }
-
-    template<typename F, typename DF>
-    void RegisterCallable(Operon::Hash hash, F&& f, DF&& df) {
-        map_[hash] = MakeTuple<F, Ts...>(std::forward<F&&>(f), std::forward<DF&&>(df));
+    template<typename F, typename DF = Dispatch::Noop>
+    void RegisterCallable(Operon::Hash hash, F&& f, DF&& df = DF{}) {
+        map_[hash] = std::make_tuple(std::forward<F&&>(f), std::forward<DF&&>(df));
     }
 
     template<typename T>

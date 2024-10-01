@@ -24,9 +24,9 @@ public:
     auto operator=(const GeneticAlgorithmBase&) -> GeneticAlgorithmBase& = default;
     auto operator=(GeneticAlgorithmBase&&) -> GeneticAlgorithmBase& = delete;
 
-    GeneticAlgorithmBase(Problem const& problem, GeneticAlgorithmConfig const& config, TreeInitializerBase const& treeInit, CoefficientInitializerBase const& coeffInit, OffspringGeneratorBase const& generator, ReinserterBase const& reinserter)
-        : problem_(problem)
-        , config_(config)
+    GeneticAlgorithmBase(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem, gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit, gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter)
+        : config_(config)
+        , problem_(problem)
         , treeInit_(treeInit)
         , coeffInit_(coeffInit)
         , generator_(generator)
@@ -46,13 +46,13 @@ public:
     [[nodiscard]] auto Individuals() -> Operon::Vector<Operon::Individual>& { return individuals_; }
     [[nodiscard]] auto Individuals() const -> Operon::Vector<Operon::Individual> const& { return individuals_; }
 
-    [[nodiscard]] auto GetProblem() const -> const Problem& { return problem_.get(); }
-    [[nodiscard]] auto GetConfig() const -> const GeneticAlgorithmConfig& { return config_.get(); }
+    [[nodiscard]] auto GetProblem() const -> const Problem* { return problem_.get(); }
+    [[nodiscard]] auto GetConfig() const -> GeneticAlgorithmConfig { return config_; }
 
-    [[nodiscard]] auto GetTreeInitializer() const -> TreeInitializerBase const& { return treeInit_.get(); }
-    [[nodiscard]] auto GetCoefficientInitializer() const -> CoefficientInitializerBase const& { return coeffInit_.get(); }
-    [[nodiscard]] auto GetGenerator() const -> const OffspringGeneratorBase& { return generator_.get(); }
-    [[nodiscard]] auto GetReinserter() const -> const ReinserterBase& { return reinserter_.get(); }
+    [[nodiscard]] auto GetTreeInitializer() const -> TreeInitializerBase const* { return treeInit_.get(); }
+    [[nodiscard]] auto GetCoefficientInitializer() const -> CoefficientInitializerBase const* { return coeffInit_.get(); }
+    [[nodiscard]] auto GetGenerator() const -> OffspringGeneratorBase const* { return generator_.get(); }
+    [[nodiscard]] auto GetReinserter() const -> ReinserterBase const* { return reinserter_.get(); }
 
     [[nodiscard]] auto Generation() const -> size_t { return generation_; }
     auto Generation() -> size_t& { return generation_; }
@@ -60,16 +60,17 @@ public:
     auto Reset() -> void
     {
         generation_ = 0;
-        GetGenerator().Evaluator().Reset();
+        GetGenerator()->Evaluator()->Reset();
     }
 
 private:
-    std::reference_wrapper<const Problem> problem_;
-    std::reference_wrapper<const GeneticAlgorithmConfig> config_;
-    std::reference_wrapper<const TreeInitializerBase> treeInit_;
-    std::reference_wrapper<const CoefficientInitializerBase> coeffInit_;
-    std::reference_wrapper<const OffspringGeneratorBase> generator_;
-    std::reference_wrapper<const ReinserterBase> reinserter_;
+    GeneticAlgorithmConfig config_;
+
+    gsl::not_null<Problem const*> problem_;
+    gsl::not_null<TreeInitializerBase const*> treeInit_;
+    gsl::not_null<CoefficientInitializerBase const*> coeffInit_;
+    gsl::not_null<OffspringGeneratorBase const*> generator_;
+    gsl::not_null<ReinserterBase const*> reinserter_;
 
     Operon::Vector<Individual> individuals_;
     Operon::Span<Individual> parents_;

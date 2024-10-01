@@ -5,6 +5,7 @@
 #define OPERON_INTERPRETER_DERIVATIVES_HPP
 
 #include "functions.hpp"
+#include <fmt/format.h>
 
 namespace Operon {
     // default function to catch any missing template specializations

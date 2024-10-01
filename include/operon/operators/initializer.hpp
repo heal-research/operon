@@ -6,6 +6,7 @@
 
 #include "operon/core/tree.hpp"
 #include "operon/operators/creator.hpp"
+#include <gsl/pointers>
 
 namespace Operon {
 
@@ -51,7 +52,7 @@ private:
 
 template <typename Dist>
 struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
-    explicit TreeInitializer(Operon::CreatorBase& creator)
+    explicit TreeInitializer(Operon::CreatorBase const* creator)
         : creator_(creator)
     {
     }
@@ -59,7 +60,7 @@ struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
     auto operator()(Operon::RandomGenerator& random) const -> Operon::Tree override
     {
         auto targetLen = std::max(size_t { 1 }, static_cast<size_t>(std::round(Dist(params_)(random))));
-        return creator_(random, targetLen, minDepth_, maxDepth_); // initialize tree
+        return creator_->operator()(random, targetLen, minDepth_, maxDepth_); // initialize tree
     }
 
     template <typename... Args>
@@ -74,14 +75,14 @@ struct OPERON_EXPORT TreeInitializer : public TreeInitializerBase {
     void SetMaxDepth(size_t maxDepth) { maxDepth_ = maxDepth; }
     auto MaxDepth() const -> size_t { return maxDepth_; }
 
-    void SetCreator(CreatorBase const& creator) { creator_ = creator; }
-    [[nodiscard]] auto Creator() const -> CreatorBase const& { return creator_.get(); }
+    void SetCreator(gsl::not_null<CreatorBase const*> creator) { creator_ = creator; }
+    [[nodiscard]] auto Creator() const -> CreatorBase const* { return creator_.get(); }
 
     static constexpr size_t DefaultMaxDepth { 1000 }; // we don't want a depth restriction to limit the achievable shapes/lengths
 
 private:
     mutable typename Dist::param_type params_;
-    std::reference_wrapper<Operon::CreatorBase const> creator_;
+    gsl::not_null<Operon::CreatorBase const*> creator_;
     size_t minDepth_ { 1 };
     size_t maxDepth_ { DefaultMaxDepth };
 };

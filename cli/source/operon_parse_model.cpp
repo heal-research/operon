@@ -108,18 +108,16 @@ auto main(int argc, char** argv) -> int
         auto rmse = Operon::RMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto nmse = Operon::NMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
 
-        Operon::Problem problem(ds, range, range);
+        Operon::Problem problem{&ds};
+        problem.SetTrainingRange(range);
+        problem.SetTestRange(range);
         Operon::RandomGenerator rng{0};
         Operon::Individual ind;
         ind.Genotype = model;
 
-        Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch> interpreter{dtable, ds, ind.Genotype};
-        auto target = problem.TargetValues(range);
-        Operon::GaussianLikelihood lik{rng, interpreter, target, range};
-        // Operon::MinimumDescriptionLengthEvaluator<Operon::DefaultDispatch> mdlEval{problem, dtable, lik};
-        // auto mdl = mdlEval(rng, ind, {}).front();
-
-        auto mdl = 0;
+        Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch> interpreter{&dtable, &ds, &ind.Genotype};
+        Operon::MinimumDescriptionLengthEvaluator<Operon::DefaultDispatch, Operon::GaussianLikelihood<Operon::Scalar>> mdlEval{&problem, &dtable};
+        auto mdl = mdlEval(rng, ind).front();
 
         std::vector<std::tuple<std::string, double, std::string>> stats{
             {"slope", a, format},

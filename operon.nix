@@ -9,7 +9,7 @@ stdenv.mkDerivation rec {
     "x86_64-linux"   = "build-linux";
     "x86_64-darwin"  = "build-linux";
     "aarch64-darwin" = "build-osx";
-  }."${system}"; 
+  }."${system}";
 
   cmakeFlags = [
     "--preset ${cmakePreset}"
@@ -35,6 +35,7 @@ stdenv.mkDerivation rec {
     libassert
     libdwarf
     mdspan
+    microsoft-gsl
     pkg-config
     pratt-parser
     simdutf # required by scnlib
