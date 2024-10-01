@@ -228,7 +228,8 @@ TEST_CASE("Batch evaluation")
     auto constexpr n{10};
 
     std::vector<Operon::Tree> trees;
-    std::vector<Operon::Scalar> result(range.Size() * n);    for (auto i = 0; i < n; ++i) {
+    std::vector<Operon::Scalar> result(range.Size() * n);
+    for (auto i = 0; i < n; ++i) {
         trees.push_back(creator(rng, 20, 10, 20));
     }
 
