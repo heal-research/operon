@@ -5,6 +5,7 @@
 #define OPERON_LIKELIHOOD_BASE_HPP
 
 #include <Eigen/Core>
+#include <gsl/pointers>
 #include <vstat/vstat.hpp>
 
 #include "operon/core/types.hpp"
@@ -34,12 +35,12 @@ struct LikelihoodBase {
 
     using scalar_t = T; // for lbfgs solver NOLINT
 
-    explicit LikelihoodBase(Operon::InterpreterBase<T> const& interpreter)
+    explicit LikelihoodBase(gsl::not_null<Operon::InterpreterBase<T> const*> interpreter)
         : interpreter_(interpreter)
     {
     }
 
-    [[nodiscard]] auto GetInterpreter() const -> InterpreterBase<Operon::Scalar> const& { return interpreter_.get(); }
+    [[nodiscard]] auto GetInterpreter() const -> InterpreterBase<Operon::Scalar> const* { return interpreter_.get(); }
 
     // compute function and gradient when called by the optimizer
     [[nodiscard]] virtual auto operator()(Cref, Ref) const noexcept -> Scalar = 0;
@@ -51,7 +52,7 @@ struct LikelihoodBase {
     [[nodiscard]] virtual auto NumObservations() const -> std::size_t = 0;
 
 private:
-    std::reference_wrapper<Operon::InterpreterBase<Operon::Scalar> const> interpreter_;
+    gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> interpreter_;
 };
 } // namespace Operon
 

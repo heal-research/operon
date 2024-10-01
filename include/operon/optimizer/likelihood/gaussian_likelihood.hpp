@@ -33,13 +33,13 @@ namespace detail {
 
 template<typename T = Operon::Scalar>
 struct GaussianLikelihood : public LikelihoodBase<T> {
-    GaussianLikelihood(Operon::RandomGenerator& rng, InterpreterBase<T> const& interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
+    GaussianLikelihood(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
         : LikelihoodBase<T>(interpreter)
         , rng_(rng)
         , target_{target.data(), std::ssize(target)}
         , range_{range}
         , bs_{batchSize == 0 ? range.Size() : batchSize}
-        , np_{static_cast<std::size_t>(interpreter.GetTree().CoefficientsCount())}
+        , np_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
         , nr_{range_.Size()}
         , jac_{bs_, np_}
     { }
@@ -57,7 +57,7 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
         auto const& interpreter = this->GetInterpreter();
         Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
         auto range = SelectRandomRange();
-        auto primal = interpreter.Evaluate(c, range);
+        auto primal = interpreter->Evaluate(c, range);
         auto target = target_.segment(range.Start(), range.Size());
         Eigen::Map<Eigen::Array<Scalar, -1, 1> const> primalMap{primal.data(), std::ssize(primal)};
         auto e = primalMap - target;
@@ -65,7 +65,7 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
         if (grad.size() != 0) {
             assert(grad.size() == x.size());
             ++jeval_;
-            interpreter.JacRev(c, range, {jac_.data(), np_ * bs_});
+            interpreter->JacRev(c, range, {jac_.data(), np_ * bs_});
             grad = (e.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
         }
 
@@ -125,11 +125,11 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
 private:
     auto SelectRandomRange() const -> Operon::Range {
         if (bs_ >= range_.Size()) { return range_; }
-        auto s = std::uniform_int_distribution<std::size_t>{0UL, range_.Size()-bs_}(rng_.get());
+        auto s = std::uniform_int_distribution<std::size_t>{0UL, range_.Size()-bs_}(*rng_);
         return Operon::Range{range_.Start() + s, range_.Start() + s + bs_};
     }
 
-    std::reference_wrapper<Operon::RandomGenerator> rng_;
+    gsl::not_null<Operon::RandomGenerator*> rng_;
     Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> target_;
     Operon::Range const range_; // range of the training data NOLINT
     std::size_t bs_; // batch size

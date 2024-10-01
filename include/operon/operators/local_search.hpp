@@ -4,6 +4,7 @@
 #ifndef OPERON_LOCAL_SEARCH_HPP
 #define OPERON_LOCAL_SEARCH_HPP
 
+#include <gsl/pointers>
 #include "operon/core/operator.hpp"
 #include "operon/operon_export.hpp"
 
@@ -15,20 +16,17 @@ class Tree;
 class OptimizerBase;
 struct OptimizerSummary;
 
-class OPERON_EXPORT CoefficientOptimizer : public OperatorBase<OptimizerSummary, Operon::Tree&> {
+class OPERON_EXPORT CoefficientOptimizer : public OperatorBase<std::tuple<Operon::Tree, OptimizerSummary>, Operon::Tree> {
 public:
-    explicit CoefficientOptimizer(OptimizerBase const& optimizer, double lmProb = 1.0)
+    explicit CoefficientOptimizer(gsl::not_null<OptimizerBase const*> optimizer)
         : optimizer_(optimizer)
-        , lamarckianProbability_(lmProb)
     { }
 
     // convenience
-    auto operator()(Operon::RandomGenerator& rng, Operon::Tree& tree) const -> OptimizerSummary override;
+    auto operator()(Operon::RandomGenerator& rng, Operon::Tree tree) const -> std::tuple<Operon::Tree, OptimizerSummary> override;
 
 private:
-
-    std::reference_wrapper<Operon::OptimizerBase const> optimizer_;
-    double lamarckianProbability_{1.0};
+    gsl::not_null<Operon::OptimizerBase const*> optimizer_;
 };
 
 } // namespace Operon

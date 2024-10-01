@@ -5,6 +5,7 @@
 #define OPERON_LM_COST_FUNCTION_HPP
 
 #include <Eigen/Core>
+#include <gsl/pointers>
 #include "operon/interpreter/interpreter.hpp"
 
 namespace Operon {
@@ -24,12 +25,12 @@ struct LMCostFunction {
         NUM_PARAMETERS = Eigen::Dynamic, // NOLINT
     };
 
-    explicit LMCostFunction(InterpreterBase<T> const& interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range)
+    explicit LMCostFunction(gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range)
         : interpreter_(interpreter)
         , target_{target}
         , range_{range}
         , numResiduals_{range.Size()}
-        , numParameters_{static_cast<std::size_t>(interpreter.GetTree().CoefficientsCount())}
+        , numParameters_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
     { }
 
     inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
@@ -39,13 +40,15 @@ struct LMCostFunction {
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
         if (jacobian != nullptr) {
+            ++jacobianCallCount_;
             Operon::Span<Operon::Scalar> jac{jacobian, static_cast<size_t>(numResiduals_ * numParameters_)};
-            interpreter_.get().JacRev(params, range_, jac);
+            interpreter_->JacRev(params, range_, jac);
         }
 
         if (residuals != nullptr) {
+            ++residualCallCount_;
             Operon::Span<Operon::Scalar> res{ residuals, static_cast<size_t>(numResiduals_) };
-            interpreter_.get().Evaluate(params, range_, res);
+            interpreter_->Evaluate(params, range_, res);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, numResiduals_);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), numResiduals_);
             x -= y;
@@ -85,12 +88,18 @@ struct LMCostFunction {
     [[nodiscard]] auto values() const -> int { return NumResiduals(); }  // NOLINT
     [[nodiscard]] auto inputs() const -> int { return NumParameters(); } // NOLINT
 
+    [[nodiscard]] auto ResidualCalls() const -> std::size_t { return residualCallCount_.load(); }
+    [[nodiscard]] auto JacobianCalls() const -> std::size_t { return jacobianCallCount_.load(); }
+
 private:
-    std::reference_wrapper<InterpreterBase<T> const> interpreter_;
+    gsl::not_null<InterpreterBase<T> const*> interpreter_;
     Operon::Span<Operon::Scalar const> target_;
     Operon::Range const range_; // NOLINT
     std::size_t numResiduals_;
     std::size_t numParameters_;
+
+    mutable std::atomic_size_t jacobianCallCount_{0};
+    mutable std::atomic_size_t residualCallCount_{0};
 };
 } // namespace Operon
 

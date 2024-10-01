@@ -49,7 +49,7 @@ auto MultiMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
         }
     }
     auto op = operators_[i];
-    return op(random, std::move(tree));
+    return (*op)(random, std::move(tree));
 }
 
 auto ChangeVariableMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
@@ -103,8 +103,8 @@ auto ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tr
     auto maxDepth = std::max(tree.Depth(), maxDepth_) - oldLevel + 1;
 
     auto newLen = std::uniform_int_distribution<Signed>(Signed { 1 }, maxLength)(random);
-    auto subtree = creator_(random, static_cast<size_t>(newLen), 1, maxDepth);
-    coefficientInitializer_(random, subtree);
+    auto subtree = (*creator_)(random, static_cast<size_t>(newLen), 1, maxDepth);
+    (*coefficientInitializer_)(random, subtree);
 
     Operon::Vector<Node> mutated;
     mutated.reserve(nodes.size() - oldLen + static_cast<size_t>(newLen));
@@ -143,11 +143,10 @@ auto InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
     }
 
     auto& nodes = tree.Nodes();
-    auto const& creator = creator_.get();
-    auto const& pset = creator.GetPrimitiveSet();
+    auto const* pset = creator_->GetPrimitiveSet();
 
     auto test = [&](auto const& node) {
-        return static_cast<bool>(node.Type & (NodeType::Add | NodeType::Mul | NodeType::Sub | NodeType::Div)) && (node.Arity < pset.MaximumArity(node.HashValue));
+        return static_cast<bool>(node.Type & (NodeType::Add | NodeType::Mul | NodeType::Sub | NodeType::Div)) && (node.Arity < pset->MaximumArity(node.HashValue));
     };
 
     auto n = std::count_if(nodes.begin(), nodes.end(), test);
@@ -172,8 +171,8 @@ auto InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
 
     auto newLen = std::uniform_int_distribution<size_t>(1, availableLength)(random);
 
-    auto subtree = creator_(random, newLen, 1, availableDepth);
-    coefficientInitializer_(random, subtree);
+    auto subtree = (*creator_)(random, newLen, 1, availableDepth);
+    (*coefficientInitializer_)(random, subtree);
 
     Operon::Vector<Node> mutated;
     mutated.reserve(nodes.size() + newLen);
