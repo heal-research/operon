@@ -87,15 +87,23 @@ struct EvaluatorBase : public E1, E2
 
     auto operator()(Operon::RandomGenerator& /*unused*/, Operon::Individual const& /*unused*/, Operon::Span<Operon::Scalar> /*unused*/) const -> ReturnType override = 0;
 
-    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> ReturnType override {
-        std::vector<Operon::Scalar> buf(GetProblem()->TrainingRange().Size());
-        return (*this)(rng, ind, buf);
-    }
-
+    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> ReturnType override = 0;
 
     explicit EvaluatorBase(gsl::not_null<Problem const*> problem)
         : problem_(problem)
     {
+    }
+
+    template<typename Derived>
+    static auto Evaluate(Derived const* self, Operon::RandomGenerator& rng, Operon::Individual const& ind, std::span<Operon::Scalar> buf) {
+        ENSURE(buf.size() >= self->GetProblem()->TrainingRange.Size());
+        return std::invoke(*self, rng, ind, buf);
+    }
+
+    template<typename Derived>
+    static auto Evaluate(Derived const* self, Operon::RandomGenerator& rng, Operon::Individual const& ind) {
+        std::vector<Operon::Scalar> buf(self->GetProblem()->TrainingRange().Size());
+        return std::invoke(*self, rng, ind, buf);
     }
 
     virtual void Prepare(Operon::Span<Individual const> /*pop*/) const
@@ -162,6 +170,10 @@ public:
         return fptr_ ? fptr_(&rng, ind) : fref_(rng, ind);
     }
 
+    auto operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
+        return EvaluatorBase::Evaluate(this, rng, ind);
+    }
+
 private:
     std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual const&)> fref_;
     std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual const&)> fptr_; // workaround for pybind11
@@ -216,6 +228,12 @@ public:
     auto ObjectiveCount() const -> std::size_t override
     {
         return std::transform_reduce(evaluators_.begin(), evaluators_.end(), 0UL, std::plus {}, [](auto const eval) { return eval->ObjectiveCount(); });
+    }
+
+    auto
+    operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override
+    {
+        return EvaluatorBase::Evaluate(this, rng, ind);
     }
 
     auto
@@ -282,6 +300,9 @@ public:
     auto GetAggregateType() const { return aggtype_; }
 
     auto
+    operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override;
+
+    auto
     operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
@@ -321,6 +342,9 @@ public:
     }
 
     auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual const& ind) const -> typename EvaluatorBase::ReturnType override;
+
+    auto
     operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
@@ -344,8 +368,8 @@ public:
     auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
     auto SetSigma(std::vector<Operon::Scalar> sigma) const { sigma_ = std::move(sigma); }
 
-    auto operator()(Operon::RandomGenerator& random, Operon::Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
-        return EvaluatorBase::operator()(random, ind);
+    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
+        return EvaluatorBase::Evaluate(this, rng, ind);
     }
 
     auto operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
