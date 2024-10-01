@@ -29,7 +29,7 @@ struct CoefficientInitializerBase;
 struct TreeInitializerBase;
 
 class OPERON_EXPORT NSGA2 : public GeneticAlgorithmBase {
-    std::reference_wrapper<const NondominatedSorterBase> sorter_;
+    gsl::not_null<NondominatedSorterBase const*> sorter_;
     std::vector<std::vector<size_t>> fronts_;
     Operon::Vector<Individual> best_; // best Pareto front
 
@@ -37,12 +37,12 @@ class OPERON_EXPORT NSGA2 : public GeneticAlgorithmBase {
     auto Sort(Operon::Span<Individual> pop) -> void;
 
 public:
-    NSGA2(Problem const& problem, GeneticAlgorithmConfig const& config, TreeInitializerBase const& treeInit, CoefficientInitializerBase const& coeffInit, OffspringGeneratorBase const& generator, ReinserterBase const& reinserter, NondominatedSorterBase const& sorter)
-        : GeneticAlgorithmBase(problem, config, treeInit, coeffInit, generator, reinserter), sorter_(sorter)
+    NSGA2(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem, gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit, gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter, gsl::not_null<NondominatedSorterBase const*> sorter)
+        : GeneticAlgorithmBase(config, problem, treeInit, coeffInit, generator, reinserter), sorter_(sorter)
     {
-        auto const nobj { GetGenerator().Evaluator().ObjectiveCount() };
+        auto const n { GetGenerator()->Evaluator()->ObjectiveCount() };
         for (auto& ind : Individuals()) {
-            ind.Fitness.resize(nobj, EvaluatorBase::ErrMax);
+            ind.Fitness.resize(n, EvaluatorBase::ErrMax);
         }
     }
 

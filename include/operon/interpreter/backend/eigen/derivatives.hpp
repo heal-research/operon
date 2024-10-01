@@ -26,6 +26,8 @@ namespace detail {
     };
 } // namespace detail
 
+    // in order to efficiently compute the derivatives, in many cases we can use the value of the primal too (column index i)
+    // we store the value of the derivative in the trace at column index j
     template<typename T, std::size_t S>
     auto Add(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j).setConstant(T{1});

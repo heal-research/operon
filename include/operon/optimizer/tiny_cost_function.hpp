@@ -5,6 +5,8 @@
 #define OPERON_OPTIMIZER_TINY_HPP
 
 #include <Eigen/Core>
+#include <gsl/pointers>
+
 #include "operon/interpreter/interpreter.hpp"
 
 namespace Operon {
@@ -14,7 +16,7 @@ namespace Operon {
 // - the AutodiffCalculator will compute and return the Jacobian matrix
 // - the StorageOrder specifies the format of the jacobian (row-major for the big Ceres solver, column-major for the tiny solver)
 
-template<typename DTable, int StorageOrder = Eigen::ColMajor>
+template<typename T = Operon::Scalar, int StorageOrder = Eigen::ColMajor>
 struct CostFunction {
     static auto constexpr Storage{ StorageOrder };
     using Scalar = Operon::Scalar;
@@ -24,14 +26,12 @@ struct CostFunction {
         NUM_PARAMETERS = Eigen::Dynamic, // NOLINT
     };
 
-    explicit CostFunction(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Span<Operon::Scalar const> target, Operon::Range const range, DTable const& dtable)
-        : tree_{tree}
-        , dataset_{dataset}
+    explicit CostFunction(gsl::not_null<Operon::InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range)
+        : interpreter_{interpreter}
         , target_{target}
         , range_{range}
-        , dtable_{dtable}
         , numResiduals_{range.Size()}
-        , numParameters_{ParameterCount(tree)}
+        , numParameters_{ParameterCount(interpreter_->GetTree())}
     { }
 
     inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
@@ -40,16 +40,14 @@ struct CostFunction {
         EXPECT(parameters != nullptr);
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
-        Interpreter<Operon::Scalar, DTable> interpreter{dtable_.get(), dataset_, tree_};
-
         if (jacobian != nullptr) {
             Operon::Span<Operon::Scalar> jac{jacobian, static_cast<size_t>(numResiduals_ * numParameters_)};
-            interpreter.JacRev(params, range_, jac);
+            interpreter_->JacRev(params, range_, jac);
         }
 
         if (residuals != nullptr) {
             Operon::Span<Operon::Scalar> res{ residuals, static_cast<size_t>(numResiduals_) };
-            interpreter.Evaluate(params, range_, res);
+            interpreter_->Evaluate(params, range_, res);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, numResiduals_);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), numResiduals_);
             x -= y;
@@ -91,12 +89,9 @@ struct CostFunction {
     [[nodiscard]] auto inputs() const -> int { return NumParameters(); } // NOLINT
 
 private:
-    std::reference_wrapper<Tree const> tree_;
-    std::reference_wrapper<Dataset const> dataset_;
-    std::reference_wrapper<DTable const> dtable_;
-
-    Operon::Range const range_; // NOLINT
+    gsl::not_null<InterpreterBase<T> const*> interpreter_;
     Operon::Span<Operon::Scalar const> target_;
+    Operon::Range const range_; // NOLINT
     std::size_t numResiduals_;
     std::size_t numParameters_;
 

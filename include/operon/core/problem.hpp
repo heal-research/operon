@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <gsl/pointers>
 
 #include "dataset.hpp"
 #include "pset.hpp"
@@ -16,13 +17,8 @@ namespace Operon {
 
 class Problem {
     [[nodiscard]] auto GetVariable(auto t) const -> Operon::Variable {
-        if (auto v = dataset_.GetVariable(t); v.has_value()) { return *v; }
+        if (auto v = dataset_->GetVariable(t); v.has_value()) { return *v; }
         PANIC("cannot map argument to any known variable");
-        // throw std::runtime_error(fmt::format("a variable identified by {} {} does not exist in the dataset", typeid(t).name(), t));
-    }
-
-    auto HasVariable(auto t) const -> bool {
-        return dataset_.GetVariable(t).has_value();
     }
 
     auto ValidateInputs(auto const& inputs) const {
@@ -31,7 +27,8 @@ class Problem {
         for (auto const& x : inputs) { (void) GetVariable(x); }
     }
 
-    Dataset dataset_;
+    std::unique_ptr<Dataset> dataset_;
+
     Range training_;
     Range test_;
     Range validation_;
@@ -40,15 +37,30 @@ class Problem {
     Operon::Variable target_;
     Operon::Set<Operon::Hash> inputs_;
 
+    bool ownership_{true};
+
 public:
-    Problem(Dataset ds, Range trainingRange, Range testRange, Range validationRange = { 0, 0 }) // NOLINT(bugprone-easily-swappable-parameters)
-        : dataset_(std::move(ds))
-        , training_(std::move(trainingRange))
-        , test_(std::move(testRange))
-        , validation_(std::move(validationRange))
+    Problem(const Problem&) = delete;
+    Problem(Problem&&) = delete;
+    auto operator=(const Problem&) -> Problem& = delete;
+    auto operator=(Problem&&) -> Problem& = delete;
+
+    explicit Problem(std::unique_ptr<Dataset> dataset)
+        : dataset_ { std::move(dataset) }
     {
-        target_ = dataset_.GetVariables().back();
         SetDefaultInputs();
+    }
+
+    explicit Problem(gsl::not_null<Dataset*> dataset)
+        : Problem(std::unique_ptr<Dataset>{dataset})
+    {
+        ownership_ = false;
+    }
+
+    ~Problem() {
+        if (!ownership_) {
+            std::ignore = dataset_.release();
+        }
     }
 
     template<typename T>
@@ -80,7 +92,7 @@ public:
     // set all variables except the target as inputs
     auto SetDefaultInputs() -> void {
         inputs_.clear();
-        for (auto const& v : dataset_.GetVariables()) {
+        for (auto const& v : dataset_->GetVariables()) {
             if (v.Hash != target_.Hash) { inputs_.insert(v.Hash); }
         }
     }
@@ -102,25 +114,25 @@ public:
     auto GetPrimitiveSet() -> PrimitiveSet& { return pset_; }
     auto ConfigurePrimitiveSet(Operon::PrimitiveSetConfig config) { pset_.SetConfig(config); }
 
-    [[nodiscard]] auto GetDataset() const -> Dataset const& { return dataset_; }
-    auto GetDataset() -> Dataset& { return dataset_; }
+    [[nodiscard]] auto GetDataset() const -> Dataset const* { return dataset_.get(); }
+    auto GetDataset() -> Dataset* { return dataset_.get(); }
 
-    [[nodiscard]] auto TargetValues() const -> Operon::Span<Operon::Scalar const> { return dataset_.GetValues(target_.Index); }
+    [[nodiscard]] auto TargetValues() const -> Operon::Span<Operon::Scalar const> { return dataset_->GetValues(target_.Index); }
     [[nodiscard]] auto TargetValues(Operon::Range range) const -> Operon::Span<Operon::Scalar const> {
-        return dataset_.GetValues(target_.Index).subspan(range.Start(), range.Size());
+        return dataset_->GetValues(target_.Index).subspan(range.Start(), range.Size());
     }
 
     void StandardizeData(Range range)
     {
         for (auto const& v : inputs_) {
-            dataset_.Standardize(GetVariable<Operon::Hash>(v).Index, range);
+            dataset_->Standardize(GetVariable<Operon::Hash>(v).Index, range);
         }
     }
 
     void NormalizeData(Range range)
     {
         for (auto const& v : inputs_) {
-            dataset_.Normalize(GetVariable<Operon::Hash>(v).Index, range);
+            dataset_->Normalize(GetVariable<Operon::Hash>(v).Index, range);
         }
     }
 };

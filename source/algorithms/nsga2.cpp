@@ -61,7 +61,8 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
 
 auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 {
-    auto eps = static_cast<Operon::Scalar>(GetConfig().Epsilon);
+    auto config = GetConfig();
+    auto eps = static_cast<Operon::Scalar>(config.Epsilon);
     auto eq = [eps](auto const& lhs, auto const& rhs) { return Operon::Equal{}(lhs.Fitness, rhs.Fitness, eps); };
     // sort the population lexicographically
     std::stable_sort(pop.begin(), pop.end(), [](auto const& a, auto const& b){ return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });
@@ -77,7 +78,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) { return !ind.Rank; });
     Operon::Span<Operon::Individual const> uniq(pop.begin(), r);
     // do the sorting
-    fronts_ = sorter_(uniq, eps);
+    fronts_ = (*sorter_)(uniq, eps);
     // sort the fronts for consistency between sorting algos
     for (auto& f : fronts_) {
         std::stable_sort(f.begin(), f.end());
@@ -118,19 +119,19 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
         rngs.emplace_back(random());
     }
 
-    auto const& evaluator = generator.Evaluator();
+    auto const* evaluator = generator->Evaluator();
 
     // we want to allocate all the memory that will be necessary for evaluation (e.g. for storing model responses)
     // in one go and use it throughout the generations in order to minimize the memory pressure
-    auto trainSize = problem.TrainingRange().Size();
+    auto trainSize = problem->TrainingRange().Size();
 
     ENSURE(executor.num_workers() > 0);
-    std::vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
+    std::vector<std::vector<Operon::Scalar>> slots(executor.num_workers());
 
     tf::Taskflow taskflow;
 
     auto stop = [&]() {
-        return generator.Terminate() || Generation() == config.Generations || elapsed() > static_cast<double>(config.TimeLimit);
+        return generator->Terminate() || Generation() == config.Generations || elapsed() > static_cast<double>(config.TimeLimit);
     };
 
     auto& individuals = Individuals();
@@ -141,17 +142,15 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&](tf::Subflow& subflow) {
             auto init = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
-                parents[i].Genotype = treeInit(rngs[i]);
-                coeffInit(rngs[i], parents[i].Genotype);
+                parents[i].Genotype = (*treeInit)(rngs[i]);
+                (*coeffInit)(rngs[i], parents[i].Genotype);
             }).name("initialize population");
-            auto prepareEval = subflow.emplace([&]() { evaluator.Prepare(parents); }).name("prepare evaluator");
+            auto prepareEval = subflow.emplace([&]() { evaluator->Prepare(parents); }).name("prepare evaluator");
             auto eval = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
-                auto id = executor.this_worker_id();
                 // make sure the worker has a large enough buffer
-                if (slots[id].size() < trainSize) {
-                    slots[id].resize(trainSize);
-                }
-                parents[i].Fitness = evaluator(rngs[i], parents[i], slots[id]);
+                auto const id = executor.this_worker_id();
+                slots[id].resize(trainSize);
+                parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
             }).name("evaluate population");
             auto nonDominatedSort = subflow.emplace([&]() { Sort(parents); }).name("non-dominated sort");
             auto reportProgress = subflow.emplace([&]() { if (report) { std::invoke(report); } }).name("report progress");
@@ -162,11 +161,12 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
         }, // init
         stop, // loop condition
         [&](tf::Subflow& subflow) {
-            auto prepareGenerator = subflow.emplace([&]() { generator.Prepare(parents); }).name("prepare generator");
+            auto prepareGenerator = subflow.emplace([&]() { generator->Prepare(parents); }).name("prepare generator");
             auto generateOffspring = subflow.for_each_index(size_t{0}, offspring.size(), size_t{1}, [&](size_t i) {
+                slots[executor.this_worker_id()].resize(trainSize);
                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                 while (!stop()) {
-                    auto result = generator(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, buf);
+                    auto result = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf);
                     if (result) {
                         offspring[i] = std::move(*result);
                         ENSURE(offspring[i].Genotype.Length() > 0);
@@ -175,7 +175,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
                 }
             }).name("generate offspring");
             auto nonDominatedSort = subflow.emplace([&]() { Sort(individuals); }).name("non-dominated sort");
-            auto reinsert = subflow.emplace([&]() { reinserter.Sort(individuals); }).name("reinsert");
+            auto reinsert = subflow.emplace([&]() { reinserter->Sort(individuals); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&]() { if (report) { std::invoke(report); } }).name("report progress");
 

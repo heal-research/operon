@@ -5,6 +5,7 @@
 #define OPERON_MUTATION_HPP
 
 #include <cstddef>
+#include <gsl/pointers>
 #include <utility>
 #include <functional>
 #include <vector>
@@ -88,16 +89,16 @@ struct OPERON_EXPORT DiscretePointMutation : public MutatorBase {
 struct OPERON_EXPORT MultiMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 
-    void Add(const MutatorBase& op, double prob)
+    void Add(gsl::not_null<MutatorBase const*> op, double prob)
     {
-        operators_.push_back(std::ref(op));
+        operators_.emplace_back(op);
         probabilities_.push_back(prob);
     }
 
     [[nodiscard]] auto Count() const -> size_t { return operators_.size(); }
 
 private:
-    std::vector<std::reference_wrapper<const MutatorBase>> operators_;
+    std::vector<gsl::not_null<MutatorBase const*>> operators_;
     std::vector<double> probabilities_;
 };
 
@@ -135,7 +136,7 @@ private:
 };
 
 struct OPERON_EXPORT InsertSubtreeMutation final : public MutatorBase {
-    InsertSubtreeMutation(CreatorBase& creator, CoefficientInitializerBase& coeffInit, size_t maxDepth, size_t maxLength)
+    InsertSubtreeMutation(gsl::not_null<CreatorBase const*> creator, gsl::not_null<CoefficientInitializerBase const*> coeffInit, size_t maxDepth, size_t maxLength)
         : creator_(creator)
         , coefficientInitializer_(coeffInit)
         , maxDepth_(maxDepth)
@@ -146,14 +147,14 @@ struct OPERON_EXPORT InsertSubtreeMutation final : public MutatorBase {
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 
 private:
-    std::reference_wrapper<CreatorBase> creator_;
-    std::reference_wrapper<CoefficientInitializerBase> coefficientInitializer_;
+    gsl::not_null<CreatorBase const*> creator_;
+    gsl::not_null<CoefficientInitializerBase const*> coefficientInitializer_;
     size_t maxDepth_;
     size_t maxLength_;
 };
 
 struct OPERON_EXPORT ReplaceSubtreeMutation : public MutatorBase {
-    ReplaceSubtreeMutation(CreatorBase& creator, CoefficientInitializerBase& coeffInit, size_t maxDepth, size_t maxLength)
+    ReplaceSubtreeMutation(gsl::not_null<CreatorBase const*> creator, gsl::not_null<CoefficientInitializerBase const*> coeffInit, size_t maxDepth, size_t maxLength)
         : creator_(creator)
         , coefficientInitializer_(coeffInit)
         , maxDepth_(maxDepth)
@@ -164,8 +165,8 @@ struct OPERON_EXPORT ReplaceSubtreeMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 
 private:
-    std::reference_wrapper<CreatorBase> creator_;
-    std::reference_wrapper<CoefficientInitializerBase> coefficientInitializer_;
+    gsl::not_null<CreatorBase const*> creator_;
+    gsl::not_null<CoefficientInitializerBase const*> coefficientInitializer_;
     size_t maxDepth_;
     size_t maxLength_;
 };

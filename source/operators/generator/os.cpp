@@ -6,12 +6,12 @@
 
 namespace Operon {
 
-    auto OffspringSelectionGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
+    auto OffspringSelectionGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
     {
-        auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, buf);
+        auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf);
         bool accept{false};
         if (res.Parent2) {
-            Individual q(res.Child->Size());
+            Individual q{};
             for (size_t i = 0; i < q.Size(); ++i) {
                 auto f1 = (*res.Parent1)[i];
                 auto f2 = (*res.Parent2)[i];
