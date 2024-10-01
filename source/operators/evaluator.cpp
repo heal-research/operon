@@ -12,7 +12,6 @@
 
 #include <operon/operon_export.hpp>
 #include <taskflow/taskflow.hpp>
-#include <chrono>
 #include <type_traits>
 
 namespace Operon {
@@ -71,7 +70,7 @@ namespace Operon {
     template<> auto OPERON_EXPORT
     Evaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType
     {
-        return EvaluatorBase::operator()(rng, ind);
+        return EvaluatorBase::Evaluate(this, rng, ind);
     }
 
     auto DiversityEvaluator::Prepare(Operon::Span<Operon::Individual const> pop) const -> void {
@@ -85,6 +84,11 @@ namespace Operon {
             std::stable_sort(hash.begin(), hash.end());
             divmap_[tree.HashValue()] = std::move(hash);
         }
+    }
+
+    auto
+    DiversityEvaluator::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType {
+        return EvaluatorBase::Evaluate(this, rng, ind);
     }
 
     auto
@@ -104,6 +108,12 @@ namespace Operon {
             distance += static_cast<Operon::Scalar>(Operon::Distance::Jaccard(lhs, rhs));
         }
         return EvaluatorBase::ReturnType { -distance / static_cast<Operon::Scalar>(sampleSize_) };
+    }
+
+    auto
+    AggregateEvaluator::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType
+    {
+        return EvaluatorBase::Evaluate(this, rng, ind);
     }
 
     auto
