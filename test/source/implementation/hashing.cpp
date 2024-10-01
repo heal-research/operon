@@ -92,7 +92,7 @@ TEST_CASE("Hash-based distance") {
     std::vector<Tree> trees(n);
     std::vector<Operon::Vector<Operon::Hash>> treeHashes(n);
 
-    auto btc = BalancedTreeCreator { grammar, inputs };
+    auto btc = BalancedTreeCreator { &grammar, inputs };
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
 
     std::iota(indices.begin(), indices.end(), 0);
@@ -138,7 +138,7 @@ TEST_CASE("Hash collisions") {
     std::vector<Operon::Hash> seeds(n);
     std::vector<Tree> trees(n);
 
-    auto btc = BalancedTreeCreator { grammar, inputs };
+    auto btc = BalancedTreeCreator { &grammar, inputs };
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
     initializer.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 

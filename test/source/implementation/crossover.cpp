@@ -32,7 +32,7 @@ TEST_CASE("Crossover")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
-    BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
+    BalancedTreeCreator btc { &grammar, inputs, /* bias= */ 0.0 };
 
     Operon::RandomGenerator random(1234);
 
