@@ -55,7 +55,7 @@ namespace Operon::Test {
         taskflow.for_each_index(size_t{0}, trees.size(), size_t{1}, [&](auto i) {
             auto& res = results[executor.this_worker_id()];
             auto coeff = trees[i].GetCoefficients();
-            Operon::Interpreter<T, DTable>{dt, ds, trees[i]}.Evaluate({coeff}, range, {res});
+            Operon::Interpreter<T, DTable>{&dt, &ds, &trees[i]}.Evaluate({coeff}, range, {res});
         });
         executor.run(taskflow).wait();
     }
@@ -84,7 +84,7 @@ namespace Operon::Test {
         PrimitiveSet pset;
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        auto creator = BalancedTreeCreator { pset, inputs };
+        auto creator = BalancedTreeCreator { &pset, inputs };
 
         std::vector<Tree> trees(n);
 
@@ -195,11 +195,13 @@ namespace Operon::Test {
         std::erase(inputs, ds.GetVariable(target)->Hash);
         Range range = { 0, ds.Rows<std::size_t>() };
 
-        Operon::Problem problem(ds, range, range);
+        Operon::Problem problem{&ds};
+        problem.SetTrainingRange(range);
+        problem.SetTestRange(range);
         problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-        auto creator = BalancedTreeCreator { problem.GetPrimitiveSet(), inputs };
+        auto creator = BalancedTreeCreator { &problem.GetPrimitiveSet(), inputs };
 
         std::vector<Tree> trees(n);
         std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
@@ -240,16 +242,16 @@ namespace Operon::Test {
         using DTable = DefaultDispatch;
         DTable dtable;
 
-        test("c2",        Operon::Evaluator(problem, dtable, Operon::C2{}, /*linearScaling=*/false));
-        test("c2 + ls",   Operon::Evaluator(problem, dtable, Operon::C2{}, /*linearScaling=*/true));
-        test("r2",        Operon::Evaluator(problem, dtable, Operon::R2{}, /*linearScaling=*/false));
-        test("r2 + ls",   Operon::Evaluator(problem, dtable, Operon::R2{}, /*linearScaling=*/true));
-        test("nmse",      Operon::Evaluator(problem, dtable, Operon::NMSE{}, /*linearScaling=*/false));
-        test("nmse + ls", Operon::Evaluator(problem, dtable, Operon::NMSE{}, /*linearScaling=*/true));
-        test("mae",       Operon::Evaluator(problem, dtable, Operon::MAE{}, /*linearScaling=*/false));
-        test("mae + ls",  Operon::Evaluator(problem, dtable, Operon::MAE{}, /*linearScaling=*/true));
-        test("mse",       Operon::Evaluator(problem, dtable, Operon::MSE{}, /*linearScaling=*/false));
-        test("mse + ls",  Operon::Evaluator(problem, dtable, Operon::MSE{}, /*linearScaling=*/true));
+        test("c2",        Operon::Evaluator<DTable>(&problem, &dtable, Operon::C2{}, /*linearScaling=*/false));
+        test("c2 + ls",   Operon::Evaluator<DTable>(&problem, &dtable, Operon::C2{}, /*linearScaling=*/true));
+        test("r2",        Operon::Evaluator<DTable>(&problem, &dtable, Operon::R2{}, /*linearScaling=*/false));
+        test("r2 + ls",   Operon::Evaluator<DTable>(&problem, &dtable, Operon::R2{}, /*linearScaling=*/true));
+        test("nmse",      Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}, /*linearScaling=*/false));
+        test("nmse + ls", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}, /*linearScaling=*/true));
+        test("mae",       Operon::Evaluator<DTable>(&problem, &dtable, Operon::MAE{}, /*linearScaling=*/false));
+        test("mae + ls",  Operon::Evaluator<DTable>(&problem, &dtable, Operon::MAE{}, /*linearScaling=*/true));
+        test("mse",       Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*linearScaling=*/false));
+        test("mse + ls",  Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*linearScaling=*/true));
     }
 
     TEST_CASE("Parallel interpreter")
@@ -273,7 +275,7 @@ namespace Operon::Test {
        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
        Operon::PrimitiveSet pset;
        pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
-       auto creator = BalancedTreeCreator { pset, inputs };
+       auto creator = BalancedTreeCreator { &pset, inputs };
 
        std::vector<Tree> trees(n);
        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
@@ -284,7 +286,7 @@ namespace Operon::Test {
        std::iota(threads.begin(), threads.end(), 1);
        std::vector<Operon::Scalar> result(trees.size() * range.Size());
        for (auto t : threads) {
-           b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, ds, range, result, t); });
+           b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, &ds, range, result, t); });
        }
     }
 
@@ -307,14 +309,16 @@ namespace Operon::Test {
         Range trainingRange(0, nrow / 2);
         Range testRange(nrow / 2, nrow);
 
-        Operon::Problem problem(ds, trainingRange, testRange);
+        Operon::Problem problem(&ds);
+        problem.SetTrainingRange(trainingRange);
+        problem.SetTestRange(testRange);
         problem.GetPrimitiveSet().SetConfig(PrimitiveSet::Arithmetic);
-        BalancedTreeCreator creator(problem.GetPrimitiveSet(), problem.GetInputs(), 0.0);
+        BalancedTreeCreator creator(&problem.GetPrimitiveSet(), problem.GetInputs(), 0.0);
 
         const size_t maxDepth = 1000;
         const size_t maxLength = 50;
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
-        UniformTreeInitializer initializer(creator);
+        UniformTreeInitializer initializer(&creator);
         initializer.ParameterizeDistribution(amin + 1, maxLength);
         initializer.SetMinDepth(1);
         initializer.SetMaxDepth(maxDepth);
@@ -330,31 +334,31 @@ namespace Operon::Test {
         onePoint.ParameterizeDistribution(Operon::Scalar{-2}, Operon::Scalar{+2});
         auto changeVar = ChangeVariableMutation { problem.GetInputs() };
         auto changeFunc = ChangeFunctionMutation { problem.GetPrimitiveSet() };
-        auto replaceSubtree = ReplaceSubtreeMutation { creator, coeffInit, maxDepth, maxLength };
-        auto insertSubtree = InsertSubtreeMutation { creator, coeffInit, maxDepth, maxLength };
+        auto replaceSubtree = ReplaceSubtreeMutation { &creator, &coeffInit, maxDepth, maxLength };
+        auto insertSubtree = InsertSubtreeMutation { &creator, &coeffInit, maxDepth, maxLength };
         auto removeSubtree = RemoveSubtreeMutation { problem.GetPrimitiveSet() };
-        mutator.Add(onePoint, 1.0);
-        mutator.Add(changeVar, 1.0);
-        mutator.Add(changeFunc, 1.0);
-        mutator.Add(removeSubtree, 1.0);
-        mutator.Add(insertSubtree, 1.0);
-        mutator.Add(removeSubtree, 1.0);
+        mutator.Add(&onePoint, 1.0);
+        mutator.Add(&changeVar, 1.0);
+        mutator.Add(&changeFunc, 1.0);
+        mutator.Add(&removeSubtree, 1.0);
+        mutator.Add(&insertSubtree, 1.0);
+        mutator.Add(&removeSubtree, 1.0);
 
         using DTable = DefaultDispatch;
         DTable dtable;
 
-        Evaluator c2eval(problem, dtable, Operon::C2{}, /*linearScaling=*/false);
-        LengthEvaluator lenEval(problem);
+        Evaluator<DTable> c2eval(&problem, &dtable, Operon::C2{}, /*linearScaling=*/false);
+        LengthEvaluator lenEval(&problem);
 
-        MultiEvaluator evaluator(problem);
-        evaluator.Add(c2eval);
-        evaluator.Add(lenEval);
+        MultiEvaluator evaluator(&problem);
+        evaluator.Add(&c2eval);
+        evaluator.Add(&lenEval);
 
         CrowdedComparison comp;
         TournamentSelector selector(comp);
         KeepBestReinserter reinserter(comp);
 
-        BasicOffspringGenerator generator(evaluator, crossover, mutator, selector, selector);
+        BasicOffspringGenerator generator(&evaluator, &crossover, &mutator, &selector, &selector);
         Operon::RandomGenerator random(1234);
 
         RankIntersectSorter sorter;
@@ -370,7 +374,7 @@ namespace Operon::Test {
         config.TimeLimit = ~size_t{0};
         config.Seed = random();
 
-        Operon::NSGA2 gp { problem, config, initializer, coeffInit, generator, reinserter, sorter };
+        Operon::NSGA2 gp { config, &problem, &initializer, &coeffInit, &generator, &reinserter, &sorter };
         //tf::Executor executor;
 
         auto report = [&]() {
@@ -406,7 +410,7 @@ namespace Operon::Test {
         for (auto i = 0UL; i < NodeTypes::Count-3; ++i) {
             Operon::PrimitiveSet pset(primitives | static_cast<NodeType>(1U << i));
             Operon::Node node(static_cast<NodeType>(1U << i));
-            auto creator = BalancedTreeCreator { pset, inputs };
+            auto creator = BalancedTreeCreator { &pset, inputs };
             std::vector<Tree> trees(n);
             std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
