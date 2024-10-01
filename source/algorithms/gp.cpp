@@ -90,6 +90,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             }).name("keep elite");
             auto prepareGenerator = subflow.emplace([&]() { generator->Prepare(parents); }).name("prepare generator");
             auto generateOffspring = subflow.for_each_index(size_t{1}, offspring.size(), size_t{1}, [&](size_t i) {
+                slots[executor.this_worker_id()].resize(trainSize);
                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                 while (!stop()) {
                     if (auto result = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf); result.has_value()) {
