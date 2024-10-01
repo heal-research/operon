@@ -55,7 +55,7 @@ TEST_CASE("Intersection performance")
     grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log);
 
     std::vector<Tree> trees(n);
-    BalancedTreeCreator btc(grammar, ds.VariableHashes());
+    BalancedTreeCreator btc(&grammar, ds.VariableHashes());
     UniformCoefficientInitializer coeffInit;
     std::generate(trees.begin(), trees.end(), [&]() { auto tree = btc(rd, sizeDistribution(rd), 0, maxDepth); coeffInit(rd, tree); return tree; });
 

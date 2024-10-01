@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
+#include <deque>
 #include <doctest/doctest.h>
 #include <fmt/core.h>
 #include <fmt/color.h>
@@ -44,7 +45,9 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     Operon::DispatchTable<Operon::Scalar> dtable;
 
     Operon::Range range{0, ds.Rows<std::size_t>()};
-    Operon::Problem problem(ds, range, {0, 1});
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange(range);
+    problem.SetTestRange(range);
 
     auto derive = [&](std::string const& expr) {
         fmt::print(fmt::emphasis::bold, "f(x, y) = {}\n", expr);
@@ -63,7 +66,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
         auto [res, jac] = Util::Autodiff(tree, ds, range);
 
-        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter{dtable, ds, tree};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> interpreter{&dtable, &ds, &tree};
         auto est = interpreter.Evaluate(parameters, range);
         auto rev = interpreter.JacRev(parameters, range);
         auto fwd = interpreter.JacFwd(parameters, range);
@@ -90,7 +93,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         std::bernoulli_distribution bernoulli(0.5); // NOLINT
         // std::uniform_real_distribution<Operon::Scalar> dist(-pi, +pi);
         std::uniform_real_distribution<Operon::Scalar> dist(-10.F, +10.F);
-        Operon::BalancedTreeCreator btc(pset, ds.VariableHashes());
+        Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes());
 
         std::vector<Operon::Tree> trees;
         trees.reserve(n);
@@ -186,8 +189,8 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         Operon::Range range(0, 10); // NOLINT
 
         DispatchTable<Operon::Scalar> dt;
-        auto jacrev = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{dt, ds, tree}.JacRev(coeff, range);
-        auto jacfwd = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{dt, ds, tree}.JacFwd(coeff, range);
+        auto jacrev = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{&dt, &ds, &tree}.JacRev(coeff, range);
+        auto jacfwd = Operon::Interpreter<Operon::Scalar, DispatchTable<Operon::Scalar>>{&dt, &ds, &tree}.JacFwd(coeff, range);
 
         std::cout << "jacrev:\n" << jacrev << "\n\n";
         std::cout << "jacfwd:\n" << jacfwd << "\n\n";
@@ -246,7 +249,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                 auto [res, jac] = Util::Autodiff(tree, ds, range);
                 Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> jjet(jac.data(), range.Size(), parameters.size());
 
-                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{dtable, ds, tree};
+                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{&dtable, &ds, &tree};
 
                 std::vector<Operon::Scalar> out(range.Size());
                 Util::EvaluateTree(tree, ds, range, parameters.data(), out.data());
@@ -309,7 +312,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
             for (auto const& tree : trees) {
                 auto parameters = tree.GetCoefficients();
-                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{dtable, ds, tree};
+                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{&dtable, &ds, &tree};
                 auto est = Operon::Interpreter<float, Operon::DispatchTable<float>>::Evaluate(tree, ds, range);
                 auto [res, jet] = Util::Autodiff(tree, ds, range);
                 Eigen::Array<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, range);
@@ -326,7 +329,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
             for (auto const& tree : trees) {
                 auto parameters = tree.GetCoefficients();
-                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{dtable, ds, tree};
+                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{&dtable, &ds, &tree};
                 auto est = Operon::Interpreter<float, Operon::DispatchTable<float>>::Evaluate(tree, ds, range);
                 auto [res, jet] = Util::Autodiff(tree, ds, range);
                 Eigen::Array<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, range);
@@ -345,5 +348,85 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         }
     };
 }
+
+class Differentiator {
+public:
+    explicit Differentiator(std::vector<Operon::Node> const& nodes)
+        : nodes_(nodes) {}
+
+    explicit Differentiator(Operon::Tree const& tree) : Differentiator(tree.Nodes()) {}
+
+    auto operator()(int parentIndex, int childIndex) {
+        auto const& parent = nodes_[parentIndex];
+        // auto const& child  = nodes_[childIndex];
+
+        // auto& self = *this;
+
+        switch(parent.Type) {
+            case NodeType::Add: {
+                diff_.push_back(Node::Constant(1.0));
+                break;
+            }
+
+            case NodeType::Sub: {
+                if (parent.Arity == 1) {
+                    // sub with arity one is a sign negation
+                    diff_.push_back(Node::Constant(-1.0));
+                } else {
+                    diff_.push_back(Node::Constant(childIndex == parentIndex-1 ? +1.0 : -1.0));
+                }
+                break;
+            }
+            case NodeType::Mul: {
+                if (parent.Arity == 1) {
+                    diff_.push_back(Node::Constant(1.0));
+                } else {
+                    for (auto i : Tree::Indices(nodes_, parentIndex)) {
+                        if (static_cast<int>(i) == childIndex) { continue; }
+                        for (auto const& n : Subtree<Operon::Node const>(nodes_, i).Nodes()) {
+                            diff_.push_back(n);
+                        }
+                        diff_.emplace_back(NodeType::Mul);
+                        diff_.back().Arity = parent.Arity-1;
+                    }
+                }
+                break;
+            }
+            case NodeType::Div:
+            case NodeType::Fmin:
+            case NodeType::Fmax:
+            case NodeType::Aq:
+            case NodeType::Pow:
+            case NodeType::Abs:
+            case NodeType::Acos:
+            case NodeType::Asin:
+            case NodeType::Atan:
+            case NodeType::Cbrt:
+            case NodeType::Ceil:
+            case NodeType::Cos:
+            case NodeType::Cosh:
+            case NodeType::Exp:
+            case NodeType::Floor:
+            case NodeType::Log:
+            case NodeType::Logabs:
+            case NodeType::Log1p:
+            case NodeType::Sin:
+            case NodeType::Sinh:
+            case NodeType::Sqrt:
+            case NodeType::Sqrtabs:
+            case NodeType::Tan:
+            case NodeType::Tanh:
+            case NodeType::Square:
+            case NodeType::Dynamic:
+            case NodeType::Constant:
+            case NodeType::Variable:
+                break;
+            }
+    }
+
+private:
+    std::vector<Operon::Node> diff_;
+    std::span<Operon::Node const> nodes_;
+};
 
 } // namespace Operon::Test

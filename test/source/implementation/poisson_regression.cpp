@@ -42,7 +42,10 @@ namespace Operon::Test {
         Operon::Dataset ds{data};
         Operon::Range rg(0, ds.Rows());
 
-        Operon::Problem problem{ds, {0UL, ds.Rows<std::size_t>()}, {0UL, 1UL}};
+        Operon::Problem problem{&ds};
+        problem.SetTrainingRange({0UL, ds.Rows<std::size_t>()});
+        problem.SetTestRange({0UL, 1UL});
+
         problem.ConfigurePrimitiveSet(Operon::PrimitiveSet::Arithmetic);
 
         // operator parameters
@@ -52,10 +55,10 @@ namespace Operon::Test {
         constexpr auto maxDepth{10UL};
         constexpr auto maxLength{30UL};
 
-        Operon::BalancedTreeCreator creator{problem.GetPrimitiveSet(), problem.GetInputs()};
+        Operon::BalancedTreeCreator creator{&problem.GetPrimitiveSet(), problem.GetInputs()};
         auto [minArity, maxArity] = problem.GetPrimitiveSet().FunctionArityLimits();
 
-        Operon::UniformTreeInitializer treeInitializer(creator);
+        Operon::UniformTreeInitializer treeInitializer(&creator);
         treeInitializer.ParameterizeDistribution(minArity+1, maxLength);
         treeInitializer.SetMinDepth(1);
         treeInitializer.SetMaxDepth(maxDepth);
@@ -70,43 +73,43 @@ namespace Operon::Test {
         onePoint.ParameterizeDistribution(0.F, 1.F);
         Operon::ChangeVariableMutation changeVar{problem.GetInputs()};
         Operon::ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
-        Operon::ReplaceSubtreeMutation replaceSubtree { creator, coeffInitializer, maxDepth, maxLength };
-        Operon::InsertSubtreeMutation insertSubtree { creator, coeffInitializer, maxDepth, maxLength };
+        Operon::ReplaceSubtreeMutation replaceSubtree { &creator, &coeffInitializer, maxDepth, maxLength };
+        Operon::InsertSubtreeMutation insertSubtree { &creator, &coeffInitializer, maxDepth, maxLength };
         Operon::RemoveSubtreeMutation removeSubtree { problem.GetPrimitiveSet() };
 
-        mutator.Add(onePoint, 1.0);
-        mutator.Add(changeVar, 1.0);
-        mutator.Add(changeFunc, 1.0);
-        mutator.Add(replaceSubtree, 1.0);
-        mutator.Add(insertSubtree, 1.0);
-        mutator.Add(removeSubtree, 1.0);
+        mutator.Add(&onePoint, 1.0);
+        mutator.Add(&changeVar, 1.0);
+        mutator.Add(&changeFunc, 1.0);
+        mutator.Add(&replaceSubtree, 1.0);
+        mutator.Add(&insertSubtree, 1.0);
+        mutator.Add(&removeSubtree, 1.0);
 
         constexpr auto maxEvaluations{1'000'000};
         constexpr auto maxGenerations{1'000};
 
-        Operon::LengthEvaluator lengthEvaluator{problem, maxLength};
+        Operon::LengthEvaluator lengthEvaluator{&problem, maxLength};
 
         Operon::DefaultDispatch dt;
 
         using Likelihood = Operon::PoissonLikelihood<Operon::Scalar, /*LogInput*/ true>;
-        Operon::LikelihoodEvaluator<decltype(dt), Likelihood> poissonEvaluator{problem, dt};
+        Operon::LikelihoodEvaluator<decltype(dt), Likelihood> poissonEvaluator{&problem, &dt};
         poissonEvaluator.SetBudget(maxEvaluations);
 
-        Operon::MultiEvaluator evaluator{problem};
+        Operon::MultiEvaluator evaluator{&problem};
         evaluator.SetBudget(maxEvaluations);
-        evaluator.Add(poissonEvaluator);
-        evaluator.Add(lengthEvaluator);
+        evaluator.Add(&poissonEvaluator);
+        evaluator.Add(&lengthEvaluator);
 
         // Operon::LevenbergMarquardtOptimizer<decltype(dt)> optimizer{dt, problem};
-        Operon::SGDOptimizer<decltype(dt), Likelihood> optimizer{dt, problem};
+        Operon::SGDOptimizer<decltype(dt), Likelihood> optimizer{&dt, &problem};
         // Operon::LBFGSOptimizer<decltype(dt), Operon::PoissonLikelihood<>> optimizer{dt, problem};
         optimizer.SetIterations(100);
 
         Operon::CrowdedComparison cc;
         Operon::TournamentSelector selector{cc};
-        Operon::CoefficientOptimizer co{optimizer};
+        Operon::CoefficientOptimizer co{&optimizer};
 
-        Operon::BasicOffspringGenerator gen{evaluator, crossover, mutator, selector, selector, &co};
+        Operon::BasicOffspringGenerator gen{&evaluator, &crossover, &mutator, &selector, &selector, &co};
         Operon::RankIntersectSorter rankSorter;
         Operon::KeepBestReinserter reinserter{cc};
 
@@ -122,7 +125,7 @@ namespace Operon::Test {
         config.Seed = 1234;
         config.TimeLimit = std::numeric_limits<size_t>::max();
 
-        Operon::NSGA2 algorithm{problem, config, treeInitializer, coeffInitializer, gen, reinserter, rankSorter};
+        Operon::NSGA2 algorithm{config, &problem, &treeInitializer, &coeffInitializer, &gen, &reinserter, &rankSorter};
         auto report = [&](){
             fmt::print("{} {}\n", algorithm.Generation(), std::size_t{poissonEvaluator.CallCount});
         };
@@ -131,12 +134,12 @@ namespace Operon::Test {
         fmt::print("{}\n", poissonEvaluator.TotalEvaluations());
 
         // validate results
-        Operon::AkaikeInformationCriterionEvaluator<decltype(dt)> aicEvaluator{problem, dt};
+        Operon::AkaikeInformationCriterionEvaluator<decltype(dt)> aicEvaluator{&problem, &dt};
 
         for (auto ind : algorithm.Best()) {
             auto a = poissonEvaluator(rng, ind, {});
 
-            Operon::Interpreter<Operon::Scalar, decltype(dt)> interpreter(dt, ds, ind.Genotype);
+            Operon::Interpreter<Operon::Scalar, decltype(dt)> interpreter(&dt, &ds, &ind.Genotype);
             auto est = interpreter.Evaluate(ind.Genotype.GetCoefficients(), problem.TrainingRange());
             auto tgt = problem.TargetValues(problem.TrainingRange());
 
