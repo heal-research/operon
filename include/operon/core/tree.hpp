@@ -80,7 +80,7 @@ public:
 
     [[nodiscard]] inline auto CoefficientsCount() const
     {
-        return std::count_if(nodes_.cbegin(), nodes_.cend(), [](auto const& s) { return s.IsLeaf(); });
+        return std::count_if(nodes_.cbegin(), nodes_.cend(), [](auto const& s) { return s.Optimize; });
     }
 
     void SetCoefficients(Operon::Span<Operon::Scalar const> coefficients);
