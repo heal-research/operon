@@ -3,8 +3,8 @@
 
 #include <doctest/doctest.h>
 #include <fmt/ranges.h>
-#include <taskflow/core/executor.hpp>
 #include <taskflow/taskflow.hpp>
+#include <taskflow/core/executor.hpp>
 
 #include "operon/algorithms/nsga2.hpp"
 #include "operon/core/dataset.hpp"
