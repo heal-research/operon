@@ -275,12 +275,6 @@ private:
             auto w = std::get<0>(context_[i]);
 
             if (nodes[i].Optimize) {
-                if (k-1 < 0 || k-1 >= jac.cols()) {
-                    fmt::print("Tree: {}\n", Operon::InfixFormatter::Format(*tree_, *dataset_));
-                    fmt::print("{}\n", Operon::TreeFormatter::Format(*tree_, *dataset_));
-                    ENSURE(k-1 >= 0);
-                    ENSURE(k-1 < jac.cols());
-                }
                 jac.col(--k).segment(row, rem) = trace.col(i).head(rem) * primal.col(i).head(rem) / w;
             }
 
