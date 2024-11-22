@@ -32,7 +32,7 @@ In symbolic regression, the programs represent mathematical expressions typicall
 
 The project requires CMake and a C++17 compliant compiler (C++20 if you're on the `cpp20` branch). The recommended way to build Operon is via either [nix](https://github.com/NixOS/nix) or [vcpkg](https://github.com/microsoft/vcpkg).
 
-Check out [https://github.com/heal-research/operon/blob/master/BUILDING.md](BUILD.md) for detailed build instructions and how to enable/disable certain features.
+Check out [https://github.com/heal-research/operon/blob/master/BUILDING.md](BUILDING.md) for detailed build instructions and how to enable/disable certain features.
 
 ### Nix
 
