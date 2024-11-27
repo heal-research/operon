@@ -197,6 +197,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("disable-symbols", "Comma-separated list of disabled symbols ("+symbols+")", cxxopts::value<std::string>())
         ("symbolic", "Operate in symbolic mode - no coefficient tuning or coefficient mutation", cxxopts::value<bool>()->default_value("false"))
         ("show-primitives", "Display the primitive set used by the algorithm")
+        ("show-pareto-front", "Displays all expressions in the first Pareto front of the final generation", cxxopts::value<bool>()->default_value("false"))
         ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
         ("timelimit", "Time limit after which the algorithm will terminate", cxxopts::value<size_t>()->default_value(std::to_string(std::numeric_limits<size_t>::max())))
         ("debug", "Debug mode (more information displayed)")
