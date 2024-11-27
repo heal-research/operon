@@ -36,14 +36,15 @@
               })
             ];
           };
-          stdenv = pkgs.llvmPackages_18.stdenv;
+          stdenv = pkgs.llvmPackages_19.stdenv;
+          #stdenv = pkgs.gcc12Stdenv;
           operon = import ./operon.nix { inherit stdenv pkgs system; };
         in
         rec
         {
           packages = {
             default = operon.overrideAttrs (old: {
-              cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" ];
+              cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" "-DCPM_USE_LOCAL_PACKAGES=ON" ];
             });
 
             library = operon.overrideAttrs (old: {
@@ -59,7 +60,7 @@
             name = "operon";
 
             nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
-              clang-tools_18
+              clang-tools_19
               cppcheck
               include-what-you-use
               cmake-language-server
@@ -67,7 +68,6 @@
 
             buildInputs = operon.buildInputs ++ (with pkgs; [
               gdb
-              gcc13
               graphviz
               hyperfine
               linuxPackages_latest.perf
