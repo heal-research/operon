@@ -9,7 +9,7 @@ stdenv.mkDerivation rec {
     "x86_64-linux"   = "build-linux";
     "x86_64-darwin"  = "build-linux";
     "aarch64-darwin" = "build-osx";
-  }."${system}"; 
+  }."${system}";
 
   cmakeFlags = [
     "--preset ${cmakePreset}"
@@ -27,9 +27,8 @@ stdenv.mkDerivation rec {
     doctest
     eigen
     eve
-    fast-float
+    (fast-float.overrideAttrs({ version = "6.1.6"; }))
     fmt
-    icu
     jemalloc
     cpptrace
     libassert
