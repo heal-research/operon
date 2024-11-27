@@ -151,7 +151,7 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
         Operon::LMCostFunction<Operon::Scalar> cf{interpreter, target, range};
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-        lm.setMaxfev(static_cast<int>(iterations+1));
+        lm.setMaxfev(static_cast<int>(iterations));
 
         auto x0 = tree.GetCoefficients();
         OptimizerSummary summary;
@@ -195,35 +195,39 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
 };
 
 #if defined(HAVE_CERES)
-template <typename T = Operon::Scalar>
-struct NonlinearLeastSquaresOptimizer<T, OptimizerType::Ceres> : public OptimizerBase<T> {
-    explicit NonlinearLeastSquaresOptimizer(InterpreterBase<T>& interpreter)
-        : OptimizerBase<T>{interpreter}
+template <typename DTable>
+struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Ceres> final : public OptimizerBase {
+    explicit LevenbergMarquardtOptimizer(DTable const& dtable, Problem const& problem)
+        : OptimizerBase{problem}, dtable_{dtable}
     {
     }
 
-    auto Optimize(Operon::Span<Operon::Scalar const> target, Range range, size_t iterations, OptimizerSummary& summary) -> std::vector<Operon::Scalar> final
+    [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*unused*/, Operon::Tree const& tree) const -> OptimizerSummary final
     {
-        auto const& tree = this->GetTree();
-        auto const& ds = this->GetDataset();
-        auto const& dt = this->GetDispatchTable();
+        auto const& dtable = this->GetDispatchTable();
+        auto const& problem = this->GetProblem();
+        auto const& dataset = problem.GetDataset();
+        auto range  = problem.TrainingRange();
+        auto target = problem.TargetValues(range);
+        auto iterations = this->Iterations();;
 
-        auto x0 = tree.GetCoefficients();
+        auto initialParameters = tree.GetCoefficients();
+        auto finalParameters   = initialParameters;
 
-        Operon::CostFunction<DTable, Eigen::RowMajor> cf(tree, ds, target, range, dt);
-        auto costFunction = new Operon::DynamicCostFunction(cf); // NOLINT
-
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
+        Operon::LMCostFunction<Operon::Scalar, Eigen::RowMajor> cf{interpreter, target, range};
+        auto* dynamicCostFunction = new Operon::DynamicCostFunction{cf};
         ceres::Solver::Summary s;
-        if (!x0.empty()) {
-            Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
-            auto sz = static_cast<Eigen::Index>(x0.size());
-            Eigen::VectorXd params = Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>>(x0.data(), sz).template cast<double>();
+        if (!initialParameters.empty()) {
+            auto sz = std::ssize(finalParameters);
+            Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(finalParameters.data(), sz);
+            Eigen::VectorXd params = m0.template cast<double>();
             ceres::Problem problem;
-            problem.AddResidualBlock(costFunction, nullptr, params.data());
+            problem.AddResidualBlock(dynamicCostFunction, nullptr, params.data());
             ceres::Solver::Options options;
             options.linear_solver_type = ceres::DENSE_QR;
             options.logging_type = ceres::LoggingType::SILENT;
-            options.max_num_iterations = static_cast<int>(iterations - 1); // workaround since for some reason ceres sometimes does 1 more iteration
+            options.max_num_iterations = static_cast<int>(iterations);
             options.minimizer_progress_to_stdout = false;
             options.num_threads = 1;
             options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
@@ -231,14 +235,31 @@ struct NonlinearLeastSquaresOptimizer<T, OptimizerType::Ceres> : public Optimize
             Solve(options, &problem, &s);
             m0 = params.cast<Operon::Scalar>();
         }
-        summary.InitialCost = s.initial_cost;
-        summary.FinalCost = s.final_cost;
-        summary.Iterations = static_cast<int>(s.iterations.size());
-        summary.FunctionEvaluations = s.num_residual_evaluations;
-        summary.JacobianEvaluations = s.num_jacobian_evaluations;
-        summary.Success = detail::CheckSuccess(summary.InitialCost, summary.FinalCost);
-        return x0;
+        return Operon::OptimizerSummary {
+            .InitialParameters = initialParameters,
+            .FinalParameters = finalParameters,
+            .InitialCost = static_cast<Operon::Scalar>(s.initial_cost),
+            .FinalCost   = static_cast<Operon::Scalar>(s.final_cost),
+            .Iterations  = static_cast<int>(s.iterations.size()),
+            .FunctionEvaluations = s.num_residual_evaluations,
+            .JacobianEvaluations = s.num_jacobian_evaluations,
+            .Success = detail::CheckSuccess(s.initial_cost, s.final_cost)
+        };
     }
+
+    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
+
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar final
+    {
+        return GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(x, y, w);
+    }
+
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
+        return GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(pred, jac, sigma);
+    }
+
+    private:
+    std::reference_wrapper<DTable const> dtable_;
 };
 #endif
 
@@ -298,12 +319,12 @@ struct LBFGSOptimizer final : public OptimizerBase {
 
     auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
 
-    [[nodiscard]] virtual auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar override
     {
         return LossFunction::ComputeLikelihood(x, y, w);
     }
 
-    [[nodiscard]] virtual auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
         return LossFunction::ComputeFisherMatrix(pred, jac, sigma);
     }
 
@@ -371,12 +392,12 @@ struct SGDOptimizer final : public OptimizerBase {
         return summary;
     }
 
-    [[nodiscard]] virtual auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar override
     {
         return LossFunction::ComputeLikelihood(x, y, w);
     }
 
-    [[nodiscard]] virtual auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
         return LossFunction::ComputeFisherMatrix(pred, jac, sigma);
     }
 

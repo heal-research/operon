@@ -5,11 +5,13 @@
 #define OPERON_OPTIMIZER_COST_FUNCTION_HPP
 
 #ifdef HAVE_CERES
+#include <ceres/dynamic_cost_function.h>
+#include <ceres/ceres.h>
 #ifndef CERES_EXPORT
 #define CERES_EXPORT OPERON_EXPORT
 #endif
 
-#include <ceres/ceres.h>
+
 #include "operon/core/contracts.hpp"
 
 namespace Operon {
