@@ -67,7 +67,7 @@ public:
         return Tree({it - n.Length, it + 1}).UpdateNodes();
     }
 
-    inline void SetEnabled(size_t i, bool enabled)
+    void SetEnabled(size_t i, bool enabled)
     {
         for (auto j = i - nodes_[i].Length; j <= i; ++j) {
             nodes_[j].IsEnabled = enabled;
@@ -78,9 +78,9 @@ public:
     auto Nodes() && -> Operon::Vector<Node>&& { return std::move(nodes_); }
     [[nodiscard]] auto Nodes() const& -> Operon::Vector<Node> const& { return nodes_; }
 
-    [[nodiscard]] inline auto CoefficientsCount() const
+    [[nodiscard]] auto CoefficientsCount() const
     {
-        return std::count_if(nodes_.cbegin(), nodes_.cend(), [](auto const& s) { return s.IsLeaf(); });
+        return std::count_if(nodes_.cbegin(), nodes_.cend(), [](auto const& s) { return s.Optimize; });
     }
 
     void SetCoefficients(Operon::Span<Operon::Scalar const> coefficients);
@@ -93,10 +93,17 @@ public:
         return tree;
     }
 
-    inline auto operator[](size_t i) noexcept -> Node& { return nodes_[i]; }
-    inline auto operator[](size_t i) const noexcept -> Node const& { return nodes_[i]; }
+    auto operator[](size_t i) noexcept -> Node& { return nodes_[i]; }
+    auto operator[](size_t i) const noexcept -> Node const& { return nodes_[i]; }
 
     [[nodiscard]] auto Length() const noexcept -> size_t { return nodes_.size(); }
+    [[nodiscard]] auto AdjustedLength() const noexcept -> size_t {
+        auto length = [](auto const& n) {
+            if (n.IsConstant()) { return 1; }
+            return n.Value == Operon::Scalar{1} ? 1 : 3;
+        };
+        return std::transform_reduce(nodes_.begin(), nodes_.end(), 0UL, std::plus{}, length);
+    }
     [[nodiscard]] auto VisitationLength() const noexcept -> size_t;
     [[nodiscard]] auto Depth() const noexcept -> size_t;
     [[nodiscard]] auto Empty() const noexcept -> bool { return nodes_.empty(); }
@@ -108,27 +115,27 @@ public:
     [[nodiscard]] auto Indices(size_t i) const { return Subtree<Node const>{nodes_, i}.Indices(); }
 
     // convenience methods
-    static inline auto Indices(auto const& nodes, auto i) {
+    static auto Indices(auto const& nodes, auto i) {
         return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.Indices();
     }
 
-    static inline auto EnumerateIndices(auto const& nodes, auto i) {
+    static auto EnumerateIndices(auto const& nodes, auto i) {
         return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.EnumerateIndices();
     }
 
-    static inline auto Nodes(auto const& nodes, auto i) {
+    static auto Nodes(auto const& nodes, auto i) {
         return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.Nodes();
     }
 
-    static inline auto Nodes(auto& nodes, auto i) {
+    static auto Nodes(auto& nodes, auto i) {
         return Subtree<Node> { nodes, static_cast<std::size_t>(i) }.Nodes();
     }
 
-    static inline auto EnumerateNodes(auto const& nodes, auto i) {
+    static auto EnumerateNodes(auto const& nodes, auto i) {
         return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.EnumerateNodes();
     }
 
-    static inline auto EnumerateNodes(auto& nodes, auto i) {
+    static auto EnumerateNodes(auto& nodes, auto i) {
         return Subtree<Node>{ nodes, static_cast<std::size_t>(i) }.EnumerateNodes();
     }
 
