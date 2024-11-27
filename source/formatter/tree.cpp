@@ -32,7 +32,16 @@ auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::
             throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.HashValue));
         }
     } else {
-        fmt::format_to(std::back_inserter(current), "{}", s.Name());
+        if (s.Value != Operon::Scalar{1}) {
+            auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}"), decimalPrecision);
+            fmt::format_to(std::back_inserter(current), "(");
+            fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
+            fmt::format_to(std::back_inserter(current), " * ");
+            fmt::format_to(std::back_inserter(current), "{}", s.Name());
+            fmt::format_to(std::back_inserter(current), ")");
+        } else {
+            fmt::format_to(std::back_inserter(current), "{}", s.Name());
+        }
     }
     fmt::format_to(std::back_inserter(current), " D:{} L:{} N:{}\n", s.Depth, s.Level, s.Length + 1);
 
