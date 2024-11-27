@@ -2,8 +2,6 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 
-#include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
-#include "operon/optimizer/solvers/sgd.hpp"
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -32,6 +30,8 @@
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/optimizer/optimizer.hpp"
+#include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
+#include "operon/optimizer/solvers/sgd.hpp"
 
 #include "util.hpp"
 #include "operator_factory.hpp"
@@ -181,7 +181,7 @@ auto main(int argc, char** argv) -> int
         Operon::UniformTreeInitializer treeInitializer(*creator);
 
         auto const initialMinDepth = result["creator-mindepth"].as<std::size_t>();
-        auto const initialMaxDepth = result["creator-mindepth"].as<std::size_t>();
+        auto const initialMaxDepth = result["creator-maxdepth"].as<std::size_t>();
         auto const initialMaxLength = result["creator-maxlength"].as<std::size_t>();
         treeInitializer.ParameterizeDistribution(amin+1, initialMaxLength);
         treeInitializer.SetMinDepth(initialMinDepth);
