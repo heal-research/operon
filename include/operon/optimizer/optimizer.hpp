@@ -8,9 +8,7 @@
 #include <lbfgs/solver.hpp>
 #include <functional>
 
-#include "operon/error_metrics/mean_squared_error.hpp"
 #include "operon/error_metrics/sum_of_squared_errors.hpp"
-#include "operon/interpreter/dispatch_table.hpp"
 
 #if defined(HAVE_CERES)
 #include <ceres/tiny_solver.h>
@@ -25,6 +23,7 @@
 #include "likelihood/poisson_likelihood.hpp"
 #include "lm_cost_function.hpp"
 #include "operon/core/comparison.hpp"
+#include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
 #include "solvers/sgd.hpp"
 

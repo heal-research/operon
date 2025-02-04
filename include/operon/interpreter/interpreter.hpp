@@ -12,8 +12,10 @@
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/core/dispatch.hpp"
 #include "operon/formatter/formatter.hpp"
-#include "dispatch_table.hpp"
+#include "derivatives.hpp"
+
 // #include "tape.hpp"
 
 namespace Operon {
@@ -110,7 +112,7 @@ struct Interpreter : public InterpreterBase<T> {
         constexpr int64_t S{ BatchSize };
         traceStorage_ = detail::AllocateAligned<T, Backend::DefaultAlignment>(S * nn);
         trace_ = Backend::View<T, S>(traceStorage_.get(), S, nn);
-        Fill<T, S>(trace_, nn-1, T{1});
+        Backend::Fill<T, S>(trace_, nn-1, T{1});
 
         Eigen::Map<Eigen::Array<T, -1, -1>> jac(jacobian.data(), len, coeff.size());
 
@@ -136,7 +138,7 @@ struct Interpreter : public InterpreterBase<T> {
         constexpr int64_t S{ BatchSize };
         traceStorage_ = detail::AllocateAligned<T, Backend::DefaultAlignment>(S * nn);
         trace_ = Backend::View<T, S>(traceStorage_.get(), S, nn);
-        Fill<T, S>(trace_, nn-1, T{1});
+        Backend::Fill<T, S>(trace_, nn-1, T{1});
 
         Eigen::Map<Eigen::Array<T, -1, -1>> jac(jacobian.data(), len, coeff.size());
 
@@ -158,13 +160,13 @@ struct Interpreter : public InterpreterBase<T> {
 
     auto GetDispatchTable() const { return dtable_.get(); }
 
-    static inline auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range) -> std::vector<Operon::Scalar> {
+    static inline auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range) -> std::vector<T> {
         auto coeff = tree.GetCoefficients();
         DTable dt;
         return Interpreter{&dt, &dataset, &tree}.Evaluate(coeff, range);
     }
 
-    static inline auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<T const> coeff) -> std::vector<Operon::Scalar> {
+    static inline auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<T const> coeff) -> std::vector<T> {
         DTable dt;
         return Interpreter{&dt, &dataset, &tree}.Evaluate(coeff, range);
     }
@@ -172,7 +174,7 @@ struct Interpreter : public InterpreterBase<T> {
 private:
     // private members
     using Data = std::tuple<T,
-          std::span<Operon::Scalar const>,
+          std::span<T const>,
           std::optional<Dispatch::Callable<T, BatchSize> const>,
           std::optional<Dispatch::CallableDiff<T, BatchSize> const> >;
 
@@ -202,12 +204,14 @@ private:
 
         // forward pass - compute primal and trace
         for (auto i = 0L; i < nn; ++i) {
+            if (nodes[i].IsConstant()) { continue; }
+
             auto const& [ p, v, f, df ] = context_[i];
             auto* ptr = primal_.data_handle() + i * S;
 
             if (nodes[i].IsVariable()) {
                 std::ranges::transform(v.subspan(row, rem), ptr, [p](auto x) { return x * p; });
-            } else if (f) {
+            } else {
                 std::invoke(*f, nodes, primal_, i, rg);
 
                 // first compute the partials
@@ -318,7 +322,7 @@ private:
             context_.emplace_back(nodeCoefficient, variableValues, nodeFunction, nodeDerivative);
 
             if (n.IsConstant()) {
-                Fill<T, S>(primal_, i, T{nodeCoefficient});
+                Backend::Fill<T, S>(primal_, i, T{nodeCoefficient});
             }
         }
     }

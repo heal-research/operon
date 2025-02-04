@@ -17,6 +17,8 @@
 #include <doctest/doctest.h>
 #include <utility>
 
+#include "operon/interpreter/functions.hpp"
+
 namespace Operon::Test {
 
 TEST_CASE("Evaluation correctness")

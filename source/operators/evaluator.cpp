@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include "operon/core/distance.hpp"
+#include "operon/core/dispatch.hpp"
 #include "operon/formatter/formatter.hpp"
-#include "operon/interpreter/dispatch_table.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"

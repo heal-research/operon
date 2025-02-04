@@ -16,7 +16,7 @@ function(add_operon_cli NAME)
         source/${NAME}.cpp
         source/operator_factory.cpp
         source/util.cpp
-        )
+    )
 
     target_link_libraries(${NAME} PRIVATE operon::operon cxxopts::cxxopts scn::scn)
     target_compile_features(${NAME} PRIVATE cxx_std_20)

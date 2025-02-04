@@ -28,7 +28,7 @@ stdenv.mkDerivation rec {
     eigen
     eve
     fast-float
-    fmt
+    fmt_11
     icu
     jemalloc
     cpptrace

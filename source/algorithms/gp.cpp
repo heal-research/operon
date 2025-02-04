@@ -30,7 +30,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     const auto& problem = GetProblem();
 
     auto t0 = std::chrono::steady_clock::now();
-    auto elapsed = [t0]() {
+    auto computeElapsed = [t0]() {
         auto t1 = std::chrono::steady_clock::now();
         constexpr double ms{1e3};
         return static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()) / ms;
@@ -53,16 +53,16 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     ENSURE(executor.num_workers() > 0);
     std::vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
 
-    tf::Taskflow taskflow;
-
     auto stop = [&]() {
-        return generator->Terminate() || Generation() == config.Generations || elapsed() > static_cast<double>(config.TimeLimit);
+        Elapsed() = computeElapsed();
+        return generator->Terminate() || Generation() == config.Generations || Elapsed() > static_cast<double>(config.TimeLimit);
     };
 
     auto parents = Parents();
     auto offspring = Offspring();
 
     // while loop control flow
+    tf::Taskflow taskflow;
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&](tf::Subflow& subflow) {
             auto init = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
