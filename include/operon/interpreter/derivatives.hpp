@@ -8,14 +8,6 @@
 #include <fmt/format.h>
 
 namespace Operon {
-    // default function to catch any missing template specializations
-    template<typename T, Operon::NodeType N  = Operon::NodeTypes::NoType, std::size_t S = Backend::BatchSize<T>>
-    struct Diff {
-        auto operator()(std::vector<Operon::Node> const&, Backend::View<T const, S>, Backend::View<T>, std::integral auto, std::integral auto) {
-            throw std::runtime_error(fmt::format("backend error: missing specialization for derivative: {}\n", Operon::Node{N}.Name()));
-        }
-    };
-
     // n-ary functions
     template<typename T, std::size_t S>
     struct Diff<T, Operon::NodeType::Add, S> {

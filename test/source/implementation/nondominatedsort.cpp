@@ -357,9 +357,9 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         // std::cout << "deductive sort\n";
         // print(fronts);
 
-        // fronts = HierarchicalSorter{}(s, eps);
-        // std::cout << "hnds " << computeHash(fronts) << "\n";
-        // print(fronts);
+        fronts = HierarchicalSorter{}(s, eps);
+        std::cout << "hnds " << computeHash(fronts) << "\n";
+        print(fronts);
 
         // fronts = DominanceDegreeSorter{}(s, eps);
         // std::cout << "dominance degree sort\n";
@@ -377,9 +377,9 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         std::cout << "mnds " << computeHash(fronts) << "\n";
         print(fronts);
 
-        // fronts = BestOrderSorter{}(s, eps);
-        // std::cout << "bos " << computeHash(fronts) << "\n";
-        // print(fronts);
+        fronts = BestOrderSorter{}(s, eps);
+        std::cout << "bos " << computeHash(fronts) << "\n";
+        print(fronts);
     }
 
     SUBCASE("bit density")

@@ -57,9 +57,13 @@ public:
     [[nodiscard]] auto Generation() const -> size_t { return generation_; }
     auto Generation() -> size_t& { return generation_; }
 
+    [[nodiscard]] auto Elapsed() const -> double { return elapsed_; }
+    auto Elapsed() -> double& { return elapsed_; }
+
     auto Reset() -> void
     {
         generation_ = 0;
+        elapsed_ = 0;
         GetGenerator()->Evaluator()->Reset();
     }
 
@@ -77,6 +81,7 @@ private:
     Operon::Span<Individual> offspring_;
 
     size_t generation_{0};
+    double elapsed_{0}; // elapsed time in microseconds
 };
 
 } // namespace Operon

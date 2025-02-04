@@ -5,7 +5,6 @@
 #include <stdexcept>                       // for runtime_error
 #include <fmt/format.h>                        // for format
 #include <scn/scan.h>
-#include "operon/interpreter/dispatch_table.hpp"
 #include "operon/operators/creator.hpp"    // for CreatorBase, BalancedTreeC...
 #include "operon/operators/evaluator.hpp"  // for Evaluator, EvaluatorBase
 #include "operon/operators/generator.hpp"  // for OffspringGeneratorBase

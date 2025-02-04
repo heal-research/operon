@@ -36,51 +36,7 @@
 
 #include "util.hpp"
 #include "operator_factory.hpp"
-
-namespace DynamicPrimitives {
-template<typename T, std::size_t S>
-struct Saxpy {
-    // function value
-    auto operator()(std::vector<Operon::Node> const& nodes, Operon::Backend::View<T, S> view, int index, Operon::Range/* not used*/) const {
-        auto i = index-1;
-        auto j = i - (nodes[i].Length+1);
-        auto k = j - (nodes[j].Length+1);
-
-        auto* r = Operon::Backend::Ptr(view, index);
-        auto* a = Operon::Backend::Ptr(view, i);
-        auto* x = Operon::Backend::Ptr(view, j);
-        auto* y = Operon::Backend::Ptr(view, k);
-
-        for (auto s = 0UL; s < S; ++s) {
-            r[s] = a[s] * x[s] + y[s];
-        }
-    }
-
-    // function derivative value
-    auto operator()(std::vector<Operon::Node> const& nodes, Operon::Backend::View<T const, S> primal, Operon::Backend::View<T, S> trace, std::integral auto i, std::integral auto j) const {
-        auto* res = Operon::Backend::Ptr(trace, j);
-
-        auto a = i-1;
-        auto b = a - (nodes[a].Length+1);
-        auto c = b - (nodes[b].Length+1);
-
-        auto const* pa = Operon::Backend::Ptr(primal, a);
-        auto const* pb = Operon::Backend::Ptr(primal, b);
-        // auto const* pc = Operon::Backend::Ptr(primal, c);
-
-        if (j == a) {
-            // df/da = x
-            std::ranges::copy(std::span{pb, S}, res);
-        } else if (j == b) {
-            // df/dx = a
-            std::ranges::copy(std::span{pa, S}, res);
-        } else if (j == c) {
-            // df/dy = 1
-            std::ranges::fill_n(res, S, T{1});
-        }
-    }
-};
-} // namespace DynamicPrimitives
+#include "reporter.hpp"
 
 auto main(int argc, char** argv) -> int
 {
@@ -221,18 +177,11 @@ auto main(int argc, char** argv) -> int
         problem.SetTarget(target.Hash);
         problem.SetInputs(inputs);
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
-        // problem.ConfigurePrimitiveSet(Operon::NodeType::Constant | Operon::NodeType::Variable);
-        // Operon::Node saxpy{Operon::NodeType::Dynamic, 12345UL};
-        // saxpy.Arity = 3;
-        // saxpy.Optimize = false;
-        // problem.GetPrimitiveSet().AddPrimitive(saxpy, 1UL, 3UL, 3UL);
-        //problem.GetPrimitiveSet().Disable(12345UL);
 
         std::unique_ptr<Operon::CreatorBase> creator;
         creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs());
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
-        fmt::print("amin: {}, amax: {}\n", amin, amax);
         Operon::UniformTreeInitializer treeInitializer(creator.get());
 
         auto const initialMinDepth = result["creator-mindepth"].as<std::size_t>();
@@ -280,8 +229,8 @@ auto main(int argc, char** argv) -> int
         mutator.Add(&discretePoint, 1.0);
 
         Operon::DefaultDispatch dtable;
-        DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
-        dtable.RegisterCallable(12345UL, f, f);
+        // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
+        // dtable.RegisterCallable(12345UL, f, f);
 
         auto scale = result["linear-scaling"].as<bool>();
         auto errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
@@ -316,157 +265,18 @@ auto main(int argc, char** argv) -> int
         if (result["standardize"].as<bool>()) {
             problem.StandardizeData(problem.TrainingRange());
         }
-
         tf::Executor executor(threads);
-
-        auto t0 = std::chrono::steady_clock::now();
         Operon::RankIntersectSorter sorter;
+        // Operon::RankOrdinalSorter sorter;
         // Operon::MergeSorter sorter;
+        // Operon::BestOrderSorter sorter;
+        // Operon::EfficientBinarySorter sorter;
         Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get(), &sorter };
 
-        auto targetValues = problem.TargetValues();
-        auto targetTrain = targetValues.subspan(trainingRange.Start(), trainingRange.Size());
-        auto targetTest = targetValues.subspan(testRange.Start(), testRange.Size());
-
-        // some boilerplate for reporting results
-        const size_t idx { 0 };
-        auto getBest = [&](Operon::Span<Operon::Individual const> pop) -> Operon::Individual {
-            const auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
-            return *minElem;
-        };
-
-        Operon::Individual best(1);
-        auto getSize = [](Operon::Individual const& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Operon::Node) * ind.Genotype.Nodes().capacity(); };
-
-        auto report = [&]() {
-            auto const pop = gp.Parents();
-            auto const off = gp.Offspring();
-
-            best = getBest(pop);
-
-
-            Operon::Vector<Operon::Scalar> estimatedTrain;
-            Operon::Vector<Operon::Scalar> estimatedTest;
-
-            tf::Taskflow taskflow;
-
-            // using DT = Operon::DefaultDispatch;
-
-            auto evalTrain = taskflow.emplace([&]() {
-                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{&dtable, problem.GetDataset(), &best.Genotype};
-                estimatedTrain = interpreter.Evaluate(best.Genotype.GetCoefficients(), trainingRange);
-                ENSURE(trainingRange.Size() > 0 && estimatedTrain.size() == trainingRange.Size());
-            });
-
-            auto evalTest = taskflow.emplace([&]() {
-                Operon::Interpreter<Operon::Scalar, decltype(dtable)> interpreter{&dtable, problem.GetDataset(), &best.Genotype};
-                estimatedTest = interpreter.Evaluate(best.Genotype.GetCoefficients(), testRange);
-                ENSURE(testRange.Size() > 0 && estimatedTest.size() == testRange.Size());
-            });
-
-            // scale values
-            Operon::Scalar a{1.0};
-            Operon::Scalar b{0.0};
-            auto linearScaling = taskflow.emplace([&]() {
-                auto [a_, b_] = Operon::FitLeastSquares(estimatedTrain, targetTrain);
-                a = static_cast<Operon::Scalar>(a_);
-                b = static_cast<Operon::Scalar>(b_);
-                // add scaling terms to the tree
-                auto& nodes = best.Genotype.Nodes();
-                auto const sz = nodes.size();
-                if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
-                    nodes.emplace_back(Operon::Node::Constant(a));
-                    nodes.emplace_back(Operon::NodeType::Mul);
-                }
-                if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
-                    nodes.emplace_back(Operon::Node::Constant(b));
-                    nodes.emplace_back(Operon::NodeType::Add);
-                }
-                if (nodes.size() > sz) {
-                    best.Genotype.UpdateNodes();
-                }
-            });
-
-            double r2Train{};
-            double r2Test{};
-            double nmseTrain{};
-            double nmseTest{};
-            double maeTrain{};
-            double maeTest{};
-
-            auto scaleTrain = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), std::ssize(estimatedTrain));
-                estimated = estimated * a + b;
-            });
-
-            auto scaleTest = taskflow.emplace([&]() {
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), std::ssize(estimatedTest));
-                estimated = estimated * a + b;
-            });
-
-            auto calcStats = taskflow.emplace([&]() {
-                ENSURE(!best.Genotype.Empty());
-                // negate the R2 because this is an internal fitness measure (minimization) which we here repurpose
-                r2Train = -Operon::R2{}(estimatedTrain, targetTrain);
-                r2Test = -Operon::R2{}(estimatedTest, targetTest);
-
-                nmseTrain = Operon::NMSE{}(estimatedTrain, targetTrain);
-                nmseTest = Operon::NMSE{}(estimatedTest, targetTest);
-
-                maeTrain = Operon::MAE{}(estimatedTrain, targetTrain);
-                maeTest = Operon::MAE{}(estimatedTest, targetTest);
-            });
-
-            double avgLength = 0;
-            double avgQuality = 0;
-            double totalMemory = 0;
-
-            auto calculateLength = taskflow.transform_reduce(pop.begin(), pop.end(), avgLength, std::plus{}, [](auto const& ind) { return ind.Genotype.Length(); });
-            auto calculateQuality = taskflow.transform_reduce(pop.begin(), pop.end(), avgQuality, std::plus{}, [idx=idx](auto const& ind) { return ind[idx]; });
-            auto calculatePopMemory = taskflow.transform_reduce(pop.begin(), pop.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); });
-            auto calculateOffMemory = taskflow.transform_reduce(off.begin(), off.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); });
-
-            // define task graph
-            linearScaling.succeed(evalTrain, evalTest);
-            linearScaling.precede(scaleTrain, scaleTest);
-            calcStats.succeed(scaleTrain, scaleTest);
-            calcStats.precede(calculateLength, calculateQuality, calculatePopMemory, calculateOffMemory);
-
-            executor.corun(taskflow);
-
-            avgLength /= static_cast<double>(pop.size());
-            avgQuality /= static_cast<double>(pop.size());
-
-            auto t1 = std::chrono::steady_clock::now();
-            auto elapsed = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / 1e6;
-
-            using T = std::tuple<std::string, double, std::string>;
-            auto const* format = ":>#8.3g"; // see https://fmt.dev/latest/syntax.html
-
-            auto [resEval, jacEval, callCount, cfTime ] = evaluator.Stats();
-            std::array stats {
-                T{ "iteration", gp.Generation(), ":>" },
-                T{ "r2_tr", r2Train, format },
-                T{ "r2_te", r2Test, format },
-                T{ "mae_tr", maeTrain, format },
-                T{ "mae_te", maeTest, format },
-                T{ "nmse_tr", nmseTrain, format },
-                T{ "nmse_te", nmseTest, format },
-                T{ "best_fit", best[idx], format },
-                T{ "avg_fit", avgQuality, format },
-                T{ "best_len", best.Genotype.Length(), format },
-                T{ "avg_len", avgLength, format },
-                T{ "eval_cnt", callCount, ":>" },
-                T{ "res_eval", resEval, ":>" },
-                T{ "jac_eval", jacEval, ":>" },
-                T{ "opt_time", cfTime, ":>" },
-                T{ "seed", config.Seed, ":>" },
-                T{ "elapsed", elapsed, ":>"},
-            };
-            Operon::PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
-        };
-
-        gp.Run(executor, random, report);
+        auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
+        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
+        gp.Run(executor, random, [&](){ reporter(executor, gp); });
+        auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());

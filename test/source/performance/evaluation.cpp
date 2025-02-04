@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include <doctest/doctest.h>
+#include <algorithm>
 #include <thread>
 #include <taskflow/taskflow.hpp>
 #include <taskflow/algorithm/for_each.hpp>   // for taskflow.for_each_index
@@ -88,7 +89,7 @@ namespace Operon::Test {
 
         std::vector<Tree> trees(n);
 
-        using DTable = DispatchTable<Operon::Scalar, Operon::Seq<std::size_t, Dispatch::DefaultBatchSize<Operon::Scalar>>>;
+        using DTable = DispatchTable<Operon::Scalar, Operon::Seq<Dispatch::DefaultBatchSize<Operon::Scalar>>>;
         DTable dtable;
 
         auto test = [&](tf::Executor& executor, nb::Bench& b, PrimitiveSetConfig cfg, const std::string& name) {
@@ -96,7 +97,7 @@ namespace Operon::Test {
             for (auto t : { NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul }) {
                 pset.SetMinMaxArity(Node(t).HashValue, 2, 2);
             }
-            std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+            std::ranges::generate(trees, [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
             auto totalOps = TotalNodes(trees) * range.Size();
             b.batch(totalOps);
@@ -204,7 +205,7 @@ namespace Operon::Test {
         auto creator = BalancedTreeCreator { &problem.GetPrimitiveSet(), inputs };
 
         std::vector<Tree> trees(n);
-        std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+        std::ranges::generate(trees, [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
         std::vector<Individual> individuals(n);
         for (size_t i = 0; i < individuals.size(); ++i) {
@@ -278,7 +279,7 @@ namespace Operon::Test {
        auto creator = BalancedTreeCreator { &pset, inputs };
 
        std::vector<Tree> trees(n);
-       std::generate(trees.begin(), trees.end(), [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+       std::ranges::generate(trees, [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
        nb::Bench b;
        b.relative(true).epochs(10).minEpochIterations(100).performanceCounters(true);
@@ -297,8 +298,7 @@ namespace Operon::Test {
         std::vector<Variable> inputs;
         const auto *targetName = "Y";
         auto variables = ds.GetVariables();
-        std::copy_if(variables.begin(),
-                variables.end(),
+        std::ranges::copy_if(variables,
                 std::back_inserter(inputs),
                 [&](auto const& var) { return var.Name != targetName; });
         auto result = ds.GetVariable(targetName);
