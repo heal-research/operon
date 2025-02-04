@@ -60,8 +60,8 @@ add_library(
     source/operators/creator/koza.cpp
     source/operators/creator/ptc2.cpp
     source/operators/crossover.cpp
-    source/operators/evaluator.cpp
     source/operators/evaluator_error_metrics.cpp
+    source/operators/evaluator.cpp
     source/operators/generator/basic.cpp
     source/operators/generator/brood.cpp
     source/operators/generator/os.cpp
@@ -84,22 +84,21 @@ add_library(operon::operon ALIAS operon_operon)
 
 # ---- Required dependencies ----
 find_package(AriaCsvParser REQUIRED)
-find_package(Eigen3 REQUIRED)
-find_package(FastFloat REQUIRED)
-find_package(Microsoft.GSL CONFIG REQUIRED)
-find_package(Taskflow REQUIRED)
-find_package(Threads REQUIRED)
 find_package(byte-lite REQUIRED)
-find_package(span-lite REQUIRED)
 find_package(cpp-sort REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(eve REQUIRED)
+find_package(FastFloat REQUIRED)
 find_package(fmt REQUIRED)
 find_package(lbfgs REQUIRED)
 find_package(libassert REQUIRED)
 find_package(mdspan REQUIRED)
+find_package(Microsoft.GSL CONFIG REQUIRED)
 find_package(outcome REQUIRED)
-find_package(span-lite REQUIRED)
 find_package(pratt-parser REQUIRED)
+find_package(span-lite REQUIRED)
+find_package(Taskflow REQUIRED)
+find_package(Threads REQUIRED)
 find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
 find_package(xxHash)

@@ -181,9 +181,10 @@ private:
 
 template <typename DTable = DefaultDispatch>
 class OPERON_EXPORT Evaluator : public EvaluatorBase {
+public:
+    using TDispatch    = DTable;
     using TInterpreter = Operon::Interpreter<Operon::Scalar, DTable>;
 
-public:
     explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true)
         : EvaluatorBase(problem)
         , dtable_(dtable)

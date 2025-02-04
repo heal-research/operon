@@ -5,6 +5,7 @@
 #define OPERON_INTERPRETER_FUNCTIONS_HPP
 
 #include "operon/core/node.hpp"
+#include "operon/core/dispatch.hpp"
 #if defined(OPERON_MATH_EIGEN)
 #include "operon/interpreter/backend/eigen.hpp"
 #elif defined(OPERON_MATH_EVE)
@@ -30,21 +31,6 @@
 #endif
 
 namespace Operon {
-    // utility
-    template<typename T, std::size_t S>
-    auto Fill(Backend::View<T, S> view, int idx, T value) {
-        auto* p = view.data_handle() + idx * S;
-        std::fill_n(p, S, value);
-    };
-
-    // detect missing specializations
-    template<typename T, Operon::NodeType N = Operon::NodeTypes::NoType, bool C = false, std::size_t S = Backend::BatchSize<T>>
-    struct Func {
-        auto operator()(Backend::View<T, S> /*unused*/, std::integral auto /*unused*/, std::integral auto... /*unused*/) {
-            throw std::runtime_error(fmt::format("backend error: missing specialization for function: {}\n", Operon::Node{N}.Name()));
-        }
-    };
-
     // n-ary operations
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Add, C, S> {

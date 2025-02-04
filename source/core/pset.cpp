@@ -36,7 +36,7 @@ namespace Operon {
         auto sum{0UL};
         for (auto const& [k, v] : pset_) {
             auto const& [node, freq, min_arity, max_arity] = v;
-            if (!(node.IsEnabled && freq > 0)) { continue; }
+            if (!node.IsEnabled || freq <= 0) { continue; }
             if (minArity > max_arity || maxArity < min_arity) { continue; }
             sum += freq;
             candidates.push_back(v);

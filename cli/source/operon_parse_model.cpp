@@ -6,13 +6,14 @@
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/types.hpp"
+#include "operon/core/dispatch.hpp"
 #include "operon/formatter/formatter.hpp"
-#include "operon/interpreter/dispatch_table.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "util.hpp"
+#include "reporter.hpp"
 
 #include <cxxopts.hpp>
 #include <fmt/core.h>
@@ -130,7 +131,7 @@ auto main(int argc, char** argv) -> int
             {"nmse", nmse, format},
             {"mdl", mdl, format}
         };
-        Operon::PrintStats(stats);
+        Operon::Reporter<void>::PrintStats(stats, /*printHeader=*/true);
     } else {
         std::string out{};
         for (auto v : est) {

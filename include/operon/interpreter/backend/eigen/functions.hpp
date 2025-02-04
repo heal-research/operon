@@ -4,8 +4,9 @@
 #ifndef OPERON_BACKEND_EIGEN_FUNCTIONS_HPP
 #define OPERON_BACKEND_EIGEN_FUNCTIONS_HPP
 
+#include <cmath>
 #include <Eigen/Core>
-#include "operon/interpreter/backend/backend.hpp"
+#include "operon/core/dispatch.hpp"
 
 namespace Operon::Backend {
     template<typename T, std::size_t S>
