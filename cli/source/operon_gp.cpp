@@ -247,9 +247,6 @@ auto main(int argc, char** argv) -> int
         }
 
         tf::Executor executor(threads);
-
-        auto t0 = std::chrono::steady_clock::now();
-
         Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get() };
 
         auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
