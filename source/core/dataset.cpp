@@ -130,7 +130,7 @@ Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<O
     }
 }
 
-Dataset::Dataset(Matrix::Scalar const* data, Eigen::Index rows, Eigen::Index cols) // NOLINT
+Dataset::Dataset(gsl::not_null<Matrix::Scalar const*> data, Eigen::Index rows, Eigen::Index cols) // NOLINT
     : variables_(DefaultVariables(static_cast<size_t>(cols)))
     , map_(data, rows, cols)
 {

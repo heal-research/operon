@@ -17,6 +17,8 @@
 #include <doctest/doctest.h>
 #include <utility>
 
+#include "operon/interpreter/functions.hpp"
+
 namespace Operon::Test {
 
 TEST_CASE("Evaluation correctness")
@@ -44,7 +46,7 @@ TEST_CASE("Evaluation correctness")
 
         auto tree = InfixParser::Parse("X1 + X2 + X3", vars);
         auto coeff = tree.GetCoefficients();
-        auto estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(coeff, range);
+        auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(coeff, range);
         Eigen::Array<Operon::Scalar, -1, 1> res1 = X.col(0) + X.col(1) + X.col(2);
 
         fmt::print("estimated: {}\n", std::span{estimatedValues.data(), 5UL});
@@ -52,18 +54,18 @@ TEST_CASE("Evaluation correctness")
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res1(i)) < eps; }));
 
         tree = InfixParser::Parse("X1 - X2 + X3", vars);
-        estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
+        estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         auto res2 = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res2(i)) < eps; }));
 
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
-        estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
+        estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         auto res3 = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - res3(i)) < eps; }));
 
         tree = InfixParser::Parse("log(abs(X1))", vars);
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
-        estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
+        estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         Eigen::Array<Operon::Scalar, -1, 1> res4 = X.col(0).abs().log();
         fmt::print("estimated: {}\n", std::span{estimatedValues.data(), 5UL});
         fmt::print("actual: {}\n", std::span{res4.data(), 5UL});
@@ -71,7 +73,7 @@ TEST_CASE("Evaluation correctness")
 
         tree = InfixParser::Parse("log(0.12485691905021667)", vars);
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
-        estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
+        estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         Eigen::Array<Operon::Scalar, 1, 1> res5; res5 << std::log(0.12485691905021667);
         fmt::print("estimated: {}\n", std::span{estimatedValues.data(), 1});
         fmt::print("actual: {}\n", std::span{res5.data(), 1});
@@ -84,14 +86,14 @@ TEST_CASE("Evaluation correctness")
         auto c = Operon::Node::Constant(4);
         tree = Operon::Tree({ a, b, c, node });
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
-        estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
+        estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(estimatedValues[0] == 4);
 
         node = Operon::Node(Operon::NodeType::Sub);
         node.Arity = 1;
         tree = Operon::Tree({ Operon::Node::Constant(2), node });
         fmt::print("tree: {}\n", InfixFormatter::Format(tree, ds));
-        estimatedValues = Interpreter<Operon::Scalar, DTable>(dtable, ds, tree).Evaluate(tree.GetCoefficients(), range);
+        estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(estimatedValues[0] == -2);
     }
 }
@@ -217,20 +219,24 @@ TEST_CASE("Batch evaluation")
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto range = Range { 0, ds.Rows<std::size_t>() };
 
-    Operon::Problem problem{ds, range, range};
+    Operon::Problem problem{&ds};
+    problem.SetTrainingRange(range);
+    problem.SetTestRange(range);
+
     Operon::PrimitiveSet pset{PrimitiveSet::Arithmetic};
-    Operon::BalancedTreeCreator creator{pset, ds.VariableHashes()};
+    Operon::BalancedTreeCreator creator{&pset, ds.VariableHashes()};
 
     Operon::RandomGenerator rng{0};
     auto constexpr n{10};
 
     std::vector<Operon::Tree> trees;
-    std::vector<Operon::Scalar> result(range.Size() * n);    for (auto i = 0; i < n; ++i) {
+    std::vector<Operon::Scalar> result(range.Size() * n);
+    for (auto i = 0; i < n; ++i) {
         trees.push_back(creator(rng, 20, 10, 20));
     }
 
-    Operon::EvaluateTrees(trees, ds, range, {result.data(), result.size()});
-    Operon::EvaluateTrees(trees, ds, range);
+    Operon::EvaluateTrees(trees, &ds, range, {result.data(), result.size()});
+    Operon::EvaluateTrees(trees, &ds, range);
 }
 
 TEST_CASE("parameter optimization")
@@ -276,9 +282,11 @@ TEST_CASE("parameter optimization")
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
 
-    Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, ds, tree };
+    Operon::Interpreter<Operon::Scalar, DTable> interpreter { &dtable, &ds, &tree };
 
-    Operon::Problem problem{ds, range, range};
+    Operon::Problem problem{&ds};
+    problem.SetTrainingRange(range);
+    problem.SetTestRange(range);
 
     auto constexpr batchSize { 32 };
 
@@ -317,38 +325,38 @@ TEST_CASE("parameter optimization")
 
     SUBCASE("tiny")
     {
-        LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny> optimizer{dtable, problem};
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny> optimizer{&dtable, &problem};
         testOptimizer(optimizer, "tiny solver");
     }
 
     SUBCASE("eigen")
     {
-        LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer { dtable, problem };
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer {&dtable, &problem};
         testOptimizer(optimizer, "eigen solver");
     }
 
     SUBCASE("ceres")
     {
-        LevenbergMarquardtOptimizer<DTable, OptimizerType::Ceres> optimizer { dtable, problem };
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Ceres> optimizer {&dtable, &problem};
         testOptimizer(optimizer, "ceres solver");
     }
 
     SUBCASE("lbfgs / gaussian")
     {
-        LBFGSOptimizer<DTable, GaussianLikelihood<Operon::Scalar>> optimizer { dtable, problem };
+        LBFGSOptimizer<DTable, GaussianLikelihood<Operon::Scalar>> optimizer {&dtable, &problem};
         testOptimizer(optimizer, "l-bfgs / gaussian");
     }
 
     SUBCASE("lbfgs / poisson")
     {
-        LBFGSOptimizer<DTable, PoissonLikelihood<Operon::Scalar>> optimizer { dtable, problem };
+        LBFGSOptimizer<DTable, PoissonLikelihood<Operon::Scalar>> optimizer {&dtable, &problem};
         testOptimizer(optimizer, "l-bfgs / poisson");
     }
 
     SUBCASE("sgd / gaussian")
     {
         for (auto const& rule : rules) {
-            SGDOptimizer<DTable, GaussianLikelihood<Operon::Scalar>> optimizer { dtable, problem, *rule };
+            SGDOptimizer<DTable, GaussianLikelihood<Operon::Scalar>> optimizer {&dtable, &problem, *rule};
             testOptimizer(optimizer, fmt::format("sgd / gaussian / {}", rule->Name()));
         }
     }
@@ -356,7 +364,7 @@ TEST_CASE("parameter optimization")
     SUBCASE("sgd / poisson")
     {
         for (auto const& rule : rules) {
-            SGDOptimizer<DTable, PoissonLikelihood<Operon::Scalar>> optimizer { dtable, problem, *rule };
+            SGDOptimizer<DTable, PoissonLikelihood<Operon::Scalar>> optimizer {&dtable, &problem, *rule};
             testOptimizer(optimizer, fmt::format("sgd / poisson / {}", rule->Name()));
         }
     }

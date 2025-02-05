@@ -35,7 +35,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     };
 
     const auto& pset = GetPrimitiveSet();
-    auto [minFunctionArity, maxFunctionArity] = pset.FunctionArityLimits();
+    auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
 
     // length one can be achieved with a single leaf
     // otherwise the minimum achievable length is minFunctionArity+1
@@ -49,7 +49,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     auto maxArity = std::min(maxFunctionArity, targetLen - 1);
     auto minArity = std::min(minFunctionArity, maxArity);
 
-    auto root = pset.SampleRandomSymbol(random, minArity, maxArity);
+    auto root = pset->SampleRandomSymbol(random, minArity, maxArity);
     init(root);
 
     if (root.IsLeaf()) {
@@ -96,7 +96,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
         }
         minArity = std::min(minFunctionArity, maxArity);
 
-        auto node = pset.SampleRandomSymbol(random, minArity, maxArity);
+        auto node = pset->SampleRandomSymbol(random, minArity, maxArity);
 
         init(node);
         node.Depth = static_cast<uint16_t>(childDepth);

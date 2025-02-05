@@ -27,14 +27,16 @@ TEST_CASE("diversity")
     Dataset ds(values);
     auto const nrow{ ds.Rows<std::size_t>() };
     //auto const ncol{ ds.Cols<std::size_t>() };
-    Problem problem(std::move(ds), Range{0, nrow/2}, Range{nrow/2, nrow});
-    BalancedTreeCreator btc(grammar, problem.GetInputs());
+    Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow/2});
+    problem.SetTestRange({nrow/2, nrow});
+    BalancedTreeCreator btc(&grammar, problem.GetInputs());
 
     constexpr size_t minLength{1};
     constexpr size_t maxLength{100};
     constexpr size_t maxDepth{1000};
 
-    UniformTreeInitializer treeInit(btc);
+    UniformTreeInitializer treeInit(&btc);
     treeInit.ParameterizeDistribution(minLength, maxLength);
     treeInit.SetMaxDepth(maxDepth);
     UniformCoefficientInitializer coeffInit;

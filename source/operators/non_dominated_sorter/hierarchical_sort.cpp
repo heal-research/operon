@@ -18,8 +18,7 @@ namespace Operon {
 
         std::deque<size_t> q(pop.size());
         std::iota(q.begin(), q.end(), 0UL);
-        std::vector<size_t> dominated;
-        dominated.reserve(pop.size());
+        std::deque<size_t> dominated;
 
         std::vector<std::vector<size_t>> fronts;
 
@@ -42,17 +41,16 @@ namespace Operon {
                 while (q.size() > nonDominatedCount) {
                     auto qj = q.front(); q.pop_front();
                     auto const& f2 = pop[qj].Fitness;
-                    ENSURE(q1 < qj);
                     if (!dominates(f1, f2)) {
                         q.push_back(qj);
-                        ++nonDominatedCount; // &&&
+                        ++nonDominatedCount;
                     } else {
                         dominated.push_back(qj);
                     }
                 }
             }
-            sorter(dominated); // 00
-            std::copy(dominated.begin(), dominated.end(), std::back_inserter(q));
+            sorter(dominated);
+            std::swap(dominated, q);
             dominated.clear();
             fronts.push_back(front);
         }

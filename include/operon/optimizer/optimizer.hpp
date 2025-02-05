@@ -4,17 +4,18 @@
 #ifndef OPERON_OPTIMIZER_HPP
 #define OPERON_OPTIMIZER_HPP
 
-#include "operon/error_metrics/mean_squared_error.hpp"
-#include "operon/error_metrics/sum_of_squared_errors.hpp"
-#include "operon/interpreter/dispatch_table.hpp"
+#include <gsl/pointers>
+#include <lbfgs/solver.hpp>
 #include <functional>
+
+#include "operon/error_metrics/sum_of_squared_errors.hpp"
+
 #if defined(HAVE_CERES)
 #include <ceres/tiny_solver.h>
 #else
 #include "operon/ceres/tiny_solver.h"
 #endif
 
-#include <lbfgs/solver.hpp>
 #include <unsupported/Eigen/LevenbergMarquardt>
 
 #include "dynamic_cost_function.hpp"
@@ -22,6 +23,7 @@
 #include "likelihood/poisson_likelihood.hpp"
 #include "lm_cost_function.hpp"
 #include "operon/core/comparison.hpp"
+#include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
 #include "solvers/sgd.hpp"
 
@@ -41,13 +43,13 @@ struct OptimizerSummary {
 };
 
 class OptimizerBase {
-std::reference_wrapper<Problem const> problem_;
+gsl::not_null<Problem const*> problem_;
 // batch size for loss functions (default = 0 -> use entire data range)
 mutable std::size_t batchSize_{0};
 mutable std::size_t iterations_{100}; // NOLINT
 
 public:
-    explicit OptimizerBase(Problem const& problem)
+    explicit OptimizerBase(gsl::not_null<Problem const*> problem)
         : problem_ { problem }
     {
     }
@@ -59,7 +61,7 @@ public:
 
     virtual ~OptimizerBase() = default;
 
-    [[nodiscard]] auto GetProblem() const -> Problem const& { return problem_.get(); }
+    [[nodiscard]] auto GetProblem() const -> Problem const* { return problem_.get(); }
     [[nodiscard]] auto BatchSize() const -> std::size_t { return batchSize_; }
     [[nodiscard]] auto Iterations() const -> std::size_t { return iterations_; }
 
@@ -80,24 +82,24 @@ namespace detail {
 
 template <typename DTable, OptimizerType = OptimizerType::Tiny>
 struct LevenbergMarquardtOptimizer : public OptimizerBase {
-    explicit LevenbergMarquardtOptimizer(DTable const& dtable, Problem const& problem)
+    explicit LevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase{problem}, dtable_{dtable}
     {
     }
 
     [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*unused*/, Operon::Tree const& tree) const -> OptimizerSummary final
     {
-        auto const& dtable = this->GetDispatchTable();
-        auto const& problem = this->GetProblem();
-        auto const& dataset = problem.GetDataset();
-        auto range  = problem.TrainingRange();
-        auto target = problem.TargetValues(range);
+        auto const* dtable = this->GetDispatchTable();
+        auto const* problem = this->GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto range  = problem->TrainingRange();
+        auto target = problem->TargetValues(range);
         auto iterations = this->Iterations();
 
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
-        Operon::LMCostFunction cf{interpreter, target, range};
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
+        Operon::LMCostFunction cf{gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter}, target, range};
         ceres::TinySolver<decltype(cf)> solver;
-        solver.options.max_num_iterations = static_cast<int>(iterations);
+        solver.options.max_num_iterations = static_cast<int>(iterations+1);
 
         auto x0 = tree.GetCoefficients();
         OptimizerSummary summary;
@@ -112,12 +114,13 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         summary.InitialCost = solver.summary.initial_cost;
         summary.FinalCost = solver.summary.final_cost;
         summary.Iterations = solver.summary.iterations;
-        summary.FunctionEvaluations = solver.summary.iterations;
+        summary.FunctionEvaluations = cf.ResidualCalls();
+        summary.JacobianEvaluations = cf.JacobianCalls();
         summary.Success = detail::CheckSuccess(summary.InitialCost, summary.FinalCost);
         return summary;
     }
 
-    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
+    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
 
     [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar final
     {
@@ -129,29 +132,29 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
     }
 
     private:
-    std::reference_wrapper<DTable const> dtable_;
+    gsl::not_null<DTable const*> dtable_;
 };
 
 template <typename DTable>
 struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public OptimizerBase {
-    explicit LevenbergMarquardtOptimizer(DTable const& dtable, Problem const& problem)
+    explicit LevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase{problem}, dtable_{dtable}
     {
     }
 
     [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*unused*/, Operon::Tree const& tree) const -> OptimizerSummary final
     {
-        auto const& dtable = this->GetDispatchTable();
-        auto const& problem = this->GetProblem();
-        auto const& dataset = problem.GetDataset();
-        auto range  = problem.TrainingRange();
-        auto target = problem.TargetValues(range);
+        auto const* dtable = this->GetDispatchTable();
+        auto const* problem = this->GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto range  = problem->TrainingRange();
+        auto target = problem->TargetValues(range);
         auto iterations = this->Iterations();
 
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
-        Operon::LMCostFunction<Operon::Scalar> cf{interpreter, target, range};
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
+        Operon::LMCostFunction<Operon::Scalar> cf{&interpreter, target, range};
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-        lm.setMaxfev(static_cast<int>(iterations));
+        lm.setMaxfev(static_cast<int>(iterations+2));
 
         auto x0 = tree.GetCoefficients();
         OptimizerSummary summary;
@@ -173,13 +176,14 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         summary.FinalParameters = x0;
         summary.FinalCost = lm.fnorm() * lm.fnorm();
         summary.Iterations = static_cast<int>(lm.iterations());
-        summary.FunctionEvaluations = static_cast<int>(lm.nfev());
-        summary.JacobianEvaluations = static_cast<int>(lm.njev());
+        summary.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
+        summary.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
+
         summary.Success = detail::CheckSuccess(summary.InitialCost, summary.FinalCost);
         return summary;
     }
 
-    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
+    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
 
     [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar final
     {
@@ -191,32 +195,28 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
     }
 
     private:
-    std::reference_wrapper<DTable const> dtable_;
+    gsl::not_null<DTable const*> dtable_;
 };
 
 #if defined(HAVE_CERES)
 template <typename DTable>
 struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Ceres> final : public OptimizerBase {
-    explicit LevenbergMarquardtOptimizer(DTable const& dtable, Problem const& problem)
+    explicit LevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase{problem}, dtable_{dtable}
     {
     }
 
-    [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*unused*/, Operon::Tree const& tree) const -> OptimizerSummary final
+    auto Optimize(Operon::RandomGenerator& /*unused*/, Operon::Tree const& tree) -> std::vector<Operon::Scalar> final
     {
-        auto const& dtable = this->GetDispatchTable();
-        auto const& problem = this->GetProblem();
-        auto const& dataset = problem.GetDataset();
-        auto range  = problem.TrainingRange();
-        auto target = problem.TargetValues(range);
-        auto iterations = this->Iterations();;
+        auto const* tree = this->GetTree();
+        auto const* ds = this->GetDataset();
+        auto const* dt = this->GetDispatchTable();
 
-        auto initialParameters = tree.GetCoefficients();
-        auto finalParameters   = initialParameters;
+        auto x0 = tree->GetCoefficients();
 
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
-        Operon::LMCostFunction<Operon::Scalar, Eigen::RowMajor> cf{interpreter, target, range};
-        auto* dynamicCostFunction = new Operon::DynamicCostFunction{cf};
+        Operon::LMCostFunction<DTable, Eigen::RowMajor> cf(tree, ds, target, range, dt);
+        auto costFunction = new Operon::DynamicCostFunction(cf); // NOLINT
+
         ceres::Solver::Summary s;
         if (!initialParameters.empty()) {
             auto sz = std::ssize(finalParameters);
@@ -259,30 +259,30 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Ceres> final : public 
     }
 
     private:
-    std::reference_wrapper<DTable const> dtable_;
+    gsl::not_null<DTable const*> dtable_;
 };
 #endif
 
 template<typename DTable, Concepts::Likelihood LossFunction = GaussianLikelihood<Operon::Scalar>>
 struct LBFGSOptimizer final : public OptimizerBase {
-    LBFGSOptimizer(DTable const& dtable, Problem const& problem)
+    LBFGSOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase{problem}, dtable_{dtable}
     {
     }
 
     [[nodiscard]] auto Optimize(Operon::RandomGenerator& rng, Operon::Tree const& tree) const -> OptimizerSummary final
     {
-        auto const& dtable = this->GetDispatchTable();
-        auto const& problem = this->GetProblem();
-        auto const& dataset = problem.GetDataset();
-        auto range  = problem.TrainingRange();
-        auto target = problem.TargetValues(range);
+        auto const* dtable = this->GetDispatchTable();
+        auto const* problem = this->GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto range  = problem->TrainingRange();
+        auto target = problem->TargetValues(range);
         auto iterations = this->Iterations();
         auto batchSize = this->BatchSize();
         if (batchSize == 0) { batchSize = range.Size(); }
 
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
-        LossFunction loss{rng, interpreter, target, range, batchSize};
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
+        LossFunction loss{&rng, &interpreter, target, range, batchSize};
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
@@ -317,7 +317,7 @@ struct LBFGSOptimizer final : public OptimizerBase {
         return summary;
     }
 
-    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
+    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
 
     [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar override
     {
@@ -329,38 +329,38 @@ struct LBFGSOptimizer final : public OptimizerBase {
     }
 
     private:
-    std::reference_wrapper<DTable const> dtable_;
+    gsl::not_null<DTable const*> dtable_;
 };
 
 template<typename DTable, Concepts::Likelihood LossFunction = GaussianLikelihood<Operon::Scalar>>
 struct SGDOptimizer final : public OptimizerBase {
-    SGDOptimizer(DTable const& dtable, Problem const& problem)
+    SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase{problem}
         , dtable_{dtable}
         , update_{std::make_unique<UpdateRule::Constant<Operon::Scalar>>(Operon::Scalar{0.01})}
     { }
 
-    SGDOptimizer(DTable const& dtable, Problem const& problem, UpdateRule::LearningRateUpdateRule const& update)
+    SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem, UpdateRule::LearningRateUpdateRule const& update)
         : OptimizerBase{problem}
         , dtable_{dtable}
         , update_{update.Clone(0)}
     { }
 
-    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
+    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
 
     [[nodiscard]] auto Optimize(Operon::RandomGenerator& rng, Operon::Tree const& tree) const -> OptimizerSummary final
     {
-        auto const& dtable = this->GetDispatchTable();
-        auto const& problem = this->GetProblem();
-        auto const& dataset = problem.GetDataset();
-        auto range  = problem.TrainingRange();
-        auto target = problem.TargetValues(range);
+        auto const* dtable = this->GetDispatchTable();
+        auto const* problem = this->GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto range  = problem->TrainingRange();
+        auto target = problem->TargetValues(range);
         auto iterations = this->Iterations();
         auto batchSize = this->BatchSize();
         if (batchSize == 0) { batchSize = range.Size(); }
 
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
-        LossFunction loss{rng, interpreter, target, range, batchSize};
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
+        LossFunction loss{&rng, &interpreter, target, range, batchSize};
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
@@ -373,7 +373,7 @@ struct SGDOptimizer final : public OptimizerBase {
         summary.InitialParameters = coeff;
         summary.InitialCost = f0;
         auto rule = update_->Clone(coeff.size());
-        SGDSolver<LossFunction> solver(loss, *rule);
+        SGDSolver<LossFunction> solver(&loss, rule.get());
 
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
         auto x = solver.Optimize(x0, iterations);
@@ -408,7 +408,7 @@ struct SGDOptimizer final : public OptimizerBase {
     auto UpdateRule() const { return update_.get(); }
 
     private:
-    std::reference_wrapper<DTable const> dtable_;
+    gsl::not_null<DTable const*> dtable_;
     std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update_{nullptr};
 };
 } // namespace Operon

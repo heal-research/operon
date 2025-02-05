@@ -27,13 +27,15 @@ stdenv.mkDerivation rec {
     doctest
     eigen
     eve
-    (fast-float.overrideAttrs({ version = "6.1.6"; }))
-    fmt
+    fast-float
+    fmt_11
+    icu
     jemalloc
     cpptrace
     libassert
     libdwarf
     mdspan
+    microsoft-gsl
     pkg-config
     pratt-parser
     simdutf # required by scnlib

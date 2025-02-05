@@ -10,17 +10,8 @@
 
 namespace Operon {
 
-namespace detail {
-    struct Identity {
-        template <typename T>
-        constexpr auto operator()(T&& v) const noexcept -> decltype(std::forward<T>(v))
-        {
-            return std::forward<T>(v);
-        }
-    };
-} // namespace detail
 
-template<typename InputIt, typename Func = detail::Identity>
+template<typename InputIt, typename Func = std::identity>
 struct ProjectionIterator {
     using T = typename std::iterator_traits<InputIt>::value_type;
     using R = std::invoke_result_t<Func, T>;
@@ -134,7 +125,7 @@ struct ProjectionIterator {
     Func pr_;
 };
 
-template<typename Container, typename Func = detail::Identity>
+template<typename Container, typename Func = std::identity>
 struct Projection {
     using InputIt = ProjectionIterator<typename Container::const_iterator, Func>;
 

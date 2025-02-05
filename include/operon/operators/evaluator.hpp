@@ -15,8 +15,9 @@
 #include "operon/core/types.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operon_export.hpp"
+#include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/likelihood_base.hpp"
-#include "operon/optimizer/optimizer.hpp"
+#include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 
 namespace Operon {
 
@@ -68,7 +69,13 @@ struct OPERON_EXPORT C2 : public ErrorMetric {
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept -> std::pair<double, double>;
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target) noexcept -> std::pair<double, double>;
 
-struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Individual&, Operon::Span<Operon::Scalar>> {
+using E1 = OperatorBase<Operon::Vector<Operon::Scalar>, Individual const&>;
+using E2 = OperatorBase<Operon::Vector<Operon::Scalar>, Individual const&, Operon::Span<Operon::Scalar>>;
+
+struct EvaluatorBase : public E1, E2
+{
+    using ReturnType = E1::ReturnType;
+
     mutable std::atomic_ulong ResidualEvaluations { 0 }; // NOLINT
     mutable std::atomic_ulong JacobianEvaluations { 0 }; // NOLINT
     mutable std::atomic_ulong CallCount { 0 }; // NOLINT
@@ -78,11 +85,25 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
 
     static auto constexpr ErrMax { std::numeric_limits<Operon::Scalar>::max() };
 
-    using ReturnType = OperatorBase::ReturnType;
+    auto operator()(Operon::RandomGenerator& /*unused*/, Operon::Individual const& /*unused*/, Operon::Span<Operon::Scalar> /*unused*/) const -> ReturnType override = 0;
 
-    explicit EvaluatorBase(Problem& problem)
+    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> ReturnType override = 0;
+
+    explicit EvaluatorBase(gsl::not_null<Problem const*> problem)
         : problem_(problem)
     {
+    }
+
+    template<typename Derived>
+    static auto Evaluate(Derived const* self, Operon::RandomGenerator& rng, Operon::Individual const& ind, std::span<Operon::Scalar> buf) {
+        ENSURE(buf.size() >= self->GetProblem()->TrainingRange.Size());
+        return std::invoke(*self, rng, ind, buf);
+    }
+
+    template<typename Derived>
+    static auto Evaluate(Derived const* self, Operon::RandomGenerator& rng, Operon::Individual const& ind) {
+        std::vector<Operon::Scalar> buf(self->GetProblem()->TrainingRange().Size());
+        return std::invoke(*self, rng, ind, buf);
     }
 
     virtual void Prepare(Operon::Span<Individual const> /*pop*/) const
@@ -110,11 +131,10 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
 
     auto Population() const -> Operon::Span<Individual const> { return population_; }
     auto SetPopulation(Operon::Span<Operon::Individual const> pop) const { population_ = pop; }
-    auto GetProblem() const -> Problem const& { return problem_; }
-    auto GetProblem() -> Problem& { return problem_; }
-    auto SetProblem(Problem& problem) { problem_ = problem; }
+    auto GetProblem() const -> Problem const* { return problem_; }
+    auto SetProblem(gsl::not_null<Problem const*> problem) { problem_ = problem; }
 
-    void Reset()
+    void Reset() const
     {
         ResidualEvaluations = 0;
         JacobianEvaluations = 0;
@@ -124,43 +144,48 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Indiv
 
 private:
     mutable Operon::Span<Operon::Individual const> population_;
-    std::reference_wrapper<Problem> problem_;
+    gsl::not_null<Problem const*> problem_;
     size_t budget_ = DefaultEvaluationBudget;
 };
 
 class OPERON_EXPORT UserDefinedEvaluator : public EvaluatorBase {
 public:
-    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> func)
+    UserDefinedEvaluator(gsl::not_null<Problem const*> problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual const&)> func)
         : EvaluatorBase(problem)
         , fref_(std::move(func))
     {
     }
 
     // the func signature taking a pointer to the rng is a workaround for pybind11, since the random generator is non-copyable we have to pass a pointer
-    UserDefinedEvaluator(Problem& problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> func)
+    UserDefinedEvaluator(gsl::not_null<Problem const*> problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual const&)> func)
         : EvaluatorBase(problem)
         , fptr_(std::move(func))
     {
     }
 
     auto
-    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> /*args*/) const -> typename EvaluatorBase::ReturnType override
+    operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> /*args*/) const -> typename EvaluatorBase::ReturnType override
     {
         ++this->CallCount;
         return fptr_ ? fptr_(&rng, ind) : fref_(rng, ind);
     }
 
+    auto operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
+        return EvaluatorBase::Evaluate(this, rng, ind);
+    }
+
 private:
-    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual&)> fref_;
-    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual&)> fptr_; // workaround for pybind11
+    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual const&)> fref_;
+    std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual const&)> fptr_; // workaround for pybind11
 };
 
-template <typename DTable>
+template <typename DTable = DefaultDispatch>
 class OPERON_EXPORT Evaluator : public EvaluatorBase {
+public:
+    using TDispatch    = DTable;
     using TInterpreter = Operon::Interpreter<Operon::Scalar, DTable>;
 
-public:
-    explicit Evaluator(Problem& problem, DTable const& dtable, ErrorMetric error = MSE{}, bool linearScaling = true)
+    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true)
         : EvaluatorBase(problem)
         , dtable_(dtable)
         , error_(error)
@@ -168,49 +193,58 @@ public:
     {
     }
 
-    auto GetDispatchTable() const { return dtable_.get(); }
+    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
 
     auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+    auto
+    operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override;
 
 private:
-    std::reference_wrapper<DTable const> dtable_;
+    gsl::not_null<DTable const*> dtable_;
     ErrorMetric error_;
     bool scaling_{false};
 };
 
 class MultiEvaluator : public EvaluatorBase {
 public:
-    explicit MultiEvaluator(Problem& problem)
+    explicit MultiEvaluator(Problem const* problem)
         : EvaluatorBase(problem)
     {
     }
 
-    auto Add(EvaluatorBase const& evaluator)
+    auto Add(EvaluatorBase const* evaluator)
     {
-        evaluators_.push_back(std::ref(evaluator));
+        evaluators_.emplace_back(evaluator);
     }
 
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override
     {
         for (auto const& e : evaluators_) {
-            e.get().Prepare(pop);
+            e->Prepare(pop);
         }
     }
 
     auto ObjectiveCount() const -> std::size_t override
     {
-        return std::transform_reduce(evaluators_.begin(), evaluators_.end(), 0UL, std::plus {}, [](auto const& eval) { return eval.get().ObjectiveCount(); });
+        return std::transform_reduce(evaluators_.begin(), evaluators_.end(), 0UL, std::plus {}, [](auto const eval) { return eval->ObjectiveCount(); });
     }
 
     auto
-    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
+    operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override
+    {
+        return EvaluatorBase::Evaluate(this, rng, ind);
+    }
+
+    auto
+    operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
     {
         EvaluatorBase::ReturnType fit;
         fit.reserve(ind.Size());
 
-        for (auto const& ev : evaluators_) {
-            auto f = ev(rng, ind, buf);
+        for (auto const ev : evaluators_) {
+            auto f = (*ev)(rng, ind, buf);
             std::copy(f.begin(), f.end(), std::back_inserter(fit));
         }
 
@@ -223,8 +257,8 @@ public:
         auto callCnt{0UL};
         auto cfTime{0UL};
 
-        for (auto const& eval : evaluators_) {
-            auto [re, je, cc, ct] = eval.get().Stats();
+        for (auto const ev : evaluators_) {
+            auto [re, je, cc, ct] = ev->Stats();
             resEval += re;
             jacEval += je;
             callCnt += cc;
@@ -245,7 +279,7 @@ public:
     auto Evaluators() const { return evaluators_; }
 
 private:
-    std::vector<std::reference_wrapper<EvaluatorBase const>> evaluators_;
+    std::vector<gsl::not_null<EvaluatorBase const*>> evaluators_;
 };
 
 class OPERON_EXPORT AggregateEvaluator final : public EvaluatorBase {
@@ -257,8 +291,8 @@ public:
         HarmonicMean,
         Sum };
 
-    explicit AggregateEvaluator(EvaluatorBase& evaluator)
-        : EvaluatorBase(evaluator.GetProblem())
+    explicit AggregateEvaluator(gsl::not_null<EvaluatorBase const*> evaluator)
+        : EvaluatorBase(evaluator->GetProblem())
         , evaluator_(evaluator)
     {
     }
@@ -267,10 +301,13 @@ public:
     auto GetAggregateType() const { return aggtype_; }
 
     auto
-    operator()(Operon::RandomGenerator& rng, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override;
+
+    auto
+    operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
-    std::reference_wrapper<EvaluatorBase const> evaluator_;
+    gsl::not_null<EvaluatorBase const*> evaluator_;
     AggregateType aggtype_ { AggregateType::Mean };
 };
 
@@ -278,8 +315,8 @@ private:
 // TODO: think about a better design
 class OPERON_EXPORT LengthEvaluator : public UserDefinedEvaluator {
 public:
-    explicit LengthEvaluator(Operon::Problem& problem, size_t maxlength = 1)
-        : UserDefinedEvaluator(problem, [maxlength](Operon::RandomGenerator& /*unused*/, Operon::Individual& ind) {
+    explicit LengthEvaluator(gsl::not_null<Operon::Problem const*> problem, size_t maxlength = 1)
+        : UserDefinedEvaluator(problem, [maxlength](Operon::RandomGenerator& /*unused*/, Operon::Individual const& ind) {
             return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.Length()) / static_cast<Operon::Scalar>(maxlength) };
         })
     {
@@ -288,8 +325,8 @@ public:
 
 class OPERON_EXPORT ShapeEvaluator : public UserDefinedEvaluator {
 public:
-    explicit ShapeEvaluator(Operon::Problem& problem)
-        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator& /*unused*/, Operon::Individual& ind) {
+    explicit ShapeEvaluator(Operon::Problem const* problem)
+        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator& /*unused*/, Operon::Individual const& ind) {
             return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.VisitationLength()) };
         })
     {
@@ -298,7 +335,7 @@ public:
 
 class OPERON_EXPORT DiversityEvaluator : public EvaluatorBase {
 public:
-    explicit DiversityEvaluator(Operon::Problem& problem, Operon::HashMode hashmode = Operon::HashMode::Strict, std::size_t sampleSize = 100)
+    explicit DiversityEvaluator(Operon::Problem const* problem, Operon::HashMode hashmode = Operon::HashMode::Strict, std::size_t sampleSize = 100)
         : EvaluatorBase(problem)
         , hashmode_(hashmode)
         , sampleSize_(sampleSize)
@@ -306,7 +343,10 @@ public:
     }
 
     auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    operator()(Operon::RandomGenerator& /*random*/, Individual const& ind) const -> typename EvaluatorBase::ReturnType override;
+
+    auto
+    operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
 
@@ -321,7 +361,7 @@ class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<D
     using Base = Evaluator<DTable>;
 
 public:
-    explicit MinimumDescriptionLengthEvaluator(Operon::Problem& problem, DTable const& dtable)
+    explicit MinimumDescriptionLengthEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable, SSE{}), sigma_(1, 0.001)
     {
     }
@@ -329,30 +369,30 @@ public:
     auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
     auto SetSigma(std::vector<Operon::Scalar> sigma) const { sigma_ = std::move(sigma); }
 
-    auto operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
+    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
+        return EvaluatorBase::Evaluate(this, rng, ind);
+    }
+
+    auto operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
         ++Base::CallCount;
 
-        auto const& problem = Base::GetProblem();
-        auto const range = problem.TrainingRange();
-        auto const& dataset = problem.GetDataset();
+        auto const* dtable = Base::GetDispatchTable();
+        auto const* problem = Base::GetProblem();
+        auto const* dataset = problem->GetDataset();
         auto const& nodes = ind.Genotype.Nodes();
-        auto const& dtable = Base::GetDispatchTable();
 
         // this call will optimize the tree coefficients and compute the SSE
-        auto& tree = ind.Genotype;
-        Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, ind.Genotype};
+        auto const& tree = ind.Genotype;
+        Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, &ind.Genotype};
         auto parameters = tree.GetCoefficients();
 
         auto const p { static_cast<double>(parameters.size()) };
 
-        std::vector<Operon::Scalar> buffer;
-        if (buf.size() < range.Size()) {
-            buffer.resize(range.Size());
-            buf = Operon::Span<Operon::Scalar>(buffer);
-        }
+        auto const trainingRange = problem->TrainingRange();
+        ENSURE(buf.size() >= trainingRange.Size());
 
         ++Base::ResidualEvaluations;
-        interpreter.Evaluate(parameters, range, buf);
+        interpreter.Evaluate(parameters, trainingRange, buf);
 
 
         // codelength of the complexity
@@ -366,7 +406,7 @@ public:
 
         // codelength of the parameters
         ++Base::JacobianEvaluations;
-        Eigen::Matrix<Operon::Scalar, -1, -1> j = interpreter.JacRev(parameters, range); // jacobian
+        Eigen::Matrix<Operon::Scalar, -1, -1> j = interpreter.JacRev(parameters, trainingRange); // jacobian
         auto estimatedValues = buf;
         auto fisherMatrix = Lik::ComputeFisherMatrix(estimatedValues, {j.data(), static_cast<std::size_t>(j.size())}, sigma_);
         auto fisherDiag   = fisherMatrix.diagonal().array();
@@ -411,7 +451,7 @@ public:
 
         cParameters -= p/2 * std::log(3);
 
-        auto targetValues = problem.TargetValues(problem.TrainingRange());
+        auto targetValues = problem->TargetValues(trainingRange);
         auto cLikelihood  = Lik::ComputeLikelihood(estimatedValues, targetValues, sigma_);
         auto mdl = cComplexity + cParameters + cLikelihood;
         if (!std::isfinite(mdl)) { mdl = EvaluatorBase::ErrMax; }
@@ -427,13 +467,13 @@ class OPERON_EXPORT BayesianInformationCriterionEvaluator final : public Evaluat
     using Base = Evaluator<DTable>;
 
 public:
-    explicit BayesianInformationCriterionEvaluator(Operon::Problem& problem, DTable const& dtable)
+    explicit BayesianInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable, MSE{})
     {
     }
 
     auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 };
 
 template <typename DTable>
@@ -441,13 +481,13 @@ class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator
     using Base = Evaluator<DTable>;
 
 public:
-    explicit AkaikeInformationCriterionEvaluator(Operon::Problem& problem, DTable const& dtable)
+    explicit AkaikeInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable, MSE{})
     {
     }
 
     auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 };
 
 template<typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
@@ -456,35 +496,35 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
     public:
-    explicit LikelihoodEvaluator(Operon::Problem& problem, DTable const& dtable)
+    explicit LikelihoodEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable), sigma_(1, 0.001)
     {
     }
 
     auto
-    operator()(Operon::RandomGenerator&  /*rng*/, Individual& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
+    operator()(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
         ++Base::CallCount;
 
-        auto const& problem = Base::Evaluator::GetProblem();
-        auto const range = problem.TrainingRange();
-        auto const& dataset = problem.GetDataset();
-        auto const& dtable = Base::Evaluator::GetDispatchTable();
+        auto const* dtable  = Base::Evaluator::GetDispatchTable();
+        auto const* problem = Base::Evaluator::GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto const* tree    = &ind.Genotype;
 
         // this call will optimize the tree coefficients and compute the SSE
-        auto& tree = ind.Genotype;
-        Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, ind.Genotype};
-        auto parameters = tree.GetCoefficients();
+        Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, tree};
+        auto parameters = tree->GetCoefficients();
 
         std::vector<Operon::Scalar> buffer;
-        if (buf.size() < range.Size()) {
-            buffer.resize(range.Size());
+        auto const trainingRange = problem->TrainingRange();
+        if (buf.size() < trainingRange.Size()) {
+            buffer.resize(trainingRange.Size());
             buf = Operon::Span<Operon::Scalar>(buffer);
         }
         ++Base::ResidualEvaluations;
-        interpreter.Evaluate(parameters, range, buf);
+        interpreter.Evaluate(parameters, trainingRange, buf);
 
         auto estimatedValues = buf;
-        auto targetValues    = problem.TargetValues(range);
+        auto targetValues    = problem->TargetValues(trainingRange);
 
         auto lik = Likelihood::ComputeLikelihood(estimatedValues, targetValues, sigma_);
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(lik) };
@@ -501,10 +541,7 @@ template<typename DTable>
 using GaussianLikelihoodEvaluator = LikelihoodEvaluator<DTable, GaussianLikelihood<Operon::Scalar>>;
 
 template<typename DTable>
-using PoissonLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar, /*LogInput=*/false>>;
-
-template<typename DTable>
-using PoissonLogLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar, /*LogInput=*/true>>;
+using PoissonLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>;
 
 } // namespace Operon
 #endif

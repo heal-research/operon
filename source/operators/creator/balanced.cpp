@@ -19,7 +19,7 @@ namespace Operon {
 auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*args*/, size_t /*args*/) const -> Tree
 {
     auto const& pset = GetPrimitiveSet();
-    auto [minFunctionArity, maxFunctionArity] = pset.FunctionArityLimits();
+    auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
 
     auto const& variables = GetVariables();
     auto init = [&](Node& node) {
@@ -46,7 +46,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     auto maxArity = std::min(maxFunctionArity, targetLen - 1);
     auto minArity = std::min(minFunctionArity, maxArity); // -1 because we start with a root
 
-    auto root = pset.SampleRandomSymbol(random, minArity, maxArity);
+    auto root = pset->SampleRandomSymbol(random, minArity, maxArity);
     init(root);
 
     if (root.IsLeaf()) {
@@ -73,7 +73,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
                 minArity = maxArity = 0;
             }
 
-            auto child = pset.SampleRandomSymbol(random, minArity, maxArity);
+            auto child = pset->SampleRandomSymbol(random, minArity, maxArity);
             init(child);
             tuples.emplace_back(child, childDepth, 0);
             openSlots += child.Arity;

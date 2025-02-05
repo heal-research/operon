@@ -5,14 +5,14 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 
 namespace Operon {
-    auto PolygenicOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
+    auto PolygenicOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
     {
         std::uniform_real_distribution<double> uniformReal;
-        auto pop = this->FemaleSelector().Population();
+        auto pop = FemaleSelector()->Population();
 
         // assuming the basic generator never fails
         auto makeOffspring = [&]() {
-            auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, buf);
+            auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf);
             return res ? res.Child.value() : res.Parent1.value();
         };
 

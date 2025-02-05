@@ -9,9 +9,9 @@
 #include <string>                              // for operator==, string
 #include <utility>                             // for addressof
 #include <vector>                              // for vector
+#include "operon/core/dispatch.hpp"            // for DispatchTable
 #include "operon/core/types.hpp"               // for Span
 #include "operon/core/individual.hpp"          // for Comparison
-#include "operon/interpreter/dispatch_table.hpp"
 #include "operon/interpreter/interpreter.hpp"  // for Interpreter
 #include "operon/optimizer/optimizer.hpp"
 #include "util.hpp"                            // for Split

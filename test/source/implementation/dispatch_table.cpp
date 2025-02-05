@@ -26,7 +26,7 @@ namespace Operon::Test {
             fmt::print("Check expression {} == {}\n", InfixFormatter::Format(t, ds), expected);
             fmt::print("Tree representation:\n{}\n", TreeFormatter::Format(t, ds));
             auto p = t.GetCoefficients();
-            auto r = Operon::Interpreter<Operon::Scalar, DT>(dt, ds, t).Evaluate(p, Operon::Range(0, 1));
+            auto r = Operon::Interpreter<Operon::Scalar, DT>(&dt, &ds, &t).Evaluate(p, Operon::Range(0, 1));
             CHECK(r[0] == expected);
         };
 
