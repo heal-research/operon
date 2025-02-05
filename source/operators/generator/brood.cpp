@@ -5,17 +5,19 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 
 namespace Operon {
-    auto BroodOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
+    auto BroodOffspringGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
     {
-        auto pop = this->FemaleSelector().Population();
+        auto const& fsel = *FemaleSelector();
+        auto const& msel = *MaleSelector();
 
-        auto const& p1 = pop[ FemaleSelector()(random) ];
-        auto const& p2 = pop[ MaleSelector()(random) ];
+        auto const pop = fsel.Population();
+        auto const& p1 = pop[ fsel(random) ];
+        auto const& p2 = pop[ msel(random) ];
 
         // the brood offspring generator creates a brood of offspring from the same two parents
         auto makeOffspring = [&]() {
             RecombinationResult res{ {}, p1, p2 };
-            OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, buf, res);
+            OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf, res);
             return res ? res.Child.value() : res.Parent1.value();
         };
 

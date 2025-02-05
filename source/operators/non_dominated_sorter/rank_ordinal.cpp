@@ -38,8 +38,6 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
         r(i, p.col(i)) = Vec::LinSpaced(n, 0, n - 1);
     }
 
-    // std::cout << p.transpose() << "\n\n";
-
     // 2) save min and max positions as well as the column index for the max position
     Vec maxc(n);
     Vec maxp(n);
@@ -50,25 +48,28 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
         maxc(i) = std::distance(c.begin(), max);
     }
 
+    auto dominated = [&](int i, int j) {
+        // std::span<int> a(r.col(i).data(), r.col(i).size());
+        // std::span<int> b(r.col(j).data(), r.col(j).size());
+        return m == 2
+            ? (r.col(i) < r.col(j)).all()
+            : eve::algo::all_of(eve::views::zip(std::span(r.col(i).data(), m), std::span(r.col(j).data(), m)), [](auto t) { return kumi::apply(std::less{}, t); });
+    };
+
     // 3) compute ranks / fronts
-    Vec rank = Vec::Zero(n); // individual ranks
+    // Vec rank = Vec::Zero(n); // individual ranks
+    std::vector<int> rank(n, 0);
     for (auto i : p(Eigen::seq(0, n - 2), 0)) {
         if (maxp(i) == n-1) {
             continue;
         }
         for (auto j : p(Eigen::seq(maxp(i)+1, n-1), maxc(i))) {
-            if (rank(i) != rank(j)) { continue; }
-            //rank(j) += static_cast<int>((r.col(i) < r.col(j)).all());
-            auto k = m == 2
-                ? (r.col(i) < r.col(j)).all()
-                : eve::algo::all_of(eve::views::zip(std::span<int>(r.col(i).data(), r.col(i).size()), std::span<int>(r.col(j).data(), r.col(j).size())),
-                                    [](auto t) { auto [a, b] = t; return a < b; });
-            rank(j) += static_cast<int>(k);
+            rank[j] += (rank[i] == rank[j] && dominated(i, j));
         }
     }
-    std::vector<std::vector<size_t>> fronts(rank.maxCoeff() + 1);
+    std::vector<std::vector<size_t>> fronts(std::ranges::max(rank) + 1);
     for (auto i = 0; i < n; ++i) {
-        fronts[rank(i)].push_back(i);
+        fronts[rank[i]].push_back(i);
     }
     return fronts;
 }

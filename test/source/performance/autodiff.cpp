@@ -28,7 +28,7 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
     Operon::PrimitiveSet pset{ Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt | Operon::NodeType::Pow | Operon::NodeType::Tanh };
-    Operon::BalancedTreeCreator creator(pset, ds.VariableHashes());
+    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes());
 
     auto constexpr initialSize{20};
     auto benchmark = [&](ankerl::nanobench::Bench& bench, auto&& f, std::string const& prefix, std::size_t n, std::size_t s) {
@@ -65,12 +65,12 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
 
     auto jacrev = [&](auto const& ds, auto const& tree, auto range) {
         auto coeff = tree.GetCoefficients();
-        return INT{dtable, ds, tree}.JacRev(coeff, range);
+        return INT{&dtable, &ds, &tree}.JacRev(coeff, range);
     };
 
     auto jacfwd = [&](auto const& ds, auto const& tree, auto range) {
         auto coeff = tree.GetCoefficients();
-        return INT{dtable, ds, tree}.JacFwd(coeff, range);
+        return INT{&dtable, &ds, &tree}.JacFwd(coeff, range);
     };
 
     SUBCASE("residual") {
@@ -99,7 +99,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[performance]")) {
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
     Operon::PrimitiveSet pset{ Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt };
-    Operon::BalancedTreeCreator creator(pset, ds.VariableHashes());
+    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes());
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
@@ -122,7 +122,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[performance]")) {
     b.batch(numtrees).run("rev", [&]() {
         for (auto const& tree : trees) {
             auto coeff { tree.GetCoefficients() };
-            INT{dtable, ds, tree}.JacRev(coeff, range);
+            INT{&dtable, &ds, &tree}.JacRev(coeff, range);
         }
     });
 }
@@ -170,7 +170,7 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();
-                Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>(dt, ds, tree).Evaluate(coeff, rg, out);
+                Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>(&dt, &ds, &tree).Evaluate(coeff, rg, out);
                 sum += std::reduce(out.begin(), out.end());
             }
             return sum;
@@ -194,7 +194,7 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();
-                Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>(dt, ds, tree).JacRev(coeff, rg, jac);
+                Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>(&dt, &ds, &tree).JacRev(coeff, rg, jac);
                 sum += std::reduce(jac.begin(), jac.end());
             }
             return sum;
@@ -216,7 +216,9 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
         vars[v.Name] = v.Hash;
     }
 
-    Operon::Problem problem{ds, range, range};
+    Operon::Problem problem{&ds};
+    problem.SetTrainingRange(range);
+    problem.SetTestRange(range);
 
     std::vector<size_t> indices(range.Size());
     std::iota(indices.begin(), indices.end(), 0);
@@ -246,8 +248,8 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
             bench.batch(range.Size() * b).run(fmt::format("{};{};{};{}", prefix, a, static_cast<double>(b)/static_cast<double>(n), r), [&]() {
                 std::size_t sz{0};
                 for (auto const& tree : trees) {
-                    INT interpreter{dtable, ds, tree};
-                    Operon::LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer{dt, problem};
+                    INT interpreter{&dtable, &ds, &tree};
+                    Operon::LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer{&dt, &problem};
                     auto summary = optimizer.Optimize(rng, tree);
                     sz += summary.FinalParameters.size();
                 }
@@ -265,7 +267,7 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
     Operon::PrimitiveSet pset;
     Operon::PrimitiveSetConfig psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos;
     pset.SetConfig(psetcfg);
-    Operon::BalancedTreeCreator creator(pset, ds.VariableHashes());
+    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes());
 
     SUBCASE("forward") {
         benchmark(b, dtable, creator, "forward", n, m, r);

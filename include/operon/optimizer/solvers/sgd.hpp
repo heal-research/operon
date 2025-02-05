@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <fmt/core.h>
+#include <gsl/pointers>
 #include <iostream>
 #include <memory>
 #include <ostream>
@@ -649,17 +650,17 @@ struct SGDSolver {
     using Scalar = typename Functor::Scalar;
     using Vector = Eigen::Array<Scalar, -1, 1>;
 
-    explicit SGDSolver(Functor const& functor, UpdateRule::LearningRateUpdateRule const& update)
+    explicit SGDSolver(gsl::not_null<Functor const* >functor, gsl::not_null<UpdateRule::LearningRateUpdateRule const*> update)
         : functor_(functor)
-        , update_(update)
+        , rule_(update)
     {
     }
 
     auto Optimize(Eigen::Ref<Vector const> const x0, int epochs = 1000) const noexcept -> Vector
     {
-        auto const& fun = functor_.get();
+        auto const* fun = functor_.get();
 
-        EXPECT(x0.size() == static_cast<Eigen::Index>(fun.NumParameters()));
+        EXPECT(x0.size() == static_cast<Eigen::Index>(fun->NumParameters()));
 
         Vector grad(x0.size());
         Vector x = x0;
@@ -668,9 +669,9 @@ struct SGDSolver {
         static constexpr auto tol { 1e-8 };
 
         for (epochs_ = 0; epochs_ < epochs; ++epochs_) {
-            fun(x, grad);
+            std::invoke(*fun, x, grad);
             // apply learning rate to grad and write result in beta
-            update_.get().Update(grad, beta);
+            rule_->Update(grad, beta);
             if ((beta.abs() < tol).all()) {
                 converged_ = true;
                 break;
@@ -684,8 +685,8 @@ struct SGDSolver {
     auto Epochs() const { return epochs_; }
 
 private:
-    std::reference_wrapper<Functor const> functor_;
-    std::reference_wrapper<UpdateRule::LearningRateUpdateRule const> update_;
+    gsl::not_null<Functor const*> functor_;
+    gsl::not_null<UpdateRule::LearningRateUpdateRule const*> rule_;
 
     mutable int epochs_ {1000};
     mutable bool converged_ { false };

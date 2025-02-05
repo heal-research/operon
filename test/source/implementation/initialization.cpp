@@ -59,7 +59,7 @@ auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator
 {
     std::vector<Tree> trees;
     trees.reserve(lengths.size());
-    UniformTreeInitializer treeInit(creator);
+    UniformTreeInitializer treeInit(&creator);
     treeInit.ParameterizeDistribution(1UL, 100UL);
     treeInit.SetMaxDepth(maxDepth);
     UniformCoefficientInitializer coeffInit;
@@ -129,7 +129,7 @@ TEST_CASE("GROW")
     grammar.SetFrequency(Node(NodeType::Exp), 1);
     grammar.SetFrequency(Node(NodeType::Log), 1);
 
-    GrowTreeCreator gtc{grammar, inputs};
+    GrowTreeCreator gtc{&grammar, inputs};
     Operon::RandomGenerator random(std::random_device{}());
 
     std::vector<size_t> lengths(n);
@@ -243,7 +243,7 @@ TEST_CASE("BTC")
     grammar.SetFrequency(Node(NodeType::Exp), 1);
     grammar.SetFrequency(Node(NodeType::Log), 1);
 
-    BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
+    BalancedTreeCreator btc { &grammar, inputs, /* bias= */ 0.0 };
 
     Operon::RandomGenerator random(std::random_device {}());
 
@@ -345,7 +345,7 @@ TEST_CASE("PTC2")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
 
-    ProbabilisticTreeCreator ptc { grammar, inputs };
+    ProbabilisticTreeCreator ptc { &grammar, inputs };
 
     Operon::RandomGenerator random(std::random_device {}());
 

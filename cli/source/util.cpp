@@ -15,8 +15,11 @@
 #include <sstream>
 #include <stdexcept>
 
+#include <taskflow/taskflow.hpp>
+#include <taskflow/algorithm/reduce.hpp>
 #include "util.hpp"
 
+#include "operon/algorithms/ga_base.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/version.hpp"
@@ -127,30 +130,6 @@ auto PrintPrimitives(NodeType config) -> void
         Node node(type);
         fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled, freq != 0U ? std::to_string(freq) : "-");
     }
-}
-
-auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const& stats, bool printHeader) -> void
-{
-    std::vector<size_t> widths;
-    auto out = fmt::memory_buffer();
-    for (auto const& [name, value, format] : stats) {
-        fmt::format_to(std::back_inserter(out), fmt::runtime(fmt::format("{{{}}}", format)), value);
-        auto width = std::max(name.size(), fmt::to_string(out).size());
-        widths.push_back(width);
-        out.clear();
-    }
-    if (printHeader) {
-        for (auto i = 0UL; i < stats.size(); ++i) {
-            fmt::print("{} ", fmt::format("{:>{}}", std::get<0>(stats[i]), widths[i]));
-        }
-        fmt::print("\n");
-    }
-    for (auto i = 0UL; i < stats.size(); ++i) {
-        fmt::format_to(std::back_inserter(out), fmt::runtime(fmt::format("{{{}}}", std::get<2>(stats[i]))), std::get<1>(stats[i]));
-        fmt::print("{} ", fmt::format("{:>{}}", fmt::to_string(out), widths[i]));
-        out.clear();
-    }
-    fmt::print("\n");
 }
 
 auto InitOptions(std::string const& name, std::string const& desc, int width) -> cxxopts::Options

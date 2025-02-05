@@ -44,13 +44,13 @@ namespace detail {
 template<typename T = Operon::Scalar, bool LogInput = true>
 struct PoissonLikelihood : public LikelihoodBase<T> {
 
-    PoissonLikelihood(Operon::RandomGenerator& rng, InterpreterBase<T> const& interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
+    PoissonLikelihood(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
         : LikelihoodBase<T>(interpreter)
         , rng_{rng}
         , target_(target)
         , range_(range)
         , batchSize_(batchSize == 0 ? range.Size() : batchSize)
-        , numParameters_{static_cast<std::size_t>(interpreter.GetTree().CoefficientsCount())}
+        , numParameters_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
         , numResiduals_{range_.Size()}
         , jac_{batchSize_, numParameters_}
     { }
@@ -66,10 +66,10 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
     // this loss can be used by the SGD or LBFGS optimizers
     auto operator()(Cref x, Ref g) const noexcept -> Operon::Scalar final {
         ++feval_;
-        auto const& interpreter = this->GetInterpreter();
+        auto const* interpreter = this->GetInterpreter();
         Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
         auto r = SelectRandomRange();
-        auto p = interpreter.Evaluate(c, r);
+        auto p = interpreter->Evaluate(c, r);
         auto t = target_.subspan(r.Start(), r.Size());
         auto pmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(p.data(), std::ssize(p));
         auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
@@ -77,14 +77,14 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         // compute jacobian
         if constexpr (LogInput) {
             if (g.size() != 0) {
-                interpreter.JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
+                interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
                 g = ((pmap.exp() - tmap).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
             }
             return (pmap.exp() - tmap * pmap).sum();
         } else {
             auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
             if (g.size() != 0) {
-                interpreter.JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
+                interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
                 g = ((1 - tmap * pmap.inverse()).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
             }
             return (pmap - tmap * pmap.log()).sum();
@@ -136,11 +136,11 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
 private:
     auto SelectRandomRange() const -> Operon::Range {
         if (batchSize_ >= range_.Size()) { return range_; }
-        auto s = std::uniform_int_distribution<std::size_t>{0UL, range_.Size()-batchSize_}(rng_.get());
+        auto s = std::uniform_int_distribution<std::size_t>{0UL, range_.Size()-batchSize_}(*rng_);
         return Operon::Range{range_.Start() + s, range_.Start() + s + batchSize_};
     }
 
-    std::reference_wrapper<Operon::RandomGenerator> rng_;
+    gsl::not_null<Operon::RandomGenerator*> rng_;
     Operon::Span<Operon::Scalar const> target_;
     Operon::Range const range_; // NOLINT
     std::size_t batchSize_; // batch size

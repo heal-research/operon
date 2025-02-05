@@ -4,8 +4,9 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 
 #include <cpp-sort/sorters/merge_sorter.h>
-#include <ranges>
 #include <eve/module/algo.hpp>
+#include <fmt/core.h>
+#include <ranges>
 
 namespace Operon {
 // best order sort https://doi.org/10.1145/2908961.2931684
@@ -17,11 +18,11 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
     // initialization
     std::vector<std::vector<std::vector<int>>> solutionSets(m);
 
-    // std::vector<std::vector<int>> comparisonSets(n);
-    // for (auto& cset : comparisonSets) {
-    //     cset.resize(m);
-    //     std::iota(cset.begin(), cset.end(), 0);
-    // }
+    std::vector<std::vector<int>> comparisonSets(n);
+    for (auto& cset : comparisonSets) {
+        cset.resize(m);
+        std::iota(cset.begin(), cset.end(), 0);
+    }
 
     std::vector<bool> isRanked(n, false); // rank status
     std::vector<int> rank(n, 0);          // rank of solutions
@@ -30,22 +31,16 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
     int rc{1}; // number of fronts so far (at least one front)
 
     std::vector<std::vector<int>> sortedByObjective(m);
-    std::vector<std::vector<int>> sortedIndices(n);
 
     auto& idx = sortedByObjective[0];
     idx.resize(n);
     std::iota(idx.begin(), idx.end(), 0);
-    for(auto i : idx) { sortedIndices[i].push_back(i); }
 
     // sort the individuals for each objective
     cppsort::merge_sorter sorter;
     for (auto j = 1; j < m; ++j) {
         sortedByObjective[j] = sortedByObjective[j-1];
         sorter(sortedByObjective[j], [&](auto i) { return pop[i][j]; });
-
-        for (int i = 0; i < n; ++i) {
-            sortedIndices[sortedByObjective[j][i]].push_back(i);
-        }
     }
 
     // utility method
@@ -60,11 +55,11 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
 
     // algorithm 4 in the original paper
     auto dominationCheck = [&](auto s, auto t) {
-        auto const& a = sortedIndices[s];
-        auto const& b = sortedIndices[t];
+        auto const& a = pop[s].Fitness;
+        auto const& b = pop[t].Fitness;
         return m == 2
-            ? std::ranges::none_of(std::ranges::iota_view{0, m}, [&](auto i) { return a[i] < b[i]; })
-            : eve::algo::none_of(eve::views::zip(a, b), [](auto t) { auto [x, y] = t; return x < y; });
+            ? std::ranges::none_of(comparisonSets[t], [&](auto i) { return a[i] < b[i]; })
+            : eve::algo::none_of(eve::views::zip(a, b), [](auto t) { return kumi::apply(std::less{}, t); });
     };
 
     // algorithm 3 in the original paper
@@ -104,8 +99,7 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
     for (auto i = 0; i < n; ++i) {
         for (auto j = 0; j < m; ++j) {
             auto s = sortedByObjective[j][i]; // take i-th element from qj
-            // auto cs = comparisonSets[s];
-            // std::ranges::remove(cs, j); // reduce comparison set
+            std::erase(comparisonSets[s], j); // reduce comparison set
             if (isRanked[s]) {
                 addSolutionToRankSet(s, j);
             } else {

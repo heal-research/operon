@@ -19,12 +19,9 @@ auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t /*args*
 {
     minDepth = std::max(size_t{1}, minDepth);
     EXPECT(minDepth <= maxDepth);
-    auto const& pset = GetPrimitiveSet();
+    auto const* pset = GetPrimitiveSet();
 
-    auto const& t = pset.FunctionArityLimits();
-
-    size_t minFunctionArity = std::get<0>(t);
-    size_t maxFunctionArity = std::get<1>(t);
+    auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
 
     auto const& variables = GetVariables();
     auto init = [&](Node& node) {
@@ -55,7 +52,7 @@ auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t /*args*
             maxArity = maxFunctionArity;
         }
 
-        auto node = pset.SampleRandomSymbol(random, minArity, maxArity);
+        auto node = pset->SampleRandomSymbol(random, minArity, maxArity);
         init(node);
 
         nodes.push_back(node);

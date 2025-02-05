@@ -12,6 +12,7 @@
 #endif
 
 
+#include <ceres/dynamic_cost_function.h>
 #include "operon/core/contracts.hpp"
 
 namespace Operon {
