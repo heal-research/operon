@@ -11,7 +11,7 @@
 #include "operon/core/individual.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/types.hpp"
-#include "operon/interpreter/dispatch_table.hpp"
+#include "operon/core/dispatch.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/evaluator.hpp"
@@ -30,6 +30,8 @@ namespace nb = ankerl::nanobench;
 
 namespace Operon::Test {
 
+namespace {
+
 template <typename Dist>
 auto InitializePop(Operon::RandomGenerator& random, Dist& dist, size_t n, size_t m) -> std::vector<Individual>
 {
@@ -45,6 +47,14 @@ auto InitializePop(Operon::RandomGenerator& random, Dist& dist, size_t n, size_t
     return individuals;
 };
 
+auto csv() noexcept -> char const* {
+    return R"DELIM("title";"name";"n";"m";"unit";"batch";"elapsed";"error %";"instructions";"branches";"branch misses";"total"
+{{#result}}"{{title}}";"{{name}}";{{context(n)}};{{context(m)}};"{{unit}}";{{batch}};{{median(elapsed)}};{{medianAbsolutePercentError(elapsed)}};{{median(instructions)}};{{median(branchinstructions)}};{{median(branchmisses)}};{{sumProduct(iterations, elapsed)}}
+{{/result}})DELIM";
+}
+
+}  // namespace
+
 TEST_CASE("non-dominated sort performance")
 {
     Operon::RandomGenerator rd{0};
@@ -53,22 +63,28 @@ TEST_CASE("non-dominated sort performance")
     {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
         auto pop = InitializePop(rd, dist, n, m);
-        bench.run(fmt::format("{};{};{}", name, n, m), [&]() {
+        bench.run(name, [&]() {
             auto fronts = sorter(pop);
             return fronts.size();
         });
     };
 
-    constexpr int M{40};
+    constexpr int M{10};
 
-    std::vector<int> ns { 1000, 2500, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000 }; // NOLINT
+    std::vector<int> ns;
+    std::ranges::transform(std::views::iota(1, 101), std::back_inserter(ns), [](auto n) { return 1000 * n; });
 
     std::vector<int> ms;
-    for (auto i = 2; i <= M; ++i) { ms.push_back(i); }
+    std::ranges::copy(std::views::iota(2, M+1), std::back_inserter(ms));
 
     auto test = [&](auto& bench, auto&& name, auto&& sorter) {
+        // run_sorter(bench, name, sorter, 12000, 3);
+        // run_sorter(bench, name, sorter, 12000, 10);
+        // run_sorter(bench, name, sorter, 12000, 20);
         for (auto n : ns) {
             for (auto m : ms) {
+                bench.context("n", fmt::format("{}", n));
+                bench.context("m", fmt::format("{}", m));
                 run_sorter(bench, name, sorter, n, m);
             }
         }
@@ -157,7 +173,7 @@ TEST_CASE("non-dominated sort performance")
         test(bench, "RS", Operon::RankIntersectSorter{});
 
         std::ofstream fs("./rs.csv");
-        bench.render(ankerl::nanobench::templates::csv(), fs);
+        bench.render(csv(), fs);
     }
 
     SUBCASE("RO")
@@ -193,7 +209,7 @@ TEST_CASE("non-dominated sort performance")
         bench.performanceCounters(true);
         test(bench, "HNDS", Operon::HierarchicalSorter{});
         std::ofstream fs("./hnds.csv");
-        bench.render(ankerl::nanobench::templates::csv(), fs);
+        bench.render(csv(), fs);
     }
 
     SUBCASE("DS")
@@ -220,7 +236,7 @@ TEST_CASE("non-dominated sort performance")
         bench.performanceCounters(true);
         test(bench, "ENS-BS", Operon::EfficientBinarySorter{});
         std::ofstream fs("./ens-bs.csv");
-        bench.render(ankerl::nanobench::templates::csv(), fs);
+        bench.render(csv(), fs);
     }
 
     SUBCASE("RS N=25000 M=2")

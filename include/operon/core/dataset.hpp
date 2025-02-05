@@ -6,6 +6,7 @@
 
 #include <Eigen/Core>
 
+#include <gsl/pointers>
 #include <optional>
 
 #include "operon/operon_export.hpp"
@@ -61,7 +62,7 @@ public:
     explicit Dataset(std::vector<std::vector<Operon::Scalar>> const& vals);
 
     //explicit Dataset(Eigen::Ref<Matrix const> ref);
-    Dataset(Matrix::Scalar const* data, Eigen::Index rows, Eigen::Index cols);
+    Dataset(gsl::not_null<Matrix::Scalar const*> data, Eigen::Index rows, Eigen::Index cols);
 
     explicit Dataset(Matrix vals);
 

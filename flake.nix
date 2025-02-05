@@ -37,7 +37,6 @@
             ];
           };
           stdenv = pkgs.llvmPackages_19.stdenv;
-          #stdenv = pkgs.gcc12Stdenv;
           operon = import ./operon.nix { inherit stdenv pkgs system; };
         in
         rec
@@ -60,7 +59,7 @@
             name = "operon";
 
             nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
-              clang-tools_19
+              clang-tools
               cppcheck
               include-what-you-use
               cmake-language-server
@@ -68,6 +67,7 @@
 
             buildInputs = operon.buildInputs ++ (with pkgs; [
               gdb
+              gcc14
               graphviz
               hyperfine
               linuxPackages_latest.perf

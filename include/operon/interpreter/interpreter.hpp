@@ -5,13 +5,17 @@
 #define OPERON_INTERPRETER_HPP
 
 #include <algorithm>
+#include <gsl/pointers>
 #include <optional>
 #include <span>
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
-#include "dispatch_table.hpp"
+#include "operon/core/dispatch.hpp"
+#include "operon/formatter/formatter.hpp"
+#include "derivatives.hpp"
+
 // #include "tape.hpp"
 
 namespace Operon {
@@ -54,8 +58,8 @@ struct InterpreterBase {
     virtual auto JacFwd(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> = 0;
 
     // getters
-    [[nodiscard]] virtual auto GetTree() const -> Operon::Tree const& = 0;
-    [[nodiscard]] virtual auto GetDataset() const -> Operon::Dataset const& = 0;
+    [[nodiscard]] virtual auto GetTree() const -> Operon::Tree const* = 0;
+    [[nodiscard]] virtual auto GetDataset() const -> Operon::Dataset const* = 0;
 
     virtual ~InterpreterBase() = default;
 };
@@ -66,7 +70,7 @@ struct Interpreter : public InterpreterBase<T> {
     using DispatchTable = DTable;
     static constexpr auto BatchSize = DTable::template BatchSize<T>;
 
-    Interpreter(DTable const& dtable, Operon::Dataset const& dataset, Operon::Tree const& tree)
+    Interpreter(gsl::not_null<DTable const*> dtable, gsl::not_null<Operon::Dataset const*> dataset, gsl::not_null<Operon::Tree const*> tree)
         : dtable_(dtable)
         , dataset_(dataset)
         , tree_(tree) { }
@@ -94,20 +98,21 @@ struct Interpreter : public InterpreterBase<T> {
 
     inline auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> std::vector<T> final {
         std::vector<T> res(range.Size());
-        Evaluate(coeff, range, {res.data(), res.size()});
+        this->Evaluate(coeff, range, {res.data(), res.size()});
+        ENSURE(res.size() == range.Size());
         return res;
     }
 
     inline auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
         InitContext(coeff, range);
         auto const len{ static_cast<int64_t>(range.Size()) };
-        auto const& nodes = tree_.get().Nodes();
+        auto const& nodes = tree_->Nodes();
         auto const nn { std::ssize(nodes) };
 
         constexpr int64_t S{ BatchSize };
         traceStorage_ = detail::AllocateAligned<T, Backend::DefaultAlignment>(S * nn);
         trace_ = Backend::View<T, S>(traceStorage_.get(), S, nn);
-        Fill<T, S>(trace_, nn-1, T{1});
+        Backend::Fill<T, S>(trace_, nn-1, T{1});
 
         Eigen::Map<Eigen::Array<T, -1, -1>> jac(jacobian.data(), len, coeff.size());
 
@@ -127,13 +132,13 @@ struct Interpreter : public InterpreterBase<T> {
     auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
         InitContext(coeff, range);
         auto const len{ static_cast<int>(range.Size()) };
-        auto const& nodes = tree_.get().Nodes();
+        auto const& nodes = tree_->Nodes();
         auto const nn   { std::ssize(nodes) };
 
         constexpr int64_t S{ BatchSize };
         traceStorage_ = detail::AllocateAligned<T, Backend::DefaultAlignment>(S * nn);
         trace_ = Backend::View<T, S>(traceStorage_.get(), S, nn);
-        Fill<T, S>(trace_, nn-1, T{1});
+        Backend::Fill<T, S>(trace_, nn-1, T{1});
 
         Eigen::Map<Eigen::Array<T, -1, -1>> jac(jacobian.data(), len, coeff.size());
 
@@ -150,32 +155,32 @@ struct Interpreter : public InterpreterBase<T> {
         return jacobian;
     }
 
-    [[nodiscard]] auto GetTree() const -> Operon::Tree const& final { return tree_.get(); }
-    [[nodiscard]] auto GetDataset() const -> Operon::Dataset const& final { return dataset_.get(); }
+    [[nodiscard]] auto GetTree() const -> Operon::Tree const* { return tree_.get(); }
+    [[nodiscard]] auto GetDataset() const -> Operon::Dataset const* { return dataset_.get(); }
 
     auto GetDispatchTable() const { return dtable_.get(); }
 
-    static inline auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range) {
+    static inline auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range) -> std::vector<T> {
         auto coeff = tree.GetCoefficients();
         DTable dt;
-        return Interpreter{dt, dataset, tree}.Evaluate(coeff, range);
+        return Interpreter{&dt, &dataset, &tree}.Evaluate(coeff, range);
     }
 
-    static inline auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<T const> coeff) {
+    static inline auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<T const> coeff) -> std::vector<T> {
         DTable dt;
-        return Interpreter{dt, dataset, tree}.Evaluate(coeff, range);
+        return Interpreter{&dt, &dataset, &tree}.Evaluate(coeff, range);
     }
 
 private:
     // private members
     using Data = std::tuple<T,
-          std::span<Operon::Scalar const>,
+          std::span<T const>,
           std::optional<Dispatch::Callable<T, BatchSize> const>,
           std::optional<Dispatch::CallableDiff<T, BatchSize> const> >;
 
-    std::reference_wrapper<DTable const> dtable_;
-    std::reference_wrapper<Operon::Dataset const> dataset_;
-    std::reference_wrapper<Operon::Tree const> tree_;
+    gsl::not_null<DTable const*> dtable_;
+    gsl::not_null<Operon::Dataset const*> dataset_;
+    gsl::not_null<Operon::Tree const*> tree_;
 
     // mutable internal state (used by all the forward/reverse passes)
     mutable std::vector<Data> context_;
@@ -190,7 +195,7 @@ private:
     inline auto ForwardPass(Operon::Range range, int row, bool trace = false) const -> void {
         auto const start { static_cast<int64_t>(range.Start()) };
         auto const len   { static_cast<int64_t>(range.Size()) };
-        auto const& nodes = tree_.get().Nodes();
+        auto const& nodes = tree_->Nodes();
         auto const nn = std::ssize(nodes);
         constexpr int64_t S{ BatchSize };
 
@@ -199,12 +204,14 @@ private:
 
         // forward pass - compute primal and trace
         for (auto i = 0L; i < nn; ++i) {
+            if (nodes[i].IsConstant()) { continue; }
+
             auto const& [ p, v, f, df ] = context_[i];
             auto* ptr = primal_.data_handle() + i * S;
 
             if (nodes[i].IsVariable()) {
                 std::ranges::transform(v.subspan(row, rem), ptr, [p](auto x) { return x * p; });
-            } else if (f) {
+            } else {
                 std::invoke(*f, nodes, primal_, i, rg);
 
                 // first compute the partials
@@ -224,7 +231,7 @@ private:
 
     inline auto ForwardTrace(Operon::Range range, int row, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
         auto const len   { static_cast<int64_t>(range.Size()) };
-        auto const& nodes{ tree_.get().Nodes() };
+        auto const& nodes{ tree_->Nodes() };
         auto const nn { std::ssize(nodes) };
         constexpr int64_t S{ BatchSize };
         auto const rem   { std::min(S, len - row) };
@@ -259,7 +266,7 @@ private:
 
     auto ReverseTrace(Operon::Range range, int row, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
         auto const len   { static_cast<int64_t>(range.Size()) };
-        auto const& nodes{ tree_.get().Nodes() };
+        auto const& nodes{ tree_->Nodes() };
         auto const nn    { std::ssize(nodes) };
         constexpr int64_t S{ BatchSize };
         auto const rem   { std::min(S, len - row) };
@@ -286,7 +293,7 @@ private:
 
     // init tree info into context_ and initializes primal_ columns
     auto InitContext(Operon::Span<T const> coeff, Operon::Range range) const {
-        auto const& nodes{ tree_.get().Nodes() };
+        auto const& nodes{ tree_->Nodes() };
         auto const nr { static_cast<int64_t>(range.Size()) };
         auto const nn { std::ssize(nodes) };
 
@@ -302,27 +309,27 @@ private:
         // aggregate necessary info about the tree into a context object
         for (int64_t i = 0, j = 0; i < nn; ++i) {
             auto const& n = nodes[i];
-            auto const* ptr      = n.IsVariable() ? dataset_.get().GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
+            auto const* ptr      = n.IsVariable() ? dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
             auto variableValues  = std::tuple_element_t<1, Data>(ptr, nr);
             auto nodeCoefficient = (!coeff.empty() && n.Optimize) ? T{coeff[j++]} : T{n.Value};
-            auto nodeFunction    = dt.template TryGetFunction<T>(n.HashValue);
-            auto nodeDerivative  = dt.template TryGetDerivative<T>(n.HashValue);
+            auto nodeFunction    = dt->template TryGetFunction<T>(n.HashValue);
+            auto nodeDerivative  = dt->template TryGetDerivative<T>(n.HashValue);
 
             if (!n.IsLeaf() && !nodeFunction) {
                 throw std::runtime_error(fmt::format("Missing primitive for node {}\n", n.Name()));
             }
 
-            context_.push_back({ nodeCoefficient, variableValues, nodeFunction, nodeDerivative });
+            context_.emplace_back(nodeCoefficient, variableValues, nodeFunction, nodeDerivative);
 
             if (n.IsConstant()) {
-                Fill<T, S>(primal_, i, T{nodeCoefficient});
+                Backend::Fill<T, S>(primal_, i, T{nodeCoefficient});
             }
         }
     }
 };
 
 // convenience method to interpret many trees in parallel (mostly useful from the python wrapper)
-auto OPERON_EXPORT EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const& dataset, Operon::Range range, size_t nthread = 0) -> std::vector<std::vector<Operon::Scalar>>;
-auto OPERON_EXPORT EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const& dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread = 0) -> void;
+auto OPERON_EXPORT EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, size_t nthread = 0) -> std::vector<std::vector<Operon::Scalar>>;
+auto OPERON_EXPORT EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread = 0) -> void;
 } // namespace Operon
 #endif

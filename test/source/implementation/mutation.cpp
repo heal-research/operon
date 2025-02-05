@@ -33,7 +33,7 @@ TEST_CASE("InsertSubtreeMutation")
     grammar.SetFrequency(Node(NodeType::Sub).HashValue, 1);
     grammar.SetFrequency(Node(NodeType::Div).HashValue, 1);
 
-    BalancedTreeCreator btc { grammar, inputs, /* bias= */ 0.0 };
+    BalancedTreeCreator btc { &grammar, inputs, /* bias= */ 0.0 };
     UniformCoefficientInitializer cfi;
 
     Operon::RandomGenerator random(std::random_device {}());
@@ -43,7 +43,7 @@ TEST_CASE("InsertSubtreeMutation")
     auto tree = btc(random, targetLen, 1, maxDepth);
     fmt::print("{}\n", TreeFormatter::Format(tree, ds));
 
-    InsertSubtreeMutation mut(btc, cfi, 2 * targetLen, maxDepth);
+    InsertSubtreeMutation mut(gsl::not_null<Operon::CreatorBase const*>{&btc}, gsl::not_null<Operon::CoefficientInitializerBase const*>{&cfi}, 2 * targetLen, maxDepth);
     auto child = mut(random, tree);
     fmt::print("{}\n", TreeFormatter::Format(child, ds));
 }

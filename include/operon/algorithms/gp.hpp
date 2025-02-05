@@ -29,8 +29,8 @@ struct TreeInitializerBase;
 
 class OPERON_EXPORT GeneticProgrammingAlgorithm : public GeneticAlgorithmBase {
 public:
-    GeneticProgrammingAlgorithm(Problem const& problem, GeneticAlgorithmConfig const& config, TreeInitializerBase const& treeInit, CoefficientInitializerBase const& coeffInit, OffspringGeneratorBase const& generator, ReinserterBase const& reinserter)
-        : GeneticAlgorithmBase(problem, config, treeInit, coeffInit, generator, reinserter)
+    GeneticProgrammingAlgorithm(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem, gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit, gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter)
+        : GeneticAlgorithmBase(config, problem, treeInit, coeffInit, generator, reinserter)
     {
     }
 
