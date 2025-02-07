@@ -40,11 +40,12 @@ namespace {
     {
         auto const n = static_cast<int>(std::ssize(pop));
         auto const nb { static_cast<int>(n / DIGITS) + static_cast<int>(n % DIGITS != 0) };
-        std::size_t const ub = DIGITS * nb - n;
+        ENSURE(nb > 0);
+        std::size_t const ub = (DIGITS * nb) - n;
 
         std::vector<Item> items(n);
         for (auto i = 0; i < n; ++i) {
-            items[i] = { i, pop[i][1] };
+            items[i] = { .Index=i, .Value=pop[i][1] };
         }
         Sorter(items);
 
