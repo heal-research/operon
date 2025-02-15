@@ -10,6 +10,7 @@
 #include <fmt/core.h>
 #include <fmt/color.h>
 #include <fmt/ranges.h>
+#include <random>
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <vector>
+#include <numeric>
 
 #include "contracts.hpp"
 #include "subtree.hpp"

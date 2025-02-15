@@ -14,6 +14,7 @@
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
 #include "operon/parser/infix.hpp"
+#include "operon/random/random.hpp"
 #include <doctest/doctest.h>
 #include <utility>
 

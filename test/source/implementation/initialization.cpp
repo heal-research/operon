@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <doctest/doctest.h>
 #include <fmt/core.h>
+#include <random>
 
 #include "operon/core/dataset.hpp"
 #include "operon/formatter/formatter.hpp"

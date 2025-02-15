@@ -28,6 +28,7 @@ stdenv.mkDerivation rec {
     eigen
     eve
     fast-float
+    fluky
     fmt_11
     icu
     jemalloc

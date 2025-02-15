@@ -60,7 +60,7 @@ auto ChangeVariableMutation::operator()(Operon::RandomGenerator& random, Tree tr
         return tree; // no variables in the tree, nothing to do
     }
 
-    it->HashValue = it->CalculatedHashValue = *Sample(random, variables_.begin(), variables_.end());
+    it->HashValue = it->CalculatedHashValue = *Random::Sample(random, variables_.begin(), variables_.end());
     return tree;
 }
 

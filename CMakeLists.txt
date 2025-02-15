@@ -89,6 +89,7 @@ find_package(cpp-sort REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(eve REQUIRED)
 find_package(FastFloat REQUIRED)
+find_package(fluky REQUIRED)
 find_package(fmt REQUIRED)
 find_package(lbfgs REQUIRED)
 find_package(libassert REQUIRED)
@@ -241,12 +242,13 @@ target_link_libraries(operon_operon INTERFACE
 target_link_libraries(operon_operon PUBLIC
     Eigen3::Eigen
     Threads::Threads
+    fluky::fluky
     fmt::fmt
-    std::mdspan
-    pratt-parser::pratt-parser # required by infix parser
-    vstat::vstat
     lbfgs::lbfgs
     libassert::assert
+    pratt-parser::pratt-parser # required by infix parser
+    std::mdspan
+    vstat::vstat
 )
 
 target_link_libraries(operon_operon PRIVATE
