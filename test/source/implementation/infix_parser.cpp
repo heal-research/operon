@@ -9,6 +9,7 @@
 #include "operon/core/pset.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/parser/infix.hpp"
+#include "operon/random/random.hpp"
 #include "../thirdparty/nanobench.h"
 
 namespace Operon::Test {

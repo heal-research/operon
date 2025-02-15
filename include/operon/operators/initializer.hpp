@@ -4,9 +4,11 @@
 #ifndef OPERON_INITIALIZER_HPP
 #define OPERON_INITIALIZER_HPP
 
+#include <random>
+#include <gsl/pointers>
+
 #include "operon/core/tree.hpp"
 #include "operon/operators/creator.hpp"
-#include <gsl/pointers>
 
 namespace Operon {
 

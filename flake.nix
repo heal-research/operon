@@ -5,6 +5,7 @@
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:nixos/nixpkgs/master";
     foolnotion.url = "github:foolnotion/nur-pkg";
+    fluky.url = "github:foolnotion/fluky";
     lbfgs.url = "github:foolnotion/lbfgs";
     pratt-parser.url = "github:foolnotion/pratt-parser-calculator";
     vstat.url = "github:heal-research/vstat";
@@ -16,9 +17,10 @@
     pratt-parser.inputs.nixpkgs.follows = "nixpkgs";
     vstat.inputs.nixpkgs.follows = "nixpkgs";
     vdt.inputs.nixpkgs.follows = "nixpkgs";
+    fluky.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = inputs@{ self, flake-parts, nixpkgs, foolnotion, pratt-parser, vdt, vstat, lbfgs }:
+  outputs = inputs@{ self, flake-parts, nixpkgs, foolnotion, fluky, pratt-parser, vdt, vstat, lbfgs }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ];
 
@@ -29,10 +31,11 @@
             overlays = [
               foolnotion.overlay
               (final: prev: {
-                vdt   = vdt.packages.${system}.default;
-                vstat = vstat.packages.${system}.default;
+                fluky = fluky.packages.${system}.default;
                 lbfgs = lbfgs.packages.${system}.default;
                 pratt-parser = pratt-parser.packages.${system}.default;
+                vdt   = vdt.packages.${system}.default;
+                vstat = vstat.packages.${system}.default;
               })
             ];
           };
