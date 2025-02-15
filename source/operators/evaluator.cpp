@@ -9,6 +9,7 @@
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
+#include "operon/random/random.hpp"
 
 #include <operon/operon_export.hpp>
 #include <taskflow/taskflow.hpp>

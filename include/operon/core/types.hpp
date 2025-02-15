@@ -6,17 +6,17 @@
 
 #include <ankerl/unordered_dense.h>
 #include <cstdint>
+#include <fluky/fluky.hpp>
 #include <span>
 #include <utility>
 
 #include "constants.hpp"
-#include "operon/random/random.hpp"
 
 namespace Operon {
 using Hash = uint64_t;
 constexpr HashFunction HashFunc = HashFunction::XXHash;
 
-using RandomGenerator = Random::RomuTrio;
+using RandomGenerator = fluky::xoshiro256ss;
 
 template <typename T>
 using Vector = std::vector<T>;

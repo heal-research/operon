@@ -8,8 +8,8 @@
 #include <random>
 #include <vector>
 
-#include "operon/random/random.hpp"
-#include "operon/random/romu.hpp"
+#include <operon/core/types.hpp>
+#include <operon/random/random.hpp>
 
 namespace dt = doctest;
 
@@ -21,7 +21,7 @@ TEST_CASE("random sampling" * dt::test_suite("[implementation]"))
 
     size_t samples = 1'000'000;
 
-    Operon::Random::RomuTrio rng(std::random_device{}());
+    Operon::RandomGenerator rng(std::random_device{}());
 
     SUBCASE("uniform") {
         std::vector<size_t> counts(vec.size(), 0);
