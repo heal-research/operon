@@ -70,7 +70,7 @@ TEST_CASE("Crossover")
             //auto p2 = btc(rng, maxLength, 1, maxDepth);
             auto p2 = p1;
 
-            auto [i, j] = cx.FindCompatibleSwapLocations(rng, p1, p2);
+            auto [i, j] = Operon::SubtreeCrossover::FindCompatibleSwapLocations(rng, p1, p2, maxDepth, maxLength);
             c1[i]++;
             c2[j]++;
 
