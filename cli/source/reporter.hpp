@@ -77,13 +77,13 @@ public:
         using Interpreter = typename Evaluator::TInterpreter;
 
         auto evaluate = tf.emplace([&](tf::Subflow& sf) {
-            auto evalTrain = sf.emplace([&]() {
+            sf.emplace([&]() {
                 Interpreter interpreter{dtable, dataset, &best_.Genotype};
                 estimatedTrain = interpreter.Evaluate(best_.Genotype.GetCoefficients(), trainingRange);
                 ENSURE(trainingRange.Size() > 0 && estimatedTrain.size() == trainingRange.Size());
             }).name("eval train");
 
-            auto evalTest = sf.emplace([&]() {
+            sf.emplace([&]() {
                 Interpreter interpreter{dtable, dataset, &best_.Genotype};
                 estimatedTest = interpreter.Evaluate(best_.Genotype.GetCoefficients(), testRange);
                 ENSURE(testRange.Size() > 0 && estimatedTest.size() == testRange.Size());
@@ -121,13 +121,13 @@ public:
         double maeTest{};
 
         auto scale = tf.emplace([&](tf::Subflow& sf) {
-            auto scaleTrain = sf.emplace([&]() {
+            sf.emplace([&]() {
                 ENSURE(estimatedTrain.size() == trainingRange.Size());
                 Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), std::ssize(estimatedTrain));
                 estimated = estimated * a + b;
             }).name("scale train");
 
-            auto scaleTest = sf.emplace([&]() {
+            sf.emplace([&]() {
                 ENSURE(estimatedTest.size() == testRange.Size());
                 Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), std::ssize(estimatedTest));
                 estimated = estimated * a + b;
