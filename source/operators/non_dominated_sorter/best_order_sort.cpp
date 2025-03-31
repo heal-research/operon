@@ -16,21 +16,21 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
     auto const m = static_cast<int>(pop.front().Size());
 
     // initialization
-    std::vector<std::vector<std::vector<int>>> solutionSets(m);
+    Operon::Vector<Operon::Vector<Operon::Vector<int>>> solutionSets(m);
 
-    std::vector<std::vector<int>> comparisonSets(n);
+    Operon::Vector<Operon::Vector<int>> comparisonSets(n);
     for (auto& cset : comparisonSets) {
         cset.resize(m);
         std::iota(cset.begin(), cset.end(), 0);
     }
 
-    std::vector<bool> isRanked(n, false); // rank status
-    std::vector<int> rank(n, 0);          // rank of solutions
+    Operon::Vector<bool> isRanked(n, false); // rank status
+    Operon::Vector<int> rank(n, 0);          // rank of solutions
 
     int sc{0}; // number of solutions already ranked
     int rc{1}; // number of fronts so far (at least one front)
 
-    std::vector<std::vector<int>> sortedByObjective(m);
+    Operon::Vector<Operon::Vector<int>> sortedByObjective(m);
 
     auto& idx = sortedByObjective[0];
     idx.resize(n);
@@ -115,7 +115,7 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
     }
 
     // return fronts
-    std::vector<std::vector<std::size_t>> fronts;
+    Operon::Vector<Operon::Vector<std::size_t>> fronts;
     fronts.resize(*std::max_element(rank.begin(), rank.end()) + 1UL);
     for (std::size_t i = 0UL; i < rank.size(); ++i) {
         fronts[rank[i]].push_back(i);

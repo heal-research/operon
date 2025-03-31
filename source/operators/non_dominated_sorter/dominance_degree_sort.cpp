@@ -65,13 +65,13 @@ namespace Operon {
         }
         Mat d = ComputeDegreeMatrix(pop, idx);
         auto count = 0L; // number of assigned solutions
-        std::vector<std::vector<size_t>> fronts;
-        std::vector<size_t> tmp(n);
+        Operon::Vector<Operon::Vector<size_t>> fronts;
+        Operon::Vector<size_t> tmp(n);
         std::iota(tmp.begin(), tmp.end(), 0UL);
 
-        std::vector<size_t> remaining;
+        Operon::Vector<size_t> remaining;
         while (count < n) {
-            std::vector<size_t> front;
+            Operon::Vector<size_t> front;
             for (auto i : tmp) {
                 if (std::all_of(tmp.begin(), tmp.end(), [&](auto j) { return d(j, i) < m; })) {
                     front.push_back(i);

@@ -6,11 +6,11 @@
 #include "operon/interpreter/interpreter.hpp"
 
 namespace Operon {
-    auto EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, size_t nthread) -> std::vector<std::vector<Operon::Scalar>> {
+    auto EvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, size_t nthread) -> Operon::Vector<Operon::Vector<Operon::Scalar>> {
         if (nthread == 0) { nthread = std::thread::hardware_concurrency(); }
         tf::Executor executor(nthread);
         tf::Taskflow taskflow;
-        std::vector<std::vector<Operon::Scalar>> result(trees.size());
+        Operon::Vector<Operon::Vector<Operon::Scalar>> result(trees.size());
         Operon::DefaultDispatch dtable;
         using INT = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>;
 
@@ -24,7 +24,7 @@ namespace Operon {
         return result;
     }
 
-    auto EvaluateTrees(std::vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread) -> void {
+    auto EvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread) -> void {
         if (nthread == 0) { nthread = std::thread::hardware_concurrency(); }
         tf::Executor executor(nthread);
         tf::Taskflow taskflow;

@@ -351,7 +351,7 @@ public:
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
 
 private:
-    mutable Operon::Map<Operon::Hash, std::vector<Operon::Hash>> divmap_;
+    mutable Operon::Map<Operon::Hash, Operon::Vector<Operon::Hash>> divmap_;
     Operon::HashMode hashmode_ { Operon::HashMode::Strict };
     std::size_t sampleSize_ {};
 };

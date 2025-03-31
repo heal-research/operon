@@ -43,7 +43,7 @@ namespace {
         ENSURE(nb > 0);
         std::size_t const ub = (DIGITS * nb) - n;
 
-        std::vector<Item> items(n);
+        Operon::Vector<Item> items(n);
         for (auto i = 0; i < n; ++i) {
             items[i] = { .Index=i, .Value=pop[i][1] };
         }
@@ -52,7 +52,7 @@ namespace {
         auto mask = MakeUnique<uint64_t[]>(nb, ONES); // NOLINT
         mask[nb-1] >>= ub;
 
-        std::vector<std::tuple<Bitset, int, int>> bitsets(n);
+        Operon::Vector<std::tuple<Bitset, int, int>> bitsets(n);
         for (auto i = 0; i < n; ++i) {
             auto const j = items[i].Index;
             auto [q, r] = std::div(j, DIGITS);
@@ -113,9 +113,9 @@ namespace {
         }
     }
 
-    auto GetFronts(std::vector<int> const& rank)
+    auto GetFronts(Operon::Vector<int> const& rank)
     {
-        std::vector<std::vector<std::size_t>> fronts;
+        Operon::Vector<Operon::Vector<std::size_t>> fronts;
         auto rmax = *std::max_element(rank.begin(), rank.end());
         fronts.resize(rmax + 1UL);
         for (std::size_t i = 0UL; i < rank.size(); ++i) {
@@ -135,7 +135,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     auto const nb { static_cast<int>(n / DIGITS) + static_cast<int>(n % DIGITS != 0) };
     std::size_t const ub = DIGITS * nb - n; // number of unused bits at the end of the last block (must be set to zero)
 
-    std::vector<Bitset> rs;
+    Operon::Vector<Bitset> rs;
     rs.push_back(MakeUnique<uint64_t[]>(nb, ONES)); // vector of sets keeping track of individuals whose rank was updated NOLINT
     rs[0][nb-1] >>= ub; // zero unused region
 
@@ -181,7 +181,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
         if (done == n) { break; }
     }
 
-    std::vector<int> rank(n, 0);
+    Operon::Vector<int> rank(n, 0);
     for (auto i = 0; i < n; ++i) {
         UpdateRanks(i, bitsets[i], rank, rs);
     }

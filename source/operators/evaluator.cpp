@@ -11,9 +11,11 @@
 #include "operon/optimizer/solvers/sgd.hpp"
 #include "operon/random/random.hpp"
 
+#include <algorithm>
 #include <operon/operon_export.hpp>
 #include <taskflow/taskflow.hpp>
 #include <type_traits>
+#include <ranges>
 
 namespace Operon {
     template<typename T>
@@ -58,7 +60,7 @@ namespace Operon {
         interpreter.Evaluate(coeff, trainingRange, buf);
         if (scaling_) {
             auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
-            std::transform(buf.begin(), buf.end(), buf.begin(), [a=a,b=b](auto x) { return a * x + b; });
+            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) { return (a * x) + b; });
         }
         auto fit = static_cast<Operon::Scalar>(error_(buf, targetValues));
 
@@ -80,9 +82,9 @@ namespace Operon {
             auto const& tree = individual.Genotype;
             auto const& nodes = tree.Nodes();
             (void) tree.Hash(hashmode_);
-            std::vector<Operon::Hash> hash(nodes.size());;
-            std::transform(nodes.begin(), nodes.end(), hash.begin(), [](auto const& n) { return n.CalculatedHashValue; });
-            std::stable_sort(hash.begin(), hash.end());
+            Operon::Vector<Operon::Hash> hash(nodes.size());;
+            std::ranges::transform(nodes, hash.begin(), [](auto const& n) { return n.CalculatedHashValue; });
+            std::ranges::stable_sort(hash);
             divmap_[tree.HashValue()] = std::move(hash);
         }
     }
@@ -96,14 +98,14 @@ namespace Operon {
     DiversityEvaluator::operator()(Operon::RandomGenerator& random, Individual const& ind, Operon::Span<Operon::Scalar>  /*buf*/) const -> typename EvaluatorBase::ReturnType
     {
         (void)ind.Genotype.Hash(hashmode_);
-        std::vector<Operon::Hash> lhs(ind.Genotype.Length());
+        Operon::Vector<Operon::Hash> lhs(ind.Genotype.Length());
         auto const& nodes = ind.Genotype.Nodes();
-        std::transform(nodes.begin(), nodes.end(), lhs.begin(), [](auto const& n) { return n.CalculatedHashValue; });
-        std::stable_sort(lhs.begin(), lhs.end());
+        std::ranges::transform(nodes, lhs.begin(), [](auto const& n) { return n.CalculatedHashValue; });
+        std::ranges::stable_sort(lhs);
         auto const& values = divmap_.values();
 
         Operon::Scalar distance{0};
-        std::vector<double> distances(sampleSize_);
+        Operon::Vector<double> distances(sampleSize_);
         for (auto i = 0UL; i < sampleSize_; ++i) {
             auto const& rhs = Operon::Random::Sample(random, values.begin(), values.end())->second;
             distance += static_cast<Operon::Scalar>(Operon::Distance::Jaccard(lhs, rhs));
@@ -124,10 +126,10 @@ namespace Operon {
         auto f = (*evaluator_)(rng, ind, buf);
         switch(aggtype_) {
             case AggregateType::Min: {
-                return { *std::min_element(f.begin(), f.end()) };
+                return { *std::ranges::min_element(f) };
             }
             case AggregateType::Max: {
-                return { *std::max_element(f.begin(), f.end()) };
+                return { *std::ranges::max_element(f) };
             }
             case AggregateType::Median: {
                 auto const sz { std::ssize(f) };
@@ -161,7 +163,7 @@ namespace Operon {
         auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
         auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
         auto mse = Evaluator::operator()(rng, ind, buf).front();
-        auto bic = n * std::log(mse) + p * std::log(n);
+        auto bic = (n * std::log(mse)) + (p * std::log(n));
         if (!std::isfinite(bic)) { bic = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(bic) };
     }
