@@ -17,7 +17,7 @@ enum EfficientSortStrategy : int { Binary, Sequential };
 
 class NondominatedSorterBase {
 public:
-    using Result = std::vector<std::vector<size_t>>;
+    using Result = Operon::Vector<Operon::Vector<size_t>>;
 
     mutable struct {
         size_t LexicographicalComparisons{0}; // both lexicographical and single-objective

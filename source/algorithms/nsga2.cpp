@@ -85,7 +85,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     }
     // banish the duplicates into the last front
     if (r < pop.end()) {
-        std::vector<size_t> last(pop.size() - uniq.size());
+        Operon::Vector<size_t> last(pop.size() - uniq.size());
         std::iota(last.begin(), last.end(), uniq.size());
         fronts_.push_back(last);
     }

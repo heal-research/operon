@@ -9,8 +9,11 @@
 #include <fluky/fluky.hpp>
 #include <span>
 #include <utility>
+#include <gch/small_vector.hpp>
 
+#include "operon/mdspan/mdspan.hpp"
 #include "constants.hpp"
+#include "aligned_allocator.hpp"
 
 namespace Operon {
 using Hash = uint64_t;
@@ -18,11 +21,17 @@ constexpr HashFunction HashFunc = HashFunction::XXHash;
 
 using RandomGenerator = fluky::xoshiro256ss;
 
-template <typename T>
-using Vector = std::vector<T>;
+template <typename T, typename Allocator = std::allocator<T>>
+using Vector = std::vector<T, Allocator>;
 
 template <typename T>
 using Span = std::span<T>;
+
+template<typename T, typename Extents, typename LayoutPolicy = std::layout_left, typename AccessorPolicy = std::default_accessor<T>>
+using MDSpan = std::mdspan<T, Extents, LayoutPolicy, AccessorPolicy>;
+
+template<typename T, typename Extents, typename LayoutPolicy = std::layout_left, typename Container = std::vector<T>>
+using MDArray = std::experimental::mdarray<T, Extents, LayoutPolicy, Container>;
 
 template <class Key,
           class T,
@@ -66,6 +75,7 @@ using Scalar = float;
 #else
 using Scalar = double;
 #endif
+
 } // namespace Operon
 
 #endif

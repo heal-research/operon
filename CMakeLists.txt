@@ -97,6 +97,7 @@ find_package(mdspan REQUIRED)
 find_package(Microsoft.GSL CONFIG REQUIRED)
 find_package(outcome REQUIRED)
 find_package(pratt-parser REQUIRED)
+find_package(small_vector REQUIRED)
 find_package(span-lite REQUIRED)
 find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
@@ -249,6 +250,7 @@ target_link_libraries(operon_operon PUBLIC
     pratt-parser::pratt-parser # required by infix parser
     std::mdspan
     vstat::vstat
+    gch::small_vector
 )
 
 target_link_libraries(operon_operon PRIVATE
@@ -258,6 +260,7 @@ target_link_libraries(operon_operon PRIVATE
     unordered_dense::unordered_dense
     nonstd::byte-lite
     nonstd::span-lite
+    outcome::hl
 )
 
 if (USE_CERES AND Ceres_FOUND)

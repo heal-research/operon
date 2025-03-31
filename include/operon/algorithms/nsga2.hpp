@@ -30,7 +30,7 @@ struct TreeInitializerBase;
 
 class OPERON_EXPORT NSGA2 : public GeneticAlgorithmBase {
     gsl::not_null<NondominatedSorterBase const*> sorter_;
-    std::vector<std::vector<size_t>> fronts_;
+    Operon::Vector<Operon::Vector<size_t>> fronts_;
     Operon::Vector<Individual> best_; // best Pareto front
 
     auto UpdateDistance(Operon::Span<Individual> pop) -> void;

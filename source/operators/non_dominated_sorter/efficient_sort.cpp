@@ -25,7 +25,7 @@ namespace Operon {
             });
         };
 
-        std::vector<std::vector<size_t>> fronts;
+        Operon::Vector<Operon::Vector<size_t>> fronts;
         for (size_t i = 0; i < pop.size(); ++i) {
             decltype(fronts)::iterator it;
             if constexpr (SearchStrategy == EfficientSortStrategy::Binary) { // binary search

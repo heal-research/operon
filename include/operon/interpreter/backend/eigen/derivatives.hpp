@@ -29,23 +29,23 @@ namespace detail {
     // in order to efficiently compute the derivatives, in many cases we can use the value of the primal too (column index i)
     // we store the value of the derivative in the trace at column index j
     template<typename T, std::size_t S>
-    auto Add(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Add(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j).setConstant(T{1});
     }
 
     template<typename T, std::size_t S>
-    auto Mul(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Mul(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         Col(trace, j) = Col(primal, i) / Col(primal, j);
     }
 
     template<typename T, std::size_t S>
-    auto Sub(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> /*primal*/, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Sub(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> /*primal*/, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto v = (nodes[i].Arity == 1 || j < i-1) ? T{-1} : T{+1};
         Col(trace, j).setConstant(v);
     }
 
     template<typename T, std::size_t S>
-    auto Div(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Div(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto const& n = nodes[i];
         if (n.Arity == 1) {
             Col(trace, j) = -Col(primal, j).square().inverse();
@@ -55,7 +55,7 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
-    auto Aq(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Aq(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         if (j == i-1) {
             Col(trace, j) = Col(primal, i) / Col(primal, j);
         } else {
@@ -64,7 +64,7 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
-    auto Pow(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Pow(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         if (j == i-1) {
             auto const k = j - (nodes[j].Length + 1);
             Col(trace, j) = Col(primal, i) * Col(primal, k) / Col(primal, j);
@@ -75,114 +75,114 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
-    auto Min(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Min(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto k = j == i - 1 ? (j - nodes[j].Length - 1) : i - 1;
         Col(trace, j) = Col(primal, j).binaryExpr(Col(primal, k), detail::FComp<std::less<>>{});
     }
 
     template<typename T, std::size_t S>
-    auto Max(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Max(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto k = j == i - 1 ? (j - nodes[j].Length - 1) : i - 1;
         Col(trace, j) = Col(primal, j).binaryExpr(Col(primal, k), detail::FComp<std::greater<>>{});
     }
 
     template<typename T, std::size_t S>
-    auto Square(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Square(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = T{2} * Col(primal, j);
     }
 
     template<typename T, std::size_t S>
-    auto Abs(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Abs(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = Col(primal, j).sign();
     }
 
     template<typename T, std::size_t S>
-    auto Ceil(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Ceil(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = Col(primal, j).ceil();
     }
 
     template<typename T, std::size_t S>
-    auto Floor(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Floor(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = Col(primal, j).floor();
     }
 
     template<typename T, std::size_t S>
-    auto Exp(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Exp(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         Col(trace, j) = Col(primal, i);
     }
 
     template<typename T, std::size_t S>
-    auto Log(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Log(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = Col(primal, j).inverse();
     }
 
     template<typename T, std::size_t S>
-    auto Log1p(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Log1p(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = (T{1} + Col(primal, j)).inverse();
     }
 
     template<typename T, std::size_t S>
-    auto Logabs(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Logabs(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = Col(primal, j).sign() / Col(primal, j).abs();
     }
 
     template<typename T, std::size_t S>
-    auto Sin(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Sin(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = Col(primal, j).cos();
     }
 
     template<typename T, std::size_t S>
-    auto Cos(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Cos(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = -Col(primal, j).sin();
     }
 
     template<typename T, std::size_t S>
-    auto Tan(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Tan(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = T{1} + Col(primal, j).tan().square();
     }
 
     template<typename T, std::size_t S>
-    auto Sinh(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Sinh(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = Col(primal, j).cosh();
     }
 
     template<typename T, std::size_t S>
-    auto Cosh(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Cosh(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = Col(primal, j).sinh();
     }
 
     template<typename T, std::size_t S>
-    auto Tanh(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Tanh(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = T{1} - Col(primal, j).tanh().square();
     }
 
     template<typename T, std::size_t S>
-    auto Asin(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Asin(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = (T{1} - Col(primal, j).square()).sqrt().inverse();
     }
 
     template<typename T, std::size_t S>
-    auto Acos(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Acos(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = -((T{1} - Col(primal, j).square()).sqrt().inverse());
     }
 
     template<typename T, std::size_t S>
-    auto Atan(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+    auto Atan(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = (T{1} + Col(primal, j).square()).inverse();
     }
 
     template<typename T, std::size_t S>
-    auto Sqrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Sqrt(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         Col(trace, j) = (T{2} * Col(primal, i)).inverse();
     }
 
     template<typename T, std::size_t S>
-    auto Sqrtabs(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Sqrtabs(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         Col(trace, j) = Col(primal, j).sign() / (T{2} * Col(primal, i));
     }
 
     template<typename T, std::size_t S>
-    auto Cbrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Cbrt(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         Col(trace, j) = (T{3} * Col(primal, i).square()).inverse();
     }
 }  // namespace Operon::Backend

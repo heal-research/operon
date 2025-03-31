@@ -17,14 +17,14 @@ namespace Operon {
     auto DeductiveSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*unused*/) const -> NondominatedSorterBase::Result
     {
         size_t n = 0; // total number of sorted solutions
-        std::vector<std::vector<size_t>> fronts;
+        Operon::Vector<Operon::Vector<size_t>> fronts;
 
         std::size_t constexpr d = std::numeric_limits<uint64_t>::digits;
         auto const s = static_cast<int>(pop.size());
         auto const nb = s / d + static_cast<std::size_t>(s % d != 0);
 
-        std::vector<uint64_t> dominated(nb);
-        std::vector<uint64_t> sorted(nb);
+        Operon::Vector<uint64_t> dominated(nb);
+        Operon::Vector<uint64_t> sorted(nb);
 
         auto set = [](auto&& range, auto i) { range[i / d] |= (1UL << (d - i % d));}; // set bit i
         [[maybe_unused]] auto reset = [](auto&& range, auto i) { range[i / d] &= ~(1UL << (i % d)); }; // unset bit i
@@ -33,7 +33,7 @@ namespace Operon {
         auto dominatedOrSorted = [&](std::size_t i) { return get(sorted, i) || get(dominated, i); };
 
         while (n < pop.size()) {
-            std::vector<size_t> front;
+            Operon::Vector<size_t> front;
 
             for (size_t i = 0; i < pop.size(); ++i) {
                 if (dominatedOrSorted(i)) { continue; }
