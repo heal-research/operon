@@ -31,7 +31,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
     Operon::RandomGenerator rd(1234);
 
     auto initializePop = [](Operon::RandomGenerator& random, auto& dist, size_t n, size_t m) {
-        std::vector<Individual> individuals(n);
+        Operon::Vector<Individual> individuals(n);
 
         for (auto & individual : individuals) {
             individual.Fitness.resize(m);
@@ -52,7 +52,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
             i = j;
         }
         auto r = std::stable_partition(individuals.begin(), individuals.end(), [](auto const& ind) { return !ind.Rank; });
-        std::vector<Individual> pop(individuals.begin(), r);
+        Operon::Vector<Individual> pop(individuals.begin(), r);
         return pop;
     };
 
@@ -126,8 +126,8 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         Operon::DeductiveSorter ds;
         Operon::EfficientBinarySorter ebs;
         Operon::EfficientSequentialSorter ess;
-        std::vector<std::reference_wrapper<NondominatedSorterBase const>> sorters{ ro, mnds, bos, hnds, ds, ebs, ess };
-        std::vector<std::string> names{ "ro", "ms", "bos", "hs", "ds", "ebs", "ess" };
+        Operon::Vector<std::reference_wrapper<NondominatedSorterBase const>> sorters{ ro, mnds, bos, hnds, ds, ebs, ess };
+        Operon::Vector<std::string> names{ "ro", "ms", "bos", "hs", "ds", "ebs", "ess" };
         fmt::print("rs -- ");
         for (auto i = 0; i < std::ssize(sorters); ++i) {
             auto const& sorter = sorters[i].get();
@@ -139,8 +139,8 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
 
     SUBCASE("test 1")
     {
-        std::vector<std::vector<Operon::Scalar>> points = {{0, 7}, {1, 5}, {2, 3}, {4, 2}, {7, 1}, {10, 0}, {2, 6}, {4, 4}, {10, 2}, {6, 6}, {9, 5}};
-        std::vector<Individual> pop(points.size());
+        Operon::Vector<Operon::Vector<Operon::Scalar>> points = {{0, 7}, {1, 5}, {2, 3}, {4, 2}, {7, 1}, {10, 0}, {2, 6}, {4, 4}, {10, 2}, {6, 6}, {9, 5}};
+        Operon::Vector<Individual> pop(points.size());
         for (size_t i = 0; i < points.size(); ++i) {
             pop[i].Fitness = points[i];
         }
@@ -187,8 +187,8 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
 
     SUBCASE("test 2")
     {
-        std::vector<std::vector<Operon::Scalar>> points = {{1, 2, 3}, {-2, 3, 7}, {-1, -2, -3}, {0, 0, 0}};
-        std::vector<Individual> pop(points.size());
+        Operon::Vector<Operon::Vector<Operon::Scalar>> points = {{1, 2, 3}, {-2, 3, 7}, {-1, -2, -3}, {0, 0, 0}};
+        Operon::Vector<Individual> pop(points.size());
         for (size_t i = 0; i < points.size(); ++i) {
             pop[i].Fitness = points[i];
         }
@@ -232,7 +232,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
     SUBCASE("test 3")
     {
         // NOLINTBEGIN
-        std::vector<std::vector<Operon::Scalar>> points = {
+        Operon::Vector<Operon::Vector<Operon::Scalar>> points = {
             { 0.79, 0.35 },
             { 0.40, 0.71 },
             { 0.15, 0.014 },
@@ -246,11 +246,11 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         };
         // NOLINTEND
 
-        std::vector<Individual> pop(points.size());
+        Operon::Vector<Individual> pop(points.size());
         for (size_t i = 0; i < points.size(); ++i) {
             pop[i].Fitness = points[i];
         }
-        std::vector<int> indices(points.size());
+        Operon::Vector<int> indices(points.size());
         std::iota(indices.begin(), indices.end(), 0);
         std::stable_sort(indices.begin(), indices.end(), [&](auto i, auto j) { return LexicographicalComparison{}(pop[i], pop[j]); });
         fmt::print("indices: {}\n", indices);
@@ -273,7 +273,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
         auto pop = initializePop(rd, dist, 100, 2);
         RankIntersectSorter rs;
-        std::vector<std::vector<size_t>> fronts;
+        Operon::Vector<Operon::Vector<size_t>> fronts;
 
         fronts = rs(pop);
         fmt::print("RS comparisons: {} {} {} {}\n", rs.Stats.LexicographicalComparisons, rs.Stats.SingleValueComparisons, rs.Stats.RankComparisons, rs.Stats.InnerOps);
@@ -339,7 +339,7 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         };
 
         auto computeHash = [&hash](auto const& fronts) {
-            std::vector<uint64_t> hashes;
+            Operon::Vector<uint64_t> hashes;
             std::transform(fronts.begin(), fronts.end(), std::back_inserter(hashes),
             [&hash](auto const& f) { return hash(f); });
             return hash(hashes);
@@ -484,10 +484,10 @@ TEST_CASE("nsga2_pareto_fronts_test")
     auto const n = 20000;
     auto const m = 2;
     char* end{};
-    std::vector<std::vector<Operon::Individual>> generations;
+    Operon::Vector<Operon::Vector<Operon::Individual>> generations;
     while(std::getline(f1, line)) {
         Operon::Individual p{0};
-        std::vector<Operon::Individual> points;
+        Operon::Vector<Operon::Individual> points;
         for (auto v : std::views::split(line, ',')) {
             auto u = std::strtod(v.data(), &end);
             p.Fitness.push_back(u);
@@ -503,9 +503,9 @@ TEST_CASE("nsga2_pareto_fronts_test")
     }
 
     for (auto const& gen : generations) {
-        //std::vector<Operon::Individual> points = gen;
+        //Operon::Vector<Operon::Individual> points = gen;
         //std::stable_sort(points.begin(), points.end(), [&](auto const& lhs, auto const& rhs) { return std::ranges::lexicographical_compare(lhs.Fitness, rhs.Fitness); });
-        //std::vector<int> dup(points.size(), -1);
+        //Operon::Vector<int> dup(points.size(), -1);
         //for(auto i = points.begin(); i < points.end(); ) {
         //    i->Rank = 0;
         //    auto j = i + 1;

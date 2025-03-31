@@ -12,6 +12,7 @@ endif()
 
 find_package(doctest REQUIRED)
 find_package(scn REQUIRED)
+find_package(nanobench REQUIRED)
 
 add_executable(operon_test
     source/operon_test.cpp
@@ -34,7 +35,7 @@ add_executable(operon_test
     source/performance/evaluation.cpp
     source/performance/nondominatedsort.cpp
     )
-target_link_libraries(operon_test PRIVATE operon::operon doctest::doctest scn::scn)
+target_link_libraries(operon_test PRIVATE operon::operon doctest::doctest scn::scn nanobench::nanobench)
 target_compile_features(operon_test PRIVATE cxx_std_20)
 target_include_directories(operon_test PRIVATE ${PROJECT_SOURCE_DIR}/source/thirdparty)
 set_target_properties(operon_test PROPERTIES

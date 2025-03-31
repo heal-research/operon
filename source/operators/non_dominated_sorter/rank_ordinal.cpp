@@ -29,7 +29,7 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
     p.col(0) = Vec::LinSpaced(n, 0, n - 1);
     r(0, p.col(0)) = Vec::LinSpaced(n, 0, n - 1);
 
-    std::vector<Operon::Scalar> buf(n); // buffer to store fitness values to avoid pointer indirections during sorting
+    Operon::Vector<Operon::Scalar> buf(n); // buffer to store fitness values to avoid pointer indirections during sorting
     cppsort::merge_sorter sorter;
     for (auto i = 1; i < m; ++i) {
         std::transform(pop.begin(), pop.end(), buf.begin(), [i](auto const& ind) { return ind[i]; });
@@ -58,7 +58,7 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
 
     // 3) compute ranks / fronts
     // Vec rank = Vec::Zero(n); // individual ranks
-    std::vector<int> rank(n, 0);
+    Operon::Vector<int> rank(n, 0);
     for (auto i : p(Eigen::seq(0, n - 2), 0)) {
         if (maxp(i) == n-1) {
             continue;
@@ -67,7 +67,7 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
             rank[j] += (rank[i] == rank[j] && dominated(i, j));
         }
     }
-    std::vector<std::vector<size_t>> fronts(std::ranges::max(rank) + 1);
+    Operon::Vector<Operon::Vector<size_t>> fronts(std::ranges::max(rank) + 1);
     for (auto i = 0; i < n; ++i) {
         fronts[rank[i]].push_back(i);
     }

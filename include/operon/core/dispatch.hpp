@@ -13,7 +13,7 @@
 #include "node.hpp"
 #include "range.hpp"
 #include "types.hpp"
-#include "operon/mdspan/mdspan.hpp"
+#include "aligned_allocator.hpp"
 
 namespace Operon {
 
@@ -24,17 +24,20 @@ static auto constexpr BatchSize = 512UL / sizeof(T);
 static auto constexpr DefaultAlignment = 32UL;
 
 template<typename T, std::size_t S = BatchSize<T>>
-using View = std::mdspan<T, std::extents<int, S, std::dynamic_extent>, std::layout_left>;
+using View = Operon::MDSpan<T, std::extents<int, S, std::dynamic_extent>, std::layout_left>;
+
+template<typename T, std::size_t S = BatchSize<T>>
+using Buffer = Operon::MDArray<T, std::extents<int, S, std::dynamic_extent>, std::layout_left, std::vector<T, AlignedAllocator<T, DefaultAlignment>>>;
 
 template<typename T, std::size_t S>
 auto Ptr(View<T, S> view, std::integral auto col) -> Backend::View<T, S>::element_type* {
-    return view.data_handle() + col * S;
+    return view.data_handle() + (col * S);
 }
 
 // utility
 template<typename T, std::size_t S>
 auto Fill(Backend::View<T, S> view, int idx, T value) {
-    auto* p = view.data_handle() + idx * S;
+    auto* p = view.data_handle() + (idx * S);
     std::fill_n(p, S, value);
 };
 } // namespace Backend
@@ -42,7 +45,7 @@ auto Fill(Backend::View<T, S> view, int idx, T value) {
 // detect missing specializations for functions
 template<typename T, Operon::NodeType N = Operon::NodeTypes::NoType, bool C = false, std::size_t S = Backend::BatchSize<T>>
 struct Func {
-    auto operator()(Backend::View<T, S> /*unused*/, std::integral auto /*unused*/, std::integral auto... /*unused*/) {
+    auto operator()(Backend::View<T, S> /*primal*/, std::integral auto /*node index*/, std::integral auto... /*child indices*/) {
         throw std::runtime_error(fmt::format("backend error: missing specialization for function: {}\n", Operon::Node{N}.Name()));
     }
 };
@@ -50,7 +53,7 @@ struct Func {
 // detect missing specializations for function derivatives
 template<typename T, Operon::NodeType N  = Operon::NodeTypes::NoType, std::size_t S = Backend::BatchSize<T>>
 struct Diff {
-    auto operator()(std::vector<Operon::Node> const&, Backend::View<T const, S>, Backend::View<T>, std::integral auto, std::integral auto) {
+    auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/, Backend::View<T> /*trace*/, std::integral auto /*node index*/, std::integral auto /*partial index*/) {
         throw std::runtime_error(fmt::format("backend error: missing specialization for derivative: {}\n", Operon::Node{N}.Name()));
     }
 };

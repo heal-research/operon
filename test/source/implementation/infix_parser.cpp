@@ -135,7 +135,7 @@ TEST_SUITE("[implementation]")
         Node c3(NodeType::Constant); c3.Value = 5;
         Node sub(NodeType::Sub);
         Node mul(NodeType::Mul);
-        std::vector<Node> nodes { c1, c2, c3, sub, mul }; // 5 - 3 * 2
+        Operon::Vector<Node> nodes { c1, c2, c3, sub, mul }; // 5 - 3 * 2
         Tree t(nodes);
         t.UpdateNodes();
 

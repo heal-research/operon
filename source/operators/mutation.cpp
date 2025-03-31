@@ -91,7 +91,7 @@ auto ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tr
     auto oldLen = nodes[i].Length + 1U;
     auto oldLevel = nodes[i].Level;
 
-    using Signed = std::make_signed<size_t>::type;
+    using Signed = std::make_signed_t<size_t>;
 
     auto partialLength = nodes.size() - oldLen;
 

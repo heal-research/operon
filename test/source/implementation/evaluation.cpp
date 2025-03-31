@@ -36,7 +36,7 @@ TEST_CASE("Evaluation correctness")
         vars[v.Name] = v.Hash;
     }
 
-    std::vector<size_t> indices(range.Size());
+    Operon::Vector<size_t> indices(range.Size());
     std::iota(indices.begin(), indices.end(), 0);
 
     DTable dtable;
@@ -230,8 +230,8 @@ TEST_CASE("Batch evaluation")
     Operon::RandomGenerator rng{0};
     auto constexpr n{10};
 
-    std::vector<Operon::Tree> trees;
-    std::vector<Operon::Scalar> result(range.Size() * n);
+    Operon::Vector<Operon::Tree> trees;
+    Operon::Vector<Operon::Scalar> result(range.Size() * n);
     for (auto i = 0; i < n; ++i) {
         trees.push_back(creator(rng, 20, 10, 20));
     }
@@ -304,7 +304,7 @@ TEST_CASE("parameter optimization")
 #endif
     auto const dim { tree.CoefficientsCount() };
 
-    std::vector<std::unique_ptr<UpdateRule::LearningRateUpdateRule const>> rules;
+    Operon::Vector<std::unique_ptr<UpdateRule::LearningRateUpdateRule const>> rules;
     rules.emplace_back(new UpdateRule::Constant<Operon::Scalar>(dim, 1e-3)); // NOLINT
     rules.emplace_back(new UpdateRule::Momentum<Operon::Scalar>(dim));
     rules.emplace_back(new UpdateRule::RmsProp<Operon::Scalar>(dim));

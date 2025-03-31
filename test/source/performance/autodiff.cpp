@@ -137,7 +137,7 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
     Range rg(0, ds.Rows());
 
     auto generate = [&](Node n) {
-        std::vector<Node> nodes{n};
+        Operon::Vector<Node> nodes{n};
         for (auto k = 0; k < n.Arity; ++k) {
             nodes.push_back(Node::Constant(dist(rng)));
             nodes.back().Optimize = true;

@@ -20,7 +20,7 @@ namespace Operon {
         std::iota(q.begin(), q.end(), 0UL);
         std::deque<size_t> dominated;
 
-        std::vector<std::vector<size_t>> fronts;
+        Operon::Vector<Operon::Vector<size_t>> fronts;
 
         auto dominates = [&](auto const& a, auto const& b) {
             return m == 2
@@ -31,7 +31,7 @@ namespace Operon {
         cppsort::merge_sorter sorter;
 
         while (!q.empty()) {
-            std::vector<size_t> front;
+            Operon::Vector<size_t> front;
 
             while (!q.empty()) {
                 auto q1 = q.front(); q.pop_front();

@@ -26,17 +26,17 @@ namespace detail {
         static constexpr word_t WORD_MASK = ~word_t{0UL};
         static constexpr size_t WORD_SIZE = std::numeric_limits<word_t>::digits;
 
-        std::vector<std::vector<word_t>> bitsets_;
-        std::vector<std::array<size_t, 2>> bsRanges_;
-        std::vector<int> wordRanking_; //Ranking of each bitset word. A bitset word contains 64 solutions.
-        std::vector<int> ranking_, ranking0_;
+        Operon::Vector<Operon::Vector<word_t>> bitsets_;
+        Operon::Vector<std::array<size_t, 2>> bsRanges_;
+        Operon::Vector<int> wordRanking_; //Ranking of each bitset word. A bitset word contains 64 solutions.
+        Operon::Vector<int> ranking_, ranking0_;
         int maxRank_ = 0;
-        std::vector<word_t> incrementalBitset_;
+        Operon::Vector<word_t> incrementalBitset_;
         size_t incBsFstWord_{std::numeric_limits<int>::max()};
         size_t incBsLstWord_{0};
 
     public:
-        [[nodiscard]] auto GetRanking() const -> std::vector<int> const& { return ranking0_; }
+        [[nodiscard]] auto GetRanking() const -> Operon::Vector<int> const& { return ranking0_; }
 
         auto UpdateSolutionDominance(size_t solutionId) -> bool
         {
@@ -145,7 +145,7 @@ namespace detail {
             auto lw = incBsLstWord_ < wordIndex ? incBsLstWord_ : wordIndex;
             bsRanges_[solutionId][FIRST_WORD_RANGE] = incBsFstWord_;
             bsRanges_[solutionId][LAST_WORD_RANGE] = lw;
-            bitsets_[solutionId] = std::vector<word_t>(lw + 1);
+            bitsets_[solutionId] = Operon::Vector<word_t>(lw + 1);
             std::copy_n(incrementalBitset_.data() + incBsFstWord_, lw - incBsFstWord_ + 1, bitsets_[solutionId].data() + incBsFstWord_);
             if (incBsLstWord_ >= wordIndex) { // update (compute intersection) the last word
                 bitsets_[solutionId][lw] = incrementalBitset_[lw] & ~(WORD_MASK << solutionId);
@@ -194,7 +194,7 @@ namespace detail {
         detail::BitsetManager bsm(n);
 
         cppsort::merge_sorter sorter;
-        std::vector<detail::Item> items(n);
+        Operon::Vector<detail::Item> items(n);
         for (auto i = 0; i < n; ++i) {
             items[i] = { i, pop[i][1] };
         }
@@ -226,7 +226,7 @@ namespace detail {
 
         auto ranking = bsm.GetRanking();
         auto rmax = *std::max_element(ranking.begin(), ranking.end());
-        std::vector<std::vector<size_t>> fronts(rmax + 1);
+        Operon::Vector<Operon::Vector<size_t>> fronts(rmax + 1);
         for (auto i = 0; i < n; i++) {
             fronts[ranking[i]].push_back(i);
         }
