@@ -77,6 +77,7 @@
               seer
               valgrind
               hotspot
+              likwid
             ]);
           };
 
