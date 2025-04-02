@@ -20,14 +20,22 @@ namespace Operon {
 namespace Backend {
 template<typename T>
 static auto constexpr BatchSize = 512UL / sizeof(T);
-
 static auto constexpr DefaultAlignment = 32UL;
+
+template<typename T>
+using Accessor = aligned_accessor<T, DefaultAlignment>;
+
+template<typename T>
+using Container = std::vector<T, AlignedAllocator<T, DefaultAlignment>>;
+
+template<typename T, std::size_t S = BatchSize<T>>
+using Buffer = Operon::MDArray<T, std::extents<int, S, std::dynamic_extent>, std::layout_left, Container<T>>;
 
 template<typename T, std::size_t S = BatchSize<T>>
 using View = Operon::MDSpan<T, std::extents<int, S, std::dynamic_extent>, std::layout_left>;
 
 template<typename T, std::size_t S = BatchSize<T>>
-using Buffer = Operon::MDArray<T, std::extents<int, S, std::dynamic_extent>, std::layout_left, std::vector<T, AlignedAllocator<T, DefaultAlignment>>>;
+using ColumnView = Operon::MDSpan<T, std::extents<int, S>, std::layout_left>;
 
 template<typename T, std::size_t S>
 auto Ptr(View<T, S> view, std::integral auto col) -> Backend::View<T, S>::element_type* {
