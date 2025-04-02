@@ -8,8 +8,7 @@
 #include <eve/module/core.hpp>
 #include <eve/module/math.hpp>
 
-#include "operon/interpreter/backend/backend.hpp"
-#include "operon/core/node.hpp"
+#include "operon/core/dispatch.hpp"
 
 namespace Operon::Backend {
     // utility
@@ -30,7 +29,7 @@ namespace Operon::Backend {
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(eve::add(W{args+i}...), res+i);
+            eve::store((W{args+i} + ...), res+i);
         }
     }
 
@@ -40,7 +39,7 @@ namespace Operon::Backend {
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(eve::mul(W{args+i}...), res+i);
+            eve::store((W{args+i} * ...), res+i);
         }
     }
 
