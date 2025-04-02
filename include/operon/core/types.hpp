@@ -7,12 +7,12 @@
 #include <ankerl/unordered_dense.h>
 #include <cstdint>
 #include <fluky/fluky.hpp>
+#include <gch/small_vector.hpp>
 #include <span>
 #include <utility>
-#include <gch/small_vector.hpp>
 
-#include "operon/mdspan/mdspan.hpp"
 #include "constants.hpp"
+#include "operon/mdspan/mdspan.hpp"
 #include "aligned_allocator.hpp"
 
 namespace Operon {
