@@ -264,7 +264,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
                 auto f1 = std::isfinite(jjet.sum());
                 auto f2 = std::isfinite(jrev.sum());
-                auto ok = (!f1) || (f1 && f2 && jrev.isApprox(jjet, epsilon));
+                auto ok = (!f1 && !f2) || (f1 && f2 && jrev.isApprox(jjet, epsilon));
 
                 if(f1 && f2) {
                     for (auto const& n : tree.Nodes()) {

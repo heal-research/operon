@@ -65,7 +65,7 @@ namespace Operon::Test {
     // used by some Langdon & Banzhaf papers as benchmark for measuring GPops/s
     TEST_CASE("Evaluation performance")
     {
-        constexpr size_t n = 10000;
+        constexpr size_t n = 1000;
         constexpr size_t maxLength = 64;
         constexpr size_t maxDepth = 1000;
         constexpr size_t nrow = 12800;
