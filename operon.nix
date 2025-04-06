@@ -1,9 +1,7 @@
-{ stdenv, pkgs, system }:
+{ stdenv, pkgs, system, enableShared ? true }:
 stdenv.mkDerivation rec {
   name = "operon";
   src = ./.;
-
-  enableShared = true;
 
   cmakePreset = {
     "x86_64-linux"   = "build-linux";
@@ -14,6 +12,7 @@ stdenv.mkDerivation rec {
   cmakeFlags = [
     "--preset ${cmakePreset}"
     "-DUSE_SINGLE_PRECISION=ON"
+    "-DBUILD_SHARED_LIBS=${enableShared}"
   ];
   cmakeBuildType = "Release";
 
@@ -47,7 +46,7 @@ stdenv.mkDerivation rec {
     ned14-status-code
     pkg-config
     pratt-parser
-    scnlib
+    (scnlib.overrideAttrs({ enableShared = enableShared; }))
     simdutf # required by scnlib
     span-lite
     taskflow
