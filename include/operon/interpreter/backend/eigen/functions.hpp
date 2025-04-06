@@ -24,7 +24,7 @@ namespace Operon::Backend {
 
     // utility
     template<typename T, std::size_t S>
-    auto Fill(T* res, T weight, T value) {
+    auto Fill(T* res, T value) {
         Map<T, S>(res, S, 1).setConstant(value);
     }
 
