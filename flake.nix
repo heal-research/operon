@@ -52,20 +52,20 @@
 
             cli = operon.overrideAttrs (old: {
               cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" "-DCPM_USE_LOCAL_PACKAGES=ON" ];
-              enableShared = "true";
+              enableShared = true;
             });
 
             cli-static = operon.overrideAttrs (old: {
               cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" "-DCPM_USE_LOCAL_PACKAGES=ON" ];
-              enableShared = "false";
+              enableShared = false;
             });
 
             library = operon.overrideAttrs (old: {
-              enableShared = "true";
+              enableShared = true;
             });
 
             library-static = operon.overrideAttrs (old: {
-              enableShared = "false";
+              enableShared = false;
             });
           };
 
