@@ -12,7 +12,7 @@ stdenv.mkDerivation rec {
   cmakeFlags = [
     "--preset ${cmakePreset}"
     "-DUSE_SINGLE_PRECISION=ON"
-    "-DBUILD_SHARED_LIBS=${enableShared}"
+    "-DBUILD_SHARED_LIBS=${if enableShared then "YES" else "NO"}"
   ];
   cmakeBuildType = "Release";
 
