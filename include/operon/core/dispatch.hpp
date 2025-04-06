@@ -53,7 +53,7 @@ auto Fill(Backend::View<T, S> view, int idx, T value) {
 // detect missing specializations for functions
 template<typename T, Operon::NodeType N = Operon::NodeTypes::NoType, bool C = false, std::size_t S = Backend::BatchSize<T>>
 struct Func {
-    auto operator()(Backend::View<T, S> /*primal*/, std::integral auto /*node index*/, std::integral auto... /*child indices*/) {
+    auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T, S> /*primal*/, std::integral auto /*node index*/, std::integral auto... /*child indices*/) {
         throw std::runtime_error(fmt::format("backend error: missing specialization for function: {}\n", Operon::Node{N}.Name()));
     }
 };
@@ -94,8 +94,8 @@ static void NaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> data, 
     bool continued = false;
 
     auto const call = [&](bool continued, int result, auto... args) {
-        if (continued) { Func<T, Type, true , S>{}(data, result, args...); }
-        else           { Func<T, Type, false, S>{}(data, result, args...); }
+        if (continued) { Func<T, Type, true , S>{}(nodes, data, result, args...); }
+        else           { Func<T, Type, false, S>{}(nodes, data, result, args...); }
     };
 
     int arity = nodes[parentIndex].Arity;
@@ -139,14 +139,14 @@ static void BinaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, s
 {
     auto j = i - 1;
     auto k = j - nodes[j].Length - 1;
-    Func<T, Type, false>{}(m, i, j, k);
+    Func<T, Type, false>{}(nodes, m, i, j, k);
 }
 
 template<NodeType Type, typename T, std::size_t S>
 requires Node::IsUnary<Type>
-static void UnaryOp(Operon::Vector<Node> const& /*unused*/, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
+static void UnaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
 {
-    Func<T, Type, false>{}(m, i, i-1);
+    Func<T, Type, false>{}(nodes, m, i, i-1);
 }
 
 struct Noop {

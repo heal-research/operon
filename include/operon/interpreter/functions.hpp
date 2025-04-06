@@ -31,47 +31,51 @@
 #endif
 
 namespace Operon {
+    template<typename T, std::size_t S>
+    auto Ptr(Backend::View<T, S> view, std::integral auto i) {
+        return view.data_handle() + (i * S);
+    }
+
     // n-ary operations
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Add, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto... args) {
-            auto* h = view.data_handle();
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto... args) {
+            auto const w = nodes[result].Value;
             if constexpr (C) {
-                Backend::Add<T, S>(h + result * S, h + result * S, (h + args * S)...);
+                Backend::Add<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, args)...);
             } else {
-                Backend::Add<T, S>(h + result * S, (h + args * S)...);
+                Backend::Add<T, S>(Ptr<T, S>(view, result), w, (Ptr<T, S>(view, args))...);
             }
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Mul, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto... args) {
-            auto* h = view.data_handle();
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto... args) {
+            auto const w = nodes[result].Value;
             if constexpr (C) {
-                Backend::Mul<T, S>(h + result * S, h + result * S, (h + args * S)...);
+                Backend::Mul<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), (Ptr<T, S>(view, args))...);
             } else {
-                Backend::Mul<T, S>(h + result * S, (h + args * S)...);
+                Backend::Mul<T, S>(Ptr<T, S>(view, result), w, (Ptr<T, S>(view, args))...);
             }
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Sub, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
-            auto* h = view.data_handle();
-
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
+            auto const w = nodes[result].Value;
             if constexpr (C) {
                 if constexpr (sizeof...(args) == 0) {
-                    Backend::Sub<T, S>(h + result * S, h + result * S, h + first * S);
+                    Backend::Sub<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first));
                 } else {
-                    Backend::Sub<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
+                    Backend::Sub<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first), (Ptr<T, S>(view, args))...);
                 }
             } else {
                 if constexpr (sizeof...(args) == 0) {
-                    Backend::Neg<T, S>(h + result * S, h + first * S);
+                    Backend::Neg<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, first));
                 } else {
-                    Backend::Sub<T, S>(h + result * S, h + first * S, (h + args * S)...);
+                    Backend::Sub<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, first), (Ptr<T, S>(view, args))...);
                 }
             }
         }
@@ -79,20 +83,19 @@ namespace Operon {
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Div, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
-            auto* h = view.data_handle();
-
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
+            auto const w = nodes[result].Value;
             if constexpr (C) {
                 if constexpr (sizeof...(args) == 0) {
-                    Backend::Div<T, S>(h + result * S, h + result * S, h + first * S);
+                    Backend::Div<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first));
                 } else {
-                    Backend::Div<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
+                    Backend::Div<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first), (Ptr<T, S>(view, args))...);
                 }
             } else {
                 if constexpr (sizeof...(args) == 0) {
-                    Backend::Inv<T, S>(h + result * S, h + first * S);
+                    Backend::Inv<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, first));
                 } else {
-                    Backend::Div<T, S>(h + result * S, h + first * S, (h + args * S)...);
+                    Backend::Div<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, first), (Ptr<T, S>(view, args))...);
                 }
             }
         }
@@ -100,20 +103,19 @@ namespace Operon {
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Fmin, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
-            auto* h = view.data_handle();
-
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
+            auto const w = nodes[result].Value;
             if constexpr (C) {
                 if constexpr (sizeof...(args) == 0) {
-                    Backend::Min<T, S>(h + result * S, h + result * S, h + first * S);
+                    Backend::Min<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first));
                 } else {
-                    Backend::Min<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
+                    Backend::Min<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first), (Ptr<T, S>(view, args))...);
                 }
             } else {
                 if constexpr (sizeof...(args) == 0) {
-                    Backend::Cpy<T, S>(h + result * S, h + first * S);
+                    Backend::Cpy<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, first));
                 } else {
-                    Backend::Min<T, S>(h + result * S, h + first * S, (h + args * S)...);
+                    Backend::Min<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, first), (Ptr<T, S>(view, args))...);
                 }
             }
         }
@@ -121,20 +123,19 @@ namespace Operon {
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Fmax, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
-            auto* h = view.data_handle();
-
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto first, std::integral auto... args) {
+            auto const w = nodes[result].Value;
             if constexpr (C) {
                 if constexpr (sizeof...(args) == 0) {
-                    Backend::Max<T, S>(h + result * S, h + result * S, h + first * S);
+                    Backend::Max<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first));
                 } else {
-                    Backend::Max<T, S>(h + result * S, h + result * S, h + first * S, (h + args * S)...);
+                    Backend::Max<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, result), Ptr<T, S>(view, first), (Ptr<T, S>(view, args))...);
                 }
             } else {
                 if constexpr (sizeof...(args) == 0) {
-                    Backend::Cpy<T, S>(h + result * S, h + first * S);
+                    Backend::Cpy<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, first));
                 } else {
-                    Backend::Max<T, S>(h + result * S, h + first * S, (h + args * S)...);
+                    Backend::Max<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, first), (Ptr<T, S>(view, args))...);
                 }
             }
         }
@@ -143,179 +144,179 @@ namespace Operon {
     // binary operations
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Aq, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i, std::integral auto j) {
-            auto* h = view.data_handle();
-            Backend::Aq<T, S>(h + result * S, h + i * S, h + j * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i, std::integral auto j) {
+            auto const w = nodes[result].Value;
+            Backend::Aq<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i), Ptr<T, S>(view, j));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Pow, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i, std::integral auto j) {
-            auto* h = view.data_handle();
-            Backend::Pow<T, S>(h + result * S, h + i * S, h + j * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i, std::integral auto j) {
+            auto const w = nodes[result].Value;
+            Backend::Pow<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i), Ptr<T, S>(view, j));
         }
     };
 
     // unary operations
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Abs, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Abs<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Abs<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     // unary operations
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Square, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Square<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Square<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Exp, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Exp<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Exp<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Log, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Log<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Log<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Logabs, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Logabs<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Logabs<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Log1p, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Log1p<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Log1p<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Sqrt, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Sqrt<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Sqrt<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Sqrtabs, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Sqrtabs<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Sqrtabs<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Cbrt, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Cbrt<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Cbrt<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Ceil, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Ceil<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Ceil<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Floor, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Floor<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Floor<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Sin, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Sin<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Sin<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Cos, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Cos<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Cos<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Tan, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Tan<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Tan<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Asin, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Asin<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Asin<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Acos, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Acos<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Acos<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Atan, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Atan<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Atan<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Sinh, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Sinh<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Sinh<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Cosh, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Cosh<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Cosh<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Tanh, C, S> {
-        auto operator()(Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
-            auto* h = view.data_handle();
-            Backend::Tanh<T, S>(h + result * S, h + i * S);
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i) {
+            auto const w = nodes[result].Value;
+            Backend::Tanh<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i));
         }
     };
 } // namespace Operon

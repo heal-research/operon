@@ -316,7 +316,7 @@ TEST_CASE("parameter optimization")
     rules.emplace_back(new UpdateRule::Yogi<Operon::Scalar>(dim));
 
     auto testOptimizer = [&](OptimizerBase& optimizer, std::string const& name) {
-        fmt::print(fmt::fg(fmt::color::orange), "=== {} Solver ===\n", name);
+        fmt::print("=== {} Solver ===\n", name);
         auto summary = optimizer.Optimize(rng, tree);
         fmt::print("batch size: {}\n", batchSize);
         fmt::print("expression: {}\n", InfixFormatter::Format(tree, ds));

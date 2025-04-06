@@ -199,9 +199,9 @@ private:
                 }
 
                 // apply weight after partials are computed
-                if (p != T{1}) {
-                    std::ranges::transform(std::span(ptr, rem), ptr, [p](auto x) { return x * p; });
-                }
+                //if (p != T{1}) {
+                //    std::ranges::transform(std::span(ptr, rem), ptr, [p](auto x) { return x * p; });
+                //}
             }
         }
     }
