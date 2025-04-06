@@ -22,7 +22,7 @@
 
   outputs = inputs@{ self, flake-parts, nixpkgs, foolnotion, fluky, pratt-parser, vdt, vstat, lbfgs }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      systems = [ "x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin" ];
 
       perSystem = { pkgs, system, ... }:
         let
@@ -39,7 +39,7 @@
               })
             ];
           };
-          stdenv = pkgs.llvmPackages_19.stdenv;
+          stdenv = pkgs.llvmPackages_20.stdenv;
           operon = import ./operon.nix { inherit stdenv pkgs system; };
         in
         rec
@@ -77,7 +77,6 @@
               seer
               valgrind
               hotspot
-              likwid
             ]);
           };
 
