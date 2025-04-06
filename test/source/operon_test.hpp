@@ -8,7 +8,6 @@
 #include "thirdparty/nanobench.h"
 
 #include <fmt/core.h>
-#include <fmt/color.h>
 #include <fmt/ranges.h>
 #include <random>
 

@@ -24,7 +24,7 @@ namespace Operon::Backend {
 
     // utility
     template<typename T, std::size_t S>
-    auto Fill(T* res, T value) {
+    auto Fill(T* res, T weight, T value) {
         Map<T, S>(res, S, 1).setConstant(value);
     }
 
@@ -35,164 +35,164 @@ namespace Operon::Backend {
 
     // n-ary functions
     template<typename T, std::size_t S>
-    auto Add(T* res, auto const*... args) {
-        Map<T, S>(res, S, 1) = (Map<T const, S>(args, S, 1) + ...);
+    auto Add(T* res, T weight, auto const*... args) {
+        Map<T, S>(res, S, 1) = weight * (Map<T const, S>(args, S, 1) + ...);
     }
 
     template<typename T, std::size_t S>
-    auto Mul(T* res, auto const*... args) {
-        Map<T, S>(res, S, 1) = (Map<T const, S>(args, S, 1) * ...);
+    auto Mul(T* res, T weight, auto const*... args) {
+        Map<T, S>(res, S, 1) = weight * (Map<T const, S>(args, S, 1) * ...);
     }
 
     template<typename T, std::size_t S>
-    auto Sub(T* res, auto* first, auto const*... rest) {
+    auto Sub(T* res, T weight, auto* first, auto const*... rest) {
         static_assert(sizeof...(rest) > 0);
-        Map<T, S>(res, S, 1) = Map<T const, S>(first, S, 1) - (Map<T const, S>(rest, S, 1) + ...);
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(first, S, 1) - (Map<T const, S>(rest, S, 1) + ...);
     }
 
     template<typename T, std::size_t S>
-    auto Div(T* res, auto const* first, auto const*... rest) {
+    auto Div(T* res, T weight, auto const* first, auto const*... rest) {
         static_assert(sizeof...(rest) > 0);
-        Map<T, S>(res, S, 1) = Map<T const, S>(first, S, 1) / (Map<T const, S>(rest, S, 1) * ...);
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(first, S, 1) / (Map<T const, S>(rest, S, 1) * ...);
     }
 
     template<typename T, std::size_t S>
-    auto Min(T* res, auto const* first, auto const*... args) {
+    auto Min(T* res, T weight, auto const* first, auto const*... args) {
         static_assert(sizeof...(args) > 0);
-        Map<T, S>(res, S, 1) = (Map<T const, S>(first, S, 1).min(Map<T const, S>(args, S, 1)), ...);
+        Map<T, S>(res, S, 1) = weight * weight * (Map<T const, S>(first, S, 1).min(Map<T const, S>(args, S, 1)), ...);
     }
 
     template<typename T, std::size_t S>
-    auto Max(T* res, auto* first, auto const*... args) {
+    auto Max(T* res, T weight, auto* first, auto const*... args) {
         static_assert(sizeof...(args) > 0);
-        Map<T, S>(res, S, 1) = (Map<T const, S>(first, S, 1).max(Map<T const, S>(args, S, 1)), ...);
+        Map<T, S>(res, S, 1) = weight * (Map<T const, S>(first, S, 1).max(Map<T const, S>(args, S, 1)), ...);
     }
 
     // binary functions
     template<typename T, std::size_t S>
-    auto Aq(T* res, T const* a, T const* b) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(a, S, 1) / (T{1} + Map<T const, S>(b, S, 1).square()).sqrt();
+    auto Aq(T* res, T weight, T const* a, T const* b) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(a, S, 1) / (T{1} + Map<T const, S>(b, S, 1).square()).sqrt();
     }
 
     template<typename T, std::size_t S>
-    auto Pow(T* res, T const* a, T const* b) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(a, S, 1).pow(Map<T const, S>(b, S, 1));
+    auto Pow(T* res, T weight, T const* a, T const* b) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(a, S, 1).pow(Map<T const, S>(b, S, 1));
     }
 
     // unary functions
     template<typename T, std::size_t S>
-    auto Cpy(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1);
+    auto Cpy(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1);
     }
 
     template<typename T, std::size_t S>
-    auto Neg(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = -Map<T const, S>(arg, S, 1);
+    auto Neg(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * -Map<T const, S>(arg, S, 1);
     }
 
     template<typename T, std::size_t S>
-    auto Inv(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).inverse();
+    auto Inv(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).inverse();
     }
 
     template<typename T, std::size_t S>
-    auto Abs(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).abs();
+    auto Abs(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).abs();
     }
 
     template<typename T, std::size_t S>
-    auto Ceil(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).ceil();
+    auto Ceil(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).ceil();
     }
 
     template<typename T, std::size_t S>
-    auto Floor(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).floor();
+    auto Floor(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).floor();
     }
 
     template<typename T, std::size_t S>
-    auto Square(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).square();
+    auto Square(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).square();
     }
 
     template<typename T, std::size_t S>
-    auto Exp(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).exp();
+    auto Exp(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).exp();
     }
 
     template<typename T, std::size_t S>
-    auto Log(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).log();
+    auto Log(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).log();
     }
 
     template<typename T, std::size_t S>
-    auto Log1p(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).log1p();
+    auto Log1p(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).log1p();
     }
 
     template<typename T, std::size_t S>
-    auto Logabs(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).abs().log();
+    auto Logabs(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).abs().log();
     }
 
     template<typename T, std::size_t S>
-    auto Sin(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).sin();
+    auto Sin(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).sin();
     }
 
     template<typename T, std::size_t S>
-    auto Cos(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).cos();
+    auto Cos(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).cos();
     }
 
     template<typename T, std::size_t S>
-    auto Tan(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).tan();
+    auto Tan(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).tan();
     }
 
     template<typename T, std::size_t S>
-    auto Asin(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).asin();
+    auto Asin(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).asin();
     }
 
     template<typename T, std::size_t S>
-    auto Acos(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).acos();
+    auto Acos(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).acos();
     }
 
     template<typename T, std::size_t S>
-    auto Atan(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).atan();
+    auto Atan(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).atan();
     }
 
     template<typename T, std::size_t S>
-    auto Sinh(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).sinh();
+    auto Sinh(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).sinh();
     }
 
     template<typename T, std::size_t S>
-    auto Cosh(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).cosh();
+    auto Cosh(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).cosh();
     }
 
     template<typename T, std::size_t S>
-    auto Tanh(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).tanh();
+    auto Tanh(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).tanh();
     }
 
     template<typename T, std::size_t S>
-    auto Sqrt(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).sqrt();
+    auto Sqrt(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).sqrt();
     }
 
     template<typename T, std::size_t S>
-    auto Sqrtabs(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).abs().sqrt();
+    auto Sqrtabs(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).abs().sqrt();
     }
 
     template<typename T, std::size_t S>
-    auto Cbrt(T* res, T const* arg) {
-        Map<T, S>(res, S, 1) = Map<T const, S>(arg, S, 1).unaryExpr([](auto x) { return std::cbrt(x); });
+    auto Cbrt(T* res, T weight, T const* arg) {
+        Map<T, S>(res, S, 1) = weight * Map<T const, S>(arg, S, 1).unaryExpr([](auto x) { return std::cbrt(x); });
     }
 }  // namespace Operon::Backend
 #endif

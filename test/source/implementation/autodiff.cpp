@@ -3,8 +3,6 @@
 
 #include <doctest/doctest.h>
 #include <fmt/core.h>
-#include <fmt/color.h>
-#include <fmt/ranges.h>
 #include <random>
 
 #include "../operon_test.hpp"
@@ -17,9 +15,6 @@
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/parser/infix.hpp"
-
-#include <iomanip>
-#include <iostream>
 
 namespace dt = doctest;
 
@@ -45,13 +40,13 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
     problem.SetTestRange(range);
 
     auto derive = [&](std::string const& expr) {
-        fmt::print(fmt::emphasis::bold, "f(x, y) = {}\n", expr);
+        fmt::print("f(x, y) = {}\n", expr);
         auto tree = Operon::InfixParser::Parse(expr, variables, /*reduce=*/true);
         for (auto& n : tree.Nodes()) {
             n.Optimize = n.IsLeaf();
             //if (n.Arity > 0) { n.Value = 2; }
         }
-        fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
+        fmt::print("infix: {}\n", Operon::InfixFormatter::Format(tree, ds));
 
         // fmt::print("{}\n", Operon::DotFormatter::Format(tree, ds));
 
@@ -276,7 +271,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
 
                 if(!ok) {
                     constexpr auto precision{20};
-                    fmt::print(fmt::fg(fmt::color::orange), "infix: {}\n", Operon::InfixFormatter::Format(tree, ds, precision));
+                    fmt::print("infix: {}\n", Operon::InfixFormatter::Format(tree, ds, precision));
                     fmt::print("res0: {}\n", out);
                     fmt::print("res1: {}\n", res1);
                     // fmt::print("eps: {}, {}\n", epsilon, jrev.isApprox(jjet, epsilon));
