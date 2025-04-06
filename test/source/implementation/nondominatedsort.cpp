@@ -8,7 +8,6 @@
 #include <random>
 #include <thread>
 #include <fmt/core.h>
-#include <fmt/color.h>
 #include <fmt/ranges.h>
 
 #include "operon/algorithms/nsga2.hpp"
@@ -132,7 +131,8 @@ TEST_CASE("non-dominated sort" * doctest::test_suite("[implementation]"))
         for (auto i = 0; i < std::ssize(sorters); ++i) {
             auto const& sorter = sorters[i].get();
             auto res = compareSorters(rs, sorter, ns, ms);
-            fmt::print(fmt::fg(res ? fmt::color::green : fmt::color::red), "{} ", names[i]);
+            fmt::print("{}\n", names[i]);
+            CHECK(res);
         }
         fmt::print("\n");
     }
