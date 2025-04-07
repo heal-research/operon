@@ -40,8 +40,9 @@
             ];
           };
           enableShared = !pkgs.stdenv.hostPlatform.isStatic;
+         enableTesting = false;
           stdenv = pkgs.llvmPackages_20.stdenv;
-          operon = import ./operon.nix { inherit stdenv pkgs system; enableShared = enableShared; };
+          operon = import ./operon.nix { inherit stdenv pkgs system; enableShared = enableShared; enableTesting = enableTesting; };
         in
         rec
         {
@@ -52,12 +53,10 @@
 
             cli = operon.overrideAttrs (old: {
               cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" "-DCPM_USE_LOCAL_PACKAGES=ON" ];
-              enableShared = true;
             });
 
             cli-static = operon.overrideAttrs (old: {
               cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" "-DCPM_USE_LOCAL_PACKAGES=ON" ];
-              enableShared = false;
             });
 
             library = operon.overrideAttrs (old: {
