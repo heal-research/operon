@@ -1,4 +1,4 @@
-{ stdenv, pkgs, system, enableShared ? true }:
+{ stdenv, pkgs, system, enableShared ? true, enableTesting ? true }:
 stdenv.mkDerivation rec {
   name = "operon";
   src = ./.;
@@ -26,7 +26,6 @@ stdenv.mkDerivation rec {
     cpp-sort
     cpptrace
     cxxopts
-    doctest
     eigen
     eve
     fast-float
@@ -39,7 +38,6 @@ stdenv.mkDerivation rec {
     libdwarf
     mdspan
     microsoft-gsl
-    nanobench
     ned14-outcome
     ned14-quickcpplib
     ned14-status-code
@@ -54,5 +52,5 @@ stdenv.mkDerivation rec {
     vstat
     xxHash
     zstd
-  ]);
+  ]) ++ (with pkgs; pkgs.lib.optionals enableTesting [ doctest nanobench ]);
 }
