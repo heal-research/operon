@@ -32,7 +32,6 @@ stdenv.mkDerivation rec {
     fast-float
     fluky
     fmt_11
-    gch-small-vector
     icu
     jemalloc
     lbfgs

@@ -7,7 +7,6 @@
 #include <ankerl/unordered_dense.h>
 #include <cstdint>
 #include <fluky/fluky.hpp>
-#include <gch/small_vector.hpp>
 #include <span>
 #include <utility>
 
