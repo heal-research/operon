@@ -62,8 +62,8 @@ namespace Operon {
     auto offspring = Offspring();
 
     if (warmStart) {
-	Reset();
-	t0 = std::chrono::steady_clock::now();
+        Reset();
+        t0 = std::chrono::steady_clock::now();
     }
 
     // while loop control flow
@@ -125,10 +125,8 @@ namespace Operon {
         [&]() { /* all done */ }  // work done, report last gen and stop
     ); // evolutionary loop
 
-    if (!warmStart) {
-        init.name("init");
-        init.precede(cond);
-    }
+    init.name("init");
+    init.precede(cond);
     
     cond.name("termination");
     body.name("main loop");
