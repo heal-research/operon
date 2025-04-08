@@ -144,6 +144,11 @@ namespace Operon {
         threads = std::thread::hardware_concurrency();
     }
     tf::Executor executor(threads);
+
+    if (warmStart) {
+	Reset();
+    } 
+
     Run(executor, random, std::move(report), warmStart);
 }
 } // namespace Operon
