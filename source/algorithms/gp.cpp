@@ -63,6 +63,7 @@ namespace Operon {
 
     if (warmStart) {
 	Reset();
+	t0 = std::chrono::steady_clock::now();
     }
 
     // while loop control flow
