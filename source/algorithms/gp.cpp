@@ -55,11 +55,15 @@ namespace Operon {
 
     auto stop = [&]() {
         Elapsed() = computeElapsed();
-        return generator->Terminate() || Generation() == config.Generations || Elapsed() > static_cast<double>(config.TimeLimit);
+        return Generation() == config.Generations;
     };
 
     auto parents = Parents();
     auto offspring = Offspring();
+
+    if (warmStart) {
+	Reset();
+    }
 
     // while loop control flow
     tf::Taskflow taskflow;
@@ -144,10 +148,6 @@ namespace Operon {
         threads = std::thread::hardware_concurrency();
     }
     tf::Executor executor(threads);
-
-    if (warmStart) {
-	Reset();
-    } 
 
     Run(executor, random, std::move(report), warmStart);
 }
