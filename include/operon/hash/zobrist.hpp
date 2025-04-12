@@ -45,18 +45,18 @@ public:
     auto Insert(Operon::Hash hash, Operon::Individual const& ind) {
         ENSURE(ind.Genotype.Length() > 0);
         ++total_;
-        auto [it, ok] = tt_.insert({hash, {ind, 1}});
-        if (!ok) {
+        if (!tt_.modify_if(hash, [&](auto& t) {
             ++hits_;
-            std::get<1>(it->second) += 1; 
-        }
-        return std::pair{it, ok};
+            std::get<1>(t.second) += 1;
+        })) {
+            tt_.insert({hash, {ind, 1}});
+        };
     }
 
     auto Insert(Operon::Hash hash, Operon::Tree const& tree) {
         Operon::Individual ind;
         ind.Genotype = tree;
-        return Insert(hash, ind);
+        Insert(hash, ind);
     }
 
     [[nodiscard]] auto Contains(Operon::Hash hash) const { return tt_.contains(hash); }
