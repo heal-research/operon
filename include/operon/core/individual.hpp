@@ -20,10 +20,10 @@ struct Individual {
     size_t Rank{}; // domination rank; used by NSGA2
     Operon::Scalar Distance{}; // crowding distance; used by NSGA2
 
-    inline auto operator[](size_t const i) noexcept -> Operon::Scalar& { return Fitness[i]; }
-    inline auto operator[](size_t const i) const noexcept -> Operon::Scalar { return Fitness[i]; }
+    auto operator[](size_t const i) noexcept -> Operon::Scalar& { return Fitness[i]; }
+    auto operator[](size_t const i) const noexcept -> Operon::Scalar { return Fitness[i]; }
 
-    [[nodiscard]] inline auto Size() const noexcept -> size_t { return Fitness.size(); }
+    [[nodiscard]] auto Size() const noexcept -> size_t { return Fitness.size(); }
 
     Individual()
         : Individual(1)

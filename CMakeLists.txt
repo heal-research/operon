@@ -91,12 +91,14 @@ find_package(eve REQUIRED)
 find_package(FastFloat REQUIRED)
 find_package(fluky REQUIRED)
 find_package(fmt REQUIRED)
+find_package(phmap CONFIG REQUIRED)
 find_package(lbfgs REQUIRED)
 find_package(libassert REQUIRED)
 find_package(mdspan REQUIRED)
 find_package(Microsoft.GSL CONFIG REQUIRED)
 find_package(outcome REQUIRED)
 find_package(pratt-parser REQUIRED)
+find_package(singleton REQUIRED)
 find_package(span-lite REQUIRED)
 find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
@@ -259,6 +261,8 @@ target_link_libraries(operon_operon PRIVATE
     nonstd::byte-lite
     nonstd::span-lite
     outcome::hl
+    singleton::singleton-atomic
+    phmap 
 )
 
 if (USE_CERES AND Ceres_FOUND)

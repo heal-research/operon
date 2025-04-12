@@ -41,10 +41,12 @@ stdenv.mkDerivation rec {
     ned14-outcome
     ned14-quickcpplib
     ned14-status-code
+    parallel-hashmap
     pkg-config
     pratt-parser
-    (scnlib.overrideAttrs({ enableShared = enableShared; }))
+    scnlib
     simdutf # required by scnlib
+    singleton
     span-lite
     taskflow
     unordered_dense

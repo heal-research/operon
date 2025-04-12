@@ -14,6 +14,7 @@
 #include <taskflow/algorithm/for_each.hpp>   // for taskflow.for_each_index
 #include <vector>                                    // for vector, vector::size_type
 #include <fmt/ranges.h>
+#include <fmt/ostream.h>
 
 #include "operon/algorithms/nsga2.hpp"
 #include "operon/core/contracts.hpp"                 // for ENSURE
@@ -21,6 +22,7 @@
 #include "operon/core/problem.hpp"                   // for Problem
 #include "operon/core/range.hpp"                     // for Range
 #include "operon/core/tree.hpp"                      // for Tree
+#include "operon/hash/zobrist.hpp"
 #include "operon/operators/initializer.hpp"          // for CoefficientInitializerBase
 #include "operon/operators/non_dominated_sorter.hpp" // for RankSorter
 #include "operon/operators/reinserter.hpp"           // for ReinserterBase
@@ -153,9 +155,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
                 parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
             }).name("evaluate population");
             auto nonDominatedSort = subflow.emplace([&]() { Sort(parents); }).name("non-dominated sort");
-            auto reportProgress = subflow.emplace([&]() {
-                if (report) { std::invoke(report); }
-            }).name("report progress");
+            auto reportProgress = subflow.emplace([&]() { if (report) { std::invoke(report); } }).name("report progress");
             init.precede(prepareEval);
             prepareEval.precede(eval);
             eval.precede(nonDominatedSort);

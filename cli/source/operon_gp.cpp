@@ -249,8 +249,7 @@ auto main(int argc, char** argv) -> int
         tf::Executor executor(threads);
         Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get() };
 
-        auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
-        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
+        Operon::Reporter<decltype(dtable)> reporter(&dtable, evaluator.get());
         gp.Run(executor, random, [&](){ reporter(executor, gp); });
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));

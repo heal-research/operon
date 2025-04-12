@@ -46,5 +46,25 @@ private:
     size_t maxLength_;
 };
 
+class OPERON_EXPORT TranspositionAwareCrossover : public CrossoverBase {
+public:
+    TranspositionAwareCrossover(double internalProbability, size_t maxDepth, size_t maxLength)
+        : internalProbability_(internalProbability)
+        , maxDepth_(maxDepth)
+        , maxLength_(maxLength)
+    { }
+
+    auto operator()(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const -> Tree override;
+
+    [[nodiscard]] auto InternalProbability() const -> double { return internalProbability_; }
+    [[nodiscard]] auto MaxDepth() const -> size_t { return maxDepth_; }
+    [[nodiscard]] auto MaxLength() const -> size_t { return maxLength_; }
+
+private:
+    double internalProbability_;
+    size_t maxDepth_;
+    size_t maxLength_;
+};
+
 } // namespace Operon
 #endif

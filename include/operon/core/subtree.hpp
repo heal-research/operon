@@ -4,6 +4,7 @@
 #ifndef OPERON_SUBTREE_HPP
 #define OPERON_SUBTREE_HPP
 
+#include "contracts.hpp"
 #include "node.hpp"
 
 namespace Operon {
@@ -44,22 +45,22 @@ struct Subtree {
         auto begin() const { return *this; } // NOLINT
         auto end() const { return Sentinel{}; } // NOLINT
 
-        inline auto operator==(Enumerator const& other) {
+        auto operator==(Enumerator const& other) {
             return Iter == other.Iter && Index == other.Index;
         }
 
-        inline auto operator!=(Enumerator const& other) {
+        auto operator!=(Enumerator const& other) {
             return !(*this == other);
         }
 
-        inline auto operator<(Enumerator const& other) {
+        auto operator<(Enumerator const& other) {
             return std::tie(Index, Iter) < std::tie(other.Index, other.Iter);
         }
 
-        inline auto operator==(Sentinel /*unused*/) const -> bool { return Iter.Done(); }
+        auto operator==(Sentinel /*unused*/) const -> bool { return Iter.Done(); }
 
-        inline auto operator*() const -> reference { return { Index, *Iter }; }
-        inline auto operator*() -> reference { return { Index, *Iter }; }
+        auto operator*() const -> reference { return { Index, *Iter }; }
+        auto operator*() -> reference { return { Index, *Iter }; }
 
         Iterator Iter;
         std::size_t Index{};
@@ -81,42 +82,42 @@ struct Subtree {
         inline auto begin() const { return *this; } // NOLINT
         inline auto end() const { return Sentinel{}; } // NOLINT
 
-        inline auto operator==(SubtreeIterator const& other) const {
+        auto operator==(SubtreeIterator const& other) const {
             return Parent == other.Parent
                 && Child == other.Child
                 && Index == other.Index
                 && Nodes.data() == other.Nodes.data();
         }
 
-        inline auto operator<(SubtreeIterator const& other) const {
+        auto operator<(SubtreeIterator const& other) const {
             return Index < other.Index;
         }
 
-        inline auto operator++() -> SubtreeIterator& {
+        auto operator++() -> SubtreeIterator& {
             Child -= Nodes[Child].Length + 1;
             Index += 1;
             return *this;
         }
 
-        inline auto operator++(int) -> SubtreeIterator {
+        auto operator++(int) -> SubtreeIterator {
             auto tmp{*this};
             ++(*this);
             return tmp;
         }
 
-        inline auto operator==(Sentinel /*unused*/) const -> bool { return Done(); }
+        auto operator==(Sentinel /*unused*/) const -> bool { return Done(); }
 
-        inline auto operator*() const -> reference {
+        auto operator*() const -> reference {
             if constexpr (ReturnIndices) { return Child; }
             else { return Nodes[Child]; }
         }
 
-        inline auto operator*() -> reference {
+        auto operator*() -> reference {
             if constexpr (ReturnIndices) { return Child; }
             else { return Nodes[Child]; }
         }
 
-        [[nodiscard]] inline auto Done() const -> bool { return Index >= Nodes[Parent].Arity; }
+        [[nodiscard]] auto Done() const -> bool { return Index >= Nodes[Parent].Arity; }
 
         Operon::Span<T> Nodes;
         std::size_t Parent;
@@ -127,11 +128,11 @@ struct Subtree {
     using IndexIterator = SubtreeIterator<true>;
     using NodeIterator = SubtreeIterator<false>;
 
-    [[nodiscard]] inline auto Indices() const { return IndexIterator{nodes_, parent_}; }
-    [[nodiscard]] inline auto EnumerateIndices() const { return Enumerator<IndexIterator>{nodes_, parent_}; }
+    [[nodiscard]] auto Indices() const { return IndexIterator{nodes_, parent_}; }
+    [[nodiscard]] auto EnumerateIndices() const { return Enumerator<IndexIterator>{nodes_, parent_}; }
 
-    [[nodiscard]] inline auto Nodes() const { return NodeIterator{nodes_, parent_}; }
-    [[nodiscard]] inline auto EnumerateNodes() const { return Enumerator<NodeIterator>{nodes_, parent_}; }
+    [[nodiscard]] auto Nodes() const { return NodeIterator{nodes_, parent_}; }
+    [[nodiscard]] auto EnumerateNodes() const { return Enumerator<NodeIterator>{nodes_, parent_}; }
 
 private:
     Operon::Span<T> nodes_;

@@ -5,6 +5,8 @@
 #include <random>
 
 #include "operon/core/contracts.hpp"
+#include "operon/core/tree.hpp"
+#include "operon/hash/zobrist.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/operators/crossover.hpp"
 #include "operon/random/random.hpp"
@@ -102,6 +104,60 @@ auto SubtreeCrossover::operator()(Operon::RandomGenerator& random, const Tree& l
     ENSURE(child.Length() <= maxLength);
 
     return child;
+}
+
+auto TranspositionAwareCrossover::operator()(Operon::RandomGenerator& random, Tree const& lhs, Tree const& rhs) const -> Tree
+{
+    auto getIdx = [](auto& random, auto const& tree) {
+        std::vector<std::size_t> indices(tree.Length());
+        std::iota(indices.begin(), indices.end(), 0);
+        std::ranges::shuffle(indices, random);
+        return indices;
+    };
+
+    auto idx1 = getIdx(random, lhs);
+    auto idx2 = getIdx(random, rhs);
+
+    using Signed = std::make_signed_t<std::size_t>;
+
+    auto* zob = Zobrist::GetInstance();
+    auto const h = zob->ComputeHash(lhs);
+
+    for (auto i : idx1) {
+        auto partialLength   = static_cast<Signed>(lhs.Length() - lhs[i].Length + 1);
+        auto maxBranchLength = static_cast<Signed>(maxLength_ - partialLength); 
+        auto maxBranchDepth  = static_cast<Signed>(maxDepth_ - lhs[i].Level);
+
+        maxBranchLength      = std::max(maxBranchLength, Signed{1});
+        maxBranchDepth       = std::max(maxBranchDepth, Signed{1});
+
+        auto const hi = h ^ zob->ComputeHash(lhs, i);
+
+        for (auto j : idx2) {
+            auto const& node = rhs[j];
+            auto [length, depth, level] = std::tuple{node.Length+1, node.Depth, node.Level};
+
+            if (NotIn({1, maxBranchLength}, length)) { continue; }
+            if (NotIn({1, maxBranchDepth}, depth)) { continue; }
+            if (NotIn({1, rhs.Depth()}, level)) {continue; }
+
+            if (zob->Contains(hi ^ zob->ComputeHash(rhs, j))) {
+                continue;
+            }
+
+            auto child = Cross(lhs, rhs, i, j);
+
+            auto maxDepth{std::max(maxDepth_, lhs.Depth())};
+            auto maxLength{std::max(maxLength_, lhs.Length())};
+
+            ENSURE(child.Depth() <= maxDepth);
+            ENSURE(child.Length() <= maxLength);
+
+            return child;
+        }
+    }
+
+    return lhs;
 }
 } // namespace Operon
 

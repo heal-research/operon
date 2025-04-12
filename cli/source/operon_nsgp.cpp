@@ -5,6 +5,7 @@
 #include "operon/hash/hash.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -210,7 +211,8 @@ auto main(int argc, char** argv) -> int
             dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
         }
 
-        Operon::SubtreeCrossover crossover{ crossoverInternalProbability, maxDepth, maxLength };
+        //Operon::SubtreeCrossover crossover{ crossoverInternalProbability, maxDepth, maxLength };
+        Operon::TranspositionAwareCrossover crossover{ crossoverInternalProbability, maxDepth, maxLength };
         Operon::MultiMutation mutator{};
 
         Operon::ChangeVariableMutation changeVar { problem.GetInputs() };
@@ -258,9 +260,13 @@ auto main(int argc, char** argv) -> int
         Operon::CoefficientOptimizer cOpt{optimizer.get()};
 
         auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
+        generator->UseTranspositionCache(result["use-transposition-cache"].as<bool>());
+
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
 
         Operon::RandomGenerator random(config.Seed);
+        Operon::Zobrist::Construct(random, maxLength);
+
         if (result["shuffle"].as<bool>()) {
             problem.GetDataset()->Shuffle(random);
         }
@@ -275,11 +281,25 @@ auto main(int argc, char** argv) -> int
         // Operon::EfficientBinarySorter sorter;
         Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get(), &sorter };
 
-        auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
-        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
+        Operon::Reporter<decltype(dtable)> reporter(&dtable, &evaluator, ';', '\n');
         gp.Run(executor, random, [&](){ reporter(executor, gp); });
-        auto best = reporter.GetBest();
-        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
+        //auto best = reporter.GetBest();
+        //fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
+
+        //auto* zob = Operon::Zobrist::GetInstance();
+
+        //fmt::print("Duplicates: {}, Total: {}\n", crossover.Duplicates(), crossover.Total());
+        //fmt::print("Zobrist:\n");
+        //fmt::print("Hits: {}, Total: {}\n", zob->Hits(), zob->Total());
+
+        //std::vector<std::tuple<Operon::Tree, std::size_t>> values;
+        //auto const& tt = zob->TranspositionTable();
+        //std::ranges::transform(tt, std::back_inserter(values), [](auto const& p) { return p.second; });
+        //std::ranges::sort(values, std::greater{}, [](auto const& t) { return std::get<1>(t); });
+
+        //for (auto const& [tree, count] : values) {
+        //    fmt::print("{};{}\n", Operon::InfixFormatter::Format(tree, *problem.GetDataset()), count);
+        //}
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;

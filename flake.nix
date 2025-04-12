@@ -40,7 +40,7 @@
             ];
           };
           enableShared = !pkgs.stdenv.hostPlatform.isStatic;
-         enableTesting = false;
+          enableTesting = true;
           stdenv = pkgs.llvmPackages_20.stdenv;
           operon = import ./operon.nix { inherit stdenv pkgs system; enableShared = enableShared; enableTesting = enableTesting; };
         in

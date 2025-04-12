@@ -11,16 +11,20 @@ namespace Operon {
 
 
 
-template<typename Evaluator>
+template<typename DTable>
 class Reporter {
-    gsl::not_null<Evaluator const*> evaluator_;
+    gsl::not_null<DTable const*> dtable_;
+    gsl::not_null<EvaluatorBase const*> evaluator_;
     mutable Operon::Individual best_;
 
-public:
-    explicit Reporter(gsl::not_null<Evaluator const*> evaluator)
-        : evaluator_(evaluator) {}
+    char sep_ = ' ';
+    char end_ = '\n';
 
-    static auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const& stats, bool printHeader) -> void {
+public:
+    explicit Reporter(gsl::not_null<DTable const*> dtable, gsl::not_null<EvaluatorBase const*> evaluator, char sep = ' ', char end = '\n')
+        : dtable_(dtable), evaluator_(evaluator), sep_{sep}, end_{end} {}
+
+    static auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const& stats, bool printHeader, char sep = ' ', char end = '\n') -> void {
         std::vector<size_t> widths;
         auto out = fmt::memory_buffer();
         for (auto const& [name, value, format] : stats) {
@@ -31,16 +35,16 @@ public:
         }
         if (printHeader) {
             for (auto i = 0UL; i < stats.size(); ++i) {
-                fmt::print("{} ", fmt::format("{:>{}}", std::get<0>(stats[i]), widths[i]));
+                fmt::print("{}{}", fmt::format("{:>{}}", std::get<0>(stats[i]), widths[i]), i < stats.size()-1 ? sep : ' ');
             }
             fmt::print("\n");
         }
         for (auto i = 0UL; i < stats.size(); ++i) {
             fmt::format_to(std::back_inserter(out), fmt::runtime(fmt::format("{{{}}}", std::get<2>(stats[i]))), std::get<1>(stats[i]));
-            fmt::print("{} ", fmt::format("{:>{}}", fmt::to_string(out), widths[i]));
+            fmt::print("{}{}", fmt::format("{:>{}}", fmt::to_string(out), widths[i]), i < stats.size()-1 ? sep : ' ');
             out.clear();
         }
-        fmt::print("\n");
+        fmt::print("{}", end);
     }
 
     auto GetBest() const -> Operon::Individual const& { return best_; }
@@ -73,18 +77,17 @@ public:
 
         auto const* dataset = problem->GetDataset();
 
-        auto dtable = evaluator_->GetDispatchTable();
-        using Interpreter = typename Evaluator::TInterpreter;
+        using Interpreter = Operon::Interpreter<Operon::Scalar, DTable>;
 
         auto evaluate = tf.emplace([&](tf::Subflow& sf) {
             sf.emplace([&]() {
-                Interpreter interpreter{dtable, dataset, &best_.Genotype};
+                Interpreter interpreter{dtable_, dataset, &best_.Genotype};
                 estimatedTrain = interpreter.Evaluate(best_.Genotype.GetCoefficients(), trainingRange);
                 ENSURE(trainingRange.Size() > 0 && estimatedTrain.size() == trainingRange.Size());
             }).name("eval train");
 
             sf.emplace([&]() {
-                Interpreter interpreter{dtable, dataset, &best_.Genotype};
+                Interpreter interpreter{dtable_, dataset, &best_.Genotype};
                 estimatedTest = interpreter.Evaluate(best_.Genotype.GetCoefficients(), testRange);
                 ENSURE(testRange.Size() > 0 && estimatedTest.size() == testRange.Size());
             }).name("eval test");
@@ -172,6 +175,8 @@ public:
 
         using T = std::tuple<std::string, double, std::string>;
         auto const* format = ":>#8.3g"; // see https://fmt.dev/latest/syntax.html
+        auto cacheHits = Zobrist::GetInstance()->Hits();
+        auto cacheTotal = Zobrist::GetInstance()->Total();
 
         auto [resEval, jacEval, callCount, cfTime ] = evaluator_->Stats();
         std::array stats {
@@ -190,10 +195,12 @@ public:
             T{ "res_eval", resEval, ":>" },
             T{ "jac_eval", jacEval, ":>" },
             T{ "opt_time", cfTime, ":>" },
+            T{ "cache_hits", cacheHits, ":>" },
+            T{ "cache_total", cacheTotal, ":>" },
             T{ "seed", config.Seed, ":>10" },
             T{ "elapsed", gp.Elapsed(), ":>"},
         };
-        PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
+        PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0, sep_, end_);
     }
 };
 } // namespace Operon
