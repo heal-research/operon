@@ -1,6 +1,7 @@
 #ifndef OPERON_CLI_REPORTER_HPP
 #define OPERON_CLI_REPORTER_HPP
 
+#include "operon/operators/evaluator.hpp"
 #include <fmt/format.h>
 #include <operon/algorithms/ga_base.hpp>
 
@@ -9,13 +10,25 @@
 
 namespace Operon {
 
-
+namespace detail {
+    auto GetBest(Operon::Span<Operon::Individual const> pop) -> Operon::Individual {
+        constexpr auto idx{0UL};
+        const auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
+        return *minElem;
+    };
+} // namespace detail
 
 template<typename DTable>
 class Reporter {
+public:
+    enum class ModelCriterion : std::uint8_t { MeanSquaredError, MinimumDescriptionLength };
+
+private:
     gsl::not_null<DTable const*> dtable_;
     gsl::not_null<EvaluatorBase const*> evaluator_;
     mutable Operon::Individual best_;
+    mutable ModelCriterion crit_{ModelCriterion::MeanSquaredError};
+    mutable Operon::Scalar sigma_;
 
     char sep_ = ' ';
     char end_ = '\n';
@@ -47,6 +60,9 @@ public:
         fmt::print("{}", end);
     }
 
+    auto SetModelCriterion(ModelCriterion crit) const { crit_ = crit; }
+    auto SetSigma(Operon::Scalar sigma) const { sigma_ = sigma; }
+
     auto GetBest() const -> Operon::Individual const& { return best_; }
 
     auto operator()(tf::Executor& executor, Operon::GeneticAlgorithmBase const& gp) const -> void {
@@ -55,12 +71,25 @@ public:
         auto const off = gp.Offspring();
 
         constexpr auto idx{0};
-        auto getBest = [&](Operon::Span<Operon::Individual const> pop) -> Operon::Individual {
-            const auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
-            return *minElem;
-        };
 
-        best_ = getBest(pop);
+        if (crit_ == ModelCriterion::MeanSquaredError) {
+            const auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
+            best_ = *minElem;
+        } else {
+            auto const* problem = evaluator_->GetProblem();
+            Operon::MinimumDescriptionLengthEvaluator<DTable, Operon::GaussianLikelihood<Operon::Scalar>> mdlEval{problem, dtable_.get()};
+            mdlEval.SetSigma({ sigma_ });
+            Operon::RandomGenerator rng{1234};
+
+            Operon::Scalar bestMdl{ std::numeric_limits<Operon::Scalar>::max() };
+            for (auto const& ind : gp.ParetoFront()) {
+                if (auto mdl = mdlEval(rng, ind); mdl[0] < bestMdl) {
+                    best_ = ind;
+                    bestMdl = mdl[0];
+                }
+            }
+        }
+
         ENSURE(best_.Size() > 0);
 
         tf::Taskflow tf;

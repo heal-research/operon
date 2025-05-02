@@ -46,6 +46,13 @@ public:
     [[nodiscard]] auto Individuals() -> Operon::Vector<Operon::Individual>& { return individuals_; }
     [[nodiscard]] auto Individuals() const -> Operon::Vector<Operon::Individual> const& { return individuals_; }
 
+    [[nodiscard]] virtual auto ParetoFront() const -> Operon::Vector<Operon::Individual> {
+        constexpr auto idx = 0;
+        auto pop = Parents();
+        const auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
+        return  { *minElem };
+    }
+
     [[nodiscard]] auto GetProblem() const -> const Problem* { return problem_.get(); }
     [[nodiscard]] auto GetConfig() const -> GeneticAlgorithmConfig { return config_; }
 
