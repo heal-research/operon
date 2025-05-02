@@ -70,7 +70,7 @@ public:
             res.Child->Genotype = (*Mutator())(random, std::move(res.Child->Genotype));
         }
 
-        auto evaluate = [&]() {
+        [[maybe_unused]] auto evaluate = [&]() {
             if (BernoulliTrial{pLocal}(random)) {
                 auto c = res.Child->Genotype.GetCoefficients(); // save original coefficients
                 auto [optimizedTree, summary] = (*Optimizer())(random, std::move(res.Child->Genotype));

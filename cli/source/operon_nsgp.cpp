@@ -210,10 +210,17 @@ auto main(int argc, char** argv) -> int
             onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
             dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
         }
+        auto useTranspositionCrossover = result["use-transposition-aware-crossover"].as<bool>();
+        std::unique_ptr<Operon::CrossoverBase> crossover;
+        crossover.reset(useTranspositionCrossover
+                ? static_cast<Operon::CrossoverBase*>(new Operon::TranspositionAwareCrossover(crossoverInternalProbability, maxDepth, maxLength))
+                : static_cast<Operon::CrossoverBase*>(new Operon::SubtreeCrossover(crossoverInternalProbability, maxDepth, maxLength)));
 
-        //Operon::SubtreeCrossover crossover{ crossoverInternalProbability, maxDepth, maxLength };
-        Operon::TranspositionAwareCrossover crossover{ crossoverInternalProbability, maxDepth, maxLength };
-        Operon::MultiMutation mutator{};
+        bool useTranspositionMutation = result["use-transposition-aware-mutation"].as<bool>();
+        std::unique_ptr<Operon::MutatorBase> mutator;
+        mutator.reset(useTranspositionMutation
+                ? static_cast<Operon::MutatorBase*>(new Operon::TranspositionAwareMutation)
+                : static_cast<Operon::MutatorBase*>(new Operon::MultiMutation));
 
         Operon::ChangeVariableMutation changeVar { problem.GetInputs() };
         Operon::ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
@@ -224,13 +231,13 @@ auto main(int argc, char** argv) -> int
         for (auto v : Operon::Math::Constants) {
             discretePoint.Add(static_cast<Operon::Scalar>(v), 1);
         }
-        mutator.Add(onePoint.get(), 1.0);
-        mutator.Add(&changeVar, 1.0);
-        mutator.Add(&changeFunc, 1.0);
-        mutator.Add(&replaceSubtree, 1.0);
-        mutator.Add(&insertSubtree, 1.0);
-        mutator.Add(&removeSubtree, 1.0);
-        mutator.Add(&discretePoint, 1.0);
+        dynamic_cast<Operon::MultiMutation*>(mutator.get())->Add(onePoint.get(), 1.0);
+        dynamic_cast<Operon::MultiMutation*>(mutator.get())->Add(&changeVar, 1.0);
+        dynamic_cast<Operon::MultiMutation*>(mutator.get())->Add(&changeFunc, 1.0);
+        dynamic_cast<Operon::MultiMutation*>(mutator.get())->Add(&replaceSubtree, 1.0);
+        dynamic_cast<Operon::MultiMutation*>(mutator.get())->Add(&insertSubtree, 1.0);
+        dynamic_cast<Operon::MultiMutation*>(mutator.get())->Add(&removeSubtree, 1.0);
+        dynamic_cast<Operon::MultiMutation*>(mutator.get())->Add(&discretePoint, 1.0);
 
         Operon::DefaultDispatch dtable;
         // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
@@ -239,6 +246,8 @@ auto main(int argc, char** argv) -> int
         auto scale = result["linear-scaling"].as<bool>();
         auto errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
         errorEvaluator->SetBudget(config.Evaluations);
+
+        auto sigma = result["sigma"].as<Operon::Scalar>();
 
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
         optimizer->SetIterations(config.Iterations);
@@ -259,7 +268,7 @@ auto main(int argc, char** argv) -> int
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
         Operon::CoefficientOptimizer cOpt{optimizer.get()};
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, *crossover, *mutator, *femaleSelector, *maleSelector, &cOpt);
         generator->UseTranspositionCache(result["use-transposition-cache"].as<bool>());
 
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
@@ -281,25 +290,13 @@ auto main(int argc, char** argv) -> int
         // Operon::EfficientBinarySorter sorter;
         Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get(), &sorter };
 
-        Operon::Reporter<decltype(dtable)> reporter(&dtable, &evaluator, ';', '\n');
+        //Operon::Reporter<decltype(dtable)> reporter(&dtable, &evaluator, ';', '\n');
+        Operon::Reporter<decltype(dtable)> reporter(&dtable, &evaluator);
+        reporter.SetModelCriterion(decltype(reporter)::ModelCriterion::MinimumDescriptionLength);
+        reporter.SetSigma(sigma);
         gp.Run(executor, random, [&](){ reporter(executor, gp); });
-        //auto best = reporter.GetBest();
-        //fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
-
-        //auto* zob = Operon::Zobrist::GetInstance();
-
-        //fmt::print("Duplicates: {}, Total: {}\n", crossover.Duplicates(), crossover.Total());
-        //fmt::print("Zobrist:\n");
-        //fmt::print("Hits: {}, Total: {}\n", zob->Hits(), zob->Total());
-
-        //std::vector<std::tuple<Operon::Tree, std::size_t>> values;
-        //auto const& tt = zob->TranspositionTable();
-        //std::ranges::transform(tt, std::back_inserter(values), [](auto const& p) { return p.second; });
-        //std::ranges::sort(values, std::greater{}, [](auto const& t) { return std::get<1>(t); });
-
-        //for (auto const& [tree, count] : values) {
-        //    fmt::print("{};{}\n", Operon::InfixFormatter::Format(tree, *problem.GetDataset()), count);
-        //}
+        auto best = reporter.GetBest();
+        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;

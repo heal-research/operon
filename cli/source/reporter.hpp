@@ -10,14 +10,6 @@
 
 namespace Operon {
 
-namespace detail {
-    auto GetBest(Operon::Span<Operon::Individual const> pop) -> Operon::Individual {
-        constexpr auto idx{0UL};
-        const auto minElem = std::min_element(pop.begin(), pop.end(), [&](auto const& lhs, auto const& rhs) { return lhs[idx] < rhs[idx]; });
-        return *minElem;
-    };
-} // namespace detail
-
 template<typename DTable>
 class Reporter {
 public:
@@ -28,7 +20,7 @@ private:
     gsl::not_null<EvaluatorBase const*> evaluator_;
     mutable Operon::Individual best_;
     mutable ModelCriterion crit_{ModelCriterion::MeanSquaredError};
-    mutable Operon::Scalar sigma_;
+    mutable Operon::Scalar sigma_{1.0};
 
     char sep_ = ' ';
     char end_ = '\n';
@@ -183,7 +175,7 @@ public:
         double avgQuality = 0;
         double totalMemory = 0;
 
-        auto getSize = [](Operon::Individual const& ind) { return sizeof(ind) + sizeof(ind.Genotype) + sizeof(Operon::Node) * ind.Genotype.Nodes().capacity(); };
+        auto getSize = [](Operon::Individual const& ind) { return sizeof(ind) + sizeof(ind.Genotype) + (sizeof(Operon::Node) * ind.Genotype.Nodes().capacity()); };
         auto calculateLength = tf.transform_reduce(pop.begin(), pop.end(), avgLength, std::plus{}, [](auto const& ind) { return ind.Genotype.Length(); }).name("calc length");
         auto calculateQuality = tf.transform_reduce(pop.begin(), pop.end(), avgQuality, std::plus{}, [idx=idx](auto const& ind) { return ind[idx]; }).name("calc quality");
         auto calculatePopMemory = tf.transform_reduce(pop.begin(), pop.end(), totalMemory, std::plus{}, [&](auto const& ind) { return getSize(ind); }).name("calc parent mem");
