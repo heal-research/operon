@@ -26,7 +26,6 @@ OPERON_EXPORT class Zobrist : public SingletonAtomic<Zobrist> {
     Map tt_;
 
     std::atomic_ullong hits_; // how many cache hits in the transposition table?
-    std::atomic_ullong total_; // how many total insert attempts in the transposition table?
 
 public:
     Zobrist(Operon::RandomGenerator& rng, int length) : zobrist_(NodeTypes::Count, length) {
@@ -37,14 +36,13 @@ public:
     [[nodiscard]] auto Cols() const { return zobrist_.extent(1); }
 
     [[nodiscard]] auto Hits() const { return hits_.load(); }
-    [[nodiscard]] auto Total() const { return total_.load(); }
+    [[nodiscard]] auto Total() const { return tt_.size(); }
 
     auto TranspositionTable() -> Map& { return tt_; }
     [[nodiscard]] auto TranspositionTable() const -> Map const& { return tt_; }
 
     auto Insert(Operon::Hash hash, Operon::Individual const& ind) {
         ENSURE(ind.Genotype.Length() > 0);
-        ++total_;
         if (!tt_.modify_if(hash, [&](auto& t) {
             ++hits_;
             std::get<1>(t.second) += 1;
