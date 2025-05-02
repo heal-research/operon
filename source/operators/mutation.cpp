@@ -12,6 +12,7 @@
 
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
+#include "operon/hash/zobrist.hpp"
 
 namespace Operon {
 
@@ -50,6 +51,17 @@ auto MultiMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
     }
     auto op = operators_[i];
     return (*op)(random, std::move(tree));
+}
+
+auto TranspositionAwareMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
+{
+    auto* zob = Operon::Zobrist::GetInstance();
+    for (auto k = 0; k < tries_; ++k) {
+        auto child = MultiMutation::operator()(random, tree);
+        if (zob->Contains(zob->ComputeHash(child))) { continue; }
+        return child;
+    }
+    return tree;
 }
 
 auto ChangeVariableMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree

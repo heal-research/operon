@@ -102,6 +102,14 @@ private:
     std::vector<double> probabilities_;
 };
 
+struct OPERON_EXPORT TranspositionAwareMutation : public MultiMutation {
+    auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
+
+private:
+    static constexpr auto DefaultTries = 10;
+    int tries_ = DefaultTries; 
+};
+
 struct OPERON_EXPORT ChangeVariableMutation : public MutatorBase {
     explicit ChangeVariableMutation(Operon::Span<Operon::Hash const> variables)
         : variables_(variables.begin(), variables.end())
