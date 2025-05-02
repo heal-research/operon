@@ -1,16 +1,16 @@
 {
     "metadata": {
-        "name": "Chemical-I",
-        "filename": "Chemical-I.csv",
+        "name": "Chemical-II",
+        "filename": "Chemical-II.csv",
         "formula": "",
         "kind": "real-world",
         "target": "target",
         "test_rows": {
-            "end": 4999,
-            "start": 3136 
+            "end": 1066,
+            "start": 711
         },
         "training_rows": {
-            "end": 3136,
+            "end": 711,
             "start": 0
         }
     },

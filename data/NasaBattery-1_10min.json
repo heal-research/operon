@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "Nasa Battery 1h 10min",
+        "filename": "NasaBattery-1_10min.csv",
+        "formula": "",
+        "kind": "real-world",
+        "target": "target",
+        "test_rows": {
+            "end": 636,
+            "start": 504 
+        },
+        "training_rows": {
+            "end": 504,
+            "start": 0
+        }
+    },
+    "timestamp": "Fri, 29 Nov 2019 15:39:26 +0000"
+}
