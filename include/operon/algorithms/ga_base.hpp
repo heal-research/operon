@@ -60,6 +60,9 @@ public:
     [[nodiscard]] auto Elapsed() const -> double { return elapsed_; }
     auto Elapsed() -> double& { return elapsed_; }
 
+    [[nodiscard]] auto IsFitted() const -> bool { return isFitted_; }
+    auto IsFitted() -> bool& { return isFitted_; }
+
     auto Reset() -> void
     {
         generation_ = 0;
@@ -67,6 +70,15 @@ public:
         GetGenerator()->Evaluator()->Reset();
     }
 
+    auto RestoreIndividuals(std::vector<Individual> inds) -> void
+    {
+        EXPECT(inds.size() == config_.PoolSize + config_.PopulationSize,
+                "Mismatched number of individuals (must match pool/population sizes)");
+        individuals_ = std::move(inds);
+        parents_ = Operon::Span<Individual>(individuals_.data(), config_.PoolSize);
+        offspring_ = Operon::Span<Individual>(individuals_.data() + config_.PoolSize, config_.PopulationSize);
+    }
+    
 private:
     GeneticAlgorithmConfig config_;
 
@@ -82,6 +94,7 @@ private:
 
     size_t generation_{0};
     double elapsed_{0}; // elapsed time in microseconds
+    bool isFitted_{false};
 };
 
 } // namespace Operon
