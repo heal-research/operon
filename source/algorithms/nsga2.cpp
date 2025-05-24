@@ -96,8 +96,10 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     std::transform(fronts_.front().begin(), fronts_.front().end(), std::back_inserter(best_), [&](auto i) { return pop[i]; });
 }
 
-auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report) -> void
+auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report, bool warmStart) -> void
 {
+    Reset();
+
     const auto& config = GetConfig();
     const auto& treeInit = GetTreeInitializer();
     const auto& coeffInit = GetCoefficientInitializer();
@@ -141,10 +143,6 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     tf::Taskflow taskflow;
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&](tf::Subflow& subflow) {
-            auto init = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
-                parents[i].Genotype = (*treeInit)(rngs[i]);
-                (*coeffInit)(rngs[i], parents[i].Genotype);
-            }).name("initialize population");
             auto prepareEval = subflow.emplace([&]() { evaluator->Prepare(parents); }).name("prepare evaluator");
             auto eval = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
                 // make sure the worker has a large enough buffer
@@ -156,10 +154,18 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
             auto reportProgress = subflow.emplace([&]() {
                 if (report) { std::invoke(report); }
             }).name("report progress");
-            init.precede(prepareEval);
             prepareEval.precede(eval);
             eval.precede(nonDominatedSort);
             nonDominatedSort.precede(reportProgress);
+
+            if (!(IsFitted() && warmStart)) {
+                auto init = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
+                    parents[i].Genotype = (*treeInit)(rngs[i]);
+                    (*coeffInit)(rngs[i], parents[i].Genotype);
+                }).name("initialize population");
+
+                init.precede(prepareEval);
+            }
         }, // init
         stop, // loop condition
         [&](tf::Subflow& subflow) {
@@ -189,7 +195,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
             incrementGeneration.precede(reportProgress);
         }, // loop body (evolutionary main loop)
         [&]() { return 0; }, // jump back to the next iteration
-        [&]() { /* done nothing to do */ } // work done, report last gen and stop
+        [&]() { IsFitted() = true; /* all done */ } // work done, report last gen and stop
     ); // evolutionary loop
 
     init.name("init");
@@ -208,12 +214,12 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     executor.wait_for_all();
 }
 
-auto NSGA2::Run(Operon::RandomGenerator& random, std::function<void()> report, size_t threads) -> void
+auto NSGA2::Run(Operon::RandomGenerator& random, std::function<void()> report, size_t threads, bool warmStart) -> void
 {
     if (threads == 0U) {
         threads = std::thread::hardware_concurrency();
     }
     tf::Executor executor(threads);
-    Run(executor, random, std::move(report));
+    Run(executor, random, std::move(report), warmStart);
 }
 } // namespace Operon
