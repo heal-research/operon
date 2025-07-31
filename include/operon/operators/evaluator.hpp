@@ -243,7 +243,7 @@ public:
         EvaluatorBase::ReturnType fit;
         fit.reserve(ind.Size());
 
-        for (auto const ev : evaluators_) {
+        for (auto const& ev: evaluators_) {
             auto f = (*ev)(rng, ind, buf);
             std::copy(f.begin(), f.end(), std::back_inserter(fit));
         }
@@ -257,7 +257,7 @@ public:
         auto callCnt{0UL};
         auto cfTime{0UL};
 
-        for (auto const ev : evaluators_) {
+        for (auto const& ev: evaluators_) {
             auto [re, je, cc, ct] = ev->Stats();
             resEval += re;
             jacEval += je;
