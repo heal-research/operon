@@ -30,6 +30,7 @@ namespace {
     template<typename T>
     auto MakeUnique(std::size_t n, std::optional<typename std::remove_extent_t<T>> init = std::nullopt)
     {
+        ENSURE(n > 0);
         using E = typename std::remove_extent_t<T>;
         auto ptr = std::make_unique<E[]>(n);
         if (init) { std::fill_n(ptr.get(), n, init.value()); }
