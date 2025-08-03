@@ -1,18 +1,18 @@
 {
     "metadata": {
-        "name": "Chemical-I",
-        "filename": "Chemical-I.csv",
+        "name": "Flow-stress",
+        "filename": "Flow_stress.csv",
         "formula": "",
         "kind": "real-world",
         "target": "target",
         "test_rows": {
-            "end": 4999,
-            "start": 3136 
+            "end": 7800,
+            "start": 4200 
         },
         "training_rows": {
-            "end": 3136,
+            "end": 4200,
             "start": 0
         }
     },
-    "timestamp": "Wed, 27 Nov 2019 10:50:45 +0000"
+    "timestamp": "Fri, 29 Nov 2019 15:39:26 +0000"
 }
