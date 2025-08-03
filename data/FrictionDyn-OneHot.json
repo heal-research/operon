@@ -1,0 +1,18 @@
+{
+    "metadata": {
+        "name": "FrictionDyn-OneHot",
+        "filename": "FrictionDyn-OneHot.csv",
+        "formula": "",
+        "kind": "real-world",
+        "target": "target",
+        "test_rows": {
+            "end": 2016,
+            "start": 1010 
+        },
+        "training_rows": {
+            "end": 1010,
+            "start": 0
+        }
+    },
+    "timestamp": "Fri, 29 Nov 2019 15:39:26 +0000"
+}
