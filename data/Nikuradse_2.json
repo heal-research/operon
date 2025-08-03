@@ -1,16 +1,16 @@
 {
     "metadata": {
-        "name": "Chemical-I",
-        "filename": "Chemical-I.csv",
+        "name": "Nikuradse-II",
+        "filename": "Nikuradse_2.csv",
         "formula": "",
         "kind": "real-world",
         "target": "target",
         "test_rows": {
-            "end": 4999,
-            "start": 3136 
+            "end": 362,
+            "start": 200 
         },
         "training_rows": {
-            "end": 3136,
+            "end": 200,
             "start": 0
         }
     },
