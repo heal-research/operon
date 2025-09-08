@@ -302,6 +302,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
         auto constexpr N{10'000};
 
         fmt::print("function,x,y_true,y_pred,j_true,j_pred\n");
+
         auto testUnary = [&](Operon::NodeType type) {
             Operon::PrimitiveSet pset(NodeType::Constant | type);
             auto trees = generateTrees(pset, N, 2);
@@ -316,7 +317,7 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                 auto [res, jet] = Util::Autodiff(tree, ds, range);
                 Eigen::Array<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, range);
                 auto const x = tree.Nodes().front().Value;
-                fmt::print("{},{:15.f},{:.15f},{:.15f},{:.15f},{:.15f}\n", name, x, res[0], est[0], jet[0], jac(0));
+                fmt::print(fmt::runtime("{},{:15.f},{:.15f},{:.15f},{:.15f},{:.15f}\n"), name, x, res[0], est[0], jet[0], jac(0));
             }
         };
 
@@ -333,16 +334,16 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                 auto [res, jet] = Util::Autodiff(tree, ds, range);
                 Eigen::Array<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, range);
                 auto const x = tree.Nodes().front().Value;
-                fmt::print("{},{:15.f},{:.15f},{:.15f},{:.15f},{:.15f}\n", name, x, res[0], est[0], jet[0], jac(0));
-                fmt::print("{},{:15.f},{:.15f},{:.15f},{:.15f},{:.15f}\n", name, x, res[0], est[0], jet[1], jac(1));
+                fmt::print(fmt::runtime("{},{:15.f},{:.15f},{:.15f},{:.15f},{:.15f}\n"), name, x, res[0], est[0], jet[0], jac(0));
+                fmt::print(fmt::runtime("{},{:15.f},{:.15f},{:.15f},{:.15f},{:.15f}\n"), name, x, res[0], est[0], jet[1], jac(1));
             }
         };
 
-        for (auto type : {NodeType::Div, NodeType::Exp, NodeType::Log, NodeType::Sin, NodeType::Cos, NodeType::Sqrt, NodeType::Tanh }) {
+        for (auto type : { NodeType::Div, NodeType::Exp, NodeType::Log, NodeType::Sin, NodeType::Cos, NodeType::Sqrt, NodeType::Tanh }) {
             testUnary(type);
         }
 
-        for (auto type : {NodeType::Div, NodeType::Aq, NodeType::Pow }) {
+        for (auto type : { NodeType::Div, NodeType::Aq, NodeType::Pow }) {
             testBinary(type);
         }
     };
