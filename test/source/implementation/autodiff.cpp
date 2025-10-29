@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 #include <fmt/core.h>
 #include <random>
+#include <iomanip>
 
 #include "../operon_test.hpp"
 
@@ -279,7 +280,6 @@ TEST_CASE("reverse mode" * dt::test_suite("[autodiff]")) {
                     std::cout << std::setprecision(precision) << "J_jet    : " << jjet << "\n";
                     std::cout << std::setprecision(precision) << "J_forward: " << jfwd << "\n";
                     std::cout << std::setprecision(precision) << "J_reverse: " << jrev << "\n";
-
                 }
                 count += ok;
                 CHECK(ok);
