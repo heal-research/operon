@@ -21,7 +21,6 @@ stdenv.mkDerivation rec {
   buildInputs = (with pkgs; [
     # ned14 deps
     aria-csv
-    byte-lite
     ceres-solver
     cpp-sort
     cpptrace
@@ -38,15 +37,12 @@ stdenv.mkDerivation rec {
     libdwarf
     mdspan
     microsoft-gsl
-    ned14-outcome
-    ned14-quickcpplib
-    ned14-status-code
     pkg-config
     pratt-parser
     (scnlib.overrideAttrs({ enableShared = enableShared; }))
     simdutf # required by scnlib
-    span-lite
     taskflow
+    tl-expected
     unordered_dense
     vdt
     vstat
