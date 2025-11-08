@@ -22,9 +22,7 @@
 #include <cxxopts.hpp>
 #include <fmt/core.h>
 #include <scn/scan.h>
-#include <outcome.hpp>
-
-namespace outcome = OUTCOME_V2_NAMESPACE;
+#include <tl/expected.hpp>
 
 namespace {
     enum class ParseError : std::uint8_t  {
@@ -35,7 +33,7 @@ namespace {
         UnknownError   = 4
     };
 
-    auto ParseOptions(int argc, char** argv) noexcept -> outcome::unchecked<cxxopts::ParseResult, ParseError> {
+    auto ParseOptions(int argc, char** argv) noexcept -> tl::expected<cxxopts::ParseResult, ParseError> {
         cxxopts::Options opts("operon_parse_model", "Parse and evaluate a model in infix form");
 
         opts.add_options()
@@ -57,22 +55,22 @@ namespace {
             result = opts.parse(argc, argv);
         } catch (cxxopts::exceptions::parsing const& ex) {
             fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
-            return ParseError::UnknownError;
+            return tl::make_unexpected(ParseError::UnknownError);
         };
 
         if (result.arguments().empty() || result.count("help") > 0) {
             fmt::print("{}\n", opts.help());
-            return ParseError::NoOptions;
+            return tl::make_unexpected(ParseError::NoOptions);
         }
 
         if (result.count("dataset") == 0) {
             fmt::print(stderr, "error: no dataset was specified.\n");
-            return ParseError::MissingDataset;
+            return tl::make_unexpected(ParseError::MissingDataset);
         }
 
         if (result.unmatched().empty()) {
             fmt::print(stderr, "error: no infix string was provided.\n");
-            return ParseError::MissingInfix;
+            return tl::make_unexpected(ParseError::MissingInfix);
         }
         return result;
     }
