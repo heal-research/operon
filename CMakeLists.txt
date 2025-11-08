@@ -84,7 +84,6 @@ add_library(operon::operon ALIAS operon_operon)
 
 # ---- Required dependencies ----
 find_package(AriaCsvParser REQUIRED)
-find_package(byte-lite REQUIRED)
 find_package(cpp-sort REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(eve REQUIRED)
@@ -95,11 +94,10 @@ find_package(lbfgs REQUIRED)
 find_package(libassert REQUIRED)
 find_package(mdspan REQUIRED)
 find_package(Microsoft.GSL CONFIG REQUIRED)
-find_package(outcome REQUIRED)
 find_package(pratt-parser REQUIRED)
-find_package(span-lite REQUIRED)
 find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
+find_package(tl-expected REQUIRED)
 find_package(unordered_dense REQUIRED)
 find_package(vstat REQUIRED)
 find_package(xxHash)
@@ -256,9 +254,7 @@ target_link_libraries(operon_operon PRIVATE
     Taskflow::Taskflow
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense
-    nonstd::byte-lite
-    nonstd::span-lite
-    outcome::hl
+    tl::expected
 )
 
 if (USE_CERES AND Ceres_FOUND)
