@@ -73,10 +73,9 @@ auto ChangeFunctionMutation::operator()(Operon::RandomGenerator& random, Tree tr
         return tree; // no functions in the tree, nothing to do
     }
 
-    auto minArity = std::min(static_cast<size_t>(it->Arity), pset_.MinimumArity(it->HashValue));
-    auto maxArity = std::max(static_cast<size_t>(it->Arity), pset_.MaximumArity(it->HashValue));
+    auto arity = static_cast<size_t>(it->Arity);
 
-    auto n = pset_.SampleRandomSymbol(random, minArity, maxArity);
+    auto n = pset_.SampleRandomSymbol(random, arity, arity);
     it->Type = n.Type;
     it->HashValue = n.HashValue;
     return tree;
