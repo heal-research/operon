@@ -16,6 +16,7 @@
         "taskflow",
         "vectorclass",
         "vstat",
-        "xxhash"
+        "xxhash",
+        "tl-expected"
     ]
 }
