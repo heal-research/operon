@@ -103,6 +103,9 @@ struct Interpreter : public InterpreterBase<T> {
             ForwardPass(range, row, /*trace=*/true);
             ReverseTrace(range, row, jac);
         }
+
+        // Replace NaN values with zeros
+        jac = jac.isNaN().select(T{0}, jac);
     }
 
     auto JacRev(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final {
@@ -127,6 +130,9 @@ struct Interpreter : public InterpreterBase<T> {
             ForwardPass(range, row, /*trace=*/true);
             ForwardTrace(range, row, jac);
         }
+
+        // Replace NaN values with zeros
+        jac = jac.isNaN().select(T{0}, jac);
     }
 
     auto JacFwd(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final {
