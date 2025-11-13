@@ -118,6 +118,12 @@ namespace Operon::Test::Util {
                         buffer.col(i) = buffer.col(j).pow(buffer.col(k));
                         break;
                     }
+                    case NodeType::Powabs: {
+                        auto j = i-1;
+                        auto k = j - (nodes[j].Length + 1);
+                        buffer.col(i) = buffer.col(j).abs().pow(buffer.col(k));
+                        break;
+                    }
                     case NodeType::Abs: {
                         buffer.col(i) = buffer.col(i-1).abs();
                         break;

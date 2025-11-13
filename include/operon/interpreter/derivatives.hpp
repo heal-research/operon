@@ -66,6 +66,13 @@ namespace Operon {
         }
     };
 
+    template<typename T, std::size_t S>
+    struct Diff<T, Operon::NodeType::Powabs, S> {
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+            Backend::Powabs<T, S>(nodes, primal, trace, i, j);
+        }
+    };
+
     // unary functions
     template<typename T, std::size_t S>
     struct Diff<T, Operon::NodeType::Abs, S> {
