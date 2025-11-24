@@ -24,6 +24,7 @@ namespace Operon {
         { NodeType::Fmax,     std::make_pair("fmax", "maximum function f(a,b) = max(a,b)" ) },
         { NodeType::Aq,       std::make_pair("aq", "analytical quotient f(a,b) = a / sqrt(1 + b^2)" ) },
         { NodeType::Pow,      std::make_pair("pow", "raise to power f(a,b) = a^b" ) },
+        { NodeType::Powabs,   std::make_pair("powabs", "raise absolute value to power f(a,b) = |a|^b" ) },
         { NodeType::Abs,      std::make_pair("abs", "absolute value function f(a) = abs(a)" ) },
         { NodeType::Acos,     std::make_pair("acos", "inverse cosine function f(a) = acos(a)" ) },
         { NodeType::Asin,     std::make_pair("asin", "inverse sine function f(a) = asin(a)" ) },

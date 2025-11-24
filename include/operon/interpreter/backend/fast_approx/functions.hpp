@@ -83,6 +83,10 @@ namespace Operon::Backend {
             return fast_approx::PowImpl<Precision>(x, y);
         }
 
+        inline auto constexpr Powabs(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar {
+            return fast_approx::PowabsImpl<Precision>(x, y);
+        }
+
         inline auto constexpr Tanh(Operon::Scalar x) -> Operon::Scalar {
             return fast_approx::TanhImpl<Precision>(x);
         }
@@ -163,6 +167,11 @@ namespace Operon::Backend {
     template<typename T, std::size_t S>
     auto Pow(T* res, T const* a, T const* b) {
         std::transform(a, a+S, b, res, detail::fast_approx::Pow);
+    }
+
+    template<typename T, std::size_t S>
+    auto Powabs(T* res, T const* a, T const* b) {
+        std::transform(a, a+S, b, res, detail::fast_approx::Powabs);
     }
 
     // unary functions

@@ -73,6 +73,17 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
+    auto Powabs(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+        if (j == i-1) {
+            auto const k = j - (nodes[j].Length + 1);
+            Col(trace, j) = Col(primal, i) * Col(primal, k) * blaze::sign(Col(primal, j)) / blaze::abs(Col(primal, j));
+        } else {
+            auto const k = i-1;
+            Col(trace, j) = Col(primal, i) * blaze::log(blaze::abs(Col(primal, k)));
+        }
+    }
+
+    template<typename T, std::size_t S>
     auto Min(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto k = j == i - 1 ? (j - nodes[j].Length - 1) : i - 1;
         auto const* a = Ptr(primal, j);

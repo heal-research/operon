@@ -75,6 +75,17 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
+    auto Powabs(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+        if (j == i-1) {
+            auto const k = j - (nodes[j].Length + 1);
+            Col(trace, j) = Col(primal, i) * Col(primal, k) * Col(primal, j).sign() / Col(primal, j).abs();
+        } else {
+            auto const k = i-1;
+            Col(trace, j) = Col(primal, i) * Col(primal, k).abs().log();
+        }
+    }
+
+    template<typename T, std::size_t S>
     auto Min(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto k = j == i - 1 ? (j - nodes[j].Length - 1) : i - 1;
         Col(trace, j) = Col(primal, j).binaryExpr(Col(primal, k), detail::FComp<std::less<>>{});

@@ -253,6 +253,11 @@ namespace Operon::Backend {
         std::transform(a, a+S, b, res, [&](auto x, auto y) { return weight * detail::vdt::Pow(x, y); });
     }
 
+    template<typename T, std::size_t S>
+    auto Powabs(T* res, T weight, T const* a, T const* b) {
+        std::transform(a, a+S, b, res, [&](auto x, auto y) { return weight * detail::vdt::Pow(std::abs(x), y); });
+    }
+
     // unary functions
     template<typename T, std::size_t S>
     auto Cpy(T* res, T weight, T const* arg) {

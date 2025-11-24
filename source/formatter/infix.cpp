@@ -47,6 +47,14 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 FormatNode(tree, variableNames, j, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), " ^ ");
                 FormatNode(tree, variableNames, k, current, decimalPrecision);
+            } else if (s.Type == NodeType::Powabs) {
+                // format powabs(a,b) as abs(a)^b
+                auto j = i - 1;
+                auto k = j - tree[j].Length - 1;
+                fmt::format_to(std::back_inserter(current), "abs(");
+                FormatNode(tree, variableNames, j, current, decimalPrecision);
+                fmt::format_to(std::back_inserter(current), ") ^ ");
+                FormatNode(tree, variableNames, k, current, decimalPrecision);
             } else if (s.Type == NodeType::Aq) {
                 // format aq(a,b) as a / (1 + b^2)
                 auto j = i - 1;
