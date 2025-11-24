@@ -38,6 +38,7 @@ static const Operon::Map<std::string, NodeType> Primitives {
     { "fmax",     NodeType::Fmax },
     { "aq",       NodeType::Aq },
     { "pow",      NodeType::Pow },
+    { "powabs",   NodeType::Powabs },
     { "abs",      NodeType::Abs },
     { "acos",     NodeType::Acos },
     { "asin",     NodeType::Asin },
@@ -137,7 +138,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
     cxxopts::Options opts(name, desc);
     opts.set_width(width);
 
-    std::string const symbols = "add, sub, mul, div, exp, log, square, sqrt, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, abs, aq, ceil, floor, fmin, fmax, log1p, logabs, sqrtabs";
+    std::string const symbols = "add, sub, mul, div, exp, log, square, sqrt, cbrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, abs, aq, ceil, floor, fmin, fmax, log1p, logabs, sqrtabs, pow, powabs";
 
     opts.add_options()
         ("dataset", "Dataset file name (csv) (required)", cxxopts::value<std::string>())

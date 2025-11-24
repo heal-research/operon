@@ -82,6 +82,11 @@ namespace Operon::Backend {
         Map<T, S>(res) = weight * Fastor::pow(Map<T, S>(a), Map<T, S>(b));
     }
 
+    template<typename T, std::size_t S>
+    auto Powabs(T* res, T weight, T* a, T* b) {
+        Map<T, S>(res) = weight * Fastor::pow(Fastor::abs(Map<T, S>(a)), Map<T, S>(b));
+    }
+
     // unary functions
     template<typename T, std::size_t S>
     auto Cpy(T* res, T weight, T* arg) {

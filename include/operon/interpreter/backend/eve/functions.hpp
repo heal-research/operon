@@ -92,6 +92,14 @@ namespace Operon::Backend {
         });
     }
 
+    template<typename T, std::size_t S>
+    requires (S % eve::wide<T>::size() == 0)
+    auto Powabs(T* res, T weight, T const* a, T const* b) {
+        eve::algo::transform_to(eve::views::zip(std::span{a, S}, b), res, [weight](auto t) {
+            return weight * eve::pow(eve::abs(eve::get<0>(t)), eve::get<1>(t));
+        });
+    }
+
     // unary functions
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)

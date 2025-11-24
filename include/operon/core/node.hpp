@@ -23,33 +23,34 @@ enum class NodeType : uint32_t {
     // binary symbols
     Aq       = 1U << 6U,
     Pow      = 1U << 7U,
+    Powabs   = 1U << 8U,
 
     // unary symbols
-    Abs      = 1U << 8U,
-    Acos     = 1U << 9U,
-    Asin     = 1U << 10U,
-    Atan     = 1U << 11U,
-    Cbrt     = 1U << 12U,
-    Ceil     = 1U << 13U,
-    Cos      = 1U << 14U,
-    Cosh     = 1U << 15U,
-    Exp      = 1U << 16U,
-    Floor    = 1U << 17U,
-    Log      = 1U << 18U,
-    Logabs   = 1U << 19U,
-    Log1p    = 1U << 20U,
-    Sin      = 1U << 21U,
-    Sinh     = 1U << 22U,
-    Sqrt     = 1U << 23U,
-    Sqrtabs  = 1U << 24U,
-    Tan      = 1U << 25U,
-    Tanh     = 1U << 26U,
-    Square   = 1U << 27U,
+    Abs      = 1U << 9U,
+    Acos     = 1U << 10U,
+    Asin     = 1U << 11U,
+    Atan     = 1U << 12U,
+    Cbrt     = 1U << 13U,
+    Ceil     = 1U << 14U,
+    Cos      = 1U << 15U,
+    Cosh     = 1U << 16U,
+    Exp      = 1U << 17U,
+    Floor    = 1U << 18U,
+    Log      = 1U << 19U,
+    Logabs   = 1U << 20U,
+    Log1p    = 1U << 21U,
+    Sin      = 1U << 22U,
+    Sinh     = 1U << 23U,
+    Sqrt     = 1U << 24U,
+    Sqrtabs  = 1U << 25U,
+    Tan      = 1U << 26U,
+    Tanh     = 1U << 27U,
+    Square   = 1U << 28U,
 
     // nullary symbols (dynamic can be anything)
-    Dynamic  = 1U << 28U,
-    Constant = 1U << 29U,
-    Variable = 1U << 30U
+    Dynamic  = 1U << 29U,
+    Constant = 1U << 30U,
+    Variable = 1U << 31U
 };
 
 using PrimitiveSetConfig = NodeType;
@@ -118,7 +119,7 @@ struct Node {
         , Parent(0UL)
         , Type(type)
     {
-        if (Type < NodeType::Abs) // Add, Mul, Sub, Div, Aq, Pow
+        if (Type < NodeType::Abs) // Add, Mul, Sub, Div, Aq, Pow, Powabs
         {
             Arity = 2;
         } else if (Type < NodeType::Dynamic) // Log, Exp, Sin, Cos, Tan, Tanh, Sqrt, Cbrt, Square
@@ -186,6 +187,7 @@ struct Node {
     [[nodiscard]] inline auto IsDivision() const -> bool { return Is<NodeType::Div>(); }
     [[nodiscard]] inline auto IsAq() const -> bool { return Is<NodeType::Aq>(); }
     [[nodiscard]] inline auto IsPow() const -> bool { return Is<NodeType::Pow>(); }
+    [[nodiscard]] inline auto IsPowabs() const -> bool { return Is<NodeType::Powabs>(); }
     [[nodiscard]] inline auto IsExp() const -> bool { return Is<NodeType::Exp>(); }
     [[nodiscard]] inline auto IsLog() const -> bool { return Is<NodeType::Log>(); }
     [[nodiscard]] inline auto IsSin() const -> bool { return Is<NodeType::Sin>(); }
@@ -204,7 +206,7 @@ struct Node {
     static auto constexpr IsBinary = Type > NodeType::Fmax && Type < NodeType::Abs;
 
     template<NodeType Type>
-    static auto constexpr IsUnary = Type > NodeType::Pow && Type < NodeType::Dynamic;
+    static auto constexpr IsUnary = Type > NodeType::Powabs && Type < NodeType::Dynamic;
 
     template<NodeType Type>
     static auto constexpr IsNullary = Type > NodeType::Square;

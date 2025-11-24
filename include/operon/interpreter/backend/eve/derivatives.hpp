@@ -120,6 +120,29 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
+    auto Powabs(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+        using W = eve::wide<T>;
+        static constexpr auto L = W::size();
+
+        auto* res = Ptr(trace, j);
+        auto const* pi = Ptr(primal, i);
+        auto const* pj = Ptr(primal, j);
+        if (j == i-1) {
+            auto const k = j - (nodes[j].Length + 1);
+            auto const* pk = Ptr(primal, k);
+            for (auto s = 0UL; s < S; s += L) {
+                eve::store(W{pi+s} * W{pk+s} * eve::sign(W{pj+s}) / eve::abs(W{pj+s}), res+s);
+            }
+        } else {
+            auto const k = i-1;
+            auto const* pk = Ptr(primal, k);
+            for (auto s = 0UL; s < S; s += L) {
+                eve::store(W{pi+s} * eve::log(eve::abs(W{pk+s})), res+s);
+            }
+        }
+    }
+
+    template<typename T, std::size_t S>
     auto Min(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto k = j == i - 1 ? (j - nodes[j].Length - 1) : i - 1;
         auto* res = Ptr(trace, j);
