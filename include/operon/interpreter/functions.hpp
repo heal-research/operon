@@ -158,6 +158,14 @@ namespace Operon {
         }
     };
 
+    template<typename T, bool C, std::size_t S>
+    struct Func<T, Operon::NodeType::Powabs, C, S> {
+        auto operator()(Operon::Vector<Operon::Node> const& nodes, Backend::View<T, S> view, std::integral auto result, std::integral auto i, std::integral auto j) {
+            auto const w = nodes[result].Value;
+            Backend::Powabs<T, S>(Ptr<T, S>(view, result), w, Ptr<T, S>(view, i), Ptr<T, S>(view, j));
+        }
+    };
+
     // unary operations
     template<typename T, bool C, std::size_t S>
     struct Func<T, Operon::NodeType::Abs, C, S> {

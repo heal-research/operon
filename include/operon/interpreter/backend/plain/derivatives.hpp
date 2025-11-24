@@ -104,6 +104,25 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
+    auto Powabs(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+        auto* res = Ptr(trace, j);
+        auto const* pi = Ptr(primal, i);
+        auto const* pj = Ptr(primal, j);
+
+        if (j == i-1) {
+            auto const k = j - (nodes[j].Length + 1);
+            auto const* pk = Ptr(primal, k);
+            for (auto s = 0UL; s < S; ++s) {
+                res[s] = pi[s] * pk[s] * detail::Sgn(pj[s]) / std::abs(pj[s]);
+            }
+        } else {
+            auto const k = i-1;
+            auto const* pk = Ptr(primal, k);
+            std::transform(pi, pi+S, pk, res, [](auto x, auto y) { return x * std::log(std::abs(y)); });
+        }
+    }
+
+    template<typename T, std::size_t S>
     auto Min(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto k = j == i - 1 ? (j - nodes[j].Length - 1) : i - 1;
         auto* res = Ptr(trace, j);

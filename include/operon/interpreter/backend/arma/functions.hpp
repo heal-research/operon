@@ -85,6 +85,11 @@ namespace Operon::Backend {
         Map<T, S>(res) = weight * arma::pow(Map<T const, S>(a), Map<T const, S>(b));
     }
 
+    template<typename T, std::size_t S>
+    auto Powabs(T* res, T weight, T const* a, T const* b) {
+        Map<T, S>(res) = weight * arma::pow(arma::abs(Map<T const, S>(a)), Map<T const, S>(b));
+    }
+
     // unary functions
     template<typename T, std::size_t S>
     auto Cpy(T* res, T weight, T const* arg) {

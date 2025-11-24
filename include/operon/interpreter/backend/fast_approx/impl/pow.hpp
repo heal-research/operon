@@ -47,6 +47,11 @@ namespace Operon::Backend::detail::fast_approx {
             // else { return PowV2(x, y); }
             else { return ExpImpl<P>(y * LogImpl<P>(x)); }
         }
+
+        template<std::size_t P = 0>
+        inline auto constexpr PowabsImpl(Operon::Scalar x, Operon::Scalar y) -> Operon::Scalar  {
+            return PowImpl<P>(std::abs(x), y);
+        }
 } // namespace Operon::Backend::detail::fast_approx
 
 #endif
