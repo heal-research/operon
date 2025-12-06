@@ -462,32 +462,44 @@ private:
     mutable std::vector<Operon::Scalar> sigma_;
 };
 
-template <typename DTable>
+template <typename DTable, typename Lik>
 class OPERON_EXPORT BayesianInformationCriterionEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
 public:
     explicit BayesianInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
-        : Base(problem, dtable, MSE{})
+        : Base(problem, dtable, SSE{}), sigma_(1, 0.001)
     {
     }
 
+    auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const { sigma_ = std::move(sigma); }
+
     auto
     operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+private:
+    mutable std::vector<Operon::Scalar> sigma_;
 };
 
-template <typename DTable>
+template <typename DTable, typename Lik>
 class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
 public:
     explicit AkaikeInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
-        : Base(problem, dtable, MSE{})
+        : Base(problem, dtable, SSE{}), sigma_(1, 0.001)
     {
     }
 
+    auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const { sigma_ = std::move(sigma); }
+
     auto
     operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+private:
+    mutable std::vector<Operon::Scalar> sigma_;
 };
 
 template<typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
@@ -542,6 +554,18 @@ using GaussianLikelihoodEvaluator = LikelihoodEvaluator<DTable, GaussianLikeliho
 
 template<typename DTable>
 using PoissonLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>;
+
+template<typename DTable>
+using GaussianBayesianInformationCriterionEvaluator = BayesianInformationCriterionEvaluator<DTable, GaussianLikelihood<Operon::Scalar>>;
+
+template<typename DTable>
+using PoissonBayesianInformationCriterionEvaluator = BayesianInformationCriterionEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>;
+
+template<typename DTable>
+using GaussianAkaikeInformationCriterionEvaluator = AkaikeInformationCriterionEvaluator<DTable, GaussianLikelihood<Operon::Scalar>>;
+
+template<typename DTable>
+using PoissonAkaikeInformationCriterionEvaluator = AkaikeInformationCriterionEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>;
 
 } // namespace Operon
 #endif
