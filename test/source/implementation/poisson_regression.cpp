@@ -134,7 +134,7 @@ namespace Operon::Test {
         fmt::print("{}\n", poissonEvaluator.TotalEvaluations());
 
         // validate results
-        Operon::AkaikeInformationCriterionEvaluator<decltype(dt)> aicEvaluator{&problem, &dt};
+        Operon::PoissonAkaikeInformationCriterionEvaluator<decltype(dt)> aicEvaluator{&problem, &dt};
 
         for (auto ind : algorithm.Best()) {
             auto a = poissonEvaluator(rng, ind, {});

@@ -7,6 +7,7 @@
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
+#include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
 #include "operon/random/random.hpp"
@@ -157,23 +158,86 @@ namespace Operon {
         }
     }
 
-    template<> auto OPERON_EXPORT
-    BayesianInformationCriterionEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+    // Shared implementation for Bayesian Information Criterion
+    template<typename Likelihood>
+    auto BICImpl(const typename BayesianInformationCriterionEvaluator<DefaultDispatch, Likelihood>::Base& base,
+                 Operon::RandomGenerator& rng,
+                 Individual const& ind,
+                 Operon::Span<Operon::Scalar> buf,
+                 double sigma) -> typename EvaluatorBase::ReturnType {
+        ++base.CallCount;
+        auto const* problem = base.GetProblem();
+        auto const* dataset = problem->GetDataset();
         auto const& tree = ind.Genotype;
+        auto const* dtable = base.GetDispatchTable();
+
+        auto trainingRange = problem->TrainingRange();
+        auto targetValues = dataset->GetValues(problem->TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
+
+        TInterpreter const interpreter{dtable, dataset, &tree};
+        ++base.ResidualEvaluations;
+        ENSURE(buf.size() >= trainingRange.Size());
+        auto coeff = tree.GetCoefficients();
+        interpreter.Evaluate(coeff, trainingRange, buf);
+
         auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
-        auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
-        auto mse = Evaluator::operator()(rng, ind, buf).front();
-        auto bic = (n * std::log(mse)) + (p * std::log(n));
+        auto n = static_cast<Operon::Scalar>(trainingRange.Size());
+
+        auto likelihood = Likelihood::ComputeLikelihood(buf, targetValues, sigma);
+        auto bic = 2.0 * likelihood + p * std::log(n);
+
         if (!std::isfinite(bic)) { bic = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(bic) };
     }
 
     template<> auto OPERON_EXPORT
-    AkaikeInformationCriterionEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
-        auto mse = Evaluator::operator()(rng, ind, buf).front();
-        auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
-        auto aik = n/2 * (std::log(Operon::Math::Tau) + std::log(mse) + 1);
-        if (!std::isfinite(aik)) { aik = EvaluatorBase::ErrMax; }
-        return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(aik) };
+    BayesianInformationCriterionEvaluator<DefaultDispatch, GaussianLikelihood<Operon::Scalar>>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+        return BICImpl<GaussianLikelihood<Operon::Scalar>>(*this, rng, ind, buf, sigma_);
+    }
+
+    template<> auto OPERON_EXPORT
+    BayesianInformationCriterionEvaluator<DefaultDispatch, PoissonLikelihood<Operon::Scalar>>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+        return BICImpl<PoissonLikelihood<Operon::Scalar>>(*this, rng, ind, buf, sigma_);
+    }
+
+    // Shared implementation for Akaike Information Criterion
+    template<typename Likelihood>
+    auto AICImpl(const typename AkaikeInformationCriterionEvaluator<DefaultDispatch, Likelihood>::Base& base,
+                 Operon::RandomGenerator& rng,
+                 Individual const& ind,
+                 Operon::Span<Operon::Scalar> buf,
+                 double sigma) -> typename EvaluatorBase::ReturnType {
+        ++base.CallCount;
+        auto const* problem = base.GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto const& tree = ind.Genotype;
+        auto const* dtable = base.GetDispatchTable();
+
+        auto trainingRange = problem->TrainingRange();
+        auto targetValues = dataset->GetValues(problem->TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
+
+        TInterpreter const interpreter{dtable, dataset, &tree};
+        ++base.ResidualEvaluations;
+        ENSURE(buf.size() >= trainingRange.Size());
+        auto coeff = tree.GetCoefficients();
+        interpreter.Evaluate(coeff, trainingRange, buf);
+
+        auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
+
+        auto likelihood = Likelihood::ComputeLikelihood(buf, targetValues, sigma);
+        auto aic = 2.0 * (p + likelihood);
+
+        if (!std::isfinite(aic)) { aic = EvaluatorBase::ErrMax; }
+        return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(aic) };
+    }
+
+    template<> auto OPERON_EXPORT
+    AkaikeInformationCriterionEvaluator<DefaultDispatch, GaussianLikelihood<Operon::Scalar>>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+        return AICImpl<GaussianLikelihood<Operon::Scalar>>(*this, rng, ind, buf, sigma_);
+    }
+
+    template<> auto OPERON_EXPORT
+    AkaikeInformationCriterionEvaluator<DefaultDispatch, PoissonLikelihood<Operon::Scalar>>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+        return AICImpl<PoissonLikelihood<Operon::Scalar>>(*this, rng, ind, buf, sigma_);
     }
 } // namespace Operon
