@@ -16,6 +16,8 @@ Checks: "*,\
   -altera-struct-pack-align,\
   -altera-id-dependent-backward-branch,\
   -bugprone-easily-swappable-parameters,\
+  -boost-use-ranges,\
+  -modernize-use-ranges,\
   -misc-non-private-member-variables-in-classes"
 WarningsAsErrors: ''
 CheckOptions:
