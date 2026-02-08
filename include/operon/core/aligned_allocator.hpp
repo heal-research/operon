@@ -40,7 +40,6 @@ public:
     template<typename U>
     auto operator!=(AlignedAllocator<U> const&) -> bool { return false; }
 
-    // NOLINTBEGIN(readability-identifier-naming)
     [[nodiscard]] auto allocate(std::size_t n) -> T* {
         if (n > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
             throw std::bad_array_new_length();

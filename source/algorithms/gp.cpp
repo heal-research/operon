@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#include <algorithm>                         // for max, min_element
-#include <atomic>                            // for atomic_bool
-#include <chrono>                            // for steady_clock
-#include <memory>                            // for allocator, allocator_tra...
-#include <optional>                          // for optional
-#include <taskflow/taskflow.hpp>             // for taskflow, subflow
-#include <taskflow/algorithm/for_each.hpp>   // for taskflow.for_each_index
-#include <vector>                            // for vector, vector::size_type
+#include <algorithm> // for max, min_element
+#include <chrono> // for steady_clock
+#include <cstddef> // for size_t
+#include <functional> // for std::function
+#include <thread> // for std::thread
+#include <utility> // for std::move
+#include <vector> // for std::vector
+// NOLINTBEGIN(misc-include-cleaner)
+#include <taskflow/algorithm/for_each.hpp> // for taskflow.for_each_index
+#include <taskflow/core/flow_builder.hpp> // for subflow
+#include <taskflow/core/taskflow.hpp> // for taskflow
+#include <taskflow/taskflow.hpp> // for needed macros
+// NOLINTEND(misc-include-cleaner)
 
 #include "operon/algorithms/gp.hpp"
-#include "operon/core/contracts.hpp"         // for ENSURE
-#include "operon/core/operator.hpp"          // for OperatorBase
-#include "operon/core/problem.hpp"           // for Problem
-#include "operon/core/range.hpp"             // for Range
-#include "operon/core/tree.hpp"              // for Tree
-#include "operon/operators/initializer.hpp"  // for CoefficientInitializerBase
-#include "operon/operators/reinserter.hpp"   // for ReinserterBase
+#include "operon/core/contracts.hpp" // for ENSURE
+#include "operon/core/types.hpp"
+#include "operon/operators/initializer.hpp"
+#include "operon/operators/reinserter.hpp"
 
 namespace Operon {
 auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report, bool warmStart) -> void
@@ -32,15 +34,16 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     const auto& problem = GetProblem();
 
     auto t0 = std::chrono::steady_clock::now();
-    auto computeElapsed = [t0]() {
+    auto computeElapsed = [t0]() -> double {
         auto t1 = std::chrono::steady_clock::now();
-        constexpr double ms{1e3};
+        constexpr double ms { 1e3 };
         return static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()) / ms;
     };
 
     // random seeds for each thread
-    size_t s = std::max(config.PopulationSize, config.PoolSize);
+    size_t const s = std::max(config.PopulationSize, config.PoolSize);
     std::vector<Operon::RandomGenerator> rngs;
+    rngs.reserve(s);
     for (size_t i = 0; i < s; ++i) {
         rngs.emplace_back(random());
     }
@@ -55,7 +58,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     ENSURE(executor.num_workers() > 0);
     std::vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
 
-    auto stop = [&]() {
+    auto stop = [&]() -> bool {
         Elapsed() = computeElapsed();
         return generator->Terminate() || Generation() == config.Generations || Elapsed() > static_cast<double>(config.TimeLimit);
     };
@@ -66,48 +69,52 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     // while loop control flow
     tf::Taskflow taskflow;
     auto [init, cond, body, back, done] = taskflow.emplace(
-        [&](tf::Subflow& subflow) {
-            auto prepareEval = subflow.emplace([&]() { evaluator->Prepare(parents); }).name("prepare evaluator");
-            auto eval = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
-                auto id = executor.this_worker_id();
-                // make sure the worker has a large enough buffer
-                if (slots[id].size() < trainSize) {
-                    slots[id].resize(trainSize);
-                }
-                parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
-            }).name("evaluate population");
-            auto reportProgress = subflow.emplace([&](){ if (report) { std::invoke(report); } }).name("report progress");
+        [&](tf::Subflow& subflow) -> void {
+            auto prepareEval = subflow.emplace([&]() -> void { evaluator->Prepare(parents); }).name("prepare evaluator");
+            auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
+                                   auto id = executor.this_worker_id();
+                                   // make sure the worker has a large enough buffer
+                                   if (slots[id].size() < trainSize) {
+                                       slots[id].resize(trainSize);
+                                   }
+                                   parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
+                               })
+                            .name("evaluate population");
+            auto reportProgress = subflow.emplace([&]() -> void { if (report) { std::invoke(report); } }).name("report progress");
             prepareEval.precede(eval);
             eval.precede(reportProgress);
 
             if (!(IsFitted() && warmStart)) {
-                auto init = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
-                    parents[i].Genotype = (*treeInit)(rngs[i]);
-                    (*coeffInit)(rngs[i], parents[i].Genotype);
-                }).name("initialize population");
+                auto init = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
+                                       parents[i].Genotype = (*treeInit)(rngs[i]);
+                                       (*coeffInit)(rngs[i], parents[i].Genotype);
+                                   })
+                                .name("initialize population");
 
                 init.precede(prepareEval);
             }
         }, // init
         stop, // loop condition
-        [&](tf::Subflow& subflow) {
-            auto keepElite = subflow.emplace([&]() {
-                offspring[0] = *std::min_element(parents.begin(), parents.end(), [&](const auto& lhs, const auto& rhs) { return lhs[idx] < rhs[idx]; });
-            }).name("keep elite");
-            auto prepareGenerator = subflow.emplace([&]() { generator->Prepare(parents); }).name("prepare generator");
-            auto generateOffspring = subflow.for_each_index(size_t{1}, offspring.size(), size_t{1}, [&](size_t i) {
-                slots[executor.this_worker_id()].resize(trainSize);
-                auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
-                while (!stop()) {
-                    if (auto result = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf); result.has_value()) {
-                        offspring[i] = std::move(result.value());
-                        return;
-                    }
-                }
-            }).name("generate offspring");
-            auto reinsert = subflow.emplace([&]() { (*reinserter)(random, Parents(), offspring); }).name("reinsert");
-            auto incrementGeneration = subflow.emplace([&]() { ++Generation(); }).name("increment generation");
-            auto reportProgress = subflow.emplace([&](){ if (report) { std::invoke(report); } }).name("report progress");
+        [&](tf::Subflow& subflow) -> void {
+            auto keepElite = subflow.emplace([&]() -> void {
+                                        offspring[0] = *std::ranges::min_element(parents, [&](const auto& lhs, const auto& rhs) -> auto { return lhs[idx] < rhs[idx]; });
+                                    })
+                                 .name("keep elite");
+            auto prepareGenerator = subflow.emplace([&]() -> void { generator->Prepare(parents); }).name("prepare generator");
+            auto generateOffspring = subflow.for_each_index(size_t { 1 }, offspring.size(), size_t { 1 }, [&](size_t i) -> void {
+                                                slots[executor.this_worker_id()].resize(trainSize);
+                                                auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
+                                                while (!stop()) {
+                                                    if (auto result = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf); result.has_value()) {
+                                                        offspring[i] = std::move(result.value());
+                                                        return;
+                                                    }
+                                                }
+                                            })
+                                         .name("generate offspring");
+            auto reinsert = subflow.emplace([&]() -> void { (*reinserter)(random, Parents(), offspring); }).name("reinsert");
+            auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
+            auto reportProgress = subflow.emplace([&]() -> void { if (report) { std::invoke(report); } }).name("report progress");
 
             // set-up subflow graph
             keepElite.precede(prepareGenerator);
@@ -116,8 +123,8 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             reinsert.precede(incrementGeneration);
             incrementGeneration.precede(reportProgress);
         }, // loop body (evolutionary main loop)
-        [&]() { return 0; }, // jump back to the next iteration
-        [&]() { IsFitted() = true; /* all done */ }  // work done, report last gen and stop
+        [&]() -> int { return 0; }, // jump back to the next iteration
+        [&]() -> void { IsFitted() = true; /* all done */ } // work done, report last gen and stop
     ); // evolutionary loop
 
     init.name("init");
@@ -136,7 +143,8 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     executor.wait_for_all();
 }
 
-auto GeneticProgrammingAlgorithm::Run(Operon::RandomGenerator& random, std::function<void()> report, size_t threads, bool warmStart) -> void {
+auto GeneticProgrammingAlgorithm::Run(Operon::RandomGenerator& random, std::function<void()> report, size_t threads, bool warmStart) -> void
+{
     if (threads == 0) {
         threads = std::thread::hardware_concurrency();
     }

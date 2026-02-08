@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fmt/core.h>
 #include <fmt/format.h>
-#include <iterator>
 #include <limits>
 #include <memory>
 #include <scn/scan.h>
@@ -19,7 +17,6 @@
 #include <taskflow/algorithm/reduce.hpp>
 #include "util.hpp"
 
-#include "operon/algorithms/ga_base.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/version.hpp"
@@ -106,7 +103,7 @@ auto ParseRange(std::string const& str) -> std::pair<size_t, size_t>
 
 auto ParsePrimitiveSetConfig(const std::string& options) -> PrimitiveSetConfig
 {
-    auto config = static_cast<PrimitiveSetConfig>(0);
+    auto config = static_cast<PrimitiveSetConfig>(NodeType::Constant);
     for (auto& s : Split(options, ',')) {
         if (auto it = Primitives.find(s); it != Primitives.end()) {
             config |= it->second;
@@ -193,19 +190,19 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
         fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
         std::exit(EXIT_FAILURE);
     }
-    if (result.arguments().empty() || result.count("help") > 0) {
+    if (result.arguments().empty() || result.contains("help")) {
         fmt::print("{}\n", opts.help());
         std::exit(EXIT_SUCCESS);
     }
-    if (result.count("version") > 0) {
+    if (result.contains("version")) {
         fmt::print("{}\n", Operon::Version());
         std::exit(EXIT_SUCCESS);
     }
-    if (result.count("target") == 0) {
+    if (!result.contains("target")) {
         fmt::print(stderr, "error: no target variable was specified.\n");
         std::exit(EXIT_FAILURE);
     }
-    if (result.count("dataset") == 0) {
+    if (!result.contains("dataset")) {
         fmt::print(stderr, "error: no dataset was specified.\n");
         std::exit(EXIT_FAILURE);
     }
