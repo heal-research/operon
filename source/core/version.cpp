@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <fmt/base.h>
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <iterator>
@@ -12,7 +13,7 @@
 namespace Operon {
 
 auto Version() -> std::string {
-#if defined(USE_SINGLE_PRECISION)
+#ifdef USE_SINGLE_PRECISION
         constexpr auto precision = "single";
 #else
         constexpr auto precision = "double";
