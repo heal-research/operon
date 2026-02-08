@@ -20,11 +20,28 @@
     fluky.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = inputs@{ self, flake-parts, nixpkgs, foolnotion, fluky, pratt-parser, vdt, vstat, lbfgs }:
+  outputs =
+    inputs@{
+      self,
+      flake-parts,
+      nixpkgs,
+      foolnotion,
+      fluky,
+      pratt-parser,
+      vdt,
+      vstat,
+      lbfgs,
+    }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [ "x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin" ];
+      systems = [
+        "x86_64-linux"
+        "x86_64-darwin"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
 
-      perSystem = { pkgs, system, ... }:
+      perSystem =
+        { pkgs, system, ... }:
         let
           pkgs = import self.inputs.nixpkgs {
             inherit system;
@@ -34,29 +51,40 @@
                 fluky = fluky.packages.${system}.default;
                 lbfgs = lbfgs.packages.${system}.default;
                 pratt-parser = pratt-parser.packages.${system}.default;
-                vdt   = vdt.packages.${system}.default;
+                vdt = vdt.packages.${system}.default;
                 vstat = vstat.packages.${system}.default;
               })
             ];
           };
           enableShared = !pkgs.stdenv.hostPlatform.isStatic;
           enableTesting = true;
-          stdenv = pkgs.llvmPackages_20.stdenv;
-          operon = import ./operon.nix { inherit stdenv pkgs system; enableShared = enableShared; enableTesting = enableTesting; };
+          inherit (pkgs.llvmPackages_20) stdenv;
+          operon = import ./operon.nix {
+            inherit stdenv pkgs system;
+            inherit enableShared enableTesting;
+          };
         in
-        rec
-        {
+        rec {
           packages = {
             default = operon.overrideAttrs (old: {
-              cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" "-DCPM_USE_LOCAL_PACKAGES=ON" ];
+              cmakeFlags = old.cmakeFlags ++ [
+                "-DBUILD_CLI_PROGRAMS=ON"
+                "-DCPM_USE_LOCAL_PACKAGES=ON"
+              ];
             });
 
             cli = operon.overrideAttrs (old: {
-              cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" "-DCPM_USE_LOCAL_PACKAGES=ON" ];
+              cmakeFlags = old.cmakeFlags ++ [
+                "-DBUILD_CLI_PROGRAMS=ON"
+                "-DCPM_USE_LOCAL_PACKAGES=ON"
+              ];
             });
 
             cli-static = operon.overrideAttrs (old: {
-              cmakeFlags = old.cmakeFlags ++ [ "-DBUILD_CLI_PROGRAMS=ON" "-DCPM_USE_LOCAL_PACKAGES=ON" ];
+              cmakeFlags = old.cmakeFlags ++ [
+                "-DBUILD_CLI_PROGRAMS=ON"
+                "-DCPM_USE_LOCAL_PACKAGES=ON"
+              ];
             });
 
             library = operon.overrideAttrs (old: {
@@ -71,18 +99,25 @@
           devShells.default = stdenv.mkDerivation {
             name = "operon";
 
-            nativeBuildInputs = operon.nativeBuildInputs ++ (with pkgs; [
-              clang-tools
-              cppcheck
-              include-what-you-use
-              cmake-language-server
-            ]);
+            nativeBuildInputs =
+              operon.nativeBuildInputs
+              ++ (with pkgs; [
+                clang-tools
+                cppcheck
+                include-what-you-use
+                cmake-language-server
+              ]);
 
-            buildInputs = operon.buildInputs ++ (with pkgs; [
-              gdb
-              graphviz
-              hyperfine
-            ]);
+            buildInputs =
+              operon.buildInputs
+              ++ pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") (
+                with pkgs;
+                [
+                  gdb
+                  graphviz
+                  hyperfine
+                ]
+              );
           };
 
           apps.operon-gp.program = "${packages.default}/bin/operon_gp";
