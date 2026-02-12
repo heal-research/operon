@@ -158,11 +158,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1768118802,
-        "narHash": "sha256-rYkKOwT41MZOr/dK9U3eP5+VBBgebjL8nfl5GbdyY/k=",
+        "lastModified": 1770555663,
+        "narHash": "sha256-fpjcpsiliR0tRyHakg/tFJcXQCFO1O+gg/7Lagl67ew=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "32ae5f34cefe14a2a0e4a53e1ca62da57b1a93c8",
+        "rev": "bbabbb8079b1e3901c6884e8c890b775f0ea72a9",
         "type": "github"
       },
       "original": {
@@ -197,11 +197,11 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1768118802,
-        "narHash": "sha256-rYkKOwT41MZOr/dK9U3eP5+VBBgebjL8nfl5GbdyY/k=",
+        "lastModified": 1770555663,
+        "narHash": "sha256-fpjcpsiliR0tRyHakg/tFJcXQCFO1O+gg/7Lagl67ew=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "32ae5f34cefe14a2a0e4a53e1ca62da57b1a93c8",
+        "rev": "bbabbb8079b1e3901c6884e8c890b775f0ea72a9",
         "type": "github"
       },
       "original": {
@@ -240,11 +240,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1762625476,
-        "narHash": "sha256-8ETcj49MjiqVdk+ph2Mh0wcA2QV2dAietP9D8b3Vkxw=",
+        "lastModified": 1770887990,
+        "narHash": "sha256-GhymsXvbQKP2WfTiV6VPUIYAc28IMWnPtttRR/tsb+U=",
         "owner": "foolnotion",
         "repo": "lbfgs",
-        "rev": "9e384ec6f597d4be4edc72fbf9dcadf70189df21",
+        "rev": "a9b2a47da72a5544c8766d73bb1ef4e8d5550ca3",
         "type": "github"
       },
       "original": {
@@ -255,11 +255,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1770543951,
-        "narHash": "sha256-nVNQKXddcjCBIxt9lJFq23aAdKO1dE10RApyHNb7+I8=",
+        "lastModified": 1770890526,
+        "narHash": "sha256-Q5Bq2bZ+8jZ1OZwBWKEL86LIr7Nh6sM0HZ9Fj7V4ae0=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "47bd959e3d0d5306929c499b8483d207da9a28bb",
+        "rev": "7ad9e3b90ab61ceba0a153923ac36bff0ff3f68a",
         "type": "github"
       },
       "original": {
@@ -366,11 +366,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1717246420,
-        "narHash": "sha256-11aCsUXBNBVREyZ7og4UkUVdKZU0hyk6JyR3LOrggwc=",
+        "lastModified": 1770887655,
+        "narHash": "sha256-oC+m4/UI1+z32n8fULqnKVt6mHWE/7RAT07ARDe0Xgw=",
         "owner": "foolnotion",
         "repo": "pratt-parser-calculator",
-        "rev": "5093c67e2e642178cce1bc455f7dee8720820642",
+        "rev": "2e0b13615c6ff1fb6381c0ac87796932b326bc89",
         "type": "github"
       },
       "original": {
@@ -437,11 +437,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1767618231,
-        "narHash": "sha256-L2n73nQyMUfeH0FVThvfxaiok13gaIZTjQ7wIFHkFEU=",
+        "lastModified": 1770888183,
+        "narHash": "sha256-ZFHhSOmwF71UHVd7JOk0/dEarmeHv4Tsm2vuMGInhEI=",
         "owner": "heal-research",
         "repo": "vstat",
-        "rev": "d4ddcbba1e58154f7321032e84b916447d67d460",
+        "rev": "cd753d0467ccc96389fb969551eccceca97f38d1",
         "type": "github"
       },
       "original": {
