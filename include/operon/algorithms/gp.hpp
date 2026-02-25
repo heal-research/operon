@@ -4,21 +4,19 @@
 #ifndef GP_HPP
 #define GP_HPP
 
-#include <cstddef>                         // for size_t
-#include <functional>                      // for reference_wrapper, function
-#include <operon/operon_export.hpp>        // for OPERON_EXPORT
-#include <thread>                          // for thread
-#include <utility>                         // for move
+#include <cstddef> // for size_t
+#include <functional> // for reference_wrapper, function
+#include <operon/operon_export.hpp> // for OPERON_EXPORT
 
-#include "operon/algorithms/config.hpp"    // for GeneticAlgorithmConfig
+#include "operon/algorithms/config.hpp" // for GeneticAlgorithmConfig
 #include "operon/algorithms/ga_base.hpp"
-#include "operon/core/individual.hpp"      // for Individual
-#include "operon/core/types.hpp"           // for Span, Vector, RandomGenerator
-#include "operon/operators/evaluator.hpp"  // for EvaluatorBase
-#include "operon/operators/generator.hpp"  // for OffspringGeneratorBase
+#include "operon/core/types.hpp" // for Span, Vector, RandomGenerator
+#include "operon/operators/generator.hpp" // for OffspringGeneratorBase
 
 // forward declaration
-namespace tf { class Executor; }
+namespace tf {
+class Executor;
+} // namespace tf
 
 namespace Operon {
 
@@ -34,8 +32,8 @@ public:
     {
     }
 
-    auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator&/*rng*/, std::function<void()> /*report*/ = nullptr, /*warmStart*/ bool = false) -> void;
-    auto Run(Operon::RandomGenerator& /*rng*/, std::function<void()> /*report*/ = nullptr, size_t /*threads*/= 0, /*warmStart*/ bool = false) -> void;
+    auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator& /*rng*/, std::function<void()> /*report*/ = nullptr, /*warmStart*/ bool = false) -> void;
+    auto Run(Operon::RandomGenerator& /*rng*/, std::function<void()> /*report*/ = nullptr, size_t /*threads*/ = 0, /*warmStart*/ bool = false) -> void;
 };
 } // namespace Operon
 

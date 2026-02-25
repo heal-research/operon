@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#include <algorithm>                                 // for stable_sort, copy_n, max
-#include <atomic>                                    // for atomic_bool
-#include <chrono>                                    // for steady_clock
-#include <cmath>                                     // for isfinite
-#include <iterator>                                  // for move_iterator, back_inse...
-#include <limits>                                    // for numeric_limits
-#include <memory>                                    // for allocator, allocator_tra...
-#include <optional>                                  // for optional
-#include <ranges>                                    // for ranges
-#include <taskflow/taskflow.hpp>                     // for taskflow, subflow
-#include <taskflow/algorithm/for_each.hpp>   // for taskflow.for_each_index
-#include <vector>                                    // for vector, vector::size_type
+#include <algorithm> // for stable_sort, copy_n, max
+#include <atomic> // for atomic_bool
+#include <chrono> // for steady_clock
+#include <cmath> // for isfinite
 #include <fmt/ranges.h>
+#include <iterator> // for move_iterator, back_inse...
+#include <limits> // for numeric_limits
+#include <memory> // for allocator, allocator_tra...
+#include <optional> // for optional
+#include <ranges> // for ranges
+#include <taskflow/algorithm/for_each.hpp> // for taskflow.for_each_index
+#include <taskflow/taskflow.hpp> // for taskflow, subflow
+#include <vector> // for vector, vector::size_type
 
 #include "operon/algorithms/nsga2.hpp"
-#include "operon/core/contracts.hpp"                 // for ENSURE
-#include "operon/core/operator.hpp"                  // for OperatorBase
-#include "operon/core/problem.hpp"                   // for Problem
-#include "operon/core/range.hpp"                     // for Range
-#include "operon/core/tree.hpp"                      // for Tree
-#include "operon/operators/initializer.hpp"          // for CoefficientInitializerBase
+#include "operon/core/contracts.hpp" // for ENSURE
+#include "operon/core/operator.hpp" // for OperatorBase
+#include "operon/core/problem.hpp" // for Problem
+#include "operon/core/range.hpp" // for Range
+#include "operon/core/tree.hpp" // for Tree
+#include "operon/operators/initializer.hpp" // for CoefficientInitializerBase
 #include "operon/operators/non_dominated_sorter.hpp" // for RankSorter
-#include "operon/operators/reinserter.hpp"           // for ReinserterBase
+#include "operon/operators/reinserter.hpp" // for ReinserterBase
 
 namespace Operon {
 
@@ -36,8 +36,8 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
         auto& front = fronts_[i];
         for (size_t obj = 0; obj < m; ++obj) {
             SingleObjectiveComparison comp(obj);
-            std::stable_sort(front.begin(), front.end(), [&](auto a, auto b) { return comp(pop[a], pop[b]); });
-            auto min = pop.front()[obj];
+            std::stable_sort(front.begin(), front.end(), [&](auto a, auto b) -> auto { return comp(pop[a], pop[b]); });
+           auto min = pop.front()[obj];
             auto max = pop.back()[obj];
             for (size_t j = 0; j < front.size(); ++j) {
                 auto idx = front[j];
@@ -63,11 +63,11 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 {
     auto config = GetConfig();
     auto eps = static_cast<Operon::Scalar>(config.Epsilon);
-    auto eq = [eps](auto const& lhs, auto const& rhs) { return Operon::Equal{}(lhs.Fitness, rhs.Fitness, eps); };
+    auto eq = [eps](auto const& lhs, auto const& rhs) { return Operon::Equal {}(lhs.Fitness, rhs.Fitness, eps); };
     // sort the population lexicographically
-    std::stable_sort(pop.begin(), pop.end(), [](auto const& a, auto const& b){ return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });
+    std::stable_sort(pop.begin(), pop.end(), [](auto const& a, auto const& b) { return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });
     // mark the duplicates for stable_partition
-    for(auto i = pop.begin(); i < pop.end(); ) {
+    for (auto i = pop.begin(); i < pop.end();) {
         i->Rank = 0;
         auto j = i + 1;
         for (; j < pop.end() && eq(*i, *j); ++j) {
@@ -110,7 +110,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     auto t0 = std::chrono::steady_clock::now();
     auto computeElapsed = [t0]() {
         auto t1 = std::chrono::steady_clock::now();
-        constexpr double us{1e6};
+        constexpr double us { 1e6 };
         return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / us;
     };
 
@@ -136,33 +136,38 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     };
 
     auto& individuals = Individuals();
-    auto parents      = Parents();
-    auto offspring    = Offspring();
+    auto parents = Parents();
+    auto offspring = Offspring();
 
     // while loop control flow
     tf::Taskflow taskflow;
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&](tf::Subflow& subflow) {
             auto prepareEval = subflow.emplace([&]() { evaluator->Prepare(parents); }).name("prepare evaluator");
-            auto eval = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
-                // make sure the worker has a large enough buffer
-                auto const id = executor.this_worker_id();
-                slots[id].resize(trainSize);
-                parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
-            }).name("evaluate population");
+            auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) {
+                                   // make sure the worker has a large enough buffer
+                                   auto const id = executor.this_worker_id();
+                                   slots[id].resize(trainSize);
+                                   parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
+                               })
+                            .name("evaluate population");
             auto nonDominatedSort = subflow.emplace([&]() { Sort(parents); }).name("non-dominated sort");
             auto reportProgress = subflow.emplace([&]() {
-                if (report) { std::invoke(report); }
-            }).name("report progress");
+                                             if (report) {
+                                                 std::invoke(report);
+                                             }
+                                         })
+                                      .name("report progress");
             prepareEval.precede(eval);
             eval.precede(nonDominatedSort);
             nonDominatedSort.precede(reportProgress);
 
             if (!(IsFitted() && warmStart)) {
-                auto init = subflow.for_each_index(size_t{0}, parents.size(), size_t{1}, [&](size_t i) {
-                    parents[i].Genotype = (*treeInit)(rngs[i]);
-                    (*coeffInit)(rngs[i], parents[i].Genotype);
-                }).name("initialize population");
+                auto init = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) {
+                                       parents[i].Genotype = (*treeInit)(rngs[i]);
+                                       (*coeffInit)(rngs[i], parents[i].Genotype);
+                                   })
+                                .name("initialize population");
 
                 init.precede(prepareEval);
             }
@@ -170,18 +175,19 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
         stop, // loop condition
         [&](tf::Subflow& subflow) {
             auto prepareGenerator = subflow.emplace([&]() { generator->Prepare(parents); }).name("prepare generator");
-            auto generateOffspring = subflow.for_each_index(size_t{0}, offspring.size(), size_t{1}, [&](size_t i) {
-                slots[executor.this_worker_id()].resize(trainSize);
-                auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
-                while (!stop()) {
-                    auto result = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf);
-                    if (result) {
-                        offspring[i] = std::move(*result);
-                        ENSURE(offspring[i].Genotype.Length() > 0);
-                        return;
-                    }
-                }
-            }).name("generate offspring");
+            auto generateOffspring = subflow.for_each_index(size_t { 0 }, offspring.size(), size_t { 1 }, [&](size_t i) {
+                                                slots[executor.this_worker_id()].resize(trainSize);
+                                                auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
+                                                while (!stop()) {
+                                                    auto result = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf);
+                                                    if (result) {
+                                                        offspring[i] = std::move(*result);
+                                                        ENSURE(offspring[i].Genotype.Length() > 0);
+                                                        return;
+                                                    }
+                                                }
+                                            })
+                                         .name("generate offspring");
             auto nonDominatedSort = subflow.emplace([&]() { Sort(individuals); }).name("non-dominated sort");
             auto reinsert = subflow.emplace([&]() { reinserter->Sort(individuals); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() { ++Generation(); }).name("increment generation");
