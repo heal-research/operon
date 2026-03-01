@@ -4,19 +4,23 @@
     "version-string": "0.3.1",
     "dependencies": [
         "aria-csv",
+        "cpp-sort",
         "cxxopts",
         "eigen3",
         "eve",
         "fast-float",
+        "fluky",
         "fmt",
+        "lbfgs",
+        "libassert",
+        "mdspan",
+        "ms-gsl",
         "pratt-parser",
-        "robin-hood-hashing",
         "scnlib",
-        "span-lite",
         "taskflow",
-        "vectorclass",
+        "tl-expected",
+        "unordered-dense",
         "vstat",
-        "xxhash",
-        "tl-expected"
+        "xxhash"
     ]
 }

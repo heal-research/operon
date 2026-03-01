@@ -1,8 +1,8 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO foolnotion/pratt-parser-calculator 
-    REF 2e0b13615c6ff1fb6381c0ac87796932b326bc89
-    SHA512 bdb910209c1936897769f00ca12c3f054068360bb811238e117f862519ea41632688c66a8c78e7763f145537a489e9df00d37728ec75379a2e4b1078106750be
+    REPO foolnotion/lbfgs
+    REF a9b2a47da72a5544c8766d73bb1ef4e8d5550ca3
+    SHA512 a4e46b123da11cc347cc54c78791105fa543e5a57f33b32dea208824414a24a0ec54887e95252eb2f3ad4eaef00023a7a7859fb38c5d374a975418033e3d0d50
     HEAD_REF main
 )
 
@@ -20,7 +20,7 @@ vcpkg_configure_cmake(
         -DBUILD_EXAMPLES=OFF
 )
 vcpkg_cmake_install()
-vcpkg_cmake_config_fixup(PACKAGE_NAME pratt-parser CONFIG_PATH lib/cmake/pratt-parser DO_NOT_DELETE_PARENT_CONFIG_PATH)
+vcpkg_cmake_config_fixup(PACKAGE_NAME lbfgs CONFIG_PATH lib/cmake/lbfgs DO_NOT_DELETE_PARENT_CONFIG_PATH)
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include"
                     "${CURRENT_PACKAGES_DIR}/debug/share"
