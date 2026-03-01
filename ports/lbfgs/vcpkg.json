@@ -1,0 +1,5 @@
+{
+    "name": "lbfgs",
+    "version-string": "0.1.0",
+    "description": "C++ header-only L-BFGS optimization library."
+}
