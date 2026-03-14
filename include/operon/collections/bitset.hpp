@@ -2,6 +2,7 @@
 #define OPERON_BITSET_HPP
 
 #include <bit>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 
