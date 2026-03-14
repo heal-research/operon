@@ -26,7 +26,7 @@ import itertools
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -252,9 +252,14 @@ def test_determinism(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
     for cfg, ref, new in results:
         label = cfg.label()
         nc = args.no_color
-        if ref.error or new.error:
+        if ref.error and new.error:
+            # Both failed — not a regression, but note it
             _warn(f"{label}  ref_err={ref.error!r}  new_err={new.error!r}", nc)
             skipped += 1
+        elif ref.error or new.error:
+            # Asymmetric failure — one build broke, the other didn't
+            _fail(f"{label}  ref_err={ref.error!r}  new_err={new.error!r}", nc)
+            failed += 1
         elif not args.exact:
             # --no-exact: only verify both runs completed successfully
             if ref.returncode == 0 and new.returncode == 0:
@@ -361,6 +366,7 @@ def test_statistics(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
 
         if not ref_rows or not new_rows:
             print(f"    {ylw}No data collected — check for errors{rst2}")
+            failed_groups += 1
             continue
 
         def _median(xs):
@@ -502,7 +508,7 @@ def main() -> None:
     selected_names = {s.strip() for s in args.datasets.split(",")}
     args.datasets = [d for d in ALL_DATASETS if d.name in selected_names]
     if not args.datasets:
-        sys.exit(f"No matching datasets for: {args.datasets!r}")
+        sys.exit(f"No matching datasets for: {selected_names!r}")
 
     # Resolve creator list
     args.creators = [c.strip() for c in args.creators.split(",") if c.strip()]
