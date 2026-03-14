@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <cmath>
 #include <cstddef>
 #include <algorithm>
 #include <random>
@@ -15,13 +16,24 @@
 #include "operon/random/random.hpp"
 
 namespace Operon {
-auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t /*args*/, size_t minDepth, size_t maxDepth) const -> Tree
+auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t minDepth, size_t maxDepth) const -> Tree
 {
     minDepth = std::max(size_t{1}, minDepth);
     EXPECT(minDepth <= maxDepth);
     auto const* pset = GetPrimitiveSet();
 
     auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
+
+    // Cap maxDepth to prevent exponential node-count blow-up.
+    // A maximally-branching tree of depth d has ~maxArity^d nodes.
+    // Bounding d to floor(log(targetLen) / log(maxArity)) keeps the worst-case
+    // size within a small constant factor of targetLen.
+    if (targetLen > 1 && maxFunctionArity > 1) {
+        auto const depthCap = static_cast<size_t>(
+            std::floor(std::log(static_cast<double>(targetLen))
+                     / std::log(static_cast<double>(maxFunctionArity))));
+        maxDepth = std::min(maxDepth, std::max(minDepth, depthCap));
+    }
 
     auto const& variables = GetVariables();
     auto init = [&](Node& node) {
