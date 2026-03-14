@@ -408,8 +408,8 @@ TEST_CASE("math cost model")
     auto primitives = NodeType::Constant;
     nb::Bench b;
     for (auto i = 0UL; i < NodeTypes::Count - 3; ++i) {
-        Operon::PrimitiveSet pset(primitives | static_cast<NodeType>(1U << i));
-        Operon::Node node(static_cast<NodeType>(1U << i));
+        Operon::PrimitiveSet pset(primitives | static_cast<NodeType>(i));
+        Operon::Node node(static_cast<NodeType>(i));
         auto creator = BalancedTreeCreator { &pset, inputs };
         Operon::Vector<Tree> trees(n);
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);

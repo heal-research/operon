@@ -58,7 +58,7 @@
           };
           enableShared = !pkgs.stdenv.hostPlatform.isStatic;
           enableTesting = true;
-          inherit (pkgs.llvmPackages_20) stdenv;
+          inherit (pkgs.llvmPackages_21) stdenv;
           operon = import ./operon.nix {
             inherit stdenv pkgs system;
             inherit enableShared enableTesting;
@@ -94,6 +94,16 @@
             library-static = operon.overrideAttrs (old: {
               enableShared = false;
             });
+          };
+
+          devShells.compare = pkgs.mkShell {
+            name = "operon-compare";
+            packages = [
+              (pkgs.python3.withPackages (ps: with ps; [
+                scipy
+                tabulate
+              ]))
+            ];
           };
 
           devShells.default = stdenv.mkDerivation {
