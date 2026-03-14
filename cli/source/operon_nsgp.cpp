@@ -61,7 +61,7 @@ auto main(int argc, char** argv) -> int
     std::string targetName;
     bool showPrimitiveSet = false;
     auto threads = std::thread::hardware_concurrency();
-    Operon::NodeType primitiveSetConfig = Operon::PrimitiveSet::Arithmetic;
+    auto primitiveSetConfig = Operon::PrimitiveSet::Arithmetic;
 
     auto maxLength = result["maxlength"].as<size_t>();
     auto maxDepth = result["maxdepth"].as<size_t>();

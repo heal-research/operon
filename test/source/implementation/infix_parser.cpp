@@ -30,7 +30,9 @@ TEST_SUITE("[implementation]")
         Operon::Dataset ds(values);
 
         Operon::PrimitiveSet pset;
-        pset.SetConfig((PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log) & ~NodeType::Variable);
+        auto cfg = PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log;
+        cfg.Clear(NodeTypes::GetIndex(NodeType::Variable));
+        pset.SetConfig(cfg);
         Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes());
 
         // generate trees

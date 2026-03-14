@@ -19,7 +19,7 @@ auto ParseRange(std::string const& str) -> std::pair<size_t, size_t>;
 auto Split(const std::string& s, char delimiter) -> std::vector<std::string>;
 auto FormatBytes(size_t bytes) -> std::string;
 auto FormatDuration(std::chrono::duration<double> d) -> std::string;
-auto ParsePrimitiveSetConfig(const std::string& options) -> NodeType;
+auto ParsePrimitiveSetConfig(const std::string& options) -> PrimitiveSetConfig;
 auto PrintPrimitives(PrimitiveSetConfig config) -> void;
 
 auto InitOptions(std::string const& name, std::string const& desc, int width = optionsWidth) -> cxxopts::Options;
