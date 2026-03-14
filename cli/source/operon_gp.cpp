@@ -53,7 +53,7 @@ auto main(int argc, char** argv) -> int
     std::string targetName;
     bool showPrimitiveSet = false;
     auto threads = std::thread::hardware_concurrency();
-    Operon::NodeType primitiveSetConfig = Operon::PrimitiveSet::Arithmetic;
+    auto primitiveSetConfig = Operon::PrimitiveSet::Arithmetic;
 
     auto maxLength = result["maxlength"].as<size_t>();
     auto maxDepth = result["maxdepth"].as<size_t>();
@@ -173,7 +173,7 @@ auto main(int argc, char** argv) -> int
         Operon::UniformTreeInitializer treeInitializer(creator.get());
 
         auto const initialMinDepth = result["creator-mindepth"].as<std::size_t>();
-        auto const initialMaxDepth = result["creator-mindepth"].as<std::size_t>();
+        auto const initialMaxDepth = result["creator-maxdepth"].as<std::size_t>();
         treeInitializer.ParameterizeDistribution(amin + 1, maxLength);
         treeInitializer.SetMinDepth(initialMinDepth);
         treeInitializer.SetMaxDepth(initialMaxDepth); // NOLINT

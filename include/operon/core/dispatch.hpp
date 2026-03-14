@@ -297,7 +297,7 @@ private:
 public:
     DispatchTable()
     {
-        auto constexpr f = [](auto i) { return static_cast<NodeType>(1U << i); };
+        auto constexpr f = [](auto i) { return static_cast<NodeType>(i); };
         [&]<auto ...I>(std::index_sequence<I...>){
             (map_.insert({ Node(f(I)).HashValue, MakeTuple<f(I)>() }), ...);
         }(std::make_index_sequence<NodeTypes::Count-3>{});

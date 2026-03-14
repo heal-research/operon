@@ -16,7 +16,7 @@ namespace {
     std::size_t constexpr ONES{~ZEROS};
     std::size_t constexpr DIGITS{std::numeric_limits<uint64_t>::digits};
 
-    using Bitset = std::unique_ptr<uint64_t[]>;
+    using RawBitset = std::unique_ptr<uint64_t[]>;
 
     cppsort::merge_sorter const Sorter;
 
@@ -53,7 +53,7 @@ namespace {
         auto mask = MakeUnique<uint64_t[]>(nb, ONES); // NOLINT
         mask[nb-1] >>= ub;
 
-        Operon::Vector<std::tuple<Bitset, int, int>> bitsets(n);
+        Operon::Vector<std::tuple<RawBitset, int, int>> bitsets(n);
         for (auto i = 0; i < n; ++i) {
             auto const j = items[i].Index;
             auto [q, r] = std::div(j, DIGITS);
@@ -61,7 +61,7 @@ namespace {
 
             auto lo = 0;
             auto hi = nb-q-1;
-            Bitset p;
+            RawBitset p;
             if (n-1 == i || n-1 == j) {
                 lo = hi+1;
                 bitsets[j] = { std::move(p), lo, hi };
@@ -136,7 +136,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
     auto const nb { static_cast<int>(n / DIGITS) + static_cast<int>(n % DIGITS != 0) };
     std::size_t const ub = DIGITS * nb - n; // number of unused bits at the end of the last block (must be set to zero)
 
-    Operon::Vector<Bitset> rs;
+    Operon::Vector<RawBitset> rs;
     rs.push_back(MakeUnique<uint64_t[]>(nb, ONES)); // vector of sets keeping track of individuals whose rank was updated NOLINT
     rs[0][nb-1] >>= ub; // zero unused region
 

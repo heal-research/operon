@@ -31,6 +31,7 @@ public:
     static constexpr PrimitiveSetConfig TypeCoherent = Arithmetic | NodeType::Pow | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
     static constexpr PrimitiveSetConfig Full = TypeCoherent | NodeType::Aq | NodeType::Tan | NodeType::Tanh | NodeType::Sqrt | NodeType::Cbrt;
 
+
     PrimitiveSet() = default;
 
     explicit PrimitiveSet(PrimitiveSetConfig config)
@@ -53,10 +54,10 @@ public:
     {
         pset_.clear();
         for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
-            auto t = static_cast<Operon::NodeType>(1U << i);
+            auto t = static_cast<Operon::NodeType>(i);
             Operon::Node n(t);
 
-            if (((1U << i) & static_cast<uint32_t>(config)) != 0U) {
+            if (config.Test(i)) {
                 pset_[n.HashValue] = { n, 1, n.Arity, n.Arity };
             }
         }
@@ -75,11 +76,11 @@ public:
 
     [[nodiscard]] auto Config() const -> PrimitiveSetConfig
     {
-        PrimitiveSetConfig conf { static_cast<PrimitiveSetConfig>(0) };
+        PrimitiveSetConfig conf{};
         for (auto [k, v] : pset_) {
             auto const& [node, freq, min_arity, max_arity] = v;
             if (node.IsEnabled && freq > 0) {
-                conf |= node.Type;
+                conf.Set(static_cast<std::size_t>(node.Type));
             }
         }
         return conf;

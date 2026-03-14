@@ -103,7 +103,7 @@ auto ParseRange(std::string const& str) -> std::pair<size_t, size_t>
 
 auto ParsePrimitiveSetConfig(const std::string& options) -> PrimitiveSetConfig
 {
-    auto config = static_cast<PrimitiveSetConfig>(NodeType::Constant);
+    PrimitiveSetConfig config{};
     for (auto& s : Split(options, ',')) {
         if (auto it = Primitives.find(s); it != Primitives.end()) {
             config |= it->second;
@@ -114,14 +114,14 @@ auto ParsePrimitiveSetConfig(const std::string& options) -> PrimitiveSetConfig
     return config;
 }
 
-auto PrintPrimitives(NodeType config) -> void
+auto PrintPrimitives(PrimitiveSetConfig config) -> void
 {
     PrimitiveSet tmpSet;
     tmpSet.SetConfig(config);
     fmt::print("Built-in primitives:\n");
     fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", "Symbol", "Description", "Enabled", "Frequency");
     for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
-        auto type = static_cast<NodeType>(1U << i);
+        auto type = static_cast<NodeType>(i);
         auto hash = Node(type).HashValue;
         auto enabled = tmpSet.Contains(hash) && tmpSet.IsEnabled(hash);
         auto freq = enabled ? tmpSet.Frequency(hash) : 0U;

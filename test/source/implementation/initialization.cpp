@@ -18,7 +18,7 @@ namespace Operon::Test {
 TEST_CASE("Sample nodes from grammar")
 {
     PrimitiveSet grammar;
-    grammar.SetConfig(static_cast<NodeType>(~uint32_t{0}));
+    grammar.SetConfig(~PrimitiveSetConfig{});
     Operon::RandomGenerator rd(std::random_device {}());
 
     std::vector<double> observed(NodeTypes::Count, 0);
@@ -32,7 +32,7 @@ TEST_CASE("Sample nodes from grammar")
     std::transform(observed.begin(), observed.end(), observed.begin(), [&](double v) { return v / nTrials; });
     std::vector<double> actual(NodeTypes::Count, 0);
     for (size_t i = 0; i < observed.size(); ++i) {
-        auto type = static_cast<NodeType>(1U << i);
+        auto type = static_cast<NodeType>(i);
         auto node = Node(type);
         actual[NodeTypes::GetIndex(type)] = static_cast<double>(grammar.Frequency(node.HashValue));
     }
@@ -40,7 +40,7 @@ TEST_CASE("Sample nodes from grammar")
     std::transform(actual.begin(), actual.end(), actual.begin(), [&](double v) { return v / freqSum; });
     auto chi = 0.0;
     for (auto i = 0U; i < observed.size(); ++i) {
-        Node node(static_cast<NodeType>(1U << i));
+        Node node(static_cast<NodeType>(i));
         if (!grammar.IsEnabled(node.HashValue)) {
             continue;
         }
@@ -151,7 +151,7 @@ TEST_CASE("GROW")
         auto symbolFrequencies = CalculateSymbolFrequencies(trees);
 
         for (size_t i = 0; i < symbolFrequencies.size(); ++i) {
-            auto node = Node(static_cast<NodeType>(1U << i));
+            auto node = Node(static_cast<NodeType>(i));
             if (grammar.Contains(node) && grammar.IsEnabled(node)) {
                 fmt::print("{}\t{:.3f} %\n", node.Name(), static_cast<double>(symbolFrequencies[i]) / static_cast<double>(totalLength));
             }
@@ -265,7 +265,7 @@ TEST_CASE("BTC")
         auto symbolFrequencies = CalculateSymbolFrequencies(trees);
 
         for (size_t i = 0; i < symbolFrequencies.size(); ++i) {
-            auto node = Node(static_cast<NodeType>(1U << i));
+            auto node = Node(static_cast<NodeType>(i));
             if (!grammar.Contains(node) || !grammar.IsEnabled(node)) {
                 continue;
             }
@@ -368,7 +368,7 @@ TEST_CASE("PTC2")
 
         fmt::print("Symbol frequencies:\n");
         for (size_t i = 0; i < symbolFrequencies.size(); ++i) {
-            auto node = Node(static_cast<NodeType>(1U << i));
+            auto node = Node(static_cast<NodeType>(i));
             if (!(grammar.Contains(node.HashValue) && grammar.IsEnabled(node.HashValue))) {
                 continue;
             }

@@ -7,85 +7,90 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "operon/collections/bitset.hpp"
 #include "operon/operon_export.hpp"
 #include "types.hpp"
 
 namespace Operon {
-enum class NodeType : uint32_t {
+enum class NodeType : uint8_t {
     // n-ary symbols
-    Add      = 1U << 0U,
-    Mul      = 1U << 1U,
-    Sub      = 1U << 2U,
-    Div      = 1U << 3U,
-    Fmin     = 1U << 4U,
-    Fmax     = 1U << 5U,
+    Add      = 0,
+    Mul,
+    Sub,
+    Div,
+    Fmin,
+    Fmax,
 
     // binary symbols
-    Aq       = 1U << 6U,
-    Pow      = 1U << 7U,
-    Powabs   = 1U << 8U,
+    Aq,
+    Pow,
+    Powabs,
 
     // unary symbols
-    Abs      = 1U << 9U,
-    Acos     = 1U << 10U,
-    Asin     = 1U << 11U,
-    Atan     = 1U << 12U,
-    Cbrt     = 1U << 13U,
-    Ceil     = 1U << 14U,
-    Cos      = 1U << 15U,
-    Cosh     = 1U << 16U,
-    Exp      = 1U << 17U,
-    Floor    = 1U << 18U,
-    Log      = 1U << 19U,
-    Logabs   = 1U << 20U,
-    Log1p    = 1U << 21U,
-    Sin      = 1U << 22U,
-    Sinh     = 1U << 23U,
-    Sqrt     = 1U << 24U,
-    Sqrtabs  = 1U << 25U,
-    Tan      = 1U << 26U,
-    Tanh     = 1U << 27U,
-    Square   = 1U << 28U,
+    Abs,
+    Acos,
+    Asin,
+    Atan,
+    Cbrt,
+    Ceil,
+    Cos,
+    Cosh,
+    Exp,
+    Floor,
+    Log,
+    Logabs,
+    Log1p,
+    Sin,
+    Sinh,
+    Sqrt,
+    Sqrtabs,
+    Tan,
+    Tanh,
+    Square,
 
     // nullary symbols (dynamic can be anything)
-    Dynamic  = 1U << 29U,
-    Constant = 1U << 30U,
-    Variable = 1U << 31U
+    Dynamic,
+    Constant,
+    Variable
 };
-
-using PrimitiveSetConfig = NodeType;
 
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
+
 struct NodeTypes {
-    // magic number keeping track of the number of different node types
-    static auto constexpr Count = std::countr_zero(static_cast<uint64_t>(NodeType::Variable)) + 1UL;
+    // total number of distinct node types
+    static auto constexpr Count = static_cast<std::size_t>(NodeType::Variable) + 1UL;
 
     // returns the index of the given type in the NodeType enum
-    static auto GetIndex(NodeType type) -> size_t
+    static constexpr auto GetIndex(NodeType type) -> size_t
     {
-        return std::countr_zero(static_cast<uint32_t>(type));
+        return static_cast<std::size_t>(type);
     }
 
-    static auto constexpr NoType{NodeType{123456}};
+    static auto constexpr NoType{static_cast<NodeType>(0xFFU)};
 };
 
-inline constexpr auto operator&(NodeType lhs, NodeType rhs) -> NodeType { return static_cast<NodeType>(static_cast<UnderlyingNodeType>(lhs) & static_cast<UnderlyingNodeType>(rhs)); }
-inline constexpr auto operator|(NodeType lhs, NodeType rhs) -> NodeType { return static_cast<NodeType>(static_cast<UnderlyingNodeType>(lhs) | static_cast<UnderlyingNodeType>(rhs)); }
-inline constexpr auto operator^(NodeType lhs, NodeType rhs) -> NodeType { return static_cast<NodeType>(static_cast<UnderlyingNodeType>(lhs) ^ static_cast<UnderlyingNodeType>(rhs)); }
-inline constexpr auto operator~(NodeType lhs) -> NodeType { return static_cast<NodeType>(~static_cast<UnderlyingNodeType>(lhs)); }
-inline auto operator&=(NodeType& lhs, NodeType rhs) -> NodeType&
+// A bitset over all node types, used to represent primitive set configurations.
+using PrimitiveSetConfig = Bitset<NodeTypes::Count>;
+
+// Build a PrimitiveSetConfig from two individual NodeType values.
+inline constexpr auto operator|(NodeType lhs, NodeType rhs) -> PrimitiveSetConfig
 {
-    lhs = lhs & rhs;
+    PrimitiveSetConfig c{};
+    c.Set(NodeTypes::GetIndex(lhs));
+    c.Set(NodeTypes::GetIndex(rhs));
+    return c;
+}
+
+// Extend a PrimitiveSetConfig with one more NodeType.
+inline constexpr auto operator|(PrimitiveSetConfig lhs, NodeType rhs) -> PrimitiveSetConfig
+{
+    lhs.Set(NodeTypes::GetIndex(rhs));
     return lhs;
 }
-inline auto operator|=(NodeType& lhs, NodeType rhs) -> NodeType&
+
+inline constexpr auto operator|=(PrimitiveSetConfig& lhs, NodeType rhs) -> PrimitiveSetConfig&
 {
-    lhs = lhs | rhs;
-    return lhs;
-}
-inline auto operator^=(NodeType& lhs, NodeType rhs) -> NodeType&
-{
-    lhs = lhs ^ rhs;
+    lhs.Set(NodeTypes::GetIndex(rhs));
     return lhs;
 }
 
@@ -119,10 +124,10 @@ struct Node {
         , Parent(0UL)
         , Type(type)
     {
-        if (Type < NodeType::Abs) // Add, Mul, Sub, Div, Aq, Pow, Powabs
+        if (Type < NodeType::Abs) // Add, Mul, Sub, Div, Fmin, Fmax, Aq, Pow, Powabs
         {
             Arity = 2;
-        } else if (Type < NodeType::Dynamic) // Log, Exp, Sin, Cos, Tan, Tanh, Sqrt, Cbrt, Square
+        } else if (Type < NodeType::Dynamic) // Abs through Square (unary)
         {
             Arity = 1;
         }

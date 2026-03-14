@@ -154,7 +154,7 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
     std::string name = "eigen";
 
     for (auto i = 0UL; i < NodeTypes::Count; ++i) {
-        auto t = static_cast<NodeType>(1UL << i);
+        auto t = static_cast<NodeType>(i);
         Node n{t}; n.Value = dist(rng);
         if (n.IsLeaf()) { continue; }
         if (t == NodeType::Dynamic) { continue; }
@@ -178,7 +178,7 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
     }
 
     for (auto i = 0UL; i < NodeTypes::Count; ++i) {
-        auto t = static_cast<NodeType>(1UL << i);
+        auto t = static_cast<NodeType>(i);
         Node n{t}; n.Value = dist(rng);
         if (n.IsLeaf()) { continue; }
         if (t == NodeType::Dynamic) { continue; }
