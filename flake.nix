@@ -132,10 +132,6 @@
               );
           };
 
-          checks.tests = operon.overrideAttrs (_: {
-            doCheck = true;
-          });
-
           apps.operon-gp.program = "${packages.default}/bin/operon_gp";
           apps.operon-nsgp.program = "${packages.default}/bin/operon_nsgp";
           apps.operon-parse-model.program = "${packages.default}/bin/operon_parse_model";

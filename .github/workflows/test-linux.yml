@@ -14,5 +14,11 @@ jobs:
     - uses: actions/checkout@v4
     - uses: cachix/install-nix-action@v27
 
-    - name: Build and test
-      run: nix build .#checks.x86_64-linux.tests
+    - name: Configure
+      run: nix develop -c cmake --preset build-linux -B build -DUSE_SINGLE_PRECISION=ON -Doperon_DEVELOPER_MODE=ON
+
+    - name: Build test binary
+      run: nix develop -c cmake --build build --target operon_test -j4
+
+    - name: Run tests
+      run: nix develop -c ctest --test-dir build --output-on-failure -j4
