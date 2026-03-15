@@ -29,7 +29,7 @@ struct ComputeDistanceMatrix {
                 d += static_cast<double>(Operon::Distance::Jaccard(hashes[i], hashes[j]));
             }
         }
-        return 2 * d / (hashes.size() * hashes.size() - 1);
+        return 2 * d / (hashes.size() * (hashes.size() - 1));
     }
 
     Callable f_;

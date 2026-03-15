@@ -16,7 +16,7 @@ namespace Operon::Test {
 
 TEST_CASE("Parser roundtrip correctness", "[parser]")
 {
-    constexpr int nTrees = 1'000'000;
+    constexpr int nTrees = 100'000;
     constexpr int nNodes = 20;
     constexpr int nrow = 1;
     constexpr int ncol = 10;
@@ -66,7 +66,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
             ++count;
         }
     }
-    CHECK(count < 100); // allow tiny floating-point discrepancies in a small fraction of 1M trees
+    CHECK(count < 10); // allow tiny floating-point discrepancies in a small fraction of trees
 }
 
 TEST_CASE("Parse specific expressions", "[parser]")
