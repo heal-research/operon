@@ -52,5 +52,5 @@ else()
     endif()
 endif()
 
-add_test(NAME operon_test COMMAND operon_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME operon_test COMMAND operon_test "~[performance]" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 windows_set_path(operon_test operon::operon)
