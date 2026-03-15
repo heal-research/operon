@@ -163,11 +163,10 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
         for (auto [i, _] : std::span{items.begin()+1, items.end()-1}) {
             auto [q, r] = std::div(i, DIGITS);
             mask[q] &= ~(1UL << static_cast<uint>(r)); // reset bit i
-            auto& [bits, lo, hi] = bitsets[i];
-            if (lo > hi) { ++done; continue; }
-
             mmin = std::min(q, mmin);
             mmax = std::max(q, mmax);
+            auto& [bits, lo, hi] = bitsets[i];
+            if (lo > hi) { ++done; continue; }
             auto a = std::max(mmin, lo + q);
             auto b = std::min(mmax, hi + q);
             if (b < a) { continue; }
