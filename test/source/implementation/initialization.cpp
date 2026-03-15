@@ -154,8 +154,7 @@ TEST_CASE("BTC creator", "[operators]")
                 hasCoeff = true;
             }
         }
-        // Trees should have at least some constants
-        CHECK(tree.Length() > 0);
+        CHECK(hasCoeff);
     }
 }
 
