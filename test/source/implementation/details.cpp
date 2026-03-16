@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
+
 #include <algorithm>
 #include <cstddef>
-#include <doctest/doctest.h>
-#include <fmt/core.h>
 #include <iterator>
 #include <type_traits>
 #include <utility>
@@ -13,71 +14,109 @@
 #include "operon/core/individual.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
+#include "operon/core/dataset.hpp"
+#include "operon/core/pset.hpp"
 #include "operon/core/types.hpp"
-
-namespace dt = doctest;
 
 namespace Operon::Test {
 
-    TEST_CASE("Node is trivial" * dt::test_suite("[detail]"))
-    {
+TEST_CASE("Node type traits", "[core]")
+{
+    SECTION("Node is trivial") {
         CHECK(std::is_trivial_v<Operon::Node>);
     }
 
-    TEST_CASE("Node is trivially copyable" * dt::test_suite("[detail]"))
-    {
+    SECTION("Node is trivially copyable") {
         CHECK(std::is_trivially_copyable_v<Operon::Node>);
     }
 
-    TEST_CASE("Node is standard layout" * dt::test_suite("[detail]"))
-    {
+    SECTION("Node is standard layout") {
         CHECK(std::is_standard_layout_v<Operon::Node>);
     }
 
-    TEST_CASE("Node is small" * dt::test_suite("[detail]"))
-    {
-        // this test case basically wants to ensure that,
-        // for memory efficiency purposes, the Node struct
-        // is kept as small as possible
-        auto *node = static_cast<Node*>(nullptr);
-        auto szType = sizeof(node->Type);
-        auto szArity = sizeof(node->Arity);
-        auto szLength = sizeof(node->Length);
-        auto szDepth = sizeof(node->Depth);
-        auto szLevel = sizeof(node->Level);
-        auto szEnabled = sizeof(node->IsEnabled);
-        auto szOptimize = sizeof(node->Optimize);
-        auto szHashValue = sizeof(node->HashValue);
-        auto szCalculatedHashValue = sizeof(node->CalculatedHashValue);
-        auto szValue = sizeof(node->Value);
-        auto szParent = sizeof(node->Parent);
-        auto szTotal = szType + szArity + szLength + szDepth + szLevel + szEnabled + szOptimize + szHashValue + szParent + szCalculatedHashValue + szValue;
-        fmt::print("Size breakdown of the Node class:\n");
-        fmt::print("Type                {:>2}\n", szType);
-        fmt::print("Arity               {:>2}\n", szArity);
-        fmt::print("Length              {:>2}\n", szLength);
-        fmt::print("Depth               {:>2}\n", szDepth);
-        fmt::print("Level               {:>2}\n", szLevel);
-        fmt::print("Parent              {:>2}\n", szParent);
-        fmt::print("Enabled             {:>2}\n", szEnabled);
-        fmt::print("Optimize            {:>2}\n", szOptimize);
-        fmt::print("Value               {:>2}\n", szValue);
-        fmt::print("HashValue           {:>2}\n", szHashValue);
-        fmt::print("CalculatedHashValue {:>2}\n", szCalculatedHashValue);
-        fmt::print("-------------------------\n");
-        fmt::print("Total               {:>2}\n", szTotal);
-        fmt::print("Total + padding     {:>2}\n", sizeof(Node));
-        fmt::print("-------------------------\n");
-        Operon::Vector<Node> nodes;
-        std::generate_n(std::back_inserter(nodes), 50, []() { return Node(NodeType::Add); }); // NOLINT
-        Tree tree { nodes };
-        fmt::print("sizeof(Tree)        {:>2}\n", sizeof(tree));
-        fmt::print("sizeof(vector<Node>) {:>2}\n", sizeof(nodes)); // NOLINT
+    SECTION("Node size is at most 64 bytes") {
+        CHECK(sizeof(Node) <= size_t{64});
+    }
+}
+
+TEST_CASE("Tree construction and access", "[core]")
+{
+    Operon::Vector<Node> nodes;
+    std::generate_n(std::back_inserter(nodes), 50, []() { return Node(NodeType::Add); }); // NOLINT
+    Tree tree{nodes};
+
+    SECTION("Tree stores correct number of nodes") {
+        CHECK(tree.Length() == 50);
+    }
+
+    SECTION("Individual holds a tree") {
         Individual ind(1);
         ind.Genotype = std::move(tree);
-
-        fmt::print("sizeof(Individual)  {:>2}\n", sizeof(ind));
-
-        CHECK(sizeof(Node) <= size_t { 64 });
+        CHECK(ind.Genotype.Length() == 50);
     }
+}
+
+TEST_CASE("Tree coefficients", "[core]")
+{
+    Node c1(NodeType::Constant); c1.Value = 3.14f; c1.Optimize = true;
+    Node c2(NodeType::Constant); c2.Value = 2.71f; c2.Optimize = true;
+    Node add(NodeType::Add);
+    Tree tree({c1, c2, add});
+    tree.UpdateNodes();
+
+    auto coeff = tree.GetCoefficients();
+    REQUIRE(coeff.size() == 2);
+    CHECK(coeff[0] == Catch::Approx(3.14f));
+    CHECK(coeff[1] == Catch::Approx(2.71f));
+
+    coeff[0] = 1.0f;
+    coeff[1] = 2.0f;
+    tree.SetCoefficients(coeff);
+    auto coeff2 = tree.GetCoefficients();
+    CHECK(coeff2[0] == Catch::Approx(1.0f));
+    CHECK(coeff2[1] == Catch::Approx(2.0f));
+}
+
+TEST_CASE("Dataset loading and access", "[core]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+
+    SECTION("Row and column counts") {
+        CHECK(ds.Rows<std::size_t>() > 0);
+        CHECK(ds.Cols<std::size_t>() > 0);
+    }
+
+    SECTION("Variable listing") {
+        auto variables = ds.GetVariables();
+        CHECK(!variables.empty());
+    }
+
+    SECTION("Column access by variable hash") {
+        auto variables = ds.GetVariables();
+        REQUIRE(!variables.empty());
+        auto values = ds.GetValues(variables[0].Hash);
+        CHECK(values.size() == ds.Rows<std::size_t>());
+    }
+
+    SECTION("Target variable lookup") {
+        auto result = ds.GetVariable("Y");
+        CHECK(result.has_value());
+    }
+}
+
+TEST_CASE("PrimitiveSet configuration", "[core]")
+{
+    PrimitiveSet pset;
+    pset.SetConfig(PrimitiveSet::Arithmetic);
+
+    auto enabled = pset.EnabledPrimitives();
+    CHECK(!enabled.empty());
+
+    // Arithmetic should include Add, Sub, Mul, Div, Constant, Variable
+    CHECK(pset.IsEnabled(Node(NodeType::Add).HashValue));
+    CHECK(pset.IsEnabled(Node(NodeType::Sub).HashValue));
+    CHECK(pset.IsEnabled(Node(NodeType::Mul).HashValue));
+    CHECK(pset.IsEnabled(Node(NodeType::Div).HashValue));
+}
+
 } // namespace Operon::Test

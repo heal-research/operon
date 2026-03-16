@@ -99,10 +99,12 @@
           devShells.compare = pkgs.mkShell {
             name = "operon-compare";
             packages = [
-              (pkgs.python3.withPackages (ps: with ps; [
-                scipy
-                tabulate
-              ]))
+              (pkgs.python3.withPackages (
+                ps: with ps; [
+                  scipy
+                  tabulate
+                ]
+              ))
             ];
           };
 
