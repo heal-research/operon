@@ -27,16 +27,11 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]")
     Operon::RandomGenerator rng(0UL);
     Operon::Dataset ds(values);
     ds.SetVariableNames({"x", "y"});
-    Operon::Map<std::string, Operon::Hash> variables;
-    for (auto&& v : ds.GetVariables()) {
-        variables.insert({v.Name, v.Hash});
-    }
-
     Operon::DispatchTable<Operon::Scalar> dtable;
     Operon::Range range{0, ds.Rows<std::size_t>()};
 
     auto derive = [&](std::string const& expr) {
-        auto tree = Operon::InfixParser::Parse(expr, variables, /*reduce=*/true);
+        auto tree = Operon::InfixParser::Parse(expr, ds, /*reduce=*/true);
         for (auto& n : tree.Nodes()) {
             n.Optimize = n.IsLeaf();
         }
@@ -155,12 +150,7 @@ TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
     std::string const expr = "((0.78 / ((-1.12) * X8)) / (((((-0.61) * X3) * 0.82) / (((-0.22) * X6) / 1.77)) / (((-0.16) - 0.50) - (((-0.46) * X4) - ((-0.03) * X9)))))";
 
     Operon::Dataset ds("./data/Poly-10.csv", /*hasHeader=*/true);
-    Operon::Map<std::string, Operon::Hash> vars;
-    for (auto const& v : ds.GetVariables()) {
-        vars.insert({v.Name, v.Hash});
-    }
-
-    auto tree = InfixParser::Parse(expr, vars);
+    auto tree = InfixParser::Parse(expr, ds);
     auto coeff = tree.GetCoefficients();
     Operon::Range range(0, 10); // NOLINT
 
