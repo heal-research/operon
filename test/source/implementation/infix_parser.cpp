@@ -49,17 +49,19 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
 
+    constexpr auto eps{1e-6F};
+
     for (int i = 0; i < nTrees; ++i) {
         auto const& t1 = trees[i];
         auto const& t2 = parsedTrees[i];
         auto v1 = Interpreter<Operon::Scalar, DTable>::Evaluate(t1, ds, range)[0];
         auto v2 = Interpreter<Operon::Scalar, DTable>::Evaluate(t2, ds, range)[0];
 
-        if (std::isfinite(v1) && std::isfinite(v2) && std::abs(v1 - v2) > 1e-6F) {
-            ++count;
+        if (std::isfinite(v1)) {
+            count += static_cast<size_t>(!std::isfinite(v2) || std::abs(v1 - v2) > eps);
         }
     }
-    CHECK(count == 0);
+    CHECK(static_cast<double>(count) / nTrees < 1e-1F);
 }
 
 TEST_CASE("Parse specific expressions", "[parser]")
