@@ -59,7 +59,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
             ++count;
         }
     }
-    CHECK(count == 0); // allow tiny floating-point discrepancies in a small fraction of trees
+    CHECK(count == 0);
 }
 
 TEST_CASE("Parse specific expressions", "[parser]")
