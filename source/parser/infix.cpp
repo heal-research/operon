@@ -6,7 +6,6 @@
 #include <array>
 #include <fmt/core.h>
 #include <iterator>
-#include <pratt-parser/parser.hpp>
 #include <stdexcept>
 #include <string>
 
@@ -99,7 +98,8 @@ auto InfixParser::Parse(std::string_view infix, bool reduce) -> Tree
 
     Operon::Tree tree{nodes};
     tree.UpdateNodes();
-    return reduce ? tree.Reduce() : tree;
+    if (reduce) { tree.Reduce(); }
+    return tree;
 }
 
 auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, bool reduce) -> Tree
