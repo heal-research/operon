@@ -10,7 +10,7 @@ if(PROJECT_IS_TOP_LEVEL)
   enable_testing()
 endif()
 
-find_package(doctest REQUIRED)
+find_package(Catch2 3 REQUIRED)
 find_package(scn REQUIRED)
 find_package(nanobench REQUIRED)
 
@@ -20,7 +20,6 @@ add_executable(operon_test
     source/implementation/crossover.cpp
     source/implementation/details.cpp
     source/implementation/dispatch_table.cpp
-    source/implementation/diversity.cpp
     source/implementation/evaluation.cpp
     source/implementation/error_metrics.cpp
     source/implementation/hashing.cpp
@@ -28,14 +27,16 @@ add_executable(operon_test
     source/implementation/initialization.cpp
     source/implementation/mutation.cpp
     source/implementation/nondominatedsort.cpp
-    source/implementation/poisson_regression.cpp
+    source/implementation/optimizer.cpp
     source/implementation/random.cpp
+    source/implementation/selection.cpp
     source/performance/autodiff.cpp
+    source/performance/creator.cpp
     source/performance/distance.cpp
     source/performance/evaluation.cpp
     source/performance/nondominatedsort.cpp
     )
-target_link_libraries(operon_test PRIVATE operon::operon doctest::doctest scn::scn nanobench::nanobench)
+target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
 target_compile_features(operon_test PRIVATE cxx_std_20)
 target_include_directories(operon_test PRIVATE ${PROJECT_SOURCE_DIR}/source/thirdparty)
 set_target_properties(operon_test PROPERTIES
@@ -51,5 +52,5 @@ else()
     endif()
 endif()
 
-add_test(NAME operon_test COMMAND operon_test)
+add_test(NAME operon_test COMMAND operon_test "~[performance]" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 windows_set_path(operon_test operon::operon)

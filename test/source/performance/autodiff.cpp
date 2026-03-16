@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
-#include <doctest/doctest.h>
+#include <catch2/catch_test_macros.hpp>
+
 #include "../operon_test.hpp"
 
 #include "operon/core/pset.hpp"
@@ -12,39 +13,36 @@
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
 
-namespace dt = doctest;
 namespace nb = ankerl::nanobench;
 
 namespace Operon::Test {
 
-TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
+TEST_CASE("Autodiff performance", "[performance]")
+{
     constexpr auto nrow{1000};
     constexpr auto ncol{10};
 
     Operon::RandomGenerator rng(0);
     auto ds = Operon::Test::Util::RandomDataset(rng, nrow, ncol);
     nb::Bench b;
-    //b.output(nullptr);
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
-    Operon::PrimitiveSet pset{ Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt | Operon::NodeType::Pow | Operon::NodeType::Tanh };
+    Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt | Operon::NodeType::Pow | Operon::NodeType::Tanh};
     Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes());
 
     auto constexpr initialSize{20};
     auto benchmark = [&](ankerl::nanobench::Bench& bench, auto&& f, std::string const& prefix, std::size_t n, std::size_t s) {
         std::vector<Operon::Tree> trees(n);
         double a{0};
-        auto z{initialSize}; // max size
+        auto z{initialSize};
         Operon::Range range{0, ds.Rows<std::size_t>()};
-        std::vector<Operon::Scalar> y(ds.Rows());
-        Operon::Span<Operon::Scalar> target{y.data(), y.size()};
 
         do {
             std::uniform_int_distribution<size_t> dist(1, z);
-            std::generate(trees.begin(), trees.end(), [&](){ return creator(rng, dist(rng), 1, 1000); }); // NOLINT
+            std::generate(trees.begin(), trees.end(), [&]() { return creator(rng, dist(rng), 1, 1000); }); // NOLINT
             a = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) { return t.CoefficientsCount(); }) / static_cast<double>(n);
-            auto b = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus{}, [](auto const& t) { return t.Length(); });
-            bench.batch(trees.size()).run(fmt::format("{};{};{}", prefix, a, static_cast<double>(b)/static_cast<double>(n)), [&]() {
+            auto bl = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus{}, [](auto const& t) { return t.Length(); });
+            bench.batch(trees.size()).run(fmt::format("{};{};{}", prefix, a, static_cast<double>(bl) / static_cast<double>(n)), [&]() {
                 for (auto const& tree : trees) { f(ds, tree, range); }
             });
             z += 10; // NOLINT
@@ -73,41 +71,41 @@ TEST_CASE("autodiff performance" * dt::test_suite("[performance]")) {
         return INT{&dtable, &ds, &tree}.JacFwd(coeff, range);
     };
 
-    SUBCASE("residual") {
+    SECTION("residual") {
         benchmark(b, residual, "residual", n, m);
     }
 
-    SUBCASE("forward") {
+    SECTION("forward") {
         benchmark(b, jacfwd, "forward;jacobian", n, m);
     }
 
-    SUBCASE("reverse") {
+    SECTION("reverse") {
         benchmark(b, jacrev, "reverse;jacobian", n, m);
     }
 
     b.render(ankerl::nanobench::templates::csv(), std::cout);
 }
 
-TEST_CASE("reverse mode" * dt::test_suite("[performance]")) {
+TEST_CASE("Reverse mode performance", "[performance]")
+{
     constexpr auto nrow{1000};
     constexpr auto ncol{10};
 
     Operon::RandomGenerator rng(0);
     auto ds = Operon::Test::Util::RandomDataset(rng, nrow, ncol);
     nb::Bench b;
-    //b.output(nullptr);
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
-    Operon::PrimitiveSet pset{ Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt };
+    Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt};
     Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes());
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
     using INT = Interpreter<Operon::Scalar, DTable>;
 
-    constexpr auto maxlength{ 100 };
-    constexpr auto maxdepth { 10 };
-    constexpr auto numtrees { 10000 };
+    constexpr auto maxlength{100};
+    constexpr auto maxdepth{10};
+    constexpr auto numtrees{10000};
 
     std::vector<Operon::Tree> trees;
     trees.reserve(numtrees);
@@ -116,18 +114,17 @@ TEST_CASE("reverse mode" * dt::test_suite("[performance]")) {
     for (auto i = 0; i < numtrees; ++i) {
         trees.push_back(creator(rng, dist(rng), 1, maxdepth));
     }
-    auto totalnodes = std::transform_reduce(trees.begin(), trees.end(), 0.0, std::plus{}, [](auto const& tree) { return tree.Length(); });
-    fmt::print("average nodes: {}\n", totalnodes / numtrees);
     Operon::Range range(0, ds.Rows());
     b.batch(numtrees).run("rev", [&]() {
         for (auto const& tree : trees) {
-            auto coeff { tree.GetCoefficients() };
+            auto coeff{tree.GetCoefficients()};
             INT{&dtable, &ds, &tree}.JacRev(coeff, range);
         }
     });
 }
 
-TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
+TEST_CASE("Primitive performance", "[performance]")
+{
     auto constexpr N = 100;
 
     Operon::RandomGenerator rng(0);
@@ -151,11 +148,10 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
 
     Operon::DefaultDispatch dt;
 
-    std::string name = "eigen";
-
     for (auto i = 0UL; i < NodeTypes::Count; ++i) {
         auto t = static_cast<NodeType>(i);
-        Node n{t}; n.Value = dist(rng);
+        Node n{t};
+        n.Value = dist(rng);
         if (n.IsLeaf()) { continue; }
         if (t == NodeType::Dynamic) { continue; }
         std::vector<Tree> trees;
@@ -166,7 +162,7 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
 
         std::vector<Operon::Scalar> out(ds.Rows());
 
-        b.title(name).batch(N * (n.Arity + 1) * ds.Rows()).run(fmt::format("{}\";\"res", n.Name()), [&]() {
+        b.batch(N * (n.Arity + 1) * ds.Rows()).run(fmt::format("{} res", n.Name()), [&]() {
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();
@@ -179,7 +175,8 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
 
     for (auto i = 0UL; i < NodeTypes::Count; ++i) {
         auto t = static_cast<NodeType>(i);
-        Node n{t}; n.Value = dist(rng);
+        Node n{t};
+        n.Value = dist(rng);
         if (n.IsLeaf()) { continue; }
         if (t == NodeType::Dynamic) { continue; }
         std::vector<Tree> trees;
@@ -190,7 +187,7 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
 
         std::vector<Operon::Scalar> jac(ds.Rows() * (n.Arity + 1));
 
-        b.title(name).batch(N * (n.Arity + 1) * ds.Rows()).run(fmt::format("{}\";\"jac", n.Name()), [&]() {
+        b.batch(N * (n.Arity + 1) * ds.Rows()).run(fmt::format("{} jac", n.Name()), [&]() {
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();
@@ -204,15 +201,13 @@ TEST_CASE("primitive performance" * dt::test_suite("[performance]")) {
     b.render(nb::templates::csv(), std::cout);
 }
 
-TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
+TEST_CASE("Optimizer performance", "[performance]")
+{
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto range = Range { 0, ds.Rows<std::size_t>() };
-
-    auto const& X = ds.Values(); // NOLINT
+    auto range = Range{0, ds.Rows<std::size_t>()};
 
     Operon::Map<std::string, Operon::Hash> vars;
     for (auto const& v : ds.GetVariables()) {
-        fmt::print("{} : {} {}\n", v.Name, v.Hash, v.Index);
         vars[v.Name] = v.Hash;
     }
 
@@ -220,35 +215,26 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
     problem.SetTrainingRange(range);
     problem.SetTestRange(range);
 
-    std::vector<size_t> indices(range.Size());
-    std::iota(indices.begin(), indices.end(), 0);
-
     Operon::RandomGenerator rng(0);
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
-    using INT = Interpreter<Operon::Scalar, DTable>;
 
     auto benchmark = [&](ankerl::nanobench::Bench& bench, DTable const& dt, Operon::BalancedTreeCreator const& creator, std::string const& prefix, std::size_t n, std::size_t s, std::size_t r) {
         std::vector<Operon::Tree> trees(n);
         double a{0};
-        auto z{20}; // max size
+        auto z{20};
         Operon::Range range{0, ds.Rows<std::size_t>()};
-        std::vector<Operon::Scalar> y(ds.Rows());
-        Operon::Span<Operon::Scalar> target{y.data(), y.size()};
-
-        //constexpr auto iterations{50};
 
         do {
             std::uniform_int_distribution<size_t> dist(1, z);
-            std::generate(trees.begin(), trees.end(), [&](){ return creator(rng, dist(rng), 1, 1000); }); // NOLINT
+            std::generate(trees.begin(), trees.end(), [&]() { return creator(rng, dist(rng), 1, 1000); }); // NOLINT
             a = std::transform_reduce(trees.begin(), trees.end(), double{0}, std::plus{}, [](auto const& t) { return t.CoefficientsCount(); }) / static_cast<double>(n);
-            auto b = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus{}, [](auto const& t) { return t.Length(); });
+            auto bl = std::transform_reduce(trees.begin(), trees.end(), 0UL, std::plus{}, [](auto const& t) { return t.Length(); });
 
-            bench.batch(range.Size() * b).run(fmt::format("{};{};{};{}", prefix, a, static_cast<double>(b)/static_cast<double>(n), r), [&]() {
+            bench.batch(range.Size() * bl).run(fmt::format("{};{};{};{}", prefix, a, static_cast<double>(bl) / static_cast<double>(n), r), [&]() {
                 std::size_t sz{0};
                 for (auto const& tree : trees) {
-                    INT interpreter{&dtable, &ds, &tree};
                     Operon::LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer{&dt, &problem};
                     auto summary = optimizer.Optimize(rng, tree);
                     sz += summary.FinalParameters.size();
@@ -269,14 +255,15 @@ TEST_CASE("optimizer performance" * dt::test_suite("[performance]")) {
     pset.SetConfig(psetcfg);
     Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes());
 
-    SUBCASE("forward") {
+    SECTION("forward") {
         benchmark(b, dtable, creator, "forward", n, m, r);
     }
 
-    SUBCASE("reverse") {
+    SECTION("reverse") {
         benchmark(b, dtable, creator, "reverse", n, m, r);
     }
 
     b.render(nb::templates::csv(), std::cout);
 }
+
 } // namespace Operon::Test

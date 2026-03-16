@@ -63,7 +63,7 @@ stdenv.mkDerivation rec {
     ++ (
       with pkgs;
       pkgs.lib.optionals enableTesting [
-        doctest
+        catch2_3
         nanobench
       ]
     );

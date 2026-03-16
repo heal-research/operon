@@ -10,6 +10,7 @@
 
 [![License](https://img.shields.io/github/license/heal-research/operon?style=flat)](https://github.com/heal-research/operon/blob/master/LICENSE)
 [![build-linux](https://github.com/heal-research/operon/actions/workflows/build-linux.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-linux.yml)
+[![tests](https://github.com/heal-research/operon/actions/workflows/test-linux.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/test-linux.yml)
 [![build-macos](https://github.com/heal-research/operon/actions/workflows/build-macos.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-macos.yml)
 [![build-windows](https://github.com/heal-research/operon/actions/workflows/build-windows.yml/badge.svg)](https://github.com/heal-research/operon/actions/workflows/build-windows.yml)
 [![Documentation Status](https://readthedocs.org/projects/operongp/badge/?version=latest)](https://operongp.readthedocs.io/en/latest/?badge=latest)
