@@ -41,12 +41,7 @@ TEST_CASE("Parameter optimization", "[optimizer]")
     data.col(ncol - 1) = x1 * x2 + x3 * x4 + x5 * x6;
 
     Operon::Dataset ds(data);
-    Operon::Map<std::string, Operon::Hash> vars;
-    for (auto v : ds.GetVariables()) {
-        vars[v.Name] = v.Hash;
-    }
-
-    auto tree = InfixParser::Parse("X1 * X2 + X3 * X4 + X5 * X6", vars);
+    auto tree = InfixParser::Parse("X1 * X2 + X3 * X4 + X5 * X6", ds);
     for (auto& node : tree.Nodes()) {
         if (node.IsVariable()) {
             node.Value = static_cast<Operon::Scalar>(0.01);
@@ -121,12 +116,7 @@ TEST_CASE("SGD update rules", "[optimizer]")
     data.col(ncol - 1) = data.col(0) * data.col(1) + data.col(2) * data.col(3) + data.col(4) * data.col(5);
 
     Operon::Dataset ds(data);
-    Operon::Map<std::string, Operon::Hash> vars;
-    for (auto v : ds.GetVariables()) {
-        vars[v.Name] = v.Hash;
-    }
-
-    auto tree = InfixParser::Parse("X1 * X2 + X3 * X4 + X5 * X6", vars);
+    auto tree = InfixParser::Parse("X1 * X2 + X3 * X4 + X5 * X6", ds);
     for (auto& node : tree.Nodes()) {
         if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.01); }
     }

@@ -19,8 +19,7 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
     Operon::Dataset ds({x}, {v});
 
     auto check = [&](DT const& dt, std::string const& expr, Operon::Scalar expected) {
-        Operon::Map<std::string, Operon::Hash> vars;
-        auto t = InfixParser::Parse(expr, vars);
+        auto t = InfixParser::Parse(expr);
         auto p = t.GetCoefficients();
         auto r = Operon::Interpreter<Operon::Scalar, DT>(&dt, &ds, &t).Evaluate(p, Operon::Range(0, 1));
         CHECK(r[0] == Catch::Approx(expected));
@@ -67,20 +66,18 @@ TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
     std::vector<Operon::Scalar> v{0};
     Operon::Dataset ds({x}, {v});
 
-    Operon::Map<std::string, Operon::Hash> vars;
-
     SECTION("Arithmetic") {
-        auto t = InfixParser::Parse("2 + 3 * 4", vars);
+        auto t = InfixParser::Parse("2 + 3 * 4");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
         CHECK(r[0] == Catch::Approx(14.0f));
     }
 
     SECTION("Transcendental functions") {
-        auto t = InfixParser::Parse("exp(1)", vars);
+        auto t = InfixParser::Parse("exp(1)");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
         CHECK(r[0] == Catch::Approx(std::exp(1.0f)));
 
-        t = InfixParser::Parse("log(exp(1))", vars);
+        t = InfixParser::Parse("log(exp(1))");
         r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
         CHECK(r[0] == Catch::Approx(1.0f).epsilon(1e-3));
     }

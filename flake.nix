@@ -7,14 +7,14 @@
     foolnotion.url = "github:foolnotion/nur-pkg";
     fluky.url = "github:foolnotion/fluky";
     lbfgs.url = "github:foolnotion/lbfgs";
-    pratt-parser.url = "github:foolnotion/pratt-parser-calculator";
+    infix-parser.url = "github:foolnotion/infix-parser";
     vstat.url = "github:heal-research/vstat";
     vdt.url = "github:foolnotion/vdt/master";
 
     # make everything follow nixpkgs
     foolnotion.inputs.nixpkgs.follows = "nixpkgs";
     lbfgs.inputs.nixpkgs.follows = "nixpkgs";
-    pratt-parser.inputs.nixpkgs.follows = "nixpkgs";
+    infix-parser.inputs.nixpkgs.follows = "nixpkgs";
     vstat.inputs.nixpkgs.follows = "nixpkgs";
     vdt.inputs.nixpkgs.follows = "nixpkgs";
     fluky.inputs.nixpkgs.follows = "nixpkgs";
@@ -27,7 +27,7 @@
       nixpkgs,
       foolnotion,
       fluky,
-      pratt-parser,
+      infix-parser,
       vdt,
       vstat,
       lbfgs,
@@ -50,7 +50,7 @@
               (final: prev: {
                 fluky = fluky.packages.${system}.default;
                 lbfgs = lbfgs.packages.${system}.default;
-                pratt-parser = pratt-parser.packages.${system}.default;
+                infix-parser = infix-parser.packages.${system}.default;
                 vdt = vdt.packages.${system}.default;
                 vstat = vstat.packages.${system}.default;
               })

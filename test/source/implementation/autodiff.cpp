@@ -27,16 +27,11 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]")
     Operon::RandomGenerator rng(0UL);
     Operon::Dataset ds(values);
     ds.SetVariableNames({"x", "y"});
-    Operon::Map<std::string, Operon::Hash> variables;
-    for (auto&& v : ds.GetVariables()) {
-        variables.insert({v.Name, v.Hash});
-    }
-
     Operon::DispatchTable<Operon::Scalar> dtable;
     Operon::Range range{0, ds.Rows<std::size_t>()};
 
     auto derive = [&](std::string const& expr) {
-        auto tree = Operon::InfixParser::Parse(expr, variables, /*reduce=*/true);
+        auto tree = Operon::InfixParser::Parse(expr, ds, /*reduce=*/true);
         for (auto& n : tree.Nodes()) {
             n.Optimize = n.IsLeaf();
         }
@@ -52,7 +47,7 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]")
 
         auto f1 = std::isfinite(jjet.sum());
         auto f2 = std::isfinite(rev.sum());
-        auto ok = (!f1 && !f2) || (f1 && f2 && rev.isApprox(jjet, 0.1f));
+        auto ok = !f1 || (f2 && rev.isApprox(jjet, 1e-4f));
         CHECK(ok);
     };
 
@@ -118,8 +113,8 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
         return trees;
     };
 
-    constexpr auto n{1'000'000};
-    auto epsilon = 0.1f;
+    constexpr auto n{100'000};
+    constexpr auto epsilon{1e-4f};
 
     // unary
     pset.SetConfig(NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Sqrt | NodeType::Tanh | NodeType::Constant);
@@ -130,7 +125,8 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
     auto tmp = generateTrees(pset, n / 2, 3);
     std::ranges::copy(tmp, std::back_inserter(trees));
 
-    auto count{0UL};
+    size_t finiteMismatch{0};  // f1 finite, f2 non-finite
+    size_t finiteDiverge{0};   // both finite but |rev - fwd| > epsilon
     for (auto const& tree : trees) {
         auto parameters = tree.GetCoefficients();
         auto [res, jac] = Util::Autodiff(tree, ds, range);
@@ -141,13 +137,15 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
 
         auto f1 = std::isfinite(jjet.sum());
         auto f2 = std::isfinite(jrev.sum());
-        auto ok = (!f1 && !f2) || (f1 && f2 && jrev.isApprox(jjet, epsilon));
-        count += ok;
+        if (f1 && !f2) { ++finiteMismatch; }
+        else if (f1 && f2 && !jrev.isApprox(jjet, epsilon)) { ++finiteDiverge; }
     }
-    // Numerical edge cases (Div by ~0, Pow with negative base, etc.) cause rare disagreements.
-    // Require at least 95% of trees to agree between forward and reverse mode.
-    auto const successRate = static_cast<double>(count) / static_cast<double>(trees.size());
-    CHECK(successRate >= 0.95);
+    auto const total = trees.size();
+    INFO("finiteness mismatches: " << finiteMismatch << " / " << total);
+    INFO("finite but diverging:  " << finiteDiverge  << " / " << total);
+    constexpr auto maxDivergeRate{0.02};
+    CHECK(finiteMismatch == 0);
+    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(total) < maxDivergeRate);
 }
 
 TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
@@ -155,12 +153,7 @@ TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
     std::string const expr = "((0.78 / ((-1.12) * X8)) / (((((-0.61) * X3) * 0.82) / (((-0.22) * X6) / 1.77)) / (((-0.16) - 0.50) - (((-0.46) * X4) - ((-0.03) * X9)))))";
 
     Operon::Dataset ds("./data/Poly-10.csv", /*hasHeader=*/true);
-    Operon::Map<std::string, Operon::Hash> vars;
-    for (auto const& v : ds.GetVariables()) {
-        vars.insert({v.Name, v.Hash});
-    }
-
-    auto tree = InfixParser::Parse(expr, vars);
+    auto tree = InfixParser::Parse(expr, ds);
     auto coeff = tree.GetCoefficients();
     Operon::Range range(0, 10); // NOLINT
 
