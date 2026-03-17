@@ -94,7 +94,7 @@ find_package(lbfgs REQUIRED)
 find_package(libassert REQUIRED)
 find_package(mdspan REQUIRED)
 find_package(Microsoft.GSL CONFIG REQUIRED)
-find_package(pratt-parser REQUIRED)
+find_package(infix-parser REQUIRED)
 find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
 find_package(tl-expected REQUIRED)
@@ -244,7 +244,7 @@ target_link_libraries(operon_operon PUBLIC
     fmt::fmt
     lbfgs::lbfgs
     libassert::assert
-    pratt-parser::pratt-parser # required by infix parser
+    infix-parser::infix-parser # required by infix parser
     std::mdspan
     vstat::vstat
 )

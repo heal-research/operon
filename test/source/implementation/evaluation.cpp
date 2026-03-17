@@ -25,11 +25,6 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
     using DTable = DispatchTable<Operon::Scalar>;
     auto const& X = ds.Values(); // NOLINT
 
-    Operon::Map<std::string, Operon::Hash> vars;
-    for (auto const& v : ds.GetVariables()) {
-        vars[v.Name] = v.Hash;
-    }
-
     Operon::Vector<size_t> indices(range.Size());
     std::iota(indices.begin(), indices.end(), 0);
 
@@ -37,7 +32,7 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
     auto const eps = 1e-3;
 
     SECTION("X1 + X2 + X3") {
-        auto tree = InfixParser::Parse("X1 + X2 + X3", vars);
+        auto tree = InfixParser::Parse("X1 + X2 + X3", ds);
         auto coeff = tree.GetCoefficients();
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(coeff, range);
         Eigen::Array<Operon::Scalar, -1, 1> expected = X.col(0) + X.col(1) + X.col(2);
@@ -45,21 +40,21 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
     }
 
     SECTION("X1 - X2 + X3") {
-        auto tree = InfixParser::Parse("X1 - X2 + X3", vars);
+        auto tree = InfixParser::Parse("X1 - X2 + X3", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         auto expected = X.col(0) - X.col(1) + X.col(2);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - expected(i)) < eps; }));
     }
 
     SECTION("log(abs(X1))") {
-        auto tree = InfixParser::Parse("log(abs(X1))", vars);
+        auto tree = InfixParser::Parse("log(abs(X1))", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         Eigen::Array<Operon::Scalar, -1, 1> expected = X.col(0).abs().log();
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) { return std::abs(estimatedValues[i] - expected(i)) < eps; }));
     }
 
     SECTION("log of constant") {
-        auto tree = InfixParser::Parse("log(0.12485691905021667)", vars);
+        auto tree = InfixParser::Parse("log(0.12485691905021667)", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(std::abs(estimatedValues[0] - std::log(0.12485691905021667)) < eps);
     }

@@ -180,8 +180,8 @@ TEST_CASE("Hash collisions", "[core]")
     }
 
     auto uniqueRatio = static_cast<double>(set64.size()) / static_cast<double>(totalNodes);
-    // We expect a high unique ratio (low collision rate)
-    CHECK(uniqueRatio > 0.5);
+    // Strict hashing with random coefficients should yield near-zero collisions
+    CHECK(uniqueRatio > 0.98);
 }
 
 TEST_CASE("Strict vs relaxed hashing modes", "[core]")

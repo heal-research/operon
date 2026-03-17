@@ -34,6 +34,7 @@ add_executable(operon_test
     source/performance/creator.cpp
     source/performance/distance.cpp
     source/performance/evaluation.cpp
+    source/performance/infix_parser.cpp
     source/performance/nondominatedsort.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
