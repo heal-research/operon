@@ -44,24 +44,31 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     });
 
     Range range{0, 1};
-    size_t count{0};
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
 
-    constexpr auto eps{1e-6F};
-
-    for (int i = 0; i < nTrees; ++i) {
-        auto const& t1 = trees[i];
-        auto const& t2 = parsedTrees[i];
-        auto v1 = Interpreter<Operon::Scalar, DTable>::Evaluate(t1, ds, range)[0];
-        auto v2 = Interpreter<Operon::Scalar, DTable>::Evaluate(t2, ds, range)[0];
-
-        if (std::isfinite(v1)) {
-            count += static_cast<size_t>(!std::isfinite(v2) || std::abs(v1 - v2) > eps);
+    auto countFailures = [&](float eps) -> size_t {
+        size_t count{0};
+        for (int i = 0; i < nTrees; ++i) {
+            auto const& t1 = trees[i];
+            auto const& t2 = parsedTrees[i];
+            auto v1 = Interpreter<Operon::Scalar, DTable>::Evaluate(t1, ds, range)[0];
+            auto v2 = Interpreter<Operon::Scalar, DTable>::Evaluate(t2, ds, range)[0];
+            if (std::isfinite(v1)) {
+                count += static_cast<size_t>(!std::isfinite(v2) || std::abs(v1 - v2) > eps);
+            }
         }
-    }
-    CHECK(static_cast<double>(count) / nTrees < 1e-1F);
+        return count;
+    };
+
+    constexpr auto epsLoose{1e-6F};
+    constexpr auto epsStrict{1e-5F};
+    constexpr auto maxFailureRateLoose{1e-2};
+    constexpr auto maxFailureRateStrict{1e-3};
+
+    CHECK(static_cast<double>(countFailures(epsLoose))  / nTrees < maxFailureRateLoose);
+    CHECK(static_cast<double>(countFailures(epsStrict)) / nTrees < maxFailureRateStrict);
 }
 
 TEST_CASE("Parse specific expressions", "[parser]")
