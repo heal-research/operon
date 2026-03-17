@@ -49,7 +49,7 @@ stdenv.mkDerivation rec {
       mdspan
       microsoft-gsl
       pkg-config
-      pratt-parser
+      infix-parser
       (scnlib.overrideAttrs { inherit enableShared; })
       simdutf # required by scnlib
       taskflow

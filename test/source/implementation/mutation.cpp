@@ -17,7 +17,6 @@ namespace Operon::Test {
 TEST_CASE("InsertSubtreeMutation produces valid tree", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", true);
-    auto variables = ds.GetVariables();
     auto inputs = ds.VariableHashes();
     std::erase(inputs, ds.GetVariable("Y")->Hash);
     auto const maxDepth{1000};

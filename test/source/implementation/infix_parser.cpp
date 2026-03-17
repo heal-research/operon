@@ -28,9 +28,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     Operon::Dataset ds(values);
 
     Operon::PrimitiveSet pset;
-    auto cfg = PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log;
-    cfg.Clear(NodeTypes::GetIndex(NodeType::Variable));
-    pset.SetConfig(cfg);
+    pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log | NodeType::Variable);
     Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes());
 
     Operon::Vector<Operon::Tree> trees;
@@ -39,51 +37,45 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
         trees.push_back(btc(rng, nNodes, 1, 10));
     }
 
-    Operon::Map<std::string, Operon::Hash> vars;
-    for (auto const& v : ds.GetVariables()) {
-        vars.insert({v.Name, v.Hash});
-    }
-
     Operon::Vector<Operon::Tree> parsedTrees;
     parsedTrees.reserve(nTrees);
     std::transform(trees.begin(), trees.end(), std::back_inserter(parsedTrees), [&](const auto& tree) {
-        return InfixParser::Parse(InfixFormatter::Format(tree, ds, 50), vars);
+        return InfixParser::Parse(InfixFormatter::Format(tree, ds, 50), ds);
     });
 
     Range range{0, 1};
-    size_t count{0};
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
 
-    for (int i = 0; i < nTrees; ++i) {
-        auto const& t1 = trees[i];
-        auto const& t2 = parsedTrees[i];
-        auto v1 = Interpreter<Operon::Scalar, DTable>::Evaluate(t1, ds, range)[0];
-        auto v2 = Interpreter<Operon::Scalar, DTable>::Evaluate(t2, ds, range)[0];
-
-        if (std::isfinite(v1) && std::isfinite(v2) && std::abs(v1 - v2) > 1e-6F) {
-            ++count;
+    auto countFailures = [&](float eps) -> size_t {
+        size_t count{0};
+        for (int i = 0; i < nTrees; ++i) {
+            auto const& t1 = trees[i];
+            auto const& t2 = parsedTrees[i];
+            auto v1 = Interpreter<Operon::Scalar, DTable>::Evaluate(t1, ds, range)[0];
+            auto v2 = Interpreter<Operon::Scalar, DTable>::Evaluate(t2, ds, range)[0];
+            if (std::isfinite(v1)) {
+                count += static_cast<size_t>(!std::isfinite(v2) || std::abs(v1 - v2) > eps);
+            }
         }
-    }
-    CHECK(count < 10); // allow tiny floating-point discrepancies in a small fraction of trees
+        return count;
+    };
+
+    constexpr auto epsLoose{1e-6F};
+    constexpr auto epsStrict{1e-5F};
+    constexpr auto maxFailureRateLoose{1e-2};
+    constexpr auto maxFailureRateStrict{1e-3};
+
+    CHECK(static_cast<double>(countFailures(epsLoose))  / nTrees < maxFailureRateLoose);
+    CHECK(static_cast<double>(countFailures(epsStrict)) / nTrees < maxFailureRateStrict);
 }
 
 TEST_CASE("Parse specific expressions", "[parser]")
 {
-    Operon::Map<std::string, Operon::Hash> vars;
-    Operon::Map<Operon::Hash, std::string> names;
-    Hasher hasher;
-    for (int i = 0; i < 10; ++i) {
-        auto name = fmt::format("X{}", i);
-        auto hash = hasher(reinterpret_cast<uint8_t const*>(name.data()), name.size() * sizeof(char) / sizeof(uint8_t));
-        vars[name] = hash;
-        names[hash] = name;
-    }
-
     SECTION("Nested unary functions") {
         auto str = "sin((sqrt(abs(square(sin(((-0.00191) * X6))))) - sqrt(abs(((-0.96224) / (-0.40567))))))";
-        auto tree = Operon::InfixParser::Parse(str, vars);
+        auto tree = Operon::InfixParser::Parse(str);
         CHECK(tree.Length() > 0);
     }
 
@@ -99,23 +91,21 @@ TEST_CASE("Parse specific expressions", "[parser]")
 
         Dataset ds("./data/Poly-10.csv", true);
         auto s1 = InfixFormatter::Format(t, ds, 5);
-        Operon::Map<std::string, Operon::Hash> vmap;
-        auto t2 = InfixParser::Parse(s1, vmap);
+        auto t2 = InfixParser::Parse(s1);
 
         // Roundtrip: same number of nodes
         CHECK(t.Length() == t2.Length());
     }
 
     SECTION("Analytical quotient") {
-        std::string const expr{"3 aq 5"};
-        auto tree = InfixParser::Parse(expr, vars);
+        std::string const expr{"aq(3, 5)"};
+        auto tree = InfixParser::Parse(expr);
         CHECK(tree.Length() > 0);
     }
 
     SECTION("Multiple additions") {
         auto model_str = "1 + 2 + 3 + 4";
-        Operon::Map<std::string, Operon::Hash> vm;
-        auto tree = Operon::InfixParser::Parse(model_str, vm);
+        auto tree = Operon::InfixParser::Parse(model_str);
 
         using DTable = DispatchTable<Operon::Scalar>;
         DTable dtable;
