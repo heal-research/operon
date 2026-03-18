@@ -52,8 +52,9 @@ public:
     auto AddFunction(Operon::Hash hash, uint16_t arity, size_t frequency = 1) -> bool
     {
         Node node(NodeType::Dynamic, hash);
-        node.Arity  = arity;
-        node.Length = arity;
+        node.Arity    = arity;
+        node.Length   = arity;
+        node.Optimize = false; // function nodes are never coefficient-optimized
         return AddPrimitive(node, frequency, arity, arity);
     }
 
