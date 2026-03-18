@@ -46,6 +46,17 @@ public:
         auto [_, ok] = pset_.insert({ node.HashValue, Primitive { node, frequency, minArity, maxArity } });
         return ok;
     }
+
+    // Register a user-defined function symbol for use in tree generation.
+    // arity must match what the registered callable in the DispatchTable expects.
+    auto AddFunction(Operon::Hash hash, uint16_t arity, size_t frequency = 1) -> bool
+    {
+        Node node(NodeType::Dynamic, hash);
+        node.Arity  = arity;
+        node.Length = arity;
+        return AddPrimitive(node, frequency, arity, arity);
+    }
+
     void RemovePrimitive(Operon::Node node) { pset_.erase(node.HashValue); }
 
     void RemovePrimitive(Operon::Hash hash) { pset_.erase(hash); }

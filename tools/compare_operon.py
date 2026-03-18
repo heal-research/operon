@@ -15,7 +15,7 @@ Examples:
     python compare_operon.py ../operon .
 
     # Quick determinism-only run, fewer datasets
-    python compare_operon.py ../operon . --only-determinism --datasets Poly-10,Sextic
+    python compare_operon.py ../operon . --only-determinism --datasets Poly-10
 
     # Statistical tests only, more seeds, custom significance level
     python compare_operon.py ../operon . --only-stats --stat-seeds 30 --alpha 0.05
@@ -69,7 +69,6 @@ class Dataset:
 ALL_DATASETS: list[Dataset] = [
     Dataset("Poly-10.csv",         "Y", "0:400",  "400:500"),
     Dataset("Pagie-1.csv",         "F", "0:1340", "1340:1676"),
-    Dataset("Sextic.csv",          "Y", "0:4000", "4000:5000"),
     Dataset("Concrete.csv",        "Y", "0:824",  "824:1030"),
     Dataset("Vladislavleva-4.csv", "Y", "0:4819", "4819:6024"),
 ]
