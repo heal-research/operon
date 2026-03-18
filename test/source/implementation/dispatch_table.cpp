@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <numeric>
 
 #include "operon/core/pset.hpp"
 #include "operon/core/symbol_library.hpp"

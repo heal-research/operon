@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fmt/core.h>
+#include <limits>
 #include <taskflow/taskflow.hpp>
 #include <thread>
 
