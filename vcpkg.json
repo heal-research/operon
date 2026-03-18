@@ -15,7 +15,7 @@
         "libassert",
         "mdspan",
         "ms-gsl",
-        "pratt-parser",
+        "infix-parser",
         "scnlib",
         "taskflow",
         "tl-expected",
