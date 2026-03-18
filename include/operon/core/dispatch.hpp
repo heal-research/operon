@@ -369,9 +369,15 @@ public:
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
 
-    template<typename F, typename DF = Dispatch::Noop>
-    void RegisterCallable(Operon::Hash hash, F&& f, DF&& df = DF{}) {
-        map_[hash] = std::make_tuple(std::forward<F&&>(f), std::forward<DF&&>(df));
+    // Insert (or overwrite) the callable and derivative for one scalar type T.
+    // Creates a default-constructed map entry if the hash is absent, then sets
+    // only the type-slot for T, leaving other types in the entry untouched.
+    template<typename T>
+    requires Operon::Concepts::Arithmetic<T>
+    void RegisterFunction(Operon::Hash hash, Callable<T> f, CallableDiff<T> df = {}) {
+        auto& entry = map_[hash];
+        std::get<TypeIndex<T>>(std::get<0>(entry)) = std::move(f);
+        std::get<TypeIndex<T>>(std::get<1>(entry)) = std::move(df);
     }
 
     template<typename T>

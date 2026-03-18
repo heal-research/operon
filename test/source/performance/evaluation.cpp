@@ -184,6 +184,7 @@ TEST_CASE("Evaluator performance", "[performance]")
     problem.SetTrainingRange(range);
     problem.SetTestRange(range);
     problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
+    problem.SetTarget(target);
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
     auto creator = BalancedTreeCreator{&problem.GetPrimitiveSet(), inputs};
