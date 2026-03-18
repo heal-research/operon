@@ -55,6 +55,7 @@ add_library(
     source/formatter/tree.cpp
     source/hash/hash.cpp
     source/hash/metrohash64.cpp
+    source/hash/zobrist.cpp
     source/interpreter/interpreter.cpp
     source/operators/creator/creator.cpp
     source/operators/creator/balanced.cpp
