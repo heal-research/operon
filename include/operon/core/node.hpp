@@ -147,6 +147,10 @@ struct Node {
     [[nodiscard]] OPERON_EXPORT auto Name() const noexcept -> std::string const&;
     [[nodiscard]] OPERON_EXPORT auto Desc() const noexcept -> std::string const&;
 
+    // Register a display name (and optional description) for a Dynamic node hash.
+    // After registration, Name() and Desc() return the provided strings instead of "dyn".
+    static OPERON_EXPORT void RegisterName(Operon::Hash hash, std::string name, std::string desc = {});
+
     // comparison operators
     inline auto operator==(const Node& rhs) const noexcept -> bool
     {
