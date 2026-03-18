@@ -203,7 +203,12 @@ template<typename DTable, typename T,
 void RegisterBinary(DTable& dt, Operon::Hash hash, F primal,
                     DFa derivA = {}, DFb derivB = {})
 {
-    if constexpr (std::is_same_v<std::remove_cvref_t<DFa>, Dispatch::Noop>) {
+    constexpr auto aIsNoop = std::is_same_v<std::remove_cvref_t<DFa>, Dispatch::Noop>;
+    constexpr auto bIsNoop = std::is_same_v<std::remove_cvref_t<DFb>, Dispatch::Noop>;
+    static_assert(aIsNoop == bIsNoop,
+        "RegisterBinary: provide both partial derivatives or neither; "
+        "supplying only one is not supported.");
+    if constexpr (aIsNoop) {
         dt.template RegisterFunction<T>(hash,
             MakeBinaryCallable<DTable, T>(primal),
             MakeBinaryAutoDiff<DTable, T>(std::move(primal)));
