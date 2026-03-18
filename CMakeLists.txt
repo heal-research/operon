@@ -91,6 +91,7 @@ find_package(eve REQUIRED)
 find_package(FastFloat REQUIRED)
 find_package(fluky REQUIRED)
 find_package(fmt REQUIRED)
+find_package(gtl REQUIRED)
 find_package(lbfgs REQUIRED)
 find_package(libassert REQUIRED)
 find_package(mdspan REQUIRED)
@@ -255,6 +256,7 @@ target_link_libraries(operon_operon PRIVATE
     Taskflow::Taskflow
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense
+    gtl
     tl::expected
 )
 
