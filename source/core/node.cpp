@@ -15,6 +15,13 @@ using std::string;
 using std::unordered_map;
 
 namespace Operon {
+    static Operon::Map<Operon::Hash, pair<string, string>> DynDesc;
+
+    void Node::RegisterName(Operon::Hash hash, string name, string desc)
+    {
+        DynDesc[hash] = { std::move(name), std::move(desc) };
+    }
+
     static const Operon::Map<NodeType, pair<string, string>> NodeDesc = {
         { NodeType::Add,      std::make_pair("+", "n-ary addition f(a,b,c,...) = a + b + c + ...") },
         { NodeType::Mul,      std::make_pair("*", "n-ary multiplication f(a,b,c,...) = a * b * c * ..." ) },
@@ -50,8 +57,25 @@ namespace Operon {
         { NodeType::Variable, std::make_pair("variable", "a dataset input with an associated weight" ) },
     };
 
-    auto Node::Name() const noexcept -> std::string const& { return NodeDesc.at(Type).first; }
-    auto Node::Desc() const noexcept -> std::string const& { return NodeDesc.at(Type).second; }
+    auto Node::Name() const noexcept -> std::string const&
+    {
+        if (Type == NodeType::Dynamic) {
+            if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {
+                return it->second.first;
+            }
+        }
+        return NodeDesc.at(Type).first;
+    }
+
+    auto Node::Desc() const noexcept -> std::string const&
+    {
+        if (Type == NodeType::Dynamic) {
+            if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {
+                return it->second.second;
+            }
+        }
+        return NodeDesc.at(Type).second;
+    }
 
 } // namespace Operon
 
