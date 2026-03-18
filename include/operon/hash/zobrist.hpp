@@ -72,7 +72,8 @@ public:
     auto Insert(Operon::Hash hash, Value const& val) -> void;
 
     // Clears the transposition table and resets the hit counter.
-    // Call between runs when sharing a cache across an experiment.
+    // NOT safe to call concurrently with TryGet or Insert — call only after
+    // the algorithm has fully stopped (e.g. after GeneticAlgorithm::Run returns).
     auto Clear() -> void;
 
     [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(); }

@@ -9,7 +9,7 @@
 namespace Operon {
 
 struct Zobrist::TranspositionTable {
-    gtl::parallel_flat_hash_map<Operon::Hash, std::pair<Zobrist::Value, std::size_t>> Map;
+    gtl::parallel_flat_hash_map_m<Operon::Hash, std::pair<Zobrist::Value, std::size_t>> Map;
 };
 
 Zobrist::Zobrist(Operon::RandomGenerator& rng, int maxLength)
