@@ -93,12 +93,12 @@ public:
 
         if (cache_ != nullptr) {
             auto const hash = cache_->ComputeHash(res.Child->Genotype);
-            Individual cached{Evaluator()->ObjectiveCount()};
+            Operon::Vector<Operon::Scalar> cached(Evaluator()->ObjectiveCount());
             if (cache_->TryGet(hash, cached)) {
-                res.Child->Fitness = cached.Fitness;
+                res.Child->Fitness = cached;
             } else {
                 evaluate();
-                cache_->Insert(hash, *res.Child);
+                cache_->Insert(hash, res.Child->Fitness);
             }
         } else {
             evaluate();

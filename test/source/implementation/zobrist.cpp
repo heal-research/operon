@@ -4,8 +4,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "operon/core/dataset.hpp"
-#include "operon/core/individual.hpp"
+#include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
+#include "operon/core/tree.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
@@ -60,21 +61,19 @@ TEST_CASE("Zobrist - different coefficients yield same hash", "[zobrist]")
     REQUIRE(cache.ComputeHash(tree1) == cache.ComputeHash(tree2));
 }
 
-TEST_CASE("Zobrist - position sensitivity", "[zobrist]")
+TEST_CASE("Zobrist - position sensitivity (deterministic)", "[zobrist]")
 {
-    // A tree with nodes in a different order should (almost always) hash differently.
-    auto [ds, inputs, pset] = MakeSetup();
+    // sin(cos(c)) and cos(sin(c)) have the same node types but at different
+    // positions — the position-aware hash must distinguish them.
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs};
-    auto tree1 = creator(rng, 10, 1, MaxLength);
-    auto tree2 = creator(rng, 10, 1, MaxLength);
+    // postfix: [Constant, Cos, Sin]  =>  sin(cos(c))
+    Tree tree1 = Tree({ Node(NodeType::Constant), Node(NodeType::Cos), Node(NodeType::Sin) }).UpdateNodes();
+    // postfix: [Constant, Sin, Cos]  =>  cos(sin(c))
+    Tree tree2 = Tree({ Node(NodeType::Constant), Node(NodeType::Sin), Node(NodeType::Cos) }).UpdateNodes();
 
-    // Two independently generated trees of the same length are structurally
-    // distinct with overwhelming probability.
-    if (tree1.Length() != tree2.Length()) { SUCCEED(); return; }
-    CHECK(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
+    REQUIRE(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
 }
 
 TEST_CASE("Zobrist - TryGet returns false on miss", "[zobrist]")
@@ -87,8 +86,8 @@ TEST_CASE("Zobrist - TryGet returns false on miss", "[zobrist]")
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Individual ind;
-    REQUIRE_FALSE(cache.TryGet(hash, ind));
+    Operon::Vector<Operon::Scalar> val;
+    REQUIRE_FALSE(cache.TryGet(hash, val));
     REQUIRE(cache.Hits() == 0);
 }
 
@@ -102,16 +101,15 @@ TEST_CASE("Zobrist - Insert then TryGet roundtrip", "[zobrist]")
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Individual stored(2);
-    stored.Fitness = { 0.5, 1.0 };
+    Operon::Vector<Operon::Scalar> stored = { Operon::Scalar{0.5}, Operon::Scalar{1.0} };
     cache.Insert(hash, stored);
     REQUIRE(cache.Size() == 1);
 
-    Individual retrieved(2);
+    Operon::Vector<Operon::Scalar> retrieved(2);
     REQUIRE(cache.TryGet(hash, retrieved));
     REQUIRE(cache.Hits() == 1);
-    REQUIRE(retrieved.Fitness[0] == stored.Fitness[0]);
-    REQUIRE(retrieved.Fitness[1] == stored.Fitness[1]);
+    REQUIRE(retrieved[0] == stored[0]);
+    REQUIRE(retrieved[1] == stored[1]);
 }
 
 TEST_CASE("Zobrist - Clear resets table and hit counter", "[zobrist]")
@@ -124,11 +122,10 @@ TEST_CASE("Zobrist - Clear resets table and hit counter", "[zobrist]")
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Individual ind(1);
-    ind.Fitness = { 0.1 };
-    cache.Insert(hash, ind);
+    Operon::Vector<Operon::Scalar> val = { Operon::Scalar{0.1} };
+    cache.Insert(hash, val);
 
-    Individual tmp;
+    Operon::Vector<Operon::Scalar> tmp;
     std::ignore = cache.TryGet(hash, tmp); // bumps hits
 
     cache.Clear();
@@ -148,11 +145,10 @@ TEST_CASE("Zobrist - duplicate inserts increment count, not entries", "[zobrist]
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Individual ind(1);
-    ind.Fitness = { 0.3 };
-    cache.Insert(hash, ind);
-    cache.Insert(hash, ind);
-    cache.Insert(hash, ind);
+    Operon::Vector<Operon::Scalar> val = { Operon::Scalar{0.3} };
+    cache.Insert(hash, val);
+    cache.Insert(hash, val);
+    cache.Insert(hash, val);
 
     REQUIRE(cache.Size() == 1); // only one entry
 }

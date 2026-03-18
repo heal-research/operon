@@ -7,7 +7,6 @@
 #include <atomic>
 #include <memory>
 
-#include "operon/core/individual.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
@@ -16,15 +15,16 @@
 namespace Operon {
 
 // Position-aware Zobrist hash for GP trees, plus a transposition table that
-// caches evaluated individuals keyed by structural hash.  The hash captures
-// tree topology and variable identity but not coefficient values — by design,
-// so that a cached fitness (computed after local search) can be reused for any
+// caches fitness vectors keyed by structural hash.  The hash captures tree
+// topology and variable identity but not coefficient values — by design, so
+// that a cached fitness (computed after local search) can be reused for any
 // structurally identical tree regardless of its current coefficients.
 //
 // Ownership: the caller constructs one Zobrist per experiment (or per run) and
 // passes a raw pointer into GeneticAlgorithmConfig::Cache.  The algorithm
 // borrows the pointer; the caller is responsible for lifetime.
-class OPERON_EXPORT Zobrist {
+class Zobrist {
+    using Value = Operon::Vector<Operon::Scalar>;
     using Extents = std::extents<int, static_cast<int>(NodeTypes::Count), std::dynamic_extent>;
     using Table   = Operon::MDArray<Operon::Hash, Extents>;
 
@@ -43,6 +43,9 @@ public:
     auto operator=(Zobrist const&)     -> Zobrist& = delete;
     auto operator=(Zobrist&&)          -> Zobrist& = delete;
 
+    [[nodiscard]] auto Rows() const { return table_.extent(0); }
+    [[nodiscard]] auto Cols() const { return table_.extent(1); }
+
     [[nodiscard]] auto ComputeHash(Operon::Node const& n, int pos) const -> Operon::Hash
     {
         auto const i = NodeTypes::GetIndex(n.Type);
@@ -53,6 +56,7 @@ public:
 
     [[nodiscard]] auto ComputeHash(Operon::Tree const& tree) const -> Operon::Hash
     {
+        EXPECT(std::ssize(tree.Nodes()) <= Cols());
         Operon::Hash h{};
         auto const& nodes = tree.Nodes();
         for (auto i = 0; i < std::ssize(nodes); ++i) {
@@ -61,11 +65,11 @@ public:
         return h;
     }
 
-    // Returns true and fills `ind` if the hash is found; thread-safe.
-    [[nodiscard]] auto TryGet(Operon::Hash hash, Operon::Individual& ind) const -> bool;
+    // Returns true and fills `val` if the hash is found; thread-safe.
+    [[nodiscard]] auto TryGet(Operon::Hash hash, Value& val) const -> bool;
 
     // Inserts or increments the visit counter; thread-safe.
-    auto Insert(Operon::Hash hash, Operon::Individual const& ind) -> void;
+    auto Insert(Operon::Hash hash, Value const& val) -> void;
 
     // Clears the transposition table and resets the hit counter.
     // Call between runs when sharing a cache across an experiment.
@@ -74,6 +78,7 @@ public:
     [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(); }
     [[nodiscard]] auto Size() const -> std::size_t;
 };
+
 
 } // namespace Operon
 

@@ -9,9 +9,7 @@
 namespace Operon {
 
 struct Zobrist::TranspositionTable {
-    using Key   = Operon::Hash;
-    using Value = std::pair<Operon::Individual, std::size_t>;
-    gtl::parallel_flat_hash_map<Key, Value> map;
+    gtl::parallel_flat_hash_map<Operon::Hash, std::pair<Zobrist::Value, std::size_t>> Map;
 };
 
 Zobrist::Zobrist(Operon::RandomGenerator& rng, int maxLength)
@@ -23,35 +21,35 @@ Zobrist::Zobrist(Operon::RandomGenerator& rng, int maxLength)
 
 Zobrist::~Zobrist() = default;
 
-auto Zobrist::TryGet(Operon::Hash hash, Operon::Individual& ind) const -> bool
+auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
 {
     bool found{false};
-    tt_->map.if_contains(hash, [&](auto const& v) {
-        ind = v.second.first;
+    tt_->Map.if_contains(hash, [&](auto const& v) {
+        val = v.second.first;
         found = true;
     });
     if (found) { ++hits_; }
     return found;
 }
 
-auto Zobrist::Insert(Operon::Hash hash, Operon::Individual const& ind) -> void
+auto Zobrist::Insert(Operon::Hash hash, Value const& val) -> void
 {
-    tt_->map.lazy_emplace_l(
+    tt_->Map.lazy_emplace_l(
         hash,
         [](auto& v) { ++v.second.second; },          // already present: bump count
-        [&](auto const& ctor) { ctor(hash, std::make_pair(ind, std::size_t{1})); }  // new entry
+        [&](auto const& ctor) { ctor(hash, std::make_pair(val, std::size_t{1})); }  // new entry
     );
 }
 
 auto Zobrist::Clear() -> void
 {
-    tt_->map.clear();
+    tt_->Map.clear();
     hits_.store(0);
 }
 
 auto Zobrist::Size() const -> std::size_t
 {
-    return tt_->map.size();
+    return tt_->Map.size();
 }
 
 } // namespace Operon
