@@ -1,0 +1,5 @@
+{
+    "name": "infix-parser",
+    "version-string": "0.1.0",
+    "description": "A fast C++20 infix expression parser built on lexy."
+}

@@ -7,7 +7,7 @@ find_dependency(fluky CONFIG REQUIRED)
 find_dependency(fmt CONFIG REQUIRED)
 find_dependency(lbfgs CONFIG REQUIRED)
 find_dependency(libassert CONFIG REQUIRED)
-find_dependency(pratt-parser CONFIG REQUIRED)
+find_dependency(infix-parser CONFIG REQUIRED)
 find_dependency(mdspan CONFIG REQUIRED)
 find_dependency(vstat CONFIG REQUIRED)
 
