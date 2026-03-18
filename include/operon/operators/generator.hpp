@@ -5,6 +5,7 @@
 #define OPERON_GENERATOR_HPP
 
 #include "operon/core/operator.hpp"
+#include "operon/hash/zobrist.hpp"
 #include "operon/operators/crossover.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/mutation.hpp"
@@ -50,6 +51,9 @@ public:
 
     [[nodiscard]] virtual auto Terminate() const -> bool { return evaluator_->BudgetExhausted(); }
 
+    auto SetCache(Zobrist* cache) const { cache_ = cache; }
+    [[nodiscard]] auto Cache() const -> Zobrist* { return cache_; }
+
     auto Generate(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf, RecombinationResult& res) const -> void {
         auto pop = FemaleSelector()->Population();
         if (!res.Parent1) { res.Parent1 = pop[ (*FemaleSelector())(random) ]; }
@@ -66,23 +70,38 @@ public:
             res.Child->Genotype = (*Mutator())(random, std::move(res.Child->Genotype));
         }
 
-        if (BernoulliTrial{pLocal}(random)) {
-            auto c = res.Child->Genotype.GetCoefficients(); // save original coefficients
-            auto [optimizedTree, summary] = (*Optimizer())(random, std::move(res.Child->Genotype));
-            Evaluator()->ResidualEvaluations += summary.FunctionEvaluations;
-            Evaluator()->JacobianEvaluations += summary.JacobianEvaluations;
-            res.Child->Genotype = std::move(optimizedTree);
-            res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
+        auto evaluate = [&]() {
+            if (BernoulliTrial{pLocal}(random)) {
+                auto c = res.Child->Genotype.GetCoefficients(); // save original coefficients
+                auto [optimizedTree, summary] = (*Optimizer())(random, std::move(res.Child->Genotype));
+                Evaluator()->ResidualEvaluations += summary.FunctionEvaluations;
+                Evaluator()->JacobianEvaluations += summary.JacobianEvaluations;
+                res.Child->Genotype = std::move(optimizedTree);
+                res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
 
-            if(!BernoulliTrial{pLamarck}(random)) {
-                res.Child->Genotype.SetCoefficients(c);     // restore original coefficients
+                if(!BernoulliTrial{pLamarck}(random)) {
+                    res.Child->Genotype.SetCoefficients(c); // restore original coefficients
+                }
+            } else {
+                res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
+            }
+
+            for (auto& v : res.Child->Fitness) {
+                if (!std::isfinite(v)) { v = std::numeric_limits<Operon::Scalar>::max(); }
+            }
+        };
+
+        if (cache_ != nullptr) {
+            auto const hash = cache_->ComputeHash(res.Child->Genotype);
+            Individual cached{Evaluator()->ObjectiveCount()};
+            if (cache_->TryGet(hash, cached)) {
+                res.Child->Fitness = cached.Fitness;
+            } else {
+                evaluate();
+                cache_->Insert(hash, *res.Child);
             }
         } else {
-            res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
-        }
-
-        for (auto& v : res.Child->Fitness) {
-            if (!std::isfinite(v)) { v = std::numeric_limits<Operon::Scalar>::max(); }
+            evaluate();
         }
     }
 
@@ -99,6 +118,7 @@ private:
     gsl::not_null<SelectorBase const*>  femaleSelector_;
     gsl::not_null<SelectorBase const*>  maleSelector_;
     CoefficientOptimizer const*         coeffOptimizer_;
+    mutable Zobrist*                    cache_{nullptr};
 };
 
 class OPERON_EXPORT BasicOffspringGenerator final : public OffspringGeneratorBase {
