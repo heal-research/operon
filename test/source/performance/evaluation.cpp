@@ -73,7 +73,7 @@ TEST_CASE("Evaluation performance", "[performance]")
     PrimitiveSet pset;
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    auto creator = BalancedTreeCreator{&pset, inputs};
+    auto creator = BalancedTreeCreator{&pset, inputs, /* bias= */ 0.0, maxLength};
 
     Operon::Vector<Tree> trees(n);
 
@@ -187,7 +187,7 @@ TEST_CASE("Evaluator performance", "[performance]")
     problem.SetTarget(target);
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
-    auto creator = BalancedTreeCreator{&problem.GetPrimitiveSet(), inputs};
+    auto creator = BalancedTreeCreator{&problem.GetPrimitiveSet(), inputs, /* bias= */ 0.0, maxLength};
 
     Operon::Vector<Tree> trees(n);
     std::ranges::generate(trees, [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
@@ -255,7 +255,7 @@ TEST_CASE("Parallel interpreter", "[performance]")
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
     Operon::PrimitiveSet pset;
     pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
-    auto creator = BalancedTreeCreator{&pset, inputs};
+    auto creator = BalancedTreeCreator{&pset, inputs, /* bias= */ 0.0, maxLength};
 
     Operon::Vector<Tree> trees(n);
     std::ranges::generate(trees, [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
