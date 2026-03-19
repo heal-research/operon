@@ -175,7 +175,7 @@ auto main(int argc, char** argv) -> int
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
         std::unique_ptr<Operon::CreatorBase> creator;
-        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs());
+        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs(), maxLength);
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(creator.get());

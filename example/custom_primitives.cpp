@@ -109,7 +109,7 @@ auto main(int argc, char** argv) -> int
 
     auto [arityMin, arityMax] = pset.FunctionArityLimits();
 
-    Operon::BalancedTreeCreator creator { &pset, problem.GetInputs() };
+    Operon::BalancedTreeCreator creator { &pset, problem.GetInputs(), /* bias= */ 0.0, MaxLength };
 
     Operon::NormalCoefficientInitializer coeffInit;
     coeffInit.ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});

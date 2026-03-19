@@ -79,7 +79,7 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
     return selector;
 }
 
-auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<Operon::Hash> const& inputs) -> std::unique_ptr<CreatorBase>
+auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<Operon::Hash> const& inputs, size_t maxLength) -> std::unique_ptr<CreatorBase>
 {
     std::unique_ptr<CreatorBase> creator;
 
@@ -94,11 +94,11 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     }
 
     if (str == "btc") {
-        creator = std::make_unique<BalancedTreeCreator>(&pset, inputs, bias);
+        creator = std::make_unique<BalancedTreeCreator>(&pset, inputs, bias, maxLength);
     } else if (str == "ptc2") {
-        creator = std::make_unique<ProbabilisticTreeCreator>(&pset, inputs, bias);
+        creator = std::make_unique<ProbabilisticTreeCreator>(&pset, inputs, bias, maxLength);
     } else if (str == "grow") {
-        creator = std::make_unique<GrowTreeCreator>(&pset, inputs);
+        creator = std::make_unique<GrowTreeCreator>(&pset, inputs, maxLength);
     } else {
         throw std::invalid_argument(detail::GetErrorString("creator", str));
     }

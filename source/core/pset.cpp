@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <ranges>
 #include <cstdint>
 #include <fmt/core.h>
 #include <random>
@@ -17,6 +18,38 @@
 #include "operon/core/types.hpp"
 
 namespace Operon {
+    auto PrimitiveSet::AchievableLength(size_t targetLen) const -> size_t
+    {
+        if (targetLen <= 1) { return 1; }
+
+        // Collect all distinct arities from enabled non-leaf primitives.
+        std::vector<size_t> arities;
+        for (auto const& [key, val] : pset_) {
+            auto const& [node, freq, minAr, maxAr] = val;
+            if (node.IsLeaf() || !node.IsEnabled || freq == 0) { continue; }
+            for (auto a = minAr; a <= maxAr; ++a) {
+                if (std::ranges::find(arities, a) == arities.end()) {
+                    arities.push_back(a);
+                }
+            }
+        }
+        if (arities.empty()) { return 1; }
+
+        // dp[i] is true if a tree of length (i+1) is achievable.
+        std::vector<bool> dp(targetLen, false);
+        dp[0] = true; // length 1 (single leaf) is always achievable
+        for (size_t i = 1; i < targetLen; ++i) {
+            for (auto a : arities) {
+                if (i >= a && dp[i - a]) { dp[i] = true; break; }
+            }
+        }
+
+        for (auto i = targetLen; i > 0; --i) {
+            if (dp[i - 1]) { return i; }
+        }
+        return 1;
+    }
+
     [[nodiscard]] auto PrimitiveSet::GetPrimitive(Operon::Hash hash) const -> Primitive const& {
         auto it = pset_.find(hash);
         if (it == pset_.end()) {
