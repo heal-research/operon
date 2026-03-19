@@ -134,6 +134,43 @@ public:
         SetEnabled(hash, /*enabled=*/false);
     }
 
+    // Returns the largest tree length <= targetLen that is achievable with the
+    // current primitive set. A length n is achievable if n == 1 (a single leaf)
+    // or (n-1) can be expressed as a sum of available function arities.
+    // This is used by tree creators to snap an impossible requested length down
+    // to the nearest valid one, so they never return a tree larger than requested.
+    [[nodiscard]] auto AchievableLength(size_t targetLen) const -> size_t
+    {
+        if (targetLen <= 1) { return 1; }
+
+        // Collect all distinct arities from enabled non-leaf primitives.
+        std::vector<size_t> arities;
+        for (auto const& [key, val] : pset_) {
+            auto const& [node, freq, minAr, maxAr] = val;
+            if (node.IsLeaf() || !node.IsEnabled || freq == 0) { continue; }
+            for (auto a = minAr; a <= maxAr; ++a) {
+                if (std::ranges::find(arities, a) == arities.end()) {
+                    arities.push_back(a);
+                }
+            }
+        }
+        if (arities.empty()) { return 1; }
+
+        // dp[i] is true if a tree of length (i+1) is achievable.
+        std::vector<bool> dp(targetLen, false);
+        dp[0] = true; // length 1 (single leaf) is always achievable
+        for (size_t i = 1; i < targetLen; ++i) {
+            for (auto a : arities) {
+                if (i >= a && dp[i - a]) { dp[i] = true; break; }
+            }
+        }
+
+        for (auto i = targetLen; i >= 1; --i) {
+            if (dp[i - 1]) { return i; }
+        }
+        return 1;
+    }
+
     [[nodiscard]] auto FunctionArityLimits() const -> std::pair<size_t, size_t>
     {
         auto minArity = std::numeric_limits<size_t>::max();

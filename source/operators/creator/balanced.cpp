@@ -32,11 +32,8 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         }
     };
 
-    // length one can be achieved with a single leaf
-    // otherwise the minimum achievable length is minFunctionArity+1
-    if (targetLen > 1 && targetLen < minFunctionArity + 1) {
-        targetLen = minFunctionArity + 1;
-    }
+    auto const requestedLen = targetLen;
+    targetLen = pset->AchievableLength(targetLen);
 
     using U = std::tuple<Node, size_t, size_t>;
 
@@ -95,6 +92,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     };
     add(tuples.front(), add);
     auto tree = Tree(postfix).UpdateNodes();
+    ENSURE(tree.Nodes().size() <= requestedLen);
     return tree;
 }
 } // namespace Operon
