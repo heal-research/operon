@@ -94,8 +94,6 @@ auto ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tr
 
     auto partialLength = nodes.size() - oldLen;
 
-    // the correction below is necessary because it can happen that maxLength_ < nodes.size()
-    // (for example when the tree creator can't achieve the target length exactly and creates a slightly larger tree)
     auto maxLength = static_cast<Signed>(maxLength_ - partialLength);
     maxLength = std::max(maxLength, Signed { 1 });
 

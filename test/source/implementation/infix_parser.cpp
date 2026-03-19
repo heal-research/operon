@@ -29,7 +29,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
 
     Operon::PrimitiveSet pset;
     pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log | NodeType::Variable);
-    Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes());
+    Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, nNodes);
 
     Operon::Vector<Operon::Tree> trees;
     trees.reserve(nTrees);
@@ -124,7 +124,8 @@ TEST_CASE("Formatter output", "[parser]")
         Operon::Dataset ds("./data/Poly-10.csv", true);
         Operon::PrimitiveSet pset;
         pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log);
-        Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes());
+        constexpr size_t maxLength = 20;
+        Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 
         auto validateString = [](auto const& s) {
             size_t lp{0}, rp{0};

@@ -27,7 +27,7 @@ TEST_CASE("BTC creation throughput", "[performance]")
     auto ds = Util::RandomDataset(rd, nrow, ncol);
     auto inputs = ds.VariableHashes();
 
-    BalancedTreeCreator creator{&pset, inputs};
+    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, maxl};
     std::uniform_int_distribution<size_t> dist(1, maxl);
 
     nb::Bench bench;

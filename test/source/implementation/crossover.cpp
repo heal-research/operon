@@ -25,13 +25,14 @@ TEST_CASE("Crossover produces valid trees", "[operators]")
         if (v.Name != "Y") { inputs.push_back(v.Hash); }
     }
 
-    PrimitiveSet grammar;
-    grammar.SetConfig(PrimitiveSet::Arithmetic);
-    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0};
-
-    Operon::RandomGenerator rng(1234);
     constexpr size_t maxDepth{1000};
     constexpr size_t maxLength{100};
+
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic);
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+
+    Operon::RandomGenerator rng(1234);
 
     SECTION("Child is a valid tree") {
         constexpr double internalNodeProbability{0.9};

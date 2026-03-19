@@ -95,7 +95,7 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
         std::uniform_int_distribution<size_t> length(1, l);
         std::bernoulli_distribution bernoulli(0.5); // NOLINT
         std::uniform_real_distribution<Operon::Scalar> dist(-10.F, +10.F);
-        Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes());
+        Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, l);
 
         std::vector<Operon::Tree> trees;
         trees.reserve(n);

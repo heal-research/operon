@@ -28,8 +28,9 @@ TEST_CASE("Hash determinism", "[core]")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
+    constexpr size_t maxLength = 20;
     Operon::RandomGenerator rd(42);
-    BalancedTreeCreator btc{&grammar, inputs};
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
 
     auto tree1 = btc(rd, 20, 1, 1000);
@@ -66,7 +67,7 @@ TEST_CASE("Hash-based distance", "[core]")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
-    auto btc = BalancedTreeCreator{&grammar, inputs};
+    auto btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
 
     std::vector<Tree> trees(n);
@@ -111,8 +112,9 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
+    constexpr size_t maxLength = 20;
     Operon::RandomGenerator rd(1234);
-    BalancedTreeCreator btc{&grammar, inputs};
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
 
     auto tree1 = btc(rd, 20, 1, 1000);
@@ -156,7 +158,7 @@ TEST_CASE("Hash collisions", "[core]")
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
     std::vector<Tree> trees(n);
-    auto btc = BalancedTreeCreator{&grammar, inputs};
+    auto btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
     initializer.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
@@ -193,8 +195,9 @@ TEST_CASE("Strict vs relaxed hashing modes", "[core]")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
+    constexpr size_t maxLength = 20;
     Operon::RandomGenerator rd(42);
-    BalancedTreeCreator btc{&grammar, inputs};
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
 
     auto tree = btc(rd, 20, 1, 1000);

@@ -89,7 +89,8 @@ TEST_CASE("Batch evaluation", "[interpreter]")
     problem.SetTestRange(range);
 
     Operon::PrimitiveSet pset{PrimitiveSet::Arithmetic};
-    Operon::BalancedTreeCreator creator{&pset, ds.VariableHashes()};
+    constexpr size_t maxLength = 20;
+    Operon::BalancedTreeCreator creator{&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength};
 
     Operon::RandomGenerator rng{0};
     auto constexpr n{10};
