@@ -18,6 +18,7 @@
 namespace Operon {
 auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*args*/, size_t /*args*/) const -> Tree
 {
+    EXPECT(targetLen > 0);
     auto const& pset = GetPrimitiveSet();
     auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
 
@@ -32,11 +33,8 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         }
     };
 
-    // length one can be achieved with a single leaf
-    // otherwise the minimum achievable length is minFunctionArity+1
-    if (targetLen > 1 && targetLen < minFunctionArity + 1) {
-        targetLen = minFunctionArity + 1;
-    }
+    auto const requestedLen = targetLen;
+    targetLen = AchievableLength(targetLen);
 
     using U = std::tuple<Node, size_t, size_t>;
 
@@ -95,6 +93,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     };
     add(tuples.front(), add);
     auto tree = Tree(postfix).UpdateNodes();
+    ENSURE(tree.Nodes().size() <= requestedLen);
     return tree;
 }
 } // namespace Operon

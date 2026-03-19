@@ -28,7 +28,8 @@ TEST_CASE("Autodiff performance", "[performance]")
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
     Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt | Operon::NodeType::Pow | Operon::NodeType::Tanh};
-    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes());
+    constexpr size_t maxLength = 200;
+    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 
     auto constexpr initialSize{20};
     auto benchmark = [&](ankerl::nanobench::Bench& bench, auto&& f, std::string const& prefix, std::size_t n, std::size_t s) {
@@ -97,13 +98,13 @@ TEST_CASE("Reverse mode performance", "[performance]")
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
     Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt};
-    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes());
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
     using INT = Interpreter<Operon::Scalar, DTable>;
 
     constexpr auto maxlength{100};
+    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxlength);
     constexpr auto maxdepth{10};
     constexpr auto numtrees{10000};
 
@@ -253,7 +254,8 @@ TEST_CASE("Optimizer performance", "[performance]")
     Operon::PrimitiveSet pset;
     Operon::PrimitiveSetConfig psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos;
     pset.SetConfig(psetcfg);
-    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes());
+    constexpr size_t maxLength = 200;
+    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 
     SECTION("forward") {
         benchmark(b, dtable, creator, "forward", n, m, r);

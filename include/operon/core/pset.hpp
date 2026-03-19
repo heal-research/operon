@@ -134,6 +134,17 @@ public:
         SetEnabled(hash, /*enabled=*/false);
     }
 
+    // Returns the largest tree length <= targetLen that is achievable with the
+    // current primitive set. A length n is achievable if n == 1 (a single leaf,
+    // assuming the pset has at least one enabled terminal) or (n-1) can be
+    // expressed as a sum of available function arities.
+    // Precondition: the pset must have at least one enabled terminal symbol.
+    // This is used by tree creators to snap an impossible requested length down
+    // to the nearest valid one, so they never return a tree larger than requested.
+    // Cost: O(|pset| + targetLen * |distinct arities|) per call — negligible for
+    // typical GP parameters (maxLength <= 200, |pset| <= 30).
+    [[nodiscard]] OPERON_EXPORT auto AchievableLength(size_t targetLen) const -> size_t;
+
     [[nodiscard]] auto FunctionArityLimits() const -> std::pair<size_t, size_t>
     {
         auto minArity = std::numeric_limits<size_t>::max();

@@ -29,7 +29,7 @@ TEST_CASE("InsertSubtreeMutation produces valid tree", "[operators]")
     grammar.SetFrequency(Node(NodeType::Sub).HashValue, 1);
     grammar.SetFrequency(Node(NodeType::Div).HashValue, 1);
 
-    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0};
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     UniformCoefficientInitializer cfi;
 
     Operon::RandomGenerator random(1234);
@@ -56,7 +56,7 @@ TEST_CASE("Mutation tree stays within bounds", "[operators]")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
-    BalancedTreeCreator btc{&grammar, inputs};
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     UniformCoefficientInitializer cfi;
 
     Operon::RandomGenerator random(1234);

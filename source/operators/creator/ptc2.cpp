@@ -37,11 +37,8 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     const auto& pset = GetPrimitiveSet();
     auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
 
-    // length one can be achieved with a single leaf
-    // otherwise the minimum achievable length is minFunctionArity+1
-    if (targetLen > 1 && targetLen < minFunctionArity + 1) {
-        targetLen = minFunctionArity + 1;
-    }
+    auto const requestedLen = targetLen;
+    targetLen = AchievableLength(targetLen);
 
     Operon::Vector<Node> nodes;
     nodes.reserve(targetLen);
@@ -143,6 +140,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     add(0, add);
 
     auto tree = Tree(postfix).UpdateNodes();
+    ENSURE(tree.Nodes().size() <= requestedLen);
     return tree;
 }
 } // namespace Operon
