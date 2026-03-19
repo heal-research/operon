@@ -33,7 +33,7 @@ TEST_CASE("Zobrist - same tree yields same hash", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs};
+    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 20, 1, MaxLength);
 
     auto h1 = cache.ComputeHash(tree);
@@ -49,7 +49,7 @@ TEST_CASE("Zobrist - different coefficients yield same hash", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs};
+    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     Operon::NormalCoefficientInitializer coeffInit;
 
     auto tree1 = creator(rng, 20, 1, MaxLength);
@@ -82,7 +82,7 @@ TEST_CASE("Zobrist - TryGet returns false on miss", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs};
+    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
@@ -97,7 +97,7 @@ TEST_CASE("Zobrist - Insert then TryGet roundtrip", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs};
+    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
@@ -118,7 +118,7 @@ TEST_CASE("Zobrist - Clear resets table and hit counter", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs};
+    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
@@ -141,7 +141,7 @@ TEST_CASE("Zobrist - duplicate inserts increment count, not entries", "[zobrist]
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs};
+    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
