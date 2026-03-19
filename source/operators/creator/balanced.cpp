@@ -18,6 +18,7 @@
 namespace Operon {
 auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*args*/, size_t /*args*/) const -> Tree
 {
+    EXPECT(targetLen > 0);
     auto const& pset = GetPrimitiveSet();
     auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
 

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <ranges>
+#include <vector>
 
 #include "operon/core/pset.hpp"
 #include "operon/operators/creator.hpp"

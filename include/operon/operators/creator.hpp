@@ -6,6 +6,7 @@
 
 #include <gsl/pointers>
 #include <utility>
+#include <vector>
 
 #include "operon/core/operator.hpp"
 #include "operon/operon_export.hpp"
@@ -31,8 +32,8 @@ struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, siz
 
 protected:
     // Returns the largest tree length <= targetLen achievable with the current
-    // pset. Uses the precomputed table when targetLen <= maxLength_ (O(targetLen)
-    // scan, no allocation). Falls back to pset->AchievableLength otherwise.
+    // pset. Uses the precomputed snap-down table when targetLen <= maxLength_
+    // (O(1) lookup, no allocation). Falls back to pset->AchievableLength otherwise.
     [[nodiscard]] auto AchievableLength(size_t targetLen) const -> size_t;
 
 private:

@@ -4,6 +4,10 @@
 #ifndef OPERON_PSET_HPP
 #define OPERON_PSET_HPP
 
+#include <algorithm>
+#include <ranges>
+#include <vector>
+
 #include "contracts.hpp"
 #include "node.hpp"
 
