@@ -33,7 +33,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     };
 
     auto const requestedLen = targetLen;
-    targetLen = pset->AchievableLength(targetLen);
+    targetLen = AchievableLength(targetLen);
 
     using U = std::tuple<Node, size_t, size_t>;
 

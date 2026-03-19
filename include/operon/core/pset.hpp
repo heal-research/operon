@@ -135,10 +135,14 @@ public:
     }
 
     // Returns the largest tree length <= targetLen that is achievable with the
-    // current primitive set. A length n is achievable if n == 1 (a single leaf)
-    // or (n-1) can be expressed as a sum of available function arities.
+    // current primitive set. A length n is achievable if n == 1 (a single leaf,
+    // assuming the pset has at least one enabled terminal) or (n-1) can be
+    // expressed as a sum of available function arities.
+    // Precondition: the pset must have at least one enabled terminal symbol.
     // This is used by tree creators to snap an impossible requested length down
     // to the nearest valid one, so they never return a tree larger than requested.
+    // Cost: O(|pset| + targetLen * |distinct arities|) per call — negligible for
+    // typical GP parameters (maxLength <= 200, |pset| <= 30).
     [[nodiscard]] auto AchievableLength(size_t targetLen) const -> size_t
     {
         if (targetLen <= 1) { return 1; }
@@ -165,7 +169,7 @@ public:
             }
         }
 
-        for (auto i = targetLen; i >= 1; --i) {
+        for (auto i = targetLen; i > 0; --i) {
             if (dp[i - 1]) { return i; }
         }
         return 1;

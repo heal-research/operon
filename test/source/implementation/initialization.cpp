@@ -89,7 +89,7 @@ TEST_CASE("GROW creator", "[operators]")
     grammar.SetMaximumArity(Node(NodeType::Sub), 2);
     grammar.SetMaximumArity(Node(NodeType::Div), 2);
 
-    GrowTreeCreator gtc{&grammar, inputs};
+    GrowTreeCreator gtc{&grammar, inputs, maxLength};
     Operon::RandomGenerator random(1234);
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
@@ -129,7 +129,7 @@ TEST_CASE("BTC creator", "[operators]")
     grammar.SetMaximumArity(Node(NodeType::Sub), 2);
     grammar.SetMaximumArity(Node(NodeType::Div), 2);
 
-    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0};
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::RandomGenerator random(1234);
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
@@ -170,7 +170,7 @@ TEST_CASE("PTC2 creator", "[operators]")
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
 
-    ProbabilisticTreeCreator ptc{&grammar, inputs};
+    ProbabilisticTreeCreator ptc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::RandomGenerator random(1234);
     auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
 
@@ -180,6 +180,112 @@ TEST_CASE("PTC2 creator", "[operators]")
         auto trees = GenerateTrees(random, ptc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
+        }
+    }
+}
+
+TEST_CASE("AchievableLength snap-down table", "[operators]")
+{
+    // A thin subclass that exposes the protected AchievableLength method.
+    struct TestCreator final : public CreatorBase {
+        TestCreator(PrimitiveSet const* pset, size_t maxLen)
+            : CreatorBase(pset, {}, maxLen) {}
+        auto operator()(RandomGenerator& /*rng*/, size_t /*targetLen*/, size_t /*minDepth*/, size_t /*maxDepth*/) const -> Tree override {
+            return Tree({ Node(NodeType::Constant) }).UpdateNodes();
+        }
+        auto SnapDown(size_t n) const -> size_t { return AchievableLength(n); }
+    };
+
+    SECTION("Edge cases") {
+        PrimitiveSet pset;
+        pset.SetConfig(PrimitiveSet::Arithmetic);
+        TestCreator tc(&pset, 20);
+        CHECK(tc.SnapDown(0) == 1);
+        CHECK(tc.SnapDown(1) == 1);
+    }
+
+    SECTION("Binary-only pset: achievable lengths are 1, 3, 5, 7, ...") {
+        // Only arity-2 functions: n > 1 is achievable iff (n-1) is a multiple of 2,
+        // i.e. n is odd. So snap_[i] carries the last odd value seen.
+        PrimitiveSet pset;
+        pset.SetConfig(NodeType::Add | NodeType::Variable);
+        pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
+        TestCreator tc(&pset, 20);
+
+        CHECK(tc.SnapDown(1) == 1);
+        CHECK(tc.SnapDown(2) == 1); // 2 not achievable → snap down to 1
+        CHECK(tc.SnapDown(3) == 3);
+        CHECK(tc.SnapDown(4) == 3); // 4 not achievable → snap down to 3
+        CHECK(tc.SnapDown(5) == 5);
+        CHECK(tc.SnapDown(6) == 5);
+        CHECK(tc.SnapDown(7) == 7);
+    }
+
+    SECTION("Mixed pset (arities 1 and 2): every length is achievable") {
+        // Arity-1 means we can always add exactly 1 node, so all lengths >= 1 are reachable.
+        PrimitiveSet pset;
+        pset.SetConfig(NodeType::Sin | NodeType::Add | NodeType::Variable);
+        pset.SetMinMaxArity(Node(NodeType::Sin), 1, 1);
+        pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
+        TestCreator tc(&pset, 15);
+
+        for (size_t n = 1; n <= 15; ++n) {
+            CHECK(tc.SnapDown(n) == n);
+        }
+    }
+
+    SECTION("Ternary-only pset: achievable lengths are 1, 4, 7, 10, ...") {
+        // Only arity-3 functions: n > 1 is achievable iff (n-1) is a multiple of 3.
+        // Achievable: 1, 4, 7, 10, 13, ...
+        PrimitiveSet pset;
+        pset.SetConfig(NodeType::Add | NodeType::Variable);
+        pset.SetMinMaxArity(Node(NodeType::Add), 3, 3);
+        TestCreator tc(&pset, 20);
+
+        CHECK(tc.SnapDown(1) == 1);
+        CHECK(tc.SnapDown(2) == 1);
+        CHECK(tc.SnapDown(3) == 1);
+        CHECK(tc.SnapDown(4) == 4);
+        CHECK(tc.SnapDown(5) == 4);
+        CHECK(tc.SnapDown(6) == 4);
+        CHECK(tc.SnapDown(7) == 7);
+        CHECK(tc.SnapDown(8) == 7);
+        CHECK(tc.SnapDown(9) == 7);
+        CHECK(tc.SnapDown(10) == 10);
+    }
+}
+
+TEST_CASE("Creator length contract with unachievable targets", "[operators]")
+{
+    // Binary-only pset: achievable lengths are 1, 3, 5, 7, ...
+    // Requesting any even target must snap down — the returned tree must be strictly
+    // within the requested bound.
+    PrimitiveSet pset;
+    pset.SetConfig(NodeType::Add | NodeType::Variable);
+    pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
+
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    Operon::RandomGenerator rng(42);
+    constexpr size_t maxDepth = 1000;
+    constexpr size_t maxLength = 20;
+
+    SECTION("BTC never exceeds requested length") {
+        BalancedTreeCreator btc(&pset, inputs, /* bias= */ 0.0, maxLength);
+        for (size_t target = 1; target <= maxLength; ++target) {
+            auto tree = btc(rng, target, 1, maxDepth);
+            CHECK(tree.Length() > 0);
+            CHECK(tree.Length() <= target);
+        }
+    }
+
+    SECTION("PTC2 never exceeds requested length") {
+        ProbabilisticTreeCreator ptc(&pset, inputs, /* bias= */ 0.0, maxLength);
+        for (size_t target = 1; target <= maxLength; ++target) {
+            auto tree = ptc(rng, target, 1, maxDepth);
+            CHECK(tree.Length() > 0);
+            CHECK(tree.Length() <= target);
         }
     }
 }

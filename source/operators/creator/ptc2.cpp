@@ -38,7 +38,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
 
     auto const requestedLen = targetLen;
-    targetLen = pset->AchievableLength(targetLen);
+    targetLen = AchievableLength(targetLen);
 
     Operon::Vector<Node> nodes;
     nodes.reserve(targetLen);
