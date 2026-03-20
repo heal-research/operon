@@ -23,7 +23,7 @@ namespace Operon {
 // Ownership: the caller constructs one Zobrist per experiment (or per run) and
 // passes a raw pointer into GeneticAlgorithmConfig::Cache.  The algorithm
 // borrows the pointer; the caller is responsible for lifetime.
-class Zobrist {
+class OPERON_EXPORT Zobrist {
     using Value = Operon::Vector<Operon::Scalar>;
     using Extents = std::extents<int, static_cast<int>(NodeTypes::Count), std::dynamic_extent>;
     using Table   = Operon::MDArray<Operon::Hash, Extents>;
