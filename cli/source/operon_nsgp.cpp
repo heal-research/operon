@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "operon/algorithms/nsga2.hpp"
+#include "operon/hash/zobrist.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/version.hpp"
 #include "operon/formatter/formatter.hpp"
@@ -253,6 +254,13 @@ auto main(int argc, char** argv) -> int
 
         auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
+
+        std::unique_ptr<Operon::Zobrist> cache;
+        if (result["transposition-cache"].as<bool>()) {
+            Operon::RandomGenerator cacheRng(config.Seed);
+            cache = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength));
+            config.Cache = cache.get();
+        }
 
         Operon::RandomGenerator random(config.Seed);
         if (result["shuffle"].as<bool>()) {
