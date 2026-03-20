@@ -55,6 +55,7 @@ add_library(
     source/formatter/tree.cpp
     source/hash/hash.cpp
     source/hash/metrohash64.cpp
+    source/hash/zobrist.cpp
     source/interpreter/interpreter.cpp
     source/operators/creator/creator.cpp
     source/operators/creator/balanced.cpp
@@ -91,6 +92,7 @@ find_package(eve REQUIRED)
 find_package(FastFloat REQUIRED)
 find_package(fluky REQUIRED)
 find_package(fmt REQUIRED)
+find_package(gtl REQUIRED)
 find_package(lbfgs REQUIRED)
 find_package(libassert REQUIRED)
 find_package(mdspan REQUIRED)
@@ -255,6 +257,7 @@ target_link_libraries(operon_operon PRIVATE
     Taskflow::Taskflow
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense
+    gtl
     tl::expected
 )
 

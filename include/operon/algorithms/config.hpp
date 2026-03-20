@@ -7,6 +7,9 @@
 #include <cstddef>
 
 namespace Operon {
+
+class Zobrist; // forward declaration — include operon/hash/zobrist.hpp to use
+
 struct GeneticAlgorithmConfig {
     size_t Generations; // generation limit
     size_t Evaluations; // evaluation budget
@@ -20,6 +23,7 @@ struct GeneticAlgorithmConfig {
     double LocalSearchProbability{1.0};
     double LamarckianProbability{1.0};
     double Epsilon{0};     // used when comparing fitness values
+    Zobrist* Cache{nullptr}; // optional transposition cache; null = disabled
 };
 } // namespace Operon
 
