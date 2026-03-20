@@ -41,8 +41,8 @@ stdenv.mkDerivation rec {
       fast-float
       fluky
       fmt_11
+      gtl
       icu
-      jemalloc
       lbfgs
       libassert
       libdwarf
