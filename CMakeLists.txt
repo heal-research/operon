@@ -257,7 +257,7 @@ target_link_libraries(operon_operon PRIVATE
     Taskflow::Taskflow
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense
-    gtl
+    gtl::gtl
     tl::expected
 )
 
