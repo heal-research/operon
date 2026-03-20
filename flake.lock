@@ -158,11 +158,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1773839466,
-        "narHash": "sha256-q27L//kQQ0nArJF5N+FtxqjjbvxQMdCIN2PLVu/GsaU=",
+        "lastModified": 1773994115,
+        "narHash": "sha256-U2k4R1jPEVbtRppPYRj0du80133Lfa7pMcMaf7OlgRM=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "9744f87c673b70d1d6982060313a52722dffd271",
+        "rev": "43117971f5738c183dabe17d2ef310c47606bea4",
         "type": "github"
       },
       "original": {
@@ -280,11 +280,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1773838889,
-        "narHash": "sha256-tn7EtKN6bXyxbIbmBweNpKwmbflsNxWVIFleOa1532k=",
+        "lastModified": 1773999265,
+        "narHash": "sha256-E0/4AQDmXayogEeHOzTEjHrr+Bms1IeXNZVMwc4SlQw=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "91fc68a29d2d2e3ac9b2178b62b73c529dc7b19f",
+        "rev": "3e806238d09bc8cfcc2d74cd8ae854a7776bc33a",
         "type": "github"
       },
       "original": {
