@@ -264,7 +264,7 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Ceres> final : public 
 };
 #endif
 
-template<typename DTable, Concepts::Likelihood LossFunction = GaussianLoss<Operon::Scalar>>
+template<typename DTable, Concepts::OptimizerLoss LossFunction = GaussianLoss<Operon::Scalar>>
 struct LBFGSOptimizer final : public OptimizerBase {
     LBFGSOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase{problem}, dtable_{dtable}
@@ -333,7 +333,7 @@ struct LBFGSOptimizer final : public OptimizerBase {
     gsl::not_null<DTable const*> dtable_;
 };
 
-template<typename DTable, Concepts::Likelihood LossFunction = GaussianLoss<Operon::Scalar>>
+template<typename DTable, Concepts::OptimizerLoss LossFunction = GaussianLoss<Operon::Scalar>>
 struct SGDOptimizer final : public OptimizerBase {
     SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
         : OptimizerBase{problem}

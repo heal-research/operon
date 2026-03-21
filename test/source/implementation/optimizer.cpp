@@ -111,7 +111,10 @@ TEST_CASE("Gaussian likelihood static methods", "[likelihood]")
 TEST_CASE("Parameter optimization", "[optimizer]")
 {
     OptimizerFixture fix;
-    auto& [rng, data, ds, tree, dtable, problem] = fix;
+    auto& rng     = fix.rng;
+    auto& tree    = fix.tree;
+    auto& dtable  = fix.dtable;
+    auto& problem = fix.problem;
     using DTable = OptimizerFixture::DTable;
 
     // Linear problem: unique solution at w=1.0, SSE=0.
@@ -193,7 +196,10 @@ TEST_CASE("Parameter optimization", "[optimizer]")
 TEST_CASE("SGD update rules", "[optimizer]")
 {
     OptimizerFixture fix;
-    auto& [rng, data, ds, tree, dtable, problem] = fix;
+    auto& rng     = fix.rng;
+    auto& tree    = fix.tree;
+    auto& dtable  = fix.dtable;
+    auto& problem = fix.problem;
     using DTable = OptimizerFixture::DTable;
 
     auto const dim{tree.CoefficientsCount()};

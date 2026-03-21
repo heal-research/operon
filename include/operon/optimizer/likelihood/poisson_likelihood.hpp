@@ -128,6 +128,7 @@ struct PoissonLoss : public LikelihoodBase<T> {
         // compute jacobian
         if constexpr (LogInput) {
             if (g.size() != 0) {
+                ++jeval_;
                 interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
                 g = ((pmap.exp() - tmap).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
             }
@@ -135,6 +136,7 @@ struct PoissonLoss : public LikelihoodBase<T> {
         } else {
             auto tmap2 = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
             if (g.size() != 0) {
+                ++jeval_;
                 interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
                 g = ((1 - tmap2 * pmap.inverse()).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
             }
