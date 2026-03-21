@@ -185,11 +185,12 @@ public:
     using TDispatch    = DTable;
     using TInterpreter = Operon::Interpreter<Operon::Scalar, DTable>;
 
-    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true)
+    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true, std::vector<Operon::Scalar> weights = {})
         : EvaluatorBase(problem)
         , dtable_(dtable)
         , error_(error)
         , scaling_(linearScaling)
+        , weights_(std::move(weights))
     {
     }
 
@@ -205,6 +206,7 @@ private:
     gsl::not_null<DTable const*> dtable_;
     ErrorMetric error_;
     bool scaling_{false};
+    mutable std::vector<Operon::Scalar> weights_;
 };
 
 class MultiEvaluator : public EvaluatorBase {
