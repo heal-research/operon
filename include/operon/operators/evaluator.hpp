@@ -383,7 +383,7 @@ public:
 
         // this call will optimize the tree coefficients and compute the SSE
         auto const& tree = ind.Genotype;
-        Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, &ind.Genotype};
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &ind.Genotype};
         auto parameters = tree.GetCoefficients();
 
         auto const p { static_cast<double>(parameters.size()) };
@@ -400,45 +400,45 @@ public:
         // - count weight * variable as three nodes
         // - compute complexity c of the remaining numerical values
         //   (that are not part of the coefficients that are optimized)
-        Operon::Set<Operon::Hash> uniqueFunctions; // to count the number of unique functions
+        // node.HashValue is immutable: static_cast<Hash>(NodeType) for functions,
+        // Hasher{}(variable_name) for variables — the two spaces never overlap.
+        static auto const MulHash   = Node{NodeType::Mul}.HashValue;
+        static auto const ParamHash = Node{NodeType::Constant}.HashValue;
+        Operon::Set<Operon::Hash> uniqueFunctions; // to count the number of unique symbol types
         auto k{0.0}; // number of nodes
         auto cComplexity { 0.0 };
 
         // codelength of the parameters
         ++Base::JacobianEvaluations;
-        Eigen::Matrix<Operon::Scalar, -1, -1> j = interpreter.JacRev(parameters, trainingRange); // jacobian
+        Eigen::Matrix<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, trainingRange); // jacobian
         auto estimatedValues = buf;
-        auto fisherMatrix = Lik::ComputeFisherMatrix(estimatedValues, {j.data(), static_cast<std::size_t>(j.size())}, sigma_);
+        auto fisherMatrix = Lik::ComputeFisherMatrix(estimatedValues, {jac.data(), static_cast<std::size_t>(jac.size())}, sigma_);
         auto fisherDiag   = fisherMatrix.diagonal().array();
         ENSURE(fisherDiag.size() == p);
 
         auto cParameters { 0.0 };
         auto constexpr eps = std::numeric_limits<Operon::Scalar>::epsilon(); // machine epsilon for zero comparison
 
-        for (auto i = 0, j = 0; i < std::ssize(nodes); ++i) {
+        for (auto i = 0, pi = 0; i < std::ssize(nodes); ++i) {
             auto const& n = nodes[i];
 
-            // count the number of nodes and the number of unique operators
+            // variables count as 3 symbol types: the variable itself, plus implicit MUL and PARAM
             k += n.IsVariable() ? 3 : 1;
             uniqueFunctions.insert(n.HashValue);
+            if (n.IsVariable()) {
+                uniqueFunctions.insert(MulHash);
+                uniqueFunctions.insert(ParamHash);
+            }
 
             if (n.Optimize) {
                 // this branch computes the description length of the parameters to be optimized
-                auto const di = std::sqrt(12 / fisherDiag(j));
-                auto const ci = std::abs(parameters[j]);
+                auto const di = std::sqrt(12 / fisherDiag(pi));
+                auto const ci = std::abs(parameters[pi]);
 
-                if (!(std::isfinite(ci) && std::isfinite(di)) || ci / di < 1) {
-                    //ind.Genotype[i].Optimize = false;
-                    //auto const v = ind.Genotype[i].Value;
-                    //ind.Genotype[i].Value = 0;
-                    //auto fit = (*this)(rng, ind, buf);
-                    //ind.Genotype[i].Optimize = true;
-                    //ind.Genotype[i].Value = v;
-                    //return fit;
-                } else {
-                    cParameters += 0.5 * std::log(fisherDiag(j)) + std::log(ci);
+                if (std::isfinite(ci) && std::isfinite(di) && ci / di >= 1) {
+                    cParameters += 0.5 * std::log(fisherDiag(pi)) + std::log(ci);
                 }
-                ++j;
+                ++pi;
             } else {
                 // this branch computes the description length of the remaining tree structure
                 if (std::abs(n.Value) < eps) { continue; }
@@ -456,6 +456,86 @@ public:
         auto mdl = cComplexity + cParameters + cLikelihood;
         if (!std::isfinite(mdl)) { mdl = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mdl) };
+    }
+
+private:
+    mutable std::vector<Operon::Scalar> sigma_;
+};
+
+template <typename DTable, typename Lik>
+class OPERON_EXPORT FractionalBayesFactorEvaluator final : public Evaluator<DTable> {
+    using Base = Evaluator<DTable>;
+
+public:
+    explicit FractionalBayesFactorEvaluator(Operon::Problem const* problem, DTable const* dtable)
+        : Base(problem, dtable, SSE{}), sigma_(1, 0.001)
+    {
+    }
+
+    auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
+    auto SetSigma(std::vector<Operon::Scalar> sigma) const { sigma_ = std::move(sigma); }
+
+    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
+        return EvaluatorBase::Evaluate(this, rng, ind);
+    }
+
+    auto operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
+        ++Base::CallCount;
+
+        auto const* dtable  = Base::GetDispatchTable();
+        auto const* problem = Base::GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto const& nodes   = ind.Genotype.Nodes();
+        auto const& tree    = ind.Genotype;
+
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
+        auto parameters = tree.GetCoefficients();
+
+        auto const p { static_cast<double>(parameters.size()) };
+        auto const n { static_cast<double>(problem->TrainingRange().Size()) };
+
+        auto const trainingRange = problem->TrainingRange();
+        ENSURE(buf.size() >= trainingRange.Size());
+
+        ++Base::ResidualEvaluations;
+        interpreter.Evaluate(parameters, trainingRange, buf);
+
+        // structural complexity: k * log(q), matching Julia func_compl
+        // node.HashValue is immutable: for function nodes it is static_cast<Hash>(NodeType),
+        // for variable nodes it is Hasher{}(variable_name) set at construction — never NodeType.
+        // These two spaces do not overlap, so HashValue is a safe unique symbol-type identifier.
+        // Variables count as 3 symbols (var + implicit mul + coefficient);
+        // the implicit MUL and PARAM are added as distinct symbol types via their own HashValues.
+        static auto const MulHash   = Node{NodeType::Mul}.HashValue;
+        static auto const ParamHash = Node{NodeType::Constant}.HashValue;
+        Operon::Set<Operon::Hash> uniqueSymbols;
+        auto k { 0.0 };
+        for (auto const& node : nodes) {
+            k += node.IsVariable() ? 3 : 1;
+            uniqueSymbols.insert(node.HashValue);
+            if (node.IsVariable()) {
+                uniqueSymbols.insert(MulHash);
+                uniqueSymbols.insert(ParamHash);
+            }
+        }
+        auto const q { static_cast<double>(uniqueSymbols.size()) };
+        auto const fComplexity = q > 0 ? k * std::log(q) : 0.0;
+
+        // parameter term: (p/2) * (-log(b) + log(2π·nup))
+        // b = 1/sqrt(n)  =>  -log(b) = ½·log(n)
+        // nup = exp(1 - log(3))  =>  log(nup) = 1 - log(3)
+        // combined: (p/2) * (½·log(n) + log(2π) + 1 - log(3))
+        auto const b { 1.0 / std::sqrt(n) };
+        auto const cParameters = (p / 2.0) * (0.5 * std::log(n) + std::log(Operon::Math::Tau) + 1.0 - std::log(3.0));
+
+        // fractional likelihood: (1 - b) * NLL
+        auto estimatedValues = buf;
+        auto targetValues    = problem->TargetValues(trainingRange);
+        auto const cLikelihood = (1.0 - b) * static_cast<double>(Lik::ComputeLikelihood(estimatedValues, targetValues, sigma_));
+
+        auto fbf = fComplexity + cParameters + cLikelihood;
+        if (!std::isfinite(fbf)) { fbf = EvaluatorBase::ErrMax; }
+        return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(fbf) };
     }
 
 private:
@@ -511,7 +591,7 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
         auto const* tree    = &ind.Genotype;
 
         // this call will optimize the tree coefficients and compute the SSE
-        Operon::Interpreter<Operon::Scalar, DefaultDispatch> interpreter{dtable, dataset, tree};
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
         auto parameters = tree->GetCoefficients();
 
         std::vector<Operon::Scalar> buffer;

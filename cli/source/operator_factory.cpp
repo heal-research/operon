@@ -126,6 +126,10 @@ auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& d
         evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(&problem, &dtable);
     } else if (str == "mdl_poisson") {
         evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, PoissonLikelihood<Operon::Scalar>>>(&problem, &dtable);
+    } else if (str == "fbf_gauss") {
+        evaluator = std::make_unique<Operon::FractionalBayesFactorEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(&problem, &dtable);
+    } else if (str == "fbf_poisson") {
+        evaluator = std::make_unique<Operon::FractionalBayesFactorEvaluator<T, PoissonLikelihood<Operon::Scalar>>>(&problem, &dtable);
     } else if (str == "gauss") {
         evaluator = std::make_unique<Operon::GaussianLikelihoodEvaluator<T>>(&problem, &dtable);
     } else {
