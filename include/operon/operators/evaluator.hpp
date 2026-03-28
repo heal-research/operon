@@ -394,6 +394,21 @@ public:
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, buf);
 
+        // MLE sigma profiling: sigma = sqrt(SSR / n)
+        // For the homoscedastic case (single sigma), always profile analytically from residuals.
+        // Per-sample sigmas (size == n) are used as-is.
+        auto estimatedValues = buf;
+        auto targetValues    = problem->TargetValues(trainingRange);
+        std::vector<Operon::Scalar> effectiveSigma = sigma_;
+        if (sigma_.size() == 1) {
+            auto const nObs = static_cast<double>(trainingRange.Size());
+            auto ssr = 0.0;
+            for (auto i = 0; i < static_cast<std::ptrdiff_t>(trainingRange.Size()); ++i) {
+                auto const e = static_cast<double>(estimatedValues[i]) - static_cast<double>(targetValues[i]);
+                ssr += e * e;
+            }
+            effectiveSigma[0] = static_cast<Operon::Scalar>(std::sqrt(ssr / nObs));
+        }
 
         // codelength of the complexity
         // count number of unique functions
@@ -411,8 +426,7 @@ public:
         // codelength of the parameters
         ++Base::JacobianEvaluations;
         Eigen::Matrix<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, trainingRange); // jacobian
-        auto estimatedValues = buf;
-        auto fisherMatrix = Lik::ComputeFisherMatrix(estimatedValues, {jac.data(), static_cast<std::size_t>(jac.size())}, sigma_);
+        auto fisherMatrix = Lik::ComputeFisherMatrix(estimatedValues, {jac.data(), static_cast<std::size_t>(jac.size())}, effectiveSigma);
         auto fisherDiag   = fisherMatrix.diagonal().array();
         ENSURE(fisherDiag.size() == p);
 
@@ -422,10 +436,12 @@ public:
         for (auto i = 0, pi = 0; i < std::ssize(nodes); ++i) {
             auto const& n = nodes[i];
 
-            // variables count as 3 symbol types: the variable itself, plus implicit MUL and PARAM
-            k += n.IsVariable() ? 3 : 1;
+            // weighted variables count as 3 symbol types: the variable itself, plus implicit MUL and PARAM
+            // unit-weight variables count as 1 (interpreter skips the multiplication, expression is equivalent)
+            auto const isWeighted = n.IsVariable() && n.Value != Operon::Scalar{1};
+            k += isWeighted ? 3 : 1;
             uniqueFunctions.insert(n.HashValue);
-            if (n.IsVariable()) {
+            if (isWeighted) {
                 uniqueFunctions.insert(MulHash);
                 uniqueFunctions.insert(ParamHash);
             }
@@ -436,7 +452,7 @@ public:
                 auto const ci = std::abs(parameters[pi]);
 
                 if (std::isfinite(ci) && std::isfinite(di) && ci / di >= 1) {
-                    cParameters += 0.5 * std::log(fisherDiag(pi)) + std::log(ci);
+                    cParameters += (0.5 * std::log(fisherDiag(pi))) + std::log(ci);
                 }
                 ++pi;
             } else {
@@ -451,8 +467,7 @@ public:
 
         cParameters -= p/2 * std::log(3);
 
-        auto targetValues = problem->TargetValues(trainingRange);
-        auto cLikelihood  = Lik::ComputeLikelihood(estimatedValues, targetValues, sigma_);
+        auto cLikelihood  = Lik::ComputeLikelihood(estimatedValues, targetValues, effectiveSigma);
         auto mdl = cComplexity + cParameters + cLikelihood;
         if (!std::isfinite(mdl)) { mdl = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mdl) };
@@ -500,6 +515,21 @@ public:
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, buf);
 
+        // MLE sigma profiling: σ̂ = sqrt(SSR / n)
+        // For the homoscedastic case (single sigma), always profile analytically from residuals
+        // rather than relying on an arbitrary default. Per-sample sigmas (size == n) are used as-is.
+        auto estimatedValues = buf;
+        auto targetValues    = problem->TargetValues(trainingRange);
+        std::vector<Operon::Scalar> effectiveSigma = sigma_;
+        if (sigma_.size() == 1) {
+            auto ssr = 0.0;
+            for (auto i = 0; i < static_cast<std::ptrdiff_t>(trainingRange.Size()); ++i) {
+                auto const e = static_cast<double>(estimatedValues[i]) - static_cast<double>(targetValues[i]);
+                ssr += e * e;
+            }
+            effectiveSigma[0] = static_cast<Operon::Scalar>(std::sqrt(ssr / n));
+        }
+
         // structural complexity: k * log(q), matching Julia func_compl
         // node.HashValue is immutable: for function nodes it is static_cast<Hash>(NodeType),
         // for variable nodes it is Hasher{}(variable_name) set at construction — never NodeType.
@@ -511,9 +541,12 @@ public:
         Operon::Set<Operon::Hash> uniqueSymbols;
         auto k { 0.0 };
         for (auto const& node : nodes) {
-            k += node.IsVariable() ? 3 : 1;
+            // weighted variables count as 3 symbol types: the variable itself, plus implicit MUL and PARAM
+            // unit-weight variables count as 1 (interpreter skips the multiplication, expression is equivalent)
+            auto const isWeighted = node.IsVariable() && node.Value != Operon::Scalar{1};
+            k += isWeighted ? 3 : 1;
             uniqueSymbols.insert(node.HashValue);
-            if (node.IsVariable()) {
+            if (isWeighted) {
                 uniqueSymbols.insert(MulHash);
                 uniqueSymbols.insert(ParamHash);
             }
@@ -522,16 +555,14 @@ public:
         auto const fComplexity = q > 0 ? k * std::log(q) : 0.0;
 
         // parameter term: (p/2) * (-log(b) + log(2π·nup))
-        // b = 1/sqrt(n)  =>  -log(b) = ½·log(n)
+        // b = 1/sqrt(n)  =>  -log(b) = 0.5·log(n)
         // nup = exp(1 - log(3))  =>  log(nup) = 1 - log(3)
-        // combined: (p/2) * (½·log(n) + log(2π) + 1 - log(3))
+        // combined: (p/2) * (0.5·log(n) + log(2π) + 1 - log(3))
         auto const b { 1.0 / std::sqrt(n) };
         auto const cParameters = (p / 2.0) * (0.5 * std::log(n) + std::log(Operon::Math::Tau) + 1.0 - std::log(3.0));
 
         // fractional likelihood: (1 - b) * NLL
-        auto estimatedValues = buf;
-        auto targetValues    = problem->TargetValues(trainingRange);
-        auto const cLikelihood = (1.0 - b) * static_cast<double>(Lik::ComputeLikelihood(estimatedValues, targetValues, sigma_));
+        auto const cLikelihood = (1.0 - b) * static_cast<double>(Lik::ComputeLikelihood(estimatedValues, targetValues, effectiveSigma));
 
         auto fbf = fComplexity + cParameters + cLikelihood;
         if (!std::isfinite(fbf)) { fbf = EvaluatorBase::ErrMax; }
