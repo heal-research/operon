@@ -4,6 +4,7 @@
 #ifndef OPERON_LIKELIHOOD_BASE_HPP
 #define OPERON_LIKELIHOOD_BASE_HPP
 
+#include <concepts>
 #include <Eigen/Core>
 #include <gsl/pointers>
 #include <vstat/vstat.hpp>

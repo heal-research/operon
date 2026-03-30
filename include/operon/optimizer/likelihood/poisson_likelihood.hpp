@@ -52,7 +52,7 @@ struct PoissonLikelihood {
 
     static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> w) -> Scalar {
         using F = std::conditional_t<LogInput, detail::PoissonLog, detail::Poisson>;
-        vstat::univariate_accumulator<Operon::Scalar> acc;
+        vstat::univariate_accumulator<Scalar> acc;
 
         if (w.empty()) {
             for (auto i = 0UL; i < x.size(); ++i) {

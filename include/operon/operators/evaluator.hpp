@@ -362,7 +362,7 @@ class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<D
 
 public:
     explicit MinimumDescriptionLengthEvaluator(Operon::Problem const* problem, DTable const* dtable)
-        : Base(problem, dtable, SSE{}), sigma_(1, 0.001)
+        : Base(problem, dtable, SSE{})
     {
     }
 
@@ -394,13 +394,10 @@ public:
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, buf);
 
-        // MLE sigma profiling: sigma = sqrt(SSR / n)
-        // For the homoscedastic case (single sigma), always profile analytically from residuals.
-        // Per-sample sigmas (size == n) are passed through as a span — no copy.
         auto estimatedValues = buf;
         auto targetValues    = problem->TargetValues(trainingRange);
         Operon::Scalar profiledSigma{};
-        if (sigma_.size() == 1) {
+        if (sigma_.empty()) { // profile MLE σ̂ = sqrt(SSR/n) from residuals
             auto const nObs = static_cast<double>(trainingRange.Size());
             auto ssr = 0.0;
             for (auto i = 0; i < static_cast<std::ptrdiff_t>(trainingRange.Size()); ++i) {
@@ -410,18 +407,15 @@ public:
             profiledSigma = std::max(static_cast<Operon::Scalar>(std::sqrt(ssr / nObs)),
                                      std::numeric_limits<Operon::Scalar>::epsilon());
         }
-        auto const effectiveSigma = sigma_.size() == 1
-            ? std::span<Operon::Scalar const>{&profiledSigma, 1}
-            : std::span<Operon::Scalar const>{sigma_};
+        auto const effectiveSigma = sigma_.empty()
+            ? std::span<Operon::Scalar const>{&profiledSigma, 1}  // profiled
+            : std::span<Operon::Scalar const>{sigma_};             // fixed scalar or per-sample
 
         // codelength of the complexity
         // count number of unique functions
         // - count weight * variable as three nodes
         // - compute complexity c of the remaining numerical values
         //   (that are not part of the coefficients that are optimized)
-        // node.HashValue: static_cast<Hash>(NodeType) for function nodes,
-        // a dataset variable hash (set at tree creation) for variable nodes — the two spaces
-        // are overwhelmingly unlikely to overlap.
         static auto const MulHash   = Node{NodeType::Mul}.HashValue;
         static auto const ParamHash = Node{NodeType::Constant}.HashValue;
         Operon::Set<Operon::Hash> uniqueFunctions; // to count the number of unique symbol types
@@ -452,7 +446,7 @@ public:
             }
 
             if (n.Optimize) {
-                // this branch computes the description length of the parameters to be optimized
+                // DL of the parameters to be optimized
                 auto const di = std::sqrt(12 / fisherDiag(pi));
                 auto const ci = std::abs(parameters[pi]);
 
@@ -461,7 +455,7 @@ public:
                 }
                 ++pi;
             } else {
-                // this branch computes the description length of the remaining tree structure
+                // DL of the remaining tree structure
                 if (std::abs(n.Value) < eps) { continue; }
                 cComplexity += std::log(std::abs(n.Value));
             }
@@ -488,7 +482,7 @@ class OPERON_EXPORT FractionalBayesFactorEvaluator final : public Evaluator<DTab
 
 public:
     explicit FractionalBayesFactorEvaluator(Operon::Problem const* problem, DTable const* dtable)
-        : Base(problem, dtable, SSE{}), sigma_(1, 0.001)
+        : Base(problem, dtable, SSE{})
     {
     }
 
@@ -520,39 +514,26 @@ public:
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, buf);
 
-        // MLE sigma profiling: σ̂ = sqrt(SSR / n)
-        // For the homoscedastic case (single sigma), always profile analytically from residuals
-        // rather than relying on an arbitrary default. Per-sample sigmas (size == n) are passed
-        // through as a span — no copy.
         auto estimatedValues = buf;
         auto targetValues    = problem->TargetValues(trainingRange);
-        // MLE NLL: for the homoscedastic case, profile σ̂ = sqrt(SSR/n) and compute the
-        // Gaussian NLL analytically from SSR — avoiding a second O(n) pass inside ComputeLikelihood.
-        // NLL(σ̂) = 0.5 · n · (log(2π · SSR/n) + 1)
-        // Per-sample sigma falls back to ComputeLikelihood as normal.
         double mlNLL{};
         Operon::Scalar profiledSigma{};
-        if (sigma_.size() == 1) {
+        if (sigma_.empty()) { // profile MLE σ̂ = sqrt(SSR/n); NLL = 0.5·n·(log(2π·σ̂²)+1), clamped to avoid log(0)
             auto ssr = 0.0;
             for (auto i = 0; i < static_cast<std::ptrdiff_t>(trainingRange.Size()); ++i) {
                 auto const e = static_cast<double>(estimatedValues[i]) - static_cast<double>(targetValues[i]);
                 ssr += e * e;
             }
-            auto const ssrN = ssr / n;
-            profiledSigma = std::max(static_cast<Operon::Scalar>(std::sqrt(ssrN)),
+            profiledSigma = std::max(static_cast<Operon::Scalar>(std::sqrt(ssr / n)),
                                      std::numeric_limits<Operon::Scalar>::epsilon());
-            mlNLL = 0.5 * n * (std::log(Operon::Math::Tau * ssrN) + 1.0);
+            auto const s = static_cast<double>(profiledSigma);
+            mlNLL = 0.5 * n * (std::log(Operon::Math::Tau * s * s) + 1.0);
         }
-        auto const effectiveSigma = sigma_.size() == 1
-            ? std::span<Operon::Scalar const>{&profiledSigma, 1}
-            : std::span<Operon::Scalar const>{sigma_};
+        auto const effectiveSigma = sigma_.empty()
+            ? std::span<Operon::Scalar const>{&profiledSigma, 1}  // profiled
+            : std::span<Operon::Scalar const>{sigma_};             // fixed scalar or per-sample
 
         // structural complexity: k * log(q), matching Julia func_compl
-        // node.HashValue: static_cast<Hash>(NodeType) for function nodes,
-        // a dataset variable hash (set at tree creation) for variable nodes — the two spaces
-        // are overwhelmingly unlikely to overlap.
-        // Variables count as 3 symbols (var + implicit mul + coefficient);
-        // the implicit MUL and PARAM are added as distinct symbol types via their own HashValues.
         static auto const MulHash   = Node{NodeType::Mul}.HashValue;
         static auto const ParamHash = Node{NodeType::Constant}.HashValue;
         Operon::Set<Operon::Hash> uniqueSymbols;
@@ -579,9 +560,9 @@ public:
         auto const cParameters = (p / 2.0) * (0.5 * std::log(n) + std::log(Operon::Math::Tau) + 1.0 - std::log(3.0));
 
         // fractional likelihood: (1 - b) * NLL
-        // Homoscedastic: use pre-computed NLL from MLE SSR (avoids second O(n) pass).
-        // Per-sample: delegate to ComputeLikelihood.
-        auto const nll = sigma_.size() == 1
+        // Profiled case: use pre-computed NLL (avoids second O(n) pass inside ComputeLikelihood).
+        // Fixed scalar or per-sample: delegate to ComputeLikelihood.
+        auto const nll = sigma_.empty()
             ? mlNLL
             : static_cast<double>(Lik::ComputeLikelihood(estimatedValues, targetValues, effectiveSigma));
         auto const cLikelihood = (1.0 - b) * nll;
