@@ -4,6 +4,7 @@
 #ifndef OPERON_LIKELIHOOD_BASE_HPP
 #define OPERON_LIKELIHOOD_BASE_HPP
 
+#include <concepts>
 #include <Eigen/Core>
 #include <gsl/pointers>
 #include <vstat/vstat.hpp>
@@ -23,6 +24,7 @@ namespace Concepts {
         { T::ComputeLikelihood(x, y, z) } -> std::same_as<Operon::Scalar>;
         { T::ComputeFisherMatrix(z, y, z) } -> std::convertible_to<Eigen::template Matrix<Operon::Scalar, -1, -1>>;
     };
+
 } // namespace Concepts
 
 template <typename T = Operon::Scalar>
@@ -54,6 +56,17 @@ struct LikelihoodBase {
 private:
     gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> interpreter_;
 };
+
+namespace Concepts {
+    // Tighter concept for gradient-based optimizer loss functions.
+    // Requires Likelihood (static methods) plus derivation from LikelihoodBase
+    // (operator(), FunctionEvaluations, JacobianEvaluations, etc.).
+    // Prevents confusing template errors when a static-only *Likelihood struct
+    // is mistakenly passed to LBFGSOptimizer or SGDOptimizer.
+    template<typename T>
+    concept OptimizerLoss = Likelihood<T> && std::derived_from<T, LikelihoodBase<typename T::Scalar>>;
+} // namespace Concepts
+
 } // namespace Operon
 
 #endif

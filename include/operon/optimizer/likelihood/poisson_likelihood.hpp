@@ -41,59 +41,18 @@ namespace detail {
     };
 } // namespace detail
 
+// Pure static struct satisfying Concepts::Likelihood.
+// Use this type anywhere only the statistical computation is needed
+// (e.g. MinimumDescriptionLengthEvaluator).
 template<typename T = Operon::Scalar, bool LogInput = true>
-struct PoissonLikelihood : public LikelihoodBase<T> {
-
-    PoissonLikelihood(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
-        : LikelihoodBase<T>(interpreter)
-        , rng_{rng}
-        , target_(target)
-        , range_(range)
-        , batchSize_(batchSize == 0 ? range.Size() : batchSize)
-        , numParameters_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
-        , numResiduals_{range_.Size()}
-        , jac_{batchSize_, numParameters_}
-    { }
-
-    using Scalar   = typename LikelihoodBase<T>::Scalar;
-    using scalar_t = Scalar; // needed by lbfgs library NOLINT
-
-    using Vector   = typename LikelihoodBase<T>::Vector;
-    using Ref      = typename LikelihoodBase<T>::Ref;
-    using Cref     = typename LikelihoodBase<T>::Cref;
-    using Matrix   = typename LikelihoodBase<T>::Matrix;
-
-    // this loss can be used by the SGD or LBFGS optimizers
-    auto operator()(Cref x, Ref g) const noexcept -> Operon::Scalar final {
-        ++feval_;
-        auto const* interpreter = this->GetInterpreter();
-        Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
-        auto r = SelectRandomRange();
-        auto p = interpreter->Evaluate(c, r);
-        auto t = target_.subspan(r.Start(), r.Size());
-        auto pmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(p.data(), std::ssize(p));
-        auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
-
-        // compute jacobian
-        if constexpr (LogInput) {
-            if (g.size() != 0) {
-                interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
-                g = ((pmap.exp() - tmap).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
-            }
-            return (pmap.exp() - tmap * pmap).sum();
-        } else {
-            auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
-            if (g.size() != 0) {
-                interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
-                g = ((1 - tmap * pmap.inverse()).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
-            }
-            return (pmap - tmap * pmap.log()).sum();
-        }
-    }
+struct PoissonLikelihood {
+    using Scalar = T;
+    using Matrix = Eigen::Matrix<Scalar, -1, -1>;
+    using Vector = Eigen::Matrix<Scalar, -1,  1>;
 
     static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> w) -> Scalar {
         using F = std::conditional_t<LogInput, detail::PoissonLog, detail::Poisson>;
-        vstat::univariate_accumulator<Operon::Scalar> acc;
+        vstat::univariate_accumulator<Scalar> acc;
 
         if (w.empty()) {
             for (auto i = 0UL; i < x.size(); ++i) {
@@ -126,6 +85,72 @@ struct PoissonLikelihood : public LikelihoodBase<T> {
         } else {
             return (s.array().inverse().matrix().asDiagonal() * m).transpose() * m;
         }
+    }
+};
+
+// Callable loss object for gradient-based optimizers (L-BFGS, SGD).
+// Inherits LikelihoodBase<T> for the virtual operator() interface;
+// static methods delegate to PoissonLikelihood<T, LogInput> so this type
+// also satisfies Concepts::Likelihood.
+template<typename T = Operon::Scalar, bool LogInput = true>
+struct PoissonLoss : public LikelihoodBase<T> {
+
+    PoissonLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
+        : LikelihoodBase<T>(interpreter)
+        , rng_{rng}
+        , target_(target)
+        , range_(range)
+        , batchSize_(batchSize == 0 ? range.Size() : batchSize)
+        , numParameters_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
+        , numResiduals_{range_.Size()}
+        , jac_{batchSize_, numParameters_}
+    { }
+
+    using Scalar   = typename LikelihoodBase<T>::Scalar;
+    using scalar_t = Scalar; // needed by lbfgs library NOLINT
+
+    using Vector   = typename LikelihoodBase<T>::Vector;
+    using Ref      = typename LikelihoodBase<T>::Ref;
+    using Cref     = typename LikelihoodBase<T>::Cref;
+    using Matrix   = typename LikelihoodBase<T>::Matrix;
+
+    // Callable by L-BFGS / SGD optimizers: returns loss and fills gradient.
+    auto operator()(Cref x, Ref g) const noexcept -> Operon::Scalar final {
+        ++feval_;
+        auto const* interpreter = this->GetInterpreter();
+        Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
+        auto r = SelectRandomRange();
+        auto p = interpreter->Evaluate(c, r);
+        auto t = target_.subspan(r.Start(), r.Size());
+        auto pmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(p.data(), std::ssize(p));
+        auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
+
+        // compute jacobian
+        if constexpr (LogInput) {
+            if (g.size() != 0) {
+                ++jeval_;
+                interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
+                g = ((pmap.exp() - tmap).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
+            }
+            return (pmap.exp() - tmap * pmap).sum();
+        } else {
+            auto tmap2 = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
+            if (g.size() != 0) {
+                ++jeval_;
+                interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
+                g = ((1 - tmap2 * pmap.inverse()).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
+            }
+            return (pmap - tmap2 * pmap.log()).sum();
+        }
+    }
+
+    // Static delegation — PoissonLoss also satisfies Concepts::Likelihood.
+    static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> w) -> Scalar {
+        return PoissonLikelihood<T, LogInput>::ComputeLikelihood(x, y, w);
+    }
+
+    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> sigma) -> Matrix {
+        return PoissonLikelihood<T, LogInput>::ComputeFisherMatrix(pred, jac, sigma);
     }
 
     auto NumParameters() const -> std::size_t { return numParameters_; }
