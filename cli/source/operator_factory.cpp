@@ -129,7 +129,7 @@ auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& d
     } else if (str == "fbf_gauss") {
         evaluator = std::make_unique<Operon::FractionalBayesFactorEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(&problem, &dtable);
     } else if (str == "fbf_poisson") {
-        evaluator = std::make_unique<Operon::FractionalBayesFactorEvaluator<T, PoissonLikelihood<Operon::Scalar>>>(&problem, &dtable);
+        throw std::runtime_error("fbf_poisson is not supported: the fractional Bayes factor is derived under Gaussian assumptions");
     } else if (str == "gauss") {
         evaluator = std::make_unique<Operon::GaussianLikelihoodEvaluator<T>>(&problem, &dtable);
     } else {

@@ -397,7 +397,7 @@ public:
         auto estimatedValues = buf;
         auto targetValues    = problem->TargetValues(trainingRange);
         Operon::Scalar profiledSigma{};
-        if (sigma_.empty()) { // profile MLE σ̂ = sqrt(SSR/n) from residuals
+        if (sigma_.empty() && Lik::UsesSigma) { // profile MLE σ̂ = sqrt(SSR/n) from residuals
             auto const nObs = static_cast<double>(trainingRange.Size());
             auto ssr = 0.0;
             for (auto i = 0; i < static_cast<std::ptrdiff_t>(trainingRange.Size()); ++i) {
@@ -407,9 +407,9 @@ public:
             profiledSigma = std::max(static_cast<Operon::Scalar>(std::sqrt(ssr / nObs)),
                                      std::numeric_limits<Operon::Scalar>::epsilon());
         }
-        auto const effectiveSigma = sigma_.empty()
+        auto const effectiveSigma = (sigma_.empty() && Lik::UsesSigma)
             ? std::span<Operon::Scalar const>{&profiledSigma, 1}  // profiled
-            : std::span<Operon::Scalar const>{sigma_};             // fixed scalar or per-sample
+            : std::span<Operon::Scalar const>{sigma_};             // fixed scalar, per-sample, or empty (Poisson unweighted)
 
         // codelength of the complexity
         // count number of unique functions
@@ -518,7 +518,7 @@ public:
         auto targetValues    = problem->TargetValues(trainingRange);
         double mlNLL{};
         Operon::Scalar profiledSigma{};
-        if (sigma_.empty()) { // profile MLE σ̂ = sqrt(SSR/n); NLL = 0.5·n·(log(2π·σ̂²)+1), clamped to avoid log(0)
+        if (sigma_.empty() && Lik::UsesSigma) { // profile MLE σ̂ = sqrt(SSR/n); NLL = 0.5·n·(log(2π·σ̂²)+1), clamped to avoid log(0)
             auto ssr = 0.0;
             for (auto i = 0; i < static_cast<std::ptrdiff_t>(trainingRange.Size()); ++i) {
                 auto const e = static_cast<double>(estimatedValues[i]) - static_cast<double>(targetValues[i]);
@@ -529,9 +529,9 @@ public:
             auto const s = static_cast<double>(profiledSigma);
             mlNLL = 0.5 * n * (std::log(Operon::Math::Tau * s * s) + 1.0);
         }
-        auto const effectiveSigma = sigma_.empty()
+        auto const effectiveSigma = (sigma_.empty() && Lik::UsesSigma)
             ? std::span<Operon::Scalar const>{&profiledSigma, 1}  // profiled
-            : std::span<Operon::Scalar const>{sigma_};             // fixed scalar or per-sample
+            : std::span<Operon::Scalar const>{sigma_};             // fixed scalar, per-sample, or empty (Poisson unweighted)
 
         // structural complexity: k * log(q), matching Julia func_compl
         static auto const MulHash   = Node{NodeType::Mul}.HashValue;
