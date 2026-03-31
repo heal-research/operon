@@ -50,6 +50,8 @@ struct PoissonLikelihood {
     using Matrix = Eigen::Matrix<Scalar, -1, -1>;
     using Vector = Eigen::Matrix<Scalar, -1,  1>;
 
+    static constexpr bool UsesSigma = false; // w is an optional weight, not sigma; empty = unweighted
+
     static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> w) -> Scalar {
         using F = std::conditional_t<LogInput, detail::PoissonLog, detail::Poisson>;
         vstat::univariate_accumulator<Scalar> acc;
@@ -94,6 +96,7 @@ struct PoissonLikelihood {
 // also satisfies Concepts::Likelihood.
 template<typename T = Operon::Scalar, bool LogInput = true>
 struct PoissonLoss : public LikelihoodBase<T> {
+    static constexpr bool UsesSigma = false;
 
     PoissonLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
         : LikelihoodBase<T>(interpreter)
@@ -123,10 +126,10 @@ struct PoissonLoss : public LikelihoodBase<T> {
         auto p = interpreter->Evaluate(c, r);
         auto t = target_.subspan(r.Start(), r.Size());
         auto pmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(p.data(), std::ssize(p));
-        auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
 
         // compute jacobian
         if constexpr (LogInput) {
+            auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
             if (g.size() != 0) {
                 ++jeval_;
                 interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
@@ -134,13 +137,13 @@ struct PoissonLoss : public LikelihoodBase<T> {
             }
             return (pmap.exp() - tmap * pmap).sum();
         } else {
-            auto tmap2 = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
+            auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
             if (g.size() != 0) {
                 ++jeval_;
                 interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
-                g = ((1 - tmap2 * pmap.inverse()).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
+                g = ((1 - tmap * pmap.inverse()).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
             }
-            return (pmap - tmap2 * pmap.log()).sum();
+            return (pmap - tmap * pmap.log()).sum();
         }
     }
 

@@ -40,6 +40,8 @@ struct GaussianLikelihood {
     using Matrix = Eigen::Matrix<Scalar, -1, -1>;
     using Vector = Eigen::Matrix<Scalar, -1,  1>;
 
+    static constexpr bool UsesSigma = true; // sigma is required; empty span is invalid
+
     static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> s) noexcept -> Scalar {
         EXPECT(!s.empty());
         static_assert(std::is_arithmetic_v<Scalar>);
@@ -93,6 +95,8 @@ struct GaussianLikelihood {
 // OptimizerBase::ComputeLikelihood / ComputeFisherMatrix.
 template<typename T = Operon::Scalar>
 struct GaussianLoss : public LikelihoodBase<T> {
+    static constexpr bool UsesSigma = true;
+
     GaussianLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
         : LikelihoodBase<T>(interpreter)
         , rng_(rng)

@@ -96,7 +96,7 @@ struct EvaluatorBase : public E1, E2
 
     template<typename Derived>
     static auto Evaluate(Derived const* self, Operon::RandomGenerator& rng, Operon::Individual const& ind, std::span<Operon::Scalar> buf) {
-        ENSURE(buf.size() >= self->GetProblem()->TrainingRange.Size());
+        ENSURE(buf.size() >= self->GetProblem()->TrainingRange().Size());
         return std::invoke(*self, rng, ind, buf);
     }
 
@@ -207,7 +207,7 @@ private:
     bool scaling_{false};
 };
 
-class MultiEvaluator : public EvaluatorBase {
+class OPERON_EXPORT MultiEvaluator : public EvaluatorBase {
 public:
     explicit MultiEvaluator(Problem const* problem)
         : EvaluatorBase(problem)
@@ -462,7 +462,7 @@ public:
         }
 
         auto q { static_cast<double>(uniqueFunctions.size()) };
-        if (q > 0) { cComplexity += static_cast<double>(k) * std::log(q); }
+        if (q > 0) { cComplexity += k * std::log(q); }
 
         cParameters -= p/2 * std::log(3);
 
@@ -506,9 +506,8 @@ public:
         auto parameters = tree.GetCoefficients();
 
         auto const p { static_cast<double>(parameters.size()) };
-        auto const n { static_cast<double>(problem->TrainingRange().Size()) };
-
         auto const trainingRange = problem->TrainingRange();
+        auto const n { static_cast<double>(trainingRange.Size()) };
         ENSURE(buf.size() >= trainingRange.Size());
 
         ++Base::ResidualEvaluations;
@@ -562,7 +561,7 @@ public:
         // fractional likelihood: (1 - b) * NLL
         // Profiled case: use pre-computed NLL (avoids second O(n) pass inside ComputeLikelihood).
         // Fixed scalar or per-sample: delegate to ComputeLikelihood.
-        auto const nll = sigma_.empty()
+        auto const nll = (sigma_.empty() && Lik::UsesSigma)
             ? mlNLL
             : static_cast<double>(Lik::ComputeLikelihood(estimatedValues, targetValues, effectiveSigma));
         auto const cLikelihood = (1.0 - b) * nll;
@@ -628,12 +627,8 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, tree};
         auto parameters = tree->GetCoefficients();
 
-        std::vector<Operon::Scalar> buffer;
         auto const trainingRange = problem->TrainingRange();
-        if (buf.size() < trainingRange.Size()) {
-            buffer.resize(trainingRange.Size());
-            buf = Operon::Span<Operon::Scalar>(buffer);
-        }
+        ENSURE(buf.size() >= trainingRange.Size());
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, buf);
 
