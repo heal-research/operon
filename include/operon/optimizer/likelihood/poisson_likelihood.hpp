@@ -127,22 +127,19 @@ struct PoissonLoss : public LikelihoodBase<T> {
         auto t = target_.subspan(r.Start(), r.Size());
         auto pmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(p.data(), std::ssize(p));
 
-        // compute jacobian
-        if constexpr (LogInput) {
-            auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
-            if (g.size() != 0) {
-                ++jeval_;
-                interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
+        auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
+        if (g.size() != 0) {
+            ++jeval_;
+            interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
+            if constexpr (LogInput) {
                 g = ((pmap.exp() - tmap).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
-            }
-            return (pmap.exp() - tmap * pmap).sum();
-        } else {
-            auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
-            if (g.size() != 0) {
-                ++jeval_;
-                interpreter->JacRev(c, r, { jac_.data(), numParameters_ * batchSize_ });
+            } else {
                 g = ((1 - tmap * pmap.inverse()).matrix().asDiagonal() * jac_.matrix()).colwise().sum();
             }
+        }
+        if constexpr (LogInput) {
+            return (pmap.exp() - tmap * pmap).sum();
+        } else {
             return (pmap - tmap * pmap.log()).sum();
         }
     }
