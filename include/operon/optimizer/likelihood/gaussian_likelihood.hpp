@@ -75,16 +75,17 @@ struct GaussianLikelihood {
         auto const rows = pred.size();
         auto const cols = jac.size() / pred.size();
         Eigen::Map<Matrix const> m(jac.data(), rows, cols);
-        Matrix f = m.transpose() * m;
         if (sigma.size() == 1) {
             auto const s2 = sigma[0] * sigma[0];
+            Matrix f = m.transpose() * m;
             f.array() /= s2;
-        } else {
-            EXPECT(sigma.size() == rows);
-            Eigen::Map<Vector const> s{sigma.data(), std::ssize(pred)};
-            f.array() /= s.array().square();
+            return f;
         }
-        return f;
+        EXPECT(sigma.size() == rows);
+        Eigen::Map<Vector const> s{sigma.data(), std::ssize(pred)};
+        // F = J^T diag(1/σᵢ²) J = (diag(1/σᵢ) J)^T (diag(1/σᵢ) J)
+        Matrix scaledJ = s.array().inverse().matrix().asDiagonal() * m;
+        return scaledJ.transpose() * scaledJ;
     }
 };
 
