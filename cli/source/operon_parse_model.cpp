@@ -82,15 +82,15 @@ namespace {
             opt = std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::DefaultDispatch>>(dtable, problem);
         } else if (optimizer == "lbfgs") {
             if (likelihood == "gaussian") {
-                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::DefaultDispatch, Operon::GaussianLikelihood<Operon::Scalar>>>(dtable, problem);
+                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::DefaultDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
             } else if (likelihood == "poisson") {
-                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::DefaultDispatch, Operon::PoissonLikelihood<Operon::Scalar>>>(dtable, problem);
+                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::DefaultDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
             }
         } else if (optimizer == "sgd") {
             if (likelihood == "gaussian") {
-                opt = std::make_unique<Operon::SGDOptimizer<Operon::DefaultDispatch, Operon::GaussianLikelihood<Operon::Scalar>>>(dtable, problem);
+                opt = std::make_unique<Operon::SGDOptimizer<Operon::DefaultDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
             } else if (likelihood == "poisson") {
-                opt = std::make_unique<Operon::SGDOptimizer<Operon::DefaultDispatch, Operon::PoissonLikelihood<Operon::Scalar>>>(dtable, problem);
+                opt = std::make_unique<Operon::SGDOptimizer<Operon::DefaultDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
             }
         }
         return opt;
