@@ -28,6 +28,7 @@ add_executable(operon_test
     source/implementation/initialization.cpp
     source/implementation/mutation.cpp
     source/implementation/nondominatedsort.cpp
+    source/implementation/evaluator.cpp
     source/implementation/optimizer.cpp
     source/implementation/random.cpp
     source/implementation/selection.cpp
