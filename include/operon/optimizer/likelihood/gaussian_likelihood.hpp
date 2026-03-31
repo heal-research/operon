@@ -31,46 +31,16 @@ namespace detail {
     };
 } // namespace detail
 
+// Pure static struct satisfying Concepts::Likelihood.
+// Use this type anywhere only the statistical computation is needed
+// (e.g. MinimumDescriptionLengthEvaluator, LevenbergMarquardtOptimizer).
 template<typename T = Operon::Scalar>
-struct GaussianLikelihood : public LikelihoodBase<T> {
-    GaussianLikelihood(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
-        : LikelihoodBase<T>(interpreter)
-        , rng_(rng)
-        , target_{target.data(), std::ssize(target)}
-        , range_{range}
-        , bs_{batchSize == 0 ? range.Size() : batchSize}
-        , np_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
-        , nr_{range_.Size()}
-        , jac_{bs_, np_}
-    { }
+struct GaussianLikelihood {
+    using Scalar = T;
+    using Matrix = Eigen::Matrix<Scalar, -1, -1>;
+    using Vector = Eigen::Matrix<Scalar, -1,  1>;
 
-    using Scalar   = typename LikelihoodBase<T>::Scalar;
-
-    using Vector   = typename LikelihoodBase<T>::Vector;
-    using Ref      = typename LikelihoodBase<T>::Ref;
-    using Cref     = typename LikelihoodBase<T>::Cref;
-    using Matrix   = typename LikelihoodBase<T>::Matrix;
-
-    // this loss can be used by the SGD or LBFGS optimizers
-    auto operator()(Cref x, Ref grad) const noexcept -> Operon::Scalar final {
-        ++feval_;
-        auto const& interpreter = this->GetInterpreter();
-        Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
-        auto range = SelectRandomRange();
-        auto primal = interpreter->Evaluate(c, range);
-        auto target = target_.segment(range.Start(), range.Size());
-        Eigen::Map<Eigen::Array<Scalar, -1, 1> const> primalMap{primal.data(), std::ssize(primal)};
-        auto e = primalMap - target;
-
-        if (grad.size() != 0) {
-            assert(grad.size() == x.size());
-            ++jeval_;
-            interpreter->JacRev(c, range, {jac_.data(), np_ * bs_});
-            grad = (e.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
-        }
-
-        return static_cast<Operon::Scalar>(e.square().sum()) * Operon::Scalar{0.5};
-    }
+    static constexpr bool UsesSigma = true; // sigma is required; empty span is invalid
 
     static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> s) noexcept -> Scalar {
         EXPECT(!s.empty());
@@ -105,16 +75,75 @@ struct GaussianLikelihood : public LikelihoodBase<T> {
         auto const rows = pred.size();
         auto const cols = jac.size() / pred.size();
         Eigen::Map<Matrix const> m(jac.data(), rows, cols);
-        typename LikelihoodBase<T>::Matrix f = m.transpose() * m;
         if (sigma.size() == 1) {
             auto const s2 = sigma[0] * sigma[0];
+            Matrix f = m.transpose() * m;
             f.array() /= s2;
-        } else {
-            EXPECT(sigma.size() == rows);
-            Eigen::Map<Vector const> s{sigma.data(), std::ssize(pred)};
-            f.array() /= s.array().square();
+            return f;
         }
-        return f;
+        EXPECT(sigma.size() == rows);
+        Eigen::Map<Vector const> s{sigma.data(), std::ssize(pred)};
+        // F = J^T diag(1/σᵢ²) J = (diag(1/σᵢ) J)^T (diag(1/σᵢ) J)
+        Matrix scaledJ = s.array().inverse().matrix().asDiagonal() * m;
+        return scaledJ.transpose() * scaledJ;
+    }
+};
+
+// Callable loss object for gradient-based optimizers (L-BFGS, SGD).
+// Inherits LikelihoodBase<T> for the virtual operator() interface;
+// static methods delegate to GaussianLikelihood<T> so this type also
+// satisfies Concepts::Likelihood and can be passed to
+// OptimizerBase::ComputeLikelihood / ComputeFisherMatrix.
+template<typename T = Operon::Scalar>
+struct GaussianLoss : public LikelihoodBase<T> {
+    static constexpr bool UsesSigma = true;
+
+    GaussianLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
+        : LikelihoodBase<T>(interpreter)
+        , rng_(rng)
+        , target_{target.data(), std::ssize(target)}
+        , range_{range}
+        , bs_{batchSize == 0 ? range.Size() : batchSize}
+        , np_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
+        , nr_{range_.Size()}
+        , jac_{bs_, np_}
+    { }
+
+    using Scalar   = typename LikelihoodBase<T>::Scalar;
+
+    using Vector   = typename LikelihoodBase<T>::Vector;
+    using Ref      = typename LikelihoodBase<T>::Ref;
+    using Cref     = typename LikelihoodBase<T>::Cref;
+    using Matrix   = typename LikelihoodBase<T>::Matrix;
+
+    // Callable by L-BFGS / SGD optimizers: returns loss and fills gradient.
+    auto operator()(Cref x, Ref grad) const noexcept -> Operon::Scalar final {
+        ++feval_;
+        auto const& interpreter = this->GetInterpreter();
+        Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
+        auto range = SelectRandomRange();
+        auto primal = interpreter->Evaluate(c, range);
+        auto target = target_.segment(range.Start(), range.Size());
+        Eigen::Map<Eigen::Array<Scalar, -1, 1> const> primalMap{primal.data(), std::ssize(primal)};
+        auto e = primalMap - target;
+
+        if (grad.size() != 0) {
+            assert(grad.size() == x.size());
+            ++jeval_;
+            interpreter->JacRev(c, range, {jac_.data(), np_ * bs_});
+            grad = (e.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
+        }
+
+        return static_cast<Operon::Scalar>(e.square().sum()) * Operon::Scalar{0.5};
+    }
+
+    // Static delegation — GaussianLoss also satisfies Concepts::Likelihood.
+    static auto ComputeLikelihood(Span<Scalar const> x, Span<Scalar const> y, Span<Scalar const> s) noexcept -> Scalar {
+        return GaussianLikelihood<T>::ComputeLikelihood(x, y, s);
+    }
+
+    static auto ComputeFisherMatrix(Span<Scalar const> pred, Span<Scalar const> jac, Span<Scalar const> sigma) -> Matrix {
+        return GaussianLikelihood<T>::ComputeFisherMatrix(pred, jac, sigma);
     }
 
     auto NumParameters() const -> std::size_t { return np_; }
