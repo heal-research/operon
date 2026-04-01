@@ -216,7 +216,7 @@ auto main(int argc, char** argv) -> int
         mutator.Add(&removeSubtree, 1.0);
         mutator.Add(&discretePoint, 1.0);
 
-        Operon::DefaultDispatch dtable;
+        Operon::ScalarDispatch dtable;
         auto scale = result["linear-scaling"].as<bool>();
         auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
         evaluator->SetBudget(config.Evaluations);

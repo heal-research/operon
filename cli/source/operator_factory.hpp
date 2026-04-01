@@ -38,13 +38,13 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
 
 auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<Operon::Hash> const& inputs, size_t maxLength) -> std::unique_ptr<CreatorBase>;
 
-auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& dtable, bool scale = true) -> std::unique_ptr<EvaluatorBase>;
+auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale = true) -> std::unique_ptr<EvaluatorBase>;
 
 auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>;
 
 auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel, CoefficientOptimizer const* cOpt) -> std::unique_ptr<OffspringGeneratorBase>;
 
-auto ParseOptimizer(std::string const& str, Problem const& problem, DefaultDispatch const& dtable) -> std::unique_ptr<OptimizerBase>;
+auto ParseOptimizer(std::string const& str, Problem const& problem, ScalarDispatch const& dtable) -> std::unique_ptr<OptimizerBase>;
 
 } // namespace Operon
 
