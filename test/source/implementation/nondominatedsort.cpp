@@ -51,7 +51,7 @@ TEST_CASE("Hand-crafted Pareto fronts", "[algorithms]")
         }
 
         auto fronts = RankIntersectSorter{}(pop);
-        CHECK(fronts.size() >= 1);
+        CHECK(!fronts.empty());
 
         // First front should contain some of the Pareto-optimal points
         CHECK(!fronts[0].empty());
@@ -66,7 +66,7 @@ TEST_CASE("Hand-crafted Pareto fronts", "[algorithms]")
         std::stable_sort(pop.begin(), pop.end(), LexicographicalComparison{});
 
         auto fronts = DeductiveSorter{}(pop);
-        CHECK(fronts.size() >= 1);
+        CHECK(!fronts.empty());
         CHECK(!fronts[0].empty());
     }
 }
@@ -129,7 +129,7 @@ TEST_CASE("Non-dominated sort edge cases", "[algorithms]")
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
         auto pop = InitializePop(rd, dist, 100, 1);
         auto fronts = RankIntersectSorter{}(pop);
-        CHECK(fronts.size() >= 1);
+        CHECK(!fronts.empty());
     }
 
     SECTION("Non-dominated 2D points in the same front") {

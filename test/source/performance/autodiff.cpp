@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2022 Heal Research
 
 #include <catch2/catch_test_macros.hpp>
+#include <utility>
 
 #include "../operon_test.hpp"
 
@@ -136,7 +137,7 @@ TEST_CASE("Primitive performance", "[performance]")
 
     auto generate = [&](Node n) {
         Operon::Vector<Node> nodes{n};
-        for (auto k = 0; k < n.Arity; ++k) {
+        for (auto k = 0; std::cmp_less(k , n.Arity); ++k) {
             nodes.push_back(Node::Constant(dist(rng)));
             nodes.back().Optimize = true;
         }

@@ -27,7 +27,7 @@ namespace Operon {
         if (!std::isfinite(a)) {
             a = 1;
         }
-        auto b = stats.mean_y - a * stats.mean_x; // offset
+        auto b = stats.mean_y - (a * stats.mean_x); // offset
         return {a, b};
     }
 

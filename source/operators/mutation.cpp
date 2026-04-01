@@ -229,7 +229,7 @@ auto ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree t
     std::shuffle(childIndices.begin(), childIndices.end(), random);
 
     // write back from buffer to nodes in the shuffled order
-    auto insertionPoint = nodes.begin() + std::make_signed_t<decltype(i)>(i) - s.Length;
+    auto insertionPoint = nodes.begin() + static_cast<std::make_signed_t<decltype(i)>>(i) - s.Length;
 
     for (auto k : childIndices) {
         std::copy(buffer.begin() + static_cast<Signed>(k) - buffer[k].Length, buffer.begin() + static_cast<Signed>(k) + 1, insertionPoint);

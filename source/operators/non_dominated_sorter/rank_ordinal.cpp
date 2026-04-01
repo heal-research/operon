@@ -64,7 +64,7 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
             continue;
         }
         for (auto j : p(Eigen::seq(maxp(i)+1, n-1), maxc(i))) {
-            rank[j] += (rank[i] == rank[j] && dominated(i, j));
+            rank[j] += static_cast<int>(rank[i] == rank[j] && dominated(i, j));
         }
     }
     Operon::Vector<Operon::Vector<size_t>> fronts(std::ranges::max(rank) + 1);

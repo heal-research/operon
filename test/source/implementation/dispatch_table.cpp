@@ -3,8 +3,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <numbers>
 #include <numeric>
 
+#include "absl/strings/match.h"
 #include "operon/core/pset.hpp"
 #include "operon/core/symbol_library.hpp"
 #include "operon/hash/hash.hpp"
@@ -39,7 +41,7 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
 
     SECTION("Copy constructor") {
         DT dt;
-        DT dt1(dt);
+        const DT& dt1(dt);
         check(dt1, "2 * 3 / 4", 1.5);
     }
 
@@ -47,17 +49,17 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
         DT dt;
         DT dt1(dt);
         DT dt2(std::move(dt1));
-        check(dt2, "sin(1 / 2 * 3.141519)", std::sin(1.0 / 2.0 * 3.141519));
+        check(dt2, "sin(1 / 2 * 3.141519)", std::sin(1.0 / 2.0 * std::numbers::pi));
     }
 
     SECTION("Construct from map") {
         DT dt;
         auto const& map = dt.GetMap();
         DT dt3(map);
-        check(dt3, "cos(3.141519)", std::cos(3.141519f));
+        check(dt3, "cos(3.141519)", std::cos(std::numbers::pi_v<float>));
 
         DT dt4(std::move(map));
-        check(dt4, "exp(log(10))", std::exp(std::log(10.f)));
+        check(dt4, "exp(log(10))", std::exp(std::numbers::ln10_v<float>));
     }
 }
 
@@ -111,8 +113,8 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
         Operon::Range /*rg*/)
     {
         auto const  w   = static_cast<Scalar>(nodes[i].Value);
-        auto*       dst = data.data_handle() + i * S;
-        auto const* src = data.data_handle() + (i - 1) * S;
+        auto*       dst = data.data_handle() + (i * S);
+        auto const* src = data.data_handle() + ((i - 1) * S);
         for (auto k = 0UL; k < S; ++k) { dst[k] = w * -src[k]; }
     };
 
@@ -218,9 +220,9 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
 
     // f(a, b) = sqrt(a^2 + b^2),  ∂f/∂a = a/f,  ∂f/∂b = b/f
     Operon::RegisterBinary<DT, Scalar>(dt, h,
-        [](auto a, auto b) { return std::sqrt(a*a + b*b); },
-        [](auto a, auto b) { return a / std::sqrt(a*a + b*b); },
-        [](auto a, auto b) { return b / std::sqrt(a*a + b*b); });
+        [](auto a, auto b) { return std::sqrt((a*a) + (b*b)); },
+        [](auto a, auto b) { return a / std::sqrt((a*a) + (b*b)); },
+        [](auto a, auto b) { return b / std::sqrt((a*a) + (b*b)); });
 
     SECTION("Evaluate with unit weight") {
         // Tree: [Variable(x), Variable(y), Dynamic(hypot)]
@@ -241,7 +243,7 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
 
         REQUIRE(std::ssize(r) == 10);
         for (auto i = 0; i < 10; ++i) {
-            auto expected = std::sqrt(xvals[i]*xvals[i] + yvals[i]*yvals[i]);
+            auto expected = std::sqrt((xvals[i]*xvals[i]) + (yvals[i]*yvals[i]));
             CHECK(r[i] == Catch::Approx(expected).epsilon(1e-4));
         }
     }
@@ -426,7 +428,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
 
         Operon::Tree tree({ varNode, dynNode });
         auto formatted = InfixFormatter::Format(tree, ds);
-        CHECK(formatted.find("cube") != std::string::npos);
+        CHECK(absl::StrContains(formatted, "cube"));
     }
 }
 

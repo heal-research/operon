@@ -6,6 +6,7 @@
 #include <random>
 #include <span>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "operon/operators/creator.hpp"
@@ -61,7 +62,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         auto [node, nodeDepth, childIndex] = tuples[i];
         auto childDepth = nodeDepth + 1;
         std::get<2>(tuples[i]) = tuples.size();
-        for (int j = 0; j < node.Arity; ++j) {
+        for (int j = 0; std::cmp_less(j , node.Arity); ++j) {
             maxArity = openSlots - tuples.size() > 1 && sampleIrregular(random)
                 ? 0
                 : std::min(maxFunctionArity, targetLen - openSlots - 1);
