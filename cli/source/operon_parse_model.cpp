@@ -75,22 +75,22 @@ namespace {
         return result;
     }
 
-    auto ParseOptimizer(Operon::DefaultDispatch const* dtable, Operon::Problem const* problem, std::string const& optimizer, std::string const& likelihood) {
+    auto ParseOptimizer(Operon::ScalarDispatch const* dtable, Operon::Problem const* problem, std::string const& optimizer, std::string const& likelihood) {
         std::unique_ptr<Operon::OptimizerBase> opt;
 
         if (optimizer == "lm") {
-            opt = std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::DefaultDispatch>>(dtable, problem);
+            opt = std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch>>(dtable, problem);
         } else if (optimizer == "lbfgs") {
             if (likelihood == "gaussian") {
-                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::DefaultDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
+                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
             } else if (likelihood == "poisson") {
-                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::DefaultDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
+                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
             }
         } else if (optimizer == "sgd") {
             if (likelihood == "gaussian") {
-                opt = std::make_unique<Operon::SGDOptimizer<Operon::DefaultDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
+                opt = std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
             } else if (likelihood == "poisson") {
-                opt = std::make_unique<Operon::SGDOptimizer<Operon::DefaultDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
+                opt = std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
             }
         }
         return opt;
@@ -107,7 +107,7 @@ auto main(int argc, char** argv) -> int
     auto infix = result.unmatched().front();
     auto model = Operon::InfixParser::Parse(infix, ds);
 
-    Operon::DefaultDispatch dtable;
+    Operon::ScalarDispatch dtable;
     Operon::Range range{0, ds.Rows<std::size_t>()};
     if (result["range"].count() > 0) {
         auto res = scn::scan<std::size_t, std::size_t>(result["range"].as<std::string>(), "{}:{}");
@@ -123,7 +123,7 @@ auto main(int argc, char** argv) -> int
         fmt::print("Data range: {}:{}\n", range.Start(), range.End());
         fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
     }
-    using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>;
+    using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
     auto est = Interpreter::Evaluate(model, ds, range);
 
     std::string format = result["format"].as<std::string>();
@@ -158,8 +158,8 @@ auto main(int argc, char** argv) -> int
         Operon::Individual ind;
         ind.Genotype = model;
 
-        Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch> interpreter{&dtable, &ds, &ind.Genotype};
-        Operon::MinimumDescriptionLengthEvaluator<Operon::DefaultDispatch, Operon::GaussianLikelihood<Operon::Scalar>> mdlEval{&problem, &dtable};
+        Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch> interpreter{&dtable, &ds, &ind.Genotype};
+        Operon::MinimumDescriptionLengthEvaluator<Operon::ScalarDispatch, Operon::GaussianLikelihood<Operon::Scalar>> mdlEval{&problem, &dtable};
         auto mdl = mdlEval(rng, ind).front();
         auto opt = ParseOptimizer(&dtable, &problem, result["optimizer"].as<std::string>(), result["likelihood"].as<std::string>());
         opt->SetIterations(result["iterations"].as<int>());

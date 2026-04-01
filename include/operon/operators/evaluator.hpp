@@ -179,7 +179,7 @@ private:
     std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator*, Operon::Individual const&)> fptr_; // workaround for pybind11
 };
 
-template <typename DTable = DefaultDispatch>
+template <typename DTable = ScalarDispatch>
 class OPERON_EXPORT Evaluator : public EvaluatorBase {
 public:
     using TDispatch    = DTable;

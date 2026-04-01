@@ -105,9 +105,9 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     return creator;
 }
 
-auto ParseEvaluator(std::string const& str, Problem& problem, DefaultDispatch& dtable, bool scale) -> std::unique_ptr<EvaluatorBase>
+auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale) -> std::unique_ptr<EvaluatorBase>
 {
-    using T = DefaultDispatch;
+    using T = ScalarDispatch;
 
     std::unique_ptr<EvaluatorBase> evaluator;
     if (str == "r2") {
@@ -173,7 +173,7 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
     return generator;
 }
 
-auto ParseOptimizer(std::string const& /*str*/, Problem const& /*problem*/, DefaultDispatch const& /*dtable*/) -> std::unique_ptr<OptimizerBase> {
+auto ParseOptimizer(std::string const& /*str*/, Problem const& /*problem*/, ScalarDispatch const& /*dtable*/) -> std::unique_ptr<OptimizerBase> {
     throw std::runtime_error("not implemented");
 }
 

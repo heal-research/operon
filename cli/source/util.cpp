@@ -177,6 +177,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
         ("timelimit", "Time limit after which the algorithm will terminate", cxxopts::value<size_t>()->default_value(std::to_string(std::numeric_limits<size_t>::max())))
         ("transposition-cache", "Cache fitness values keyed by Zobrist hash of tree structure; most effective with coefficient optimization enabled", cxxopts::value<bool>()->default_value("false"))
+        ("pareto-front", "Write rank-0 Pareto front to this JSON file after the run", cxxopts::value<std::string>())
         ("debug", "Debug mode (more information displayed)")
         ("help", "Print help")
         ("version", "Print version and program information");
