@@ -14,7 +14,9 @@ using std::pair;
 using std::string;
 
 namespace Operon {
-    static Operon::Map<Operon::Hash, pair<string, string>> DynDesc;
+namespace {
+    Operon::Map<Operon::Hash, pair<string, string>> DynDesc; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+} // namespace
 
     void Node::RegisterName(Operon::Hash hash, string name, string desc)
     {

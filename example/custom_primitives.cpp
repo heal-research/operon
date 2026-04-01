@@ -88,14 +88,14 @@ auto main(int argc, char** argv) -> int
         { .Hash = Operon::Hasher{}("gaussian"),
           .Name = "gaussian", .Desc = "exp(-x * x)",
           .Arity = 1, .Frequency = 2 },
-        [](auto v) { using std::exp; return exp(-v * v); });
+        [](auto const& v) { using std::exp; return exp(-v * v); });
 
     // hypot(a, b) = sqrt(a² + b²) — derivative via Jet<T,1> auto-diff
     Operon::RegisterBinaryFunction<DT, Operon::Scalar>(dtable, pset,
         { .Hash = Operon::Hasher{}("hypot"),
           .Name = "hypot", .Desc = "sqrt(a^2 + b^2)",
           .Arity = 2, .Frequency = 1 },
-        [](auto a, auto b) { using std::sqrt; return sqrt((a * a) + (b * b)); });
+        [](auto const& a, auto const& b) { using std::sqrt; return sqrt((a * a) + (b * b)); });
 
     fmt::print("Primitives in use:\n");
     for (auto const& node : pset.EnabledPrimitives()) {

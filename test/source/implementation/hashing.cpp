@@ -125,7 +125,8 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
     (void)tree1.Hash(Operon::HashMode::Strict);
     (void)tree2.Hash(Operon::HashMode::Strict);
 
-    Operon::Vector<Operon::Hash> h1(tree1.Length()), h2(tree2.Length());
+    Operon::Vector<Operon::Hash> h1(tree1.Length());
+    Operon::Vector<Operon::Hash> h2(tree2.Length());
     std::transform(tree1.Nodes().begin(), tree1.Nodes().end(), h1.begin(), [](auto& n) { return n.CalculatedHashValue; });
     std::transform(tree2.Nodes().begin(), tree2.Nodes().end(), h2.begin(), [](auto& n) { return n.CalculatedHashValue; });
     std::sort(h1.begin(), h1.end());

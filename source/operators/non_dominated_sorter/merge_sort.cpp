@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <bit>
-#include <algorithm>
 #include <array>
 #include <limits>
 #include <span>
@@ -185,7 +184,7 @@ namespace detail {
         cppsort::merge_sorter sorter;
         Operon::Vector<detail::Item> items(n);
         for (auto i = 0; i < n; ++i) {
-            items[i] = { i, pop[i][1] };
+            items[i] = { .Index = i, .Value = pop[i][1] };
         }
         sorter(items);
 

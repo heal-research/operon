@@ -29,10 +29,12 @@
 #include "operon/operators/selector.hpp"
 
 namespace Operon::Test {
+namespace {
 auto TotalNodes(const Operon::Vector<Tree>& trees)
 {
     return vstat::univariate::accumulate<Operon::Scalar>(trees.begin(), trees.end(), [](auto const& t) { return t.Length(); }).sum;
 }
+} // namespace
 
 namespace nb = ankerl::nanobench;
 
@@ -202,7 +204,7 @@ TEST_CASE("Evaluator performance", "[performance]")
 
     auto totalNodes = TotalNodes(trees);
 
-    auto test = [&](std::string const& name, EvaluatorBase&& evaluator) {
+    auto test = [&](std::string const& name, EvaluatorBase&& evaluator) { // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
         evaluator.SetBudget(std::numeric_limits<size_t>::max());
         tf::Executor executor(std::thread::hardware_concurrency());
         tf::Taskflow taskflow;
@@ -266,7 +268,7 @@ TEST_CASE("Parallel interpreter", "[performance]")
     std::iota(threads.begin(), threads.end(), 1);
     Operon::Vector<Operon::Scalar> result(trees.size() * range.Size());
     for (auto t : threads) {
-        b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { return Operon::EvaluateTrees(trees, &ds, range, result, t); });
+        b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { Operon::EvaluateTrees(trees, &ds, range, result, t); });
     }
 }
 

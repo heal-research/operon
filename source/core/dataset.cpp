@@ -65,7 +65,7 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
         for (auto const& row : parser) {
             for (auto const& f : row) {
                 auto h = hash(f);
-                variables_.insert({ h, { f, h, ncol++ } });
+                variables_.insert({ h, { .Name = f, .Hash = h, .Index = ncol++ } });
             }
             break; // read only the first row
         }
@@ -126,7 +126,7 @@ Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<O
     Hasher hasher;
     for (auto i = 0; i < map_.cols(); ++i) {
         auto h = hasher(vars[i]);
-        variables_.insert({h, { vars[i], h, i } });
+        variables_.insert({h, { .Name = vars[i], .Hash = h, .Index = i } });
     }
 }
 

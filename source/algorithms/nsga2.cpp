@@ -117,6 +117,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     // random seeds for each thread
     size_t s = std::max(config.PopulationSize, config.PoolSize);
     std::vector<Operon::RandomGenerator> rngs;
+    rngs.reserve(s);
     for (size_t i = 0; i < s; ++i) {
         rngs.emplace_back(random());
     }

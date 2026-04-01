@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <numeric>
-#include <algorithm>
 #include <random>
 #include <span>
 #include <vector>
