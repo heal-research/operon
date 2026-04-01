@@ -5,11 +5,11 @@
 
 #include <algorithm>
 #include <cmath>
-#include <fstream>
 #include <limits>
 
 #include <Eigen/Core>
 #include <fmt/core.h>
+#include <fmt/os.h>
 
 #include "operon/core/node.hpp"
 #include "operon/core/types.hpp"
@@ -44,8 +44,8 @@ auto WriteParetoFront(std::string const& path,
         return fmt::format("{:.17g}", v);
     };
 
-    std::ofstream out(path);
-    out << "[\n";
+    auto out = fmt::output_file(path);
+    out.print("[\n");
     for (auto i = 0UL; i < front.size(); ++i) {
         auto const* ind = front[i];
         Interpreter<Scalar, ScalarDispatch> interp{&dtable, ds, &ind->Genotype};
@@ -114,8 +114,7 @@ auto WriteParetoFront(std::string const& path,
         auto const ncols   = static_cast<Eigen::Index>(coeffs.size());
         Eigen::Map<Eigen::Matrix<Scalar, -1, -1> const> jacMap(jac.data(), nrows, ncols);
         auto const sigma2     = static_cast<Scalar>(mseTrain);
-        auto const fisherMat  = (jacMap.transpose() * jacMap) / sigma2;
-        auto const fisherDiag = fisherMat.diagonal().array();
+        auto const fisherDiag = (jacMap.colwise().squaredNorm().transpose().array() / sigma2);
 
         auto cComplexity = fCompl;
         auto cParameters = 0.0;
@@ -157,8 +156,8 @@ auto WriteParetoFront(std::string const& path,
         }
         objArr += "]";
 
-        if (i > 0) { out << ",\n"; }
-        out << fmt::format(
+        if (i > 0) { out.print(",\n"); }
+        out.print(
             "  {{\"id\": {}, \"expression\": \"{}\", \"length\": {}, \"complexity\": {}, \"objectives\": {},\n"
             "   \"r2_train\": {}, \"r2_test\": {},\n"
             "   \"mse_train\": {}, \"mse_test\": {},\n"
@@ -172,7 +171,7 @@ auto WriteParetoFront(std::string const& path,
             jsonNum(maeTrain), jsonNum(maeTest),
             jsonNum(mdl), jsonNum(fbf));
     }
-    out << "\n]\n";
+    out.print("\n]\n");
 }
 
 } // namespace Operon

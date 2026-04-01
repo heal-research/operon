@@ -17,7 +17,7 @@ namespace Operon {
 // raw objective values, R²/MSE/NMSE/MAE on train+test, MDL, and FBF.
 // If `linearScaling` is true, a least-squares (a, b) fit is applied to each
 // individual's train predictions before computing all metrics.
-auto OPERON_EXPORT WriteParetoFront(std::string const& path,
+auto WriteParetoFront(std::string const& path,
                       Operon::Span<Individual const> population,
                       ScalarDispatch const& dtable,
                       Problem const& problem,
