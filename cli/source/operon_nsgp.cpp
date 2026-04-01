@@ -32,6 +32,7 @@
 #include "operon/optimizer/solvers/sgd.hpp"
 
 #include "operator_factory.hpp"
+#include "pareto_front.hpp"
 #include "reporter.hpp"
 #include "util.hpp"
 
@@ -225,7 +226,7 @@ auto main(int argc, char** argv) -> int
         mutator.Add(&removeSubtree, 1.0);
         mutator.Add(&discretePoint, 1.0);
 
-        Operon::DefaultDispatch dtable;
+        Operon::ScalarDispatch dtable;
         // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
         // dtable.RegisterCallable(12345UL, f, f);
 
@@ -282,6 +283,9 @@ auto main(int argc, char** argv) -> int
         gp.Run(executor, random, [&]() { reporter(executor, gp); });
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
+        if (result.contains("pareto-front")) {
+            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem, scale);
+        }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;

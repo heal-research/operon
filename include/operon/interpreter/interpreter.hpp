@@ -48,7 +48,7 @@ struct InterpreterBase {
     [[nodiscard]] virtual auto GetDataset() const -> Operon::Dataset const* = 0;
 };
 
-template<typename T = Operon::Scalar, typename DTable = DefaultDispatch>
+template<typename T = Operon::Scalar, typename DTable = ScalarDispatch>
 requires DTable::template SupportsType<T>
 struct Interpreter : public InterpreterBase<T> {
     using DispatchTable = DTable;
