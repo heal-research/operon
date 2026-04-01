@@ -18,7 +18,16 @@ Checks: "*,\
   -bugprone-easily-swappable-parameters,\
   -boost-use-ranges,\
   -modernize-use-ranges,\
-  -misc-non-private-member-variables-in-classes"
+  -misc-non-private-member-variables-in-classes,\
+  -cppcoreguidelines-avoid-magic-numbers,\
+  -readability-magic-numbers,\
+  -misc-include-cleaner,\
+  -bugprone-argument-comment,\
+  -llvm-prefer-static-over-anonymous-namespace,\
+  -portability-template-virtual-member-function,\
+  -misc-no-recursion,\
+  -cppcoreguidelines-avoid-do-while"
+HeaderFilterRegex: '^.*/operon/(include/operon/(?!ceres|mdspan)|source|cli|test/source/(?!.*thirdparty))'
 WarningsAsErrors: ''
 CheckOptions:
   - key: 'bugprone-argument-comment.StrictMode'
