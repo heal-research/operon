@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 
 include(cmake/prelude.cmake)
 
@@ -248,9 +248,11 @@ target_link_libraries(operon_operon PUBLIC
     lbfgs::lbfgs
     libassert::assert
     infix-parser::infix-parser # required by infix parser
-    std::mdspan
     vstat::vstat
 )
+
+# Mark mdspan as a system library so its headers are excluded from clang-tidy
+target_link_libraries(operon_operon PUBLIC SYSTEM std::mdspan)
 
 target_link_libraries(operon_operon PRIVATE
     AriaCsvParser::AriaCsvParser
