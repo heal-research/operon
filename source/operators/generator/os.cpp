@@ -15,7 +15,7 @@ namespace Operon {
             for (size_t i = 0; i < q.Size(); ++i) {
                 auto f1 = (*res.Parent1)[i];
                 auto f2 = (*res.Parent2)[i];
-                q[i] = std::max(f1, f2) - static_cast<Operon::Scalar>(comparisonFactor_) * std::abs(f1 - f2);
+                q[i] = std::max(f1, f2) - (static_cast<Operon::Scalar>(comparisonFactor_) * std::abs(f1 - f2));
                 accept = Operon::ParetoDominance{}(res.Child->Fitness, q.Fitness) != Dominance::Right;
             }
         } else {

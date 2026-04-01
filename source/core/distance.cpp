@@ -68,14 +68,14 @@ namespace Operon::Distance {
     {
         size_t n = lhs.size() + rhs.size();
         size_t c = detail::CountIntersect(lhs, rhs);
-        return static_cast<double>(n - 2 * c) / static_cast<double>(n);
+        return static_cast<double>(n - (2 * c)) / static_cast<double>(n);
     }
 
     auto SorensenDice(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept -> double
     {
         size_t n = lhs.size() + rhs.size();
         size_t c = detail::CountIntersect(lhs, rhs);
-        return 1 - 2 * static_cast<double>(c) / static_cast<double>(n);
+        return 1 - (2 * static_cast<double>(c) / static_cast<double>(n));
     }
 
 } // namespace Operon::Distance

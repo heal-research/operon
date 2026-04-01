@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <algorithm>
 #include <cstddef>
 #include <numeric>
 #include <algorithm>
@@ -39,9 +40,7 @@ auto RankTournamentSelector::operator()(Operon::RandomGenerator& random) const -
 
     for (size_t i = 1; i < tournamentSize; ++i) {
         auto curr = uniformInt(random);
-        if (best < curr) {
-            best = curr;
-        }
+        best = std::max(best, curr);
     }
     return best;
 }

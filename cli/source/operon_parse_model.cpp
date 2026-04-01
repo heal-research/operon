@@ -58,12 +58,12 @@ namespace {
             return tl::make_unexpected(ParseError::UnknownError);
         };
 
-        if (result.arguments().empty() || result.count("help") > 0) {
+        if (result.arguments().empty() || result.contains("help")) {
             fmt::print("{}\n", opts.help());
             return tl::make_unexpected(ParseError::NoOptions);
         }
 
-        if (result.count("dataset") == 0) {
+        if (!result.contains("dataset")) {
             fmt::print(stderr, "error: no dataset was specified.\n");
             return tl::make_unexpected(ParseError::MissingDataset);
         }

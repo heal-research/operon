@@ -12,8 +12,8 @@
 
 #include "nanobench.h"
 
-namespace Operon {
-namespace Test {
+
+namespace Operon::Test {
 
 template<typename Callable>
 struct ComputeDistanceMatrix {
@@ -21,7 +21,7 @@ struct ComputeDistanceMatrix {
         : f_(f) {}
 
     template<typename T>
-    inline auto operator()(std::vector<Operon::Vector<T>> const& hashes) const noexcept -> double
+    auto operator()(std::vector<Operon::Vector<T>> const& hashes) const noexcept -> double
     {
         double d = 0;
         for (size_t i = 0; i < hashes.size() - 1; ++i) {
@@ -109,5 +109,5 @@ TEST_CASE("Intersection performance", "[performance]")
     }
 }
 
-} // namespace Test
-} // namespace Operon
+} // namespace Operon::Test
+

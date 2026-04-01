@@ -104,7 +104,7 @@ TEST_CASE("Poisson likelihood static methods", "[likelihood]")
         std::vector<Operon::Scalar> w(1, 2.0F);
         // f(x,y,w) = f(w*x, y) = 2 - 1·log(2) + 0 = 2 - log(2)
         auto nll = Lik::ComputeLikelihood(pred, target, w);
-        auto const expected = static_cast<double>(n) * (2.0 - std::log(2.0));
+        auto const expected = static_cast<double>(n) * (2.0 - std::numbers::ln2);
         CHECK_THAT(static_cast<double>(nll), Catch::Matchers::WithinRel(expected, 1e-5));
     }
 

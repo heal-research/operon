@@ -128,10 +128,10 @@ auto main(int argc, char** argv) -> int
         }
         target = *res;
         auto const rows { dataset->Rows<std::size_t>() };
-        if (result.count("train") == 0) {
+        if (!result.contains("train")) {
             trainingRange = Operon::Range { 0, 2 * rows / 3 }; // by default use 66% of the data as training
         }
-        if (result.count("test") == 0) {
+        if (!result.contains("test")) {
             // if no test range is specified, we try to infer a reasonable range based on the trainingRange
             if (trainingRange.Start() > 0) {
                 testRange = Operon::Range { 0, trainingRange.Start() };
@@ -153,7 +153,7 @@ auto main(int argc, char** argv) -> int
         }
 
         std::vector<Operon::Hash> inputs;
-        if (result.count("inputs") == 0) {
+        if (!result.contains("inputs")) {
             inputs = dataset->VariableHashes();
             std::erase(inputs, target.Hash);
         } else {

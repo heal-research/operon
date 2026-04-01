@@ -92,7 +92,7 @@ namespace {
         auto const n = std::ssize(rank);
         using E = std::remove_extent_t<typename decltype(s)::element_type>;
         auto constexpr D = std::numeric_limits<E>::digits;
-        auto const nb = n / D + static_cast<std::size_t>(n % D != 0);
+        auto const nb = (n / D) + static_cast<std::size_t>(n % D != 0);
         if (r+1UL == rankset.size()) {                 // new rankset if necessary
             auto p = MakeUnique<uint64_t[]>(nb, E{0}); // NOLINT
             rankset.push_back(std::move(p));
@@ -134,7 +134,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
 
     // constants
     auto const nb { static_cast<int>(n / DIGITS) + static_cast<int>(n % DIGITS != 0) };
-    std::size_t const ub = DIGITS * nb - n; // number of unused bits at the end of the last block (must be set to zero)
+    std::size_t const ub = (DIGITS * nb) - n; // number of unused bits at the end of the last block (must be set to zero)
 
     Operon::Vector<RawBitset> rs;
     rs.push_back(MakeUnique<uint64_t[]>(nb, ONES)); // vector of sets keeping track of individuals whose rank was updated NOLINT

@@ -69,7 +69,7 @@ TEST_CASE("Grammar sampling", "[operators]")
     }
     chi *= nTrials;
 
-    auto criticalValue = static_cast<double>(r) + 2 * std::sqrt(r);
+    auto criticalValue = static_cast<double>(r) + (2 * std::sqrt(r));
     REQUIRE(chi <= criticalValue);
 }
 
