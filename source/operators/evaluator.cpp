@@ -18,6 +18,7 @@
 #include <ranges>
 
 namespace Operon {
+namespace {
     template<typename T>
     auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target) -> std::pair<double, double>
     requires std::is_arithmetic_v<T>
@@ -30,6 +31,7 @@ namespace Operon {
         auto b = stats.mean_y - (a * stats.mean_x); // offset
         return {a, b};
     }
+} // namespace
 
     auto FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept -> std::pair<double, double> {
         return FitLeastSquaresImpl<float>(estimated, target);

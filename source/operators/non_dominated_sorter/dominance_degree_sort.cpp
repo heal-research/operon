@@ -7,6 +7,7 @@
 #include <Eigen/Core>
 
 namespace Operon {
+namespace {
     using Vec = Eigen::Matrix<int64_t, -1, 1, Eigen::ColMajor>;
     using Mat = Eigen::Matrix<int64_t, -1, -1, Eigen::ColMajor>;
 
@@ -50,7 +51,7 @@ namespace Operon {
         }
         return d;
     }
-
+} // namespace
 
     auto DominanceDegreeSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
     {

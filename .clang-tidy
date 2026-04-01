@@ -26,7 +26,8 @@ Checks: "*,\
   -llvm-prefer-static-over-anonymous-namespace,\
   -portability-template-virtual-member-function,\
   -misc-no-recursion,\
-  -cppcoreguidelines-avoid-do-while"
+  -cppcoreguidelines-avoid-do-while,\
+  -abseil-string-find-str-contains"
 HeaderFilterRegex: '^.*/operon/(include/operon/(?!ceres|mdspan)|source|cli|test/source/(?!.*thirdparty))'
 WarningsAsErrors: ''
 CheckOptions:

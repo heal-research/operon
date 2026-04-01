@@ -48,6 +48,7 @@ TEST_CASE("Crossover produces valid trees", "[operators]")
         auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
         constexpr int n = 10000;
         std::vector<Tree> trees;
+        trees.reserve(n);
         for (int i = 0; i < n; ++i) {
             trees.push_back(btc(rng, sizeDistribution(rng), 1UL, maxDepth));
         }

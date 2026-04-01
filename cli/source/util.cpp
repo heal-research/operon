@@ -187,7 +187,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
 auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult {
     cxxopts::ParseResult result;
     try {
-        result = opts.parse(argc, argv);
+        result = std::move(opts).parse(argc, argv);
     } catch (cxxopts::exceptions::parsing const& ex) {
         fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
         std::exit(EXIT_FAILURE);

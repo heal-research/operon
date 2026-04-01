@@ -164,7 +164,7 @@ TEST_CASE("Primitive performance", "[performance]")
 
         std::vector<Operon::Scalar> out(ds.Rows());
 
-        b.batch(N * (n.Arity + 1) * ds.Rows()).run(fmt::format("{} res", n.Name()), [&]() {
+        b.batch(static_cast<int64_t>(N) * (n.Arity + 1) * ds.Rows()).run(fmt::format("{} res", n.Name()), [&]() {
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();
@@ -189,7 +189,7 @@ TEST_CASE("Primitive performance", "[performance]")
 
         std::vector<Operon::Scalar> jac(ds.Rows() * (n.Arity + 1));
 
-        b.batch(N * (n.Arity + 1) * ds.Rows()).run(fmt::format("{} jac", n.Name()), [&]() {
+        b.batch(static_cast<int64_t>(N) * (n.Arity + 1) * ds.Rows()).run(fmt::format("{} jac", n.Name()), [&]() {
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();

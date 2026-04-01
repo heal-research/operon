@@ -37,7 +37,8 @@ TEST_CASE("Tournament selection bias", "[operators]")
 
     // Better fitness (lower index = lower value) should have higher selection probability
     // Check that the first quartile is selected more than the last quartile
-    size_t firstQuartile = 0, lastQuartile = 0;
+    size_t firstQuartile = 0;
+    size_t lastQuartile = 0;
     for (size_t i = 0; i < popSize / 4; ++i) {
         firstQuartile += hist[i];
     }

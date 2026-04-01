@@ -190,7 +190,7 @@ TEST_CASE("MDL evaluator", "[evaluator]")
 
     SECTION("Gaussian / profiled sigma: finite positive result") {
         MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -200,7 +200,7 @@ TEST_CASE("MDL evaluator", "[evaluator]")
     SECTION("Gaussian / fixed sigma: finite positive result") {
         MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
         ev.SetSigma({0.5F});
-        auto ind = fix.MakeIndividual(fix.tree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -209,7 +209,7 @@ TEST_CASE("MDL evaluator", "[evaluator]")
 
     SECTION("Poisson: finite result") {
         MinimumDescriptionLengthEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -217,7 +217,7 @@ TEST_CASE("MDL evaluator", "[evaluator]")
 
     SECTION("Gaussian / profiled sigma: SSR=0 does not produce NaN (epsilon clamp)") {
         MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.perfectTree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.perfectTree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -234,7 +234,7 @@ TEST_CASE("FBF evaluator", "[evaluator]")
 
     SECTION("Gaussian / profiled sigma: finite positive result") {
         FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -244,7 +244,7 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     SECTION("Gaussian / fixed sigma: finite positive result") {
         FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
         ev.SetSigma({0.5F});
-        auto ind = fix.MakeIndividual(fix.tree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -253,7 +253,7 @@ TEST_CASE("FBF evaluator", "[evaluator]")
 
     SECTION("Poisson: finite result") {
         FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -264,7 +264,7 @@ TEST_CASE("FBF evaluator", "[evaluator]")
         // After the fix, Poisson and Gaussian NLLs are computed differently, so results must differ.
         FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> evG{&fix.problem, &fix.dtable};
         FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>  evP{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const rG = evG(fix.rng, ind);
         auto const rP = evP(fix.rng, ind);
         CHECK(rG[0] != rP[0]);
@@ -272,7 +272,7 @@ TEST_CASE("FBF evaluator", "[evaluator]")
 
     SECTION("Gaussian / profiled sigma: SSR=0 does not produce NaN (epsilon clamp)") {
         FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.perfectTree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.perfectTree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
