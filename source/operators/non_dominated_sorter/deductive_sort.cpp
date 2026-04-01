@@ -21,7 +21,7 @@ namespace Operon {
 
         std::size_t constexpr d = std::numeric_limits<uint64_t>::digits;
         auto const s = static_cast<int>(pop.size());
-        auto const nb = s / d + static_cast<std::size_t>(s % d != 0);
+        auto const nb = (s / d) + static_cast<std::size_t>(s % d != 0);
 
         Operon::Vector<uint64_t> dominated(nb);
         Operon::Vector<uint64_t> sorted(nb);

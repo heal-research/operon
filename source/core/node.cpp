@@ -12,7 +12,6 @@
 
 using std::pair;
 using std::string;
-using std::unordered_map;
 
 namespace Operon {
     static Operon::Map<Operon::Hash, pair<string, string>> DynDesc;
