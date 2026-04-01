@@ -40,7 +40,7 @@ namespace Operon {
     }
 
     template<> auto OPERON_EXPORT
-    Evaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
+    Evaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
         ++CallCount;
         auto const* problem = GetProblem();
@@ -71,7 +71,7 @@ namespace Operon {
     }
 
     template<> auto OPERON_EXPORT
-    Evaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType
+    Evaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType
     {
         return EvaluatorBase::Evaluate(this, rng, ind);
     }
@@ -158,7 +158,7 @@ namespace Operon {
     }
 
     template<> auto OPERON_EXPORT
-    BayesianInformationCriterionEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+    BayesianInformationCriterionEvaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto const& tree = ind.Genotype;
         auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
         auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
@@ -169,7 +169,7 @@ namespace Operon {
     }
 
     template<> auto OPERON_EXPORT
-    AkaikeInformationCriterionEvaluator<DefaultDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+    AkaikeInformationCriterionEvaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto mse = Evaluator::operator()(rng, ind, buf).front();
         auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
         auto aik = n/2 * (std::log(Operon::Math::Tau) + std::log(mse) + 1);

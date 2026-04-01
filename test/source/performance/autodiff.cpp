@@ -147,7 +147,7 @@ TEST_CASE("Primitive performance", "[performance]")
     nb::Bench b;
     b.output(nullptr);
 
-    Operon::DefaultDispatch dt;
+    Operon::ScalarDispatch dt;
 
     for (auto i = 0UL; i < NodeTypes::Count; ++i) {
         auto t = static_cast<NodeType>(i);
@@ -167,7 +167,7 @@ TEST_CASE("Primitive performance", "[performance]")
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();
-                Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>(&dt, &ds, &tree).Evaluate(coeff, rg, out);
+                Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>(&dt, &ds, &tree).Evaluate(coeff, rg, out);
                 sum += std::reduce(out.begin(), out.end());
             }
             return sum;
@@ -192,7 +192,7 @@ TEST_CASE("Primitive performance", "[performance]")
             auto sum = 0.;
             for (auto const& tree : trees) {
                 auto coeff = tree.GetCoefficients();
-                Operon::Interpreter<Operon::Scalar, Operon::DefaultDispatch>(&dt, &ds, &tree).JacRev(coeff, rg, jac);
+                Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>(&dt, &ds, &tree).JacRev(coeff, rg, jac);
                 sum += std::reduce(jac.begin(), jac.end());
             }
             return sum;

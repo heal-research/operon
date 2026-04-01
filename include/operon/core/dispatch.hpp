@@ -401,7 +401,7 @@ public:
     [[nodiscard]] auto Contains(Operon::Hash hash) const noexcept -> bool { return map_.contains(hash); }
 }; // struct DispatchTable
 
-using DefaultDispatch = DispatchTable<Operon::Scalar>;
+using ScalarDispatch = DispatchTable<Operon::Scalar>;
 } // namespace Operon
 
 #endif

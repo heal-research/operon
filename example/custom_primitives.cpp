@@ -71,7 +71,7 @@ auto main(int argc, char** argv) -> int
         Operon::NodeType::Mul | Operon::NodeType::Div);
 
     // register custom primitives
-    using DT = Operon::DefaultDispatch;
+    using DT = Operon::ScalarDispatch;
     DT dtable;
     auto& pset = problem.GetPrimitiveSet();
 

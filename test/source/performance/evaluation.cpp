@@ -224,7 +224,7 @@ TEST_CASE("Evaluator performance", "[performance]")
         });
     };
 
-    using DTable = DefaultDispatch;
+    using DTable = ScalarDispatch;
     DTable dtable;
 
     test("c2", Operon::Evaluator<DTable>(&problem, &dtable, Operon::C2{}, /*linearScaling=*/false));
