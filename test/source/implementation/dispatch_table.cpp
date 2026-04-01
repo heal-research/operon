@@ -6,7 +6,6 @@
 #include <numbers>
 #include <numeric>
 
-#include "absl/strings/match.h"
 #include "operon/core/pset.hpp"
 #include "operon/core/symbol_library.hpp"
 #include "operon/hash/hash.hpp"
@@ -428,7 +427,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
 
         Operon::Tree tree({ varNode, dynNode });
         auto formatted = InfixFormatter::Format(tree, ds);
-        CHECK(absl::StrContains(formatted, "cube"));
+        CHECK(formatted.find("cube") != std::string::npos);
     }
 }
 

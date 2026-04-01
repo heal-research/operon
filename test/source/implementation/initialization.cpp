@@ -14,8 +14,9 @@
 #include "operon/operators/initializer.hpp"
 
 namespace Operon::Test {
+namespace {
 
-static auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator, std::vector<size_t> lengths, size_t maxDepth) -> std::vector<Tree>
+auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator, std::vector<size_t> lengths, size_t maxDepth) -> std::vector<Tree>
 {
     std::vector<Tree> trees;
     trees.reserve(lengths.size());
@@ -33,6 +34,7 @@ static auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& 
 
     return trees;
 }
+} // namespace
 
 TEST_CASE("Grammar sampling", "[operators]")
 {

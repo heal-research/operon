@@ -16,7 +16,7 @@ namespace Operon {
 
         // the brood offspring generator creates a brood of offspring from the same two parents
         auto makeOffspring = [&]() {
-            RecombinationResult res{ {}, p1, p2 };
+            RecombinationResult res{ .Child = {}, .Parent1 = p1, .Parent2 = p2 };
             OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf, res);
             return res ? res.Child.value() : res.Parent1.value();
         };

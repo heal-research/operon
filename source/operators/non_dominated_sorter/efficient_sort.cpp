@@ -8,7 +8,7 @@
 #include <eve/module/algo.hpp>
 
 namespace Operon {
-
+namespace {
     template<EfficientSortStrategy SearchStrategy>
     inline auto EfficientSortImpl(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*unused*/) -> NondominatedSorterBase::Result
     {
@@ -38,6 +38,7 @@ namespace Operon {
         }
         return fronts;
     }
+} // namespace
 
     auto EfficientBinarySorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar eps) const -> NondominatedSorterBase::Result
     {

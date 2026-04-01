@@ -128,7 +128,8 @@ TEST_CASE("Formatter output", "[parser]")
         Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 
         auto validateString = [](auto const& s) {
-            size_t lp{0}, rp{0};
+            size_t lp{0};
+            size_t rp{0};
             for (auto c : s) {
                 lp += c == '(';
                 rp += c == ')';

@@ -18,7 +18,7 @@ namespace Operon::Test {
 template<typename Callable>
 struct ComputeDistanceMatrix {
     explicit ComputeDistanceMatrix(Callable&& f)
-        : f_(f) {}
+        : f_(std::move(f)) {}
 
     template<typename T>
     auto operator()(std::vector<Operon::Vector<T>> const& hashes) const noexcept -> double
