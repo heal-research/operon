@@ -224,7 +224,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
         optimizer->SetIterations(config.Iterations);
 
-        Operon::CoefficientOptimizer cOpt { optimizer.get() };
+        Operon::CoefficientOptimizer const cOpt { optimizer.get() };
 
         EXPECT(problem.TrainingRange().Size() > 0);
 

@@ -56,7 +56,7 @@ namespace {
         TInterpreter const interpreter{dtable, dataset, &tree};
 
         ++ResidualEvaluations;
-        Operon::Vector<Operon::Scalar> estimatedValues;
+        Operon::Vector<Operon::Scalar> const estimatedValues;
         ENSURE(buf.size() >= trainingRange.Size());
         auto coeff = tree.GetCoefficients();
         interpreter.Evaluate(coeff, trainingRange, buf);
@@ -107,7 +107,7 @@ namespace {
         auto const& values = divmap_.values();
 
         Operon::Scalar distance{0};
-        Operon::Vector<double> distances(sampleSize_);
+        Operon::Vector<double> const distances(sampleSize_);
         for (auto i = 0UL; i < sampleSize_; ++i) {
             auto const& rhs = Operon::Random::Sample(random, values.begin(), values.end())->second;
             distance += static_cast<Operon::Scalar>(Operon::Distance::Jaccard(lhs, rhs));

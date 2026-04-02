@@ -96,11 +96,11 @@ TEST_CASE("Evaluation performance", "[performance]")
 
     nb::Bench b;
 
-    auto const max_concurrency = std::thread::hardware_concurrency();
+    auto const maxConcurrency = std::thread::hardware_concurrency();
 
     SECTION("arithmetic") {
         b.title("arithmetic").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-        for (size_t i = 1; i <= max_concurrency; ++i) {
+        for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
             test(executor, b, PrimitiveSet::Arithmetic, fmt::format("N = {}", i));
         }
@@ -108,7 +108,7 @@ TEST_CASE("Evaluation performance", "[performance]")
 
     SECTION("arithmetic + exp") {
         b.title("arithmetic + exp").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-        for (size_t i = 1; i <= max_concurrency; ++i) {
+        for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
             test(executor, b, PrimitiveSet::Arithmetic | NodeType::Exp, fmt::format("N = {}", i));
         }
@@ -116,7 +116,7 @@ TEST_CASE("Evaluation performance", "[performance]")
 
     SECTION("arithmetic + log") {
         b.title("arithmetic + log").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-        for (size_t i = 1; i <= max_concurrency; ++i) {
+        for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
             test(executor, b, PrimitiveSet::Arithmetic | NodeType::Log, fmt::format("N = {}", i));
         }
@@ -125,7 +125,7 @@ TEST_CASE("Evaluation performance", "[performance]")
     SECTION("arithmetic + sin") {
         nb::Bench b2;
         b2.title("arithmetic + sin").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-        for (size_t i = 1; i <= max_concurrency; ++i) {
+        for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
             test(executor, b2, PrimitiveSet::Arithmetic | NodeType::Sin, fmt::format("N = {}", i));
         }
@@ -133,7 +133,7 @@ TEST_CASE("Evaluation performance", "[performance]")
 
     SECTION("arithmetic + cos") {
         b.title("arithmetic + cos").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-        for (size_t i = 1; i <= max_concurrency; ++i) {
+        for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
             test(executor, b, PrimitiveSet::Arithmetic | NodeType::Cos, fmt::format("N = {}", i));
         }
@@ -141,7 +141,7 @@ TEST_CASE("Evaluation performance", "[performance]")
 
     SECTION("arithmetic + tan") {
         b.title("arithmetic + tan").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-        for (size_t i = 1; i <= max_concurrency; ++i) {
+        for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
             test(executor, b, PrimitiveSet::Arithmetic | NodeType::Tan, fmt::format("N = {}", i));
         }
@@ -149,7 +149,7 @@ TEST_CASE("Evaluation performance", "[performance]")
 
     SECTION("arithmetic + sqrt") {
         b.title("arithmetic + sqrt").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-        for (size_t i = 1; i <= max_concurrency; ++i) {
+        for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
             test(executor, b, PrimitiveSet::Arithmetic | NodeType::Sqrt, fmt::format("N = {}", i));
         }
@@ -157,7 +157,7 @@ TEST_CASE("Evaluation performance", "[performance]")
 
     SECTION("arithmetic + cbrt") {
         b.title("arithmetic + cbrt").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
-        for (size_t i = 1; i <= max_concurrency; ++i) {
+        for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
             test(executor, b, PrimitiveSet::Arithmetic | NodeType::Cbrt, fmt::format("N = {}", i));
         }

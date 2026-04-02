@@ -181,7 +181,7 @@ namespace detail {
 
         detail::BitsetManager bsm(n);
 
-        cppsort::merge_sorter sorter;
+        cppsort::merge_sorter const sorter;
         Operon::Vector<detail::Item> items(n);
         for (auto i = 0; i < n; ++i) {
             items[i] = { .Index = i, .Value = pop[i][1] };

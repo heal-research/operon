@@ -66,15 +66,15 @@ namespace Operon::Distance {
 
     auto Jaccard(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept -> double
     {
-        size_t n = lhs.size() + rhs.size();
-        size_t c = CountIntersect(lhs, rhs);
+        size_t const n = lhs.size() + rhs.size();
+        size_t const c = CountIntersect(lhs, rhs);
         return static_cast<double>(n - (2 * c)) / static_cast<double>(n);
     }
 
     auto SorensenDice(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept -> double
     {
-        size_t n = lhs.size() + rhs.size();
-        size_t c = CountIntersect(lhs, rhs);
+        size_t const n = lhs.size() + rhs.size();
+        size_t const c = CountIntersect(lhs, rhs);
         return 1 - (2 * static_cast<double>(c) / static_cast<double>(n));
     }
 

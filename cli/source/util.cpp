@@ -125,7 +125,7 @@ auto PrintPrimitives(PrimitiveSetConfig config) -> void
         auto hash = Node(type).HashValue;
         auto enabled = tmpSet.Contains(hash) && tmpSet.IsEnabled(hash);
         auto freq = enabled ? tmpSet.Frequency(hash) : 0U;
-        Node node(type);
+        Node const node(type);
         fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled, freq != 0U ? std::to_string(freq) : "-");
     }
 }

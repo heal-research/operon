@@ -32,7 +32,7 @@ struct ComputeDistanceMatrix {
         return 2 * d / (hashes.size() * (hashes.size() - 1));
     }
 
-    Callable f_;
+    Callable f_; // NOLINT(readability-identifier-naming)
 };
 
 TEST_CASE("Intersection performance", "[performance]")

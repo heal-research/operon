@@ -104,8 +104,8 @@ TEST_CASE("Parse specific expressions", "[parser]")
     }
 
     SECTION("Multiple additions") {
-        auto model_str = "1 + 2 + 3 + 4";
-        auto tree = Operon::InfixParser::Parse(model_str);
+        auto modelStr = "1 + 2 + 3 + 4";
+        auto tree = Operon::InfixParser::Parse(modelStr);
 
         using DTable = DispatchTable<Operon::Scalar>;
         DTable dtable;

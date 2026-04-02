@@ -155,7 +155,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
     std::vector<Operon::Hash> hashes;
     hashes.reserve(nodes_.size());
 
-    Operon::Hasher hasher;
+    Operon::Hasher const hasher;
 
     for (size_t i = 0; i < nodes_.size(); ++i) {
         auto const& n = nodes_[i];
