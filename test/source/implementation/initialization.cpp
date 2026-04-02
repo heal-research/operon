@@ -75,7 +75,7 @@ TEST_CASE("Grammar sampling", "[operators]")
     REQUIRE(chi <= criticalValue);
 }
 
-TEST_CASE("GROW creator", "[operators]")
+TEST_CASE("GROW creator", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
@@ -186,7 +186,7 @@ TEST_CASE("PTC2 creator", "[operators]")
     }
 }
 
-TEST_CASE("AchievableLength snap-down table", "[operators]")
+TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     // A thin subclass that exposes the protected AchievableLength method.
     struct TestCreator final : public CreatorBase {
@@ -257,7 +257,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
     }
 }
 
-TEST_CASE("Creator length contract with unachievable targets", "[operators]")
+TEST_CASE("Creator length contract with unachievable targets", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     // Binary-only pset: achievable lengths are 1, 3, 5, 7, ...
     // Requesting any even target must snap down — the returned tree must be strictly

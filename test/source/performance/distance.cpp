@@ -35,7 +35,7 @@ struct ComputeDistanceMatrix {
     Callable f_; // NOLINT(readability-identifier-naming)
 };
 
-TEST_CASE("Intersection performance", "[performance]")
+TEST_CASE("Intersection performance", "[performance]") // NOLINT(readability-function-cognitive-complexity)
 {
     size_t const n = 1000;
     size_t const maxLength = 50;
