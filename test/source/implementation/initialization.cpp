@@ -146,7 +146,7 @@ TEST_CASE("BTC creator", "[operators]")
 
     SECTION("Coefficients are initialized") {
         auto tree = btc(random, 20, 1, maxDepth);
-        UniformCoefficientInitializer coeffInit;
+        UniformCoefficientInitializer const coeffInit;
         coeffInit.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
         coeffInit(random, tree);
 
