@@ -20,7 +20,7 @@ namespace {
     auto MakeSetup() {
         auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
         auto inputs = ds.VariableHashes();
-        std::erase(inputs, ds.GetVariable("Y")->Hash);
+        std::erase(inputs, ds.GetVariable("Y").value().Hash);
         PrimitiveSet pset;
         pset.SetConfig(PrimitiveSet::Arithmetic);
         return std::make_tuple(std::move(ds), std::move(inputs), std::move(pset));

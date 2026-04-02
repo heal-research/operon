@@ -59,7 +59,7 @@ auto main(int argc, char** argv) -> int
     problem.SetTarget("Y");
 
     auto inputs = dataset.VariableHashes();
-    std::erase(inputs, dataset.GetVariable("Y")->Hash);
+    std::erase(inputs, dataset.GetVariable("Y").value().Hash);
     problem.SetInputs(inputs);
 
     // Arithmetic built-ins form the structural backbone of expressions.

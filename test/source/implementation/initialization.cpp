@@ -79,7 +79,7 @@ TEST_CASE("GROW creator", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     size_t const maxDepth = 10;
     size_t const maxLength = 100;
     size_t const n = 1000;
@@ -119,7 +119,7 @@ TEST_CASE("BTC creator", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     size_t const maxDepth = 1000;
     size_t const maxLength = 100;
     size_t const n = 1000;
@@ -164,7 +164,7 @@ TEST_CASE("PTC2 creator", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     size_t const maxDepth = 1000;
     size_t const maxLength = 100;
     size_t const n = 1000;
@@ -268,7 +268,7 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]")
 
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     Operon::RandomGenerator rng(42);
     constexpr size_t maxDepth = 1000;
     constexpr size_t maxLength = 20;
