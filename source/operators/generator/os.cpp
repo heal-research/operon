@@ -9,6 +9,7 @@ namespace Operon {
     auto OffspringSelectionGenerator::operator()(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) const -> std::optional<Individual>
     {
         auto res = OffspringGeneratorBase::Generate(random, pCrossover, pMutation, pLocal, pLamarck, buf);
+        if (!res || !res.Parent1) { return std::nullopt; }
         bool accept{false};
         if (res.Parent2) {
             Individual q{};
