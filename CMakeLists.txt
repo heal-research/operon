@@ -249,10 +249,8 @@ target_link_libraries(operon_operon PUBLIC
     libassert::assert
     infix-parser::infix-parser # required by infix parser
     vstat::vstat
+    std::mdspan
 )
-
-# Mark mdspan as a system library so its headers are excluded from clang-tidy
-target_link_libraries(operon_operon PUBLIC SYSTEM std::mdspan)
 
 target_link_libraries(operon_operon PRIVATE
     AriaCsvParser::AriaCsvParser

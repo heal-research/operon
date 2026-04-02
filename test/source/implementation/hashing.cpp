@@ -72,7 +72,7 @@ TEST_CASE("Hash-based distance", "[core]")
 
     std::vector<Tree> trees(n);
     std::vector<Operon::Hash> seeds(n);
-    std::generate(seeds.begin(), seeds.end(), [&]() -> xoshiro256ss_result_type { return rd(); });
+    std::generate(seeds.begin(), seeds.end(), [&]() -> Operon::RandomGenerator::result_type { return rd(); });
     for (size_t i = 0; i < n; ++i) {
         Operon::RandomGenerator rand(seeds[i]);
         trees[i] = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
@@ -164,7 +164,7 @@ TEST_CASE("Hash collisions", "[core]")
     initializer.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
     std::vector<Operon::Hash> seeds(n);
-    std::generate(seeds.begin(), seeds.end(), [&]() -> xoshiro256ss_result_type { return rd(); });
+    std::generate(seeds.begin(), seeds.end(), [&]() -> Operon::RandomGenerator::result_type { return rd(); });
     for (size_t i = 0; i < n; ++i) {
         Operon::RandomGenerator rand(seeds[i]);
         trees[i] = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
