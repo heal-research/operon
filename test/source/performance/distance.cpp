@@ -37,8 +37,8 @@ struct ComputeDistanceMatrix {
 
 TEST_CASE("Intersection performance", "[performance]")
 {
-    size_t n = 1000;
-    size_t maxLength = 50;
+    size_t const n = 1000;
+    size_t const maxLength = 50;
     size_t maxDepth = 1000;
 
     Operon::RandomGenerator rd(1234);
@@ -81,28 +81,28 @@ TEST_CASE("Intersection performance", "[performance]")
 
         b.batch(s).run("jaccard strict", [&]() -> void {
             auto f = [](auto const& lhs, auto const& rhs) -> auto { return Operon::Distance::Jaccard(lhs, rhs); };
-            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            ComputeDistanceMatrix<decltype(f)> const cdm(std::move(f));
             d = cdm(hashesStrict);
         });
         CHECK(d >= 0.0);
 
         b.batch(s).run("jaccard relaxed", [&]() -> void {
             auto f = [](auto const& lhs, auto const& rhs) -> auto { return Operon::Distance::Jaccard(lhs, rhs); };
-            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            ComputeDistanceMatrix<decltype(f)> const cdm(std::move(f));
             d = cdm(hashesStruct);
         });
         CHECK(d >= 0.0);
 
         b.batch(s).run("sorensen-dice strict", [&]() -> void {
             auto f = [](auto const& lhs, auto const& rhs) -> auto { return Operon::Distance::SorensenDice(lhs, rhs); };
-            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            ComputeDistanceMatrix<decltype(f)> const cdm(std::move(f));
             d = cdm(hashesStrict);
         });
         CHECK(d >= 0.0);
 
         b.batch(s).run("sorensen-dice relaxed", [&]() -> void {
             auto f = [](auto const& lhs, auto const& rhs) -> auto { return Operon::Distance::SorensenDice(lhs, rhs); };
-            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+            ComputeDistanceMatrix<decltype(f)> const cdm(std::move(f));
             d = cdm(hashesStruct);
         });
         CHECK(d >= 0.0);

@@ -19,9 +19,9 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
 {
     using DT = Operon::DispatchTable<Operon::Scalar>;
 
-    std::string x{"x"};
-    std::vector<Operon::Scalar> v{0};
-    Operon::Dataset ds({x}, {v});
+    std::string const x{"x"};
+    std::vector<Operon::Scalar> const v{0};
+    Operon::Dataset const ds({x}, {v});
 
     auto check = [&](DT const& dt, std::string const& expr, Operon::Scalar expected) -> void {
         auto t = InfixParser::Parse(expr);
@@ -67,9 +67,9 @@ TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
     using DT = Operon::DispatchTable<Operon::Scalar>;
     DT dtable;
 
-    std::string x{"x"};
-    std::vector<Operon::Scalar> v{0};
-    Operon::Dataset ds({x}, {v});
+    std::string const x{"x"};
+    std::vector<Operon::Scalar> const v{0};
+    Operon::Dataset const ds({x}, {v});
 
     SECTION("Arithmetic") {
         auto t = InfixParser::Parse("2 + 3 * 4");
@@ -94,7 +94,7 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
     using Scalar = Operon::Scalar;
     constexpr auto S = DT::BatchSize<Scalar>;
 
-    std::string x{"x"};
+    std::string const x{"x"};
     std::vector<Scalar> xvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, ..., 10}
     Operon::Dataset ds({x}, {xvals});
@@ -105,7 +105,7 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
     // Register a batch callable that negates its argument.
     // Follows the same convention as built-in Func<> specialisations:
     // reads nodes[i].Value as the node weight and applies it.
-    DT::Callable<Scalar> primal = [](
+    DT::Callable<Scalar> const primal = [](
         Operon::Vector<Operon::Node> const& nodes,
         Operon::Backend::View<Scalar, S> data,
         size_t i,
@@ -133,7 +133,7 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
 
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
@@ -150,7 +150,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
     using DT     = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
 
-    std::string x{"x"};
+    std::string const x{"x"};
     std::vector<Scalar> xvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, ..., 10}
     Operon::Dataset ds({x}, {xvals});
@@ -171,7 +171,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
 
@@ -191,7 +191,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
         dynNode.Length = 1;
         dynNode.Value  = 3.0F; // non-unit weight
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
 
@@ -237,7 +237,7 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
         dynNode.Arity  = 2;
         dynNode.Length = 2;
 
-        Operon::Tree tree({ varX, varY, dynNode });
+        Operon::Tree const tree({ varX, varY, dynNode });
         auto coeff = tree.GetCoefficients();
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
 
@@ -330,13 +330,13 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]")
         return Operon::Tree({ varNode, dynNode });
     };
 
-    auto tAuto     = makeTree(hAuto);
-    auto tExplicit = makeTree(hExplicit);
-    auto coeff     = tAuto.GetCoefficients();
-    auto range     = Operon::Range(0, 10);
+    auto const tAuto     = makeTree(hAuto);
+    auto const tExplicit = makeTree(hExplicit);
+    auto const coeff     = tAuto.GetCoefficients();
+    auto const range     = Operon::Range(0, 10);
 
-    Operon::Interpreter<Scalar, DT> interpAuto    (&dt, &ds, &tAuto);
-    Operon::Interpreter<Scalar, DT> interpExplicit(&dt, &ds, &tExplicit);
+    Operon::Interpreter<Scalar, DT> const interpAuto    (&dt, &ds, &tAuto);
+    Operon::Interpreter<Scalar, DT> const interpExplicit(&dt, &ds, &tExplicit);
 
     SECTION("JacRev: auto-diff matches explicit derivative") {
         auto jacAuto     = interpAuto.JacRev(coeff, range);
@@ -366,7 +366,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
     using DT     = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
 
-    std::string x{"x"};
+    std::string const x{"x"};
     std::vector<Scalar> xvals(5);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, 3, 4, 5}
     Operon::Dataset ds({x}, {xvals});
@@ -375,7 +375,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
     Operon::PrimitiveSet pset;
     pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
 
-    Operon::FunctionInfo info{
+    Operon::FunctionInfo const info{
         .Hash      = Operon::Hasher{}("test::cube"),
         .Name      = "cube",
         .Desc      = "cube function f(x) = x^3",
@@ -408,7 +408,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 5));
 
@@ -426,7 +426,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto formatted = InfixFormatter::Format(tree, ds);
         CHECK(formatted.find("cube") != std::string::npos);
     }

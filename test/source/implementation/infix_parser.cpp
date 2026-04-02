@@ -29,7 +29,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
 
     Operon::PrimitiveSet pset;
     pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log | NodeType::Variable);
-    Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, nNodes);
+    Operon::BalancedTreeCreator const btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, nNodes);
 
     Operon::Vector<Operon::Tree> trees;
     trees.reserve(nTrees);
@@ -46,7 +46,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     Range range{0, 1};
 
     using DTable = DispatchTable<Operon::Scalar>;
-    DTable dtable;
+    DTable const dtable;
 
     auto countFailures = [&](float eps) -> size_t {
         size_t count{0};
@@ -83,13 +83,13 @@ TEST_CASE("Parse specific expressions", "[parser]")
         Node c1(NodeType::Constant); c1.Value = 2;
         Node c2(NodeType::Constant); c2.Value = 3;
         Node c3(NodeType::Constant); c3.Value = 5;
-        Node sub(NodeType::Sub);
-        Node mul(NodeType::Mul);
-        Operon::Vector<Node> nodes{c1, c2, c3, sub, mul}; // 5 - 3 * 2
+        Node const sub(NodeType::Sub);
+        Node const mul(NodeType::Mul);
+        Operon::Vector<Node> const nodes{c1, c2, c3, sub, mul}; // 5 - 3 * 2
         Tree t(nodes);
         t.UpdateNodes();
 
-        Dataset ds("./data/Poly-10.csv", true);
+        Dataset const ds("./data/Poly-10.csv", true);
         auto s1 = InfixFormatter::Format(t, ds, 5);
         auto t2 = InfixParser::Parse(s1);
 
@@ -108,10 +108,10 @@ TEST_CASE("Parse specific expressions", "[parser]")
         auto tree = Operon::InfixParser::Parse(modelStr);
 
         using DTable = DispatchTable<Operon::Scalar>;
-        DTable dtable;
-        std::string x{"x"};
-        std::vector<Operon::Scalar> v{0};
-        Operon::Dataset ds({x}, {v});
+        DTable const dtable;
+        std::string const x{"x"};
+        std::vector<Operon::Scalar> const v{0};
+        Operon::Dataset const ds({x}, {v});
         auto result = Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, Range(0, 1));
         CHECK(result[0] == Catch::Approx(10.0f));
     }
@@ -125,7 +125,7 @@ TEST_CASE("Formatter output", "[parser]")
         Operon::PrimitiveSet pset;
         pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log);
         constexpr size_t maxLength = 20;
-        Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
+        Operon::BalancedTreeCreator const btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 
         auto validateString = [](auto const& s) -> auto {
             size_t lp{0};

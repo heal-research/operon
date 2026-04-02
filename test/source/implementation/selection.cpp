@@ -25,7 +25,7 @@ TEST_CASE("Tournament selection bias", "[operators]")
         individuals[i][0] = static_cast<Operon::Scalar>(i) / static_cast<Operon::Scalar>(popSize);
     }
 
-    TournamentSelector selector([](Individual const& a, Individual const& b) -> bool {
+    TournamentSelector const selector([](Individual const& a, Individual const& b) -> bool {
         return a.Fitness[0] < b.Fitness[0];
     });
     selector.Prepare(individuals);
