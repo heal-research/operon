@@ -30,7 +30,7 @@ TEST_CASE("Autodiff performance", "[performance]")
 
     Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt | Operon::NodeType::Pow | Operon::NodeType::Tanh};
     constexpr size_t maxLength = 200;
-    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
+    Operon::BalancedTreeCreator const creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 
     auto constexpr initialSize{20};
     auto benchmark = [&](ankerl::nanobench::Bench& bench, auto&& f, std::string const& prefix, std::size_t n, std::size_t s) -> auto {
@@ -101,11 +101,11 @@ TEST_CASE("Reverse mode performance", "[performance]")
     Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt};
 
     using DTable = DispatchTable<Operon::Scalar>;
-    DTable dtable;
+    DTable const dtable;
     using INT = Interpreter<Operon::Scalar, DTable>;
 
     constexpr auto maxlength{100};
-    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxlength);
+    Operon::BalancedTreeCreator const creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxlength);
     constexpr auto maxdepth{10};
     constexpr auto numtrees{10000};
 
@@ -116,7 +116,7 @@ TEST_CASE("Reverse mode performance", "[performance]")
     for (auto i = 0; i < numtrees; ++i) {
         trees.push_back(creator(rng, dist(rng), 1, maxdepth));
     }
-    Operon::Range range(0, ds.Rows());
+    Operon::Range const range(0, ds.Rows());
     b.batch(numtrees).run("rev", [&]() -> void {
         for (auto const& tree : trees) {
             auto coeff{tree.GetCoefficients()};
@@ -220,7 +220,7 @@ TEST_CASE("Optimizer performance", "[performance]")
     Operon::RandomGenerator rng(0);
 
     using DTable = DispatchTable<Operon::Scalar>;
-    DTable dtable;
+    DTable const dtable;
 
     auto benchmark = [&](ankerl::nanobench::Bench& bench, DTable const& dt, Operon::BalancedTreeCreator const& creator, std::string const& prefix, std::size_t n, std::size_t s, std::size_t r) -> void {
         std::vector<Operon::Tree> trees(n);
@@ -253,10 +253,10 @@ TEST_CASE("Optimizer performance", "[performance]")
 
     nb::Bench b;
     Operon::PrimitiveSet pset;
-    Operon::PrimitiveSetConfig psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos;
+    Operon::PrimitiveSetConfig const psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos;
     pset.SetConfig(psetcfg);
     constexpr size_t maxLength = 200;
-    Operon::BalancedTreeCreator creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
+    Operon::BalancedTreeCreator const creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 
     SECTION("forward") {
         benchmark(b, dtable, creator, "forward", n, m, r);

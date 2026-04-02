@@ -43,7 +43,7 @@ TEST_CASE("Grammar sampling", "[operators]")
     Operon::RandomGenerator rd(1234);
 
     std::vector<double> observed(NodeTypes::Count, 0);
-    size_t r = grammar.EnabledPrimitives().size() + 1;
+    size_t const r = grammar.EnabledPrimitives().size() + 1;
 
     const size_t nTrials = 1'000'000;
     for (auto i = 0U; i < nTrials; ++i) {
@@ -61,7 +61,7 @@ TEST_CASE("Grammar sampling", "[operators]")
     std::transform(actual.begin(), actual.end(), actual.begin(), [&](double v) -> double { return v / freqSum; });
     auto chi = 0.0;
     for (auto i = 0U; i < observed.size(); ++i) {
-        Node node(static_cast<NodeType>(i));
+        Node const node(static_cast<NodeType>(i));
         if (!grammar.IsEnabled(node.HashValue)) {
             continue;
         }
@@ -201,7 +201,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
     SECTION("Edge cases") {
         PrimitiveSet pset;
         pset.SetConfig(PrimitiveSet::Arithmetic);
-        TestCreator tc(&pset, 20);
+        TestCreator const tc(&pset, 20);
         CHECK(tc.SnapDown(0) == 1);
         CHECK(tc.SnapDown(1) == 1);
     }
@@ -212,7 +212,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
         PrimitiveSet pset;
         pset.SetConfig(NodeType::Add | NodeType::Variable);
         pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
-        TestCreator tc(&pset, 20);
+        TestCreator const tc(&pset, 20);
 
         CHECK(tc.SnapDown(1) == 1);
         CHECK(tc.SnapDown(2) == 1); // 2 not achievable → snap down to 1
@@ -229,7 +229,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
         pset.SetConfig(NodeType::Sin | NodeType::Add | NodeType::Variable);
         pset.SetMinMaxArity(Node(NodeType::Sin), 1, 1);
         pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
-        TestCreator tc(&pset, 15);
+        TestCreator const tc(&pset, 15);
 
         for (size_t n = 1; n <= 15; ++n) {
             CHECK(tc.SnapDown(n) == n);
@@ -242,7 +242,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
         PrimitiveSet pset;
         pset.SetConfig(NodeType::Add | NodeType::Variable);
         pset.SetMinMaxArity(Node(NodeType::Add), 3, 3);
-        TestCreator tc(&pset, 20);
+        TestCreator const tc(&pset, 20);
 
         CHECK(tc.SnapDown(1) == 1);
         CHECK(tc.SnapDown(2) == 1);
@@ -274,7 +274,7 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]")
     constexpr size_t maxLength = 20;
 
     SECTION("BTC never exceeds requested length") {
-        BalancedTreeCreator btc(&pset, inputs, /* bias= */ 0.0, maxLength);
+        BalancedTreeCreator const btc(&pset, inputs, /* bias= */ 0.0, maxLength);
         for (size_t target = 1; target <= maxLength; ++target) {
             auto tree = btc(rng, target, 1, maxDepth);
             CHECK(tree.Length() > 0);
@@ -283,7 +283,7 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]")
     }
 
     SECTION("PTC2 never exceeds requested length") {
-        ProbabilisticTreeCreator ptc(&pset, inputs, /* bias= */ 0.0, maxLength);
+        ProbabilisticTreeCreator const ptc(&pset, inputs, /* bias= */ 0.0, maxLength);
         for (size_t target = 1; target <= maxLength; ++target) {
             auto tree = ptc(rng, target, 1, maxDepth);
             CHECK(tree.Length() > 0);

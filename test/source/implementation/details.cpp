@@ -60,7 +60,7 @@ TEST_CASE("Tree coefficients", "[core]")
 {
     Node c1(NodeType::Constant); c1.Value = 3.14f; c1.Optimize = true;
     Node c2(NodeType::Constant); c2.Value = 2.71f; c2.Optimize = true;
-    Node add(NodeType::Add);
+    Node const add(NodeType::Add);
     Tree tree({c1, c2, add});
     tree.UpdateNodes();
 

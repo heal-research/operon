@@ -38,7 +38,7 @@ TEST_CASE("InsertSubtreeMutation produces valid tree", "[operators]")
 
     auto tree = btc(random, targetLen, 1, maxDepth);
 
-    InsertSubtreeMutation mut(gsl::not_null<Operon::CreatorBase const*>{&btc}, gsl::not_null<Operon::CoefficientInitializerBase const*>{&cfi}, 2 * targetLen, maxDepth);
+    InsertSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*>{&btc}, gsl::not_null<Operon::CoefficientInitializerBase const*>{&cfi}, 2 * targetLen, maxDepth);
     auto child = mut(random, tree);
 
     CHECK(child.Length() > 0);
@@ -63,7 +63,7 @@ TEST_CASE("Mutation tree stays within bounds", "[operators]")
 
     for (int i = 0; i < 100; ++i) {
         auto tree = btc(random, 10, 1, maxDepth);
-        InsertSubtreeMutation mut(gsl::not_null<Operon::CreatorBase const*>{&btc}, gsl::not_null<Operon::CoefficientInitializerBase const*>{&cfi}, maxLength, maxDepth);
+        InsertSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*>{&btc}, gsl::not_null<Operon::CoefficientInitializerBase const*>{&cfi}, maxLength, maxDepth);
         auto child = mut(random, tree);
         CHECK(child.Length() > 0);
         CHECK(child.Length() <= static_cast<size_t>(maxLength));

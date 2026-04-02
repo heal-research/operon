@@ -200,7 +200,7 @@ TEST_CASE("Non-dominated sort complexity", "[performance]")
     std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
 
     auto checkComplexity = [&](size_t m, auto&& sorter) -> auto {
-        std::vector<size_t> sizes{500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000};
+        std::vector<size_t> const sizes{500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000};
         nb::Bench bench;
         bench.minEpochIterations(10);
 

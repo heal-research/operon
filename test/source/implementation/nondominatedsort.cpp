@@ -100,16 +100,16 @@ TEST_CASE("All sorters produce same ranking", "[algorithms]")
         return true;
     };
 
-    std::array ns{100, 1000, 5000};
-    std::array ms{2, 3, 4, 5, 10};
-    Operon::RankIntersectSorter rs;
-    Operon::RankOrdinalSorter ro;
-    Operon::MergeSorter mnds;
-    Operon::BestOrderSorter bos;
-    Operon::HierarchicalSorter hnds;
-    Operon::DeductiveSorter ds;
-    Operon::EfficientBinarySorter ebs;
-    Operon::EfficientSequentialSorter ess;
+    std::array const ns{100, 1000, 5000};
+    std::array const ms{2, 3, 4, 5, 10};
+    Operon::RankIntersectSorter const rs;
+    Operon::RankOrdinalSorter const ro;
+    Operon::MergeSorter const mnds;
+    Operon::BestOrderSorter const bos;
+    Operon::HierarchicalSorter const hnds;
+    Operon::DeductiveSorter const ds;
+    Operon::EfficientBinarySorter const ebs;
+    Operon::EfficientSequentialSorter const ess;
 
     // DeductiveSorter is used as the reference (simplest, most obviously correct implementation).
     // All sorters including RankIntersectSorter are compared against it.
@@ -152,12 +152,12 @@ TEST_CASE("Non-dominated sort edge cases", "[algorithms]")
 // the RankIntersectSorter vs DeductiveSorter disagreement.
 TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]")
 {
-    RankIntersectSorter rs;
-    DeductiveSorter    ds;
+    RankIntersectSorter const rs;
+    DeductiveSorter const    ds;
     std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
 
-    std::array ns{10, 20, 50, 100, 200, 500};
-    std::array ms{2, 3, 4, 5};
+    std::array const ns{10, 20, 50, 100, 200, 500};
+    std::array const ms{2, 3, 4, 5};
     constexpr int nseeds{200};
 
     for (auto n : ns) {
@@ -220,11 +220,11 @@ TEST_CASE("RankIntersect vs Deductive disagreement reproducer", "[.][rankdebug]"
     Operon::RandomGenerator rd(1234);
     std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
 
-    std::array ns{100, 1000, 5000};
-    std::array ms{2, 3, 4, 5, 10};
+    std::array const ns{100, 1000, 5000};
+    std::array const ms{2, 3, 4, 5, 10};
 
-    RankIntersectSorter rs;
-    DeductiveSorter    ds;
+    RankIntersectSorter const rs;
+    DeductiveSorter const    ds;
 
     for (auto n : ns) {
         for (auto m : ms) {
