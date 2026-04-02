@@ -30,7 +30,7 @@
 #include "operator_factory.hpp"
 #include "util.hpp"
 
-auto main(int argc, char** argv) -> int
+auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 {
     auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);

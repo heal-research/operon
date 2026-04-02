@@ -33,7 +33,7 @@ namespace {
         UnknownError   = 4
     };
 
-    auto ParseOptions(int argc, char** argv) noexcept -> tl::expected<cxxopts::ParseResult, ParseError> {
+    auto ParseOptions(int argc, char** argv) noexcept -> tl::expected<cxxopts::ParseResult, ParseError> { // NOLINT(bugprone-exception-escape)
         cxxopts::Options opts("operon_parse_model", "Parse and evaluate a model in infix form");
 
         opts.add_options()
@@ -97,7 +97,7 @@ namespace {
     }
 } // namespace
 
-auto main(int argc, char** argv) -> int
+auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 {
     auto out = ParseOptions(argc, argv);
     if (!out.has_value()) { return EXIT_FAILURE; }
