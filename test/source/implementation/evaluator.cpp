@@ -189,7 +189,7 @@ TEST_CASE("MDL evaluator", "[evaluator]")
     using DTable = EvaluatorFixture::DTable;
 
     SECTION("Gaussian / profiled sigma: finite positive result") {
-        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
@@ -208,7 +208,7 @@ TEST_CASE("MDL evaluator", "[evaluator]")
     }
 
     SECTION("Poisson: finite result") {
-        MinimumDescriptionLengthEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        MinimumDescriptionLengthEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
@@ -216,7 +216,7 @@ TEST_CASE("MDL evaluator", "[evaluator]")
     }
 
     SECTION("Gaussian / profiled sigma: SSR=0 does not produce NaN (epsilon clamp)") {
-        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.perfectTree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
@@ -233,7 +233,7 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     using DTable = EvaluatorFixture::DTable;
 
     SECTION("Gaussian / profiled sigma: finite positive result") {
-        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
@@ -252,7 +252,7 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     }
 
     SECTION("Poisson: finite result") {
-        FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
@@ -262,8 +262,8 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     SECTION("Poisson FBF includes NLL contribution (regression: NLL was silently zero before fix)") {
         // Before the fix, the Poisson NLL was always 0 so FBF = fComplexity + cParameters.
         // After the fix, Poisson and Gaussian NLLs are computed differently, so results must differ.
-        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> evG{&fix.problem, &fix.dtable};
-        FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>  evP{&fix.problem, &fix.dtable};
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const evG{&fix.problem, &fix.dtable};
+        FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> const  evP{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const rG = evG(fix.rng, ind);
         auto const rP = evP(fix.rng, ind);
@@ -271,7 +271,7 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     }
 
     SECTION("Gaussian / profiled sigma: SSR=0 does not produce NaN (epsilon clamp)") {
-        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.perfectTree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
