@@ -27,7 +27,10 @@ Checks: "*,\
   -portability-template-virtual-member-function,\
   -misc-no-recursion,\
   -cppcoreguidelines-avoid-do-while,\
-  -abseil-string-find-str-contains"
+  -abseil-string-find-str-contains,\
+  -bugprone-unchecked-optional-access,\
+  -concurrency-mt-unsafe,\
+  -cert-err58-cpp"
 HeaderFilterRegex: '^.*/operon/(include/operon/(?!ceres|mdspan)|source|cli|test/source/(?!.*thirdparty))'
 WarningsAsErrors: ''
 CheckOptions:

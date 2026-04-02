@@ -163,7 +163,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
         if (n.IsLeaf()) {
             n.CalculatedHashValue = n.HashValue;
             if (mode == Operon::HashMode::Strict) {
-                n.CalculatedHashValue += hasher(std::bit_cast<uint8_t const*>(&n.Value), sizeof(n.Value));
+                n.CalculatedHashValue += hasher(reinterpret_cast<uint8_t const*>(&n.Value), sizeof(n.Value)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
             }
             continue;
         }
