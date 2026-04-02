@@ -31,7 +31,7 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
     };
 
     SECTION("Default constructor") {
-        DT dt;
+        DT const dt;
         check(dt, "1 + 2 + 3", 6);
         check(dt, "1 - 2 - 3", -4);
         check(dt, "6 / 3 / 2", 1);
@@ -39,25 +39,25 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
     }
 
     SECTION("Copy constructor") {
-        DT dt;
+        DT const dt;
         const DT& dt1(dt);
         check(dt1, "2 * 3 / 4", 1.5);
     }
 
     SECTION("Move constructor") {
-        DT dt;
+        DT const dt;
         DT dt1(dt);
-        DT dt2(std::move(dt1));
+        DT const dt2(std::move(dt1));
         check(dt2, "sin(1 / 2 * 3.141519)", std::sin(1.0 / 2.0 * std::numbers::pi));
     }
 
     SECTION("Construct from map") {
-        DT dt;
+        DT const dt;
         auto const& map = dt.GetMap();
-        DT dt3(map);
+        DT const dt3(map);
         check(dt3, "cos(3.141519)", std::cos(std::numbers::pi_v<float>));
 
-        DT dt4(std::move(map));
+        DT const dt4(map);
         check(dt4, "exp(log(10))", std::exp(std::numbers::ln10_v<float>));
     }
 }
@@ -65,7 +65,7 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
 TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
 {
     using DT = Operon::DispatchTable<Operon::Scalar>;
-    DT dtable;
+    DT const dtable;
 
     std::string const x{"x"};
     std::vector<Operon::Scalar> const v{0};
@@ -389,7 +389,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
     Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
 
     SECTION("Name and Desc are registered on the node") {
-        Operon::Node dynNode(Operon::NodeType::Dynamic, info.Hash);
+        Operon::Node const dynNode(Operon::NodeType::Dynamic, info.Hash);
         CHECK(dynNode.Name() == "cube");
         CHECK(dynNode.Desc() == "cube function f(x) = x^3");
     }

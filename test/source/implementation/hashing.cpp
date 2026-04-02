@@ -160,7 +160,7 @@ TEST_CASE("Hash collisions", "[core]")
 
     std::vector<Tree> trees(n);
     auto const btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
-    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
+    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
     initializer.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
     std::vector<Operon::Hash> seeds(n);

@@ -24,7 +24,7 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]")
     Operon::Dataset::Matrix values(1, 2);
     values << 1, 1; // NOLINT
 
-    Operon::RandomGenerator rng(0UL);
+    Operon::RandomGenerator rng(0UL); // NOLINT(misc-const-correctness) — captured by ref in lambda, passed to non-const distribution calls
     Operon::Dataset ds(values);
     ds.SetVariableNames({"x", "y"});
     Operon::DispatchTable<Operon::Scalar> dtable;
@@ -92,7 +92,7 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
     auto generateTrees = [&](auto pset, auto n, auto l) -> auto {
         constexpr auto mindepth{1};
         constexpr auto maxdepth{1000};
-        std::uniform_int_distribution<size_t> length(1, l);
+        std::uniform_int_distribution<size_t> const length(1, l);
         std::bernoulli_distribution bernoulli(0.5); // NOLINT
         std::uniform_real_distribution<Operon::Scalar> dist(-10.F, +10.F);
         Operon::BalancedTreeCreator const btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, l);

@@ -159,7 +159,7 @@ TEST_CASE("Parameter optimization", "[optimizer]")
 
     SECTION("lbfgs / poisson") {
         // Poisson loss on a continuous target: just verify it runs and improves
-        LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> optimizer{&dtable, &problem};
+        LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizer{&dtable, &problem};
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(std::isfinite(summary.FinalCost));
         CHECK(!summary.FinalParameters.empty());
@@ -175,14 +175,14 @@ TEST_CASE("Parameter optimization", "[optimizer]")
     SECTION("sgd / poisson") {
         auto const dim{tree.CoefficientsCount()};
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
-        SGDOptimizer<DTable, PoissonLoss<Operon::Scalar>> optimizer{&dtable, &problem, *rule};
+        SGDOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizer{&dtable, &problem, *rule};
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(std::isfinite(summary.FinalCost));
         CHECK(!summary.FinalParameters.empty());
     }
 
     SECTION("ComputeLikelihood virtual dispatch: pred==target => NLL = n/2 * log(2pi)") {
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
+        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> const optimizer{&dtable, &problem};
         auto range = problem.TrainingRange();
         auto target = problem.TargetValues(range);
         std::vector<Operon::Scalar> sigma(1, 1.0F);
@@ -215,7 +215,7 @@ TEST_CASE("SGD update rules", "[optimizer]")
     rules.emplace_back(new UpdateRule::Yogi<Operon::Scalar>(dim));
 
     for (auto const& rule : rules) {
-        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem, *rule};
+        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> const optimizer{&dtable, &problem, *rule};
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(summary.Iterations > 0);
         // YamAdam applies the raw (summed) gradient as its first step (step size ≈ 1),

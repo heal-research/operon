@@ -226,7 +226,7 @@ TEST_CASE("Optimizer performance", "[performance]")
         std::vector<Operon::Tree> trees(n);
         double a{0};
         auto z{20};
-        Operon::Range range{0, ds.Rows<std::size_t>()};
+        Operon::Range const range{0, ds.Rows<std::size_t>()};
 
         do {
             std::uniform_int_distribution<size_t> dist(1, z);
@@ -237,7 +237,7 @@ TEST_CASE("Optimizer performance", "[performance]")
             bench.batch(range.Size() * bl).run(fmt::format("{};{};{};{}", prefix, a, static_cast<double>(bl) / static_cast<double>(n), r), [&]() -> std::size_t {
                 std::size_t sz{0};
                 for (auto const& tree : trees) {
-                    Operon::LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer{&dt, &problem};
+                    Operon::LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> const optimizer{&dt, &problem};
                     auto summary = optimizer.Optimize(rng, tree);
                     sz += summary.FinalParameters.size();
                 }

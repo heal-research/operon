@@ -69,9 +69,9 @@ TEST_CASE("Zobrist - position sensitivity (deterministic)", "[zobrist]")
     Zobrist const cache(rng, MaxLength);
 
     // postfix: [Constant, Cos, Sin]  =>  sin(cos(c))
-    Tree tree1 = Tree({ Node(NodeType::Constant), Node(NodeType::Cos), Node(NodeType::Sin) }).UpdateNodes();
+    Tree const tree1 = Tree({ Node(NodeType::Constant), Node(NodeType::Cos), Node(NodeType::Sin) }).UpdateNodes();
     // postfix: [Constant, Sin, Cos]  =>  cos(sin(c))
-    Tree tree2 = Tree({ Node(NodeType::Constant), Node(NodeType::Sin), Node(NodeType::Cos) }).UpdateNodes();
+    Tree const tree2 = Tree({ Node(NodeType::Constant), Node(NodeType::Sin), Node(NodeType::Cos) }).UpdateNodes();
 
     REQUIRE(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
 }
