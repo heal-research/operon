@@ -58,7 +58,7 @@ namespace {
         { NodeType::Variable, std::make_pair("variable", "a dataset input with an associated weight" ) },
     };
 
-    auto Node::Name() const noexcept -> std::string const&
+    auto Node::Name() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
     {
         if (Type == NodeType::Dynamic) {
             if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {
@@ -68,7 +68,7 @@ namespace {
         return NodeDesc.at(Type).first;
     }
 
-    auto Node::Desc() const noexcept -> std::string const&
+    auto Node::Desc() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
     {
         if (Type == NodeType::Dynamic) {
             if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {

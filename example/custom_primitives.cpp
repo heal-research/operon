@@ -43,7 +43,7 @@
 #include "operon/operators/selector.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
-auto main(int argc, char** argv) -> int
+auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 {
     if (argc < 2) {
         fmt::print(stderr, "usage: {} <path-to-Poly-10.csv>\n", argv[0]);
