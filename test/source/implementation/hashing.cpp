@@ -72,7 +72,7 @@ TEST_CASE("Hash-based distance", "[core]")
 
     std::vector<Tree> trees(n);
     std::vector<Operon::Hash> seeds(n);
-    std::generate(seeds.begin(), seeds.end(), [&]() { return rd(); });
+    std::generate(seeds.begin(), seeds.end(), [&]() -> xoshiro256ss_result_type { return rd(); });
     for (size_t i = 0; i < n; ++i) {
         Operon::RandomGenerator rand(seeds[i]);
         trees[i] = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
@@ -86,7 +86,7 @@ TEST_CASE("Hash-based distance", "[core]")
     for (auto& t : trees) {
         Operon::Vector<Operon::Hash> hh(t.Length());
         (void)t.Hash(Operon::HashMode::Strict);
-        std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
+        std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
         std::sort(hh.begin(), hh.end());
         treeHashes.push_back(hh);
     }
@@ -127,8 +127,8 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
 
     Operon::Vector<Operon::Hash> h1(tree1.Length());
     Operon::Vector<Operon::Hash> h2(tree2.Length());
-    std::transform(tree1.Nodes().begin(), tree1.Nodes().end(), h1.begin(), [](auto& n) { return n.CalculatedHashValue; });
-    std::transform(tree2.Nodes().begin(), tree2.Nodes().end(), h2.begin(), [](auto& n) { return n.CalculatedHashValue; });
+    std::transform(tree1.Nodes().begin(), tree1.Nodes().end(), h1.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
+    std::transform(tree2.Nodes().begin(), tree2.Nodes().end(), h2.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
     std::sort(h1.begin(), h1.end());
     std::sort(h2.begin(), h2.end());
 
@@ -164,7 +164,7 @@ TEST_CASE("Hash collisions", "[core]")
     initializer.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
     std::vector<Operon::Hash> seeds(n);
-    std::generate(seeds.begin(), seeds.end(), [&]() { return rd(); });
+    std::generate(seeds.begin(), seeds.end(), [&]() -> xoshiro256ss_result_type { return rd(); });
     for (size_t i = 0; i < n; ++i) {
         Operon::RandomGenerator rand(seeds[i]);
         trees[i] = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
@@ -173,7 +173,7 @@ TEST_CASE("Hash collisions", "[core]")
     }
 
     std::unordered_set<uint64_t> set64;
-    auto totalNodes = std::transform_reduce(trees.begin(), trees.end(), size_t{0}, std::plus<size_t>{}, [](auto& tree) { return tree.Length(); });
+    auto totalNodes = std::transform_reduce(trees.begin(), trees.end(), size_t{0}, std::plus<size_t>{}, [](auto& tree) -> auto { return tree.Length(); });
 
     for (auto& tree : trees) {
         for (auto& node : tree.Nodes()) {

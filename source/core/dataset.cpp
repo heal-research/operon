@@ -149,7 +149,7 @@ auto Dataset::VariableNames() const -> std::vector<std::string>
 {
     std::vector<std::string> names;
     names.reserve(variables_.size());
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(names), [](auto const& p) { return p.second.Name; });
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(names), [](auto const& p) -> auto { return p.second.Name; });
     return names;
 }
 
@@ -157,7 +157,7 @@ auto Dataset::VariableHashes() const -> std::vector<Operon::Hash>
 {
     std::vector<Operon::Hash> hashes;
     hashes.reserve(variables_.size());
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(hashes), [](auto const& p) { return p.second.Hash; });
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(hashes), [](auto const& p) -> auto { return p.second.Hash; });
     return hashes;
 }
 
@@ -165,7 +165,7 @@ auto Dataset::VariableIndices() const -> std::vector<std::size_t>
 {
     std::vector<std::size_t> indices;
     indices.reserve(variables_.size());
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(indices), [](auto const& p) { return p.second.Index; });
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(indices), [](auto const& p) -> auto { return p.second.Index; });
     return indices;
 }
 

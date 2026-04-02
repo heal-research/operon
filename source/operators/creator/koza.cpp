@@ -36,7 +36,7 @@ auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetL
     }
 
     auto const& variables = GetVariables();
-    auto init = [&](Node& node) {
+    auto init = [&](Node& node) -> void {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {
                 node.HashValue = *Operon::Random::Sample(random, variables.begin(), variables.end());
@@ -53,7 +53,7 @@ auto GrowTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetL
     std::uniform_int_distribution<size_t> dist(minDepth, maxDepth);
     auto actualDepthLimit = dist(random);
 
-    auto const grow = [&](size_t depth, auto&& ref) {
+    auto const grow = [&](size_t depth, auto&& ref) -> auto {
         auto minDepthReached = depth >= minDepth;
 
         minArity = 0;

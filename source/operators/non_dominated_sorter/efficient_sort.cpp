@@ -15,13 +15,13 @@ namespace {
         auto const m = static_cast<int>(std::ssize(pop[0].Fitness));
 
         // check if individual i is dominated by any individual in the front f
-        auto dominated = [&](auto const& f, size_t i) {
-            return std::ranges::any_of(std::views::reverse(f), [&](size_t j) {
+        auto dominated = [&](auto const& f, size_t i) -> auto {
+            return std::ranges::any_of(std::views::reverse(f), [&](size_t j) -> auto {
                 auto const& a = pop[j].Fitness;
                 auto const& b = pop[i].Fitness;
                 return m == 2
-                    ? std::ranges::all_of(std::ranges::iota_view{0, m}, [&](auto k) { return a[k] <= b[k]; })
-                    : eve::algo::all_of(eve::views::zip(a, b), [](auto t) { auto [x, y] = t; return x <= y; });
+                    ? std::ranges::all_of(std::ranges::iota_view{0, m}, [&](auto k) -> auto { return a[k] <= b[k]; })
+                    : eve::algo::all_of(eve::views::zip(a, b), [](auto t) -> auto { auto [x, y] = t; return x <= y; });
             });
         };
 
@@ -29,9 +29,9 @@ namespace {
         for (size_t i = 0; i < pop.size(); ++i) {
             decltype(fronts)::iterator it;
             if constexpr (SearchStrategy == EfficientSortStrategy::Binary) { // binary search
-                it = std::partition_point(fronts.begin(), fronts.end(), [&](auto const& f) { return dominated(f, i); });
+                it = std::partition_point(fronts.begin(), fronts.end(), [&](auto const& f) -> auto { return dominated(f, i); });
             } else { // sequential search
-                it = std::find_if(fronts.begin(), fronts.end(), [&](auto const& f) { return !dominated(f, i); });
+                it = std::find_if(fronts.begin(), fronts.end(), [&](auto const& f) -> auto { return !dominated(f, i); });
             }
             if (it == fronts.end()) { fronts.push_back({i}); }
             else                    { it->push_back(i);          }
