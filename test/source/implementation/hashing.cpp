@@ -23,7 +23,7 @@ TEST_CASE("Hash determinism", "[core]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
@@ -60,7 +60,7 @@ TEST_CASE("Hash-based distance", "[core]")
     Operon::RandomGenerator rd(1234);
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
@@ -107,7 +107,7 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
@@ -151,7 +151,7 @@ TEST_CASE("Hash collisions", "[core]")
     Operon::RandomGenerator rd(1234);
     auto ds = Dataset("./data/Poly-10.csv", true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
@@ -191,7 +191,7 @@ TEST_CASE("Strict vs relaxed hashing modes", "[core]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);

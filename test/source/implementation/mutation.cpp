@@ -18,7 +18,7 @@ TEST_CASE("InsertSubtreeMutation produces valid tree", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     auto const maxDepth{1000};
     auto const maxLength{100};
 
@@ -49,7 +49,7 @@ TEST_CASE("Mutation tree stays within bounds", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     auto const maxDepth{1000};
     auto const maxLength{50};
 

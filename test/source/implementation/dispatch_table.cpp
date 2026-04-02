@@ -127,7 +127,7 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
     SECTION("Evaluate a tree: negate(x)") {
         // Post-order: [Variable(x), Dynamic(negate)]
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, myHash);
         dynNode.Arity  = 1;
@@ -165,7 +165,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
 
     SECTION("Evaluate with unit weight") {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, h);
         dynNode.Arity  = 1;
@@ -184,7 +184,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
 
     SECTION("Weight is applied by the adapter") {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, h);
         dynNode.Arity  = 1;
@@ -228,10 +228,10 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
         // Tree: [Variable(x), Variable(y), Dynamic(hypot)]
         // post-order: x at 0, y at 1, hypot at 2
         Operon::Node varX(Operon::NodeType::Variable);
-        varX.HashValue = ds.GetVariable("x")->Hash;
+        varX.HashValue = ds.GetVariable("x").value().Hash;
 
         Operon::Node varY(Operon::NodeType::Variable);
-        varY.HashValue = ds.GetVariable("y")->Hash;
+        varY.HashValue = ds.GetVariable("y").value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, h);
         dynNode.Arity  = 2;
@@ -323,7 +323,7 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]")
 
     auto makeTree = [&](Operon::Hash h) -> Operon::Tree {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
         Operon::Node dynNode(Operon::NodeType::Dynamic, h);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
@@ -402,7 +402,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
 
     SECTION("Evaluation is correct") {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, info.Hash);
         dynNode.Arity  = 1;
@@ -420,7 +420,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
 
     SECTION("InfixFormatter uses registered name") {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, info.Hash);
         dynNode.Arity  = 1;

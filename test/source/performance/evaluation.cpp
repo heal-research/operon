@@ -68,7 +68,7 @@ TEST_CASE("Evaluation performance", "[performance]")
     Operon::RandomGenerator rd(1234);
     auto ds = Util::RandomDataset(rd, nrow, ncol);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     Range range = {0, nrow};
 
@@ -179,7 +179,7 @@ TEST_CASE("Evaluator performance", "[performance]")
     auto variables = ds.GetVariables();
     auto target = variables.back().Name;
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable(target)->Hash);
+    std::erase(inputs, ds.GetVariable(target).value().Hash);
     Range range = {0, ds.Rows<std::size_t>()};
 
     Operon::Problem problem{&ds};
@@ -251,7 +251,7 @@ TEST_CASE("Parallel interpreter", "[performance]")
     auto variables = ds.GetVariables();
     auto target = variables.back().Name;
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable(target)->Hash);
+    std::erase(inputs, ds.GetVariable(target).value().Hash);
     Range range = {0, ds.Rows<std::size_t>()};
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
