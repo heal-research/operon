@@ -51,7 +51,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         return 1;
     }
 
-    Operon::Dataset dataset(argv[1], /*hasHeader=*/true);
+    Operon::Dataset const dataset(argv[1], /*hasHeader=*/true);
 
     Operon::Problem problem(std::make_unique<Operon::Dataset>(dataset));
     problem.SetTrainingRange({ 0, 250 });
@@ -141,7 +141,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     Operon::LevenbergMarquardtOptimizer<DT, Operon::OptimizerType::Eigen> lmOptimizer {
         &dtable, &problem
     };
-    Operon::CoefficientOptimizer coeffOpt { &lmOptimizer };
+    Operon::CoefficientOptimizer const coeffOpt { &lmOptimizer };
 
     auto comp = [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; };
     Operon::TournamentSelector femaleSelector { comp };

@@ -26,14 +26,14 @@ struct EvaluatorFixture {
     static constexpr auto Nrow { 500 };
     static constexpr auto Ncol { 4 }; // X1, X2, X3, y
 
-    Operon::RandomGenerator rng{0};
-    Eigen::Array<Operon::Scalar, -1, -1> data{Nrow, Ncol};
-    Operon::Dataset ds;
-    Operon::Tree tree;
-    Operon::Tree perfectTree;
+    Operon::RandomGenerator rng{0}; // NOLINT(readability-identifier-naming)
+    Eigen::Array<Operon::Scalar, -1, -1> data{Nrow, Ncol}; // NOLINT(readability-identifier-naming)
+    Operon::Dataset ds; // NOLINT(readability-identifier-naming)
+    Operon::Tree tree; // NOLINT(readability-identifier-naming)
+    Operon::Tree perfectTree; // NOLINT(readability-identifier-naming)
     using DTable = DispatchTable<Operon::Scalar>;
-    DTable dtable;
-    Operon::Problem problem;
+    DTable dtable; // NOLINT(readability-identifier-naming)
+    Operon::Problem problem; // NOLINT(readability-identifier-naming)
 
     EvaluatorFixture()
         : ds([&]() -> Operon::Dataset {

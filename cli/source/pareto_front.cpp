@@ -93,7 +93,7 @@ auto EscapeJson(std::string const& s) -> std::string
 {
     std::string result;
     result.reserve(s.size());
-    for (char c : s) {
+    for (char const c : s) {
         if      (c == '"')  { result += "\\\""; }
         else if (c == '\\') { result += "\\\\"; }
         else                { result += c; }
@@ -130,7 +130,7 @@ auto WriteParetoFront(std::string const& path,
     out.print("[\n");
     for (auto i = 0UL; i < front.size(); ++i) {
         auto const* ind = front[i];
-        Interpreter<Scalar, ScalarDispatch> interp{&dtable, ds, &ind->Genotype};
+        Interpreter<Scalar, ScalarDispatch> const interp{&dtable, ds, &ind->Genotype};
         auto estimTrain = interp.Evaluate(ind->Genotype.GetCoefficients(), trainRange);
         auto estimTest  = interp.Evaluate(ind->Genotype.GetCoefficients(), testRange);
 
@@ -167,7 +167,7 @@ auto WriteParetoFront(std::string const& path,
         auto const jac     = interp.JacRev(coeffs, trainRange);
         auto const nrows   = static_cast<Eigen::Index>(trainRange.Size());
         auto const ncols   = static_cast<Eigen::Index>(coeffs.size());
-        Eigen::Map<Eigen::Matrix<Scalar, -1, -1> const> jacMap(jac.data(), nrows, ncols);
+        Eigen::Map<Eigen::Matrix<Scalar, -1, -1> const> const jacMap(jac.data(), nrows, ncols);
         auto const mdl = ComputeMDL(jacMap, static_cast<Scalar>(mseTrain), coeffs, ind->Genotype, p, fCompl, nll);
 
         std::string objArr = "[";

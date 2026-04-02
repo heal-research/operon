@@ -172,7 +172,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
             if (b < a) { continue; }
 
             std::span<uint64_t> pb(bits.get() + a-q, b-a+1);
-            std::span<uint64_t const> pm(mask.get() + a, b-a+1);
+            std::span<uint64_t const> const pm(mask.get() + a, b-a+1);
             // eve::algo::transform_to(eve::views::zip(pb, pm), pb, [](auto t) { return kumi::apply(std::bit_and{}, t); });
             std::ranges::transform(pb, pm, std::begin(pb), std::bit_and{});
             while (lo <= hi && (bits[lo] == ZEROS)) { ++lo; }

@@ -30,7 +30,7 @@ namespace Operon {
 auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
 {
     // assign distance. each front is sorted for each objective
-    size_t m = pop.front().Fitness.size();
+    size_t const m = pop.front().Fitness.size();
     auto inf = std::numeric_limits<Operon::Scalar>::max();
     for (size_t i = 0; i < fronts_.size(); ++i) {
         auto& front = fronts_[i];
@@ -76,7 +76,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
         i = j;
     }
     auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) -> auto { return !ind.Rank; });
-    Operon::Span<Operon::Individual const> uniq(pop.begin(), r);
+    Operon::Span<Operon::Individual const> const uniq(pop.begin(), r);
     // do the sorting
     fronts_ = (*sorter_)(uniq, eps);
     // sort the fronts for consistency between sorting algos
@@ -115,7 +115,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     };
 
     // random seeds for each thread
-    size_t s = std::max(config.PopulationSize, config.PoolSize);
+    size_t const s = std::max(config.PopulationSize, config.PoolSize);
     std::vector<Operon::RandomGenerator> rngs;
     rngs.reserve(s);
     for (size_t i = 0; i < s; ++i) {

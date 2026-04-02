@@ -247,11 +247,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
-        Operon::CrowdedComparison comp;
+        Operon::CrowdedComparison const comp;
 
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
-        Operon::CoefficientOptimizer cOpt { optimizer.get() };
+        Operon::CoefficientOptimizer const cOpt { optimizer.get() };
 
         auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);

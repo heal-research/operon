@@ -30,7 +30,7 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
     r(0, p.col(0)) = Vec::LinSpaced(n, 0, n - 1);
 
     Operon::Vector<Operon::Scalar> buf(n); // buffer to store fitness values to avoid pointer indirections during sorting
-    cppsort::merge_sorter sorter;
+    cppsort::merge_sorter const sorter;
     for (auto i = 1; i < m; ++i) {
         std::transform(pop.begin(), pop.end(), buf.begin(), [i](auto const& ind) -> auto { return ind[i]; });
         p.col(i) = p.col(i - 1); // this is a critical part of the approach

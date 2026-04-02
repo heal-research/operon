@@ -28,7 +28,7 @@ namespace Operon {
                 : eve::algo::all_of(eve::views::zip(a, b), [](auto t) -> auto { auto [x, y] = t; return x <= y; });
         };
 
-        cppsort::merge_sorter sorter;
+        cppsort::merge_sorter const sorter;
 
         while (!q.empty()) {
             Operon::Vector<size_t> front;
