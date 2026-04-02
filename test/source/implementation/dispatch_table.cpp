@@ -209,7 +209,8 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
     using Scalar = Operon::Scalar;
 
     // Two variables: x = {1..10}, y = {2..11}
-    std::vector<Scalar> xvals(10), yvals(10);
+    std::vector<Scalar> xvals(10);
+    std::vector<Scalar> yvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F);
     std::iota(yvals.begin(), yvals.end(), 2.0F);
     Operon::Dataset ds({"x", "y"}, {xvals, yvals});
@@ -313,8 +314,8 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]")
     // Same function registered two ways: auto-diff vs explicit derivative.
     // Unqualified sin/cos with using-declarations allow ADL to resolve to
     // ceres::sin/cos when called with Jet<T,1> during auto-diff.
-    auto primal  = [](auto v) -> auto { using std::sin, std::cos; return sin(v) + cos(v); };
-    auto dprimal = [](auto v) -> auto { using std::sin, std::cos; return cos(v) - sin(v); };
+    auto primal  = [](auto const& v) -> auto { using std::sin, std::cos; return sin(v) + cos(v); };
+    auto dprimal = [](auto const& v) -> auto { using std::sin, std::cos; return cos(v) - sin(v); };
 
     DT dt;
     Operon::RegisterUnary<DT, Scalar>(dt, hAuto,     primal);           // Jet fallback

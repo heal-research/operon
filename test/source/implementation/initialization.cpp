@@ -195,7 +195,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
         auto operator()(RandomGenerator& /*rng*/, size_t /*targetLen*/, size_t /*minDepth*/, size_t /*maxDepth*/) const -> Tree override {
             return Tree({ Node(NodeType::Constant) }).UpdateNodes();
         }
-        auto SnapDown(size_t n) const -> size_t { return AchievableLength(n); }
+        [[nodiscard]] auto SnapDown(size_t n) const -> size_t { return AchievableLength(n); }
     };
 
     SECTION("Edge cases") {
