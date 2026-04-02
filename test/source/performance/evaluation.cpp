@@ -56,7 +56,7 @@ namespace {
     }
 } // namespace
 
-TEST_CASE("Evaluation performance", "[performance]")
+TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-function-cognitive-complexity)
 {
     constexpr size_t n = 1000;
     constexpr size_t maxLength = 64;

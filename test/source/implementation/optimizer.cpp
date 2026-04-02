@@ -107,7 +107,7 @@ TEST_CASE("Gaussian likelihood static methods", "[likelihood]")
     }
 }
 
-TEST_CASE("Parameter optimization", "[optimizer]")
+TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-function-cognitive-complexity)
 {
     OptimizerFixture fix;
     auto& rng     = fix.rng;

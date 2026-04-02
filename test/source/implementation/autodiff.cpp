@@ -19,7 +19,7 @@
 
 namespace Operon::Test {
 
-TEST_CASE("Autodiff specific expressions", "[autodiff]")
+TEST_CASE("Autodiff specific expressions", "[autodiff]") // NOLINT(readability-function-cognitive-complexity)
 {
     Operon::Dataset::Matrix values(1, 2);
     values << 1, 1; // NOLINT
