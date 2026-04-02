@@ -24,7 +24,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
 
     auto const& variables = GetVariables();
-    auto init = [&](Node& node) {
+    auto init = [&](Node& node) -> void {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {
                 node.HashValue = *Random::Sample(random, variables.begin(), variables.end());
@@ -82,7 +82,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     Operon::Vector<Node> postfix(tuples.size());
     auto idx = tuples.size();
 
-    auto add = [&](const U& t, auto&& ref) {
+    auto add = [&](const U& t, auto&& ref) -> auto {
         auto [node, _, nodeChildIndex] = t;
         postfix[--idx] = node;
         if (node.IsLeaf()) {

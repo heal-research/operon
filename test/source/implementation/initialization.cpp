@@ -26,7 +26,7 @@ auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator
     UniformCoefficientInitializer coeffInit;
     coeffInit.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
-    std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t /*not used*/) {
+    std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t /*not used*/) -> Operon::Tree {
         auto tree = treeInit(random);
         coeffInit(random, tree);
         return tree;
@@ -50,7 +50,7 @@ TEST_CASE("Grammar sampling", "[operators]")
         auto node = grammar.SampleRandomSymbol(rd, 0, 2);
         ++observed[NodeTypes::GetIndex(node.Type)];
     }
-    std::transform(observed.begin(), observed.end(), observed.begin(), [&](double v) { return v / nTrials; });
+    std::transform(observed.begin(), observed.end(), observed.begin(), [&](double v) -> double { return v / nTrials; });
     std::vector<double> actual(NodeTypes::Count, 0);
     for (size_t i = 0; i < observed.size(); ++i) {
         auto type = static_cast<NodeType>(i);
@@ -58,7 +58,7 @@ TEST_CASE("Grammar sampling", "[operators]")
         actual[NodeTypes::GetIndex(type)] = static_cast<double>(grammar.Frequency(node.HashValue));
     }
     auto freqSum = std::reduce(actual.begin(), actual.end(), 0.0, std::plus{});
-    std::transform(actual.begin(), actual.end(), actual.begin(), [&](double v) { return v / freqSum; });
+    std::transform(actual.begin(), actual.end(), actual.begin(), [&](double v) -> double { return v / freqSum; });
     auto chi = 0.0;
     for (auto i = 0U; i < observed.size(); ++i) {
         Node node(static_cast<NodeType>(i));
@@ -97,7 +97,7 @@ TEST_CASE("GROW creator", "[operators]")
 
     SECTION("Trees are within size bounds") {
         std::vector<size_t> lengths(n);
-        std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
+        std::generate(lengths.begin(), lengths.end(), [&]() -> result_type { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, gtc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
@@ -137,7 +137,7 @@ TEST_CASE("BTC creator", "[operators]")
 
     SECTION("Trees are within size bounds") {
         std::vector<size_t> lengths(n);
-        std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
+        std::generate(lengths.begin(), lengths.end(), [&]() -> result_type { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, btc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
@@ -178,7 +178,7 @@ TEST_CASE("PTC2 creator", "[operators]")
 
     SECTION("Trees are within size bounds") {
         std::vector<size_t> lengths(n);
-        std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
+        std::generate(lengths.begin(), lengths.end(), [&]() -> result_type { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, ptc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);

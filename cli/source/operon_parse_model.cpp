@@ -143,7 +143,7 @@ auto main(int argc, char** argv) -> int
             b = static_cast<Operon::Scalar>(b_);
         }
 
-        std::ranges::transform(est, est.begin(), [&](auto v) { return (v * a) + b; });
+        std::ranges::transform(est, est.begin(), [&](auto v) -> auto { return (v * a) + b; });
         auto r2 = -Operon::R2{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto rs = -Operon::C2{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto mae = Operon::MAE{}(Operon::Span<Operon::Scalar>{est}, tgt);

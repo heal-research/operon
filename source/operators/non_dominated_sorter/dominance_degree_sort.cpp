@@ -62,7 +62,7 @@ namespace {
         Mat idx = Vec::LinSpaced(n, 0, n-1).replicate(1, m);
         for (auto i = 0; i < m; ++i) {
             auto *data = idx.col(i).data();
-            std::sort(data, data + n, [&](auto a, auto b) { return cmp(pop[a][i], pop[b][i], eps); });
+            std::sort(data, data + n, [&](auto a, auto b) -> auto { return cmp(pop[a][i], pop[b][i], eps); });
         }
         Mat d = ComputeDegreeMatrix(pop, idx);
         auto count = 0L; // number of assigned solutions
@@ -74,7 +74,7 @@ namespace {
         while (count < n) {
             Operon::Vector<size_t> front;
             for (auto i : tmp) {
-                if (std::all_of(tmp.begin(), tmp.end(), [&](auto j) { return d(j, i) < m; })) {
+                if (std::all_of(tmp.begin(), tmp.end(), [&](auto j) -> auto { return d(j, i) < m; })) {
                     front.push_back(i);
                 } else {
                     remaining.push_back(i);

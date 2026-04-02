@@ -30,7 +30,7 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]")
     Operon::DispatchTable<Operon::Scalar> dtable;
     Operon::Range range{0, ds.Rows<std::size_t>()};
 
-    auto derive = [&](std::string const& expr) {
+    auto derive = [&](std::string const& expr) -> void {
         auto tree = Operon::InfixParser::Parse(expr, ds, /*reduce=*/true);
         for (auto& n : tree.Nodes()) {
             n.Optimize = n.IsLeaf();
@@ -89,7 +89,7 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
     using Operon::NodeType;
     Operon::PrimitiveSet pset;
 
-    auto generateTrees = [&](auto pset, auto n, auto l) {
+    auto generateTrees = [&](auto pset, auto n, auto l) -> auto {
         constexpr auto mindepth{1};
         constexpr auto maxdepth{1000};
         std::uniform_int_distribution<size_t> length(1, l);

@@ -32,9 +32,9 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
     Operon::Vector<Operon::Scalar> buf(n); // buffer to store fitness values to avoid pointer indirections during sorting
     cppsort::merge_sorter sorter;
     for (auto i = 1; i < m; ++i) {
-        std::transform(pop.begin(), pop.end(), buf.begin(), [i](auto const& ind) { return ind[i]; });
+        std::transform(pop.begin(), pop.end(), buf.begin(), [i](auto const& ind) -> auto { return ind[i]; });
         p.col(i) = p.col(i - 1); // this is a critical part of the approach
-        sorter(p.col(i), [&](auto j) { return buf[j]; });
+        sorter(p.col(i), [&](auto j) -> auto { return buf[j]; });
         r(i, p.col(i)) = Vec::LinSpaced(n, 0, n - 1);
     }
 
@@ -48,12 +48,12 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
         maxc(i) = std::distance(c.begin(), max);
     }
 
-    auto dominated = [&](int i, int j) {
+    auto dominated = [&](int i, int j) -> bool {
         // std::span<int> a(r.col(i).data(), r.col(i).size());
         // std::span<int> b(r.col(j).data(), r.col(j).size());
         return m == 2
             ? (r.col(i) < r.col(j)).all()
-            : eve::algo::all_of(eve::views::zip(std::span(r.col(i).data(), m), std::span(r.col(j).data(), m)), [](auto t) { return kumi::apply(std::less{}, t); });
+            : eve::algo::all_of(eve::views::zip(std::span(r.col(i).data(), m), std::span(r.col(j).data(), m)), [](auto t) -> auto { return kumi::apply(std::less{}, t); });
     };
 
     // 3) compute ranks / fronts

@@ -25,7 +25,7 @@ auto InitializePop(Operon::RandomGenerator& random, auto& dist, size_t n, size_t
             individual[j] = dist(random);
         }
     }
-    std::stable_sort(individuals.begin(), individuals.end(), [](auto const& a, auto const& b) { return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });
+    std::stable_sort(individuals.begin(), individuals.end(), [](auto const& a, auto const& b) -> auto { return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });
 
     for (auto i = individuals.begin(); i < individuals.end();) {
         i->Rank = 0;
@@ -35,7 +35,7 @@ auto InitializePop(Operon::RandomGenerator& random, auto& dist, size_t n, size_t
         }
         i = j;
     }
-    auto r = std::stable_partition(individuals.begin(), individuals.end(), [](auto const& ind) { return !ind.Rank; });
+    auto r = std::stable_partition(individuals.begin(), individuals.end(), [](auto const& ind) -> auto { return !ind.Rank; });
     Operon::Vector<Individual> pop(individuals.begin(), r);
     return pop;
 }
@@ -75,7 +75,7 @@ TEST_CASE("All sorters produce same ranking", "[algorithms]")
 {
     constexpr Operon::RandomGenerator::result_type seed{1234};
 
-    auto compareSorters = [&](auto const& s1, auto const& s2, auto const& ns, auto const& ms) {
+    auto compareSorters = [&](auto const& s1, auto const& s2, auto const& ns, auto const& ms) -> auto {
         Operon::RandomGenerator rd(seed); // fresh RNG per sorter pair so all pairs see the same populations
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
         for (auto n : ns) {

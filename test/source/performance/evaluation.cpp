@@ -32,7 +32,7 @@ namespace Operon::Test {
 namespace {
 auto TotalNodes(const Operon::Vector<Tree>& trees)
 {
-    return vstat::univariate::accumulate<Operon::Scalar>(trees.begin(), trees.end(), [](auto const& t) { return t.Length(); }).sum;
+    return vstat::univariate::accumulate<Operon::Scalar>(trees.begin(), trees.end(), [](auto const& t) -> auto { return t.Length(); }).sum;
 }
 } // namespace
 
@@ -47,7 +47,7 @@ namespace {
         for (auto& res : results) {
             res.resize(range.Size());
         }
-        taskflow.for_each_index(size_t{0}, trees.size(), size_t{1}, [&](auto i) {
+        taskflow.for_each_index(size_t{0}, trees.size(), size_t{1}, [&](auto i) -> auto {
             auto& res = results[executor.this_worker_id()];
             auto coeff = trees[i].GetCoefficients();
             Operon::Interpreter<T, DTable>{&dt, &ds, &trees[i]}.Evaluate({coeff}, range, {res});
@@ -82,16 +82,16 @@ TEST_CASE("Evaluation performance", "[performance]")
     using DTable = DispatchTable<Operon::Scalar, Operon::Seq<Dispatch::DefaultBatchSize<Operon::Scalar>>>;
     DTable dtable;
 
-    auto test = [&](tf::Executor& executor, nb::Bench& b, PrimitiveSetConfig cfg, const std::string& name) {
+    auto test = [&](tf::Executor& executor, nb::Bench& b, PrimitiveSetConfig cfg, const std::string& name) -> void {
         pset.SetConfig(cfg);
         for (auto t : {NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul}) {
             pset.SetMinMaxArity(Node(t).HashValue, 2, 2);
         }
-        std::ranges::generate(trees, [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+        std::ranges::generate(trees, [&]() -> Tree { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
         auto totalOps = TotalNodes(trees) * range.Size();
         b.batch(totalOps);
-        b.run(name, [&]() { Evaluate<Operon::Scalar>(executor, dtable, trees, ds, range); });
+        b.run(name, [&]() -> void { Evaluate<Operon::Scalar>(executor, dtable, trees, ds, range); });
     };
 
     nb::Bench b;
@@ -192,7 +192,7 @@ TEST_CASE("Evaluator performance", "[performance]")
     auto creator = BalancedTreeCreator{&problem.GetPrimitiveSet(), inputs, /* bias= */ 0.0, maxLength};
 
     Operon::Vector<Tree> trees(n);
-    std::ranges::generate(trees, [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+    std::ranges::generate(trees, [&]() -> Tree { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
     Operon::Vector<Individual> individuals(n);
     for (size_t i = 0; i < individuals.size(); ++i) {
@@ -204,14 +204,14 @@ TEST_CASE("Evaluator performance", "[performance]")
 
     auto totalNodes = TotalNodes(trees);
 
-    auto test = [&](std::string const& name, EvaluatorBase&& evaluator) { // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
+    auto test = [&](std::string const& name, EvaluatorBase&& evaluator) -> void { // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
         evaluator.SetBudget(std::numeric_limits<size_t>::max());
         tf::Executor executor(std::thread::hardware_concurrency());
         tf::Taskflow taskflow;
 
         Operon::Vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
         double sum{0};
-        taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{}, [&](Operon::Individual& ind) {
+        taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{}, [&](Operon::Individual& ind) -> value_type {
             auto id = executor.this_worker_id();
             if (slots[id].size() < range.Size()) {
                 slots[id].resize(range.Size());
@@ -219,7 +219,7 @@ TEST_CASE("Evaluator performance", "[performance]")
             return evaluator(rd, ind, slots[id]).front();
         });
 
-        b.batch(totalNodes * range.Size()).epochs(10).epochIterations(100).run(name, [&]() {
+        b.batch(totalNodes * range.Size()).epochs(10).epochIterations(100).run(name, [&]() -> double {
             sum = 0;
             executor.run(taskflow).wait();
             return sum;
@@ -260,7 +260,7 @@ TEST_CASE("Parallel interpreter", "[performance]")
     auto creator = BalancedTreeCreator{&pset, inputs, /* bias= */ 0.0, maxLength};
 
     Operon::Vector<Tree> trees(n);
-    std::ranges::generate(trees, [&]() { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+    std::ranges::generate(trees, [&]() -> Tree { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
     nb::Bench b;
     b.relative(true).epochs(10).minEpochIterations(100).performanceCounters(true);
@@ -268,7 +268,7 @@ TEST_CASE("Parallel interpreter", "[performance]")
     std::iota(threads.begin(), threads.end(), 1);
     Operon::Vector<Operon::Scalar> result(trees.size() * range.Size());
     for (auto t : threads) {
-        b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() { Operon::EvaluateTrees(trees, &ds, range, result, t); });
+        b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() -> void { Operon::EvaluateTrees(trees, &ds, range, result, t); });
     }
 }
 

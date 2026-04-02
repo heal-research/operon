@@ -228,7 +228,7 @@ auto main(int argc, char** argv) -> int
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
-        auto comp = [](auto const& lhs, auto const& rhs) { return lhs[0] < rhs[0]; };
+        auto comp = [](auto const& lhs, auto const& rhs) -> auto { return lhs[0] < rhs[0]; };
 
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
@@ -256,7 +256,7 @@ auto main(int argc, char** argv) -> int
 
         auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
-        gp.Run(executor, random, [&]() { reporter(executor, gp); });
+        gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));
     } catch (std::exception& e) {

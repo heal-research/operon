@@ -24,7 +24,7 @@ Zobrist::~Zobrist() = default;
 auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
 {
     bool found{false};
-    tt_->Map.if_contains(hash, [&](auto const& v) {
+    tt_->Map.if_contains(hash, [&](auto const& v) -> auto {
         val = v.second.first;
         found = true;
     });
@@ -36,8 +36,8 @@ auto Zobrist::Insert(Operon::Hash hash, Value const& val) -> void
 {
     tt_->Map.lazy_emplace_l(
         hash,
-        [](auto& v) { ++v.second.second; },          // already present: bump count
-        [&](auto const& ctor) { ctor(hash, std::make_pair(val, std::size_t{1})); }  // new entry
+        [](auto& v) -> auto { ++v.second.second; },          // already present: bump count
+        [&](auto const& ctor) -> auto { ctor(hash, std::make_pair(val, std::size_t{1})); }  // new entry
     );
 }
 

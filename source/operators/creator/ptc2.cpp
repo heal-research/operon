@@ -24,7 +24,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     EXPECT(targetLen > 0);
     auto const& variables = GetVariables();
 
-    auto init = [&](Node& node) {
+    auto init = [&](Node& node) -> void {
         if (node.IsLeaf()) {
             if (node.IsVariable()) {
                 node.HashValue = *Random::Sample(random, variables.begin(), variables.end());
@@ -63,7 +63,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     }
 
     // emulate a random dequeue operation
-    auto randomDequeue = [&]() {
+    auto randomDequeue = [&]() -> value_type {
         EXPECT(!q.empty());
         auto j = std::uniform_int_distribution<size_t>(0, q.size() - 1)(random);
         std::swap(q[j], q.front());
@@ -105,7 +105,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
         nodes.push_back(node);
     }
 
-    std::sort(nodes.begin(), nodes.end(), [](const auto& lhs, const auto& rhs) { return lhs.Depth < rhs.Depth; });
+    std::sort(nodes.begin(), nodes.end(), [](const auto& lhs, const auto& rhs) -> auto { return lhs.Depth < rhs.Depth; });
     std::vector<size_t> childIndices(nodes.size());
 
     size_t c = 1;
@@ -123,7 +123,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     Operon::Vector<Node> postfix(nodes.size());
     size_t idx = nodes.size();
 
-    const auto add = [&](size_t i, auto&& ref) {
+    const auto add = [&](size_t i, auto&& ref) -> auto {
         const auto& node = nodes[i];
 
         postfix[--idx] = node;

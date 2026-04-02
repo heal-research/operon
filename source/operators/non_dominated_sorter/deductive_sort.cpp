@@ -26,11 +26,11 @@ namespace Operon {
         Operon::Vector<uint64_t> dominated(nb);
         Operon::Vector<uint64_t> sorted(nb);
 
-        auto set = [](auto&& range, auto i) { range[i / d] |= (1UL << (d - i % d));}; // set bit i
-        [[maybe_unused]] auto reset = [](auto&& range, auto i) { range[i / d] &= ~(1UL << (i % d)); }; // unset bit i
+        auto set = [](auto&& range, auto i) -> auto { range[i / d] |= (1UL << (d - i % d));}; // set bit i
+        [[maybe_unused]] auto reset = [](auto&& range, auto i) -> auto { range[i / d] &= ~(1UL << (i % d)); }; // unset bit i
         auto get = [](auto&& range, auto i) -> bool { return range[i / d] & (1UL << (d - i % d)); }; // return bit i
 
-        auto dominatedOrSorted = [&](std::size_t i) { return get(sorted, i) || get(dominated, i); };
+        auto dominatedOrSorted = [&](std::size_t i) -> bool { return get(sorted, i) || get(dominated, i); };
 
         while (n < pop.size()) {
             Operon::Vector<size_t> front;
