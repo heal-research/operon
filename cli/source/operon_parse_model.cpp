@@ -158,14 +158,14 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::Individual ind;
         ind.Genotype = model;
 
-        Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch> interpreter{&dtable, &ds, &ind.Genotype};
-        Operon::MinimumDescriptionLengthEvaluator<Operon::ScalarDispatch, Operon::GaussianLikelihood<Operon::Scalar>> mdlEval{&problem, &dtable};
+        Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch> const interpreter{&dtable, &ds, &ind.Genotype};
+        Operon::MinimumDescriptionLengthEvaluator<Operon::ScalarDispatch, Operon::GaussianLikelihood<Operon::Scalar>> const mdlEval{&problem, &dtable};
         auto mdl = mdlEval(rng, ind).front();
         auto opt = ParseOptimizer(&dtable, &problem, result["optimizer"].as<std::string>(), result["likelihood"].as<std::string>());
         opt->SetIterations(result["iterations"].as<int>());
         auto summary = opt->Optimize(rng, model);
 
-        std::vector<std::tuple<std::string, double, std::string>> stats{
+        std::vector<std::tuple<std::string, double, std::string>> const stats{
             {"slope", a, format},
             {"intercept", b, format},
             {"r2", r2, format},

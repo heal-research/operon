@@ -16,7 +16,7 @@ namespace Operon {
 
         taskflow.for_each_index(size_t{0}, size_t{trees.size()}, size_t{1}, [&](size_t i) -> void {
             result[i].resize(range.Size());
-            Operon::Span<Operon::Scalar> s{result[i].data(), result[i].size()};
+            Operon::Span<Operon::Scalar> const s{result[i].data(), result[i].size()};
             INT{&dtable, dataset, &trees[i]}.Evaluate({}, range, s);
         });
         executor.run(taskflow);

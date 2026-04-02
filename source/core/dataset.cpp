@@ -16,7 +16,7 @@ namespace Operon {
 // internal implementation details
 namespace {
     auto VariablesFromNames(auto const& names) {
-        Hasher hasher;
+        Hasher const hasher;
         Dataset::Variables vars;
         for (auto i = 0; i < std::ssize(names); ++i) {
             auto const& name = names[i];
@@ -57,7 +57,7 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
 
     auto ncol{0L};
 
-    Hasher hash;
+    Hasher const hash;
     Matrix m;
 
     if (hasHeader) {
@@ -123,7 +123,7 @@ Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<O
     : values_(MatrixFromValues(vals))
     , map_(values_.data(), values_.rows(), values_.cols())
 {
-    Hasher hasher;
+    Hasher const hasher;
     for (auto i = 0; i < map_.cols(); ++i) {
         auto h = hasher(vars[i]);
         variables_.insert({h, { .Name = vars[i], .Hash = h, .Index = i } });
@@ -208,7 +208,7 @@ void Dataset::Shuffle(Operon::RandomGenerator& random)
     Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values_.rows());
     perm.setIdentity();
     // generate a random permutation
-    Operon::Span<decltype(perm)::IndicesType::Scalar> idx(perm.indices().data(), perm.indices().size());
+    Operon::Span<decltype(perm)::IndicesType::Scalar> const idx(perm.indices().data(), perm.indices().size());
     std::shuffle(idx.begin(), idx.end(), random);
     values_.matrix().applyOnTheLeft(perm); // permute rows
 }

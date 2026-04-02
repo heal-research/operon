@@ -37,7 +37,7 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
     std::iota(idx.begin(), idx.end(), 0);
 
     // sort the individuals for each objective
-    cppsort::merge_sorter sorter;
+    cppsort::merge_sorter const sorter;
     for (auto j = 1; j < m; ++j) {
         sortedByObjective[j] = sortedByObjective[j-1];
         sorter(sortedByObjective[j], [&](auto i) -> auto { return pop[i][j]; });

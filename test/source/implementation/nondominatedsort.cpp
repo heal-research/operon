@@ -163,45 +163,45 @@ TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]")
     for (auto n : ns) {
         for (auto m : ms) {
             int hits{0};
-            int first_seed{-1};
-            Operon::RandomGenerator::result_type first_seed_val{};
+            int firstSeed{-1};
+            Operon::RandomGenerator::result_type firstSeedVal{};
             for (int s = 0; s < nseeds; ++s) {
                 Operon::RandomGenerator rd(static_cast<Operon::RandomGenerator::result_type>(s));
                 auto pop = InitializePop(rd, dist, n, m);
-                auto f_rs = rs.Sort(pop, 0);
-                auto f_ds = ds.Sort(pop, 0);
-                Operon::Vector<int> rank_rs(pop.size(), -1);
-                Operon::Vector<int> rank_ds(pop.size(), -1);
-                for (auto fi = 0; fi < std::ssize(f_rs); ++fi)
-                    for (auto idx : f_rs[fi]) rank_rs[idx] = fi;
-                for (auto fi = 0; fi < std::ssize(f_ds); ++fi)
-                    for (auto idx : f_ds[fi]) rank_ds[idx] = fi;
+                auto fRs = rs.Sort(pop, 0);
+                auto fDs = ds.Sort(pop, 0);
+                Operon::Vector<int> rankRs(pop.size(), -1);
+                Operon::Vector<int> rankDs(pop.size(), -1);
+                for (auto fi = 0; fi < std::ssize(fRs); ++fi)
+                    for (auto idx : fRs[fi]) rankRs[idx] = fi;
+                for (auto fi = 0; fi < std::ssize(fDs); ++fi)
+                    for (auto idx : fDs[fi]) rankDs[idx] = fi;
                 bool any = false;
                 for (size_t i = 0; i < pop.size(); ++i) {
-                    if (rank_rs[i] != rank_ds[i]) { any = true; break; }
+                    if (rankRs[i] != rankDs[i]) { any = true; break; }
                 }
                 if (any) {
-                    if (first_seed < 0) { first_seed = s; first_seed_val = static_cast<Operon::RandomGenerator::result_type>(s); }
+                    if (firstSeed < 0) { firstSeed = s; firstSeedVal = static_cast<Operon::RandomGenerator::result_type>(s); }
                     ++hits;
                 }
             }
             if (hits > 0) {
-                fmt::println("n={:5d} m={}: DISAGREE in {:3d}/{} seeds  (first seed={})", n, m, hits, nseeds, first_seed_val);
+                fmt::println("n={:5d} m={}: DISAGREE in {:3d}/{} seeds  (first seed={})", n, m, hits, nseeds, firstSeedVal);
                 // Print the disagreeing individuals for the first triggering seed
-                Operon::RandomGenerator rd(first_seed_val);
+                Operon::RandomGenerator rd(firstSeedVal);
                 auto pop = InitializePop(rd, dist, n, m);
-                auto f_rs = rs.Sort(pop, 0);
-                auto f_ds = ds.Sort(pop, 0);
-                Operon::Vector<int> rank_rs(pop.size(), -1);
-                Operon::Vector<int> rank_ds(pop.size(), -1);
-                for (auto fi = 0; fi < std::ssize(f_rs); ++fi)
-                    for (auto idx : f_rs[fi]) rank_rs[idx] = fi;
-                for (auto fi = 0; fi < std::ssize(f_ds); ++fi)
-                    for (auto idx : f_ds[fi]) rank_ds[idx] = fi;
+                auto fRs = rs.Sort(pop, 0);
+                auto fDs = ds.Sort(pop, 0);
+                Operon::Vector<int> rankRs(pop.size(), -1);
+                Operon::Vector<int> rankDs(pop.size(), -1);
+                for (auto fi = 0; fi < std::ssize(fRs); ++fi)
+                    for (auto idx : fRs[fi]) rankRs[idx] = fi;
+                for (auto fi = 0; fi < std::ssize(fDs); ++fi)
+                    for (auto idx : fDs[fi]) rankDs[idx] = fi;
                 for (size_t i = 0; i < pop.size(); ++i) {
-                    if (rank_rs[i] != rank_ds[i]) {
+                    if (rankRs[i] != rankDs[i]) {
                         fmt::println("  ind {:4d}  fitness={}  RankIntersect={}  Deductive={}",
-                            i, pop[i].Fitness, rank_rs[i], rank_ds[i]);
+                            i, pop[i].Fitness, rankRs[i], rankDs[i]);
                     }
                 }
             } else {
@@ -230,30 +230,30 @@ TEST_CASE("RankIntersect vs Deductive disagreement reproducer", "[.][rankdebug]"
         for (auto m : ms) {
             auto pop = InitializePop(rd, dist, n, m);
 
-            auto f_rs = rs.Sort(pop, 0);
-            auto f_ds = ds.Sort(pop, 0);
+            auto fRs = rs.Sort(pop, 0);
+            auto fDs = ds.Sort(pop, 0);
 
             // Build per-individual rank maps
-            Operon::Vector<int> rank_rs(pop.size(), -1);
-            Operon::Vector<int> rank_ds(pop.size(), -1);
-            for (auto fi = 0; fi < std::ssize(f_rs); ++fi)
-                for (auto idx : f_rs[fi]) rank_rs[idx] = fi;
-            for (auto fi = 0; fi < std::ssize(f_ds); ++fi)
-                for (auto idx : f_ds[fi]) rank_ds[idx] = fi;
+            Operon::Vector<int> rankRs(pop.size(), -1);
+            Operon::Vector<int> rankDs(pop.size(), -1);
+            for (auto fi = 0; fi < std::ssize(fRs); ++fi)
+                for (auto idx : fRs[fi]) rankRs[idx] = fi;
+            for (auto fi = 0; fi < std::ssize(fDs); ++fi)
+                for (auto idx : fDs[fi]) rankDs[idx] = fi;
 
             bool any = false;
             for (size_t i = 0; i < pop.size(); ++i) {
-                if (rank_rs[i] != rank_ds[i]) {
+                if (rankRs[i] != rankDs[i]) {
                     if (!any) {
                         fmt::println("--- Disagreement: n={} m={} ---", n, m);
                         any = true;
                     }
                     fmt::println("  ind {:4d}  fitness={}  RankIntersect={}  Deductive={}",
-                        i, pop[i].Fitness, rank_rs[i], rank_ds[i]);
+                        i, pop[i].Fitness, rankRs[i], rankDs[i]);
                 }
             }
             if (!any) {
-                fmt::println("n={} m={}: agree ({} fronts)", n, m, f_rs.size());
+                fmt::println("n={} m={}: agree ({} fronts)", n, m, fRs.size());
             }
         }
     }
