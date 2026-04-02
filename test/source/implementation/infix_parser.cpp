@@ -121,7 +121,7 @@ TEST_CASE("Formatter output", "[parser]")
 {
     SECTION("Balanced parentheses") {
         Operon::RandomGenerator rng(1234);
-        Operon::Dataset ds("./data/Poly-10.csv", true);
+        Operon::Dataset const ds("./data/Poly-10.csv", true);
         Operon::PrimitiveSet pset;
         pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log);
         constexpr size_t maxLength = 20;

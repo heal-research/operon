@@ -198,7 +198,7 @@ TEST_CASE("MDL evaluator", "[evaluator]")
     }
 
     SECTION("Gaussian / fixed sigma: finite positive result") {
-        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         ev.SetSigma({0.5F});
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
@@ -242,7 +242,7 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     }
 
     SECTION("Gaussian / fixed sigma: finite positive result") {
-        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         ev.SetSigma({0.5F});
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
