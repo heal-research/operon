@@ -48,7 +48,7 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
     auto run_sorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m) -> auto {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
         auto pop = InitializePop(rd, dist, n, m);
-        bench.run(fmt::format("{}/{}", name, n), [&]() -> size_type {
+        bench.run(fmt::format("{}/{}", name, n), [&]() -> size_t {
             auto fronts = sorter(pop);
             return fronts.size();
         });
@@ -110,7 +110,7 @@ TEST_CASE("Non-dominated sort performance (extended)", "[.][ndsort-extended]")
     auto run_sorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m) -> auto {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
         auto pop = InitializePop(rd, dist, n, m);
-        bench.run(fmt::format("{}/{}", name, n), [&]() -> size_type {
+        bench.run(fmt::format("{}/{}", name, n), [&]() -> size_t {
             auto fronts = sorter(pop);
             return fronts.size();
         });
@@ -206,7 +206,7 @@ TEST_CASE("Non-dominated sort complexity", "[performance]")
 
         for (auto s : sizes) {
             auto pop = InitializePop(rd, dist, s, m);
-            bench.complexityN(s).run(fmt::format("n = {}", s), [&]() -> size_type { return sorter(pop).size(); });
+            bench.complexityN(s).run(fmt::format("n = {}", s), [&]() -> size_t { return sorter(pop).size(); });
         }
         std::cout << bench.complexityBigO() << "\n";
     };
