@@ -211,7 +211,7 @@ TEST_CASE("Evaluator performance", "[performance]")
 
         Operon::Vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
         double sum{0};
-        taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{}, [&](Operon::Individual& ind) -> value_type {
+        taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{}, [&](Operon::Individual& ind) -> Operon::Scalar {
             auto id = executor.this_worker_id();
             if (slots[id].size() < range.Size()) {
                 slots[id].resize(range.Size());

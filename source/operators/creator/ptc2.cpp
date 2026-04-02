@@ -63,7 +63,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     }
 
     // emulate a random dequeue operation
-    auto randomDequeue = [&]() -> value_type {
+    auto randomDequeue = [&]() -> size_t {
         EXPECT(!q.empty());
         auto j = std::uniform_int_distribution<size_t>(0, q.size() - 1)(random);
         std::swap(q[j], q.front());

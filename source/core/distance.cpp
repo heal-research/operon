@@ -11,7 +11,7 @@ namespace Operon::Distance {
         template<typename T>
         auto Intersect(T const* lhs, T const* rhs) {
             eve::wide<T> const a(lhs);
-            return [&]<auto... Idx>(std::index_sequence<Idx...> -> auto){
+            return [&]<auto... Idx>(std::index_sequence<Idx...>) -> auto {
                 return eve::any(((a == rhs[Idx]) || ...));
             }(std::make_index_sequence<eve::wide<T>::size()>{});
         }

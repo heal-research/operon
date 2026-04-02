@@ -97,7 +97,7 @@ TEST_CASE("GROW creator", "[operators]")
 
     SECTION("Trees are within size bounds") {
         std::vector<size_t> lengths(n);
-        std::generate(lengths.begin(), lengths.end(), [&]() -> result_type { return sizeDistribution(random); });
+        std::generate(lengths.begin(), lengths.end(), [&]() -> size_t { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, gtc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
@@ -137,7 +137,7 @@ TEST_CASE("BTC creator", "[operators]")
 
     SECTION("Trees are within size bounds") {
         std::vector<size_t> lengths(n);
-        std::generate(lengths.begin(), lengths.end(), [&]() -> result_type { return sizeDistribution(random); });
+        std::generate(lengths.begin(), lengths.end(), [&]() -> size_t { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, btc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
@@ -178,7 +178,7 @@ TEST_CASE("PTC2 creator", "[operators]")
 
     SECTION("Trees are within size bounds") {
         std::vector<size_t> lengths(n);
-        std::generate(lengths.begin(), lengths.end(), [&]() -> result_type { return sizeDistribution(random); });
+        std::generate(lengths.begin(), lengths.end(), [&]() -> size_t { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, ptc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
