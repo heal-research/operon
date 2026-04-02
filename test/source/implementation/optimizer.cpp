@@ -36,15 +36,15 @@ struct OptimizerFixture {
     Operon::Problem problem;
 
     OptimizerFixture()
-        : ds([&]{
+        : ds([& -> Operon::Dataset]{
             for (auto i = 0; i < Ncol - 1; ++i) {
                 auto col = data.col(i);
-                std::generate(col.begin(), col.end(), [&]() { return Operon::Random::Uniform(rng, -1.0F, +1.0F); });
+                std::generate(col.begin(), col.end(), [&]() -> float { return Operon::Random::Uniform(rng, -1.0F, +1.0F); });
             }
             data.col(Ncol - 1) = data.col(0) + data.col(1) + data.col(2);
             return Operon::Dataset(data);
         }())
-        , tree([&]{
+        , tree([& -> Tree]{
             auto t = InfixParser::Parse("X1 + X2 + X3", ds);
             for (auto& node : t.Nodes()) {
                 if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.1); }
@@ -122,7 +122,7 @@ TEST_CASE("Parameter optimization", "[optimizer]")
     constexpr Operon::Scalar looseTol { 0.5F };
     constexpr Operon::Scalar paramTol { 0.01F };
 
-    auto checkExact = [&](OptimizerBase& optimizer) {
+    auto checkExact = [&](OptimizerBase& optimizer) -> void {
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(summary.FinalCost < summary.InitialCost);
         CHECK(summary.FinalCost < tightTol);
@@ -131,7 +131,7 @@ TEST_CASE("Parameter optimization", "[optimizer]")
         }
     };
 
-    auto checkImproved = [&](OptimizerBase& optimizer) {
+    auto checkImproved = [&](OptimizerBase& optimizer) -> void {
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(summary.FinalCost < summary.InitialCost);
         CHECK(summary.FinalCost < looseTol);

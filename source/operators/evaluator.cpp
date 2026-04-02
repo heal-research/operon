@@ -62,7 +62,7 @@ namespace {
         interpreter.Evaluate(coeff, trainingRange, buf);
         if (scaling_) {
             auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
-            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) { return (a * x) + b; });
+            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
         }
         auto fit = static_cast<Operon::Scalar>(error_(buf, targetValues));
 
@@ -85,7 +85,7 @@ namespace {
             auto const& nodes = tree.Nodes();
             (void) tree.Hash(hashmode_);
             Operon::Vector<Operon::Hash> hash(nodes.size());;
-            std::ranges::transform(nodes, hash.begin(), [](auto const& n) { return n.CalculatedHashValue; });
+            std::ranges::transform(nodes, hash.begin(), [](auto const& n) -> auto { return n.CalculatedHashValue; });
             std::ranges::stable_sort(hash);
             divmap_[tree.HashValue()] = std::move(hash);
         }
@@ -102,7 +102,7 @@ namespace {
         (void)ind.Genotype.Hash(hashmode_);
         Operon::Vector<Operon::Hash> lhs(ind.Genotype.Length());
         auto const& nodes = ind.Genotype.Nodes();
-        std::ranges::transform(nodes, lhs.begin(), [](auto const& n) { return n.CalculatedHashValue; });
+        std::ranges::transform(nodes, lhs.begin(), [](auto const& n) -> auto { return n.CalculatedHashValue; });
         std::ranges::stable_sort(lhs);
         auto const& values = divmap_.values();
 
@@ -147,7 +147,7 @@ namespace {
                 return { static_cast<Operon::Scalar>(accumulate<Operon::Scalar>(f.begin(), f.end()).mean) };
             }
             case AggregateType::HarmonicMean: {
-                auto stats = accumulate<Operon::Scalar>(f.begin(), f.end(), [](auto x) { return 1/x; });
+                auto stats = accumulate<Operon::Scalar>(f.begin(), f.end(), [](auto x) -> auto { return 1/x; });
                 return { static_cast<Operon::Scalar>(stats.count / stats.sum) };
             }
             case AggregateType::Sum: {

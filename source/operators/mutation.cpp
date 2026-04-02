@@ -18,7 +18,7 @@ namespace Operon {
 auto DiscretePointMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
     auto& nodes = tree.Nodes();
-    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsLeaf(); });
+    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) -> auto { return n.IsLeaf(); });
     ENSURE(it < nodes.end());
 
     auto s = std::reduce(weights_.cbegin(), weights_.cend(), Operon::Scalar { 0 }, std::plus {});
@@ -55,7 +55,7 @@ auto MultiMutation::operator()(Operon::RandomGenerator& random, Tree tree) const
 auto ChangeVariableMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
     auto& nodes = tree.Nodes();
-    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return n.IsVariable(); });
+    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) -> auto { return n.IsVariable(); });
     if (it == nodes.end()) {
         return tree; // no variables in the tree, nothing to do
     }
@@ -68,7 +68,7 @@ auto ChangeFunctionMutation::operator()(Operon::RandomGenerator& random, Tree tr
 {
     auto& nodes = tree.Nodes();
 
-    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) { return !n.IsLeaf(); });
+    auto it = Operon::Random::Sample(random, nodes.begin(), nodes.end(), [](auto const& n) -> auto { return !n.IsLeaf(); });
     if (it == nodes.end()) {
         return tree; // no functions in the tree, nothing to do
     }
@@ -142,7 +142,7 @@ auto InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
     auto& nodes = tree.Nodes();
     auto const* pset = creator_->GetPrimitiveSet();
 
-    auto test = [&](auto const& node) {
+    auto test = [&](auto const& node) -> auto {
         return node.template Is<NodeType::Add, NodeType::Mul, NodeType::Sub, NodeType::Div>() && (node.Arity < pset->MaximumArity(node.HashValue));
     };
 
@@ -189,7 +189,7 @@ auto InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
 auto ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
     auto& nodes = tree.Nodes();
-    auto nFunc = std::count_if(nodes.begin(), nodes.end(), [](const auto& node) { return !node.IsLeaf(); });
+    auto nFunc = std::count_if(nodes.begin(), nodes.end(), [](const auto& node) -> auto { return !node.IsLeaf(); });
 
     if (nFunc == 0) {
         return tree;

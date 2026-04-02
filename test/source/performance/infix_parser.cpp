@@ -42,7 +42,7 @@ TEST_CASE("Parser throughput", "[performance]")
 
     size_t idx{0};
     nb::Bench bench;
-    bench.run("parse", [&]() {
+    bench.run("parse", [&]() -> void {
         auto tree = InfixParser::Parse(strings[idx], ds);
         nb::doNotOptimizeAway(tree);
         idx = (idx + 1) % nTrees;

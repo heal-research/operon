@@ -49,6 +49,6 @@ void RankTournamentSelector::Prepare(const Operon::Span<const Individual> pop) c
     SelectorBase::Prepare(pop);
     indices_.resize(pop.size());
     std::iota(indices_.begin(), indices_.end(), 0);
-    std::sort(indices_.begin(), indices_.end(), [&](auto i, auto j) { return Compare(pop[i], pop[j]); });
+    std::sort(indices_.begin(), indices_.end(), [&](auto i, auto j) -> auto { return Compare(pop[i], pop[j]); });
 }
 } // namespace Operon

@@ -280,7 +280,7 @@ auto main(int argc, char** argv) -> int
 
         auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
-        gp.Run(executor, random, [&]() { reporter(executor, gp); });
+        gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
         if (result.contains("pareto-front")) {

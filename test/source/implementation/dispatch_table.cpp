@@ -23,7 +23,7 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
     std::vector<Operon::Scalar> v{0};
     Operon::Dataset ds({x}, {v});
 
-    auto check = [&](DT const& dt, std::string const& expr, Operon::Scalar expected) {
+    auto check = [&](DT const& dt, std::string const& expr, Operon::Scalar expected) -> void {
         auto t = InfixParser::Parse(expr);
         auto p = t.GetCoefficients();
         auto r = Operon::Interpreter<Operon::Scalar, DT>(&dt, &ds, &t).Evaluate(p, Operon::Range(0, 1));
@@ -110,7 +110,7 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
         Operon::Backend::View<Scalar, S> data,
         size_t i,
         Operon::Range /*rg*/)
-    {
+    -> void {
         auto const  w   = static_cast<Scalar>(nodes[i].Value);
         auto*       dst = data.data_handle() + (i * S);
         auto const* src = data.data_handle() + ((i - 1) * S);
@@ -160,8 +160,8 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
 
     // f(x) = sin(x) + cos(x),  f'(x) = cos(x) - sin(x)
     Operon::RegisterUnary<DT, Scalar>(dt, h,
-        [](auto x) { return std::sin(x) + std::cos(x); },
-        [](auto x) { return std::cos(x) - std::sin(x); });
+        [](auto x) -> auto { return std::sin(x) + std::cos(x); },
+        [](auto x) -> auto { return std::cos(x) - std::sin(x); });
 
     SECTION("Evaluate with unit weight") {
         Operon::Node varNode(Operon::NodeType::Variable);
@@ -219,9 +219,9 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
 
     // f(a, b) = sqrt(a^2 + b^2),  ∂f/∂a = a/f,  ∂f/∂b = b/f
     Operon::RegisterBinary<DT, Scalar>(dt, h,
-        [](auto a, auto b) { return std::sqrt((a*a) + (b*b)); },
-        [](auto a, auto b) { return a / std::sqrt((a*a) + (b*b)); },
-        [](auto a, auto b) { return b / std::sqrt((a*a) + (b*b)); });
+        [](auto a, auto b) -> auto { return std::sqrt((a*a) + (b*b)); },
+        [](auto a, auto b) -> auto { return a / std::sqrt((a*a) + (b*b)); },
+        [](auto a, auto b) -> auto { return b / std::sqrt((a*a) + (b*b)); });
 
     SECTION("Evaluate with unit weight") {
         // Tree: [Variable(x), Variable(y), Dynamic(hypot)]
@@ -313,14 +313,14 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]")
     // Same function registered two ways: auto-diff vs explicit derivative.
     // Unqualified sin/cos with using-declarations allow ADL to resolve to
     // ceres::sin/cos when called with Jet<T,1> during auto-diff.
-    auto primal  = [](auto v) { using std::sin, std::cos; return sin(v) + cos(v); };
-    auto dprimal = [](auto v) { using std::sin, std::cos; return cos(v) - sin(v); };
+    auto primal  = [](auto v) -> auto { using std::sin, std::cos; return sin(v) + cos(v); };
+    auto dprimal = [](auto v) -> auto { using std::sin, std::cos; return cos(v) - sin(v); };
 
     DT dt;
     Operon::RegisterUnary<DT, Scalar>(dt, hAuto,     primal);           // Jet fallback
     Operon::RegisterUnary<DT, Scalar>(dt, hExplicit, primal, dprimal);  // explicit
 
-    auto makeTree = [&](Operon::Hash h) {
+    auto makeTree = [&](Operon::Hash h) -> Operon::Tree {
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x)->Hash;
         Operon::Node dynNode(Operon::NodeType::Dynamic, h);
@@ -382,8 +382,8 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         .Frequency = 1
     };
 
-    auto primal  = [](auto v) { return v * v * v; };
-    auto dprimal = [](auto v) { return 3 * v * v; };
+    auto primal  = [](auto v) -> auto { return v * v * v; };
+    auto dprimal = [](auto v) -> auto { return 3 * v * v; };
 
     Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
 

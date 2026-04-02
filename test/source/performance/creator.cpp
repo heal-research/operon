@@ -31,7 +31,7 @@ TEST_CASE("BTC creation throughput", "[performance]")
     std::uniform_int_distribution<size_t> dist(1, maxl);
 
     nb::Bench bench;
-    bench.run("btc", [&]() {
+    bench.run("btc", [&]() -> Tree {
         return creator(rd, dist(rd), 0, maxd);
     });
 

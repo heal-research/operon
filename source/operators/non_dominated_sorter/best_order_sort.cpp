@@ -40,11 +40,11 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
     cppsort::merge_sorter sorter;
     for (auto j = 1; j < m; ++j) {
         sortedByObjective[j] = sortedByObjective[j-1];
-        sorter(sortedByObjective[j], [&](auto i) { return pop[i][j]; });
+        sorter(sortedByObjective[j], [&](auto i) -> auto { return pop[i][j]; });
     }
 
     // utility method
-    auto addSolutionToRankSet = [&](auto s, auto j) {
+    auto addSolutionToRankSet = [&](auto s, auto j) -> auto {
         auto r = rank[s];
         auto& ss = solutionSets[j];
         if (r >= std::ssize(ss)) {
@@ -54,16 +54,16 @@ auto BestOrderSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::S
     };
 
     // algorithm 4 in the original paper
-    auto dominationCheck = [&](auto s, auto t) {
+    auto dominationCheck = [&](auto s, auto t) -> auto {
         auto const& a = pop[s].Fitness;
         auto const& b = pop[t].Fitness;
         return m == 2
-            ? std::ranges::none_of(comparisonSets[t], [&](auto i) { return a[i] < b[i]; })
-            : eve::algo::none_of(eve::views::zip(a, b), [](auto t) { return kumi::apply(std::less{}, t); });
+            ? std::ranges::none_of(comparisonSets[t], [&](auto i) -> auto { return a[i] < b[i]; })
+            : eve::algo::none_of(eve::views::zip(a, b), [](auto t) -> auto { return kumi::apply(std::less{}, t); });
     };
 
     // algorithm 3 in the original paper
-    auto findRank = [&](auto s, auto j) {
+    auto findRank = [&](auto s, auto j) -> auto {
         bool done{false};
 
         for (auto k = 0; k < rc; ++k) {

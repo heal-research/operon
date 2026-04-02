@@ -22,10 +22,10 @@ namespace Operon {
 
         Operon::Vector<Operon::Vector<size_t>> fronts;
 
-        auto dominates = [&](auto const& a, auto const& b) {
+        auto dominates = [&](auto const& a, auto const& b) -> auto {
             return m == 2
-                ? std::ranges::all_of(std::ranges::iota_view{0, m}, [&](auto k) { return a[k] <= b[k]; })
-                : eve::algo::all_of(eve::views::zip(a, b), [](auto t) { auto [x, y] = t; return x <= y; });
+                ? std::ranges::all_of(std::ranges::iota_view{0, m}, [&](auto k) -> auto { return a[k] <= b[k]; })
+                : eve::algo::all_of(eve::views::zip(a, b), [](auto t) -> auto { auto [x, y] = t; return x <= y; });
         };
 
         cppsort::merge_sorter sorter;

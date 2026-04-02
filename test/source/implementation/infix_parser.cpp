@@ -39,7 +39,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
 
     Operon::Vector<Operon::Tree> parsedTrees;
     parsedTrees.reserve(nTrees);
-    std::transform(trees.begin(), trees.end(), std::back_inserter(parsedTrees), [&](const auto& tree) {
+    std::transform(trees.begin(), trees.end(), std::back_inserter(parsedTrees), [&](const auto& tree) -> auto {
         return InfixParser::Parse(InfixFormatter::Format(tree, ds, 50), ds);
     });
 
@@ -127,7 +127,7 @@ TEST_CASE("Formatter output", "[parser]")
         constexpr size_t maxLength = 20;
         Operon::BalancedTreeCreator btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 
-        auto validateString = [](auto const& s) {
+        auto validateString = [](auto const& s) -> auto {
             size_t lp{0};
             size_t rp{0};
             for (auto c : s) {
