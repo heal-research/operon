@@ -88,7 +88,7 @@ TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
     }
 }
 
-TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
+TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT    = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
@@ -145,7 +145,7 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
     }
 }
 
-TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
+TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT     = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
@@ -249,7 +249,7 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
     }
 }
 
-TEST_CASE("PrimitiveSet::AddFunction - user-defined symbol in tree generation", "[interpreter]")
+TEST_CASE("PrimitiveSet::AddFunction - user-defined symbol in tree generation", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     auto const h1 = Operon::Hasher{}("test::sincos");  // unary
     auto const h2 = Operon::Hasher{}("test::hypot");   // binary
@@ -298,7 +298,7 @@ TEST_CASE("PrimitiveSet::AddFunction - user-defined symbol in tree generation", 
     }
 }
 
-TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]")
+TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT     = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
@@ -361,7 +361,7 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]")
     }
 }
 
-TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]")
+TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT     = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;

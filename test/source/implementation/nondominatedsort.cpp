@@ -41,7 +41,7 @@ auto InitializePop(Operon::RandomGenerator& random, auto& dist, size_t n, size_t
 }
 } // namespace
 
-TEST_CASE("Hand-crafted Pareto fronts", "[algorithms]")
+TEST_CASE("Hand-crafted Pareto fronts", "[algorithms]") // NOLINT(readability-function-cognitive-complexity)
 {
     SECTION("2D points with known fronts") {
         Operon::Vector<Operon::Vector<Operon::Scalar>> points = {{0, 7}, {1, 5}, {2, 3}, {4, 2}, {7, 1}, {10, 0}, {2, 6}, {4, 4}, {10, 2}, {6, 6}, {9, 5}};
@@ -150,7 +150,7 @@ TEST_CASE("Non-dominated sort edge cases", "[algorithms]")
 // Tagged [.] so it only runs when explicitly requested: operon_test "[.][minseed]"
 // Sweeps many seeds at small n to find the minimum population size that triggers
 // the RankIntersectSorter vs DeductiveSorter disagreement.
-TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]")
+TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]") // NOLINT(readability-function-cognitive-complexity)
 {
     RankIntersectSorter const rs;
     DeductiveSorter const    ds;
@@ -215,7 +215,7 @@ TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]")
 // This test reproduces the disagreement between RankIntersectSorter and DeductiveSorter
 // and prints every individual whose rank assignment differs, along with their fitness values.
 // Run it to find the concrete pair that violates the algorithm's assumptions.
-TEST_CASE("RankIntersect vs Deductive disagreement reproducer", "[.][rankdebug]")
+TEST_CASE("RankIntersect vs Deductive disagreement reproducer", "[.][rankdebug]") // NOLINT(readability-function-cognitive-complexity)
 {
     Operon::RandomGenerator rd(1234);
     std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
