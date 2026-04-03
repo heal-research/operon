@@ -16,7 +16,7 @@ namespace {
     std::size_t constexpr ONES{~ZEROS};
     std::size_t constexpr DIGITS{std::numeric_limits<uint64_t>::digits};
 
-    using RawBitset = std::unique_ptr<uint64_t[]>;
+    using RawBitset = std::unique_ptr<uint64_t[]>; // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
 
     cppsort::merge_sorter const Sorter;
 
@@ -32,7 +32,7 @@ namespace {
     {
         ENSURE(n > 0);
         using E = typename std::remove_extent_t<T>;
-        auto ptr = std::make_unique<E[]>(n);
+        auto ptr = std::make_unique<E[]>(n); // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
         if (init) { std::fill_n(ptr.get(), n, init.value()); }
         return ptr;
     }
@@ -72,7 +72,7 @@ namespace {
 
             auto sz = hi-lo+1;
             if (sz == 0) { lo = hi+1; } else {
-                p = MakeUnique<uint64_t[]>(sz);
+                p = MakeUnique<uint64_t[]>(sz); // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
                 p[0] = (ONES << static_cast<uint>(r)) & mask[q];
                 std::copy_n(mask.get()+q+1, sz-1, p.get()+1);
                 while (lo <= hi && (p[lo] == ZEROS)) { ++lo; }
@@ -92,7 +92,7 @@ namespace {
         auto const n = std::ssize(rank);
         using E = std::remove_extent_t<typename decltype(s)::element_type>;
         auto constexpr D = std::numeric_limits<E>::digits;
-        auto const nb = n / D + static_cast<std::size_t>(n % D != 0);
+        auto const nb = (n / D) + static_cast<std::size_t>(n % D != 0);
         if (r+1UL == rankset.size()) {                 // new rankset if necessary
             auto p = MakeUnique<uint64_t[]>(nb, E{0}); // NOLINT
             rankset.push_back(std::move(p));
@@ -134,7 +134,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
 
     // constants
     auto const nb { static_cast<int>(n / DIGITS) + static_cast<int>(n % DIGITS != 0) };
-    std::size_t const ub = DIGITS * nb - n; // number of unused bits at the end of the last block (must be set to zero)
+    std::size_t const ub = (DIGITS * nb) - n; // number of unused bits at the end of the last block (must be set to zero)
 
     Operon::Vector<RawBitset> rs;
     rs.push_back(MakeUnique<uint64_t[]>(nb, ONES)); // vector of sets keeping track of individuals whose rank was updated NOLINT
@@ -172,7 +172,7 @@ auto RankIntersectSorter::Sort(Operon::Span<Operon::Individual const> pop, Opero
             if (b < a) { continue; }
 
             std::span<uint64_t> pb(bits.get() + a-q, b-a+1);
-            std::span<uint64_t const> pm(mask.get() + a, b-a+1);
+            std::span<uint64_t const> const pm(mask.get() + a, b-a+1);
             // eve::algo::transform_to(eve::views::zip(pb, pm), pb, [](auto t) { return kumi::apply(std::bit_and{}, t); });
             std::ranges::transform(pb, pm, std::begin(pb), std::bit_and{});
             while (lo <= hi && (bits[lo] == ZEROS)) { ++lo; }

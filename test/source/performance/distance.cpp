@@ -12,16 +12,16 @@
 
 #include "nanobench.h"
 
-namespace Operon {
-namespace Test {
+
+namespace Operon::Test {
 
 template<typename Callable>
 struct ComputeDistanceMatrix {
     explicit ComputeDistanceMatrix(Callable&& f)
-        : f_(f) {}
+        : f_(std::move(f)) {}
 
     template<typename T>
-    inline auto operator()(std::vector<Operon::Vector<T>> const& hashes) const noexcept -> double
+    auto operator()(std::vector<Operon::Vector<T>> const& hashes) const noexcept -> double
     {
         double d = 0;
         for (size_t i = 0; i < hashes.size() - 1; ++i) {
@@ -32,13 +32,13 @@ struct ComputeDistanceMatrix {
         return 2 * d / (hashes.size() * (hashes.size() - 1));
     }
 
-    Callable f_;
+    Callable f_; // NOLINT(readability-identifier-naming)
 };
 
-TEST_CASE("Intersection performance", "[performance]")
+TEST_CASE("Intersection performance", "[performance]") // NOLINT(readability-function-cognitive-complexity)
 {
-    size_t n = 1000;
-    size_t maxLength = 50;
+    size_t const n = 1000;
+    size_t const maxLength = 50;
     size_t maxDepth = 1000;
 
     Operon::RandomGenerator rd(1234);
@@ -52,14 +52,14 @@ TEST_CASE("Intersection performance", "[performance]")
     std::vector<Tree> trees(n);
     BalancedTreeCreator btc(&grammar, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
     UniformCoefficientInitializer coeffInit;
-    std::generate(trees.begin(), trees.end(), [&]() { auto tree = btc(rd, sizeDistribution(rd), 0, maxDepth); coeffInit(rd, tree); return tree; });
+    std::generate(trees.begin(), trees.end(), [&]() -> Tree { auto tree = btc(rd, sizeDistribution(rd), 0, maxDepth); coeffInit(rd, tree); return tree; });
 
     std::vector<Operon::Vector<Operon::Hash>> hashesStrict(trees.size());
     std::vector<Operon::Vector<Operon::Hash>> hashesStruct(trees.size());
 
-    const auto hashFunc = [](auto& tree, Operon::HashMode mode) { return MakeHashes(tree, mode); };
-    std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) { return hashFunc(tree, Operon::HashMode::Strict); });
-    std::transform(trees.begin(), trees.end(), hashesStruct.begin(), [&](Tree tree) { return hashFunc(tree, Operon::HashMode::Relaxed); });
+    const auto hashFunc = [](auto& tree, Operon::HashMode mode) -> auto { return MakeHashes(tree, mode); };
+    std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Strict); });
+    std::transform(trees.begin(), trees.end(), hashesStruct.begin(), [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Relaxed); });
 
     auto totalOps = trees.size() * (trees.size() - 1) / 2;
 
@@ -67,8 +67,8 @@ TEST_CASE("Intersection performance", "[performance]")
         ankerl::nanobench::Bench b;
         b.performanceCounters(true).relative(true);
 
-        b.batch(totalOps).run("xxhash", [&]() {
-            std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) { return hashFunc(tree, Operon::HashMode::Strict); });
+        b.batch(totalOps).run("xxhash", [&]() -> void {
+            std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Strict); });
         });
     }
 
@@ -79,35 +79,35 @@ TEST_CASE("Intersection performance", "[performance]")
         auto s = static_cast<double>(totalOps);
         double d = 0;
 
-        b.batch(s).run("jaccard strict", [&]() {
-            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::Jaccard(lhs, rhs); };
-            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+        b.batch(s).run("jaccard strict", [&]() -> void {
+            auto f = [](auto const& lhs, auto const& rhs) -> auto { return Operon::Distance::Jaccard(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> const cdm(std::move(f));
             d = cdm(hashesStrict);
         });
         CHECK(d >= 0.0);
 
-        b.batch(s).run("jaccard relaxed", [&]() {
-            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::Jaccard(lhs, rhs); };
-            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+        b.batch(s).run("jaccard relaxed", [&]() -> void {
+            auto f = [](auto const& lhs, auto const& rhs) -> auto { return Operon::Distance::Jaccard(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> const cdm(std::move(f));
             d = cdm(hashesStruct);
         });
         CHECK(d >= 0.0);
 
-        b.batch(s).run("sorensen-dice strict", [&]() {
-            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::SorensenDice(lhs, rhs); };
-            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+        b.batch(s).run("sorensen-dice strict", [&]() -> void {
+            auto f = [](auto const& lhs, auto const& rhs) -> auto { return Operon::Distance::SorensenDice(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> const cdm(std::move(f));
             d = cdm(hashesStrict);
         });
         CHECK(d >= 0.0);
 
-        b.batch(s).run("sorensen-dice relaxed", [&]() {
-            auto f = [](auto const& lhs, auto const& rhs) { return Operon::Distance::SorensenDice(lhs, rhs); };
-            ComputeDistanceMatrix<decltype(f)> cdm(std::move(f));
+        b.batch(s).run("sorensen-dice relaxed", [&]() -> void {
+            auto f = [](auto const& lhs, auto const& rhs) -> auto { return Operon::Distance::SorensenDice(lhs, rhs); };
+            ComputeDistanceMatrix<decltype(f)> const cdm(std::move(f));
             d = cdm(hashesStruct);
         });
         CHECK(d >= 0.0);
     }
 }
 
-} // namespace Test
-} // namespace Operon
+} // namespace Operon::Test
+

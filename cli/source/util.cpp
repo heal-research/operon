@@ -125,7 +125,7 @@ auto PrintPrimitives(PrimitiveSetConfig config) -> void
         auto hash = Node(type).HashValue;
         auto enabled = tmpSet.Contains(hash) && tmpSet.IsEnabled(hash);
         auto freq = enabled ? tmpSet.Frequency(hash) : 0U;
-        Node node(type);
+        Node const node(type);
         fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled, freq != 0U ? std::to_string(freq) : "-");
     }
 }
@@ -184,16 +184,54 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
     return opts;
 }
 
+auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
+                 Range& trainingRange, Range& testRange) -> void
+{
+    auto const rows = dataset.Rows<std::size_t>();
+    if (!result.contains("train")) {
+        trainingRange = Range { 0, 2 * rows / 3 };
+    }
+    if (!result.contains("test")) {
+        if (trainingRange.Start() > 0) {
+            testRange = Range { 0, trainingRange.Start() };
+        } else if (trainingRange.End() < rows) {
+            testRange = Range { trainingRange.End(), rows };
+        } else {
+            testRange = Range { 0, 1 };
+        }
+    }
+}
+
+auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
+                 Hash targetHash) -> std::vector<Hash>
+{
+    if (!result.contains("inputs")) {
+        auto inputs = dataset.VariableHashes();
+        std::erase(inputs, targetHash);
+        return inputs;
+    }
+    std::vector<Hash> inputs;
+    for (auto const& tok : Split(result["inputs"].as<std::string>(), ',')) {
+        if (auto res = dataset.GetVariable(tok); res.has_value()) {
+            inputs.push_back(res->Hash);
+        } else {
+            throw std::runtime_error(fmt::format("variable {} does not exist in the dataset", tok));
+        }
+    }
+    return inputs;
+}
+
 auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult {
+    auto const helpText = opts.help(); // capture before move
     cxxopts::ParseResult result;
     try {
-        result = opts.parse(argc, argv);
+        result = std::move(opts).parse(argc, argv);
     } catch (cxxopts::exceptions::parsing const& ex) {
         fmt::print(stderr, "error: {}. rerun with --help to see available options.\n", ex.what());
         std::exit(EXIT_FAILURE);
     }
     if (result.arguments().empty() || result.contains("help")) {
-        fmt::print("{}\n", opts.help());
+        fmt::print("{}\n", helpText);
         std::exit(EXIT_SUCCESS);
     }
     if (result.contains("version")) {

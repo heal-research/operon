@@ -8,7 +8,7 @@
 
 namespace Operon {
 
-auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, std::string& current, int decimalPrecision) -> void
+auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, std::string& current, int decimalPrecision) -> void // NOLINT(readability-function-cognitive-complexity)
 {
     const auto& s = tree[i];
     if (s.IsConstant()) {
