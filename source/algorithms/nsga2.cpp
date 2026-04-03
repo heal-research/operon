@@ -96,7 +96,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     std::transform(fronts_.front().begin(), fronts_.front().end(), std::back_inserter(best_), [&](auto i) -> auto { return pop[i]; });
 }
 
-auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report, bool warmStart) -> void
+auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report, bool warmStart) -> void // NOLINT(readability-function-cognitive-complexity)
 {
     Reset();
 

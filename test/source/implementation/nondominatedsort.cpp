@@ -172,10 +172,12 @@ TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]") // NOLINT(r
                 auto fDs = ds.Sort(pop, 0);
                 Operon::Vector<int> rankRs(pop.size(), -1);
                 Operon::Vector<int> rankDs(pop.size(), -1);
-                for (auto fi = 0; fi < std::ssize(fRs); ++fi)
-                    for (auto idx : fRs[fi]) rankRs[idx] = fi;
-                for (auto fi = 0; fi < std::ssize(fDs); ++fi)
-                    for (auto idx : fDs[fi]) rankDs[idx] = fi;
+                for (auto fi = 0; fi < std::ssize(fRs); ++fi) {
+                    for (auto idx : fRs[fi]) { rankRs[idx] = fi; }
+                }
+                for (auto fi = 0; fi < std::ssize(fDs); ++fi) {
+                    for (auto idx : fDs[fi]) { rankDs[idx] = fi; }
+                }
                 bool any = false;
                 for (size_t i = 0; i < pop.size(); ++i) {
                     if (rankRs[i] != rankDs[i]) { any = true; break; }
@@ -194,10 +196,12 @@ TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]") // NOLINT(r
                 auto fDs = ds.Sort(pop, 0);
                 Operon::Vector<int> rankRs(pop.size(), -1);
                 Operon::Vector<int> rankDs(pop.size(), -1);
-                for (auto fi = 0; fi < std::ssize(fRs); ++fi)
-                    for (auto idx : fRs[fi]) rankRs[idx] = fi;
-                for (auto fi = 0; fi < std::ssize(fDs); ++fi)
-                    for (auto idx : fDs[fi]) rankDs[idx] = fi;
+                for (auto fi = 0; fi < std::ssize(fRs); ++fi) {
+                    for (auto idx : fRs[fi]) { rankRs[idx] = fi; }
+                }
+                for (auto fi = 0; fi < std::ssize(fDs); ++fi) {
+                    for (auto idx : fDs[fi]) { rankDs[idx] = fi; }
+                }
                 for (size_t i = 0; i < pop.size(); ++i) {
                     if (rankRs[i] != rankDs[i]) {
                         fmt::println("  ind {:4d}  fitness={}  RankIntersect={}  Deductive={}",
@@ -236,10 +240,12 @@ TEST_CASE("RankIntersect vs Deductive disagreement reproducer", "[.][rankdebug]"
             // Build per-individual rank maps
             Operon::Vector<int> rankRs(pop.size(), -1);
             Operon::Vector<int> rankDs(pop.size(), -1);
-            for (auto fi = 0; fi < std::ssize(fRs); ++fi)
-                for (auto idx : fRs[fi]) rankRs[idx] = fi;
-            for (auto fi = 0; fi < std::ssize(fDs); ++fi)
-                for (auto idx : fDs[fi]) rankDs[idx] = fi;
+            for (auto fi = 0; fi < std::ssize(fRs); ++fi) {
+                for (auto idx : fRs[fi]) { rankRs[idx] = fi; }
+            }
+            for (auto fi = 0; fi < std::ssize(fDs); ++fi) {
+                for (auto idx : fDs[fi]) { rankDs[idx] = fi; }
+            }
 
             bool any = false;
             for (size_t i = 0; i < pop.size(); ++i) {

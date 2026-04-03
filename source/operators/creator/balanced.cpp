@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <algorithm>
 #include <random>
-#include <span>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -16,6 +15,18 @@
 #include "operon/core/types.hpp"
 #include "operon/random/random.hpp"
 
+namespace {
+auto InitNode(Operon::Node& node, Operon::Span<Operon::Hash const> variables, Operon::RandomGenerator& random) -> void {
+    if (node.IsLeaf()) {
+        if (node.IsVariable()) {
+            node.HashValue = *Operon::Random::Sample(random, variables.begin(), variables.end());
+            node.CalculatedHashValue = node.HashValue;
+        }
+        node.Value = 1;
+    }
+}
+} // anonymous namespace
+
 namespace Operon {
 auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*args*/, size_t /*args*/) const -> Tree
 {
@@ -24,15 +35,6 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
 
     auto const& variables = GetVariables();
-    auto init = [&](Node& node) -> void {
-        if (node.IsLeaf()) {
-            if (node.IsVariable()) {
-                node.HashValue = *Random::Sample(random, variables.begin(), variables.end());
-                node.CalculatedHashValue = node.HashValue;
-            }
-            node.Value = 1;
-        }
-    };
 
     auto const requestedLen = targetLen;
     targetLen = AchievableLength(targetLen);
@@ -46,7 +48,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     auto minArity = std::min(minFunctionArity, maxArity); // -1 because we start with a root
 
     auto root = pset->SampleRandomSymbol(random, minArity, maxArity);
-    init(root);
+    InitNode(root, variables, random);
 
     if (root.IsLeaf()) {
         return Tree({ root }).UpdateNodes();
@@ -73,7 +75,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
             }
 
             auto child = pset->SampleRandomSymbol(random, minArity, maxArity);
-            init(child);
+            InitNode(child, variables, random);
             tuples.emplace_back(child, childDepth, 0);
             openSlots += child.Arity;
         }

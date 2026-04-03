@@ -90,7 +90,7 @@ TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-funct
         std::ranges::generate(trees, [&]() -> Tree { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
         auto totalOps = TotalNodes(trees) * range.Size();
-        b.batch(totalOps);
+        b.batch(static_cast<double>(totalOps));
         b.run(name, [&]() -> void { Evaluate<Operon::Scalar>(executor, dtable, trees, ds, range); });
     };
 
@@ -219,7 +219,7 @@ TEST_CASE("Evaluator performance", "[performance]")
             return evaluator(rd, ind, slots[id]).front();
         });
 
-        b.batch(totalNodes * range.Size()).epochs(10).epochIterations(100).run(name, [&]() -> double {
+        b.batch(static_cast<double>(totalNodes * range.Size())).epochs(10).epochIterations(100).run(name, [&]() -> double {
             sum = 0;
             executor.run(taskflow).wait();
             return sum;
@@ -268,7 +268,7 @@ TEST_CASE("Parallel interpreter", "[performance]")
     std::iota(threads.begin(), threads.end(), 1);
     Operon::Vector<Operon::Scalar> result(trees.size() * range.Size());
     for (auto t : threads) {
-        b.batch(TotalNodes(trees) * range.Size()).run(fmt::format("{} thread(s)", t), [&]() -> void { Operon::EvaluateTrees(trees, &ds, range, result, t); });
+        b.batch(static_cast<double>(TotalNodes(trees) * range.Size())).run(fmt::format("{} thread(s)", t), [&]() -> void { Operon::EvaluateTrees(trees, &ds, range, result, t); });
     }
 }
 

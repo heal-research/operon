@@ -95,61 +95,40 @@ namespace {
         }
         return opt;
     }
-} // namespace
 
-auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
-{
-    auto out = ParseOptions(argc, argv);
-    if (!out.has_value()) { return EXIT_FAILURE; }
-    auto const& result = out.value();
-
-    Operon::Dataset ds(result["dataset"].as<std::string>(), /*hasHeader=*/true);
-    auto infix = result.unmatched().front();
-    auto model = Operon::InfixParser::Parse(infix, ds);
-
-    Operon::ScalarDispatch dtable;
-    Operon::Range range{0, ds.Rows<std::size_t>()};
-    if (result["range"].count() > 0) {
-        auto res = scn::scan<std::size_t, std::size_t>(result["range"].as<std::string>(), "{}:{}");
-        ENSURE(res);
-        auto [a, b] = res->values();
-        range = Operon::Range{a, b};
-    }
-
-    int constexpr defaultPrecision{6};
-    if (result["debug"].as<bool>()) {
-        fmt::print("\nInput string:\n{}\n", infix);
-        fmt::print("Parsed tree:\n{}\n", Operon::InfixFormatter::Format(model, ds, defaultPrecision));
-        fmt::print("Data range: {}:{}\n", range.Start(), range.End());
-        fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
-    }
-    using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
-    auto est = Interpreter::Evaluate(model, ds, range);
-
-    std::string format = result["format"].as<std::string>();
-    if (result["target"].count() > 0) {
-        auto tgt = ds.GetValues(result["target"].as<std::string>()).subspan(range.Start(), range.Size());
-
-        Operon::Scalar a{0};
-        Operon::Scalar b{0};
+    auto FitScale(cxxopts::ParseResult const& result, Operon::Span<Operon::Scalar const> est, Operon::Span<Operon::Scalar const> tgt)
+        -> std::pair<Operon::Scalar, Operon::Scalar>
+    {
         if (result["scale"].count() > 0) {
             auto res = scn::scan<Operon::Scalar, Operon::Scalar>(result["scale"].as<std::string>(), "{}:{}");
             ENSURE(res);
-            a = std::get<0>(res->values());
-            b = std::get<1>(res->values());
-        } else {
-            auto [a_, b_] = Operon::FitLeastSquares(est, tgt);
-            a = static_cast<Operon::Scalar>(a_);
-            b = static_cast<Operon::Scalar>(b_);
+            auto [a, b] = res->values();
+            return { static_cast<Operon::Scalar>(a), static_cast<Operon::Scalar>(b) };
         }
+        auto [a, b] = Operon::FitLeastSquares(est, tgt);
+        return { static_cast<Operon::Scalar>(a), static_cast<Operon::Scalar>(b) };
+    }
+
+    auto PrintTargetAnalysis(
+        cxxopts::ParseResult const& result,
+        Operon::Dataset& ds,
+        Operon::Range range,
+        Operon::ScalarDispatch const& dtable,
+        Operon::Span<Operon::Scalar> est,
+        std::string const& format,
+        Operon::Tree& model
+    ) -> void
+    {
+        auto tgt = ds.GetValues(result["target"].as<std::string>()).subspan(range.Start(), range.Size());
+        auto [a, b] = FitScale(result, Operon::Span<Operon::Scalar const>{est}, tgt);
 
         std::ranges::transform(est, est.begin(), [&](auto v) -> auto { return (v * a) + b; });
-        auto r2 = -Operon::R2{}(Operon::Span<Operon::Scalar>{est}, tgt);
-        auto rs = -Operon::C2{}(Operon::Span<Operon::Scalar>{est}, tgt);
-        auto mae = Operon::MAE{}(Operon::Span<Operon::Scalar>{est}, tgt);
-        auto mse = Operon::MSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
-        auto rmse = Operon::RMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
-        auto nmse = Operon::NMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
+        auto r2   = -Operon::R2{}(Operon::Span<Operon::Scalar>{est}, tgt);
+        auto rs   = -Operon::C2{}(Operon::Span<Operon::Scalar>{est}, tgt);
+        auto mae  =  Operon::MAE{}(Operon::Span<Operon::Scalar>{est}, tgt);
+        auto mse  =  Operon::MSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
+        auto rmse =  Operon::RMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
+        auto nmse =  Operon::NMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
 
         Operon::Problem problem{&ds};
         problem.SetTrainingRange(range);
@@ -158,7 +137,6 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::Individual ind;
         ind.Genotype = model;
 
-        Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch> const interpreter{&dtable, &ds, &ind.Genotype};
         Operon::MinimumDescriptionLengthEvaluator<Operon::ScalarDispatch, Operon::GaussianLikelihood<Operon::Scalar>> const mdlEval{&problem, &dtable};
         auto mdl = mdlEval(rng, ind).front();
         auto opt = ParseOptimizer(&dtable, &problem, result["optimizer"].as<std::string>(), result["likelihood"].as<std::string>());
@@ -184,6 +162,41 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             fmt::print("initial cost: {}\n", summary.InitialCost);
             fmt::print("final cost: {}\n", summary.FinalCost);
         }
+    }
+} // namespace
+
+auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
+{
+    auto out = ParseOptions(argc, argv);
+    if (!out.has_value()) { return EXIT_FAILURE; }
+    auto const& result = out.value();
+
+    Operon::Dataset ds(result["dataset"].as<std::string>(), /*hasHeader=*/true);
+    auto infix = result.unmatched().front();
+    auto model = Operon::InfixParser::Parse(infix, ds);
+
+    Operon::ScalarDispatch const dtable;
+    Operon::Range range{0, ds.Rows<std::size_t>()};
+    if (result["range"].count() > 0) {
+        auto res = scn::scan<std::size_t, std::size_t>(result["range"].as<std::string>(), "{}:{}");
+        ENSURE(res);
+        auto [a, b] = res->values();
+        range = Operon::Range{a, b};
+    }
+
+    int constexpr defaultPrecision{6};
+    if (result["debug"].as<bool>()) {
+        fmt::print("\nInput string:\n{}\n", infix);
+        fmt::print("Parsed tree:\n{}\n", Operon::InfixFormatter::Format(model, ds, defaultPrecision));
+        fmt::print("Data range: {}:{}\n", range.Start(), range.End());
+        fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
+    }
+    using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
+    auto est = Interpreter::Evaluate(model, ds, range);
+
+    std::string const format = result["format"].as<std::string>();
+    if (result["target"].count() > 0) {
+        PrintTargetAnalysis(result, ds, range, dtable, Operon::Span<Operon::Scalar>{est}, format, model);
     } else {
         std::string out{};
         for (auto v : est) {
