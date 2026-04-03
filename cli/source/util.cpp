@@ -184,7 +184,45 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
     return opts;
 }
 
+auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
+                 Range& trainingRange, Range& testRange) -> void
+{
+    auto const rows = dataset.Rows<std::size_t>();
+    if (!result.contains("train")) {
+        trainingRange = Range { 0, 2 * rows / 3 };
+    }
+    if (!result.contains("test")) {
+        if (trainingRange.Start() > 0) {
+            testRange = Range { 0, trainingRange.Start() };
+        } else if (trainingRange.End() < rows) {
+            testRange = Range { trainingRange.End(), rows };
+        } else {
+            testRange = Range { 0, 1 };
+        }
+    }
+}
+
+auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
+                 Hash targetHash) -> std::vector<Hash>
+{
+    if (!result.contains("inputs")) {
+        auto inputs = dataset.VariableHashes();
+        std::erase(inputs, targetHash);
+        return inputs;
+    }
+    std::vector<Hash> inputs;
+    for (auto const& tok : Split(result["inputs"].as<std::string>(), ',')) {
+        if (auto res = dataset.GetVariable(tok); res.has_value()) {
+            inputs.push_back(res->Hash);
+        } else {
+            throw std::runtime_error(fmt::format("variable {} does not exist in the dataset", tok));
+        }
+    }
+    return inputs;
+}
+
 auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::ParseResult {
+    auto const helpText = opts.help(); // capture before move
     cxxopts::ParseResult result;
     try {
         result = std::move(opts).parse(argc, argv);
@@ -193,7 +231,7 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
         std::exit(EXIT_FAILURE);
     }
     if (result.arguments().empty() || result.contains("help")) {
-        fmt::print("{}\n", opts.help());
+        fmt::print("{}\n", helpText);
         std::exit(EXIT_SUCCESS);
     }
     if (result.contains("version")) {

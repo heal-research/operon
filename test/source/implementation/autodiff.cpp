@@ -43,11 +43,11 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]") // NOLINT(readability-f
         auto rev = interpreter.JacRev(parameters, range);
         auto fwd = interpreter.JacFwd(parameters, range);
 
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> const jjet(jac.data(), range.Size(), parameters.size());
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> const jjet(jac.data(), static_cast<Eigen::Index>(range.Size()), static_cast<Eigen::Index>(parameters.size()));
 
         auto f1 = std::isfinite(jjet.sum());
         auto f2 = std::isfinite(rev.sum());
-        auto ok = !f1 || (f2 && rev.isApprox(jjet, 1e-4f));
+        auto ok = !f1 || (f2 && rev.isApprox(jjet, 1e-4F));
         CHECK(ok);
     };
 
@@ -114,7 +114,7 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
     };
 
     constexpr auto n{100'000};
-    constexpr auto epsilon{1e-4f};
+    constexpr auto epsilon{1e-4F};
 
     // unary
     pset.SetConfig(NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Sqrt | NodeType::Tanh | NodeType::Constant);
@@ -130,7 +130,7 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
     for (auto const& tree : trees) {
         auto parameters = tree.GetCoefficients();
         auto [res, jac] = Util::Autodiff(tree, ds, range);
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> const jjet(jac.data(), range.Size(), parameters.size());
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, -1>> const jjet(jac.data(), static_cast<Eigen::Index>(range.Size()), static_cast<Eigen::Index>(parameters.size()));
 
         Operon::Interpreter<Operon::Scalar, decltype(dtable)> const interpreter{&dtable, &ds, &tree};
         Eigen::Array<Operon::Scalar, -1, -1> const jrev = interpreter.JacRev(parameters, range);
@@ -164,7 +164,7 @@ TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
     // Forward and reverse should agree
     auto f1 = std::isfinite(jacrev.sum());
     auto f2 = std::isfinite(jacfwd.sum());
-    auto ok = (!f1 && !f2) || (f1 && f2 && jacrev.isApprox(jacfwd, 0.01f));
+    auto ok = (!f1 && !f2) || (f1 && f2 && jacrev.isApprox(jacfwd, 0.01F));
     CHECK(ok);
 }
 

@@ -244,7 +244,7 @@ TEST_CASE("Optimizer performance", "[performance]")
                 return sz;
             });
             z += 10;
-        } while (a < s);
+        } while (a < static_cast<double>(s));
     };
 
     constexpr auto n{1000};
