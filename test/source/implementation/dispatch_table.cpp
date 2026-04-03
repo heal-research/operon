@@ -48,7 +48,7 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
         DT const dt;
         DT dt1(dt);
         DT const dt2(std::move(dt1));
-        check(dt2, "sin(1 / 2 * 3.141519)", std::sin(1.0 / 2.0 * std::numbers::pi));
+        check(dt2, "sin(1 / 2 * 3.141519)", static_cast<Operon::Scalar>(std::sin(1.0 / 2.0 * std::numbers::pi)));
     }
 
     SECTION("Construct from map") {
@@ -74,17 +74,17 @@ TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
     SECTION("Arithmetic") {
         auto t = InfixParser::Parse("2 + 3 * 4");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
-        CHECK(r[0] == Catch::Approx(14.0f));
+        CHECK(r[0] == Catch::Approx(14.0F));
     }
 
     SECTION("Transcendental functions") {
         auto t = InfixParser::Parse("exp(1)");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
-        CHECK(r[0] == Catch::Approx(std::exp(1.0f)));
+        CHECK(r[0] == Catch::Approx(std::exp(1.0F)));
 
         t = InfixParser::Parse("log(exp(1))");
         r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
-        CHECK(r[0] == Catch::Approx(1.0f).epsilon(1e-3));
+        CHECK(r[0] == Catch::Approx(1.0F).epsilon(1e-3));
     }
 }
 

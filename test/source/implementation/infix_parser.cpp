@@ -24,7 +24,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     Operon::RandomGenerator rng(1234);
 
     Eigen::Matrix<Operon::Scalar, -1, -1> values(nrow, ncol);
-    for (auto& v : values.reshaped()) { v = Operon::Random::Uniform(rng, -1.f, +1.f); }
+    for (auto& v : values.reshaped()) { v = Operon::Random::Uniform(rng, -1.F, +1.F); }
     Operon::Dataset ds(values);
 
     Operon::PrimitiveSet pset;
@@ -74,7 +74,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
 TEST_CASE("Parse specific expressions", "[parser]")
 {
     SECTION("Nested unary functions") {
-        auto str = "sin((sqrt(abs(square(sin(((-0.00191) * X6))))) - sqrt(abs(((-0.96224) / (-0.40567))))))";
+        const auto* str = "sin((sqrt(abs(square(sin(((-0.00191) * X6))))) - sqrt(abs(((-0.96224) / (-0.40567))))))";
         auto tree = Operon::InfixParser::Parse(str);
         CHECK(tree.Length() > 0);
     }
@@ -104,7 +104,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
     }
 
     SECTION("Multiple additions") {
-        auto modelStr = "1 + 2 + 3 + 4";
+        const auto* modelStr = "1 + 2 + 3 + 4";
         auto tree = Operon::InfixParser::Parse(modelStr);
 
         using DTable = DispatchTable<Operon::Scalar>;
@@ -113,7 +113,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
         std::vector<Operon::Scalar> const v{0};
         Operon::Dataset const ds({x}, {v});
         auto result = Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, Range(0, 1));
-        CHECK(result[0] == Catch::Approx(10.0f));
+        CHECK(result[0] == Catch::Approx(10.0F));
     }
 }
 

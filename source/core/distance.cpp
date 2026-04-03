@@ -62,7 +62,7 @@ namespace Operon::Distance {
             using T = typename Container::value_type;
             return CountIntersect(Operon::Span<T const>(lhs.data(), lhs.size()), Operon::Span<T const>(rhs.data(), rhs.size()));
         }
-    } // namespace (anonymous)
+    } // namespace
 
     auto Jaccard(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept -> double
     {

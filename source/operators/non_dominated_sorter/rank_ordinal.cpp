@@ -45,7 +45,7 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
         auto c = r.col(i);
         auto max = std::max_element(c.begin(), c.end());
         maxp(i) = *max;
-        maxc(i) = std::distance(c.begin(), max);
+        maxc(i) = static_cast<int>(std::distance(c.begin(), max));
     }
 
     auto dominated = [&](int i, int j) -> bool {

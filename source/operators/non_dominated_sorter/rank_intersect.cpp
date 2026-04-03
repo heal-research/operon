@@ -16,7 +16,7 @@ namespace {
     std::size_t constexpr ONES{~ZEROS};
     std::size_t constexpr DIGITS{std::numeric_limits<uint64_t>::digits};
 
-    using RawBitset = std::unique_ptr<uint64_t[]>;
+    using RawBitset = std::unique_ptr<uint64_t[]>; // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
 
     cppsort::merge_sorter const Sorter;
 
@@ -32,7 +32,7 @@ namespace {
     {
         ENSURE(n > 0);
         using E = typename std::remove_extent_t<T>;
-        auto ptr = std::make_unique<E[]>(n);
+        auto ptr = std::make_unique<E[]>(n); // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
         if (init) { std::fill_n(ptr.get(), n, init.value()); }
         return ptr;
     }
@@ -72,7 +72,7 @@ namespace {
 
             auto sz = hi-lo+1;
             if (sz == 0) { lo = hi+1; } else {
-                p = MakeUnique<uint64_t[]>(sz);
+                p = MakeUnique<uint64_t[]>(sz); // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
                 p[0] = (ONES << static_cast<uint>(r)) & mask[q];
                 std::copy_n(mask.get()+q+1, sz-1, p.get()+1);
                 while (lo <= hi && (p[lo] == ZEROS)) { ++lo; }

@@ -58,23 +58,23 @@ TEST_CASE("Tree construction and access", "[core]")
 
 TEST_CASE("Tree coefficients", "[core]")
 {
-    Node c1(NodeType::Constant); c1.Value = 3.14f; c1.Optimize = true;
-    Node c2(NodeType::Constant); c2.Value = 2.71f; c2.Optimize = true;
+    Node c1(NodeType::Constant); c1.Value = 3.14F; c1.Optimize = true;
+    Node c2(NodeType::Constant); c2.Value = 2.71F; c2.Optimize = true;
     Node const add(NodeType::Add);
     Tree tree({c1, c2, add});
     tree.UpdateNodes();
 
     auto coeff = tree.GetCoefficients();
     REQUIRE(coeff.size() == 2);
-    CHECK(coeff[0] == Catch::Approx(3.14f));
-    CHECK(coeff[1] == Catch::Approx(2.71f));
+    CHECK(coeff[0] == Catch::Approx(3.14F));
+    CHECK(coeff[1] == Catch::Approx(2.71F));
 
-    coeff[0] = 1.0f;
-    coeff[1] = 2.0f;
+    coeff[0] = 1.0F;
+    coeff[1] = 2.0F;
     tree.SetCoefficients(coeff);
     auto coeff2 = tree.GetCoefficients();
-    CHECK(coeff2[0] == Catch::Approx(1.0f));
-    CHECK(coeff2[1] == Catch::Approx(2.0f));
+    CHECK(coeff2[0] == Catch::Approx(1.0F));
+    CHECK(coeff2[1] == Catch::Approx(2.0F));
 }
 
 TEST_CASE("Dataset loading and access", "[core]")
