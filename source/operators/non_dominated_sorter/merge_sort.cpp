@@ -94,9 +94,9 @@ namespace detail {
                     offset = fw * WORD_SIZE;
                     do {
                         auto r = ranking_[offset+i];
-                        if (r >= rank) { rank = ranking_[offset + i] + 1; }
+                        if (r >= rank) { rank = r + 1; }
                         i++;
-                        i += std::countr_zero(word >> i);
+                        if (i < WORD_SIZE) { i += std::countr_zero(word >> i); }
                     } while (i < WORD_SIZE && rank <= wordRanking_[fw]);
                     if (rank > maxRank_) {
                         maxRank_ = rank;
@@ -115,7 +115,7 @@ namespace detail {
         void UpdateIncrementalBitset(size_t solutionId)
         {
             auto wordIndex = solutionId / WORD_SIZE;
-            incrementalBitset_[wordIndex] |= (word_t{1} << solutionId);
+            incrementalBitset_[wordIndex] |= (word_t{1} << (solutionId % WORD_SIZE));
             if (incBsLstWord_ < wordIndex) {
                 incBsLstWord_ = static_cast<int>(wordIndex);
             }
@@ -133,7 +133,7 @@ namespace detail {
             }
             if (wordIndex == incBsFstWord_) { //only 1 word in common
                 bitsets_[solutionId].resize(wordIndex + 1);
-                auto intersection = incrementalBitset_[incBsFstWord_] & ~(WORD_MASK << solutionId);
+                auto intersection = incrementalBitset_[incBsFstWord_] & ~(WORD_MASK << (solutionId % WORD_SIZE));
                 if (intersection != 0) {
                     bsRanges_[solutionId][FIRST_WORD_RANGE] = wordIndex;
                     bsRanges_[solutionId][LAST_WORD_RANGE] = wordIndex;
@@ -148,7 +148,7 @@ namespace detail {
             bitsets_[solutionId] = Operon::Vector<word_t>(lw + 1);
             std::copy_n(incrementalBitset_.data() + incBsFstWord_, lw - incBsFstWord_ + 1, bitsets_[solutionId].data() + incBsFstWord_);
             if (incBsLstWord_ >= wordIndex) { // update (compute intersection) the last word
-                bitsets_[solutionId][lw] = incrementalBitset_[lw] & ~(WORD_MASK << solutionId);
+                bitsets_[solutionId][lw] = incrementalBitset_[lw] & ~(WORD_MASK << (solutionId % WORD_SIZE));
                 if (bitsets_[solutionId][lw] == 0) {
                     bsRanges_[solutionId][LAST_WORD_RANGE]--;
                 }
@@ -161,7 +161,6 @@ namespace detail {
             std::fill(incrementalBitset_.begin(), incrementalBitset_.end(), 0UL);
             incBsLstWord_ = 0;
             incBsFstWord_ = std::numeric_limits<int>::max();
-            maxRank_ = 0;
         }
 
         BitsetManager() = default;

@@ -59,6 +59,7 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
 
     SECTION("2 objectives") {
         nb::Bench bench;
+        bench.title("2 objectives").minEpochIterations(20);
         const int m{2};
         for (auto n : ns) {
             run_sorter(bench, "RS",     Operon::RankIntersectSorter{},    n, m);
@@ -71,6 +72,7 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
 
     SECTION("3 objectives") {
         nb::Bench bench;
+        bench.title("3 objectives").minEpochIterations(20);
         const int m{3};
         for (auto n : ns) {
             run_sorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
@@ -81,6 +83,7 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
 
     SECTION("4 objectives") {
         nb::Bench bench;
+        bench.title("4 objectives").minEpochIterations(20);
         const int m{4};
         for (auto n : ns) {
             run_sorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
@@ -91,6 +94,7 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
 
     SECTION("5 objectives") {
         nb::Bench bench;
+        bench.title("5 objectives").minEpochIterations(20);
         const int m{5};
         for (auto n : ns) {
             run_sorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
