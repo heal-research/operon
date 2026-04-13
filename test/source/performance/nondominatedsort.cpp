@@ -45,27 +45,27 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
 {
     Operon::RandomGenerator rd{0};
 
-    auto run_sorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m) {
+    auto runSorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m) -> auto {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
         auto pop = InitializePop(rd, dist, n, m);
-        bench.run(fmt::format("{}/{}", name, n), [&]() {
+        bench.run(fmt::format("{}/{}", name, n), [&]() -> size_t {
             auto fronts = sorter(pop);
             return fronts.size();
         });
     };
 
     std::vector<int> ns;
-    std::ranges::transform(std::views::iota(1, 21), std::back_inserter(ns), [](auto i) { return 1000 * i; });
+    std::ranges::transform(std::views::iota(1, 21), std::back_inserter(ns), [](auto i) -> auto { return 1000 * i; });
 
     SECTION("2 objectives") {
         nb::Bench bench;
         bench.title("2 objectives").minEpochIterations(20);
         const int m{2};
         for (auto n : ns) {
-            run_sorter(bench, "RS",     Operon::RankIntersectSorter{},    n, m);
-            run_sorter(bench, "MS",     Operon::MergeSorter{},            n, m);
-            run_sorter(bench, "ENS-SS", Operon::EfficientSequentialSorter{}, n, m);
-            run_sorter(bench, "ENS-BS", Operon::EfficientBinarySorter{},  n, m);
+            runSorter(bench, "RS",     Operon::RankIntersectSorter{},    n, m);
+            runSorter(bench, "MS",     Operon::MergeSorter{},            n, m);
+            runSorter(bench, "ENS-SS", Operon::EfficientSequentialSorter{}, n, m);
+            runSorter(bench, "ENS-BS", Operon::EfficientBinarySorter{},  n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -75,8 +75,8 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
         bench.title("3 objectives").minEpochIterations(20);
         const int m{3};
         for (auto n : ns) {
-            run_sorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
-            run_sorter(bench, "MS", Operon::MergeSorter{},         n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter{},         n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -86,8 +86,8 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
         bench.title("4 objectives").minEpochIterations(20);
         const int m{4};
         for (auto n : ns) {
-            run_sorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
-            run_sorter(bench, "MS", Operon::MergeSorter{},         n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter{},         n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -97,8 +97,8 @@ TEST_CASE("Non-dominated sort performance", "[performance][ndsort]")
         bench.title("5 objectives").minEpochIterations(20);
         const int m{5};
         for (auto n : ns) {
-            run_sorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
-            run_sorter(bench, "MS", Operon::MergeSorter{},         n, m);
+            runSorter(bench, "RS", Operon::RankIntersectSorter{}, n, m);
+            runSorter(bench, "MS", Operon::MergeSorter{},         n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -111,28 +111,28 @@ TEST_CASE("Non-dominated sort performance (extended)", "[.][ndsort-extended]")
 {
     Operon::RandomGenerator rd{0};
 
-    auto run_sorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m) {
+    auto runSorter = [&](nb::Bench& bench, std::string const& name, auto&& sorter, int n, int m) -> auto {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
         auto pop = InitializePop(rd, dist, n, m);
-        bench.run(fmt::format("{}/{}", name, n), [&]() {
+        bench.run(fmt::format("{}/{}", name, n), [&]() -> size_t {
             auto fronts = sorter(pop);
             return fronts.size();
         });
     };
 
     std::vector<int> ns;
-    std::ranges::transform(std::views::iota(1, 21), std::back_inserter(ns), [](auto i) { return 1000 * i; });
+    std::ranges::transform(std::views::iota(1, 21), std::back_inserter(ns), [](auto i) -> auto { return 1000 * i; });
 
     SECTION("2 objectives") {
         nb::Bench bench;
         const int m{2};
         for (auto n : ns) {
-            run_sorter(bench, "RS",     Operon::RankIntersectSorter{},       n, m);
-            run_sorter(bench, "MS",     Operon::MergeSorter{},               n, m);
-            run_sorter(bench, "RO",     Operon::RankOrdinalSorter{},         n, m);
-            run_sorter(bench, "BOS",    Operon::BestOrderSorter{},           n, m);
-            run_sorter(bench, "ENS-SS", Operon::EfficientSequentialSorter{}, n, m);
-            run_sorter(bench, "ENS-BS", Operon::EfficientBinarySorter{},     n, m);
+            runSorter(bench, "RS",     Operon::RankIntersectSorter{},       n, m);
+            runSorter(bench, "MS",     Operon::MergeSorter{},               n, m);
+            runSorter(bench, "RO",     Operon::RankOrdinalSorter{},         n, m);
+            runSorter(bench, "BOS",    Operon::BestOrderSorter{},           n, m);
+            runSorter(bench, "ENS-SS", Operon::EfficientSequentialSorter{}, n, m);
+            runSorter(bench, "ENS-BS", Operon::EfficientBinarySorter{},     n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -141,10 +141,10 @@ TEST_CASE("Non-dominated sort performance (extended)", "[.][ndsort-extended]")
         nb::Bench bench;
         const int m{3};
         for (auto n : ns) {
-            run_sorter(bench, "RS",  Operon::RankIntersectSorter{}, n, m);
-            run_sorter(bench, "MS",  Operon::MergeSorter{},         n, m);
-            run_sorter(bench, "RO",  Operon::RankOrdinalSorter{},   n, m);
-            run_sorter(bench, "BOS", Operon::BestOrderSorter{},     n, m);
+            runSorter(bench, "RS",  Operon::RankIntersectSorter{}, n, m);
+            runSorter(bench, "MS",  Operon::MergeSorter{},         n, m);
+            runSorter(bench, "RO",  Operon::RankOrdinalSorter{},   n, m);
+            runSorter(bench, "BOS", Operon::BestOrderSorter{},     n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -153,10 +153,10 @@ TEST_CASE("Non-dominated sort performance (extended)", "[.][ndsort-extended]")
         nb::Bench bench;
         const int m{4};
         for (auto n : ns) {
-            run_sorter(bench, "RS",  Operon::RankIntersectSorter{}, n, m);
-            run_sorter(bench, "MS",  Operon::MergeSorter{},         n, m);
-            run_sorter(bench, "RO",  Operon::RankOrdinalSorter{},   n, m);
-            run_sorter(bench, "BOS", Operon::BestOrderSorter{},     n, m);
+            runSorter(bench, "RS",  Operon::RankIntersectSorter{}, n, m);
+            runSorter(bench, "MS",  Operon::MergeSorter{},         n, m);
+            runSorter(bench, "RO",  Operon::RankOrdinalSorter{},   n, m);
+            runSorter(bench, "BOS", Operon::BestOrderSorter{},     n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -165,10 +165,10 @@ TEST_CASE("Non-dominated sort performance (extended)", "[.][ndsort-extended]")
         nb::Bench bench;
         const int m{5};
         for (auto n : ns) {
-            run_sorter(bench, "RS",  Operon::RankIntersectSorter{}, n, m);
-            run_sorter(bench, "MS",  Operon::MergeSorter{},         n, m);
-            run_sorter(bench, "RO",  Operon::RankOrdinalSorter{},   n, m);
-            run_sorter(bench, "BOS", Operon::BestOrderSorter{},     n, m);
+            runSorter(bench, "RS",  Operon::RankIntersectSorter{}, n, m);
+            runSorter(bench, "MS",  Operon::MergeSorter{},         n, m);
+            runSorter(bench, "RO",  Operon::RankOrdinalSorter{},   n, m);
+            runSorter(bench, "BOS", Operon::BestOrderSorter{},     n, m);
         }
         bench.render(ankerl::nanobench::templates::csv(), std::cout);
     }
@@ -186,13 +186,13 @@ TEST_CASE("Single front benchmarks", "[performance]")
     nb::Bench bench;
 
     SECTION("RS") {
-        bench.run("RS single front", [&]() {
+        bench.run("RS single front", [&]() -> void {
             RankIntersectSorter{}(pop, 0);
         });
     }
 
     SECTION("MS") {
-        bench.run("MS single front", [&]() {
+        bench.run("MS single front", [&]() -> void {
             MergeSorter{}(pop, 0);
         });
     }
@@ -203,26 +203,26 @@ TEST_CASE("Non-dominated sort complexity", "[performance]")
     Operon::RandomGenerator rd{0};
     std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
 
-    auto check_complexity = [&](size_t m, auto&& sorter) {
-        std::vector<size_t> sizes{500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000};
+    auto checkComplexity = [&](size_t m, auto&& sorter) -> auto {
+        std::vector<size_t> const sizes{500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000};
         nb::Bench bench;
         bench.minEpochIterations(10);
 
         for (auto s : sizes) {
             auto pop = InitializePop(rd, dist, s, m);
-            bench.complexityN(s).run(fmt::format("n = {}", s), [&]() { return sorter(pop).size(); });
+            bench.complexityN(s).run(fmt::format("n = {}", s), [&]() -> size_t { return sorter(pop).size(); });
         }
         std::cout << bench.complexityBigO() << "\n";
     };
 
     SECTION("M=2") {
-        check_complexity(2, RankIntersectSorter{});
-        check_complexity(2, MergeSorter{});
+        checkComplexity(2, RankIntersectSorter{});
+        checkComplexity(2, MergeSorter{});
     }
 
     SECTION("M=3") {
-        check_complexity(3, RankIntersectSorter{});
-        check_complexity(3, MergeSorter{});
+        checkComplexity(3, RankIntersectSorter{});
+        checkComplexity(3, MergeSorter{});
     }
 }
 

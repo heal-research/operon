@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <algorithm>
 #include <cstddef>
 #include <numeric>
-#include <algorithm>
 #include <random>
 #include <span>
 #include <vector>
@@ -39,9 +39,7 @@ auto RankTournamentSelector::operator()(Operon::RandomGenerator& random) const -
 
     for (size_t i = 1; i < tournamentSize; ++i) {
         auto curr = uniformInt(random);
-        if (best < curr) {
-            best = curr;
-        }
+        best = std::max(best, curr);
     }
     return best;
 }
@@ -51,6 +49,6 @@ void RankTournamentSelector::Prepare(const Operon::Span<const Individual> pop) c
     SelectorBase::Prepare(pop);
     indices_.resize(pop.size());
     std::iota(indices_.begin(), indices_.end(), 0);
-    std::sort(indices_.begin(), indices_.end(), [&](auto i, auto j) { return Compare(pop[i], pop[j]); });
+    std::sort(indices_.begin(), indices_.end(), [&](auto i, auto j) -> auto { return Compare(pop[i], pop[j]); });
 }
 } // namespace Operon

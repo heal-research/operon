@@ -16,7 +16,7 @@ namespace Operon {
 // internal implementation details
 namespace {
     auto VariablesFromNames(auto const& names) {
-        Hasher hasher;
+        Hasher const hasher;
         Dataset::Variables vars;
         for (auto i = 0; i < std::ssize(names); ++i) {
             auto const& name = names[i];
@@ -57,7 +57,7 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
 
     auto ncol{0L};
 
-    Hasher hash;
+    Hasher const hash;
     Matrix m;
 
     if (hasHeader) {
@@ -65,7 +65,7 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matri
         for (auto const& row : parser) {
             for (auto const& f : row) {
                 auto h = hash(f);
-                variables_.insert({ h, { f, h, ncol++ } });
+                variables_.insert({ h, { .Name = f, .Hash = h, .Index = ncol++ } });
             }
             break; // read only the first row
         }
@@ -123,10 +123,10 @@ Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<O
     : values_(MatrixFromValues(vals))
     , map_(values_.data(), values_.rows(), values_.cols())
 {
-    Hasher hasher;
+    Hasher const hasher;
     for (auto i = 0; i < map_.cols(); ++i) {
         auto h = hasher(vars[i]);
-        variables_.insert({h, { vars[i], h, i } });
+        variables_.insert({h, { .Name = vars[i], .Hash = h, .Index = i } });
     }
 }
 
@@ -149,7 +149,7 @@ auto Dataset::VariableNames() const -> std::vector<std::string>
 {
     std::vector<std::string> names;
     names.reserve(variables_.size());
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(names), [](auto const& p) { return p.second.Name; });
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(names), [](auto const& p) -> auto { return p.second.Name; });
     return names;
 }
 
@@ -157,7 +157,7 @@ auto Dataset::VariableHashes() const -> std::vector<Operon::Hash>
 {
     std::vector<Operon::Hash> hashes;
     hashes.reserve(variables_.size());
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(hashes), [](auto const& p) { return p.second.Hash; });
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(hashes), [](auto const& p) -> auto { return p.second.Hash; });
     return hashes;
 }
 
@@ -165,7 +165,7 @@ auto Dataset::VariableIndices() const -> std::vector<std::size_t>
 {
     std::vector<std::size_t> indices;
     indices.reserve(variables_.size());
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(indices), [](auto const& p) { return p.second.Index; });
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(indices), [](auto const& p) -> auto { return p.second.Index; });
     return indices;
 }
 
@@ -208,7 +208,7 @@ void Dataset::Shuffle(Operon::RandomGenerator& random)
     Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values_.rows());
     perm.setIdentity();
     // generate a random permutation
-    Operon::Span<decltype(perm)::IndicesType::Scalar> idx(perm.indices().data(), perm.indices().size());
+    Operon::Span<decltype(perm)::IndicesType::Scalar> const idx(perm.indices().data(), perm.indices().size());
     std::shuffle(idx.begin(), idx.end(), random);
     values_.matrix().applyOnTheLeft(perm); // permute rows
 }

@@ -7,11 +7,11 @@
 #include <eve/module/algo.hpp>
 
 namespace Operon::Distance {
-    namespace detail {
+    namespace {
         template<typename T>
         auto Intersect(T const* lhs, T const* rhs) {
             eve::wide<T> const a(lhs);
-            return [&]<auto... Idx>(std::index_sequence<Idx...>){
+            return [&]<auto... Idx>(std::index_sequence<Idx...>) -> auto {
                 return eve::any(((a == rhs[Idx]) || ...));
             }(std::make_index_sequence<eve::wide<T>::size()>{});
         }
@@ -62,20 +62,20 @@ namespace Operon::Distance {
             using T = typename Container::value_type;
             return CountIntersect(Operon::Span<T const>(lhs.data(), lhs.size()), Operon::Span<T const>(rhs.data(), rhs.size()));
         }
-    } // namespace detail
+    } // namespace
 
     auto Jaccard(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept -> double
     {
-        size_t n = lhs.size() + rhs.size();
-        size_t c = detail::CountIntersect(lhs, rhs);
-        return static_cast<double>(n - 2 * c) / static_cast<double>(n);
+        size_t const n = lhs.size() + rhs.size();
+        size_t const c = CountIntersect(lhs, rhs);
+        return static_cast<double>(n - (2 * c)) / static_cast<double>(n);
     }
 
     auto SorensenDice(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept -> double
     {
-        size_t n = lhs.size() + rhs.size();
-        size_t c = detail::CountIntersect(lhs, rhs);
-        return 1 - 2 * static_cast<double>(c) / static_cast<double>(n);
+        size_t const n = lhs.size() + rhs.size();
+        size_t const c = CountIntersect(lhs, rhs);
+        return 1 - (2 * static_cast<double>(c) / static_cast<double>(n));
     }
 
 } // namespace Operon::Distance

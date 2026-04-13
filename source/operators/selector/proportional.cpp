@@ -46,9 +46,9 @@ void ProportionalSelector::Prepare() const
         vmin = std::min(vmin, f);
         vmax = std::max(vmax, f);
     }
-    auto prepare = [=](auto p) { return std::make_pair(vmax - p.first, p.second); };
+    auto prepare = [=](auto p) -> auto { return std::make_pair(vmax - p.first, p.second); };
     std::transform(fitness_.begin(), fitness_.end(), fitness_.begin(), prepare);
     std::sort(fitness_.begin(), fitness_.end());
-    std::inclusive_scan(fitness_.begin(), fitness_.end(), fitness_.begin(), [](auto lhs, auto rhs) { return std::make_pair(lhs.first + rhs.first, rhs.second); });
+    std::inclusive_scan(fitness_.begin(), fitness_.end(), fitness_.begin(), [](auto lhs, auto rhs) -> auto { return std::make_pair(lhs.first + rhs.first, rhs.second); });
 }
 }  // namespace Operon

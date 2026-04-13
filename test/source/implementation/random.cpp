@@ -45,7 +45,7 @@ TEST_CASE("Conditional random sampling", "[core]")
     size_t samples = 1'000'000;
     Operon::RandomGenerator rng(1234);
 
-    auto condition = [](auto v) { return v % 2 == 0; };
+    auto condition = [](auto v) -> auto { return v % 2 == 0; };
 
     std::vector<size_t> counts(vec.size(), 0);
 
