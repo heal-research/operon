@@ -62,7 +62,15 @@ namespace Operon {
             auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
             std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) { return (a * x) + b; });
         }
-        auto fit = static_cast<Operon::Scalar>(error_(buf, targetValues));
+
+        Operon::Scalar fit;
+        if (weights_.empty()) {
+            fit = static_cast<Operon::Scalar>(error_(buf, targetValues));
+
+        } else {
+            ENSURE(weights_.size() == buf.size());
+            fit = static_cast<Operon::Scalar>(error_(buf, targetValues, weights_));
+        }
 
         if (!std::isfinite(fit)) {
             fit = EvaluatorBase::ErrMax;
