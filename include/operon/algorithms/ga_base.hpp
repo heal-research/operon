@@ -61,6 +61,9 @@ public:
     [[nodiscard]] auto Elapsed() const -> double { return elapsed_; }
     auto Elapsed() -> double& { return elapsed_; }
 
+    [[nodiscard]] auto SortTime() const -> double { return sort_time_; }
+    auto SortTime() -> double& { return sort_time_; }
+
     [[nodiscard]] auto IsFitted() const -> bool { return isFitted_; }
     auto IsFitted() -> bool& { return isFitted_; }
 
@@ -94,7 +97,8 @@ private:
     Operon::Span<Individual> offspring_;
 
     size_t generation_{0};
-    double elapsed_{0}; // elapsed time in microseconds
+    double elapsed_{0};    // elapsed time in seconds
+    double sort_time_{0};  // cumulative non-dominated sort time in seconds
     bool isFitted_{false};
 };
 

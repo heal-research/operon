@@ -78,7 +78,9 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) -> auto { return !ind.Rank; });
     Operon::Span<Operon::Individual const> const uniq(pop.begin(), r);
     // do the sorting
+    auto const ts = std::chrono::steady_clock::now();
     fronts_ = (*sorter_)(uniq, eps);
+    SortTime() += std::chrono::duration<double>(std::chrono::steady_clock::now() - ts).count();
     // sort the fronts for consistency between sorting algos
     for (auto& f : fronts_) {
         std::stable_sort(f.begin(), f.end());

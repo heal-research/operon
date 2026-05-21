@@ -191,6 +191,7 @@ public:
             T{ "jac_eval", jacEval, ":>" },
             T{ "opt_time", cfTime, ":>" },
             T{ "seed", config.Seed, ":>10" },
+            T{ "sort_ms", gp.SortTime() * 1e3, format },
             T{ "elapsed", gp.Elapsed(), ":>"},
         };
         PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
