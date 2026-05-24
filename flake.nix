@@ -8,6 +8,7 @@
     fluky.url = "github:foolnotion/fluky";
     lbfgs.url = "github:foolnotion/lbfgs";
     infix-parser.url = "github:foolnotion/infix-parser";
+    ndsort.url = "github:heal-research/ndsort";
     vstat.url = "github:heal-research/vstat";
     vdt.url = "github:foolnotion/vdt/master";
 
@@ -15,6 +16,7 @@
     foolnotion.inputs.nixpkgs.follows = "nixpkgs";
     lbfgs.inputs.nixpkgs.follows = "nixpkgs";
     infix-parser.inputs.nixpkgs.follows = "nixpkgs";
+    ndsort.inputs.nixpkgs.follows = "nixpkgs";
     vstat.inputs.nixpkgs.follows = "nixpkgs";
     vdt.inputs.nixpkgs.follows = "nixpkgs";
     fluky.inputs.nixpkgs.follows = "nixpkgs";
@@ -28,6 +30,7 @@
       foolnotion,
       fluky,
       infix-parser,
+      ndsort,
       vdt,
       vstat,
       lbfgs,
@@ -47,6 +50,7 @@
             inherit system;
             overlays = [
               foolnotion.overlay
+              ndsort.overlays.default
               (final: prev: {
                 fluky = fluky.packages.${system}.default;
                 lbfgs = lbfgs.packages.${system}.default;
