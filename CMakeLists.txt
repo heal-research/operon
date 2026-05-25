@@ -70,14 +70,7 @@ add_library(
     source/operators/generator/poly.cpp
     source/operators/local_search.cpp
     source/operators/mutation.cpp
-    source/operators/non_dominated_sorter/best_order_sort.cpp
-    source/operators/non_dominated_sorter/deductive_sort.cpp
-    source/operators/non_dominated_sorter/dominance_degree_sort.cpp
-    source/operators/non_dominated_sorter/efficient_sort.cpp
-    source/operators/non_dominated_sorter/hierarchical_sort.cpp
-    source/operators/non_dominated_sorter/merge_sort.cpp
-    source/operators/non_dominated_sorter/rank_intersect.cpp
-    source/operators/non_dominated_sorter/rank_ordinal.cpp
+    source/operators/non_dominated_sorter/ndsort.cpp
     source/operators/selector/proportional.cpp
     source/operators/selector/tournament.cpp
     source/parser/infix.cpp
@@ -102,6 +95,7 @@ find_package(Taskflow REQUIRED)
 find_package(Threads REQUIRED)
 find_package(tl-expected REQUIRED)
 find_package(unordered_dense REQUIRED)
+find_package(ndsort REQUIRED)
 find_package(vstat REQUIRED)
 find_package(xxHash)
 
@@ -254,6 +248,7 @@ target_link_libraries(operon_operon PUBLIC
 
 target_link_libraries(operon_operon PRIVATE
     AriaCsvParser::AriaCsvParser
+    ndsort::ndsort
     Taskflow::Taskflow
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense

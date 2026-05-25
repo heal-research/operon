@@ -8,7 +8,7 @@
     fluky.url = "github:foolnotion/fluky";
     lbfgs.url = "github:foolnotion/lbfgs";
     infix-parser.url = "github:foolnotion/infix-parser";
-    ndsort.url = "git+ssh://git@github.com/heal-research/ndsort";
+    ndsort.url = "git+ssh://git@github.com/foolnotion/ndsort";
     vstat.url = "github:heal-research/vstat";
     vdt.url = "github:foolnotion/vdt/master";
 
@@ -50,11 +50,11 @@
             inherit system;
             overlays = [
               foolnotion.overlay
-              ndsort.overlays.default
               (final: prev: {
                 fluky = fluky.packages.${system}.default;
                 lbfgs = lbfgs.packages.${system}.default;
                 infix-parser = infix-parser.packages.${system}.default;
+                ndsort = ndsort.packages.${system}.default;
                 vdt = vdt.packages.${system}.default;
                 vstat = vstat.packages.${system}.default;
               })
