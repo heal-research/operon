@@ -12,14 +12,15 @@
 
 using std::pair;
 using std::string;
-using std::unordered_map;
 
 namespace Operon {
-    static Operon::Map<Operon::Hash, pair<string, string>> DynDesc;
+namespace {
+    Operon::Map<Operon::Hash, pair<string, string>> kDynDesc; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+} // namespace
 
     void Node::RegisterName(Operon::Hash hash, string name, string desc)
     {
-        DynDesc[hash] = { std::move(name), std::move(desc) };
+        kDynDesc[hash] = { std::move(name), std::move(desc) };
     }
 
     static const Operon::Map<NodeType, pair<string, string>> NodeDesc = {
@@ -57,20 +58,20 @@ namespace Operon {
         { NodeType::Variable, std::make_pair("variable", "a dataset input with an associated weight" ) },
     };
 
-    auto Node::Name() const noexcept -> std::string const&
+    auto Node::Name() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
     {
         if (Type == NodeType::Dynamic) {
-            if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {
+            if (auto it = kDynDesc.find(HashValue); it != kDynDesc.end()) {
                 return it->second.first;
             }
         }
         return NodeDesc.at(Type).first;
     }
 
-    auto Node::Desc() const noexcept -> std::string const&
+    auto Node::Desc() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
     {
         if (Type == NodeType::Dynamic) {
-            if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {
+            if (auto it = kDynDesc.find(HashValue); it != kDynDesc.end()) {
                 return it->second.second;
             }
         }

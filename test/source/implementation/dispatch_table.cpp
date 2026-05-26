@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <numbers>
 #include <numeric>
 
 #include "operon/core/pset.hpp"
@@ -18,11 +19,11 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
 {
     using DT = Operon::DispatchTable<Operon::Scalar>;
 
-    std::string x{"x"};
-    std::vector<Operon::Scalar> v{0};
-    Operon::Dataset ds({x}, {v});
+    std::string const x{"x"};
+    std::vector<Operon::Scalar> const v{0};
+    Operon::Dataset const ds({x}, {v});
 
-    auto check = [&](DT const& dt, std::string const& expr, Operon::Scalar expected) {
+    auto check = [&](DT const& dt, std::string const& expr, Operon::Scalar expected) -> void {
         auto t = InfixParser::Parse(expr);
         auto p = t.GetCoefficients();
         auto r = Operon::Interpreter<Operon::Scalar, DT>(&dt, &ds, &t).Evaluate(p, Operon::Range(0, 1));
@@ -30,7 +31,7 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
     };
 
     SECTION("Default constructor") {
-        DT dt;
+        DT const dt;
         check(dt, "1 + 2 + 3", 6);
         check(dt, "1 - 2 - 3", -4);
         check(dt, "6 / 3 / 2", 1);
@@ -38,62 +39,62 @@ TEST_CASE("DispatchTable constructors", "[interpreter]")
     }
 
     SECTION("Copy constructor") {
-        DT dt;
-        DT dt1(dt);
+        DT const dt;
+        const DT& dt1(dt);
         check(dt1, "2 * 3 / 4", 1.5);
     }
 
     SECTION("Move constructor") {
-        DT dt;
+        DT const dt;
         DT dt1(dt);
-        DT dt2(std::move(dt1));
-        check(dt2, "sin(1 / 2 * 3.141519)", std::sin(1.0 / 2.0 * 3.141519));
+        DT const dt2(std::move(dt1));
+        check(dt2, "sin(1 / 2 * 3.141519)", static_cast<Operon::Scalar>(std::sin(1.0 / 2.0 * std::numbers::pi)));
     }
 
     SECTION("Construct from map") {
-        DT dt;
+        DT const dt;
         auto const& map = dt.GetMap();
-        DT dt3(map);
-        check(dt3, "cos(3.141519)", std::cos(3.141519f));
+        DT const dt3(map);
+        check(dt3, "cos(3.141519)", std::cos(std::numbers::pi_v<float>));
 
-        DT dt4(std::move(map));
-        check(dt4, "exp(log(10))", std::exp(std::log(10.f)));
+        DT const dt4(map);
+        check(dt4, "exp(log(10))", std::exp(std::numbers::ln10_v<float>));
     }
 }
 
 TEST_CASE("DispatchTable evaluation of expressions", "[interpreter]")
 {
     using DT = Operon::DispatchTable<Operon::Scalar>;
-    DT dtable;
+    DT const dtable;
 
-    std::string x{"x"};
-    std::vector<Operon::Scalar> v{0};
-    Operon::Dataset ds({x}, {v});
+    std::string const x{"x"};
+    std::vector<Operon::Scalar> const v{0};
+    Operon::Dataset const ds({x}, {v});
 
     SECTION("Arithmetic") {
         auto t = InfixParser::Parse("2 + 3 * 4");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
-        CHECK(r[0] == Catch::Approx(14.0f));
+        CHECK(r[0] == Catch::Approx(14.0F));
     }
 
     SECTION("Transcendental functions") {
         auto t = InfixParser::Parse("exp(1)");
         auto r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
-        CHECK(r[0] == Catch::Approx(std::exp(1.0f)));
+        CHECK(r[0] == Catch::Approx(std::exp(1.0F)));
 
         t = InfixParser::Parse("log(exp(1))");
         r = Interpreter<Operon::Scalar, DT>::Evaluate(t, ds, Range(0, 1));
-        CHECK(r[0] == Catch::Approx(1.0f).epsilon(1e-3));
+        CHECK(r[0] == Catch::Approx(1.0F).epsilon(1e-3));
     }
 }
 
-TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
+TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT    = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
     constexpr auto S = DT::BatchSize<Scalar>;
 
-    std::string x{"x"};
+    std::string const x{"x"};
     std::vector<Scalar> xvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, ..., 10}
     Operon::Dataset ds({x}, {xvals});
@@ -104,15 +105,15 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
     // Register a batch callable that negates its argument.
     // Follows the same convention as built-in Func<> specialisations:
     // reads nodes[i].Value as the node weight and applies it.
-    DT::Callable<Scalar> primal = [](
+    DT::Callable<Scalar> const primal = [](
         Operon::Vector<Operon::Node> const& nodes,
         Operon::Backend::View<Scalar, S> data,
         size_t i,
         Operon::Range /*rg*/)
-    {
+    -> void {
         auto const  w   = static_cast<Scalar>(nodes[i].Value);
-        auto*       dst = data.data_handle() + i * S;
-        auto const* src = data.data_handle() + (i - 1) * S;
+        auto*       dst = data.data_handle() + (i * S);
+        auto const* src = data.data_handle() + ((i - 1) * S);
         for (auto k = 0UL; k < S; ++k) { dst[k] = w * -src[k]; }
     };
 
@@ -126,13 +127,13 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
     SECTION("Evaluate a tree: negate(x)") {
         // Post-order: [Variable(x), Dynamic(negate)]
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, myHash);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
 
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
@@ -144,12 +145,12 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]")
     }
 }
 
-TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
+TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT     = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
 
-    std::string x{"x"};
+    std::string const x{"x"};
     std::vector<Scalar> xvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, ..., 10}
     Operon::Dataset ds({x}, {xvals});
@@ -159,18 +160,18 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
 
     // f(x) = sin(x) + cos(x),  f'(x) = cos(x) - sin(x)
     Operon::RegisterUnary<DT, Scalar>(dt, h,
-        [](auto x) { return std::sin(x) + std::cos(x); },
-        [](auto x) { return std::cos(x) - std::sin(x); });
+        [](auto x) -> auto { return std::sin(x) + std::cos(x); },
+        [](auto x) -> auto { return std::cos(x) - std::sin(x); });
 
     SECTION("Evaluate with unit weight") {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, h);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
 
@@ -183,14 +184,14 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]")
 
     SECTION("Weight is applied by the adapter") {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, h);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
         dynNode.Value  = 3.0F; // non-unit weight
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
 
@@ -208,7 +209,8 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
     using Scalar = Operon::Scalar;
 
     // Two variables: x = {1..10}, y = {2..11}
-    std::vector<Scalar> xvals(10), yvals(10);
+    std::vector<Scalar> xvals(10);
+    std::vector<Scalar> yvals(10);
     std::iota(xvals.begin(), xvals.end(), 1.0F);
     std::iota(yvals.begin(), yvals.end(), 2.0F);
     Operon::Dataset ds({"x", "y"}, {xvals, yvals});
@@ -218,36 +220,36 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
 
     // f(a, b) = sqrt(a^2 + b^2),  ∂f/∂a = a/f,  ∂f/∂b = b/f
     Operon::RegisterBinary<DT, Scalar>(dt, h,
-        [](auto a, auto b) { return std::sqrt(a*a + b*b); },
-        [](auto a, auto b) { return a / std::sqrt(a*a + b*b); },
-        [](auto a, auto b) { return b / std::sqrt(a*a + b*b); });
+        [](auto a, auto b) -> auto { return std::sqrt((a*a) + (b*b)); },
+        [](auto a, auto b) -> auto { return a / std::sqrt((a*a) + (b*b)); },
+        [](auto a, auto b) -> auto { return b / std::sqrt((a*a) + (b*b)); });
 
     SECTION("Evaluate with unit weight") {
         // Tree: [Variable(x), Variable(y), Dynamic(hypot)]
         // post-order: x at 0, y at 1, hypot at 2
         Operon::Node varX(Operon::NodeType::Variable);
-        varX.HashValue = ds.GetVariable("x")->Hash;
+        varX.HashValue = ds.GetVariable("x").value().Hash;
 
         Operon::Node varY(Operon::NodeType::Variable);
-        varY.HashValue = ds.GetVariable("y")->Hash;
+        varY.HashValue = ds.GetVariable("y").value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, h);
         dynNode.Arity  = 2;
         dynNode.Length = 2;
 
-        Operon::Tree tree({ varX, varY, dynNode });
+        Operon::Tree const tree({ varX, varY, dynNode });
         auto coeff = tree.GetCoefficients();
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 10));
 
         REQUIRE(std::ssize(r) == 10);
         for (auto i = 0; i < 10; ++i) {
-            auto expected = std::sqrt(xvals[i]*xvals[i] + yvals[i]*yvals[i]);
+            auto expected = std::sqrt((xvals[i]*xvals[i]) + (yvals[i]*yvals[i]));
             CHECK(r[i] == Catch::Approx(expected).epsilon(1e-4));
         }
     }
 }
 
-TEST_CASE("PrimitiveSet::AddFunction - user-defined symbol in tree generation", "[interpreter]")
+TEST_CASE("PrimitiveSet::AddFunction - user-defined symbol in tree generation", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     auto const h1 = Operon::Hasher{}("test::sincos");  // unary
     auto const h2 = Operon::Hasher{}("test::hypot");   // binary
@@ -296,7 +298,7 @@ TEST_CASE("PrimitiveSet::AddFunction - user-defined symbol in tree generation", 
     }
 }
 
-TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]")
+TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT     = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
@@ -312,29 +314,29 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]")
     // Same function registered two ways: auto-diff vs explicit derivative.
     // Unqualified sin/cos with using-declarations allow ADL to resolve to
     // ceres::sin/cos when called with Jet<T,1> during auto-diff.
-    auto primal  = [](auto v) { using std::sin, std::cos; return sin(v) + cos(v); };
-    auto dprimal = [](auto v) { using std::sin, std::cos; return cos(v) - sin(v); };
+    auto primal  = [](auto const& v) -> auto { using std::sin, std::cos; return sin(v) + cos(v); };
+    auto dprimal = [](auto const& v) -> auto { using std::sin, std::cos; return cos(v) - sin(v); };
 
     DT dt;
     Operon::RegisterUnary<DT, Scalar>(dt, hAuto,     primal);           // Jet fallback
     Operon::RegisterUnary<DT, Scalar>(dt, hExplicit, primal, dprimal);  // explicit
 
-    auto makeTree = [&](Operon::Hash h) {
+    auto makeTree = [&](Operon::Hash h) -> Operon::Tree {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
         Operon::Node dynNode(Operon::NodeType::Dynamic, h);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
         return Operon::Tree({ varNode, dynNode });
     };
 
-    auto tAuto     = makeTree(hAuto);
-    auto tExplicit = makeTree(hExplicit);
-    auto coeff     = tAuto.GetCoefficients();
-    auto range     = Operon::Range(0, 10);
+    auto const tAuto     = makeTree(hAuto);
+    auto const tExplicit = makeTree(hExplicit);
+    auto const coeff     = tAuto.GetCoefficients();
+    auto const range     = Operon::Range(0, 10);
 
-    Operon::Interpreter<Scalar, DT> interpAuto    (&dt, &ds, &tAuto);
-    Operon::Interpreter<Scalar, DT> interpExplicit(&dt, &ds, &tExplicit);
+    Operon::Interpreter<Scalar, DT> const interpAuto    (&dt, &ds, &tAuto);
+    Operon::Interpreter<Scalar, DT> const interpExplicit(&dt, &ds, &tExplicit);
 
     SECTION("JacRev: auto-diff matches explicit derivative") {
         auto jacAuto     = interpAuto.JacRev(coeff, range);
@@ -359,12 +361,12 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]")
     }
 }
 
-TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]")
+TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT     = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
 
-    std::string x{"x"};
+    std::string const x{"x"};
     std::vector<Scalar> xvals(5);
     std::iota(xvals.begin(), xvals.end(), 1.0F); // x = {1, 2, 3, 4, 5}
     Operon::Dataset ds({x}, {xvals});
@@ -373,7 +375,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
     Operon::PrimitiveSet pset;
     pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
 
-    Operon::FunctionInfo info{
+    Operon::FunctionInfo const info{
         .Hash      = Operon::Hasher{}("test::cube"),
         .Name      = "cube",
         .Desc      = "cube function f(x) = x^3",
@@ -381,13 +383,13 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         .Frequency = 1
     };
 
-    auto primal  = [](auto v) { return v * v * v; };
-    auto dprimal = [](auto v) { return 3 * v * v; };
+    auto primal  = [](auto v) -> auto { return v * v * v; };
+    auto dprimal = [](auto v) -> auto { return 3 * v * v; };
 
     Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
 
     SECTION("Name and Desc are registered on the node") {
-        Operon::Node dynNode(Operon::NodeType::Dynamic, info.Hash);
+        Operon::Node const dynNode(Operon::NodeType::Dynamic, info.Hash);
         CHECK(dynNode.Name() == "cube");
         CHECK(dynNode.Desc() == "cube function f(x) = x^3");
     }
@@ -400,13 +402,13 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
 
     SECTION("Evaluation is correct") {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, info.Hash);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto coeff = tree.GetCoefficients();
         auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 5));
 
@@ -418,13 +420,13 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
 
     SECTION("InfixFormatter uses registered name") {
         Operon::Node varNode(Operon::NodeType::Variable);
-        varNode.HashValue = ds.GetVariable(x)->Hash;
+        varNode.HashValue = ds.GetVariable(x).value().Hash;
 
         Operon::Node dynNode(Operon::NodeType::Dynamic, info.Hash);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
-        Operon::Tree tree({ varNode, dynNode });
+        Operon::Tree const tree({ varNode, dynNode });
         auto formatted = InfixFormatter::Format(tree, ds);
         CHECK(formatted.find("cube") != std::string::npos);
     }

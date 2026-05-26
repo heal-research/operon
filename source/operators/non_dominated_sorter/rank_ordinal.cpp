@@ -30,11 +30,11 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
     r(0, p.col(0)) = Vec::LinSpaced(n, 0, n - 1);
 
     Operon::Vector<Operon::Scalar> buf(n); // buffer to store fitness values to avoid pointer indirections during sorting
-    cppsort::merge_sorter sorter;
+    cppsort::merge_sorter const sorter;
     for (auto i = 1; i < m; ++i) {
-        std::transform(pop.begin(), pop.end(), buf.begin(), [i](auto const& ind) { return ind[i]; });
+        std::transform(pop.begin(), pop.end(), buf.begin(), [i](auto const& ind) -> auto { return ind[i]; });
         p.col(i) = p.col(i - 1); // this is a critical part of the approach
-        sorter(p.col(i), [&](auto j) { return buf[j]; });
+        sorter(p.col(i), [&](auto j) -> auto { return buf[j]; });
         r(i, p.col(i)) = Vec::LinSpaced(n, 0, n - 1);
     }
 
@@ -45,15 +45,15 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
         auto c = r.col(i);
         auto max = std::max_element(c.begin(), c.end());
         maxp(i) = *max;
-        maxc(i) = std::distance(c.begin(), max);
+        maxc(i) = static_cast<int>(std::distance(c.begin(), max));
     }
 
-    auto dominated = [&](int i, int j) {
+    auto dominated = [&](int i, int j) -> bool {
         // std::span<int> a(r.col(i).data(), r.col(i).size());
         // std::span<int> b(r.col(j).data(), r.col(j).size());
         return m == 2
             ? (r.col(i) < r.col(j)).all()
-            : eve::algo::all_of(eve::views::zip(std::span(r.col(i).data(), m), std::span(r.col(j).data(), m)), [](auto t) { return kumi::apply(std::less{}, t); });
+            : eve::algo::all_of(eve::views::zip(std::span(r.col(i).data(), m), std::span(r.col(j).data(), m)), [](auto t) -> auto { return kumi::apply(std::less{}, t); });
     };
 
     // 3) compute ranks / fronts
@@ -64,7 +64,7 @@ auto RankOrdinalSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon:
             continue;
         }
         for (auto j : p(Eigen::seq(maxp(i)+1, n-1), maxc(i))) {
-            rank[j] += (rank[i] == rank[j] && dominated(i, j));
+            rank[j] += static_cast<int>(rank[i] == rank[j] && dominated(i, j));
         }
     }
     Operon::Vector<Operon::Vector<size_t>> fronts(std::ranges::max(rank) + 1);

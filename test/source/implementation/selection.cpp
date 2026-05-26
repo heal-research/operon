@@ -25,7 +25,7 @@ TEST_CASE("Tournament selection bias", "[operators]")
         individuals[i][0] = static_cast<Operon::Scalar>(i) / static_cast<Operon::Scalar>(popSize);
     }
 
-    TournamentSelector selector([](Individual const& a, Individual const& b) {
+    TournamentSelector const selector([](Individual const& a, Individual const& b) -> bool {
         return a.Fitness[0] < b.Fitness[0];
     });
     selector.Prepare(individuals);
@@ -37,7 +37,8 @@ TEST_CASE("Tournament selection bias", "[operators]")
 
     // Better fitness (lower index = lower value) should have higher selection probability
     // Check that the first quartile is selected more than the last quartile
-    size_t firstQuartile = 0, lastQuartile = 0;
+    size_t firstQuartile = 0;
+    size_t lastQuartile = 0;
     for (size_t i = 0; i < popSize / 4; ++i) {
         firstQuartile += hist[i];
     }

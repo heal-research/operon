@@ -14,8 +14,9 @@
 #include "operon/operators/initializer.hpp"
 
 namespace Operon::Test {
+namespace {
 
-static auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator, std::vector<size_t> lengths, size_t maxDepth) -> std::vector<Tree>
+auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& creator, std::vector<size_t> lengths, size_t maxDepth) -> std::vector<Tree>
 {
     std::vector<Tree> trees;
     trees.reserve(lengths.size());
@@ -25,7 +26,7 @@ static auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& 
     UniformCoefficientInitializer coeffInit;
     coeffInit.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
-    std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t /*not used*/) {
+    std::transform(lengths.begin(), lengths.end(), std::back_inserter(trees), [&](size_t /*not used*/) -> Operon::Tree {
         auto tree = treeInit(random);
         coeffInit(random, tree);
         return tree;
@@ -33,6 +34,7 @@ static auto GenerateTrees(Operon::RandomGenerator& random, Operon::CreatorBase& 
 
     return trees;
 }
+} // namespace
 
 TEST_CASE("Grammar sampling", "[operators]")
 {
@@ -41,14 +43,14 @@ TEST_CASE("Grammar sampling", "[operators]")
     Operon::RandomGenerator rd(1234);
 
     std::vector<double> observed(NodeTypes::Count, 0);
-    size_t r = grammar.EnabledPrimitives().size() + 1;
+    size_t const r = grammar.EnabledPrimitives().size() + 1;
 
     const size_t nTrials = 1'000'000;
     for (auto i = 0U; i < nTrials; ++i) {
         auto node = grammar.SampleRandomSymbol(rd, 0, 2);
         ++observed[NodeTypes::GetIndex(node.Type)];
     }
-    std::transform(observed.begin(), observed.end(), observed.begin(), [&](double v) { return v / nTrials; });
+    std::transform(observed.begin(), observed.end(), observed.begin(), [&](double v) -> double { return v / nTrials; });
     std::vector<double> actual(NodeTypes::Count, 0);
     for (size_t i = 0; i < observed.size(); ++i) {
         auto type = static_cast<NodeType>(i);
@@ -56,10 +58,10 @@ TEST_CASE("Grammar sampling", "[operators]")
         actual[NodeTypes::GetIndex(type)] = static_cast<double>(grammar.Frequency(node.HashValue));
     }
     auto freqSum = std::reduce(actual.begin(), actual.end(), 0.0, std::plus{});
-    std::transform(actual.begin(), actual.end(), actual.begin(), [&](double v) { return v / freqSum; });
+    std::transform(actual.begin(), actual.end(), actual.begin(), [&](double v) -> double { return v / freqSum; });
     auto chi = 0.0;
     for (auto i = 0U; i < observed.size(); ++i) {
-        Node node(static_cast<NodeType>(i));
+        Node const node(static_cast<NodeType>(i));
         if (!grammar.IsEnabled(node.HashValue)) {
             continue;
         }
@@ -69,15 +71,15 @@ TEST_CASE("Grammar sampling", "[operators]")
     }
     chi *= nTrials;
 
-    auto criticalValue = static_cast<double>(r) + 2 * std::sqrt(r);
+    auto criticalValue = static_cast<double>(r) + (2 * std::sqrt(r));
     REQUIRE(chi <= criticalValue);
 }
 
-TEST_CASE("GROW creator", "[operators]")
+TEST_CASE("GROW creator", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     size_t const maxDepth = 10;
     size_t const maxLength = 100;
     size_t const n = 1000;
@@ -95,7 +97,7 @@ TEST_CASE("GROW creator", "[operators]")
 
     SECTION("Trees are within size bounds") {
         std::vector<size_t> lengths(n);
-        std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
+        std::generate(lengths.begin(), lengths.end(), [&]() -> size_t { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, gtc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
@@ -117,7 +119,7 @@ TEST_CASE("BTC creator", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     size_t const maxDepth = 1000;
     size_t const maxLength = 100;
     size_t const n = 1000;
@@ -135,7 +137,7 @@ TEST_CASE("BTC creator", "[operators]")
 
     SECTION("Trees are within size bounds") {
         std::vector<size_t> lengths(n);
-        std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
+        std::generate(lengths.begin(), lengths.end(), [&]() -> size_t { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, btc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
@@ -144,7 +146,7 @@ TEST_CASE("BTC creator", "[operators]")
 
     SECTION("Coefficients are initialized") {
         auto tree = btc(random, 20, 1, maxDepth);
-        UniformCoefficientInitializer coeffInit;
+        UniformCoefficientInitializer const coeffInit;
         coeffInit.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
         coeffInit(random, tree);
 
@@ -162,7 +164,7 @@ TEST_CASE("PTC2 creator", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     size_t const maxDepth = 1000;
     size_t const maxLength = 100;
     size_t const n = 1000;
@@ -176,7 +178,7 @@ TEST_CASE("PTC2 creator", "[operators]")
 
     SECTION("Trees are within size bounds") {
         std::vector<size_t> lengths(n);
-        std::generate(lengths.begin(), lengths.end(), [&]() { return sizeDistribution(random); });
+        std::generate(lengths.begin(), lengths.end(), [&]() -> size_t { return sizeDistribution(random); });
         auto trees = GenerateTrees(random, ptc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
@@ -184,7 +186,7 @@ TEST_CASE("PTC2 creator", "[operators]")
     }
 }
 
-TEST_CASE("AchievableLength snap-down table", "[operators]")
+TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     // A thin subclass that exposes the protected AchievableLength method.
     struct TestCreator final : public CreatorBase {
@@ -193,13 +195,13 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
         auto operator()(RandomGenerator& /*rng*/, size_t /*targetLen*/, size_t /*minDepth*/, size_t /*maxDepth*/) const -> Tree override {
             return Tree({ Node(NodeType::Constant) }).UpdateNodes();
         }
-        auto SnapDown(size_t n) const -> size_t { return AchievableLength(n); }
+        [[nodiscard]] auto SnapDown(size_t n) const -> size_t { return AchievableLength(n); }
     };
 
     SECTION("Edge cases") {
         PrimitiveSet pset;
         pset.SetConfig(PrimitiveSet::Arithmetic);
-        TestCreator tc(&pset, 20);
+        TestCreator const tc(&pset, 20);
         CHECK(tc.SnapDown(0) == 1);
         CHECK(tc.SnapDown(1) == 1);
     }
@@ -210,7 +212,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
         PrimitiveSet pset;
         pset.SetConfig(NodeType::Add | NodeType::Variable);
         pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
-        TestCreator tc(&pset, 20);
+        TestCreator const tc(&pset, 20);
 
         CHECK(tc.SnapDown(1) == 1);
         CHECK(tc.SnapDown(2) == 1); // 2 not achievable → snap down to 1
@@ -227,7 +229,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
         pset.SetConfig(NodeType::Sin | NodeType::Add | NodeType::Variable);
         pset.SetMinMaxArity(Node(NodeType::Sin), 1, 1);
         pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
-        TestCreator tc(&pset, 15);
+        TestCreator const tc(&pset, 15);
 
         for (size_t n = 1; n <= 15; ++n) {
             CHECK(tc.SnapDown(n) == n);
@@ -240,7 +242,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
         PrimitiveSet pset;
         pset.SetConfig(NodeType::Add | NodeType::Variable);
         pset.SetMinMaxArity(Node(NodeType::Add), 3, 3);
-        TestCreator tc(&pset, 20);
+        TestCreator const tc(&pset, 20);
 
         CHECK(tc.SnapDown(1) == 1);
         CHECK(tc.SnapDown(2) == 1);
@@ -255,7 +257,7 @@ TEST_CASE("AchievableLength snap-down table", "[operators]")
     }
 }
 
-TEST_CASE("Creator length contract with unachievable targets", "[operators]")
+TEST_CASE("Creator length contract with unachievable targets", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     // Binary-only pset: achievable lengths are 1, 3, 5, 7, ...
     // Requesting any even target must snap down — the returned tree must be strictly
@@ -266,13 +268,13 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]")
 
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
     Operon::RandomGenerator rng(42);
     constexpr size_t maxDepth = 1000;
     constexpr size_t maxLength = 20;
 
     SECTION("BTC never exceeds requested length") {
-        BalancedTreeCreator btc(&pset, inputs, /* bias= */ 0.0, maxLength);
+        BalancedTreeCreator const btc(&pset, inputs, /* bias= */ 0.0, maxLength);
         for (size_t target = 1; target <= maxLength; ++target) {
             auto tree = btc(rng, target, 1, maxDepth);
             CHECK(tree.Length() > 0);
@@ -281,7 +283,7 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]")
     }
 
     SECTION("PTC2 never exceeds requested length") {
-        ProbabilisticTreeCreator ptc(&pset, inputs, /* bias= */ 0.0, maxLength);
+        ProbabilisticTreeCreator const ptc(&pset, inputs, /* bias= */ 0.0, maxLength);
         for (size_t target = 1; target <= maxLength; ++target) {
             auto tree = ptc(rng, target, 1, maxDepth);
             CHECK(tree.Length() > 0);

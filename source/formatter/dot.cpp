@@ -14,7 +14,7 @@ auto DotFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::strin
     result += "strict digraph {\n";
     result += "\trankdir=BT\n";
 
-    auto formatLeaf = [&](auto const& s) {
+    auto formatLeaf = [&](auto const& s) -> auto {
         if (s.IsConstant()) {
             auto formatString = fmt::format(fmt::runtime("{{:.{}f}}"), decimalPrecision);
             return fmt::format(fmt::runtime(formatString), s.Value);
@@ -29,7 +29,7 @@ auto DotFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::strin
         throw std::runtime_error("node is not a leaf (constant or variable)");
     };
 
-    auto format = [&](auto const& s) {
+    auto format = [&](auto const& s) -> auto {
         if (s.IsLeaf()) { return formatLeaf(s); }
         return s.Name();
     };

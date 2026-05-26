@@ -43,7 +43,7 @@
 #include "operon/operators/selector.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
-auto main(int argc, char** argv) -> int
+auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 {
     if (argc < 2) {
         fmt::print(stderr, "usage: {} <path-to-Poly-10.csv>\n", argv[0]);
@@ -51,7 +51,7 @@ auto main(int argc, char** argv) -> int
         return 1;
     }
 
-    Operon::Dataset dataset(argv[1], /*hasHeader=*/true);
+    Operon::Dataset const dataset(argv[1], /*hasHeader=*/true);
 
     Operon::Problem problem(std::make_unique<Operon::Dataset>(dataset));
     problem.SetTrainingRange({ 0, 250 });
@@ -59,7 +59,7 @@ auto main(int argc, char** argv) -> int
     problem.SetTarget("Y");
 
     auto inputs = dataset.VariableHashes();
-    std::erase(inputs, dataset.GetVariable("Y")->Hash);
+    std::erase(inputs, dataset.GetVariable("Y").value().Hash);
     problem.SetInputs(inputs);
 
     // Arithmetic built-ins form the structural backbone of expressions.
@@ -80,22 +80,22 @@ auto main(int argc, char** argv) -> int
         { .Hash = Operon::Hasher{}("sincos"),
           .Name = "sincos", .Desc = "sin(x) + cos(x)",
           .Arity = 1, .Frequency = 2 },
-        [](auto v) { using std::sin, std::cos; return sin(v) + cos(v); },
-        [](auto v) { using std::sin, std::cos; return cos(v) - sin(v); });
+        [](auto v) -> auto { using std::sin, std::cos; return sin(v) + cos(v); },
+        [](auto v) -> auto { using std::sin, std::cos; return cos(v) - sin(v); });
 
     // gaussian(x) = exp(-x²) — derivative via Jet<T,1> auto-diff
     Operon::RegisterUnaryFunction<DT, Operon::Scalar>(dtable, pset,
         { .Hash = Operon::Hasher{}("gaussian"),
           .Name = "gaussian", .Desc = "exp(-x * x)",
           .Arity = 1, .Frequency = 2 },
-        [](auto v) { using std::exp; return exp(-v * v); });
+        [](auto const& v) -> auto { using std::exp; return exp(-v * v); });
 
     // hypot(a, b) = sqrt(a² + b²) — derivative via Jet<T,1> auto-diff
     Operon::RegisterBinaryFunction<DT, Operon::Scalar>(dtable, pset,
         { .Hash = Operon::Hasher{}("hypot"),
           .Name = "hypot", .Desc = "sqrt(a^2 + b^2)",
           .Arity = 2, .Frequency = 1 },
-        [](auto a, auto b) { using std::sqrt; return sqrt((a * a) + (b * b)); });
+        [](auto const& a, auto const& b) -> auto { using std::sqrt; return sqrt((a * a) + (b * b)); });
 
     fmt::print("Primitives in use:\n");
     for (auto const& node : pset.EnabledPrimitives()) {
@@ -141,9 +141,9 @@ auto main(int argc, char** argv) -> int
     Operon::LevenbergMarquardtOptimizer<DT, Operon::OptimizerType::Eigen> lmOptimizer {
         &dtable, &problem
     };
-    Operon::CoefficientOptimizer coeffOpt { &lmOptimizer };
+    Operon::CoefficientOptimizer const coeffOpt { &lmOptimizer };
 
-    auto comp = [](auto const& a, auto const& b) { return a[0] < b[0]; };
+    auto comp = [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; };
     Operon::TournamentSelector femaleSelector { comp };
     Operon::TournamentSelector   maleSelector { comp };
 
@@ -169,13 +169,13 @@ auto main(int argc, char** argv) -> int
     tf::Executor executor(std::thread::hardware_concurrency());
 
     size_t gen = 0;
-    auto report = [&]() {
+    auto report = [&]() -> void {
         ++gen;
         if (gen % 10 != 0) { return; }
         auto const* first = gp.Individuals().data();
         auto const* last  = first + config.PopulationSize;
         auto const* best  = std::min_element(first, last,
-            [](auto const& a, auto const& b) { return a[0] < b[0]; });
+            [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; });
         fmt::print("  gen {:4d}  MSE(train)={:.6f}  len={}\n",
             gen, best->Fitness[0], best->Genotype.Length());
     };
@@ -188,7 +188,7 @@ auto main(int argc, char** argv) -> int
     auto const* first = gp.Individuals().data();
     auto const* last  = first + config.PopulationSize;
     auto const* best  = std::min_element(first, last,
-        [](auto const& a, auto const& b) { return a[0] < b[0]; });
+        [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; });
 
     fmt::print("\nBest model (MSE={:.6f}, length={}):\n  {}\n",
         best->Fitness[0],

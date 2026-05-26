@@ -25,7 +25,7 @@ auto InitializePop(Operon::RandomGenerator& random, auto& dist, size_t n, size_t
             individual[j] = dist(random);
         }
     }
-    std::stable_sort(individuals.begin(), individuals.end(), [](auto const& a, auto const& b) { return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });
+    std::stable_sort(individuals.begin(), individuals.end(), [](auto const& a, auto const& b) -> auto { return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });
 
     for (auto i = individuals.begin(); i < individuals.end();) {
         i->Rank = 0;
@@ -35,13 +35,13 @@ auto InitializePop(Operon::RandomGenerator& random, auto& dist, size_t n, size_t
         }
         i = j;
     }
-    auto r = std::stable_partition(individuals.begin(), individuals.end(), [](auto const& ind) { return !ind.Rank; });
+    auto r = std::stable_partition(individuals.begin(), individuals.end(), [](auto const& ind) -> auto { return !ind.Rank; });
     Operon::Vector<Individual> pop(individuals.begin(), r);
     return pop;
 }
 } // namespace
 
-TEST_CASE("Hand-crafted Pareto fronts", "[algorithms]")
+TEST_CASE("Hand-crafted Pareto fronts", "[algorithms]") // NOLINT(readability-function-cognitive-complexity)
 {
     SECTION("2D points with known fronts") {
         Operon::Vector<Operon::Vector<Operon::Scalar>> points = {{0, 7}, {1, 5}, {2, 3}, {4, 2}, {7, 1}, {10, 0}, {2, 6}, {4, 4}, {10, 2}, {6, 6}, {9, 5}};
@@ -51,7 +51,7 @@ TEST_CASE("Hand-crafted Pareto fronts", "[algorithms]")
         }
 
         auto fronts = RankIntersectSorter{}(pop);
-        CHECK(fronts.size() >= 1);
+        CHECK(!fronts.empty());
 
         // First front should contain some of the Pareto-optimal points
         CHECK(!fronts[0].empty());
@@ -66,7 +66,7 @@ TEST_CASE("Hand-crafted Pareto fronts", "[algorithms]")
         std::stable_sort(pop.begin(), pop.end(), LexicographicalComparison{});
 
         auto fronts = DeductiveSorter{}(pop);
-        CHECK(fronts.size() >= 1);
+        CHECK(!fronts.empty());
         CHECK(!fronts[0].empty());
     }
 }
@@ -75,7 +75,7 @@ TEST_CASE("All sorters produce same ranking", "[algorithms]")
 {
     constexpr Operon::RandomGenerator::result_type seed{1234};
 
-    auto compareSorters = [&](auto const& s1, auto const& s2, auto const& ns, auto const& ms) {
+    auto compareSorters = [&](auto const& s1, auto const& s2, auto const& ns, auto const& ms) -> auto {
         Operon::RandomGenerator rd(seed); // fresh RNG per sorter pair so all pairs see the same populations
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
         for (auto n : ns) {
@@ -100,16 +100,16 @@ TEST_CASE("All sorters produce same ranking", "[algorithms]")
         return true;
     };
 
-    std::array ns{100, 1000, 5000};
-    std::array ms{2, 3, 4, 5, 10};
-    Operon::RankIntersectSorter rs;
-    Operon::RankOrdinalSorter ro;
-    Operon::MergeSorter mnds;
-    Operon::BestOrderSorter bos;
-    Operon::HierarchicalSorter hnds;
-    Operon::DeductiveSorter ds;
-    Operon::EfficientBinarySorter ebs;
-    Operon::EfficientSequentialSorter ess;
+    std::array const ns{100, 1000, 5000};
+    std::array const ms{2, 3, 4, 5, 10};
+    Operon::RankIntersectSorter const rs;
+    Operon::RankOrdinalSorter const ro;
+    Operon::MergeSorter const mnds;
+    Operon::BestOrderSorter const bos;
+    Operon::HierarchicalSorter const hnds;
+    Operon::DeductiveSorter const ds;
+    Operon::EfficientBinarySorter const ebs;
+    Operon::EfficientSequentialSorter const ess;
 
     // DeductiveSorter is used as the reference (simplest, most obviously correct implementation).
     // All sorters including RankIntersectSorter are compared against it.
@@ -129,7 +129,7 @@ TEST_CASE("Non-dominated sort edge cases", "[algorithms]")
         std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
         auto pop = InitializePop(rd, dist, 100, 1);
         auto fronts = RankIntersectSorter{}(pop);
-        CHECK(fronts.size() >= 1);
+        CHECK(!fronts.empty());
     }
 
     SECTION("Non-dominated 2D points in the same front") {
@@ -150,58 +150,62 @@ TEST_CASE("Non-dominated sort edge cases", "[algorithms]")
 // Tagged [.] so it only runs when explicitly requested: operon_test "[.][minseed]"
 // Sweeps many seeds at small n to find the minimum population size that triggers
 // the RankIntersectSorter vs DeductiveSorter disagreement.
-TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]")
+TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]") // NOLINT(readability-function-cognitive-complexity)
 {
-    RankIntersectSorter rs;
-    DeductiveSorter    ds;
+    RankIntersectSorter const rs;
+    DeductiveSorter const    ds;
     std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
 
-    std::array ns{10, 20, 50, 100, 200, 500};
-    std::array ms{2, 3, 4, 5};
+    std::array const ns{10, 20, 50, 100, 200, 500};
+    std::array const ms{2, 3, 4, 5};
     constexpr int nseeds{200};
 
     for (auto n : ns) {
         for (auto m : ms) {
             int hits{0};
-            int first_seed{-1};
-            Operon::RandomGenerator::result_type first_seed_val{};
+            int firstSeed{-1};
+            Operon::RandomGenerator::result_type firstSeedVal{};
             for (int s = 0; s < nseeds; ++s) {
                 Operon::RandomGenerator rd(static_cast<Operon::RandomGenerator::result_type>(s));
                 auto pop = InitializePop(rd, dist, n, m);
-                auto f_rs = rs.Sort(pop, 0);
-                auto f_ds = ds.Sort(pop, 0);
-                Operon::Vector<int> rank_rs(pop.size(), -1);
-                Operon::Vector<int> rank_ds(pop.size(), -1);
-                for (auto fi = 0; fi < std::ssize(f_rs); ++fi)
-                    for (auto idx : f_rs[fi]) rank_rs[idx] = fi;
-                for (auto fi = 0; fi < std::ssize(f_ds); ++fi)
-                    for (auto idx : f_ds[fi]) rank_ds[idx] = fi;
+                auto fRs = rs.Sort(pop, 0);
+                auto fDs = ds.Sort(pop, 0);
+                Operon::Vector<int> rankRs(pop.size(), -1);
+                Operon::Vector<int> rankDs(pop.size(), -1);
+                for (auto fi = 0; fi < std::ssize(fRs); ++fi) {
+                    for (auto idx : fRs[fi]) { rankRs[idx] = fi; }
+                }
+                for (auto fi = 0; fi < std::ssize(fDs); ++fi) {
+                    for (auto idx : fDs[fi]) { rankDs[idx] = fi; }
+                }
                 bool any = false;
                 for (size_t i = 0; i < pop.size(); ++i) {
-                    if (rank_rs[i] != rank_ds[i]) { any = true; break; }
+                    if (rankRs[i] != rankDs[i]) { any = true; break; }
                 }
                 if (any) {
-                    if (first_seed < 0) { first_seed = s; first_seed_val = static_cast<Operon::RandomGenerator::result_type>(s); }
+                    if (firstSeed < 0) { firstSeed = s; firstSeedVal = static_cast<Operon::RandomGenerator::result_type>(s); }
                     ++hits;
                 }
             }
             if (hits > 0) {
-                fmt::println("n={:5d} m={}: DISAGREE in {:3d}/{} seeds  (first seed={})", n, m, hits, nseeds, first_seed_val);
+                fmt::println("n={:5d} m={}: DISAGREE in {:3d}/{} seeds  (first seed={})", n, m, hits, nseeds, firstSeedVal);
                 // Print the disagreeing individuals for the first triggering seed
-                Operon::RandomGenerator rd(first_seed_val);
+                Operon::RandomGenerator rd(firstSeedVal);
                 auto pop = InitializePop(rd, dist, n, m);
-                auto f_rs = rs.Sort(pop, 0);
-                auto f_ds = ds.Sort(pop, 0);
-                Operon::Vector<int> rank_rs(pop.size(), -1);
-                Operon::Vector<int> rank_ds(pop.size(), -1);
-                for (auto fi = 0; fi < std::ssize(f_rs); ++fi)
-                    for (auto idx : f_rs[fi]) rank_rs[idx] = fi;
-                for (auto fi = 0; fi < std::ssize(f_ds); ++fi)
-                    for (auto idx : f_ds[fi]) rank_ds[idx] = fi;
+                auto fRs = rs.Sort(pop, 0);
+                auto fDs = ds.Sort(pop, 0);
+                Operon::Vector<int> rankRs(pop.size(), -1);
+                Operon::Vector<int> rankDs(pop.size(), -1);
+                for (auto fi = 0; fi < std::ssize(fRs); ++fi) {
+                    for (auto idx : fRs[fi]) { rankRs[idx] = fi; }
+                }
+                for (auto fi = 0; fi < std::ssize(fDs); ++fi) {
+                    for (auto idx : fDs[fi]) { rankDs[idx] = fi; }
+                }
                 for (size_t i = 0; i < pop.size(); ++i) {
-                    if (rank_rs[i] != rank_ds[i]) {
+                    if (rankRs[i] != rankDs[i]) {
                         fmt::println("  ind {:4d}  fitness={}  RankIntersect={}  Deductive={}",
-                            i, pop[i].Fitness, rank_rs[i], rank_ds[i]);
+                            i, pop[i].Fitness, rankRs[i], rankDs[i]);
                     }
                 }
             } else {
@@ -215,45 +219,47 @@ TEST_CASE("RankIntersect minimum reproducer search", "[.][minseed]")
 // This test reproduces the disagreement between RankIntersectSorter and DeductiveSorter
 // and prints every individual whose rank assignment differs, along with their fitness values.
 // Run it to find the concrete pair that violates the algorithm's assumptions.
-TEST_CASE("RankIntersect vs Deductive disagreement reproducer", "[.][rankdebug]")
+TEST_CASE("RankIntersect vs Deductive disagreement reproducer", "[.][rankdebug]") // NOLINT(readability-function-cognitive-complexity)
 {
     Operon::RandomGenerator rd(1234);
     std::uniform_real_distribution<Operon::Scalar> dist(0, 1);
 
-    std::array ns{100, 1000, 5000};
-    std::array ms{2, 3, 4, 5, 10};
+    std::array const ns{100, 1000, 5000};
+    std::array const ms{2, 3, 4, 5, 10};
 
-    RankIntersectSorter rs;
-    DeductiveSorter    ds;
+    RankIntersectSorter const rs;
+    DeductiveSorter const    ds;
 
     for (auto n : ns) {
         for (auto m : ms) {
             auto pop = InitializePop(rd, dist, n, m);
 
-            auto f_rs = rs.Sort(pop, 0);
-            auto f_ds = ds.Sort(pop, 0);
+            auto fRs = rs.Sort(pop, 0);
+            auto fDs = ds.Sort(pop, 0);
 
             // Build per-individual rank maps
-            Operon::Vector<int> rank_rs(pop.size(), -1);
-            Operon::Vector<int> rank_ds(pop.size(), -1);
-            for (auto fi = 0; fi < std::ssize(f_rs); ++fi)
-                for (auto idx : f_rs[fi]) rank_rs[idx] = fi;
-            for (auto fi = 0; fi < std::ssize(f_ds); ++fi)
-                for (auto idx : f_ds[fi]) rank_ds[idx] = fi;
+            Operon::Vector<int> rankRs(pop.size(), -1);
+            Operon::Vector<int> rankDs(pop.size(), -1);
+            for (auto fi = 0; fi < std::ssize(fRs); ++fi) {
+                for (auto idx : fRs[fi]) { rankRs[idx] = fi; }
+            }
+            for (auto fi = 0; fi < std::ssize(fDs); ++fi) {
+                for (auto idx : fDs[fi]) { rankDs[idx] = fi; }
+            }
 
             bool any = false;
             for (size_t i = 0; i < pop.size(); ++i) {
-                if (rank_rs[i] != rank_ds[i]) {
+                if (rankRs[i] != rankDs[i]) {
                     if (!any) {
                         fmt::println("--- Disagreement: n={} m={} ---", n, m);
                         any = true;
                     }
                     fmt::println("  ind {:4d}  fitness={}  RankIntersect={}  Deductive={}",
-                        i, pop[i].Fitness, rank_rs[i], rank_ds[i]);
+                        i, pop[i].Fitness, rankRs[i], rankDs[i]);
                 }
             }
             if (!any) {
-                fmt::println("n={} m={}: agree ({} fronts)", n, m, f_rs.size());
+                fmt::println("n={} m={}: agree ({} fronts)", n, m, fRs.size());
             }
         }
     }
