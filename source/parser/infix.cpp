@@ -67,7 +67,7 @@ auto ToOperonNode(infix_parser::node const& a) -> Operon::Node
     if (a.type == infix_parser::node_type::variable) {
         return Operon::Node(Operon::NodeType::Variable, Operon::Hasher{}(a.name));
     }
-    auto const operonType = node_type_map[static_cast<std::size_t>(a.type)];
+    auto const operonType = node_type_map.at(static_cast<std::size_t>(a.type));
     if (operonType == Operon::NodeTypes::NoType) {
         throw std::runtime_error(fmt::format("unsupported node type: {}", static_cast<int>(a.type)));
     }

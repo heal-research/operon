@@ -23,15 +23,15 @@ TEST_CASE("Hash determinism", "[core]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
     constexpr size_t maxLength = 20;
     Operon::RandomGenerator rd(42);
-    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
-    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
+    BalancedTreeCreator const btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
 
     auto tree1 = btc(rd, 20, 1, 1000);
     initializer(rd, tree1);
@@ -52,27 +52,27 @@ TEST_CASE("Hash determinism", "[core]")
 
 TEST_CASE("Hash-based distance", "[core]")
 {
-    size_t n = 5000;
-    size_t maxLength = 100;
-    size_t minDepth = 1;
-    size_t maxDepth = 1000;
+    size_t const n = 5000;
+    size_t const maxLength = 100;
+    size_t const minDepth = 1;
+    size_t const maxDepth = 1000;
 
     Operon::RandomGenerator rd(1234);
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
-    auto btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
-    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
+    auto const btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
 
     std::vector<Tree> trees(n);
     std::vector<Operon::Hash> seeds(n);
-    std::generate(seeds.begin(), seeds.end(), [&]() { return rd(); });
+    std::generate(seeds.begin(), seeds.end(), [&]() -> Operon::RandomGenerator::result_type { return rd(); });
     for (size_t i = 0; i < n; ++i) {
         Operon::RandomGenerator rand(seeds[i]);
         trees[i] = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
@@ -86,7 +86,7 @@ TEST_CASE("Hash-based distance", "[core]")
     for (auto& t : trees) {
         Operon::Vector<Operon::Hash> hh(t.Length());
         (void)t.Hash(Operon::HashMode::Strict);
-        std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) { return n.CalculatedHashValue; });
+        std::transform(t.Nodes().begin(), t.Nodes().end(), hh.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
         std::sort(hh.begin(), hh.end());
         treeHashes.push_back(hh);
     }
@@ -107,15 +107,15 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
     constexpr size_t maxLength = 20;
     Operon::RandomGenerator rd(1234);
-    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
-    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
+    BalancedTreeCreator const btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
 
     auto tree1 = btc(rd, 20, 1, 1000);
     initializer(rd, tree1);
@@ -125,9 +125,10 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
     (void)tree1.Hash(Operon::HashMode::Strict);
     (void)tree2.Hash(Operon::HashMode::Strict);
 
-    Operon::Vector<Operon::Hash> h1(tree1.Length()), h2(tree2.Length());
-    std::transform(tree1.Nodes().begin(), tree1.Nodes().end(), h1.begin(), [](auto& n) { return n.CalculatedHashValue; });
-    std::transform(tree2.Nodes().begin(), tree2.Nodes().end(), h2.begin(), [](auto& n) { return n.CalculatedHashValue; });
+    Operon::Vector<Operon::Hash> h1(tree1.Length());
+    Operon::Vector<Operon::Hash> h2(tree2.Length());
+    std::transform(tree1.Nodes().begin(), tree1.Nodes().end(), h1.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
+    std::transform(tree2.Nodes().begin(), tree2.Nodes().end(), h2.begin(), [](auto& n) -> auto { return n.CalculatedHashValue; });
     std::sort(h1.begin(), h1.end());
     std::sort(h2.begin(), h2.end());
 
@@ -142,15 +143,15 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
 
 TEST_CASE("Hash collisions", "[core]")
 {
-    size_t n = 100000;
-    size_t maxLength = 200;
-    size_t minDepth = 0;
-    size_t maxDepth = 100;
+    size_t const n = 100000;
+    size_t const maxLength = 200;
+    size_t const minDepth = 0;
+    size_t const maxDepth = 100;
 
     Operon::RandomGenerator rd(1234);
     auto ds = Dataset("./data/Poly-10.csv", true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
@@ -158,12 +159,12 @@ TEST_CASE("Hash collisions", "[core]")
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
     std::vector<Tree> trees(n);
-    auto btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
-    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
+    auto const btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
     initializer.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
     std::vector<Operon::Hash> seeds(n);
-    std::generate(seeds.begin(), seeds.end(), [&]() { return rd(); });
+    std::generate(seeds.begin(), seeds.end(), [&]() -> Operon::RandomGenerator::result_type { return rd(); });
     for (size_t i = 0; i < n; ++i) {
         Operon::RandomGenerator rand(seeds[i]);
         trees[i] = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
@@ -172,7 +173,7 @@ TEST_CASE("Hash collisions", "[core]")
     }
 
     std::unordered_set<uint64_t> set64;
-    auto totalNodes = std::transform_reduce(trees.begin(), trees.end(), size_t{0}, std::plus<size_t>{}, [](auto& tree) { return tree.Length(); });
+    auto totalNodes = std::transform_reduce(trees.begin(), trees.end(), size_t{0}, std::plus<size_t>{}, [](auto& tree) -> auto { return tree.Length(); });
 
     for (auto& tree : trees) {
         for (auto& node : tree.Nodes()) {
@@ -190,15 +191,15 @@ TEST_CASE("Strict vs relaxed hashing modes", "[core]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();
-    std::erase(inputs, ds.GetVariable("Y")->Hash);
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
     constexpr size_t maxLength = 20;
     Operon::RandomGenerator rd(42);
-    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
-    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> initializer;
+    BalancedTreeCreator const btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
 
     auto tree = btc(rd, 20, 1, 1000);
     initializer(rd, tree);

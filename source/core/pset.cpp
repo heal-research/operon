@@ -82,11 +82,11 @@ namespace Operon {
 
         Operon::Node result { Operon::NodeType::Constant };
 
-        auto c { std::uniform_real_distribution<Operon::Scalar>(0, sum)(random) };
+        auto c { std::uniform_real_distribution<Operon::Scalar>(0, static_cast<Operon::Scalar>(sum))(random) };
         auto s { 0UL };
         for (auto const& [node, freq, min_arity, max_arity] : candidates) {
             s += freq;
-            if (c < s) {
+            if (c < static_cast<Operon::Scalar>(s)) {
                 auto amin = std::max(minArity, MinimumArity(node.HashValue));
                 auto amax = std::min(maxArity, MaximumArity(node.HashValue));
                 auto arity = std::uniform_int_distribution<size_t>(amin, amax)(random);

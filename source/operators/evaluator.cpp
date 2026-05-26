@@ -18,6 +18,7 @@
 #include <ranges>
 
 namespace Operon {
+namespace {
     template<typename T>
     auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target) -> std::pair<double, double>
     requires std::is_arithmetic_v<T>
@@ -27,9 +28,10 @@ namespace Operon {
         if (!std::isfinite(a)) {
             a = 1;
         }
-        auto b = stats.mean_y - a * stats.mean_x; // offset
+        auto b = stats.mean_y - (a * stats.mean_x); // offset
         return {a, b};
     }
+} // namespace
 
     auto FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept -> std::pair<double, double> {
         return FitLeastSquaresImpl<float>(estimated, target);
@@ -54,13 +56,13 @@ namespace Operon {
         TInterpreter const interpreter{dtable, dataset, &tree};
 
         ++ResidualEvaluations;
-        Operon::Vector<Operon::Scalar> estimatedValues;
+        Operon::Vector<Operon::Scalar> const estimatedValues;
         ENSURE(buf.size() >= trainingRange.Size());
         auto coeff = tree.GetCoefficients();
         interpreter.Evaluate(coeff, trainingRange, buf);
         if (scaling_) {
             auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
-            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) { return (a * x) + b; });
+            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
         }
         auto fit = static_cast<Operon::Scalar>(error_(buf, targetValues));
 
@@ -83,7 +85,7 @@ namespace Operon {
             auto const& nodes = tree.Nodes();
             (void) tree.Hash(hashmode_);
             Operon::Vector<Operon::Hash> hash(nodes.size());;
-            std::ranges::transform(nodes, hash.begin(), [](auto const& n) { return n.CalculatedHashValue; });
+            std::ranges::transform(nodes, hash.begin(), [](auto const& n) -> auto { return n.CalculatedHashValue; });
             std::ranges::stable_sort(hash);
             divmap_[tree.HashValue()] = std::move(hash);
         }
@@ -100,12 +102,12 @@ namespace Operon {
         (void)ind.Genotype.Hash(hashmode_);
         Operon::Vector<Operon::Hash> lhs(ind.Genotype.Length());
         auto const& nodes = ind.Genotype.Nodes();
-        std::ranges::transform(nodes, lhs.begin(), [](auto const& n) { return n.CalculatedHashValue; });
+        std::ranges::transform(nodes, lhs.begin(), [](auto const& n) -> auto { return n.CalculatedHashValue; });
         std::ranges::stable_sort(lhs);
         auto const& values = divmap_.values();
 
         Operon::Scalar distance{0};
-        Operon::Vector<double> distances(sampleSize_);
+        Operon::Vector<double> const distances(sampleSize_);
         for (auto i = 0UL; i < sampleSize_; ++i) {
             auto const& rhs = Operon::Random::Sample(random, values.begin(), values.end())->second;
             distance += static_cast<Operon::Scalar>(Operon::Distance::Jaccard(lhs, rhs));
@@ -145,7 +147,7 @@ namespace Operon {
                 return { static_cast<Operon::Scalar>(accumulate<Operon::Scalar>(f.begin(), f.end()).mean) };
             }
             case AggregateType::HarmonicMean: {
-                auto stats = accumulate<Operon::Scalar>(f.begin(), f.end(), [](auto x) { return 1/x; });
+                auto stats = accumulate<Operon::Scalar>(f.begin(), f.end(), [](auto x) -> auto { return 1/x; });
                 return { static_cast<Operon::Scalar>(stats.count / stats.sum) };
             }
             case AggregateType::Sum: {

@@ -27,24 +27,24 @@ struct OptimizerFixture {
     static constexpr auto Nrow { 500 };
     static constexpr auto Ncol { 4 }; // X1, X2, X3, y
 
-    Operon::RandomGenerator rng{0};
-    Eigen::Array<Operon::Scalar, -1, -1> data{Nrow, Ncol};
-    Operon::Dataset ds;
-    Operon::Tree tree;
+    Operon::RandomGenerator rng{0}; // NOLINT(readability-identifier-naming)
+    Eigen::Array<Operon::Scalar, -1, -1> data{Nrow, Ncol}; // NOLINT(readability-identifier-naming)
+    Operon::Dataset ds; // NOLINT(readability-identifier-naming)
+    Operon::Tree tree; // NOLINT(readability-identifier-naming)
     using DTable = DispatchTable<Operon::Scalar>;
-    DTable dtable;
-    Operon::Problem problem;
+    DTable dtable; // NOLINT(readability-identifier-naming)
+    Operon::Problem problem; // NOLINT(readability-identifier-naming)
 
     OptimizerFixture()
-        : ds([&]{
+        : ds([&]() -> Operon::Dataset {
             for (auto i = 0; i < Ncol - 1; ++i) {
                 auto col = data.col(i);
-                std::generate(col.begin(), col.end(), [&]() { return Operon::Random::Uniform(rng, -1.0F, +1.0F); });
+                std::generate(col.begin(), col.end(), [&]() -> float { return Operon::Random::Uniform(rng, -1.0F, +1.0F); });
             }
             data.col(Ncol - 1) = data.col(0) + data.col(1) + data.col(2);
             return Operon::Dataset(data);
         }())
-        , tree([&]{
+        , tree([&]() -> Tree {
             auto t = InfixParser::Parse("X1 + X2 + X3", ds);
             for (auto& node : t.Nodes()) {
                 if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.1); }
@@ -107,7 +107,7 @@ TEST_CASE("Gaussian likelihood static methods", "[likelihood]")
     }
 }
 
-TEST_CASE("Parameter optimization", "[optimizer]")
+TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-function-cognitive-complexity)
 {
     OptimizerFixture fix;
     auto& rng     = fix.rng;
@@ -122,7 +122,7 @@ TEST_CASE("Parameter optimization", "[optimizer]")
     constexpr Operon::Scalar looseTol { 0.5F };
     constexpr Operon::Scalar paramTol { 0.01F };
 
-    auto checkExact = [&](OptimizerBase& optimizer) {
+    auto checkExact = [&](OptimizerBase& optimizer) -> void {
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(summary.FinalCost < summary.InitialCost);
         CHECK(summary.FinalCost < tightTol);
@@ -131,7 +131,7 @@ TEST_CASE("Parameter optimization", "[optimizer]")
         }
     };
 
-    auto checkImproved = [&](OptimizerBase& optimizer) {
+    auto checkImproved = [&](OptimizerBase& optimizer) -> void {
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(summary.FinalCost < summary.InitialCost);
         CHECK(summary.FinalCost < looseTol);
@@ -159,7 +159,7 @@ TEST_CASE("Parameter optimization", "[optimizer]")
 
     SECTION("lbfgs / poisson") {
         // Poisson loss on a continuous target: just verify it runs and improves
-        LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> optimizer{&dtable, &problem};
+        LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizer{&dtable, &problem};
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(std::isfinite(summary.FinalCost));
         CHECK(!summary.FinalParameters.empty());
@@ -175,14 +175,14 @@ TEST_CASE("Parameter optimization", "[optimizer]")
     SECTION("sgd / poisson") {
         auto const dim{tree.CoefficientsCount()};
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
-        SGDOptimizer<DTable, PoissonLoss<Operon::Scalar>> optimizer{&dtable, &problem, *rule};
+        SGDOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizer{&dtable, &problem, *rule};
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(std::isfinite(summary.FinalCost));
         CHECK(!summary.FinalParameters.empty());
     }
 
     SECTION("ComputeLikelihood virtual dispatch: pred==target => NLL = n/2 * log(2pi)") {
-        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
+        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> const optimizer{&dtable, &problem};
         auto range = problem.TrainingRange();
         auto target = problem.TargetValues(range);
         std::vector<Operon::Scalar> sigma(1, 1.0F);
@@ -215,7 +215,7 @@ TEST_CASE("SGD update rules", "[optimizer]")
     rules.emplace_back(new UpdateRule::Yogi<Operon::Scalar>(dim));
 
     for (auto const& rule : rules) {
-        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem, *rule};
+        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> const optimizer{&dtable, &problem, *rule};
         auto summary = optimizer.Optimize(rng, tree);
         CHECK(summary.Iterations > 0);
         // YamAdam applies the raw (summed) gradient as its first step (step size ≈ 1),

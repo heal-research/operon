@@ -68,7 +68,7 @@ auto Tree::Reduce() -> Tree&
 
     // if anything was reduced (nodes were disabled), copy remaining enabled nodes
     if (reduced) {
-        std::erase_if(nodes_, [](auto const& n) { return !n.IsEnabled; });
+        std::erase_if(nodes_, [](auto const& n) -> auto { return !n.IsEnabled; });
     }
     // else, nothing to do
     return this->UpdateNodes();
@@ -102,7 +102,7 @@ auto Tree::Sort() -> Tree&
                 std::stable_sort(start + i - size, start + i); // NOLINT
             } else {
                 std::ranges::copy(Indices(i), std::back_inserter(children));
-                std::stable_sort(children.begin(), children.end(), [&](auto a, auto b) { return nodes_[a] < nodes_[b]; }); // sort child indices
+                std::stable_sort(children.begin(), children.end(), [&](auto a, auto b) -> auto { return nodes_[a] < nodes_[b]; }); // sort child indices
 
                 auto pos = sorted.begin() + i - size; // NOLINT
                 for (auto j : children) {
@@ -144,7 +144,7 @@ auto Tree::Depth() const noexcept -> size_t
 
 auto Tree::VisitationLength() const noexcept -> size_t
 {
-    return std::transform_reduce(nodes_.begin(), nodes_.end(), 0UL, std::plus<> {}, [](const auto& node) { return node.Length + 1; });
+    return std::transform_reduce(nodes_.begin(), nodes_.end(), 0UL, std::plus<> {}, [](const auto& node) -> auto { return node.Length + 1; });
 }
 
 auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
@@ -155,7 +155,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
     std::vector<Operon::Hash> hashes;
     hashes.reserve(nodes_.size());
 
-    Operon::Hasher hasher;
+    Operon::Hasher const hasher;
 
     for (size_t i = 0; i < nodes_.size(); ++i) {
         auto const& n = nodes_[i];
@@ -163,7 +163,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
         if (n.IsLeaf()) {
             n.CalculatedHashValue = n.HashValue;
             if (mode == Operon::HashMode::Strict) {
-                n.CalculatedHashValue += hasher(std::bit_cast<uint8_t const*>(&n.Value), sizeof(n.Value));
+                n.CalculatedHashValue += hasher(reinterpret_cast<uint8_t const*>(&n.Value), sizeof(n.Value)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
             }
             continue;
         }
@@ -174,9 +174,9 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
         auto end = begin + n.Arity;
 
         if (n.IsCommutative()) {
-            std::stable_sort(begin, end, [&](auto a, auto b) { return nodes_[a] < nodes_[b]; });
+            std::stable_sort(begin, end, [&](auto a, auto b) -> auto { return nodes_[a] < nodes_[b]; });
         }
-        std::transform(begin, end, std::back_inserter(hashes), [&](auto j) { return nodes_[j].CalculatedHashValue; });
+        std::transform(begin, end, std::back_inserter(hashes), [&](auto j) -> auto { return nodes_[j].CalculatedHashValue; });
         hashes.push_back(n.HashValue);
 
         n.CalculatedHashValue = hasher(std::bit_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); // NOLINT

@@ -8,7 +8,7 @@
 
 namespace Operon::Test {
 
-TEST_CASE("Error metrics", "[metrics]")
+TEST_CASE("Error metrics", "[metrics]") // NOLINT(readability-function-cognitive-complexity)
 {
     auto const n{100UL};
 

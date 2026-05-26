@@ -14,6 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -78,9 +79,7 @@ void MetroHash64::Update(uint8_t const* buffer, const uint64_t length)
     // input buffer may be partially filled
     if (bytes % 32) { // NOLINT
         uint64_t fill = 32 - (bytes % 32); // NOLINT
-        if (fill > length) {
-            fill = length;
-        }
+        fill = std::min(fill, length);
 
         memcpy(input.b + (bytes % 32), ptr, static_cast<size_t>(fill)); // NOLINT
         ptr += fill;
