@@ -328,15 +328,15 @@
       "locked": {
         "lastModified": 1779711117,
         "narHash": "sha256-6iyiYtp3jD2JIzBCxJLcRzZQval2MUmimRjleV399bg=",
-        "ref": "refs/heads/main",
+        "owner": "foolnotion",
+        "repo": "ndsort",
         "rev": "d94c58a1eb3e08e1cd026c565ab63276ea6bc62a",
-        "revCount": 46,
-        "type": "git",
-        "url": "ssh://git@github.com/foolnotion/ndsort"
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/foolnotion/ndsort"
+        "owner": "foolnotion",
+        "repo": "ndsort",
+        "type": "github"
       }
     },
     "nixpkgs": {
