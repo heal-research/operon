@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
+#include "../operon_test.hpp"
 #include "operon/hash/hash.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/formatter/formatter.hpp"
@@ -23,9 +24,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
 
     Operon::RandomGenerator rng(1234);
 
-    Eigen::Matrix<Operon::Scalar, -1, -1> values(nrow, ncol);
-    for (auto& v : values.reshaped()) { v = Operon::Random::Uniform(rng, -1.F, +1.F); }
-    Operon::Dataset ds(values);
+    Operon::Dataset ds = Operon::Test::Util::RandomDataset(rng, nrow, ncol);
 
     Operon::PrimitiveSet pset;
     pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log | NodeType::Variable);
