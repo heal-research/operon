@@ -26,32 +26,32 @@ struct EvaluatorFixture {
     static constexpr auto Nrow { 500 };
     static constexpr auto Ncol { 4 }; // X1, X2, X3, y
 
-    Operon::RandomGenerator rng{0};
-    Eigen::Array<Operon::Scalar, -1, -1> data{Nrow, Ncol};
-    Operon::Dataset ds;
-    Operon::Tree tree;
-    Operon::Tree perfectTree;
+    Operon::RandomGenerator rng{0}; // NOLINT(readability-identifier-naming)
+    Eigen::Array<Operon::Scalar, -1, -1> data{Nrow, Ncol}; // NOLINT(readability-identifier-naming)
+    Operon::Dataset ds; // NOLINT(readability-identifier-naming)
+    Operon::Tree tree; // NOLINT(readability-identifier-naming)
+    Operon::Tree perfectTree; // NOLINT(readability-identifier-naming)
     using DTable = DispatchTable<Operon::Scalar>;
-    DTable dtable;
-    Operon::Problem problem;
+    DTable dtable; // NOLINT(readability-identifier-naming)
+    Operon::Problem problem; // NOLINT(readability-identifier-naming)
 
     EvaluatorFixture()
-        : ds([&]{
+        : ds([&]() -> Operon::Dataset {
             for (auto i = 0; i < Ncol - 1; ++i) {
                 auto col = data.col(i);
-                std::generate(col.begin(), col.end(), [&]() { return Operon::Random::Uniform(rng, -1.0F, +1.0F); });
+                std::generate(col.begin(), col.end(), [&]() -> float { return Operon::Random::Uniform(rng, -1.0F, +1.0F); });
             }
             data.col(Ncol - 1) = data.col(0) + data.col(1) + data.col(2);
             return Operon::Dataset(data);
         }())
-        , tree([&]{
+        , tree([&]() -> Tree {
             auto t = InfixParser::Parse("X1 + X2 + X3", ds);
             for (auto& node : t.Nodes()) {
                 if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.1); }
             }
             return t;
         }())
-        , perfectTree([&]{
+        , perfectTree([&]() -> Tree {
             auto t = InfixParser::Parse("X1 + X2 + X3", ds);
             for (auto& node : t.Nodes()) {
                 if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(1.0); }
@@ -104,7 +104,7 @@ TEST_CASE("Poisson likelihood static methods", "[likelihood]")
         std::vector<Operon::Scalar> w(1, 2.0F);
         // f(x,y,w) = f(w*x, y) = 2 - 1·log(2) + 0 = 2 - log(2)
         auto nll = Lik::ComputeLikelihood(pred, target, w);
-        auto const expected = static_cast<double>(n) * (2.0 - std::log(2.0));
+        auto const expected = static_cast<double>(n) * (2.0 - std::numbers::ln2);
         CHECK_THAT(static_cast<double>(nll), Catch::Matchers::WithinRel(expected, 1e-5));
     }
 
@@ -189,8 +189,8 @@ TEST_CASE("MDL evaluator", "[evaluator]")
     using DTable = EvaluatorFixture::DTable;
 
     SECTION("Gaussian / profiled sigma: finite positive result") {
-        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -198,9 +198,9 @@ TEST_CASE("MDL evaluator", "[evaluator]")
     }
 
     SECTION("Gaussian / fixed sigma: finite positive result") {
-        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         ev.SetSigma({0.5F});
-        auto ind = fix.MakeIndividual(fix.tree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -208,16 +208,16 @@ TEST_CASE("MDL evaluator", "[evaluator]")
     }
 
     SECTION("Poisson: finite result") {
-        MinimumDescriptionLengthEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        MinimumDescriptionLengthEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
     }
 
     SECTION("Gaussian / profiled sigma: SSR=0 does not produce NaN (epsilon clamp)") {
-        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.perfectTree);
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.perfectTree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -233,8 +233,8 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     using DTable = EvaluatorFixture::DTable;
 
     SECTION("Gaussian / profiled sigma: finite positive result") {
-        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -242,9 +242,9 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     }
 
     SECTION("Gaussian / fixed sigma: finite positive result") {
-        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         ev.SetSigma({0.5F});
-        auto ind = fix.MakeIndividual(fix.tree);
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -252,8 +252,8 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     }
 
     SECTION("Poisson: finite result") {
-        FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
@@ -262,17 +262,17 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     SECTION("Poisson FBF includes NLL contribution (regression: NLL was silently zero before fix)") {
         // Before the fix, the Poisson NLL was always 0 so FBF = fComplexity + cParameters.
         // After the fix, Poisson and Gaussian NLLs are computed differently, so results must differ.
-        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> evG{&fix.problem, &fix.dtable};
-        FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>  evP{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.tree);
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const evG{&fix.problem, &fix.dtable};
+        FractionalBayesFactorEvaluator<DTable, PoissonLikelihood<Operon::Scalar>> const  evP{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const rG = evG(fix.rng, ind);
         auto const rP = evP(fix.rng, ind);
         CHECK(rG[0] != rP[0]);
     }
 
     SECTION("Gaussian / profiled sigma: SSR=0 does not produce NaN (epsilon clamp)") {
-        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> ev{&fix.problem, &fix.dtable};
-        auto ind = fix.MakeIndividual(fix.perfectTree);
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.perfectTree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));

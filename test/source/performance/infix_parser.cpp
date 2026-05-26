@@ -27,7 +27,7 @@ TEST_CASE("Parser throughput", "[performance]")
     Operon::PrimitiveSet pset;
     pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Variable);
 
-    BalancedTreeCreator creator{&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength};
+    BalancedTreeCreator const creator{&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength};
     std::uniform_int_distribution<size_t> dist(1, maxLength);
 
     // Pre-generate infix strings
@@ -42,7 +42,7 @@ TEST_CASE("Parser throughput", "[performance]")
 
     size_t idx{0};
     nb::Bench bench;
-    bench.run("parse", [&]() {
+    bench.run("parse", [&]() -> void {
         auto tree = InfixParser::Parse(strings[idx], ds);
         nb::doNotOptimizeAway(tree);
         idx = (idx + 1) % nTrees;

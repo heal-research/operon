@@ -20,7 +20,7 @@ namespace {
     auto MakeSetup() {
         auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
         auto inputs = ds.VariableHashes();
-        std::erase(inputs, ds.GetVariable("Y")->Hash);
+        std::erase(inputs, ds.GetVariable("Y").value().Hash);
         PrimitiveSet pset;
         pset.SetConfig(PrimitiveSet::Arithmetic);
         return std::make_tuple(std::move(ds), std::move(inputs), std::move(pset));
@@ -31,9 +31,9 @@ TEST_CASE("Zobrist - same tree yields same hash", "[zobrist]")
 {
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
-    Zobrist cache(rng, MaxLength);
+    Zobrist const cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 20, 1, MaxLength);
 
     auto h1 = cache.ComputeHash(tree);
@@ -47,10 +47,10 @@ TEST_CASE("Zobrist - different coefficients yield same hash", "[zobrist]")
     // search) can be reused for any structurally identical tree.
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
-    Zobrist cache(rng, MaxLength);
+    Zobrist const cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
-    Operon::NormalCoefficientInitializer coeffInit;
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    Operon::NormalCoefficientInitializer const coeffInit;
 
     auto tree1 = creator(rng, 20, 1, MaxLength);
     auto tree2 = tree1; // identical structure
@@ -66,12 +66,12 @@ TEST_CASE("Zobrist - position sensitivity (deterministic)", "[zobrist]")
     // sin(cos(c)) and cos(sin(c)) have the same node types but at different
     // positions — the position-aware hash must distinguish them.
     Operon::RandomGenerator rng(Seed);
-    Zobrist cache(rng, MaxLength);
+    Zobrist const cache(rng, MaxLength);
 
     // postfix: [Constant, Cos, Sin]  =>  sin(cos(c))
-    Tree tree1 = Tree({ Node(NodeType::Constant), Node(NodeType::Cos), Node(NodeType::Sin) }).UpdateNodes();
+    Tree const tree1 = Tree({ Node(NodeType::Constant), Node(NodeType::Cos), Node(NodeType::Sin) }).UpdateNodes();
     // postfix: [Constant, Sin, Cos]  =>  cos(sin(c))
-    Tree tree2 = Tree({ Node(NodeType::Constant), Node(NodeType::Sin), Node(NodeType::Cos) }).UpdateNodes();
+    Tree const tree2 = Tree({ Node(NodeType::Constant), Node(NodeType::Sin), Node(NodeType::Cos) }).UpdateNodes();
 
     REQUIRE(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
 }
@@ -80,9 +80,9 @@ TEST_CASE("Zobrist - TryGet returns false on miss", "[zobrist]")
 {
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
-    Zobrist cache(rng, MaxLength);
+    Zobrist const cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
@@ -97,11 +97,11 @@ TEST_CASE("Zobrist - Insert then TryGet roundtrip", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Operon::Vector<Operon::Scalar> stored = { Operon::Scalar{0.5}, Operon::Scalar{1.0} };
+    Operon::Vector<Operon::Scalar> const stored = { Operon::Scalar{0.5}, Operon::Scalar{1.0} };
     cache.Insert(hash, stored);
     REQUIRE(cache.Size() == 1);
 
@@ -118,11 +118,11 @@ TEST_CASE("Zobrist - Clear resets table and hit counter", "[zobrist]")
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Operon::Vector<Operon::Scalar> val = { Operon::Scalar{0.1} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
     cache.Insert(hash, val);
 
     Operon::Vector<Operon::Scalar> tmp;
@@ -141,11 +141,11 @@ TEST_CASE("Zobrist - duplicate inserts increment count, not entries", "[zobrist]
     Operon::RandomGenerator rng(Seed);
     Zobrist cache(rng, MaxLength);
 
-    BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
     auto hash = cache.ComputeHash(tree);
 
-    Operon::Vector<Operon::Scalar> val = { Operon::Scalar{0.3} };
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.3} };
     cache.Insert(hash, val);
     cache.Insert(hash, val);
     cache.Insert(hash, val);

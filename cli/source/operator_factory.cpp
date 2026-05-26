@@ -24,11 +24,11 @@ namespace Operon { struct Variable; }
 
 namespace Operon {
 
-namespace detail {
+namespace {
     auto GetErrorString(std::string const& name, std::string const& arg) {
         return fmt::format("unable to parse {} argument '{}'", name, arg);
     }
-} // namespace detail
+} // namespace
 
 auto ParseReinserter(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<ReinserterBase>
 {
@@ -38,7 +38,7 @@ auto ParseReinserter(std::string const& str, ComparisonCallback&& comp) -> std::
     } else if (str == "replace-worst") {
         reinserter = std::make_unique<ReplaceWorstReinserter>(std::move(comp));
     } else {
-        throw std::invalid_argument(detail::GetErrorString("reinserter", str));
+        throw std::invalid_argument(GetErrorString("reinserter", str));
     }
     return reinserter;
 }
@@ -73,7 +73,7 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
     } else if (name == "random") {
         selector = std::make_unique<Operon::RandomSelector>();
     } else {
-        throw std::invalid_argument(detail::GetErrorString("selector", str));
+        throw std::invalid_argument(GetErrorString("selector", str));
     }
 
     return selector;
@@ -84,7 +84,6 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     std::unique_ptr<CreatorBase> creator;
 
     auto tok = Split(str, ':');
-    auto name = tok[0];
 
     double bias{0}; // irregularity bias (used by btc and ptc20)
     if(tok.size() > 1) {
@@ -100,7 +99,7 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     } else if (str == "grow") {
         creator = std::make_unique<GrowTreeCreator>(&pset, inputs, maxLength);
     } else {
-        throw std::invalid_argument(detail::GetErrorString("creator", str));
+        throw std::invalid_argument(GetErrorString("creator", str));
     }
     return creator;
 }
@@ -168,7 +167,7 @@ auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& 
         if (tok.size() > 1) { polygenicSize = scn::scan<size_t>(tok[1], "{}")->value(); }
         dynamic_cast<PolygenicOffspringGenerator*>(generator.get())->PolygenicSize(polygenicSize);
     } else {
-        throw std::invalid_argument(detail::GetErrorString("generator", str));
+        throw std::invalid_argument(GetErrorString("generator", str));
     }
     return generator;
 }

@@ -30,13 +30,13 @@ TEST_CASE("Crossover produces valid trees", "[operators]")
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
-    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    BalancedTreeCreator const btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
 
     Operon::RandomGenerator rng(1234);
 
     SECTION("Child is a valid tree") {
         constexpr double internalNodeProbability{0.9};
-        Operon::SubtreeCrossover cx(internalNodeProbability, maxDepth, maxLength);
+        Operon::SubtreeCrossover const cx(internalNodeProbability, maxDepth, maxLength);
         auto p1 = btc(rng, 7, 1, maxDepth); // NOLINT
         auto p2 = btc(rng, 5, 1, maxDepth); // NOLINT
         auto child = cx(rng, p1, p2);
@@ -48,12 +48,13 @@ TEST_CASE("Crossover produces valid trees", "[operators]")
         auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
         constexpr int n = 10000;
         std::vector<Tree> trees;
+        trees.reserve(n);
         for (int i = 0; i < n; ++i) {
             trees.push_back(btc(rng, sizeDistribution(rng), 1UL, maxDepth));
         }
 
         std::uniform_int_distribution<size_t> dist(0, n - 1);
-        Operon::SubtreeCrossover cx(0.9, maxDepth, maxLength);
+        Operon::SubtreeCrossover const cx(0.9, maxDepth, maxLength);
 
         for (int i = 0; i < 1000; ++i) {
             auto p1 = dist(rng);

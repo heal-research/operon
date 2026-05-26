@@ -13,44 +13,61 @@
 #include "operon/core/comparison.hpp"
 #include "operon/core/types.hpp"
 
+namespace {
+    constexpr std::size_t kBitsPerWord = std::numeric_limits<uint64_t>::digits;
+
+    auto SetBit(Operon::Vector<uint64_t>& bits, std::size_t i) -> void {
+        bits[i / kBitsPerWord] |= (1UL << (kBitsPerWord - i % kBitsPerWord)); // NOLINT(clang-analyzer-core.BitwiseShift)
+    }
+    [[maybe_unused]] auto ResetBit(Operon::Vector<uint64_t>& bits, std::size_t i) -> void {
+        bits[i / kBitsPerWord] &= ~(1UL << (i % kBitsPerWord));
+    }
+    auto GetBit(Operon::Vector<uint64_t> const& bits, std::size_t i) -> bool {
+        return (bits[i / kBitsPerWord] & (1UL << (kBitsPerWord - i % kBitsPerWord))) != 0U; // NOLINT(clang-analyzer-core.BitwiseShift)
+    }
+    auto IsDominatedOrSorted(Operon::Vector<uint64_t> const& dominated, Operon::Vector<uint64_t> const& sorted, std::size_t i) -> bool {
+        return GetBit(sorted, i) || GetBit(dominated, i);
+    }
+
+    // Compare solution i against all candidates j > i, marking domination bits.
+    // Returns true if i was dominated by some j.
+    auto CheckDominance(Operon::Span<Operon::Individual const> pop,
+                        Operon::Vector<uint64_t>& dominated,
+                        Operon::Vector<uint64_t> const& sorted,
+                        std::size_t i) -> bool
+    {
+        for (std::size_t j = i + 1; j < pop.size(); ++j) {
+            if (IsDominatedOrSorted(dominated, sorted, j)) { continue; }
+            auto res = Operon::ParetoDominance{}(pop[i].Fitness, pop[j].Fitness);
+            if (res == Operon::Dominance::Right) { SetBit(dominated, i); }
+            if (res == Operon::Dominance::Left)  { SetBit(dominated, j); }
+            if (GetBit(dominated, i)) { break; }
+        }
+        return GetBit(dominated, i);
+    }
+} // anonymous namespace
+
 namespace Operon {
     auto DeductiveSorter::Sort(Operon::Span<Operon::Individual const> pop, Operon::Scalar /*unused*/) const -> NondominatedSorterBase::Result
     {
         size_t n = 0; // total number of sorted solutions
         Operon::Vector<Operon::Vector<size_t>> fronts;
 
-        std::size_t constexpr d = std::numeric_limits<uint64_t>::digits;
         auto const s = static_cast<int>(pop.size());
-        auto const nb = s / d + static_cast<std::size_t>(s % d != 0);
+        auto const nb = (s / kBitsPerWord) + static_cast<std::size_t>(s % kBitsPerWord != 0);
 
         Operon::Vector<uint64_t> dominated(nb);
         Operon::Vector<uint64_t> sorted(nb);
-
-        auto set = [](auto&& range, auto i) { range[i / d] |= (1UL << (d - i % d));}; // set bit i
-        [[maybe_unused]] auto reset = [](auto&& range, auto i) { range[i / d] &= ~(1UL << (i % d)); }; // unset bit i
-        auto get = [](auto&& range, auto i) -> bool { return range[i / d] & (1UL << (d - i % d)); }; // return bit i
-
-        auto dominatedOrSorted = [&](std::size_t i) { return get(sorted, i) || get(dominated, i); };
 
         while (n < pop.size()) {
             Operon::Vector<size_t> front;
 
             for (size_t i = 0; i < pop.size(); ++i) {
-                if (dominatedOrSorted(i)) { continue; }
+                if (IsDominatedOrSorted(dominated, sorted, i)) { continue; }
 
-                for (size_t j = i + 1; j < pop.size(); ++j) {
-                    if (dominatedOrSorted(j)) { continue; }
-
-                    auto res = ParetoDominance{}(pop[i].Fitness, pop[j].Fitness);
-                    if (res == Dominance::Right) { set(dominated, i); }
-                    if (res == Dominance::Left) { set(dominated, j); }
-
-                    if (get(dominated, i)) { break; }
-                }
-
-                if (!get(dominated, i)) {
+                if (!CheckDominance(pop, dominated, sorted, i)) {
                     front.push_back(i);
-                    set(sorted, i);
+                    SetBit(sorted, i);
                 }
             }
 

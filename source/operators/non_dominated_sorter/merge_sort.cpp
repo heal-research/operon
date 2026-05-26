@@ -2,10 +2,10 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include <cpp-sort/sorters/merge_sorter.h>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <bit>
-#include <algorithm>
 #include <array>
 #include <limits>
 #include <span>
@@ -42,12 +42,8 @@ namespace detail {
         {
             size_t fw = bsRanges_[solutionId][FIRST_WORD_RANGE];
             size_t lw = bsRanges_[solutionId][LAST_WORD_RANGE];
-            if (lw > incBsLstWord_) {
-                lw = incBsLstWord_;
-            }
-            if (fw < incBsFstWord_) {
-                fw = incBsFstWord_;
-            }
+            lw = std::min(lw, incBsLstWord_);
+            fw = std::max(fw, incBsFstWord_);
 
             while (fw <= lw && 0 == (bitsets_[solutionId][fw] & incrementalBitset_[fw])) {
                 fw++;
@@ -72,12 +68,8 @@ namespace detail {
             auto fw = bsRanges_[solutionId][FIRST_WORD_RANGE];
             auto lw = bsRanges_[solutionId][LAST_WORD_RANGE];
 
-            if (lw > incBsLstWord_) {
-                lw = incBsLstWord_;
-            }
-            if (fw < incBsFstWord_) {
-                fw = incBsFstWord_;
-            }
+            lw = std::min(lw, incBsLstWord_);
+            fw = std::max(fw, incBsFstWord_);
             if (fw > lw) {
                 return;
             }
@@ -90,7 +82,7 @@ namespace detail {
                 word = bitsets_[solutionId][fw] & incrementalBitset_[fw];
 
                 if (word != 0) {
-                    i = std::countr_zero(static_cast<word_t>(word));
+                    i = std::countr_zero(word);
                     offset = fw * WORD_SIZE;
                     do {
                         auto r = ranking_[offset+i];
@@ -107,9 +99,7 @@ namespace detail {
             ranking_[solutionId] = rank;
             ranking0_[initSolId] = rank;
             i = solutionId / WORD_SIZE;
-            if (rank > wordRanking_[i]) {
-                wordRanking_[i] = rank;
-            }
+            wordRanking_[i] = std::max(rank, wordRanking_[i]);
         }
 
         void UpdateIncrementalBitset(size_t solutionId)
@@ -119,9 +109,7 @@ namespace detail {
             if (incBsLstWord_ < wordIndex) {
                 incBsLstWord_ = static_cast<int>(wordIndex);
             }
-            if (incBsFstWord_ > wordIndex) {
-                incBsFstWord_ = wordIndex;
-            }
+            incBsFstWord_ = std::min(incBsFstWord_, wordIndex);
         }
 
         auto InitializeSolutionBitset(size_t solutionId) -> bool
@@ -173,7 +161,7 @@ namespace detail {
             wordRanking_.resize(nSolutions, 0);
             bitsets_.resize(nSolutions);
             bsRanges_.resize(nSolutions);
-            incrementalBitset_.resize(nSolutions / WORD_SIZE + static_cast<uint64_t>(nSolutions % WORD_SIZE != 0));
+            incrementalBitset_.resize((nSolutions / WORD_SIZE) + static_cast<uint64_t>(nSolutions % WORD_SIZE != 0));
         }
     };
 
@@ -192,10 +180,10 @@ namespace detail {
 
         detail::BitsetManager bsm(n);
 
-        cppsort::merge_sorter sorter;
+        cppsort::merge_sorter const sorter;
         Operon::Vector<detail::Item> items(n);
         for (auto i = 0; i < n; ++i) {
-            items[i] = { i, pop[i][1] };
+            items[i] = { .Index = i, .Value = pop[i][1] };
         }
         sorter(items);
 
