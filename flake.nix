@@ -8,7 +8,7 @@
     fluky.url = "github:foolnotion/fluky";
     lbfgs.url = "github:foolnotion/lbfgs";
     infix-parser.url = "github:foolnotion/infix-parser";
-    ndsort.url = "git+ssh://git@github.com/foolnotion/ndsort";
+    ndsort.url = "github://git@github.com/foolnotion/ndsort";
     vstat.url = "github:heal-research/vstat";
     vdt.url = "github:foolnotion/vdt/master";
 
