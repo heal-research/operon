@@ -20,11 +20,14 @@
 namespace Operon::Test::Util {
     inline auto RandomDataset(Operon::RandomGenerator& rng, int rows, int cols) -> Operon::Dataset {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, +1.F);
+        std::vector<std::string> names(cols);
+        for (auto i = 0; i < cols - 1; ++i) { names[i] = fmt::format("X{}", i + 1); }
+        names.back() = "Y";
         std::vector<std::vector<Operon::Scalar>> data(cols, std::vector<Operon::Scalar>(rows));
         for (auto& col : data) {
             for (auto& v : col) { v = dist(rng); }
         }
-        return Operon::Dataset(data);
+        return Operon::Dataset(names, data);
     }
 
     template<typename T, std::size_t S = Backend::BatchSize<T>>
