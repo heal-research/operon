@@ -88,12 +88,12 @@ _STAT_COLS = [
     "iteration", "r2_tr", "r2_te", "mae_tr", "mae_te",
     "nmse_tr",   "nmse_te", "best_fit", "avg_fit",
     "best_len",  "avg_len", "eval_cnt", "res_eval",
-    "jac_eval",  "opt_time", "seed",   "elapsed",
+    "jac_eval",  "opt_time", "seed",   "sort_ms", "elapsed",
 ]
-REPORT_METRICS = ["r2_tr", "r2_te", "mae_tr", "mae_te", "elapsed"]
+REPORT_METRICS = ["r2_tr", "r2_te", "mae_tr", "mae_te", "sort_ms", "elapsed"]
 
 # For these metrics a negative Δmed (new < ref) means improvement.
-LOWER_IS_BETTER = {"mae_tr", "mae_te", "nmse_tr", "nmse_te", "elapsed"}
+LOWER_IS_BETTER = {"mae_tr", "mae_te", "nmse_tr", "nmse_te", "sort_ms", "elapsed"}
 
 # ── Run configuration & result ─────────────────────────────────────────────────
 @dataclass(frozen=True)

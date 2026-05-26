@@ -36,29 +36,7 @@
 #include "reporter.hpp"
 #include "util.hpp"
 
-namespace {
-auto MakeCoeffAndMutation(bool symbolic)
-    -> std::pair<std::unique_ptr<Operon::CoefficientInitializerBase>, std::unique_ptr<Operon::MutatorBase>>
-{
-    if (symbolic) {
-        using Dist = std::uniform_int_distribution<int>;
-        auto ci = std::make_unique<Operon::CoefficientInitializer<Dist>>();
-        int constexpr range { 5 };
-        dynamic_cast<Operon::CoefficientInitializer<Dist>*>(ci.get())->ParameterizeDistribution(-range, +range);
-        auto op = std::make_unique<Operon::OnePointMutation<Dist>>();
-        dynamic_cast<Operon::OnePointMutation<Dist>*>(op.get())->ParameterizeDistribution(-range, +range);
-        return { std::move(ci), std::move(op) };
-    }
-    using Dist = std::normal_distribution<Operon::Scalar>;
-    auto ci = std::make_unique<Operon::CoefficientInitializer<Dist>>();
-    dynamic_cast<Operon::NormalCoefficientInitializer*>(ci.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
-    auto op = std::make_unique<Operon::OnePointMutation<Dist>>();
-    dynamic_cast<Operon::OnePointMutation<Dist>*>(op.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
-    return { std::move(ci), std::move(op) };
-}
-} // anonymous namespace
-
-auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
+auto main(int argc, char** argv) -> int
 {
     auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);
@@ -78,6 +56,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     config.TimeLimit = result["timelimit"].as<size_t>();
     config.Seed = std::random_device {}();
 
+    // parse remaining config options
     Operon::Range trainingRange;
     Operon::Range testRange;
     std::unique_ptr<Operon::Dataset> dataset;
@@ -88,50 +67,108 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     auto maxLength = result["maxlength"].as<size_t>();
     auto maxDepth = result["maxdepth"].as<size_t>();
-    auto const crossoverInternalProbability = result["crossover-internal-probability"].as<Operon::Scalar>();
-    auto const symbolic = result["symbolic"].as<bool>();
+    auto crossoverInternalProbability = result["crossover-internal-probability"].as<Operon::Scalar>();
 
-    // Apply overrides from parsed options
-    dataset = std::make_unique<Operon::Dataset>(result["dataset"].as<std::string>(), /*hasHeader=*/true);
-    ENSURE(!dataset->IsView());
-    if (result.contains("seed"))             { config.Seed = result["seed"].as<size_t>(); }
-    if (result.contains("train"))            { trainingRange = Operon::ParseRange(result["train"].as<std::string>()); }
-    if (result.contains("test"))             { testRange = Operon::ParseRange(result["test"].as<std::string>()); }
-    if (result.contains("target"))           { targetName = result["target"].as<std::string>(); }
-    if (result.contains("enable-symbols"))   { primitiveSetConfig |= Operon::ParsePrimitiveSetConfig(result["enable-symbols"].as<std::string>()); }
-    if (result.contains("disable-symbols"))  { primitiveSetConfig &= ~Operon::ParsePrimitiveSetConfig(result["disable-symbols"].as<std::string>()); }
-    if (result.contains("threads"))          { threads = static_cast<decltype(threads)>(result["threads"].as<size_t>()); }
-    if (result.contains("show-primitives"))  { showPrimitiveSet = true; }
+    auto symbolic = result["symbolic"].as<bool>();
 
     try {
+        for (const auto& kv : result.arguments()) {
+            const auto& key = kv.key();
+            const auto& value = kv.value();
+
+            if (key == "dataset") {
+                dataset = std::make_unique<Operon::Dataset>(value, true);
+                ENSURE(!dataset->IsView());
+            }
+            if (key == "seed") {
+                config.Seed = kv.as<size_t>();
+            }
+            if (key == "train") {
+                trainingRange = Operon::ParseRange(value);
+            }
+            if (key == "test") {
+                testRange = Operon::ParseRange(value);
+            }
+            if (key == "target") {
+                targetName = value;
+            }
+            if (key == "maxlength") {
+                maxLength = kv.as<size_t>();
+            }
+            if (key == "maxdepth") {
+                maxDepth = kv.as<size_t>();
+            }
+            if (key == "enable-symbols") {
+                auto mask = Operon::ParsePrimitiveSetConfig(value);
+                primitiveSetConfig |= mask;
+            }
+            if (key == "disable-symbols") {
+                auto mask = ~Operon::ParsePrimitiveSetConfig(value);
+                primitiveSetConfig &= mask;
+            }
+            if (key == "threads") {
+                threads = static_cast<decltype(threads)>(kv.as<size_t>());
+            }
+            if (key == "show-primitives") {
+                showPrimitiveSet = true;
+            }
+        }
+
         if (showPrimitiveSet) {
             Operon::PrintPrimitives(primitiveSetConfig);
             return EXIT_SUCCESS;
         }
 
         // set the target
+        Operon::Variable target;
         auto res = dataset->GetVariable(targetName);
         if (!res) {
             fmt::print(stderr, "error: target variable {} does not exist in the dataset.", targetName);
             return EXIT_FAILURE;
         }
-        auto const& target = *res;
+        target = *res;
         auto const rows { dataset->Rows<std::size_t>() };
-
-        Operon::SetupRanges(result, *dataset, trainingRange, testRange);
-
+        if (result.count("train") == 0) {
+            trainingRange = Operon::Range { 0, 2 * rows / 3 }; // by default use 66% of the data as training
+        }
+        if (result.count("test") == 0) {
+            // if no test range is specified, we try to infer a reasonable range based on the trainingRange
+            if (trainingRange.Start() > 0) {
+                testRange = Operon::Range { 0, trainingRange.Start() };
+            } else if (trainingRange.End() < rows) {
+                testRange = Operon::Range { trainingRange.End(), dataset->Rows<std::size_t>() };
+            } else {
+                testRange = Operon::Range { 0, 1 };
+            }
+        }
         // validate training range
         if (trainingRange.Start() >= rows || trainingRange.End() > rows) {
             fmt::print(stderr, "error: the training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start(), trainingRange.End(), dataset->Rows());
             return EXIT_FAILURE;
         }
+
         if (trainingRange.Start() > trainingRange.End()) {
             fmt::print(stderr, "error: invalid training range {}:{}\n", trainingRange.Start(), trainingRange.End());
             return EXIT_FAILURE;
         }
 
-        auto inputs = Operon::BuildInputs(result, *dataset, target.Hash);
+        std::vector<Operon::Hash> inputs;
+        if (result.count("inputs") == 0) {
+            inputs = dataset->VariableHashes();
+            std::erase(inputs, target.Hash);
+        } else {
+            auto str = result["inputs"].as<std::string>();
+            auto tokens = Operon::Split(str, ',');
 
+            for (auto const& tok : tokens) {
+                if (auto res = dataset->GetVariable(tok); res.has_value()) {
+                    inputs.push_back(res->Hash);
+                } else {
+                    fmt::print(stderr, "error: variable {} does not exist in the dataset.", tok);
+                    return EXIT_FAILURE;
+                }
+            }
+        }
         Operon::Problem problem(std::move(dataset));
         problem.SetTrainingRange(trainingRange);
         problem.SetTestRange(testRange);
@@ -139,7 +176,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         problem.SetInputs(inputs);
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
-        auto creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs(), maxLength);
+        std::unique_ptr<Operon::CreatorBase> creator;
+        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs(), maxLength);
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(creator.get());
@@ -151,7 +189,22 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         treeInitializer.SetMinDepth(initialMinDepth);
         treeInitializer.SetMaxDepth(initialMaxDepth); // NOLINT
 
-        auto [coeffInitializer, onePoint] = MakeCoeffAndMutation(symbolic);
+        std::unique_ptr<Operon::CoefficientInitializerBase> coeffInitializer;
+        std::unique_ptr<Operon::MutatorBase> onePoint;
+        if (symbolic) {
+            using Dist = std::uniform_int_distribution<int>;
+            coeffInitializer = std::make_unique<Operon::CoefficientInitializer<Dist>>();
+            int constexpr range { 5 };
+            dynamic_cast<Operon::CoefficientInitializer<Dist>*>(coeffInitializer.get())->ParameterizeDistribution(-range, +range);
+            onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
+            dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(-range, +range);
+        } else {
+            using Dist = std::normal_distribution<Operon::Scalar>;
+            coeffInitializer = std::make_unique<Operon::CoefficientInitializer<Dist>>();
+            dynamic_cast<Operon::NormalCoefficientInitializer*>(coeffInitializer.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
+            onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
+            dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
+        }
 
         Operon::SubtreeCrossover crossover { crossoverInternalProbability, maxDepth, maxLength };
         Operon::MultiMutation mutator {};
@@ -174,26 +227,31 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         mutator.Add(&discretePoint, 1.0);
 
         Operon::ScalarDispatch dtable;
-        auto const scale = result["linear-scaling"].as<bool>();
+        // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
+        // dtable.RegisterCallable(12345UL, f, f);
+
+        auto scale = result["linear-scaling"].as<bool>();
         auto errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
         errorEvaluator->SetBudget(config.Evaluations);
 
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
         optimizer->SetIterations(config.Iterations);
         Operon::LengthEvaluator lengthEvaluator(&problem, maxLength);
+        // Operon::EntropyEvaluator entropyEvaluator(&problem);
 
         Operon::MultiEvaluator evaluator(&problem);
         evaluator.SetBudget(config.Evaluations);
         evaluator.Add(errorEvaluator.get());
         evaluator.Add(&lengthEvaluator);
+        // evaluator.Add(&entropyEvaluator);
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
-        Operon::CrowdedComparison const comp;
+        Operon::CrowdedComparison comp;
 
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
-        Operon::CoefficientOptimizer const cOpt { optimizer.get() };
+        Operon::CoefficientOptimizer cOpt { optimizer.get() };
 
         auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
@@ -206,16 +264,23 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         }
 
         Operon::RandomGenerator random(config.Seed);
-        if (result["shuffle"].as<bool>()) { problem.GetDataset()->Shuffle(random); }
-        if (result["standardize"].as<bool>()) { problem.StandardizeData(problem.TrainingRange()); }
-
+        if (result["shuffle"].as<bool>()) {
+            problem.GetDataset()->Shuffle(random);
+        }
+        if (result["standardize"].as<bool>()) {
+            problem.StandardizeData(problem.TrainingRange());
+        }
         tf::Executor executor(threads);
-        Operon::RankIntersectSorter sorter;
-        Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get(), &sorter };
+        auto const sorterName = result["sorter"].as<std::string>();
+        Operon::RankIntersectSorter rsSorter;
+        Operon::MergeSorter msSorter;
+        Operon::NondominatedSorterBase* sorterPtr = &rsSorter;
+        if (sorterName == "ms") { sorterPtr = &msSorter; }
+        Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get(), sorterPtr };
 
         auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
-        gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
+        gp.Run(executor, random, [&]() { reporter(executor, gp); });
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
         if (result.contains("pareto-front")) {
