@@ -19,11 +19,12 @@
 
 namespace Operon::Test::Util {
     inline auto RandomDataset(Operon::RandomGenerator& rng, int rows, int cols) -> Operon::Dataset {
-        std::uniform_real_distribution<Operon::Scalar> dist(-1.f, +1.f);
-        Eigen::Matrix<decltype(dist)::result_type, -1, -1> data(rows, cols);
-        for (auto& v : data.reshaped()) { v = dist(rng); }
-        Operon::Dataset ds(data);
-        return ds;
+        std::uniform_real_distribution<Operon::Scalar> dist(-1.F, +1.F);
+        std::vector<std::vector<Operon::Scalar>> data(cols, std::vector<Operon::Scalar>(rows));
+        for (auto& col : data) {
+            for (auto& v : col) { v = dist(rng); }
+        }
+        return Operon::Dataset(data);
     }
 
     template<typename T, std::size_t S = Backend::BatchSize<T>>
