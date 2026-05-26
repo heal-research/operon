@@ -13,8 +13,6 @@
 
 namespace Operon {
 
-enum EfficientSortStrategy : int { Binary, Sequential };
-
 class NondominatedSorterBase {
 public:
     using Result = Operon::Vector<Operon::Vector<size_t>>;
