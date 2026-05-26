@@ -48,6 +48,7 @@ stdenv.mkDerivation rec {
       libdwarf
       mdspan
       microsoft-gsl
+      ndsort
       pkg-config
       infix-parser
       (scnlib.overrideAttrs { inherit enableShared; })
