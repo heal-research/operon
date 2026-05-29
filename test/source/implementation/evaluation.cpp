@@ -23,7 +23,9 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
     auto range = Range{0, ds.Rows<std::size_t>()};
 
     using DTable = DispatchTable<Operon::Scalar>;
-    auto const& X = ds.Values(); // NOLINT
+    auto const x0 = ds.GetValues(int64_t{0});
+    auto const x1 = ds.GetValues(int64_t{1});
+    auto const x2 = ds.GetValues(int64_t{2});
 
     Operon::Vector<size_t> indices(range.Size());
     std::iota(indices.begin(), indices.end(), 0);
@@ -35,22 +37,19 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
         auto tree = InfixParser::Parse("X1 + X2 + X3", ds);
         auto coeff = tree.GetCoefficients();
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(coeff, range);
-        Eigen::Array<Operon::Scalar, -1, 1> expected = X.col(0) + X.col(1) + X.col(2);
-        CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - expected(i)) < eps; }));
+        CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - (x0[i] + x1[i] + x2[i])) < eps; }));
     }
 
     SECTION("X1 - X2 + X3") {
         auto tree = InfixParser::Parse("X1 - X2 + X3", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
-        auto expected = X.col(0) - X.col(1) + X.col(2);
-        CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - expected(i)) < eps; }));
+        CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - (x0[i] - x1[i] + x2[i])) < eps; }));
     }
 
     SECTION("log(abs(X1))") {
         auto tree = InfixParser::Parse("log(abs(X1))", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
-        Eigen::Array<Operon::Scalar, -1, 1> expected = X.col(0).abs().log();
-        CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - expected(i)) < eps; }));
+        CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - std::log(std::abs(x0[i]))) < eps; }));
     }
 
     SECTION("log of constant") {
