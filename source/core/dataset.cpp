@@ -1,146 +1,195 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
+#include <algorithm>
+#include <cmath>
+#include <numeric>
+#include <stdexcept>
+
 #include <vstat/vstat.hpp>
 #include <parser.hpp>
 #include <fast_float/fast_float.h>
 #include <fmt/format.h>
 
-#include "operon/core/constants.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/types.hpp"
 #include "operon/hash/hash.hpp"
 
 namespace Operon {
 
-// internal implementation details
 namespace {
-    auto VariablesFromNames(auto const& names) {
+    auto VariablesFromNames(auto const& names) -> Dataset::Variables {
         Hasher const hasher;
         Dataset::Variables vars;
         for (auto i = 0; i < std::ssize(names); ++i) {
             auto const& name = names[i];
-            auto hash = hasher(name);
-            auto index = i;
-            vars.insert({hash, {name, hash, index}});
+            auto const hash = hasher(name);
+            vars.insert({hash, {name, hash, i}});
         }
         return vars;
     }
 
-    auto DefaultVariables(size_t count) {
+    auto DefaultVariables(int count) -> Dataset::Variables {
         std::vector<std::string> names(count);
-        for (auto i = 0UL; i < count; ++i) {
-            names[i] = fmt::format("X{}", i+1);
-        }
+        for (auto i = 0; i < count; ++i) { names[i] = fmt::format("X{}", i + 1); }
         return VariablesFromNames(names);
     }
 
-    auto MatrixFromValues(auto const& values) {
-        Dataset::Matrix m(std::ssize(values.front()), std::ssize(values));
-        using M = Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const>;
-        for (auto i = 0; i < m.cols(); ++i) {
-            m.col(i) = M(values[i].data(), m.rows());
+    auto StorageFromCols(std::vector<std::vector<Operon::Scalar>> const& cols) -> Dataset::Storage {
+        auto const ncols = static_cast<int>(cols.size());
+        auto const nrows = static_cast<int>(cols.front().size());
+        Dataset::Storage s(nrows, ncols);
+        auto* dst = s.container().data();
+        for (auto j = 0; j < ncols; ++j) {
+            std::copy_n(cols[j].data(), nrows, dst + (static_cast<ptrdiff_t>(j) * nrows));
         }
-        return m;
+        return s;
+    }
+
+    auto MakeView(Dataset::Storage const& s) -> Dataset::View {
+        return s.to_mdspan();
     }
 } // namespace
 
-auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Matrix
+auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Storage
 {
     std::ifstream f(path);
     aria::csv::CsvParser parser(f);
 
-    auto nrow = std::count(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>(), '\n');
-    // rewind the ifstream
+    auto nrow = static_cast<int>(std::count(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>(), '\n'));
     f.clear();
     f.seekg(0);
 
-    auto ncol{0L};
-
-    Hasher const hash;
-    Matrix m;
+    auto ncol{0};
 
     if (hasHeader) {
-        --nrow; // for matrix allocation, don't care about column names
+        --nrow;
         for (auto const& row : parser) {
-            for (auto const& f : row) {
-                auto h = hash(f);
-                variables_.insert({ h, { .Name = f, .Hash = h, .Index = ncol++ } });
+            for (auto const& field : row) {
+                Hasher const hash;
+                auto h = hash(field);
+                variables_.insert({ h, { .Name = field, .Hash = h, .Index = ncol++ } });
             }
-            break; // read only the first row
+            break;
         }
-        m.resize(nrow, static_cast<Eigen::Index>(ncol));
     }
 
-    std::vector<Operon::Scalar> vec;
-    Eigen::Index rowIdx = 0;
+    // flat column-major buffer: buf[col * nrow + row]
+    std::vector<Operon::Scalar> buf;
+    if (ncol > 0) { buf.resize(static_cast<size_t>(nrow) * ncol); }
+    std::vector<Operon::Scalar> rowBuf;
+    auto rowIdx = 0;
 
     for (auto const& row : parser) {
-        size_t fieldIdx = 0;
+        rowBuf.clear();
         for (auto const& field : row) {
             Operon::Scalar v{0};
-            auto status = fast_float::from_chars(field.data(), field.data() + field.size(), v);
-            if(status.ec != std::errc()) {
-                throw std::runtime_error(fmt::format("failed to parse field {} at line {}\n", fieldIdx, rowIdx));
+            auto const status = fast_float::from_chars(field.data(), field.data() + field.size(), v);
+            if (status.ec != std::errc()) {
+                throw std::runtime_error(fmt::format("failed to parse field at line {}\n", rowIdx));
             }
-            vec.push_back(v);
-            ++fieldIdx;
+            rowBuf.push_back(v);
         }
+
         if (ncol == 0) {
             ENSURE(!hasHeader);
-            ncol = static_cast<int64_t>(vec.size());
-            m.resize(nrow, ncol);
+            ncol = static_cast<int>(rowBuf.size());
+            buf.resize(static_cast<size_t>(nrow) * ncol);
             variables_ = DefaultVariables(ncol);
         }
-        m.row(rowIdx) = Eigen::Map<Eigen::Array<Operon::Scalar, Eigen::Dynamic, 1>>(vec.data(), static_cast<Eigen::Index>(vec.size()));
-        vec.clear();
+
+        for (auto j = 0; j < ncol; ++j) {
+            buf[(static_cast<size_t>(j) * nrow) + rowIdx] = rowBuf[j];
+        }
         ++rowIdx;
     }
-    return m;
-}
 
-Dataset::Dataset(std::vector<std::vector<Operon::Scalar>> const& vals)
-    : variables_(DefaultVariables(vals.size()))
-    , values_(MatrixFromValues(vals))
-    , map_(values_.data(), values_.rows(), values_.cols())
-{
+    Storage s(nrow, ncol);
+    std::copy(buf.begin(), buf.end(), s.container().data());
+    return s;
 }
 
 Dataset::Dataset(std::string const& path, bool hasHeader)
-    : values_(ReadCsv(path, hasHeader))
-    , map_(values_.data(), values_.rows(), values_.cols())
+    : storage_(ReadCsv(path, hasHeader))
+    , view_(MakeView(storage_))
 {
 }
 
-Dataset::Dataset(Matrix vals)
-    : variables_(DefaultVariables(static_cast<size_t>(vals.cols())))
-    , values_(std::move(vals))
-    , map_(values_.data(), values_.rows(), values_.cols())
+Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<Scalar>> const& vals)
+    : variables_(VariablesFromNames(vars))
+    , storage_(StorageFromCols(vals))
+    , view_(MakeView(storage_))
 {
 }
 
-Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<Operon::Scalar>> const& vals)
-    : values_(MatrixFromValues(vals))
-    , map_(values_.data(), values_.rows(), values_.cols())
+Dataset::Dataset(std::vector<std::vector<Scalar>> const& vals)
+    : variables_(DefaultVariables(static_cast<int>(vals.size())))
+    , storage_(StorageFromCols(vals))
+    , view_(MakeView(storage_))
 {
-    Hasher const hasher;
-    for (auto i = 0; i < map_.cols(); ++i) {
-        auto h = hasher(vars[i]);
-        variables_.insert({h, { .Name = vars[i], .Hash = h, .Index = i } });
+}
+
+Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
+    : variables_(DefaultVariables(cols))
+    , view_(data, rows, cols)
+{
+}
+
+Dataset::Dataset(Dataset const& rhs)
+    : variables_(rhs.variables_)
+    , weights_(rhs.weights_)
+{
+    auto const nrows = rhs.view_.extent(0);
+    auto const ncols = rhs.view_.extent(1);
+    storage_ = Storage(nrows, ncols);
+    auto const n = static_cast<size_t>(nrows) * static_cast<size_t>(ncols);
+    std::copy_n(rhs.view_.data_handle(), n, storage_.container().data());
+    view_ = MakeView(storage_);
+}
+
+Dataset::Dataset(Dataset&& rhs) noexcept
+    : variables_(std::move(rhs.variables_))
+    , storage_(std::move(rhs.storage_))
+    , view_(rhs.view_)
+    , weights_(std::move(rhs.weights_))
+{
+}
+
+auto Dataset::operator=(Dataset&& rhs) noexcept -> Dataset&
+{
+    if (this != &rhs) {
+        variables_ = std::move(rhs.variables_);
+        storage_   = std::move(rhs.storage_);
+        view_      = rhs.view_;
+        weights_   = std::move(rhs.weights_);
     }
+    return *this;
 }
 
-Dataset::Dataset(gsl::not_null<Matrix::Scalar const*> data, Eigen::Index rows, Eigen::Index cols) // NOLINT
-    : variables_(DefaultVariables(static_cast<size_t>(cols)))
-    , map_(data, rows, cols)
+void Dataset::Swap(Dataset& rhs) noexcept
 {
+    variables_.swap(rhs.variables_);
+    std::swap(storage_, rhs.storage_);
+    std::swap(view_, rhs.view_);
+    std::swap(weights_, rhs.weights_);
+}
+
+auto Dataset::operator==(Dataset const& rhs) const noexcept -> bool
+{
+    if (Rows() != rhs.Rows() || Cols() != rhs.Cols()) { return false; }
+    if (variables_.size() != rhs.variables_.size()) { return false; }
+    if (!std::equal(variables_.begin(), variables_.end(), rhs.variables_.begin())) { return false; }
+    auto const n = static_cast<size_t>(Rows()) * static_cast<size_t>(Cols());
+    return std::equal(view_.data_handle(), view_.data_handle() + n, rhs.view_.data_handle(),
+                      [](auto a, auto b) -> bool { return std::abs(a - b) < static_cast<Scalar>(1e-6); });
 }
 
 void Dataset::SetVariableNames(std::vector<std::string> const& names)
 {
-    if (names.size() != static_cast<size_t>(map_.cols())) {
-        auto msg = fmt::format("The number of columns ({}) does not match the number of column names ({}).", map_.cols(), names.size());
-        throw std::runtime_error(msg);
+    if (std::ssize(names) != Cols()) {
+        throw std::runtime_error(fmt::format(
+            "The number of columns ({}) does not match the number of column names ({}).",
+            Cols(), names.size()));
     }
     variables_ = VariablesFromNames(names);
 }
@@ -149,7 +198,8 @@ auto Dataset::VariableNames() const -> std::vector<std::string>
 {
     std::vector<std::string> names;
     names.reserve(variables_.size());
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(names), [](auto const& p) -> auto { return p.second.Name; });
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(names),
+                   [](auto const& p) -> auto { return p.second.Name; });
     return names;
 }
 
@@ -157,7 +207,8 @@ auto Dataset::VariableHashes() const -> std::vector<Operon::Hash>
 {
     std::vector<Operon::Hash> hashes;
     hashes.reserve(variables_.size());
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(hashes), [](auto const& p) -> auto { return p.second.Hash; });
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(hashes),
+                   [](auto const& p) -> auto { return p.second.Hash; });
     return hashes;
 }
 
@@ -165,29 +216,29 @@ auto Dataset::VariableIndices() const -> std::vector<std::size_t>
 {
     std::vector<std::size_t> indices;
     indices.reserve(variables_.size());
-    std::transform(variables_.begin(), variables_.end(), std::back_inserter(indices), [](auto const& p) -> auto { return p.second.Index; });
+    std::transform(variables_.begin(), variables_.end(), std::back_inserter(indices),
+                   [](auto const& p) -> auto { return static_cast<std::size_t>(p.second.Index); });
     return indices;
 }
 
-auto Dataset::GetValues(std::string const& name) const noexcept -> Operon::Span<const Operon::Scalar>
+auto Dataset::GetValues(std::string const& name) const noexcept -> Span<Scalar const>
 {
     return GetValues(Hasher{}(name));
 }
 
-auto Dataset::GetValues(Operon::Hash hash) const noexcept -> Operon::Span<const Operon::Scalar>
+auto Dataset::GetValues(Operon::Hash hash) const noexcept -> Span<Scalar const>
 {
     auto it = variables_.find(hash);
     if (it == variables_.end()) {
         fmt::print(stderr, "GetValues: cannot find variable with hash value {}", hash);
         std::abort();
     }
-    return {map_.col(it->second.Index).data(), static_cast<size_t>(map_.rows())};
+    return ColSpan(it->second.Index);
 }
 
-// this method needs to take an int argument to differentiate it from GetValues(Operon::Hash)
-auto Dataset::GetValues(int64_t index) const noexcept -> Operon::Span<const Operon::Scalar>
+auto Dataset::GetValues(int64_t index) const noexcept -> Span<Scalar const>
 {
-    return {map_.col(index).data(), static_cast<size_t>(map_.rows())};
+    return ColSpan(static_cast<int>(index)); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
 auto Dataset::GetVariable(std::string const& name) const noexcept -> std::optional<Variable>
@@ -202,50 +253,80 @@ auto Dataset::GetVariable(Operon::Hash hash) const noexcept -> std::optional<Var
     return it->second;
 }
 
+auto Dataset::GetVariables() const noexcept -> std::vector<Operon::Variable>
+{
+    std::vector<Operon::Variable> variables;
+    variables.reserve(variables_.size());
+    auto const& vals = variables_.values();
+    std::transform(vals.begin(), vals.end(), std::back_inserter(variables),
+                   [](auto const& p) -> auto { return p.second; });
+    return variables;
+}
+
+void Dataset::SetWeights(Span<Scalar const> w)
+{
+    ENSURE(std::ssize(w) == Rows());
+    weights_.emplace(w.begin(), w.end());
+}
+
+auto Dataset::Weights() const noexcept -> std::optional<Span<Scalar const>>
+{
+    if (!weights_) { return std::nullopt; }
+    return Span<Scalar const>{ weights_->data(), weights_->size() };
+}
+
 void Dataset::Shuffle(Operon::RandomGenerator& random)
 {
-    if (IsView()) { throw std::runtime_error("Cannot shuffle. Dataset does not own the data.\n"); }
-    Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values_.rows());
-    perm.setIdentity();
-    // generate a random permutation
-    Operon::Span<decltype(perm)::IndicesType::Scalar> const idx(perm.indices().data(), perm.indices().size());
-    std::shuffle(idx.begin(), idx.end(), random);
-    values_.matrix().applyOnTheLeft(perm); // permute rows
+    if (IsView()) { throw std::runtime_error("Cannot shuffle: dataset does not own the data.\n"); }
+    std::vector<int> perm(Rows());
+    std::iota(perm.begin(), perm.end(), 0);
+    std::shuffle(perm.begin(), perm.end(), random);
+    PermuteRows(perm);
+    if (weights_) {
+        Vector<Scalar> tmp(weights_->size());
+        for (auto i = 0; i < Rows(); ++i) { tmp[i] = (*weights_)[perm[i]]; }
+        *weights_ = std::move(tmp);
+    }
 }
 
 void Dataset::Normalize(size_t i, Range range)
 {
-    if (IsView()) { throw std::runtime_error("Cannot normalize. Dataset does not own the data.\n"); }
-    EXPECT(range.Start() + range.Size() <= static_cast<size_t>(values_.rows()));
-    auto j     = static_cast<Eigen::Index>(i);
-    auto start = static_cast<Eigen::Index>(range.Start());
-    auto size  = static_cast<Eigen::Index>(range.Size());
-    auto seg   = values_.col(j).segment(start, size);
-    auto min   = seg.minCoeff();
-    auto max   = seg.maxCoeff();
-    values_.col(j) = (values_.col(j).array() - min) / (max - min);
+    if (IsView()) { throw std::runtime_error("Cannot normalize: dataset does not own the data.\n"); }
+    EXPECT(range.Start() + range.Size() <= static_cast<size_t>(Rows()));
+    auto* col   = storage_.container().data() + (static_cast<ptrdiff_t>(i) * Rows()); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+    auto* begin = col + range.Start();
+    auto* end   = begin + range.Size();
+    auto [minIt, maxIt] = std::minmax_element(begin, end);
+    auto const min = *minIt;
+    auto const rng = *maxIt - min;
+    std::transform(col, col + Rows(), col, [min, rng](auto v) -> Scalar { return (v - min) / rng; });
 }
 
-void Dataset::PermuteRows(std::vector<Eigen::Index> const& indices)
-{
-    if (IsView()) { throw std::runtime_error("Cannot shuffle. Dataset does not own the data.\n"); }
-    ENSURE(values_.rows() == std::ssize(indices));
-    Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(values_.rows());
-    std::copy(indices.begin(), indices.end(), perm.indices().begin());
-    values_.matrix().applyOnTheLeft(perm); // permute rows
-}
-
-// standardize column i using mean and stddev calculated over the specified range
 void Dataset::Standardize(size_t i, Range range)
 {
-    if (IsView()) { throw std::runtime_error("Cannot standardize. Dataset does not own the data.\n"); }
-    EXPECT(range.Start() + range.Size() <= static_cast<size_t>(values_.rows()));
-    auto j = static_cast<Eigen::Index>(i);
-    auto start = static_cast<Eigen::Index>(range.Start());
-    auto n = static_cast<Eigen::Index>(range.Size());
-    auto seg = values_.col(j).segment(start, n);
-    auto stats = vstat::univariate::accumulate<Matrix::Scalar>(seg.begin(), seg.end());
-    auto stddev = std::sqrt(stats.variance);
-    values_.col(j) = (values_.col(j).array() - stats.mean) / stddev;
+    if (IsView()) { throw std::runtime_error("Cannot standardize: dataset does not own the data.\n"); }
+    EXPECT(range.Start() + range.Size() <= static_cast<size_t>(Rows()));
+    auto* col   = storage_.container().data() + (static_cast<ptrdiff_t>(i) * Rows()); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+    auto* begin = col + range.Start();
+    auto const stats  = vstat::univariate::accumulate<Scalar>(begin, begin + range.Size());
+    auto const stddev = std::sqrt(stats.variance);
+    auto const mu     = stats.mean;
+    std::transform(col, col + Rows(), col, [mu, stddev](auto v) -> Scalar { return (v - mu) / stddev; });
 }
+
+void Dataset::PermuteRows(std::vector<int> const& perm)
+{
+    if (IsView()) { throw std::runtime_error("Cannot permute: dataset does not own the data.\n"); }
+    ENSURE(std::ssize(perm) == Rows());
+    auto const nrows = Rows();
+    auto const ncols = Cols();
+    auto* data = storage_.container().data();
+    std::vector<Scalar> tmp(nrows);
+    for (auto j = 0; j < ncols; ++j) {
+        auto* col = data + (static_cast<ptrdiff_t>(j) * nrows);
+        for (auto k = 0; k < nrows; ++k) { tmp[k] = col[perm[k]]; }
+        std::copy(tmp.begin(), tmp.end(), col);
+    }
+}
+
 } // namespace Operon

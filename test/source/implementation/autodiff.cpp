@@ -21,12 +21,9 @@ namespace Operon::Test {
 
 TEST_CASE("Autodiff specific expressions", "[autodiff]") // NOLINT(readability-function-cognitive-complexity)
 {
-    Operon::Dataset::Matrix values(1, 2);
-    values << 1, 1; // NOLINT
-
+    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
+                       std::vector<std::vector<Operon::Scalar>>{{1}, {1}});
     Operon::RandomGenerator rng(0UL); // NOLINT(misc-const-correctness) — captured by ref in lambda, passed to non-const distribution calls
-    Operon::Dataset ds(values);
-    ds.SetVariableNames({"x", "y"});
     Operon::DispatchTable<Operon::Scalar> dtable;
     Operon::Range const range{0, ds.Rows<std::size_t>()};
 
@@ -76,12 +73,9 @@ TEST_CASE("Autodiff specific expressions", "[autodiff]") // NOLINT(readability-f
 
 TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
 {
-    Operon::Dataset::Matrix values(1, 2);
-    values << 1, 1; // NOLINT
-
+    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
+                       std::vector<std::vector<Operon::Scalar>>{{1}, {1}});
     Operon::RandomGenerator rng(0UL);
-    Operon::Dataset ds(values);
-    ds.SetVariableNames({"x", "y"});
 
     Operon::DispatchTable<Operon::Scalar> dtable;
     Operon::Range const range{0, ds.Rows<std::size_t>()};
