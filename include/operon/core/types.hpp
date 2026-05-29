@@ -29,7 +29,7 @@ using Span = std::span<T>;
 template<typename T, typename Extents, typename LayoutPolicy = std::layout_left, typename AccessorPolicy = std::default_accessor<T>>
 using MDSpan = std::mdspan<T, Extents, LayoutPolicy, AccessorPolicy>;
 
-template<typename T, typename Extents, typename LayoutPolicy = std::layout_left, typename Container = std::vector<T>>
+template<typename T, typename Extents, typename LayoutPolicy = std::layout_left, typename Container = std::vector<T, AlignedAllocator<T, 32>>>
 using MDArray = std::experimental::mdarray<T, Extents, LayoutPolicy, Container>;
 
 template <class Key,
