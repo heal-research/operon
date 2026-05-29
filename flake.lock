@@ -282,11 +282,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1773827468,
-        "narHash": "sha256-3fhW/xLTfWxKAJ7VrwoJ5mcUdSCRE2UgKkCdmn3KDkw=",
+        "lastModified": 1780075328,
+        "narHash": "sha256-B7pcz6jNdbW+jw67aucXaewCjk1maFpc6uyMdVrGdKc=",
         "owner": "foolnotion",
         "repo": "infix-parser",
-        "rev": "18ea752693bc489000b53b7b8387322f91193c48",
+        "rev": "b9270d14d03c4fc54816e4eb52352e4c39927ef2",
         "type": "github"
       },
       "original": {
