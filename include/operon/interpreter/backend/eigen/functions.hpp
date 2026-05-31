@@ -59,7 +59,7 @@ namespace Operon::Backend {
     template<typename T, std::size_t S>
     auto Min(T* res, T weight, auto const* first, auto const*... args) {
         static_assert(sizeof...(args) > 0);
-        Map<T, S>(res, S, 1) = weight * weight * (Map<T const, S>(first, S, 1).min(Map<T const, S>(args, S, 1)), ...);
+        Map<T, S>(res, S, 1) = weight * (Map<T const, S>(first, S, 1).min(Map<T const, S>(args, S, 1)), ...);
     }
 
     template<typename T, std::size_t S>
