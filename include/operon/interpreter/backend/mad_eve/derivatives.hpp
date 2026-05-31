@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
-#ifndef OPERON_BACKEND_FAST_APPROX_DERIVATIVES_HPP
-#define OPERON_BACKEND_FAST_APPROX_DERIVATIVES_HPP
+#ifndef OPERON_BACKEND_MAD_EVE_DERIVATIVES_HPP
+#define OPERON_BACKEND_MAD_EVE_DERIVATIVES_HPP
 
+#include "operon/core/node.hpp"
 #include "functions.hpp"
 
 namespace Operon::Backend {
@@ -40,7 +41,7 @@ namespace detail {
         auto *res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
-        std::transform(pi, pi+S, pj, res, [](auto x, auto y) { return x * detail::fast_approx::Inv(y); });
+        std::transform(pi, pi+S, pj, res, std::divides{});
     }
 
     template<typename T, std::size_t S>
@@ -57,10 +58,10 @@ namespace detail {
         auto const* pj = Ptr(primal, j);
 
         if (n.Arity == 1) {
-            std::transform(pj, pj+S, res, [](auto x) { return -detail::fast_approx::Inv(x * x); });
+            std::transform(pj, pj+S, res, [](auto x) { return -T{1} / (x * x); });
         } else {
             auto v = j == i-1 ? T{1} : T{-1};
-            std::transform(pi, pi+S, pj, res, [v](auto x, auto y) { return detail::fast_approx::Div(v*x, y); });
+            std::transform(pi, pi+S, pj, res, [v](auto x, auto y) { return v * x / y; });
         }
     }
 
@@ -71,14 +72,14 @@ namespace detail {
         auto const* pj = Ptr(primal, j);
 
         if (j == i-1) {
-            std::transform(pi, pi+S, pj, res, detail::fast_approx::Div);
+            std::transform(pi, pi+S, pj, res, std::divides{});
         } else {
             auto const* pk = Ptr(primal, i-1);
-            constexpr auto p = -3.F / 2.F;
             for (auto s = 0UL; s < S; ++s) {
+                auto const a = pi[s];
                 auto const b = pj[s];
                 auto const c = pk[s];
-                res[s] = -b * c * detail::fast_approx::Pow(1 + b * b, p);
+                res[s] = -b * a * a * a / (c * c);
             }
         }
     }
@@ -93,12 +94,12 @@ namespace detail {
             auto const k = j - (nodes[j].Length + 1);
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; ++s) {
-                res[s] = detail::fast_approx::Div(pi[s] * pk[s], pj[s]);
+                res[s] = pi[s] * pk[s] / pj[s];
             }
         } else {
             auto const k = i-1;
             auto const* pk = Ptr(primal, k);
-            std::transform(pi, pi+S, pk, res, [](auto x, auto y) { return x * detail::fast_approx::Log(y); });
+            std::transform(pi, pi+S, pk, res, [](auto x, auto y) { return x * std::log(y); });
         }
     }
 
@@ -112,12 +113,12 @@ namespace detail {
             auto const k = j - (nodes[j].Length + 1);
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; ++s) {
-                res[s] = detail::fast_approx::Div(pi[s] * pk[s] * detail::Sgn(pj[s]), std::abs(pj[s]));
+                res[s] = pi[s] * pk[s] * detail::Sgn(pj[s]) / std::abs(pj[s]);
             }
         } else {
             auto const k = i-1;
             auto const* pk = Ptr(primal, k);
-            std::transform(pi, pi+S, pk, res, [](auto x, auto y) { return x * detail::fast_approx::Log(std::abs(y)); });
+            std::transform(pi, pi+S, pk, res, [](auto x, auto y) { return x * std::log(std::abs(y)); });
         }
     }
 
@@ -176,35 +177,35 @@ namespace detail {
     auto Log(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x){ return detail::fast_approx::Inv(x); });
+        std::transform(pj, pj+S, res, [](auto x){ return T{1} / x; });
     }
 
     template<typename T, std::size_t S>
     auto Log1p(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x){ return detail::fast_approx::Inv(T{1} + x); });
+        std::transform(pj, pj+S, res, [](auto x){ return T{1} / (T{1} + x); });
     }
 
     template<typename T, std::size_t S>
     auto Logabs(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x) { return detail::fast_approx::Div(detail::Sgn(x), std::abs(x)); });
+        std::transform(pj, pj+S, res, [](auto x) { return detail::Sgn(x) / std::abs(x); });
     }
 
     template<typename T, std::size_t S>
     auto Sin(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x){ return detail::fast_approx::Cos(x); });
+        std::transform(pj, pj+S, res, [](auto x){ return std::cos(x); });
     }
 
     template<typename T, std::size_t S>
     auto Cos(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x){ return -detail::fast_approx::Sin(x); });
+        std::transform(pj, pj+S, res, [](auto x){ return -std::sin(x); });
     }
 
     template<typename T, std::size_t S>
@@ -239,28 +240,28 @@ namespace detail {
     auto Asin(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x) { return detail::fast_approx::ISqrt(T{1} - x * x); });
+        std::transform(pj, pj+S, res, [](auto x) { return T{1} / std::sqrt(T{1} - x * x); });
     }
 
     template<typename T, std::size_t S>
     auto Acos(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x) { return -detail::fast_approx::ISqrt(T{1} - x * x); });
+        std::transform(pj, pj+S, res, [](auto x) { return -T{1} / std::sqrt(T{1} - x * x); });
     }
 
     template<typename T, std::size_t S>
     auto Atan(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x) { return detail::fast_approx::Inv(T{1} + x * x); });
+        std::transform(pj, pj+S, res, [](auto x) { return T{1} / (T{1} + x * x); });
     }
 
     template<typename T, std::size_t S>
     auto Sqrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
-        std::transform(pi, pi+S, res, [](auto x){ return detail::fast_approx::Inv(T{2} * x); });
+        std::transform(pi, pi+S, res, [](auto x){ return T{1} / (T{2} * x); });
     }
 
     template<typename T, std::size_t S>
@@ -268,14 +269,16 @@ namespace detail {
         auto* res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
-        std::transform(pi, pi+S, pj, res, [](auto x, auto y){ return detail::fast_approx::Div(detail::Sgn(y), T{2} * x); });
+        std::transform(pi, pi+S, pj, res, [](auto x, auto y){ return detail::Sgn(y) / (T{2} * x); });
     }
 
     template<typename T, std::size_t S>
     auto Cbrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+        // Col(trace, j) = (T{3} * Col(primal, i).square()).inverse();
         auto* res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
-        std::transform(pi, pi+S, res, [](auto x){ return detail::fast_approx::Inv(T{3} * x*x); });
+        std::transform(pi, pi+S, res, [](auto x){ return T{1} / (T{3} * x*x); });
     }
 }  // namespace Operon::Backend
+
 #endif

@@ -12,7 +12,7 @@ if(PROJECT_IS_TOP_LEVEL)
   set(JEMALLOC_DESCRIPTION             "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support [default=OFF].")
   set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes [default=OFF].")
   set(USE_CERES_DESCRIPTION            "Use the non-linear least squares optimizer from Ceres solver to tune model coefficients (if OFF, Eigen::LevenbergMarquardt will be used instead).")
-  set(MATH_BACKEND_DESCRIPTION         "Math library for tree evaluation (defaults to Eve)")
+  set(MATH_BACKEND_DESCRIPTION         "Math library for tree evaluation: Eve (default), MadEve (approximate SIMD), Stl (scalar reference)")
 
   # option descriptions
   option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
