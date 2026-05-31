@@ -9,7 +9,7 @@
 
 namespace Operon::Backend::Mad {
     template<std::size_t P = 0>
-    auto isqrt_impl(float x) -> float {
+    inline auto isqrt_impl(float x) -> float {
         constexpr auto nan{ std::numeric_limits<float>::quiet_NaN() };
         constexpr auto inf{ std::numeric_limits<float>::infinity() };
         constexpr auto fast_sqrt_constant{static_cast<float>(0x5F3759DF)};
@@ -30,7 +30,7 @@ namespace Operon::Backend::Mad {
     }
 
     template<std::size_t P = 0>
-    auto sqrt_impl(float x) -> float {
+    inline auto sqrt_impl(float x) -> float {
         constexpr auto nan = std::numeric_limits<float>::quiet_NaN();
         if (std::isnan(x)) { return nan; }
         if (x < 0) { return nan; }
@@ -48,7 +48,7 @@ namespace Operon::Backend::Mad {
     }
 
     template<std::size_t P = 0>
-    auto sqrtabs_impl(float x) {
+    inline auto sqrtabs_impl(float x) {
         return sqrt_impl<P>(std::abs(x));
     }
 

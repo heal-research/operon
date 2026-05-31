@@ -6,47 +6,29 @@
 #include "log.hpp"
 
 namespace Operon::Backend::Mad {
-    auto pow_v1(float x, float y) -> float {
+    // P=0: bit-cast exponent trick (fastest, ~5% error)
+    inline auto pow_v1(float x, float y) -> float {
         constexpr auto lower_limit{-85.F};
         constexpr auto upper_limit{+85.F};
-        constexpr auto inf { std::numeric_limits<float>::infinity() };
-        constexpr auto nan { std::numeric_limits<float>::quiet_NaN() };
+        constexpr auto inf{std::numeric_limits<float>::infinity()};
+        constexpr auto nan{std::numeric_limits<float>::quiet_NaN()};
 
         if (std::isnan(x)) { return nan; }
         if (std::isnan(y)) { return nan; }
-        if (x == 0) { return y < 0 ? inf : x; }
-        if (x < 0) { return nan; }
-        if (y == 0) { return 1.F; }
-        if (y < lower_limit) { return 0; }
+        if (x == 0.F) { return y < 0.F ? inf : x; }
+        if (x < 0.F) { return nan; }
+        if (y == 0.F) { return 1.F; }
+        if (y < lower_limit) { return 0.F; }
         if (y > upper_limit) { return inf; }
 
-        auto xi = std::bit_cast<int32_t>(x);
-        auto a = static_cast<int>(y * (xi - 1064866805) + static_cast<float>(1064866805));
+        auto const xi = std::bit_cast<int32_t>(x);
+        auto const a  = static_cast<int32_t>(y * static_cast<float>(xi - 1064866805) + 1064866805.F);
         return std::bit_cast<float>(a);
     }
 
-    auto pow_v2(float x, float y) {
-        auto log2 = [](float x) {
-            auto i = std::bit_cast<std::uint32_t>(x);
-            auto f = std::bit_cast<float>((i & 0x007FFFFF) | 0x3F000000);
-            auto y = i * 1.1920928955078125e-7f;
-            return y - 124.22551499f - 1.498030302f * f - 1.72587999F / (0.3520887068F + f);
-        };
-
-        auto pow2 = [](float p) {
-            float offset = (p < 0) ? 1.0F : 0.0F;
-            float clipp = (p < -126) ? -126.0F : p;
-            float z = clipp - static_cast<int32_t>(clipp) + offset;
-            auto i = static_cast<std::uint32_t>((1 << 23U) * (clipp + 121.2740575F + 27.7280233F / (4.84252568F - z) - 1.49012907F * z));
-            return std::bit_cast<float>(i);
-        };
-        return pow2(y * log2(x));
-    }
-
     template<std::size_t P = 0>
-    auto pow_impl(float x, float y) -> float {
+    inline auto pow_impl(float x, float y) -> float {
         if constexpr (P == 0) { return pow_v1(x, y); }
-        // else { return PowV2(x, y); }
         else { return exp_impl<P>(y * log_impl<P>(x)); }
     }
 
