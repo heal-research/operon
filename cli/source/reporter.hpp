@@ -192,7 +192,7 @@ public:
             T{ "jac_eval", jacEval, ":>" },
             T{ "opt_time", cfTime, ":>" },
             T{ "seed", config.Seed, ":>10" },
-            T{ "sort_ms", [&]{ auto const& t = gp.Timings(); auto it = t.find(std::string{kSortTaskName}); return it != t.end() ? it->second * 1e3 : 0.0; }(), format },
+            T{ "sort_ms", [&]{ auto const& t = gp.Timings(); auto it = t.find(std::string{SortTaskName}); return it != t.end() ? it->second * 1e3 : 0.0; }(), format },
             T{ "elapsed", gp.Elapsed(), ":>"},
         };
         PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
