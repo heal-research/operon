@@ -155,7 +155,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
                                    parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
                                })
                             .name("evaluate population");
-            auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(parents); }).name(std::string{kSortTaskName});
+            auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(parents); }).name(std::string{SortTaskName});
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
                                              if (report) {
@@ -193,7 +193,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
                                                 }
                                             })
                                          .name("generate offspring");
-            auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(individuals); }).name(std::string{kSortTaskName});
+            auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(individuals); }).name(std::string{SortTaskName});
             auto reinsert = subflow.emplace([&]() -> void { reinserter->Sort(individuals); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
