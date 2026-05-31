@@ -5,7 +5,9 @@
 #define GA_BASE_HPP
 
 #include <functional>
+#include <string>
 #include <operon/operon_export.hpp>
+#include "operon/core/types.hpp"
 #include "operon/operators/generator.hpp"
 #include "config.hpp"
 
@@ -61,8 +63,8 @@ public:
     [[nodiscard]] auto Elapsed() const -> double { return elapsed_; }
     auto Elapsed() -> double& { return elapsed_; }
 
-    [[nodiscard]] auto SortTime() const -> double { return sort_time_; }
-    auto SortTime() -> double& { return sort_time_; }
+    [[nodiscard]] auto Timings() const -> Operon::Map<std::string, double> const& { return phaseTimes_; }
+    auto Timings() -> Operon::Map<std::string, double>& { return phaseTimes_; }
 
     [[nodiscard]] auto IsFitted() const -> bool { return isFitted_; }
     auto IsFitted() -> bool& { return isFitted_; }
@@ -71,6 +73,7 @@ public:
     {
         generation_ = 0;
         elapsed_ = 0;
+        phaseTimes_.clear();
         GetGenerator()->Evaluator()->Reset();
     }
 
@@ -97,8 +100,8 @@ private:
     Operon::Span<Individual> offspring_;
 
     size_t generation_{0};
-    double elapsed_{0};    // elapsed time in seconds
-    double sort_time_{0};  // cumulative non-dominated sort time in seconds
+    double elapsed_{0};
+    Operon::Map<std::string, double> phaseTimes_;
     bool isFitted_{false};
 };
 
