@@ -69,6 +69,9 @@ public:
     [[nodiscard]] auto IsFitted() const -> bool { return isFitted_; }
     auto IsFitted() -> bool& { return isFitted_; }
 
+    // Valid to call between runs only. The PhaseTimer observer owns its own
+    // totals and is recreated each Run(), so Reset() mid-run would cause the
+    // next reportProgress sync to overwrite the cleared map with stale data.
     auto Reset() -> void
     {
         generation_ = 0;
