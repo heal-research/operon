@@ -5,7 +5,7 @@
 
 namespace Operon::Backend::Mad {
     template<std::size_t P = 0>
-    auto tanh_impl(float x) -> float {
+    inline auto tanh_impl(float x) -> float {
         constexpr auto lower_limit{-85.F};
         constexpr auto upper_limit{+85.F};
         constexpr auto nan { std::numeric_limits<float>::quiet_NaN() };
