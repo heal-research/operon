@@ -12,7 +12,7 @@
 
 namespace Operon::Backend::Mad {
     template<std::size_t P = 0>
-    auto log_impl(float x) -> float {
+    inline auto log_impl(float x) -> float {
         constexpr auto inf { std::numeric_limits<float>::infinity() };
         constexpr auto nan { std::numeric_limits<float>::quiet_NaN() };
         constexpr auto ln2 { std::numbers::ln2_v<float> };
@@ -43,7 +43,7 @@ namespace Operon::Backend::Mad {
     }
 
     template<std::size_t P = 0>
-    auto logabs_impl(float x) -> float  {
+    inline auto logabs_impl(float x) -> float  {
         return log_impl<P>(std::abs(x));
     }
 

@@ -5,7 +5,7 @@
 
 namespace Operon::Backend::Mad {
     template<std::size_t P = 0>
-    auto cos_impl(float x) -> float {
+    inline auto cos_impl(float x) -> float {
         if (!std::isfinite(x)) { return std::numeric_limits<float>::quiet_NaN(); }
         if (x == 0) { return 1.F; }
 
@@ -31,7 +31,7 @@ namespace Operon::Backend::Mad {
     }
 
     template<std::size_t P = 0>
-    auto sin_impl(float x) -> float {
+    inline auto sin_impl(float x) -> float {
         if (!std::isfinite(x)) { return std::numeric_limits<float>::quiet_NaN(); }
         if (x == 0) { return x; }
         if constexpr (P == 0) {
@@ -47,7 +47,7 @@ namespace Operon::Backend::Mad {
     }
 
     template<std::size_t P = 0>
-    auto tan_impl(float x) -> float {
+    inline auto tan_impl(float x) -> float {
         if (x == 0) { return x; }
         return div_impl<P>(sin_impl<P>(x), cos_impl<P>(x));
     }
