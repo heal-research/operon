@@ -90,8 +90,8 @@ namespace Operon::Backend::Mad {
             auto log2 = [](eve::wide<float> x) {
                 auto i = eve::bit_cast(x, eve::as<eve::wide<uint32_t>>{});
                 auto f = eve::bit_cast((i & 0x007FFFFF) | 0x3F000000, eve::as<eve::wide<float>>{});
-                auto y = eve::bit_cast(i * 1.1920928955078125e-7F, eve::as<eve::wide<float>>{});
-                return y - 124.22551499F - 1.498030302F * f - 1.72587999F / (0.3520887068F + f);
+                auto m = eve::bit_cast(i * 1.1920928955078125e-7F, eve::as<eve::wide<float>>{});
+                return m - 124.22551499F - 1.498030302F * f - 1.72587999F / (0.3520887068F + f);
             };
 
             auto pow2 = [](eve::wide<float> x) {
