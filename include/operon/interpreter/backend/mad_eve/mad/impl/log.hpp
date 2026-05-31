@@ -67,7 +67,7 @@ namespace Operon::Backend::Mad {
                     return (t + ((-0.239030721F * f + 1.40339138F) * f - 1.16093668F));
                 } else {
                     static_assert(P <= 2, "error: invalid precision spec for log_impl");
-                    return -1.7417939F+((2.821226F+(-1.4699568F+(0.44717955F-0.056570851F*f)*f)*f)*f)+(ln2 * eve::convert(t, eve::as<float>{}));
+                    return -1.7417939F+((2.821226F+(-1.4699568F+(0.44717955F-0.056570851F*f)*f)*f)*f)+t;
                 }
             }
         };
