@@ -25,6 +25,7 @@ import argparse
 import itertools
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,10 +91,10 @@ _STAT_COLS = [
     "best_len",  "avg_len", "eval_cnt", "res_eval",
     "jac_eval",  "opt_time", "seed",   "sort_ms", "elapsed",
 ]
-REPORT_METRICS = ["r2_tr", "r2_te", "mae_tr", "mae_te", "sort_ms", "elapsed"]
+REPORT_METRICS = ["r2_tr", "r2_te", "mae_tr", "mae_te", "sort_ms", "wall_s"]
 
 # For these metrics a negative Δmed (new < ref) means improvement.
-LOWER_IS_BETTER = {"mae_tr", "mae_te", "nmse_tr", "nmse_te", "sort_ms", "elapsed"}
+LOWER_IS_BETTER = {"mae_tr", "mae_te", "nmse_tr", "nmse_te", "sort_ms", "wall_s"}
 
 # ── Run configuration & result ─────────────────────────────────────────────────
 @dataclass(frozen=True)
@@ -143,6 +144,7 @@ class RunResult:
     returncode:  int
     model_line:  str        # last stdout line (the symbolic expression)
     final_stats: dict       # parsed last numeric row
+    wall_s:      float = 0.0   # total wall-clock time for this run (seconds)
     error:       str = ""
 
 
@@ -162,16 +164,18 @@ def _parse_stats_line(line: str) -> dict:
 
 def run_binary(binary: Path, config: RunConfig, datadir: Path, timeout: int) -> RunResult:
     cmd = [str(binary)] + config.cli_args(datadir)
+    t0 = time.perf_counter()
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return RunResult(-1, "", {}, "timeout")
+        return RunResult(-1, "", {}, 0.0, "timeout")
     except Exception as exc:
-        return RunResult(-1, "", {}, str(exc))
+        return RunResult(-1, "", {}, 0.0, str(exc))
+    wall_s = time.perf_counter() - t0
 
     lines = proc.stdout.strip().splitlines()
     if not lines:
-        return RunResult(proc.returncode, "", {}, proc.stderr[:400])
+        return RunResult(proc.returncode, "", {}, wall_s, proc.stderr[:400])
 
     model_line  = lines[-1]
     final_stats = {}
@@ -181,8 +185,9 @@ def run_binary(binary: Path, config: RunConfig, datadir: Path, timeout: int) -> 
             final_stats = s
             break
 
+    final_stats["wall_s"] = wall_s
     err = proc.stderr[:200] if proc.returncode != 0 else ""
-    return RunResult(proc.returncode, model_line, final_stats, err)
+    return RunResult(proc.returncode, model_line, final_stats, wall_s, err)
 
 
 # ── Printing helpers ───────────────────────────────────────────────────────────
@@ -491,6 +496,10 @@ def main() -> None:
     # Infrastructure
     p.add_argument("--datadir", type=Path, default=None,
                    help="Dataset directory (default: <ref>/data)")
+    p.add_argument("--ref-build", default="build",
+                   help="Build subdirectory name under ref root (default: build)")
+    p.add_argument("--new-build", default="build",
+                   help="Build subdirectory name under new root (default: build)")
     p.add_argument("--jobs",    type=int, default=2,
                    help="Parallel run pairs (default: 2; each pair = 2 processes, "
                         "so --jobs 2 means 4 operon processes at once)")
@@ -519,8 +528,8 @@ def main() -> None:
     if not args.objectives:
         sys.exit("--objectives must not be empty")
 
-    ref_bin = args.ref / "build" / "cli"
-    new_bin = args.new / "build" / "cli"
+    ref_bin = args.ref / args.ref_build / "cli"
+    new_bin = args.new / args.new_build / "cli"
     datadir = args.datadir or (args.ref / "data")
 
     # Validate paths
