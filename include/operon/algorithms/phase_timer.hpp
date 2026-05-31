@@ -17,7 +17,7 @@ namespace Operon {
 
 // Task name constants — used in algorithm implementations and reporters to
 // avoid magic-string coupling between the task .name() call and any lookup site.
-inline constexpr std::string_view kSortTaskName = "non-dominated sort";
+inline constexpr std::string_view SortTaskName = "non-dominated sort";
 
 namespace detail {
 // Transparent hash for std::string keys: avoids constructing a std::string
