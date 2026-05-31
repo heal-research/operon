@@ -65,13 +65,13 @@ namespace Operon::Backend {
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
-    auto Min(T* res, T weight, auto const*... args) {
+    auto Min(T* res, [[maybe_unused]] T weight, auto const*... args) {
         return eve::algo::transform_to(eve::views::zip(std::span{args, S}...), res, eve::min);
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
-    auto Max(T* res, T weight, auto const*... args) {
+    auto Max(T* res, [[maybe_unused]] T weight, auto const*... args) {
         return eve::algo::transform_to(eve::views::zip(std::span{args, S}...), res, eve::max);
     }
 

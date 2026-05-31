@@ -136,7 +136,7 @@ if (USE_JEMALLOC)
 endif()
 
 if(NOT MATH_BACKEND)
-    set(MATH_BACKEND "Eigen")
+    set(MATH_BACKEND "Eve")
 endif()
 
 message(STATUS "MATH: ${MATH_BACKEND}")

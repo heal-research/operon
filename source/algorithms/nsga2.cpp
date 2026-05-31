@@ -16,6 +16,7 @@
 #include <vector> // for vector, vector::size_type
 
 #include "operon/algorithms/nsga2.hpp"
+#include "operon/algorithms/phase_timer.hpp"
 #include "operon/core/contracts.hpp" // for ENSURE
 #include "operon/core/operator.hpp" // for OperatorBase
 #include "operon/core/problem.hpp" // for Problem
@@ -78,9 +79,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) -> auto { return !ind.Rank; });
     Operon::Span<Operon::Individual const> const uniq(pop.begin(), r);
     // do the sorting
-    auto const ts = std::chrono::steady_clock::now();
     fronts_ = (*sorter_)(uniq, eps);
-    SortTime() += std::chrono::duration<double>(std::chrono::steady_clock::now() - ts).count();
     // sort the fronts for consistency between sorting algos
     for (auto& f : fronts_) {
         std::stable_sort(f.begin(), f.end());
@@ -143,9 +142,11 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     auto offspring = Offspring();
 
     // while loop control flow
+    auto timer = executor.make_observer<PhaseTimer>();
+
     tf::Taskflow taskflow;
     auto [init, cond, body, back, done] = taskflow.emplace(
-        [&](tf::Subflow& subflow) -> void {
+        [&, timer](tf::Subflow& subflow) -> void {
             auto prepareEval = subflow.emplace([&]() -> void { evaluator->Prepare(parents); }).name("prepare evaluator");
             auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
                                    // make sure the worker has a large enough buffer
@@ -154,8 +155,9 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
                                    parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
                                })
                             .name("evaluate population");
-            auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(parents); }).name("non-dominated sort");
-            auto reportProgress = subflow.emplace([&]() -> void {
+            auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(parents); }).name(std::string{SortTaskName});
+            auto reportProgress = subflow.emplace([&, timer]() -> void {
+                                             Timings() = timer->Timings();
                                              if (report) {
                                                  std::invoke(report);
                                              }
@@ -176,7 +178,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
             }
         }, // init
         stop, // loop condition
-        [&](tf::Subflow& subflow) -> void {
+        [&, timer](tf::Subflow& subflow) -> void {
             auto prepareGenerator = subflow.emplace([&]() -> void { generator->Prepare(parents); }).name("prepare generator");
             auto generateOffspring = subflow.for_each_index(size_t { 0 }, offspring.size(), size_t { 1 }, [&](size_t i) -> void {
                                                 slots[executor.this_worker_id()].resize(trainSize);
@@ -191,10 +193,13 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
                                                 }
                                             })
                                          .name("generate offspring");
-            auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(individuals); }).name("non-dominated sort");
+            auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(individuals); }).name(std::string{SortTaskName});
             auto reinsert = subflow.emplace([&]() -> void { reinserter->Sort(individuals); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
-            auto reportProgress = subflow.emplace([&]() -> void { if (report) { std::invoke(report); } }).name("report progress");
+            auto reportProgress = subflow.emplace([&, timer]() -> void {
+                                             Timings() = timer->Timings();
+                                             if (report) { std::invoke(report); }
+                                         }).name("report progress");
 
             // set-up subflow graph
             prepareGenerator.precede(generateOffspring);
@@ -219,8 +224,9 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     body.precede(back);
     back.precede(cond);
 
-    executor.run(taskflow);
-    executor.wait_for_all();
+    executor.run(taskflow).wait();
+    Timings() = timer->Timings();
+    executor.remove_observer(std::move(timer));
 }
 
 auto NSGA2::Run(Operon::RandomGenerator& random, std::function<void()> report, size_t threads, bool warmStart) -> void

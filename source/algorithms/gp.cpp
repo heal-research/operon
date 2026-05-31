@@ -16,6 +16,7 @@
 // NOLINTEND(misc-include-cleaner)
 
 #include "operon/algorithms/gp.hpp"
+#include "operon/algorithms/phase_timer.hpp"
 #include "operon/core/contracts.hpp" // for ENSURE
 #include "operon/core/types.hpp"
 #include "operon/operators/initializer.hpp"
@@ -66,10 +67,12 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     auto parents = Parents();
     auto offspring = Offspring();
 
+    auto timer = executor.make_observer<PhaseTimer>();
+
     // while loop control flow
     tf::Taskflow taskflow;
     auto [init, cond, body, back, done] = taskflow.emplace(
-        [&](tf::Subflow& subflow) -> void {
+        [&, timer](tf::Subflow& subflow) -> void {
             auto prepareEval = subflow.emplace([&]() -> void { evaluator->Prepare(parents); }).name("prepare evaluator");
             auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
                                    auto id = executor.this_worker_id();
@@ -80,7 +83,10 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                    parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
                                })
                             .name("evaluate population");
-            auto reportProgress = subflow.emplace([&]() -> void { if (report) { std::invoke(report); } }).name("report progress");
+            auto reportProgress = subflow.emplace([&, timer]() -> void {
+                                             Timings() = timer->Timings();
+                                             if (report) { std::invoke(report); }
+                                         }).name("report progress");
             prepareEval.precede(eval);
             eval.precede(reportProgress);
 
@@ -95,7 +101,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             }
         }, // init
         stop, // loop condition
-        [&](tf::Subflow& subflow) -> void {
+        [&, timer](tf::Subflow& subflow) -> void {
             auto keepElite = subflow.emplace([&]() -> void {
                                         offspring[0] = *std::ranges::min_element(parents, [&](const auto& lhs, const auto& rhs) -> auto { return lhs[idx] < rhs[idx]; });
                                     })
@@ -114,7 +120,10 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                          .name("generate offspring");
             auto reinsert = subflow.emplace([&]() -> void { (*reinserter)(random, Parents(), offspring); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
-            auto reportProgress = subflow.emplace([&]() -> void { if (report) { std::invoke(report); } }).name("report progress");
+            auto reportProgress = subflow.emplace([&, timer]() -> void {
+                                             Timings() = timer->Timings();
+                                             if (report) { std::invoke(report); }
+                                         }).name("report progress");
 
             // set-up subflow graph
             keepElite.precede(prepareGenerator);
@@ -139,8 +148,9 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     body.precede(back);
     back.precede(cond);
 
-    executor.run(taskflow);
-    executor.wait_for_all();
+    executor.run(taskflow).wait();
+    Timings() = timer->Timings();
+    executor.remove_observer(std::move(timer));
 }
 
 auto GeneticProgrammingAlgorithm::Run(Operon::RandomGenerator& random, std::function<void()> report, size_t threads, bool warmStart) -> void
