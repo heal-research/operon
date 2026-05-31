@@ -84,7 +84,10 @@ namespace Operon::Backend::Mad {
                 return eve::bit_cast(i, eve::as<eve::wide<float>>{});
             };
 
-            return pow2(y * log2(x));
+            auto const nan = eve::nan(eve::as<eve::wide<float>>{});
+            return eve::if_else(eve::is_nan(x) || eve::is_nan(y) || x <= 0,
+                nan,
+                pow2(y * log2(x)));
         }
     }
 } // namespace Operon::Backend::Mad

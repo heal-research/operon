@@ -30,6 +30,9 @@ namespace Operon::Backend::Mad {
             bx = 1065353216 | (bx & 8388607);
             x = std::bit_cast<float>(bx);
             if constexpr (P == 1) {
+                // Note: scalar P==1 uses a different polynomial than SIMD P==1 (both
+                // approximate log but were independently derived). Scalar variants
+                // exist as reference; production uses the SIMD path exclusively.
                 return -1.49278F+((2.11263F+(-0.729104F+0.10969F*x)*x)*x)+(ln2 * t);
             } else {
                 return -1.7417939F+((2.8212026F+(-1.4699568F+(0.44717955F-0.056570851F*x)*x)*x)*x)+(ln2 * t);
@@ -56,8 +59,7 @@ namespace Operon::Backend::Mad {
             if constexpr (P == 0) {
                 return (eve::bit_cast(x, eve::as<eve::wide<int32_t>>{}) - 1065353217) * 8.262958405176314e-8F;
             } else {
-                // auto const ln2 = eve::wide<float>{std::numbers::ln2_v<float>};
-                auto const ln2 = 0.6931471806;
+                auto const ln2 = 0.6931471806F;
                 auto bx = eve::bit_cast(x, eve::as<eve::wide<int32_t>>{});
                 auto e  = eve::convert((eve::convert(bx >> 23U, eve::as<int32_t>{}) - eve::wide<int32_t>(127)), eve::as<float>{});
                 auto t = ln2 * e;

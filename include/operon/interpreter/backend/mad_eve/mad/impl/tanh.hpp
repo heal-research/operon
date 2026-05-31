@@ -77,7 +77,7 @@ namespace Operon::Backend::Mad {
 
                 return eve::if_else(x < lower_limit || x > upper_limit,
                     eve::signnz(x) * eve::one(eve::as<eve::wide<float>>{}),
-                    [&](eve::wide<float> x) {
+                    [=](eve::wide<float> x) {
                         auto a = exp_zero_shift(x);
                         auto b = exp_zero_shift(-x);
                         return div_impl<P>(a-b, a+b);

@@ -79,11 +79,12 @@ auto inv_impl(eve::wide<float> x) -> eve::wide<float> {
     auto const inf = eve::inf(eve::as<eve::wide<float>>());
     auto const zero = eve::zero(eve::as<eve::wide<float>>());
 
-    // handle the zero case correctly
+    auto const max = eve::wide<float>{1.602756e38F};
+
     if constexpr (Check) {
         return eve::if_else(eve::is_eqz(x),
             eve::signnz(x) * inf,
-            eve::if_else(eve::is_infinite(x),
+            eve::if_else(eve::is_infinite(x) || eve::abs(x) > max,
                 eve::signnz(x) * zero,
                 inv(x)
             )
