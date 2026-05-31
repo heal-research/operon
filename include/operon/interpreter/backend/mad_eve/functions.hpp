@@ -18,20 +18,20 @@
 
 namespace Operon::Backend {
 
-// Precision levels for each approximated operation.
-// P=0: fastest / lowest accuracy; P=1: one Newton-Raphson refinement step.
-struct MadPrecision {
-    static constexpr auto Div  = 1;
-    static constexpr auto Exp  = 1;
-    static constexpr auto Log  = 1;
-    static constexpr auto Sqrt = 1;
-    static constexpr auto Sin  = 0;
-    static constexpr auto Cos  = 0;
-    static constexpr auto Tan  = 0;
-    static constexpr auto Tanh = 0;
-    static constexpr auto Pow  = 0;
-    static constexpr auto Inv  = 1;
-};
+    // Precision levels for each approximated operation.
+    // P=0: fastest / lowest accuracy; P=1: one Newton-Raphson refinement step.
+    struct MadPrecision {
+        static constexpr auto Div  = 1;
+        static constexpr auto Exp  = 1;
+        static constexpr auto Log  = 1;
+        static constexpr auto Sqrt = 1;
+        static constexpr auto Sin  = 0;
+        static constexpr auto Cos  = 0;
+        static constexpr auto Tan  = 0;
+        static constexpr auto Tanh = 0;
+        static constexpr auto Pow  = 0;
+        static constexpr auto Inv  = 1;
+    };
 
     // utility
     template<typename T, std::size_t S>
@@ -150,7 +150,11 @@ struct MadPrecision {
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Cpy(T* res, T weight, T const* arg) {
-        std::transform(arg, arg+S, res, [weight](auto x) { return weight * x; });
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(weight * W{arg+i}, res+i);
+        }
     }
 
     template<typename T, std::size_t S>
