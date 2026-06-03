@@ -21,12 +21,14 @@ namespace Operon::Concepts {
 template<typename T>
 concept Arithmetic = std::is_arithmetic_v<T>;
 
-// Callable with two value spans, returns a scalar error measure.
+// Callable with two (or three) value spans, returns a scalar error measure.
 template<typename T>
-concept ErrorMetric = requires(T t,
+concept ErrorMetricCallable = requires(T t,
     Operon::Span<Operon::Scalar const> x,
-    Operon::Span<Operon::Scalar const> y) {
+    Operon::Span<Operon::Scalar const> y,
+    Operon::Span<Operon::Scalar const> w) {
     { t(x, y) } -> std::convertible_to<double>;
+    { t(x, y, w) } -> std::convertible_to<double>;
 };
 
 // String-to-hash callable with transparent lookup support.
@@ -73,7 +75,7 @@ concept Reinserter = requires(T const& t, Operon::RandomGenerator& rng,
 // Evaluates an Individual and returns a fitness vector.
 // Both the buffered and unbuffered call forms are required.
 template<typename T>
-concept Evaluator = requires(T const& t, Operon::RandomGenerator& rng,
+concept EvaluatorCallable = requires(T const& t, Operon::RandomGenerator& rng,
     Operon::Individual const& ind,
     Operon::Span<Operon::Scalar> buf) {
     { t(rng, ind)      } -> std::same_as<Operon::Vector<Operon::Scalar>>;
