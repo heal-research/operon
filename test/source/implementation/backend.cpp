@@ -2,15 +2,15 @@
 // SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
 
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers.hpp>
 
-#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <numbers>
+#include <string_view>
 #include <vector>
 
 #include "operon/core/dispatch.hpp"
@@ -29,66 +29,139 @@ namespace {
         if (std::isinf(a) && std::isinf(b) && (a > 0) == (b > 0)) { return 0; }
         auto ua = std::bit_cast<uint32_t>(a);
         auto ub = std::bit_cast<uint32_t>(b);
-        // two's complement trick for signed-magnitude integers
         if (ua >> 31U) { ua = 0x80000000U - ua; }
         if (ub >> 31U) { ub = 0x80000000U - ub; }
         return static_cast<int>(ua > ub ? ua - ub : ub - ua);
     }
 
-    // Run fn on batches of input, compare element-wise against ref, return max ULP error.
-    auto MaxUlpError(auto fn, auto ref, std::vector<T> const& inputs) -> int {
-        auto nbatch = (inputs.size() + S - 1) / S;
+    struct UlpResult { int max_ulp; T worst_input; T got; T expected; };
+
+    auto MaxUlpError(auto fn, auto ref, std::vector<T> const& inputs) -> UlpResult {
+        auto const nbatch = (inputs.size() + S - 1) / S;
         std::vector<Buf> src(nbatch), dst(nbatch);
 
         for (auto i = 0UL; i < inputs.size(); ++i) {
             src[i / S].v[i % S] = inputs[i];
         }
-        // pad last batch with safe values
         for (auto i = inputs.size(); i < nbatch * S; ++i) {
             src[i / S].v[i % S] = T{0.5};
         }
-
         for (auto b = 0UL; b < nbatch; ++b) {
             fn(dst[b].v.data(), T{1}, src[b].v.data());
         }
 
-        int max_ulp = 0;
+        UlpResult res{0, T{0}, T{0}, T{0}};
         for (auto i = 0UL; i < inputs.size(); ++i) {
-            auto got = dst[i / S].v[i % S];
+            auto got      = dst[i / S].v[i % S];
             auto expected = static_cast<T>(ref(static_cast<double>(inputs[i])));
-            max_ulp = std::max(max_ulp, UlpDistance(got, expected));
+            if (int d = UlpDistance(got, expected); d > res.max_ulp) {
+                res = {d, inputs[i], got, expected};
+            }
         }
-        return max_ulp;
+        return res;
     }
 
-    auto MakeInputs() -> std::vector<T> {
-        std::vector<T> vals;
-        // dense grid over [-10, 10]
-        constexpr int N = 10000;
-        for (int i = 0; i <= N; ++i) {
-            vals.push_back(T(-10.0 + 20.0 * i / N));
+    // Generate N+1 evenly spaced values in [lo, hi] plus extra edge values.
+    auto Linspace(double lo, double hi, int n, std::vector<T> extra = {}) -> std::vector<T> {
+        std::vector<T> v;
+        v.reserve(static_cast<std::size_t>(n + 1) + extra.size());
+        for (int i = 0; i <= n; ++i) {
+            v.push_back(static_cast<T>(lo + (hi - lo) * i / n));
         }
-        // edge cases
-        for (auto v : {0.0f, -0.0f, 0.0001f, -0.0001f, 0.0003f, -0.0003f,
-                       0.0005f, 7.99f, -7.99f, 8.5f, -8.5f, 100.0f, -100.0f,
-                       std::numeric_limits<T>::infinity(),
-                       -std::numeric_limits<T>::infinity()}) {
-            vals.push_back(v);
-        }
-        return vals;
+        for (auto x : extra) { v.push_back(x); }
+        return v;
     }
+
+    constexpr float kInf = std::numeric_limits<T>::infinity();
+    constexpr int   kN   = 10000;
 } // namespace
 
-TEST_CASE("Backend Tanh ULP accuracy", "[backend][tanh]")
+TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
 {
-    auto inputs = MakeInputs();
-    auto fn = Backend::Tanh<T, S>;
+    struct Case {
+        std::string_view name;
+        void(*fn)(T*, T, T const*);
+        std::vector<T> inputs;
+        double(*ref)(double);
+        int max_ulp;
+    };
 
-    int max_ulp = MaxUlpError(fn, [](double x) { return std::tanh(x); }, inputs);
+    // clang-format off
+    std::array cases {
+        Case{ "Exp",    Backend::Exp<T,S>,
+              Linspace(-87, 88, kN, {0.f, -0.f}),
+              [](double x){ return std::exp(x); },   2 },
 
-    // Eigen's generic_fast_tanh_float claims ~2 ULP; allow up to 4 to be safe.
-    INFO("Max ULP error vs std::tanh: " << max_ulp);
-    CHECK(max_ulp <= 4);
+        Case{ "Log",    Backend::Log<T,S>,
+              Linspace(1e-6, 1e6, kN, {1.f, kInf}),
+              [](double x){ return std::log(x); },   2 },
+
+        Case{ "Log1p",  Backend::Log1p<T,S>,
+              Linspace(-0.999, 1e6, kN, {0.f, kInf}),
+              [](double x){ return std::log1p(x); }, 2 },
+
+        Case{ "Logabs", Backend::Logabs<T,S>,
+              Linspace(-1e6, 1e6, kN, {1.f, -1.f, kInf, -kInf}),
+              [](double x){ return std::log(std::abs(x)); }, 2 },
+
+        Case{ "Sin",    Backend::Sin<T,S>,
+              Linspace(-10, 10, kN, {0.f, -0.f, kInf, -kInf}),
+              [](double x){ return std::sin(x); },   2 },
+
+        Case{ "Cos",    Backend::Cos<T,S>,
+              Linspace(-10, 10, kN, {0.f, kInf, -kInf}),
+              [](double x){ return std::cos(x); },   2 },
+
+        Case{ "Tan",    Backend::Tan<T,S>,
+              // avoid singularities near ±π/2 + nπ
+              Linspace(-1.5, 1.5, kN, {0.f}),
+              [](double x){ return std::tan(x); },   2 },
+
+        Case{ "Asin",   Backend::Asin<T,S>,
+              Linspace(-1, 1, kN, {0.f, 1.f, -1.f}),
+              [](double x){ return std::asin(x); },  2 },
+
+        Case{ "Acos",   Backend::Acos<T,S>,
+              Linspace(-1, 1, kN, {0.f, 1.f, -1.f}),
+              [](double x){ return std::acos(x); },  2 },
+
+        Case{ "Atan",   Backend::Atan<T,S>,
+              Linspace(-100, 100, kN, {0.f, kInf, -kInf}),
+              [](double x){ return std::atan(x); },  2 },
+
+        Case{ "Sinh",   Backend::Sinh<T,S>,
+              Linspace(-10, 10, kN, {0.f, -0.f}),
+              [](double x){ return std::sinh(x); },  2 },
+
+        Case{ "Cosh",   Backend::Cosh<T,S>,
+              Linspace(-10, 10, kN, {0.f}),
+              [](double x){ return std::cosh(x); },  2 },
+
+        Case{ "Tanh",   Backend::Tanh<T,S>,
+              Linspace(-10, 10, kN, {0.f, -0.f, 0.0001f, -0.0001f,
+                                     7.99f, -7.99f, 8.5f, -8.5f, kInf, -kInf}),
+              [](double x){ return std::tanh(x); },  4 },
+
+        Case{ "Sqrt",   Backend::Sqrt<T,S>,
+              Linspace(0, 1e6, kN, {0.f}),
+              [](double x){ return std::sqrt(x); },  2 },
+
+        Case{ "Sqrtabs",Backend::Sqrtabs<T,S>,
+              Linspace(-1e6, 1e6, kN, {0.f}),
+              [](double x){ return std::sqrt(std::abs(x)); }, 2 },
+
+        Case{ "Cbrt",   Backend::Cbrt<T,S>,
+              Linspace(-1e6, 1e6, kN, {0.f, -0.f, kInf, -kInf}),
+              [](double x){ return std::cbrt(x); },  2 },
+    };
+    // clang-format on
+
+    for (auto& [name, fn, inputs, ref, ulp_limit] : cases) {
+        auto [max_ulp, worst, got, expected] = MaxUlpError(fn, ref, inputs);
+        INFO(name << ": max ULP = " << max_ulp << " (limit " << ulp_limit
+             << ") at x=" << worst << " got=" << got << " expected=" << expected);
+        CHECK(max_ulp <= ulp_limit);
+    }
 }
 
 } // namespace Operon::Test
