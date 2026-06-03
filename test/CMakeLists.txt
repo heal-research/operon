@@ -16,6 +16,7 @@ find_package(nanobench REQUIRED)
 
 add_executable(operon_test
     source/operon_test.cpp
+    source/implementation/backend.cpp
     source/implementation/autodiff.cpp
     source/implementation/crossover.cpp
     source/implementation/details.cpp
@@ -38,6 +39,7 @@ add_executable(operon_test
     source/performance/evaluation.cpp
     source/performance/infix_parser.cpp
     source/performance/nondominatedsort.cpp
+    source/performance/primitives.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
 target_compile_features(operon_test PRIVATE cxx_std_20)

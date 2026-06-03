@@ -10,6 +10,8 @@
 #include "operon/interpreter/backend/eve.hpp"
 #elif defined(OPERON_MATH_MAD_EVE)
 #include "operon/interpreter/backend/mad_eve.hpp"
+#elif defined(OPERON_MATH_EIGEN)
+#include "operon/interpreter/backend/eigen.hpp"
 #elif defined(OPERON_MATH_STL)
 #include "operon/interpreter/backend/plain.hpp"
 #endif

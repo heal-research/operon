@@ -299,10 +299,29 @@ namespace Operon::Backend {
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Tanh(T* res, T weight, T const* arg) {
+        // 13/6-degree rational minimax approximation, accurate to ~2 ULP on [-8,8].
+        // Same algorithm as Eigen's generic_fast_tanh_float; avoids expm1 overhead.
+        // Reference: Eigen/src/Core/MathFunctionsImpl.h (Pedro Gonnet, 2014)
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(weight * eve::tanh(W{arg + i}), res+i);
+            auto a    = W{arg + i};
+            auto x    = eve::clamp(a, T(-7.99881172180175781f), T(7.99881172180175781f));
+            auto tiny = eve::abs(a) < T(0.0004f);
+            auto x2   = x * x;
+            // numerator (odd polynomial): p = x * (alpha_1 + x^2*(...))
+            auto p = eve::fma(x2, W{T(-2.76076847742355e-16f)}, W{T( 2.00018790482477e-13f)});
+            p = eve::fma(x2, p, W{T(-8.60467152213735e-11f)});
+            p = eve::fma(x2, p, W{T( 5.12229709037114e-08f)});
+            p = eve::fma(x2, p, W{T( 1.48572235717979e-05f)});
+            p = eve::fma(x2, p, W{T( 6.37261928875436e-04f)});
+            p = eve::fma(x2, p, W{T( 4.89352455891786e-03f)});
+            p = x * p;
+            // denominator (even polynomial): q = beta_0 + x^2*(...)
+            auto q = eve::fma(x2, W{T(1.19825839466702e-06f)}, W{T(1.18534705686654e-04f)});
+            q = eve::fma(x2, q, W{T(2.26843463243900e-03f)});
+            q = eve::fma(x2, q, W{T(4.89352518554385e-03f)});
+            eve::store(weight * eve::if_else(tiny, x, p / q), res + i);
         }
     }
 
