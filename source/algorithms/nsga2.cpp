@@ -38,8 +38,8 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
         for (size_t obj = 0; obj < m; ++obj) {
             SingleObjectiveComparison comp(obj);
             std::stable_sort(front.begin(), front.end(), [&](auto a, auto b) -> auto { return comp(pop[a], pop[b]); });
-           auto min = pop.front()[obj];
-            auto max = pop.back()[obj];
+            auto min = pop[front.front()][obj];
+            auto max = pop[front.back()][obj];
             for (size_t j = 0; j < front.size(); ++j) {
                 auto idx = front[j];
 
@@ -48,10 +48,12 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
                     pop[idx].Distance = 0;
                 }
 
-                auto mPrev = j > 0 ? pop[j - 1][obj] : inf;
-                auto mNext = j < front.size() - 1 ? pop[j + 1][obj] : inf;
+                auto mPrev = j > 0 ? pop[front[j - 1]][obj] : inf;
+                auto mNext = j < front.size() - 1 ? pop[front[j + 1]][obj] : inf;
                 auto distance = (mNext - mPrev) / (max - min);
-                if (!std::isfinite(distance)) {
+                if (j == 0 || j == front.size() - 1) {
+                    distance = inf;
+                } else if (!std::isfinite(distance)) {
                     distance = 0;
                 }
                 pop[idx].Distance += distance;
