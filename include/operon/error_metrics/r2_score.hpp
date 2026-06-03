@@ -10,6 +10,9 @@
 
 namespace Operon {
 
+// Convention: begin1 = predicted, begin2 = true values.
+// vstat::metrics::r2_score uses a different weighted-variance normalization,
+// so we use vstat::univariate::accumulate directly to control the formula.
 template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
@@ -17,7 +20,12 @@ template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
 inline auto R2Score(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    return vstat::metrics::r2_score<V1>(begin1, end1, begin2);
+    using vstat::univariate::accumulate;
+    auto sqres = [](auto a, auto b) { auto e = a - b; return e * e; };
+    auto const ssr = accumulate<V1>(begin1, end1, begin2, sqres).sum;
+    auto const sst = accumulate<V1>(begin2, begin2 + std::distance(begin1, end1)).ssr;
+    if (sst < std::numeric_limits<double>::epsilon()) { return std::numeric_limits<double>::lowest(); }
+    return 1.0 - ssr / sst;
 }
 
 template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, std::contiguous_iterator InputIt3>
@@ -27,7 +35,14 @@ template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, s
 inline auto R2Score(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 begin3) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    return vstat::metrics::r2_score<V1>(begin1, end1, begin2, begin3);
+    using vstat::univariate::accumulate;
+    auto sqres = [](auto a, auto b) { auto e = a - b; return e * e; };
+    auto const ssr = accumulate<V1>(begin1, end1, begin2, begin3, sqres).sum;
+    auto end2 = begin2 + std::distance(begin1, end1);
+    auto const m = accumulate<V1>(begin2, end2).mean;
+    auto const sst = accumulate<V1>(begin2, end2, begin3, [&](auto v) { return sqres(v, m); }).sum;
+    if (sst < std::numeric_limits<double>::epsilon()) { return std::numeric_limits<double>::lowest(); }
+    return 1.0 - ssr / sst;
 }
 
 template<Concepts::Arithmetic T>
