@@ -11,10 +11,7 @@
 namespace Operon {
 
 // Convention: begin1 = predicted, begin2 = true values.
-// vstat::metrics::r2_score uses a parallel SIMD Welford that introduces more
-// floating-point roundoff than the sequential accumulate path; the difference
-// exceeds our test tolerance against Elki's two-pass reference, so we keep
-// the sequential path here.
+// vstat::metrics::r2_score expects (y_true, y_pred), so arguments are swapped.
 template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
@@ -22,12 +19,8 @@ template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
 inline auto R2Score(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    using vstat::univariate::accumulate;
-    auto sqres = [](auto a, auto b) { auto e = a - b; return e * e; };
-    auto const ssr = accumulate<V1>(begin1, end1, begin2, sqres).sum;
-    auto const sst = accumulate<V1>(begin2, begin2 + std::distance(begin1, end1)).ssr;
-    if (sst < std::numeric_limits<double>::epsilon()) { return std::numeric_limits<double>::lowest(); }
-    return 1.0 - ssr / sst;
+    auto const n = std::distance(begin1, end1);
+    return vstat::metrics::r2_score<V1>(begin2, begin2 + n, begin1);
 }
 
 template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, std::contiguous_iterator InputIt3>
@@ -37,14 +30,8 @@ template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, s
 inline auto R2Score(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 begin3) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    using vstat::univariate::accumulate;
-    auto sqres = [](auto a, auto b) { auto e = a - b; return e * e; };
-    auto const ssr = accumulate<V1>(begin1, end1, begin2, begin3, sqres).sum;
-    auto end2 = begin2 + std::distance(begin1, end1);
-    auto const m = accumulate<V1>(begin2, end2).mean;
-    auto const sst = accumulate<V1>(begin2, end2, begin3, [&](auto v) { return sqres(v, m); }).sum;
-    if (sst < std::numeric_limits<double>::epsilon()) { return std::numeric_limits<double>::lowest(); }
-    return 1.0 - ssr / sst;
+    auto const n = std::distance(begin1, end1);
+    return vstat::metrics::r2_score<V1>(begin2, begin2 + n, begin1, begin3);
 }
 
 template<Concepts::Arithmetic T>
