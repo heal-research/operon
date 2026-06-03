@@ -11,8 +11,10 @@
 namespace Operon {
 
 // Convention: begin1 = predicted, begin2 = true values.
-// vstat::metrics::r2_score uses a different weighted-variance normalization,
-// so we use vstat::univariate::accumulate directly to control the formula.
+// vstat::metrics::r2_score uses a parallel SIMD Welford that introduces more
+// floating-point roundoff than the sequential accumulate path; the difference
+// exceeds our test tolerance against Elki's two-pass reference, so we keep
+// the sequential path here.
 template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
