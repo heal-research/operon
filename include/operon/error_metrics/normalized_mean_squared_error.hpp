@@ -18,7 +18,7 @@ template<typename InputIt1, typename InputIt2>
 inline auto NormalizedMeanSquaredError(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    auto varY = vstat::univariate::accumulate<V1>(begin2, begin2 + std::distance(begin1, end1)).variance;
+    auto varY = vstat::univariate::accumulate<V1>(begin2, std::next(begin2, std::distance(begin1, end1))).variance;
     if (varY > 0) {
         return MeanSquaredError(begin1, end1, begin2) / varY;
     }
@@ -32,7 +32,7 @@ template<typename InputIt1, typename InputIt2, typename InputIt3>
 inline auto NormalizedMeanSquaredError(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 begin3) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    auto varY = vstat::univariate::accumulate<V1>(begin2, begin2 + std::distance(begin1, end1), begin3).variance;
+    auto varY = vstat::univariate::accumulate<V1>(begin2, std::next(begin2, std::distance(begin1, end1)), begin3).variance;
     if (varY > 0) {
         return MeanSquaredError(begin1, end1, begin2, begin3) / varY;
     }
