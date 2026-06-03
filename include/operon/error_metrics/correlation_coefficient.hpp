@@ -10,7 +10,7 @@
 
 namespace Operon {
 
-template<typename InputIt1, typename InputIt2>
+template<std::random_access_iterator InputIt1, std::random_access_iterator InputIt2>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
                           typename std::iterator_traits<InputIt2>::value_type>
@@ -20,7 +20,7 @@ inline auto CorrelationCoefficient(InputIt1 begin1, InputIt1 end1, InputIt2 begi
     return vstat::bivariate::accumulate<V1>(begin1, end1, begin2).correlation;
 }
 
-template<typename InputIt1, typename InputIt2, typename InputIt3>
+template<std::random_access_iterator InputIt1, std::random_access_iterator InputIt2, std::random_access_iterator InputIt3>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
                           typename std::iterator_traits<InputIt2>::value_type>
@@ -46,7 +46,7 @@ inline auto CorrelationCoefficient(Operon::Span<T const> x, Operon::Span<T const
     return vstat::bivariate::accumulate<T>(x.data(), x.data() + x.size(), y.data(), w.data()).correlation;
 }
 
-template<typename InputIt1, typename InputIt2>
+template<std::random_access_iterator InputIt1, std::random_access_iterator InputIt2>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
                           typename std::iterator_traits<InputIt2>::value_type>
@@ -55,7 +55,7 @@ inline auto SquaredCorrelation(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) 
     return r * r;
 }
 
-template<typename InputIt1, typename InputIt2, typename InputIt3>
+template<std::random_access_iterator InputIt1, std::random_access_iterator InputIt2, std::random_access_iterator InputIt3>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
                           typename std::iterator_traits<InputIt2>::value_type>
