@@ -20,7 +20,7 @@ inline auto R2Score(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept ->
     using vstat::univariate::accumulate;
     auto sqres = [](auto a, auto b) { auto e=a-b; return e*e; };
     auto const ssr = accumulate<V1>(begin1, end1, begin2, sqres).sum;
-    auto const sst = accumulate<V1>(begin2, begin2 + std::distance(begin1, end1)).ssr;
+    auto const sst = accumulate<V1>(begin2, std::next(begin2, std::distance(begin1, end1))).ssr;
     if (sst < std::numeric_limits<double>::epsilon()) { return std::numeric_limits<double>::lowest(); }
     return 1.0 - ssr / sst;
 }
@@ -35,7 +35,7 @@ inline auto R2Score(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 be
     using vstat::univariate::accumulate;
     auto sqres = [](auto a, auto b) { auto e=a-b; return e*e; };
     auto const ssr = accumulate<V1>(begin1, end1, begin2, begin3, sqres).sum;
-    auto end2 = begin2 + std::distance(begin1, end1);
+    auto end2 = std::next(begin2, std::distance(begin1, end1));
     auto const m = accumulate<V1>(begin2, end2).mean;
     auto const sst = accumulate<V1>(begin2, end2, begin3, [&](auto v) { return sqres(v, m); }).sum;
     if (sst < std::numeric_limits<double>::epsilon()) { return std::numeric_limits<double>::lowest(); }
