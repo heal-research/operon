@@ -32,16 +32,17 @@ auto TournamentSelector::operator()(Operon::RandomGenerator& random) const -> si
 
 auto RankTournamentSelector::operator()(Operon::RandomGenerator& random) const -> size_t
 {
-    auto population = Population();
-    std::uniform_int_distribution<size_t> uniformInt(0, population.size() - 1);
+    std::uniform_int_distribution<size_t> uniformInt(0, indices_.size() - 1);
     auto best = uniformInt(random);
     auto tournamentSize = GetTournamentSize();
 
     for (size_t i = 1; i < tournamentSize; ++i) {
         auto curr = uniformInt(random);
-        best = std::max(best, curr);
+        if (curr < best) {
+            best = curr;
+        }
     }
-    return best;
+    return indices_[best];
 }
 
 void RankTournamentSelector::Prepare(const Operon::Span<const Individual> pop) const
