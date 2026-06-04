@@ -145,10 +145,12 @@ if (MATH_BACKEND STREQUAL "Eve")
     target_compile_definitions(operon_operon PUBLIC OPERON_MATH_EVE)
 elseif (MATH_BACKEND STREQUAL "MadEve")
     target_compile_definitions(operon_operon PUBLIC OPERON_MATH_MAD_EVE)
+elseif (MATH_BACKEND STREQUAL "Eigen")
+    target_compile_definitions(operon_operon PUBLIC OPERON_MATH_EIGEN)
 elseif (MATH_BACKEND STREQUAL "Stl")
     target_compile_definitions(operon_operon PUBLIC OPERON_MATH_STL)
 else()
-    message(FATAL_ERROR "Unknown MATH_BACKEND: ${MATH_BACKEND}. Valid options: Eve, MadEve, Stl")
+    message(FATAL_ERROR "Unknown MATH_BACKEND: ${MATH_BACKEND}. Valid options: Eve, MadEve, Eigen, Stl")
 endif()
 
 # print summary of enabled/disabled features

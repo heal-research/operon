@@ -155,17 +155,15 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
-    auto Ceil(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
-        auto* res = Ptr(trace, j);
-        auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x){ return std::ceil(x); });
+    auto Ceil(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+        // Derivative is zero a.e.; provides no gradient information (cf. Ceres jet.h).
+        std::fill_n(Ptr(trace, j), S, T{0});
     }
 
     template<typename T, std::size_t S>
-    auto Floor(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
-        auto* res = Ptr(trace, j);
-        auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x){ return std::floor(x); });
+    auto Floor(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+        // Derivative is zero a.e.; provides no gradient information (cf. Ceres jet.h).
+        std::fill_n(Ptr(trace, j), S, T{0});
     }
 
     template<typename T, std::size_t S>
