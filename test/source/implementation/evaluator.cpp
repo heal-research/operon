@@ -311,7 +311,7 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
         return p;
     };
 
-    // perfect model: predicts X1 exactly (variable weight = 1.0)
+    // single-variable expression; all variable nodes get the same coefficient (fine here, X1 only)
     auto makeInd = [&](Operon::Dataset const& ds, float varWeight) -> Operon::Individual {
         auto t = InfixParser::Parse("X1", ds);
         for (auto& node : t.Nodes()) {
@@ -379,9 +379,6 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
         ds.SetWeights(w);
         auto mseWeighted = ev(rng, perfect)[0];
         CHECK_THAT(static_cast<double>(mseWeighted), Catch::Matchers::WithinAbs(0.0, 1e-5));
-
-        // restore data for other sections
-        data(0, 1) = data(0, 0);
     }
 
     SECTION("Weighted FitLeastSquares converges to slope of high-weight region") {
