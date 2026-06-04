@@ -12,7 +12,7 @@
 
 namespace Operon::Backend::detail {
 
-template<typename T>
+template<std::floating_point T>
 auto FastTanh(eve::wide<T> a) -> eve::wide<T> {
     using W = eve::wide<T>;
     if constexpr (std::is_same_v<T, float>) {
