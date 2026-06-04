@@ -24,17 +24,19 @@ namespace {
 
     struct alignas(32) Buf { std::array<T, S> v; };
 
-    auto UlpDistance(float a, float b) -> int {
+    auto UlpDistance(T a, T b) -> uint64_t {
         if (std::isnan(a) && std::isnan(b)) { return 0; }
         if (std::isinf(a) && std::isinf(b) && (a > 0) == (b > 0)) { return 0; }
-        auto ua = std::bit_cast<uint32_t>(a);
-        auto ub = std::bit_cast<uint32_t>(b);
-        if (ua >> 31U) { ua = 0x80000000U - ua; }
-        if (ub >> 31U) { ub = 0x80000000U - ub; }
-        return static_cast<int>(ua > ub ? ua - ub : ub - ua);
+        using U = std::conditional_t<sizeof(T) == 4, uint32_t, uint64_t>;
+        constexpr U SignBit = U{1} << (sizeof(U) * 8 - 1);
+        auto ua = std::bit_cast<U>(a);
+        auto ub = std::bit_cast<U>(b);
+        if (ua & SignBit) { ua = SignBit - ua; }
+        if (ub & SignBit) { ub = SignBit - ub; }
+        return ua > ub ? ua - ub : ub - ua;
     }
 
-    struct UlpResult { int max_ulp; T worst_input; T got; T expected; };
+    struct UlpResult { uint64_t max_ulp; T worst_input; T got; T expected; };
 
     auto MaxUlpError(auto fn, auto ref, std::vector<T> const& inputs) -> UlpResult {
         auto const nbatch = (inputs.size() + S - 1) / S;
@@ -54,7 +56,7 @@ namespace {
         for (auto i = 0UL; i < inputs.size(); ++i) {
             auto got      = dst[i / S].v[i % S];
             auto expected = static_cast<T>(ref(static_cast<double>(inputs[i])));
-            if (int d = UlpDistance(got, expected); d > res.max_ulp) {
+            if (auto d = UlpDistance(got, expected); d > res.max_ulp) {
                 res = {d, inputs[i], got, expected};
             }
         }
@@ -72,8 +74,8 @@ namespace {
         return v;
     }
 
-    constexpr float kInf = std::numeric_limits<T>::infinity();
-    constexpr int   kN   = 10000;
+    constexpr T   Inf = std::numeric_limits<T>::infinity();
+    constexpr int N   = 10000;
 } // namespace
 
 TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
@@ -83,75 +85,75 @@ TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
         void(*fn)(T*, T, T const*);
         std::vector<T> inputs;
         double(*ref)(double);
-        int max_ulp;
+        uint64_t max_ulp;
     };
 
     // clang-format off
     std::array cases {
         Case{ "Exp",    Backend::Exp<T,S>,
-              Linspace(-87, 88, kN, {0.f, -0.f}),
+              Linspace(-87, 88, N, {0.f, -0.f}),
               [](double x){ return std::exp(x); },   2 },
 
         Case{ "Log",    Backend::Log<T,S>,
-              Linspace(1e-6, 1e6, kN, {1.f, kInf}),
+              Linspace(1e-6, 1e6, N, {1.f, Inf}),
               [](double x){ return std::log(x); },   2 },
 
         Case{ "Log1p",  Backend::Log1p<T,S>,
-              Linspace(-0.999, 1e6, kN, {0.f, kInf}),
+              Linspace(-0.999, 1e6, N, {0.f, Inf}),
               [](double x){ return std::log1p(x); }, 2 },
 
         Case{ "Logabs", Backend::Logabs<T,S>,
-              Linspace(-1e6, 1e6, kN, {1.f, -1.f, kInf, -kInf}),
+              Linspace(-1e6, 1e6, N, {1.f, -1.f, Inf, -Inf}),
               [](double x){ return std::log(std::abs(x)); }, 2 },
 
         Case{ "Sin",    Backend::Sin<T,S>,
-              Linspace(-10, 10, kN, {0.f, -0.f, kInf, -kInf}),
+              Linspace(-10, 10, N, {0.f, -0.f, Inf, -Inf}),
               [](double x){ return std::sin(x); },   2 },
 
         Case{ "Cos",    Backend::Cos<T,S>,
-              Linspace(-10, 10, kN, {0.f, kInf, -kInf}),
+              Linspace(-10, 10, N, {0.f, Inf, -Inf}),
               [](double x){ return std::cos(x); },   2 },
 
         Case{ "Tan",    Backend::Tan<T,S>,
               // avoid singularities near ±π/2 + nπ
-              Linspace(-1.5, 1.5, kN, {0.f}),
+              Linspace(-1.5, 1.5, N, {0.f}),
               [](double x){ return std::tan(x); },   2 },
 
         Case{ "Asin",   Backend::Asin<T,S>,
-              Linspace(-1, 1, kN, {0.f, 1.f, -1.f}),
+              Linspace(-1, 1, N, {0.f, 1.f, -1.f}),
               [](double x){ return std::asin(x); },  2 },
 
         Case{ "Acos",   Backend::Acos<T,S>,
-              Linspace(-1, 1, kN, {0.f, 1.f, -1.f}),
+              Linspace(-1, 1, N, {0.f, 1.f, -1.f}),
               [](double x){ return std::acos(x); },  2 },
 
         Case{ "Atan",   Backend::Atan<T,S>,
-              Linspace(-100, 100, kN, {0.f, kInf, -kInf}),
+              Linspace(-100, 100, N, {0.f, Inf, -Inf}),
               [](double x){ return std::atan(x); },  2 },
 
         Case{ "Sinh",   Backend::Sinh<T,S>,
-              Linspace(-10, 10, kN, {0.f, -0.f}),
+              Linspace(-10, 10, N, {0.f, -0.f}),
               [](double x){ return std::sinh(x); },  2 },
 
         Case{ "Cosh",   Backend::Cosh<T,S>,
-              Linspace(-10, 10, kN, {0.f}),
+              Linspace(-10, 10, N, {0.f}),
               [](double x){ return std::cosh(x); },  2 },
 
         Case{ "Tanh",   Backend::Tanh<T,S>,
-              Linspace(-10, 10, kN, {0.f, -0.f, 0.0001f, -0.0001f,
-                                     7.99f, -7.99f, 8.5f, -8.5f, kInf, -kInf}),
+              Linspace(-10, 10, N, {0.f, -0.f, 0.0001f, -0.0001f,
+                                     7.99f, -7.99f, 8.5f, -8.5f, Inf, -Inf}),
               [](double x){ return std::tanh(x); },  4 },
 
         Case{ "Sqrt",   Backend::Sqrt<T,S>,
-              Linspace(0, 1e6, kN, {0.f}),
+              Linspace(0, 1e6, N, {0.f}),
               [](double x){ return std::sqrt(x); },  2 },
 
         Case{ "Sqrtabs",Backend::Sqrtabs<T,S>,
-              Linspace(-1e6, 1e6, kN, {0.f}),
+              Linspace(-1e6, 1e6, N, {0.f}),
               [](double x){ return std::sqrt(std::abs(x)); }, 2 },
 
         Case{ "Cbrt",   Backend::Cbrt<T,S>,
-              Linspace(-1e6, 1e6, kN, {0.f, -0.f, kInf, -kInf}),
+              Linspace(-1e6, 1e6, N, {0.f, -0.f, Inf, -Inf}),
               [](double x){ return std::cbrt(x); },  2 },
     };
     // clang-format on

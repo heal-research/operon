@@ -10,6 +10,9 @@
 #include <new>
 #include <numeric>
 #include <ranges>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "operon/core/dispatch.hpp"
 #include "operon/interpreter/functions.hpp"
@@ -21,28 +24,28 @@ namespace nb = ankerl::nanobench;
 namespace {
     using T = Operon::Scalar;
     constexpr std::size_t S = Dispatch::DefaultBatchSize<T>;
-    constexpr std::size_t NBATCH = 4096;
+    constexpr std::size_t NumBatch = 4096;
 
     struct alignas(32) Buf { std::array<T, S> v; };
 
     using UnaryFn = void(*)(T*, T, T const*);
 
     auto MakeBuffers() {
-        auto src = std::vector<Buf>(NBATCH);
-        auto dst = std::vector<Buf>(NBATCH);
-        for (auto b = 0UL; b < NBATCH; ++b) {
+        auto src = std::vector<Buf>(NumBatch);
+        auto dst = std::vector<Buf>(NumBatch);
+        for (auto b = 0UL; b < NumBatch; ++b) {
             for (auto i = 0UL; i < S; ++i) {
                 // values in (0.1, 1.0] — safe for log/sqrt
-                src[b].v[i] = static_cast<T>(0.1 + 0.9 * static_cast<double>(b * S + i) / static_cast<double>(NBATCH * S));
+                src[b].v[i] = static_cast<T>(0.1 + 0.9 * static_cast<double>(b * S + i) / static_cast<double>(NumBatch * S));
             }
         }
         return std::pair{src, dst};
     }
 
     void BenchFn(nb::Bench& b, std::string const& name, UnaryFn fn, std::vector<Buf>& src, std::vector<Buf>& dst) {
-        b.batch(static_cast<double>(NBATCH * S));
+        b.batch(static_cast<double>(NumBatch * S));
         b.run(name, [&] {
-            for (auto i = 0UL; i < NBATCH; ++i) {
+            for (auto i = 0UL; i < NumBatch; ++i) {
                 fn(dst[i].v.data(), T{1}, src[i].v.data());
             }
         });

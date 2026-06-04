@@ -5,10 +5,24 @@
 #define OPERON_BACKEND_EIGEN_FUNCTIONS_HPP
 
 #include <cmath>
+#include <concepts>
+#include <type_traits>
 #include <Eigen/Core>
 #include "operon/core/dispatch.hpp"
 
 namespace Operon::Backend {
+namespace detail {
+    template<typename E, typename H>
+    auto FoldMin(E e, H h) { return e.min(h); }
+    template<typename E, typename H, typename... Tail>
+    auto FoldMin(E e, H h, Tail... t) { return FoldMin(e.min(h), t...); }
+
+    template<typename E, typename H>
+    auto FoldMax(E e, H h) { return e.max(h); }
+    template<typename E, typename H, typename... Tail>
+    auto FoldMax(E e, H h, Tail... t) { return FoldMax(e.max(h), t...); }
+} // namespace detail
+
     template<typename T, std::size_t S>
     using Map = Eigen::Map<std::conditional_t<std::is_const_v<T>,
         Eigen::Array<std::remove_const_t<T>, S, 1> const,
@@ -65,13 +79,13 @@ namespace Operon::Backend {
     template<typename T, std::size_t S>
     auto Min(T* res, T weight, auto const* first, auto const*... args) {
         static_assert(sizeof...(args) > 0);
-        MMap<T, S>(res) =weight * (Map<T const, S>(first).min(Map<T const, S>(args)), ...);
+        MMap<T, S>(res) = weight * detail::FoldMin(Map<T const, S>(first), Map<T const, S>(args)...);
     }
 
     template<typename T, std::size_t S>
     auto Max(T* res, T weight, auto const* first, auto const*... args) {
         static_assert(sizeof...(args) > 0);
-        MMap<T, S>(res) =weight * (Map<T const, S>(first).max(Map<T const, S>(args)), ...);
+        MMap<T, S>(res) = weight * detail::FoldMax(Map<T const, S>(first), Map<T const, S>(args)...);
     }
 
     // binary functions
