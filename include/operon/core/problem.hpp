@@ -124,7 +124,9 @@ public:
 
     [[nodiscard]] auto Weights(Operon::Range range) const -> std::optional<Operon::Span<Operon::Scalar const>> {
         auto w = dataset_->Weights();
-        return w ? std::optional{w->subspan(range.Start(), range.Size())} : std::nullopt;
+        if (!w) { return std::nullopt; }
+        ENSURE(range.Start() + range.Size() <= w->size());
+        return w->subspan(range.Start(), range.Size());
     }
 
     void StandardizeData(Range range)
