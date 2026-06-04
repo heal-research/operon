@@ -97,6 +97,8 @@ REPORT_METRICS = ["r2_tr", "r2_te", "mae_tr", "mae_te", "sort_ms", "wall_s"]
 LOWER_IS_BETTER = {"mae_tr", "mae_te", "nmse_tr", "nmse_te", "sort_ms", "wall_s"}
 
 # ── Run configuration & result ─────────────────────────────────────────────────
+ALL_BINARIES: list[str] = ["operon_gp", "operon_nsgp"]
+
 @dataclass(frozen=True)
 class RunConfig:
     binary:      str            # "operon_gp" or "operon_nsgp"
@@ -106,7 +108,8 @@ class RunConfig:
     symbols:     Optional[str] = None
     objective:   str = "r2"
     generations: int = 5
-    iterations:  int = 1
+    iterations:  int = 0
+    threads:     int = 2
 
     population_size: int = 200
 
@@ -123,7 +126,7 @@ class RunConfig:
             "--iterations",      str(self.iterations),
             "--population-size", str(self.population_size),
             "--pool-size",       str(self.population_size),
-            "--threads",         "2",
+            "--threads",         str(self.threads),
         ]
         if self.symbols:
             a += ["--enable-symbols", self.symbols]
@@ -225,10 +228,11 @@ def test_determinism(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
             symbols         = symbols,
             generations     = args.generations,
             iterations      = args.iterations,
+            threads         = args.threads,
             population_size = args.population_size,
         )
         for binary, ds, seed, creator, objective, symbols in itertools.product(
-            ["operon_gp", "operon_nsgp"],
+            args.binaries,
             args.datasets,
             seeds,
             args.creators,
@@ -319,10 +323,11 @@ def test_statistics(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
             symbols         = symbols,
             generations     = args.generations,
             iterations      = args.iterations,
+            threads         = args.threads,
             population_size = args.population_size,
         )
         for binary, ds, seed, creator, objective, symbols in itertools.product(
-            ["operon_gp", "operon_nsgp"],
+            args.binaries,
             args.datasets,
             seeds,
             args.creators,
@@ -479,10 +484,15 @@ def main() -> None:
                    help="Disable exact string comparison in determinism tests — "
                         "only verify both runs complete with rc=0 (useful when "
                         "results are statistically equivalent but not numerically identical)")
+    p.add_argument("--binaries", default=",".join(ALL_BINARIES),
+                   help=f"Comma-separated binaries to include "
+                        f"(default: all — {', '.join(ALL_BINARIES)})")
     p.add_argument("--generations",     type=int, default=5,
                    help="GP generations per run (default: 5)")
-    p.add_argument("--iterations",      type=int, default=1,
-                   help="Local optimisation iterations per run (default: 1)")
+    p.add_argument("--iterations",      type=int, default=0,
+                   help="Local optimisation iterations per run (default: 0)")
+    p.add_argument("--threads",         type=int, default=2,
+                   help="Threads per operon process (default: 2)")
     p.add_argument("--population-size", type=int, default=200,
                    help="Population (and pool) size per run (default: 200; "
                         "keep small to limit memory usage)")
@@ -518,6 +528,14 @@ def main() -> None:
     if not args.datasets:
         sys.exit(f"No matching datasets for: {selected_names!r}")
 
+    # Resolve binary list
+    args.binaries = [b.strip() for b in args.binaries.split(",") if b.strip()]
+    unknown = [b for b in args.binaries if b not in ALL_BINARIES]
+    if unknown:
+        sys.exit(f"Unknown binaries: {unknown!r}  (available: {ALL_BINARIES})")
+    if not args.binaries:
+        sys.exit("--binaries must not be empty")
+
     # Resolve creator list
     args.creators = [c.strip() for c in args.creators.split(",") if c.strip()]
     if not args.creators:
@@ -534,7 +552,7 @@ def main() -> None:
 
     # Validate paths
     for d in (ref_bin, new_bin):
-        for b in ("operon_gp", "operon_nsgp"):
+        for b in args.binaries:
             exe = d / b
             if not exe.exists():
                 sys.exit(f"Binary not found: {exe}")
@@ -547,12 +565,15 @@ def main() -> None:
     print(f"  ref : {args.ref}")
     print(f"  new : {args.new}")
     print(f"  data: {datadir}")
+    print(f"  binaries    : {args.binaries}")
     print(f"  datasets    : {[d.name for d in args.datasets]}")
     print(f"  creators    : {args.creators}")
     print(f"  objectives  : {args.objectives}")
     print(f"  exact cmp   : {args.exact}")
     print(f"  sym sets    : {len(SYMBOL_SETS)}")
     print(f"  pop size    : {args.population_size}")
+    print(f"  iterations  : {args.iterations}")
+    print(f"  threads/run : {args.threads}")
     print(f"  jobs/timeout: {args.jobs} / {args.timeout}s")
     ylw = "" if args.no_color else YELLOW
     rst2 = "" if args.no_color else RESET
