@@ -5,52 +5,47 @@
 #define OPERON_METRICS_SUM_OF_SQUARED_RESIDUALS_HPP
 
 #include <iterator>
-#include <type_traits>
 #include <vstat/vstat.hpp>
-#include "operon/core/types.hpp"
+#include "operon/core/concepts.hpp"
 
 namespace Operon {
 
-template<typename InputIt1, typename InputIt2>
+template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
+    requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
+          && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
+                          typename std::iterator_traits<InputIt2>::value_type>
 inline auto SumOfSquaredErrors(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    using V2 = typename std::iterator_traits<InputIt2>::value_type;
-    static_assert(std::is_arithmetic_v<V1>, "InputIt1: value_type must be arithmetic.");
-    static_assert(std::is_arithmetic_v<V2>, "InputIt2: value_type must be arithmetic.");
-    static_assert(std::is_same_v<V1, V2>, "The types must be the same");
     auto sqres = [](auto a, auto b){ auto e = a-b; return e*e; };
     return vstat::univariate::accumulate<V1>(begin1, end1, begin2, sqres).sum;
 }
 
-template<typename InputIt1, typename InputIt2, typename InputIt3>
+template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, std::contiguous_iterator InputIt3>
+    requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
+          && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
+                          typename std::iterator_traits<InputIt2>::value_type>
 inline auto SumOfSquaredErrors(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 begin3) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    using V2 = typename std::iterator_traits<InputIt2>::value_type;
-    static_assert(std::is_arithmetic_v<V1>, "InputIt1: value_type must be arithmetic.");
-    static_assert(std::is_arithmetic_v<V2>, "InputIt2: value_type must be arithmetic.");
-    static_assert(std::is_same_v<V1, V2>, "The types must be the same");
     auto sqres = [](auto a, auto b){ auto e = a-b; return e*e; };
     return vstat::univariate::accumulate<V1>(begin1, end1, begin2, begin3, sqres).sum;
 }
 
-template<typename T>
+template<Concepts::Arithmetic T>
 inline auto SumOfSquaredErrors(Operon::Span<T const> x, Operon::Span<T const> y) noexcept -> double
 {
-    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(!x.empty());
-    return SumOfSquaredErrors(x.begin(), x.end(), y.begin());
+    return SumOfSquaredErrors(x.data(), x.data() + x.size(), y.data());
 }
 
-template<typename T>
+template<Concepts::Arithmetic T>
 inline auto SumOfSquaredErrors(Operon::Span<T const> x, Operon::Span<T const> y, Operon::Span<T const> w) noexcept -> double
 {
-    static_assert(std::is_arithmetic_v<T>, "T must be an arithmetic type.");
     EXPECT(x.size() == y.size());
     EXPECT(!x.empty());
-    return SumOfSquaredErrors(x.begin(), x.end(), y.begin(), w.begin());
+    return SumOfSquaredErrors(x.data(), x.data() + x.size(), y.data(), w.data());
 }
 
 } // namespace Operon

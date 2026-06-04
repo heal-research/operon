@@ -356,7 +356,7 @@ private:
     std::size_t sampleSize_ {};
 };
 
-template <typename DTable, typename Lik>
+template <typename DTable, Concepts::Likelihood Lik>
 class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
@@ -476,7 +476,7 @@ private:
     mutable std::vector<Operon::Scalar> sigma_;
 };
 
-template <typename DTable, typename Lik>
+template <typename DTable, Concepts::Likelihood Lik>
 class OPERON_EXPORT FractionalBayesFactorEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
