@@ -357,6 +357,7 @@ private:
 };
 
 template <typename DTable, Concepts::Likelihood Lik>
+requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
@@ -477,6 +478,7 @@ private:
 };
 
 template <typename DTable, Concepts::Likelihood Lik>
+requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT FractionalBayesFactorEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 

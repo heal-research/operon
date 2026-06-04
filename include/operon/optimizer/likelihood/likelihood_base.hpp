@@ -9,22 +9,23 @@
 #include <gsl/pointers>
 #include <vstat/vstat.hpp>
 
+#include "operon/core/concepts.hpp"
 #include "operon/core/types.hpp"
 #include "operon/interpreter/interpreter.hpp"
 
 namespace Operon {
 
 namespace Concepts {
+    // Types satisfying Likelihood that also provide ComputeFisherMatrix.
+    // Used by MDL/FBF evaluators and the Levenberg-Marquardt optimizer.
     template<typename T>
-    concept Likelihood = requires(
+    concept HasFisherMatrix = requires(
         Operon::Span<Operon::Scalar const> x,
         Operon::Span<Operon::Scalar const> y,
         Operon::Span<Operon::Scalar const> z
     ) {
-        { T::ComputeLikelihood(x, y, z) } -> std::same_as<Operon::Scalar>;
-        { T::ComputeFisherMatrix(z, y, z) } -> std::convertible_to<Eigen::template Matrix<Operon::Scalar, -1, -1>>;
+        { T::ComputeFisherMatrix(x, y, z) } -> std::convertible_to<Eigen::Matrix<Operon::Scalar, -1, -1>>;
     };
-
 } // namespace Concepts
 
 template <typename T = Operon::Scalar>
@@ -64,7 +65,7 @@ namespace Concepts {
     // Prevents confusing template errors when a static-only *Likelihood struct
     // is mistakenly passed to LBFGSOptimizer or SGDOptimizer.
     template<typename T>
-    concept OptimizerLoss = Likelihood<T> && std::derived_from<T, LikelihoodBase<typename T::Scalar>>;
+    concept OptimizerLoss = Likelihood<T> && HasFisherMatrix<T> && std::derived_from<T, LikelihoodBase<typename T::Scalar>>;
 } // namespace Concepts
 
 } // namespace Operon
