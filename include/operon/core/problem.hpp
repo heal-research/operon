@@ -122,6 +122,11 @@ public:
         return dataset_->GetValues(target_.Index).subspan(range.Start(), range.Size());
     }
 
+    [[nodiscard]] auto Weights(Operon::Range range) const -> std::optional<Operon::Span<Operon::Scalar const>> {
+        auto w = dataset_->Weights();
+        return w ? std::optional{w->subspan(range.Start(), range.Size())} : std::nullopt;
+    }
+
     void StandardizeData(Range range)
     {
         for (auto const& v : inputs_) {
