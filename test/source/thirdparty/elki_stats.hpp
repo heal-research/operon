@@ -244,7 +244,7 @@ namespace Elki {
 
         static inline auto R2(auto const& x, auto const& y, auto const& z) {
             assert(std::ssize(x) == std::ssize(y));
-            auto my = MeanVariance::PopulationStats(y).Mean;
+            auto my = MeanVariance::PopulationStats(y, z).Mean;
             MeanVariance sx, sy;
             for (auto i = 0; i < std::ssize(x); ++i) {
                 auto e1 = x[i] - y[i];
