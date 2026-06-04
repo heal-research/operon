@@ -82,6 +82,15 @@ concept EvaluatorCallable = requires(T const& t, Operon::RandomGenerator& rng,
     { t(rng, ind, buf) } -> std::same_as<Operon::Vector<Operon::Scalar>>;
 };
 
+// Static struct providing a scalar negative log-likelihood over three value spans.
+// The third span is overloaded: sigma (Gaussian) or weights (Poisson); may be empty.
+template<typename T>
+concept Likelihood = requires(Operon::Span<Operon::Scalar const> x,
+    Operon::Span<Operon::Scalar const> y,
+    Operon::Span<Operon::Scalar const> z) {
+    { T::ComputeLikelihood(x, y, z) } -> std::same_as<Operon::Scalar>;
+};
+
 } // namespace Operon::Concepts
 
 #endif
