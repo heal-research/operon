@@ -10,6 +10,58 @@
 
 #include "operon/core/dispatch.hpp"
 
+namespace Operon::Backend::detail {
+
+template<std::floating_point T>
+auto FastTanh(eve::wide<T> a) -> eve::wide<T> {
+    using W = eve::wide<T>;
+    if constexpr (std::is_same_v<T, float>) {
+        // 13/6-degree rational minimax, ~2 ULP on [-8,8].
+        // Eigen's generic_fast_tanh_float (Pedro Gonnet, 2014).
+        auto x    = eve::clamp(a, T(-7.99881172180175781f), T(7.99881172180175781f));
+        auto tiny = eve::abs(a) < T(0.0004f);
+        auto x2   = x * x;
+        auto p = eve::fma(x2, W{T(-2.76076847742355e-16f)}, W{T( 2.00018790482477e-13f)});
+        p = eve::fma(x2, p, W{T(-8.60467152213735e-11f)});
+        p = eve::fma(x2, p, W{T( 5.12229709037114e-08f)});
+        p = eve::fma(x2, p, W{T( 1.48572235717979e-05f)});
+        p = eve::fma(x2, p, W{T( 6.37261928875436e-04f)});
+        p = eve::fma(x2, p, W{T( 4.89352455891786e-03f)});
+        p = x * p;
+        auto q = eve::fma(x2, W{T(1.19825839466702e-06f)}, W{T(1.18534705686654e-04f)});
+        q = eve::fma(x2, q, W{T(2.26843463243900e-03f)});
+        q = eve::fma(x2, q, W{T(4.89352518554385e-03f)});
+        return eve::if_else(tiny, x, p / q);
+    } else {
+        // 19/18-degree rational minimax, ~2 ULP on [-18.7,18.7].
+        // Ported from Eigen's ptanh_double (rminimax-optimised coefficients).
+        auto x    = eve::clamp(a, T(-17.6610191624600077), T(17.6610191624600077));
+        auto tiny = eve::abs(a) < T(0.0004);
+        auto x2   = x * x;
+        auto p = eve::fma(x2, W{T(2.6158007860482230e-23)}, W{T(7.6534862268749319e-19)});
+        p = eve::fma(x2, p, W{T(3.1309488231386680e-15)});
+        p = eve::fma(x2, p, W{T(4.2303918148209176e-12)});
+        p = eve::fma(x2, p, W{T(2.4618379131293676e-09)});
+        p = eve::fma(x2, p, W{T(6.8644367682497074e-07)});
+        p = eve::fma(x2, p, W{T(9.3839087674268880e-05)});
+        p = eve::fma(x2, p, W{T(5.9809711724441161e-03)});
+        p = eve::fma(x2, p, W{T(1.5184719640284322e-01)});
+        p = x * p;
+        auto q = eve::fma(x2, W{T(6.463747022670968018e-21)}, W{T(5.782506856739003571e-17)});
+        q = eve::fma(x2, q, W{T(1.293019623712687916e-13)});
+        q = eve::fma(x2, q, W{T(1.123643448069621992e-10)});
+        q = eve::fma(x2, q, W{T(4.492975677839633985e-08)});
+        q = eve::fma(x2, q, W{T(8.785185266237658698e-06)});
+        q = eve::fma(x2, q, W{T(8.295161192716231542e-04)});
+        q = eve::fma(x2, q, W{T(3.437448108450402717e-02)});
+        q = eve::fma(x2, q, W{T(4.851805297361760360e-01)});
+        q = eve::fma(x2, q, W{T(1.0)});
+        return eve::if_else(tiny, x, p / q);
+    }
+}
+
+} // namespace Operon::Backend::detail
+
 namespace Operon::Backend {
     // utility
     template<typename T, std::size_t S>
@@ -302,7 +354,7 @@ namespace Operon::Backend {
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(weight * eve::tanh(W{arg + i}), res+i);
+            eve::store(weight * detail::FastTanh(W{arg + i}), res + i);
         }
     }
 
