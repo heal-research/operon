@@ -300,8 +300,10 @@ namespace Operon::Backend {
     requires (S % eve::wide<T>::size() == 0)
     auto Tanh(T* res, T weight, T const* arg) {
         // 13/6-degree rational minimax approximation, accurate to ~2 ULP on [-8,8].
+        // Coefficients are float-only; double precision degrades to ~float accuracy.
         // Same algorithm as Eigen's generic_fast_tanh_float; avoids expm1 overhead.
         // Reference: Eigen/src/Core/MathFunctionsImpl.h (Pedro Gonnet, 2014)
+        static_assert(std::is_same_v<T, float>, "Eve tanh approximation is float-only; supply double-precision coefficients for T=double");
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
