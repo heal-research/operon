@@ -21,6 +21,7 @@
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/error_metrics/error_metrics.hpp"
 #include "operon/operators/generator.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/mutation.hpp"
@@ -234,6 +235,108 @@ TEST_CASE("Evaluator performance", "[performance]")
     test("nmse", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}, /*linearScaling=*/false));
     test("mae", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MAE{}, /*linearScaling=*/false));
     test("mse", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*linearScaling=*/false));
+}
+
+// Accumulate path vs buf path — MSE only
+//
+// For MSE (scaling=false) the evaluator feeds interpreter batches directly into
+// a vstat accumulator ("accumulate path"), never writing a full result span.
+// The "buf path" reference leg manually calls Interpreter::Evaluate into a
+// pre-allocated span and then calls MeanSquaredError on it — exactly what the
+// old code did, same metric, same trees, same N.
+//
+// This isolates path overhead from metric-computation differences.
+TEST_CASE("Accumulate vs buf path performance", "[performance]")
+{
+    constexpr size_t nTrees    = 500;
+    constexpr size_t maxLength = 50;
+    constexpr size_t maxDepth  = 1000;
+    constexpr size_t ncol      = 10;
+
+    using DTable = ScalarDispatch;
+    DTable dtable;
+
+    Operon::RandomGenerator rd(1234);
+
+    auto runBench = [&](size_t nrow) {
+        auto ds = Util::RandomDataset(rd, nrow, ncol);
+        auto variables = ds.GetVariables();
+        auto target    = variables.back().Name;
+        auto inputs    = ds.VariableHashes();
+        std::erase(inputs, ds.GetVariable(target).value().Hash);
+        Range const range{0, ds.Rows<std::size_t>()};
+
+        Operon::Problem problem{&ds};
+        problem.SetTrainingRange(range);
+        problem.SetTestRange(range);
+        problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
+        problem.SetTarget(target);
+
+        std::uniform_int_distribution<size_t> sizeDist(1, maxLength);
+        BalancedTreeCreator creator{&problem.GetPrimitiveSet(), inputs, 0.0, maxLength};
+
+        Operon::Vector<Tree> trees(nTrees);
+        std::ranges::generate(trees, [&]{ return creator(rd, sizeDist(rd), 0, maxDepth); });
+        Operon::Vector<Individual> inds(nTrees);
+        for (size_t i = 0; i < nTrees; ++i) { inds[i].Genotype = trees[i]; }
+
+        auto const totalNodes = TotalNodes(trees);
+        tf::Executor executor(std::thread::hardware_concurrency());
+        auto const nWorkers = executor.num_workers();
+
+        nb::Bench b;
+        b.title(fmt::format("MSE: accumulate vs buf  N={}", nrow))
+         .relative(true).performanceCounters(true).minEpochIterations(5);
+
+        // accumulate path: Evaluator routes MSE+!scaling through Interpreter::Accumulate
+        {
+            Operon::Evaluator<DTable> ev{&problem, &dtable, Operon::MSE{}, false};
+            ev.SetBudget(std::numeric_limits<size_t>::max());
+            tf::Taskflow tf;
+            Operon::Vector<Operon::Vector<Operon::Scalar>> slots(nWorkers);
+            double sum{0};
+            tf.transform_reduce(inds.begin(), inds.end(), sum, std::plus<>{},
+                [&](Individual& ind) -> Operon::Scalar {
+                    auto id = executor.this_worker_id();
+                    if (slots[id].size() < range.Size()) { slots[id].resize(range.Size()); }
+                    return ev(rd, ind, slots[id]).front();
+                });
+            b.batch(static_cast<double>(totalNodes * range.Size()))
+             .epochs(5).epochIterations(50)
+             .run("mse (accumulate)", [&]() -> double {
+                 sum = 0; executor.run(tf).wait(); return sum;
+             });
+        }
+
+        // buf path: Interpreter::Evaluate → pre-allocated span → MeanSquaredError
+        // Same metric, same trees, same span — only the code path differs.
+        {
+            auto targetValues = problem.TargetValues(range);
+            tf::Taskflow tf;
+            Operon::Vector<Operon::Vector<Operon::Scalar>> slots(nWorkers);
+            double sum{0};
+            tf.transform_reduce(inds.begin(), inds.end(), sum, std::plus<>{},
+                [&](Individual& ind) -> Operon::Scalar {
+                    auto id = executor.this_worker_id();
+                    if (slots[id].size() < range.Size()) { slots[id].resize(range.Size()); }
+                    auto coeff = ind.Genotype.GetCoefficients();
+                    Operon::Interpreter<Operon::Scalar, DTable>{&dtable, &ds, &ind.Genotype}
+                        .Evaluate(coeff, range, slots[id]);
+                    return static_cast<Operon::Scalar>(
+                        MeanSquaredError<Operon::Scalar>(slots[id], targetValues));
+                });
+            b.batch(static_cast<double>(totalNodes * range.Size()))
+             .epochs(5).epochIterations(50)
+             .run("mse (buf)",        [&]() -> double {
+                 sum = 0; executor.run(tf).wait(); return sum;
+             });
+        }
+    };
+
+    SECTION("N = 1 000")   { runBench(1'000); }
+    SECTION("N = 5 000")   { runBench(5'000); }
+    SECTION("N = 20 000")  { runBench(20'000); }
+    SECTION("N = 100 000") { runBench(100'000); }
 }
 
 TEST_CASE("Parallel interpreter", "[performance]")
