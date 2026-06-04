@@ -10,7 +10,7 @@
 
 namespace Operon {
 
-template<std::random_access_iterator InputIt1, std::random_access_iterator InputIt2>
+template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
                           typename std::iterator_traits<InputIt2>::value_type>
@@ -21,7 +21,7 @@ inline auto SumOfSquaredErrors(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) 
     return vstat::univariate::accumulate<V1>(begin1, end1, begin2, sqres).sum;
 }
 
-template<std::random_access_iterator InputIt1, std::random_access_iterator InputIt2, std::random_access_iterator InputIt3>
+template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, std::contiguous_iterator InputIt3>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
                           typename std::iterator_traits<InputIt2>::value_type>
