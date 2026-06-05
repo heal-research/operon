@@ -25,8 +25,8 @@ namespace {
     requires std::is_arithmetic_v<T>
     {
         auto stats = weights.empty()
-            ? vstat::bivariate::accumulate<T>(std::cbegin(estimated), std::cend(estimated), std::cbegin(target))
-            : vstat::bivariate::accumulate<T>(std::cbegin(estimated), std::cend(estimated), std::cbegin(target), std::cbegin(weights));
+            ? vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data())
+            : vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data(), weights.data());
         auto a = stats.covariance / stats.variance_x; // scale
         if (!std::isfinite(a)) {
             a = 1;
