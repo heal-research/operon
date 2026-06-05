@@ -24,7 +24,7 @@ namespace Operon {
 enum class ErrorType : int { SSE, MSE, NMSE, RMSE, MAE, R2, C2 };
 
 struct OPERON_EXPORT ErrorMetric {
-    using Iterator = Operon::Span<Operon::Scalar const>::iterator;
+    using Iterator = Operon::Scalar const*;
     using ProjIterator = ProjectionIterator<Iterator>;
 
     explicit ErrorMetric(ErrorType type) : type_(type) { }
