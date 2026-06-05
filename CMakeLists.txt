@@ -41,7 +41,9 @@ endif()
 add_library(
     operon_operon
     source/algorithms/gp.cpp
-    source/algorithms/nsga2.cpp
+    source/algorithms/mo_base.cpp
+    source/algorithms/nsgp2.cpp
+    source/algorithms/nsgp_sms.cpp
     source/algorithms/solution_archive.cpp
     source/core/dataset.cpp
     source/core/distance.cpp

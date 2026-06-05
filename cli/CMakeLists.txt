@@ -43,4 +43,5 @@ endfunction()
 
 add_operon_cli(operon_gp)
 add_operon_cli(operon_nsgp)
+add_operon_cli(operon_nsgp_sms)
 add_operon_cli(operon_parse_model)

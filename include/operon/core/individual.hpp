@@ -17,8 +17,8 @@ struct LexicographicalComparison; // fwd def
 struct Individual {
     Tree Genotype;
     Operon::Vector<Operon::Scalar> Fitness;
-    size_t Rank{}; // domination rank; used by NSGA2
-    Operon::Scalar Distance{}; // crowding distance; used by NSGA2
+    size_t Rank{};            // domination rank; used by multi-objective algorithms
+    Operon::Scalar Distance{}; // secondary diversity criterion (crowding distance or HV contribution)
 
     inline auto operator[](size_t const i) noexcept -> Operon::Scalar& { return Fitness[i]; }
     inline auto operator[](size_t const i) const noexcept -> Operon::Scalar { return Fitness[i]; }
