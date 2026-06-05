@@ -125,6 +125,16 @@ else()
     set(Ceres_VERSION "n/a")
 endif()
 
+set(HAVE_SYCL FALSE)
+if (USE_SYCL)
+    find_package(AdaptiveCpp QUIET)
+    if (AdaptiveCpp_FOUND)
+        set(HAVE_SYCL TRUE)
+    else()
+        message(WARNING "USE_SYCL requested but AdaptiveCpp not found — GPU backend disabled")
+    endif()
+endif()
+
 if (USE_JEMALLOC)
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
@@ -257,6 +267,41 @@ target_compile_definitions(operon_operon PUBLIC
 
 if(NOT CMAKE_SKIP_INSTALL_RULES)
   include(cmake/install-rules.cmake)
+endif()
+
+# ---- GPU backend (optional, requires AdaptiveCpp / SYCL) ----
+
+if (HAVE_SYCL)
+    # Kernel-only target: compiled with acpp (SYCL). Minimal includes — no Eigen.
+    add_library(operon_sycl_kernel
+        source/interpreter/backend/sycl/gpu_kernel.cpp
+    )
+    target_include_directories(operon_sycl_kernel PUBLIC
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+    )
+    target_include_directories(operon_sycl_kernel SYSTEM PUBLIC
+        "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export>"
+    )
+    target_compile_features(operon_sycl_kernel PUBLIC cxx_std_20)
+    add_sycl_to_target(TARGET operon_sycl_kernel
+        SOURCES source/interpreter/backend/sycl/gpu_kernel.cpp)
+
+    # Evaluator target: plain C++20, links the kernel target.
+    add_library(operon_sycl
+        source/interpreter/backend/sycl/gpu_evaluator.cpp
+    )
+    add_library(operon::sycl ALIAS operon_sycl)
+
+    target_include_directories(operon_sycl PUBLIC
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+    )
+    target_include_directories(operon_sycl SYSTEM PUBLIC
+        "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export>"
+    )
+
+    target_link_libraries(operon_sycl PUBLIC operon::operon operon_sycl_kernel)
+    target_compile_features(operon_sycl PUBLIC cxx_std_20)
+    target_compile_definitions(operon_sycl PUBLIC OPERON_HAVE_SYCL)
 endif()
 
 # ---- Command-line programs ----

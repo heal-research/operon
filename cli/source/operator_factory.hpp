@@ -38,7 +38,7 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
 
 auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<Operon::Hash> const& inputs, size_t maxLength) -> std::unique_ptr<CreatorBase>;
 
-auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale = true) -> std::unique_ptr<EvaluatorBase>;
+auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale = true, bool useGpu = false) -> std::unique_ptr<EvaluatorBase>;
 
 auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>;
 

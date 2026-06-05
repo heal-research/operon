@@ -49,6 +49,7 @@
         let
           pkgs = import self.inputs.nixpkgs {
             inherit system;
+            config.allowUnfree = true;
             overlays = [
               foolnotion.overlay
               (final: prev: {
@@ -135,6 +136,44 @@
                   hyperfine
                 ]
               );
+          };
+
+          devShells.rocm = stdenv.mkDerivation {
+            name = "operon-rocm";
+
+            nativeBuildInputs =
+              operon.nativeBuildInputs
+              ++ (with pkgs; [
+                adaptivecppWithRocm
+                clang-tools
+                cmake-language-server
+              ]);
+
+            buildInputs =
+              operon.buildInputs
+              ++ (with pkgs; [
+                adaptivecppWithRocm
+                rocmPackages.clr
+                rocmPackages.rocminfo
+              ]);
+          };
+
+          devShells.cuda = stdenv.mkDerivation {
+            name = "operon-cuda";
+
+            nativeBuildInputs =
+              operon.nativeBuildInputs
+              ++ (with pkgs; [
+                adaptivecppWithCuda
+                clang-tools
+                cmake-language-server
+              ]);
+
+            buildInputs =
+              operon.buildInputs
+              ++ (with pkgs; [
+                adaptivecppWithCuda
+              ]);
           };
 
           apps.operon-gp.program = "${packages.default}/bin/operon_gp";
