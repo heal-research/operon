@@ -69,9 +69,9 @@ class Dataset:
 
 ALL_DATASETS: list[Dataset] = [
     Dataset("Poly-10.csv",         "Y", "0:400",  "400:500"),
-    Dataset("Pagie-1.csv",         "F", "0:1340", "1340:1676"),
+    Dataset("Pagie-1.csv",         "F", "0:676",  "676:1676"),
     Dataset("Concrete.csv",        "Y", "0:824",  "824:1030"),
-    Dataset("Vladislavleva-4.csv", "Y", "0:4819", "4819:6024"),
+    Dataset("Vladislavleva-4.csv", "Y", "0:1024", "1024:6024"),
 ]
 
 SYMBOL_SETS: list[Optional[str]] = [
@@ -91,13 +91,24 @@ _STAT_COLS = [
     "best_len",  "avg_len", "eval_cnt", "res_eval",
     "jac_eval",  "opt_time", "seed",   "sort_ms", "elapsed",
 ]
-REPORT_METRICS = ["r2_tr", "r2_te", "mae_tr", "mae_te", "sort_ms", "wall_s"]
+REPORT_METRICS = ["r2_tr", "r2_te", "mae_tr", "mae_te", "best_len", "sort_ms", "wall_s"]
 
 # For these metrics a negative Δmed (new < ref) means improvement.
-LOWER_IS_BETTER = {"mae_tr", "mae_te", "nmse_tr", "nmse_te", "sort_ms", "wall_s"}
+LOWER_IS_BETTER = {"mae_tr", "mae_te", "nmse_tr", "nmse_te", "best_len", "sort_ms", "wall_s"}
+
+# Only quality metrics count toward pass/fail; timing metrics are informational only.
+# sort_ms in particular can be spuriously flagged when comparing binaries whose output
+# format differs (e.g. an older binary without the sort_ms column maps elapsed→sort_ms).
+SIGNIFICANCE_METRICS = {"r2_tr", "r2_te", "mae_tr", "mae_te"}
 
 # ── Run configuration & result ─────────────────────────────────────────────────
-ALL_BINARIES: list[str] = ["operon_gp", "operon_nsgp"]
+ALL_BINARIES: list[str] = ["operon_gp", "operon_nsgp", "operon_nsgp_sms"]
+
+# When comparing a new binary, use this alternative binary on the ref side.
+# This lets us compare operon_nsgp_sms (new algo) against operon_nsgp (NSGP2) as baseline.
+REF_BINARY_OVERRIDE: dict[str, str] = {
+    "operon_nsgp_sms": "operon_nsgp",
+}
 
 @dataclass(frozen=True)
 class RunConfig:
@@ -112,21 +123,23 @@ class RunConfig:
     threads:     int = 2
 
     population_size: int = 200
+    model_selection: str = "mse"
 
     def cli_args(self, datadir: Path) -> list[str]:
         a = [
-            "--dataset",         str(datadir / self.dataset.filename),
-            "--target",          self.dataset.target,
-            "--train",           self.dataset.train,
-            "--test",            self.dataset.test,
-            "--seed",            str(self.seed),
-            "--creator",         self.creator,
-            "--objective",       self.objective,
-            "--generations",     str(self.generations),
-            "--iterations",      str(self.iterations),
-            "--population-size", str(self.population_size),
-            "--pool-size",       str(self.population_size),
-            "--threads",         str(self.threads),
+            "--dataset",          str(datadir / self.dataset.filename),
+            "--target",           self.dataset.target,
+            "--train",            self.dataset.train,
+            "--test",             self.dataset.test,
+            "--seed",             str(self.seed),
+            "--creator",          self.creator,
+            "--objective",        self.objective,
+            "--generations",      str(self.generations),
+            "--iterations",       str(self.iterations),
+            "--population-size",  str(self.population_size),
+            "--pool-size",        str(self.population_size),
+            "--threads",          str(self.threads),
+            "--model-selection",  self.model_selection,
         ]
         if self.symbols:
             a += ["--enable-symbols", self.symbols]
@@ -139,7 +152,7 @@ class RunConfig:
 
     def group_key(self) -> tuple:
         """Key that identifies a group for statistical tests (everything except seed)."""
-        return (self.binary, self.dataset, self.creator, self.objective, self.symbols, self.generations, self.iterations, self.population_size)
+        return (self.binary, self.dataset, self.creator, self.objective, self.symbols, self.generations, self.iterations, self.population_size, self.model_selection)
 
 
 @dataclass
@@ -230,6 +243,7 @@ def test_determinism(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
             iterations      = args.iterations,
             threads         = args.threads,
             population_size = args.population_size,
+            model_selection = args.model_selection,
         )
         for binary, ds, seed, creator, objective, symbols in itertools.product(
             args.binaries,
@@ -244,7 +258,8 @@ def test_determinism(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
     passed = failed = skipped = 0
 
     def run_pair(cfg: RunConfig):
-        r = run_binary(ref_bin / cfg.binary, cfg, datadir, args.timeout)
+        ref_binary = REF_BINARY_OVERRIDE.get(cfg.binary, cfg.binary)
+        r = run_binary(ref_bin / ref_binary, cfg, datadir, args.timeout)
         n = run_binary(new_bin / cfg.binary, cfg, datadir, args.timeout)
         return cfg, r, n
 
@@ -325,6 +340,7 @@ def test_statistics(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
             iterations      = args.iterations,
             threads         = args.threads,
             population_size = args.population_size,
+            model_selection = args.model_selection,
         )
         for binary, ds, seed, creator, objective, symbols in itertools.product(
             args.binaries,
@@ -344,7 +360,8 @@ def test_statistics(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
         new_results.setdefault(cfg.group_key(), [])
 
     def run_pair(cfg: RunConfig):
-        r = run_binary(ref_bin / cfg.binary, cfg, datadir, args.timeout)
+        ref_binary = REF_BINARY_OVERRIDE.get(cfg.binary, cfg.binary)
+        r = run_binary(ref_bin / ref_binary, cfg, datadir, args.timeout)
         n = run_binary(new_bin / cfg.binary, cfg, datadir, args.timeout)
         return cfg, r, n
 
@@ -364,7 +381,7 @@ def test_statistics(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
     bld  = "" if args.no_color else BOLD
 
     for key in sorted(ref_results.keys(), key=str):
-        binary, ds, creator, objective, symbols, generations, iterations, _pop = key
+        binary, ds, creator, objective, symbols, generations, iterations, _pop, model_selection = key
         sym_label   = symbols or "default"
         group_label = (f"{binary}  ds={ds.name:<20}"
                        f"  creator={creator}  obj={objective}  sym={sym_label!s:<30}")
@@ -408,7 +425,7 @@ def test_statistics(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
             if HAS_SCIPY:
                 _, pval = scipy_stats.mannwhitneyu(rv, nv, alternative="two-sided")
                 sig = pval < args.alpha
-                if sig:
+                if sig and metric in SIGNIFICANCE_METRICS:
                     group_significant = True
                 pval_str = f"{red}{pval:.4f} ***{rst2}" if sig else f"{grn}{pval:.4f}{rst2}"
             else:
@@ -487,6 +504,8 @@ def main() -> None:
     p.add_argument("--binaries", default=",".join(ALL_BINARIES),
                    help=f"Comma-separated binaries to include "
                         f"(default: all — {', '.join(ALL_BINARIES)})")
+    p.add_argument("--model-selection", default="mse",
+                   help="Model selection strategy passed to multi-objective binaries: mse (default) or mdl")
     p.add_argument("--generations",     type=int, default=5,
                    help="GP generations per run (default: 5)")
     p.add_argument("--iterations",      type=int, default=0,
@@ -551,9 +570,9 @@ def main() -> None:
     datadir = args.datadir or (args.ref / "data")
 
     # Validate paths
-    for d in (ref_bin, new_bin):
-        for b in args.binaries:
-            exe = d / b
+    for b in args.binaries:
+        ref_b = REF_BINARY_OVERRIDE.get(b, b)
+        for exe in (ref_bin / ref_b, new_bin / b):
             if not exe.exists():
                 sys.exit(f"Binary not found: {exe}")
     if not datadir.is_dir():

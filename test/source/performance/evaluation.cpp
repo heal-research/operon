@@ -13,7 +13,7 @@
 
 #include "../operon_test.hpp"
 #include "operon/algorithms/gp.hpp"
-#include "operon/algorithms/nsga2.hpp"
+#include "operon/algorithms/nsgp2.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
