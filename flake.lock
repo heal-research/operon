@@ -260,11 +260,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1763965304,
-        "narHash": "sha256-dovId2eoaeA8mrFg1VuOG/PaUwZrdRn4YJtzGH0f7AE=",
+        "lastModified": 1780320964,
+        "narHash": "sha256-gQn9V3yZq+mFrVzMwu2WfCB2pNC71BFwz0MUbWvzovA=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "a98ccb502e5a509fb0872cec56c8e709ebcefdcf",
+        "rev": "ad0c42f96d0d6bfd9ac6b30d5b66e0a92801507b",
         "type": "github"
       },
       "original": {
@@ -501,11 +501,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1770888183,
-        "narHash": "sha256-ZFHhSOmwF71UHVd7JOk0/dEarmeHv4Tsm2vuMGInhEI=",
+        "lastModified": 1780595758,
+        "narHash": "sha256-EYATco7ZfRCMk53FTydO+6qwTe8CiIctF8wSw+IUbUo=",
         "owner": "heal-research",
         "repo": "vstat",
-        "rev": "cd753d0467ccc96389fb969551eccceca97f38d1",
+        "rev": "dd174d0dcc4a9fe7d15e8667a2ccb69b3870ded7",
         "type": "github"
       },
       "original": {

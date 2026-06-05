@@ -20,10 +20,13 @@
 namespace Operon {
 namespace {
     template<typename T>
-    auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target) -> std::pair<double, double>
+    auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target,
+                             Operon::Span<T const> weights = {}) -> std::pair<double, double>
     requires std::is_arithmetic_v<T>
     {
-        auto stats = vstat::bivariate::accumulate<T>(std::cbegin(estimated), std::cend(estimated), std::cbegin(target));
+        auto stats = weights.empty()
+            ? vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data())
+            : vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data(), weights.data());
         auto a = stats.covariance / stats.variance_x; // scale
         if (!std::isfinite(a)) {
             a = 1;
@@ -48,23 +51,24 @@ namespace {
         auto const* problem = GetProblem();
         auto const* dataset = problem->GetDataset();
 
-        auto trainingRange = problem->TrainingRange();
-        auto targetValues = dataset->GetValues(problem->TargetVariable()).subspan(trainingRange.Start(), trainingRange.Size());
+        auto const trainingRange = problem->TrainingRange();
+        auto const targetValues  = problem->TargetValues(trainingRange);
+        auto const weightsOpt    = problem->Weights(trainingRange);
+        auto const weights       = weightsOpt.value_or(Operon::Span<Operon::Scalar const>{});
 
         auto const& tree = ind.Genotype;
         auto const* dtable = GetDispatchTable();
         TInterpreter const interpreter{dtable, dataset, &tree};
 
         ++ResidualEvaluations;
-        Operon::Vector<Operon::Scalar> const estimatedValues;
         ENSURE(buf.size() >= trainingRange.Size());
         auto coeff = tree.GetCoefficients();
         interpreter.Evaluate(coeff, trainingRange, buf);
         if (scaling_) {
-            auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues);
-            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+            auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues, weights);
+            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) -> auto { return a * x + b; });
         }
-        auto fit = static_cast<Operon::Scalar>(error_(buf, targetValues));
+        auto fit = static_cast<Operon::Scalar>(weights.empty() ? error_(buf, targetValues) : error_(buf, targetValues, weights));
 
         if (!std::isfinite(fit)) {
             fit = EvaluatorBase::ErrMax;
