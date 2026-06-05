@@ -18,6 +18,7 @@
     infix-parser.inputs.nixpkgs.follows = "nixpkgs";
     ndsort.inputs.nixpkgs.follows = "nixpkgs";
     vstat.inputs.nixpkgs.follows = "nixpkgs";
+    vstat.inputs.foolnotion.follows = "foolnotion";
     vdt.inputs.nixpkgs.follows = "nixpkgs";
     fluky.inputs.nixpkgs.follows = "nixpkgs";
   };
