@@ -230,8 +230,9 @@ auto main(int argc, char** argv) -> int
         // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
         // dtable.RegisterCallable(12345UL, f, f);
 
-        auto scale = result["linear-scaling"].as<bool>();
-        auto errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+        auto const scale  = result["linear-scaling"].as<bool>();
+        auto const useGpu = result["gpu"].as<bool>();
+        auto errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale, useGpu);
         errorEvaluator->SetBudget(config.Evaluations);
 
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
@@ -278,7 +279,14 @@ auto main(int argc, char** argv) -> int
         if (sorterName == "ms") { sorterPtr = &msSorter; }
         Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get(), sorterPtr };
 
-        auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
+        std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
+        Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
+        if (useGpu) {
+            reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{}, scale);
+            ptr = reporterEvalStorage.get();
+        } else {
+            ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
+        }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
         gp.Run(executor, random, [&]() { reporter(executor, gp); });
         auto best = reporter.GetBest();

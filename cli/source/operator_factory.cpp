@@ -13,6 +13,10 @@
 #include "operon/operators/local_search.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
+#if defined(OPERON_HAVE_SYCL)
+#include "operon/interpreter/backend/sycl/gpu_evaluator.hpp"
+#endif
+
 #include <cxxopts.hpp>
 
 
@@ -95,9 +99,31 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
     return creator;
 }
 
-auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale) -> std::unique_ptr<EvaluatorBase>
+auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>
+{
+    // Returns {metric, supportsLinearScaling}.
+    // MDL/FBF/likelihood objectives are not supported by GpuEvaluator.
+    if (str == "r2")   { return { std::make_unique<Operon::R2>(),   true  }; }
+    if (str == "c2")   { return { std::make_unique<Operon::C2>(),   true  }; }
+    if (str == "nmse") { return { std::make_unique<Operon::NMSE>(), true  }; }
+    if (str == "mse")  { return { std::make_unique<Operon::MSE>(),  true  }; }
+    if (str == "rmse") { return { std::make_unique<Operon::RMSE>(), true  }; }
+    if (str == "mae")  { return { std::make_unique<Operon::MAE>(),  false }; }
+    throw std::runtime_error(fmt::format("--gpu does not support objective '{}'; use r2/c2/nmse/mse/rmse/mae\n", str));
+}
+
+auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale, bool useGpu) -> std::unique_ptr<EvaluatorBase>
 {
     using T = ScalarDispatch;
+
+#if defined(OPERON_HAVE_SYCL)
+    if (useGpu) {
+        auto [metric, linearScale] = ParseErrorMetric(str);
+        return std::make_unique<Operon::Sycl::GpuEvaluator>(&problem, *metric, scale && linearScale);
+    }
+#else
+    (void)useGpu;
+#endif
 
     std::unique_ptr<EvaluatorBase> evaluator;
     if (str == "r2") {

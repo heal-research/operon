@@ -20,6 +20,11 @@ function(add_operon_cli NAME)
     )
 
     target_link_libraries(${NAME} PRIVATE operon::operon cxxopts::cxxopts scn::scn)
+
+    if (TARGET operon::sycl)
+        target_link_libraries(${NAME} PRIVATE operon::sycl)
+        target_compile_definitions(${NAME} PRIVATE OPERON_HAVE_SYCL)
+    endif()
     target_compile_features(${NAME} PRIVATE cxx_std_20)
     set_target_properties(${NAME} PROPERTIES
         CXX_VISIBILITY_PRESET hidden

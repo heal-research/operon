@@ -164,8 +164,9 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         mutator.Add(&discretePoint, 1.0);
 
         Operon::ScalarDispatch dtable;
-        auto const scale = result["linear-scaling"].as<bool>();
-        auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+        auto const scale  = result["linear-scaling"].as<bool>();
+        auto const useGpu = result["gpu"].as<bool>();
+        auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale, useGpu);
         evaluator->SetBudget(config.Evaluations);
 
         auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
@@ -197,7 +198,16 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         tf::Executor executor(threads);
         Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get() };
 
-        auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
+        // Reporter needs Evaluator<DTable>::GetDispatchTable() for interpreter-based best-individual analysis.
+        // When --gpu, evaluator is a GpuEvaluator, so create a separate CPU evaluator just for the reporter.
+        std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
+        Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
+        if (useGpu) {
+            reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{}, scale);
+            ptr = reporterEvalStorage.get();
+        } else {
+            ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
+        }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
         gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
         auto best = reporter.GetBest();
