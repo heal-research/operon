@@ -279,4 +279,149 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Weighted evaluator
+//
+// Four scenarios that justify sample weights:
+//   1. No weights set       → result matches the pre-existing unweighted path.
+//   2. Uniform weights      → weighted MSE == unweighted MSE (mathematical invariant).
+//   3. Outlier suppression  → zero-weighting a single far-out point reduces MSE to 0
+//                             when the model is otherwise perfect.
+//   4. Weighted scaling     → FitLeastSquares with region-biased weights converges to
+//                             the slope dominant in the high-weight region.
+// ──────────────────────────────────────────────────────────────────────────────
+TEST_CASE("Weighted evaluator", "[evaluator]")
+{
+    using DTable = DispatchTable<Operon::Scalar>;
+
+    // ── shared data: 100 rows, Y = X1 ────────────────────────────────────────
+    constexpr int N = 100;
+    Eigen::Array<Operon::Scalar, -1, -1> data(N, 2); // X1, Y
+    for (auto i = 0; i < N; ++i) {
+        data(i, 0) = static_cast<Operon::Scalar>(i) / N; // X1 in [0, 1)
+        data(i, 1) = data(i, 0);                         // Y = X1
+    }
+    auto makeDataset = [&]() { return Operon::Dataset(gsl::not_null{data.data()}, N, 2); };
+
+    auto makeProblem = [&](Operon::Dataset* ds) {
+        auto p = std::make_unique<Operon::Problem>(ds);
+        p->SetTrainingRange({0, N});
+        p->SetTestRange({0, N});
+        p->SetTarget("X2");
+        return p;
+    };
+
+    // single-variable expression; all variable nodes get the same coefficient (fine here, X1 only)
+    auto makeInd = [&](Operon::Dataset const& ds, float varWeight) -> Operon::Individual {
+        auto t = InfixParser::Parse("X1", ds);
+        for (auto& node : t.Nodes()) {
+            if (node.IsVariable()) { node.Value = varWeight; }
+        }
+        Operon::Individual ind;
+        ind.Genotype = t;
+        return ind;
+    };
+
+    DTable dtable;
+    Operon::RandomGenerator rng{42};
+
+    SECTION("No weights: result matches unweighted evaluator") {
+        auto ds = makeDataset();
+        auto problem = makeProblem(&ds);
+        auto ind = makeInd(ds, 0.5F); // imperfect: predicts 0.5 * X1
+
+        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, false};
+        auto r1 = ev(rng, ind);
+        REQUIRE(r1.size() == 1);
+        CHECK(std::isfinite(r1[0]));
+        CHECK(r1[0] > 0);
+
+        // setting uniform weights must not change the result
+        std::vector<Operon::Scalar> w(N, 1.0F);
+        ds.SetWeights(w);
+        auto r2 = ev(rng, ind);
+        CHECK_THAT(static_cast<double>(r2[0]),
+                   Catch::Matchers::WithinRel(static_cast<double>(r1[0]), 1e-5));
+    }
+
+    SECTION("Uniform weights equal unweighted result") {
+        auto ds = makeDataset();
+        auto problem = makeProblem(&ds);
+        auto ind = makeInd(ds, 0.7F); // imperfect
+
+        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, false};
+        auto unweighted = ev(rng, ind)[0];
+
+        std::vector<Operon::Scalar> w(N, 1.0F);
+        ds.SetWeights(w);
+        auto weighted = ev(rng, ind)[0];
+
+        CHECK_THAT(static_cast<double>(weighted),
+                   Catch::Matchers::WithinRel(static_cast<double>(unweighted), 1e-5));
+    }
+
+    SECTION("Outlier suppression: zero weight on outlier row gives MSE = 0 for perfect model") {
+        auto ds = makeDataset();
+        // inject a large outlier at row 0
+        data(0, 1) = 1000.0F;
+        auto problem = makeProblem(&ds);
+        auto perfect = makeInd(ds, 1.0F); // predicts X1 exactly (residual != 0 at row 0)
+
+        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, false};
+
+        // without weights: MSE is dominated by the outlier
+        auto mseUnweighted = ev(rng, perfect)[0];
+        CHECK(mseUnweighted > 1.0F);
+
+        // zero out the outlier row; perfect on all remaining rows → weighted MSE = 0
+        std::vector<Operon::Scalar> w(N, 1.0F);
+        w[0] = 0.0F;
+        ds.SetWeights(w);
+        auto mseWeighted = ev(rng, perfect)[0];
+        CHECK_THAT(static_cast<double>(mseWeighted), Catch::Matchers::WithinAbs(0.0, 1e-5));
+    }
+
+    SECTION("Weighted FitLeastSquares converges to slope of high-weight region") {
+        // Two datasets, each with a mixed-slope layout. In both cases the high-weight
+        // region is the FIRST half so the bivariate accumulator is seeded with non-zero
+        // weights before encountering any zero-weight observations. (vstat's
+        // bivariate_accumulator computes f = w/(sum_w * sum_w_old); leading zero-weight
+        // rows keep sum_w_old = 0, causing NaN on the first non-zero-weight row.)
+        //
+        // Dataset A: rows 0..49 have slope 2, rows 50..99 have slope 3.
+        //   Weights = 1 on first half  → FitLeastSquares finds a ≈ 2 → weighted MSE ≈ 0.
+        //
+        // Dataset B: rows 0..49 have slope 3, rows 50..99 have slope 2.
+        //   Weights = 1 on first half  → FitLeastSquares finds a ≈ 3 → weighted MSE ≈ 0.
+        //
+        // Together the two checks prove the scale adapts to whichever slope dominates
+        // the weight distribution.
+        auto runScalingTest = [&](float slopeHigh, float slopeLow) -> Operon::Scalar {
+            Eigen::Array<Operon::Scalar, -1, -1> d(N, 2);
+            for (auto i = 0; i < N / 2; ++i) {
+                d(i, 0) = static_cast<Operon::Scalar>(i + 1) / N;
+                d(i, 1) = slopeHigh * d(i, 0);
+            }
+            for (auto i = N / 2; i < N; ++i) {
+                d(i, 0) = static_cast<Operon::Scalar>(i + 1) / N;
+                d(i, 1) = slopeLow  * d(i, 0);
+            }
+            auto ds = Operon::Dataset(gsl::not_null{d.data()}, N, 2);
+            auto problem = makeProblem(&ds);
+            auto ind = makeInd(ds, 1.0F);
+            Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, /*linearScaling=*/true};
+            std::vector<Operon::Scalar> w(N, 0.0F);
+            std::fill(w.begin(), w.begin() + N/2, 1.0F); // weight only the first half
+            ds.SetWeights(w);
+            return ev(rng, ind)[0];
+        };
+
+        auto mseSlope2 = runScalingTest(2.0F, 3.0F); // first half slope 2, weighted → a ≈ 2
+        auto mseSlope3 = runScalingTest(3.0F, 2.0F); // first half slope 3, weighted → a ≈ 3
+
+        CHECK_THAT(static_cast<double>(mseSlope2), Catch::Matchers::WithinAbs(0.0, 1e-4));
+        CHECK_THAT(static_cast<double>(mseSlope3), Catch::Matchers::WithinAbs(0.0, 1e-4));
+    }
+}
+
 } // namespace Operon::Test
