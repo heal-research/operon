@@ -61,15 +61,6 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
     } else if (name == "proportional") {
         selector = std::make_unique<Operon::ProportionalSelector>(std::move(comp));
         dynamic_cast<Operon::ProportionalSelector*>(selector.get())->SetObjIndex(0);
-    } else if (name == "rank") {
-        selector = std::make_unique<Operon::RankTournamentSelector>(std::move(comp));
-        size_t tournamentSize{defaultTournamentSize};
-        if (tok.size() > 1) {
-            auto result = scn::scan<std::size_t>(tok[1], "{}");
-            ENSURE(result);
-            tournamentSize = result->value();
-        }
-        dynamic_cast<Operon::RankTournamentSelector*>(selector.get())->SetTournamentSize(tournamentSize);
     } else if (name == "random") {
         selector = std::make_unique<Operon::RandomSelector>();
     } else {

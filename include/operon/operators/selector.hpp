@@ -68,25 +68,6 @@ private:
     size_t tournamentSize_;
 };
 
-class OPERON_EXPORT RankTournamentSelector : public SelectorBase {
-public:
-    explicit RankTournamentSelector(ComparisonCallback&& cb) : SelectorBase(cb){ } 
-    explicit RankTournamentSelector(ComparisonCallback const& cb) : SelectorBase(cb){ } 
-
-    auto operator()(Operon::RandomGenerator& random) const -> size_t override;
-
-    void Prepare(Operon::Span<Individual const> pop) const override;
-
-    void SetTournamentSize(size_t size) { tournamentSize_ = size; }
-    auto GetTournamentSize() const -> size_t { return tournamentSize_; }
-
-    static constexpr size_t DefaultTournamentSize = 5;
-
-private:
-    size_t tournamentSize_{};
-    mutable std::vector<size_t> indices_;
-};
-
 class OPERON_EXPORT ProportionalSelector : public SelectorBase {
 public:
     explicit ProportionalSelector(ComparisonCallback&& cb) : SelectorBase(cb) { } 
