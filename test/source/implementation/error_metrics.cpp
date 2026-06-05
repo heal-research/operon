@@ -32,25 +32,25 @@ TEST_CASE("Error metrics", "[metrics]") // NOLINT(readability-function-cognitive
 
     SECTION("mean") {
         auto m1 = Elki::MeanVariance::PopulationStats(x).Mean;
-        auto m2 = vstat::univariate::accumulate<double>(cbegin(x), cend(x)).mean;
+        auto m2 = vstat::univariate::accumulate<double>(x.data(), x.data() + x.size()).mean;
         CHECK(std::abs(m1 - m2) < eps);
     }
 
     SECTION("weighted mean") {
         auto m1 = Elki::MeanVariance::PopulationStats(x, z).Mean;
-        auto m2 = vstat::univariate::accumulate<double>(cbegin(x), cend(x), cbegin(z)).mean;
+        auto m2 = vstat::univariate::accumulate<double>(x.data(), x.data() + x.size(), z.data()).mean;
         CHECK(std::abs(m1 - m2) < eps);
     }
 
     SECTION("variance") {
         auto v1 = Elki::MeanVariance::PopulationStats(x).Variance;
-        auto v2 = vstat::univariate::accumulate<double>(cbegin(x), cend(x)).variance;
+        auto v2 = vstat::univariate::accumulate<double>(x.data(), x.data() + x.size()).variance;
         CHECK(std::abs(v1 - v2) < eps);
     }
 
     SECTION("weighted variance") {
         auto v1 = Elki::MeanVariance::PopulationStats(x, z).Variance;
-        auto v2 = vstat::univariate::accumulate<double>(cbegin(x), cend(x), cbegin(z)).variance;
+        auto v2 = vstat::univariate::accumulate<double>(x.data(), x.data() + x.size(), z.data()).variance;
         CHECK(std::abs(v1 - v2) < eps);
     }
 
