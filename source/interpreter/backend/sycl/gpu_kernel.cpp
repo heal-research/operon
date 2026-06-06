@@ -56,27 +56,47 @@ namespace {
 // which doubles occupancy and improves throughput on RDNA hardware.
 static constexpr int StackDepth = 32;
 
+// Vector width for row-wise vectorization. Each thread evaluates VW rows
+// simultaneously through the tree (same node path, N-wide data ops),
+// amortizing interpreter dispatch overhead by VW.
+// VW=4 wins on RDNA2 gfx1030 at typical GP population sizes (≤ 5000);
+// larger values increase register spill pressure and yield diminishing returns.
+static constexpr uint32_t VW = 4U;
+using vecW = sycl::vec<float, VW>;
+
+// Load VW consecutive floats from ptr into a vecW (loop unrolled at compile time).
+template<uint32_t N = VW>
+SYCL_EXTERNAL inline auto load_vecW(float const* ptr) -> sycl::vec<float, N>
+{
+    sycl::vec<float, N> v;
+    for (uint32_t i = 0U; i < N; ++i) { v[i] = ptr[i]; }
+    return v;
+}
+
+// Templatized over T = float (scalar) or vecW (vectorized).
+// All SYCL math functions are gentype and accept vec<float,N> directly.
+// Operon trees store nodes in left-to-right depth-first order with the
+// parent LAST.  arg1 sits immediately before the parent (pushed last →
+// stack top = base[arity-1]); arg2 is further left (pushed first →
+// base[0]).  Commutative ops are order-independent; non-commutative ops
+// (Sub, Div, Aq, Pow, Powabs) must use base[arity-1] as their first operand.
+template<typename T>
 SYCL_EXTERNAL inline auto EvalOp(
     uint8_t type, uint8_t arity,
-    float* stack, int top) -> float
+    T* stack, int top) -> T
 {
     using NT = Operon::NodeType;
-    auto const t  = static_cast<NT>(type);
-    float* base   = stack + top - arity + 1;
+    auto const t = static_cast<NT>(type);
+    T* base = stack + top - arity + 1;
 
-    // Operon trees store nodes in left-to-right depth-first order with the
-    // parent LAST.  arg1 sits immediately before the parent (pushed last →
-    // stack top = base[arity-1]); arg2 is further left (pushed first →
-    // base[0]).  Commutative ops are order-independent; non-commutative ops
-    // (Sub, Div, Aq, Pow, Powabs) must use base[arity-1] as their first operand.
     switch (t) {
-    case NT::Add: { float s = base[0]; for (int k = 1; k < arity; ++k) { s += base[k]; } return s; }
-    case NT::Mul: { float p = base[0]; for (int k = 1; k < arity; ++k) { p *= base[k]; } return p; }
-    case NT::Sub: { float s = base[arity-1]; for (int k = 0; k < arity-1; ++k) { s -= base[k]; } return s; }
-    case NT::Div: { float s = base[arity-1]; for (int k = 0; k < arity-1; ++k) { s /= base[k]; } return s; }
-    case NT::Fmin: { float s = base[0]; for (int k = 1; k < arity; ++k) { s = sycl::fmin(s, base[k]); } return s; }
-    case NT::Fmax: { float s = base[0]; for (int k = 1; k < arity; ++k) { s = sycl::fmax(s, base[k]); } return s; }
-    case NT::Aq:      return base[1] / sycl::sqrt(1.0F + base[0] * base[0]);
+    case NT::Add: { T s = base[0]; for (int k = 1; k < arity; ++k) { s += base[k]; } return s; }
+    case NT::Mul: { T p = base[0]; for (int k = 1; k < arity; ++k) { p *= base[k]; } return p; }
+    case NT::Sub: { T s = base[arity-1]; for (int k = 0; k < arity-1; ++k) { s -= base[k]; } return s; }
+    case NT::Div: { T s = base[arity-1]; for (int k = 0; k < arity-1; ++k) { s /= base[k]; } return s; }
+    case NT::Fmin: { T s = base[0]; for (int k = 1; k < arity; ++k) { s = sycl::fmin(s, base[k]); } return s; }
+    case NT::Fmax: { T s = base[0]; for (int k = 1; k < arity; ++k) { s = sycl::fmax(s, base[k]); } return s; }
+    case NT::Aq:      return base[1] / sycl::sqrt(T{1.0F} + base[0] * base[0]);
     case NT::Pow:     return sycl::pow(base[1], base[0]);
     case NT::Powabs:  return sycl::pow(sycl::fabs(base[1]), base[0]);
     case NT::Abs:     return sycl::fabs(base[0]);
@@ -99,7 +119,7 @@ SYCL_EXTERNAL inline auto EvalOp(
     case NT::Square:  return base[0] * base[0];
     case NT::Tan:     return sycl::tan(base[0]);
     case NT::Tanh:    return sycl::tanh(base[0]);
-    default:          return 0.0F;
+    default:          return T{0.0F};
     }
 }
 
@@ -129,9 +149,9 @@ void GpuContextUploadDataset(GpuContext*  ctx,
     ctx->nRows  = nRows;
     ctx->d_data = sycl::malloc_device<float>(
         static_cast<std::size_t>(nVars) * nRows, ctx->q);
+    // In-order queue: upload completes before the next kernel submission.
     ctx->q.memcpy(ctx->d_data, colMajor,
         static_cast<std::size_t>(nVars) * nRows * sizeof(float));
-    ctx->q.wait();
 }
 
 void GpuContextUploadTarget(GpuContext*  ctx,
@@ -145,7 +165,6 @@ void GpuContextUploadTarget(GpuContext*  ctx,
         ctx->targetCapacity = nRows;
     }
     ctx->q.memcpy(ctx->d_target, target, count * sizeof(float));
-    ctx->q.wait();
 }
 
 void GpuContextEvaluate(GpuContext*      ctx,
@@ -212,12 +231,60 @@ void GpuContextEvaluate(GpuContext*      ctx,
 
                 using NT = Operon::NodeType;
 
-                // Thread-local partial sums (FP32; tree outputs are float anyway)
-                float sx{0}, sy{0}, sxx{0}, sxy{0}, syy{0}, sae{0};
+                // Vectorized main loop: each iteration processes VW=4 rows simultaneously.
+                // The tree switch fires once per node instead of VW times, amortizing
+                // interpreter dispatch overhead. All SYCL math functions accept vecW.
+                uint32_t const nRowsAligned = (nRows / VW) * VW;
 
-                // Each thread evaluates the tree for its strided subset of rows
-                for (uint32_t ri = lid; ri < nRows; ri += WGS) {
-                    float stack[StackDepth]; // NOLINT(cppcoreguidelines-avoid-c-arrays)
+                vecW vsx{0.0F}, vsy{0.0F}, vsxx{0.0F}, vsxy{0.0F}, vsyy{0.0F}, vsae{0.0F};
+
+                for (uint32_t ri = lid * VW; ri < nRowsAligned; ri += WGS * VW) {
+                    vecW vstack[StackDepth]; // NOLINT(cppcoreguidelines-avoid-c-arrays)
+                    int  top = -1;
+
+                    for (uint32_t k = 0; k < len; ++k) {
+                        GpuOp const op = d_ops[offset + k];
+                        if (op.Type == GpuNoop) { continue; }
+
+                        auto const t = static_cast<NT>(op.Type);
+                        if (t == NT::Variable) {
+                            auto const col = static_cast<std::size_t>(op.VarIdx) * nRows + ri;
+                            vstack[++top] = load_vecW(d_data + col) * op.Value;
+                        } else if (t == NT::Constant) {
+                            vstack[++top] = vecW{op.Value};
+                        } else {
+                            vecW res = EvalOp(op.Type, op.Arity, vstack, top);
+                            top -= static_cast<int>(op.Arity) - 1;
+                            vstack[top] = res;
+                        }
+                    }
+
+                    vecW const x = (top == 0) ? vstack[0] : vecW{0.0F};
+                    vecW const y = load_vecW(d_target + ri);
+                    vsx  += x;
+                    vsy  += y;
+                    vsxx += x * x;
+                    vsxy += x * y;
+                    vsyy += y * y;
+                    vsae += sycl::fabs(x - y);
+                }
+
+                // Reduce vecW accumulators to scalar
+                auto hsum = [](vecW v) -> float {
+                    float s = 0.0F;
+                    for (uint32_t i = 0U; i < VW; ++i) { s += v[i]; }
+                    return s;
+                };
+                float sx  = hsum(vsx);
+                float sy  = hsum(vsy);
+                float sxx = hsum(vsxx);
+                float sxy = hsum(vsxy);
+                float syy = hsum(vsyy);
+                float sae = hsum(vsae);
+
+                // Scalar tail: at most VW-1 rows not covered by the vectorized loop
+                for (uint32_t ri = nRowsAligned + lid; ri < nRows; ri += WGS) {
+                    float fstack[StackDepth]; // NOLINT(cppcoreguidelines-avoid-c-arrays)
                     int   top = -1;
 
                     for (uint32_t k = 0; k < len; ++k) {
@@ -226,24 +293,21 @@ void GpuContextEvaluate(GpuContext*      ctx,
 
                         auto const t = static_cast<NT>(op.Type);
                         if (t == NT::Variable) {
-                            stack[++top] = d_data[static_cast<std::size_t>(op.VarIdx) * nRows + ri] * op.Value;
+                            fstack[++top] = d_data[static_cast<std::size_t>(op.VarIdx) * nRows + ri] * op.Value;
                         } else if (t == NT::Constant) {
-                            stack[++top] = op.Value;
+                            fstack[++top] = op.Value;
                         } else {
-                            float res = EvalOp(op.Type, op.Arity, stack, top);
-                            top -= (static_cast<int>(op.Arity) - 1);
-                            stack[top] = res;
+                            float res = EvalOp(op.Type, op.Arity, fstack, top);
+                            top -= static_cast<int>(op.Arity) - 1;
+                            fstack[top] = res;
                         }
                     }
 
-                    float const x = (top == 0) ? stack[0] : 0.0F;
+                    float const x = (top == 0) ? fstack[0] : 0.0F;
                     float const y = d_target[ri];
-                    sx  += x;
-                    sy  += y;
-                    sxx += x * x;
-                    sxy += x * y;
-                    syy += y * y;
-                    sae += sycl::fabs(x - y);
+                    sx  += x; sy  += y;
+                    sxx += x * x; sxy += x * y;
+                    syy += y * y; sae += sycl::fabs(x - y);
                 }
 
                 // Store partial sums in local memory
