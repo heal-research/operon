@@ -34,6 +34,8 @@ struct OPERON_EXPORT ErrorMetric {
     auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const -> double;
     auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const -> double;
 
+    [[nodiscard]] auto Type() const -> ErrorType { return type_; }
+
     private:
     ErrorType type_;
 };
@@ -109,6 +111,8 @@ struct EvaluatorBase : public E1, E2
     virtual void Prepare(Operon::Span<Individual const> /*pop*/) const
     {
     }
+
+    [[nodiscard]] virtual auto IsBatch() const -> bool { return false; }
 
     virtual auto ObjectiveCount() const -> std::size_t { return 1UL; }
 
