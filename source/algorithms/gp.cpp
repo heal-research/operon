@@ -118,6 +118,15 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                                 }
                                             })
                                          .name("generate offspring");
+            auto batchEvalOffspring = subflow.emplace([&](tf::Subflow& sf) -> void {
+                                                  if (!evaluator->IsBatch()) { return; }
+                                                  evaluator->Prepare(offspring.subspan(1));
+                                                  sf.for_each_index(size_t { 1 }, offspring.size(), size_t { 1 }, [&](size_t i) -> void {
+                                                      auto id = executor.this_worker_id();
+                                                      slots[id].resize(trainSize);
+                                                      offspring[i].Fitness = (*evaluator)(rngs[i], offspring[i], slots[id]);
+                                                  });
+                                              }).name("batch eval offspring");
             auto reinsert = subflow.emplace([&]() -> void { (*reinserter)(random, Parents(), offspring); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
@@ -128,7 +137,8 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             // set-up subflow graph
             keepElite.precede(prepareGenerator);
             prepareGenerator.precede(generateOffspring);
-            generateOffspring.precede(reinsert);
+            generateOffspring.precede(batchEvalOffspring);
+            batchEvalOffspring.precede(reinsert);
             reinsert.precede(incrementGeneration);
             incrementGeneration.precede(reportProgress);
         }, // loop body (evolutionary main loop)

@@ -16,7 +16,6 @@
 #include "operon/core/problem.hpp"
 #include "operon/core/version.hpp"
 #include "operon/formatter/formatter.hpp"
-#include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"
 #include "operon/operators/evaluator.hpp"
@@ -29,6 +28,10 @@
 
 #include "operator_factory.hpp"
 #include "util.hpp"
+
+#if defined(OPERON_HAVE_SYCL)
+#include "operon/interpreter/backend/sycl/gpu_evaluator.hpp"
+#endif
 
 namespace {
 auto MakeCoeffAndMutation(bool symbolic)
@@ -209,6 +212,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
+
         gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));

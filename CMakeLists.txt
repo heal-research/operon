@@ -311,6 +311,15 @@ if(PROJECT_IS_TOP_LEVEL)
   if (BUILD_CLI_PROGRAMS)
     add_subdirectory(cli)
   endif()
+
+  if (HAVE_SYCL)
+    add_executable(test_gpu_simple test_gpu_simple.cpp)
+    target_link_libraries(test_gpu_simple PRIVATE operon::operon operon_sycl)
+    target_compile_features(test_gpu_simple PRIVATE cxx_std_20)
+    if (UNIX AND NOT APPLE)
+      target_link_options(test_gpu_simple PRIVATE "-Wl,--no-undefined")
+    endif()
+  endif()
 endif()
 
 # ---- Examples ----

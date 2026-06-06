@@ -5,9 +5,15 @@
 #define OPERON_GPU_POPULATION_ENCODER_HPP
 
 #include <algorithm>
+#include <execution>
 #include <numeric>
 #include <unordered_map>
 #include <vector>
+
+// NOLINTBEGIN(misc-include-cleaner)
+#include <taskflow/algorithm/for_each.hpp>
+#include <taskflow/core/executor.hpp>
+// NOLINTEND(misc-include-cleaner)
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
@@ -25,17 +31,21 @@ namespace Operon::Sycl {
 
 // Encode a population for GPU evaluation.
 // Individuals are sorted by tree length to minimise inter-warp load imbalance.
-// The dataset range is transposed into a column-major float buffer.
+// The dataset range is transposed into a column-major float buffer only when
+// needDataset=true; on subsequent calls (dataset already on device) pass false
+// to skip the 400 KB allocation/fill.
 inline auto EncodePopulation(
     Operon::Span<Operon::Individual const> pop,
     Operon::Dataset const& dataset,
-    Operon::Range range) -> EncodedPopulation
+    Operon::Range range,
+    tf::Executor& executor,
+    bool needDataset = true) -> EncodedPopulation
 {
     auto const nRows   = static_cast<uint32_t>(range.Size());
     auto const nVars   = static_cast<uint32_t>(dataset.GetVariables().size());
     auto const popSize = static_cast<uint32_t>(pop.size());
 
-    // hash → column index
+    // hash → column index (nVars ≤ ~100, always L1-cached after first access)
     std::unordered_map<Operon::Hash, uint32_t> hashToIdx;
     hashToIdx.reserve(nVars);
     for (auto const& v : dataset.GetVariables()) {
@@ -54,12 +64,13 @@ inline auto EncodePopulation(
         maxLen = std::max(maxLen, static_cast<uint32_t>(pop[idx].Genotype.Length()));
     }
 
-    // encode ops: padding with GpuNoop
+    // encode ops: padding with GpuNoop; parallelise over sorted individuals
     std::vector<GpuOp>    ops(static_cast<std::size_t>(popSize) * maxLen,
                               GpuOp{GpuNoop, 0U, 0U, 0.0F});
     std::vector<uint32_t> lengths(popSize);
 
-    for (uint32_t si = 0; si < popSize; ++si) {
+    tf::Taskflow tf;
+    tf.for_each_index(0U, popSize, 1U, [&](uint32_t si) {
         auto const& nodes = pop[order[si]].Genotype.Nodes();
         lengths[si] = static_cast<uint32_t>(nodes.size());
 
@@ -78,14 +89,18 @@ inline auto EncodePopulation(
             }
             ops[(static_cast<std::size_t>(si) * maxLen) + ni] = op;
         }
-    }
+    });
+    executor.run(tf).wait();
 
-    // encode dataset: column-major [nVars × nRows]
-    std::vector<float> dataBuffer(static_cast<std::size_t>(nVars) * nRows);
-    for (uint32_t vi = 0; vi < nVars; ++vi) {
-        auto col = dataset.GetValues(static_cast<int64_t>(vi)).subspan(range.Start(), nRows);
-        for (uint32_t ri = 0; ri < nRows; ++ri) {
-            dataBuffer[(static_cast<std::size_t>(vi) * nRows) + ri] = static_cast<float>(col[ri]);
+    // encode dataset: column-major [nVars × nRows] — skipped when already on device
+    std::vector<float> dataBuffer;
+    if (needDataset) {
+        dataBuffer.resize(static_cast<std::size_t>(nVars) * nRows);
+        for (uint32_t vi = 0; vi < nVars; ++vi) {
+            auto col = dataset.GetValues(static_cast<int64_t>(vi)).subspan(range.Start(), nRows);
+            for (uint32_t ri = 0; ri < nRows; ++ri) {
+                dataBuffer[(static_cast<std::size_t>(vi) * nRows) + ri] = static_cast<float>(col[ri]);
+            }
         }
     }
 
@@ -99,6 +114,16 @@ inline auto EncodePopulation(
         .NVars         = nVars,
         .NRows         = nRows,
     };
+}
+
+// Convenience overload for tests that don't have a tf::Executor handy.
+inline auto EncodePopulation(
+    Operon::Span<Operon::Individual const> pop,
+    Operon::Dataset const& dataset,
+    Operon::Range range) -> EncodedPopulation
+{
+    tf::Executor ex;
+    return EncodePopulation(pop, dataset, range, ex, /*needDataset=*/true);
 }
 
 } // namespace Operon::Sycl

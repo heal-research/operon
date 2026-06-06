@@ -12,6 +12,10 @@
     vstat.url = "github:heal-research/vstat";
     vdt.url = "github:foolnotion/vdt/master";
 
+    # Last nixpkgs before ROCm bumped to LLVM 22; ACPP 25.x supports LLVM ≤ 20.
+    # Used exclusively for adaptivecppWithRocm in devShells.rocm.
+    nixpkgs-rocm.url = "github:nixos/nixpkgs/5f83595ff1ea7e10ae0e7d01cc233d19f6dd5ae1";
+
     # make everything follow nixpkgs
     foolnotion.inputs.nixpkgs.follows = "nixpkgs";
     lbfgs.inputs.nixpkgs.follows = "nixpkgs";
@@ -28,6 +32,7 @@
       self,
       flake-parts,
       nixpkgs,
+      nixpkgs-rocm,
       foolnotion,
       fluky,
       infix-parser,
@@ -65,6 +70,21 @@
           enableShared = !pkgs.stdenv.hostPlatform.isStatic;
           enableTesting = true;
           inherit (pkgs.llvmPackages_21) stdenv;
+          # ACPP from the pinned nixpkgs (ROCm LLVM 20), overriding llvmPackages_18
+          # → llvmPackages_20 so compiler and device-lib bitcode versions match.
+          # ACPP 25.x supports LLVM ≤ 20; no experimental flag needed.
+          pkgs-rocm = import inputs.nixpkgs-rocm {
+            inherit system;
+            config.allowUnfree = true;
+          };
+          adaptivecppWithRocm = (pkgs-rocm.adaptivecppWithRocm.override {
+            llvmPackages_18 = pkgs-rocm.llvmPackages_20;
+          }).overrideAttrs (old: {
+            # Disable hiprtc: hiprtcLinkComplete(LLVM_BITCODE) is broken in ROCm 7.1.1.
+            # Without HIPRTC_LIBRARY, ACPP uses clangJitLink (subprocess) instead.
+            cmakeFlags = old.cmakeFlags ++ [ "-DHIPRTC_LIBRARY=" ];
+            hardeningDisable = [ "all" ];
+          });
           operon = import ./operon.nix {
             inherit stdenv pkgs system;
             inherit enableShared enableTesting;
@@ -114,6 +134,28 @@
             ];
           };
 
+          # scipy + tabulate + ROCm JIT environment in one shell.
+          # inputsFrom inherits buildInputs/nativeBuildInputs from .#rocm
+          # (including adaptivecppWithRocm); shellHook must be repeated
+          # because inputsFrom does not propagate it.
+          devShells.rocm-compare = pkgs.mkShell {
+            name = "operon-rocm-compare";
+            inputsFrom = [ devShells.rocm ];
+            packages = [
+              (pkgs.python3.withPackages (
+                ps: with ps; [
+                  scipy
+                  tabulate
+                ]
+              ))
+            ];
+            shellHook = ''
+              export NIX_HARDENING_ENABLE=""
+              export ROCM_PATH=${adaptivecppWithRocm.rocmMerged}
+              export PATH=${pkgs-rocm.rocmPackages."rocm-toolchain"}/bin:$PATH
+            '';
+          };
+
           devShells.default = stdenv.mkDerivation {
             name = "operon";
 
@@ -144,18 +186,26 @@
             nativeBuildInputs =
               operon.nativeBuildInputs
               ++ (with pkgs; [
-                adaptivecppWithRocm
                 clang-tools
                 cmake-language-server
-              ]);
+              ])
+              ++ [ adaptivecppWithRocm ];
 
             buildInputs =
               operon.buildInputs
-              ++ (with pkgs; [
-                adaptivecppWithRocm
-                rocmPackages.clr
-                rocmPackages.rocminfo
-              ]);
+              ++ [ adaptivecppWithRocm ];
+
+            # clangJitLink (ACPP's JIT path when hiprtc is disabled) calls the Nix
+            # LLVM 20 clang wrapper as a subprocess to compile the SYCL kernel.
+            # That wrapper needs:
+            #  - NIX_HARDENING_ENABLE="" — strips flags unsupported for amdgcn
+            #  - ROCM_PATH — lets clang find ROCm device libraries
+            #  - rocm-toolchain/bin in PATH — provides lld and llvm-objcopy
+            shellHook = ''
+              export NIX_HARDENING_ENABLE=""
+              export ROCM_PATH=${adaptivecppWithRocm.rocmMerged}
+              export PATH=${pkgs-rocm.rocmPackages."rocm-toolchain"}/bin:$PATH
+            '';
           };
 
           devShells.cuda = stdenv.mkDerivation {

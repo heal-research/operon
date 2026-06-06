@@ -96,6 +96,10 @@ REPORT_METRICS = ["r2_tr", "r2_te", "mae_tr", "mae_te", "sort_ms", "wall_s"]
 # For these metrics a negative Δmed (new < ref) means improvement.
 LOWER_IS_BETTER = {"mae_tr", "mae_te", "nmse_tr", "nmse_te", "sort_ms", "wall_s"}
 
+# Only quality metrics (not timing) count toward the group pass/fail verdict.
+# wall_s and sort_ms are always reported but never trigger a "differs significantly" flag.
+PASS_FAIL_METRICS = {"r2_tr", "r2_te", "mae_tr", "mae_te", "nmse_tr", "nmse_te"}
+
 # ── Run configuration & result ─────────────────────────────────────────────────
 ALL_BINARIES: list[str] = ["operon_gp", "operon_nsgp"]
 
@@ -165,11 +169,15 @@ def _parse_stats_line(line: str) -> dict:
     return row
 
 
-def run_binary(binary: Path, config: RunConfig, datadir: Path, timeout: int) -> RunResult:
-    cmd = [str(binary)] + config.cli_args(datadir)
+def run_binary(binary: Path, config: RunConfig, datadir: Path, timeout: int,
+               extra_args: list[str] | None = None,
+               env_extra: dict[str, str] | None = None) -> RunResult:
+    import os
+    cmd = [str(binary)] + config.cli_args(datadir) + (extra_args or [])
+    env = {**os.environ, **(env_extra or {})}
     t0 = time.perf_counter()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         return RunResult(-1, "", {}, 0.0, "timeout")
     except Exception as exc:
@@ -245,7 +253,8 @@ def test_determinism(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
 
     def run_pair(cfg: RunConfig):
         r = run_binary(ref_bin / cfg.binary, cfg, datadir, args.timeout)
-        n = run_binary(new_bin / cfg.binary, cfg, datadir, args.timeout)
+        n = run_binary(new_bin / cfg.binary, cfg, datadir, args.timeout,
+                       extra_args=args.new_extra_args, env_extra=args.new_env)
         return cfg, r, n
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
@@ -408,7 +417,7 @@ def test_statistics(ref_bin: Path, new_bin: Path, datadir: Path, args) -> int:
             if HAS_SCIPY:
                 _, pval = scipy_stats.mannwhitneyu(rv, nv, alternative="two-sided")
                 sig = pval < args.alpha
-                if sig:
+                if sig and metric in PASS_FAIL_METRICS:
                     group_significant = True
                 pval_str = f"{red}{pval:.4f} ***{rst2}" if sig else f"{grn}{pval:.4f}{rst2}"
             else:
@@ -510,6 +519,9 @@ def main() -> None:
                    help="Build subdirectory name under ref root (default: build)")
     p.add_argument("--new-build", default="build",
                    help="Build subdirectory name under new root (default: build)")
+    p.add_argument("--new-gpu", action="store_true",
+                   help="Pass --gpu to the new binary and set ACPP_TARGETS=hip:gfx1030 "
+                        "(implies --no-exact since FP32 GPU results differ numerically)")
     p.add_argument("--jobs",    type=int, default=2,
                    help="Parallel run pairs (default: 2; each pair = 2 processes, "
                         "so --jobs 2 means 4 operon processes at once)")
@@ -545,6 +557,15 @@ def main() -> None:
     args.objectives = [o.strip() for o in args.objectives.split(",") if o.strip()]
     if not args.objectives:
         sys.exit("--objectives must not be empty")
+
+    # GPU mode: inject --gpu flag and ACPP env for the new binary
+    if args.new_gpu:
+        args.new_extra_args = ["--gpu"]
+        args.new_env        = {"ACPP_TARGETS": "hip:gfx1030"}
+        args.exact          = False   # FP32 GPU ≠ FP64 CPU numerically
+    else:
+        args.new_extra_args = None
+        args.new_env        = None
 
     ref_bin = args.ref / args.ref_build / "cli"
     new_bin = args.new / args.new_build / "cli"
