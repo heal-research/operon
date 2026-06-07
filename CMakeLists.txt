@@ -125,6 +125,17 @@ else()
     set(Ceres_VERSION "n/a")
 endif()
 
+set(HAVE_ASMJIT FALSE)
+if (USE_ASMJIT)
+    find_package(asmjit QUIET)
+    if (asmjit_FOUND)
+        set(HAVE_ASMJIT TRUE)
+    else()
+        message(WARNING "USE_ASMJIT requested but asmjit not found — JIT backend disabled")
+    endif()
+endif()
+
+
 if (USE_JEMALLOC)
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
@@ -248,9 +259,14 @@ else()
     target_compile_options(operon_operon PRIVATE "-fno-math-errno")
 endif()
 
+if (HAVE_ASMJIT)
+    target_link_libraries(operon_operon PUBLIC asmjit::asmjit)
+endif()
+
 target_compile_definitions(operon_operon PUBLIC
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
     "$<$<BOOL:${HAVE_CERES}>:HAVE_CERES>"
+    "$<$<BOOL:${HAVE_ASMJIT}>:HAVE_ASMJIT>"
     )
 
 # ---- Install rules ----
