@@ -49,12 +49,10 @@ struct GpuContext {
 
 namespace {
 
-// Maximum stack depth needed by the postfix evaluator.
-// For a binary tree of length N, the worst-case stack depth is N/2
-// (a fully right-skewed chain). With default --maxlength 50: depth ≤ 25.
-// Setting 32 keeps a safe margin while halving register pressure vs 64,
-// which doubles occupancy and improves throughput on RDNA hardware.
-static constexpr int StackDepth = 32;
+// Maximum stack depth for the postfix evaluator. Tree depth is ≤ 7 in
+// typical GP runs (depth-7 balanced binary tree = 127 nodes). 8 entries
+// exactly fills the RDNA2 per-thread VGPR budget with VW=4 (32 VGPRs/thread).
+static constexpr int StackDepth = 8;
 
 // Vector width for row-wise vectorization. Each thread evaluates VW rows
 // simultaneously through the tree (same node path, N-wide data ops),
