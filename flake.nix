@@ -152,7 +152,7 @@
             shellHook = ''
               export NIX_HARDENING_ENABLE=""
               export ROCM_PATH=${adaptivecppWithRocm.rocmMerged}
-              export PATH=${pkgs-rocm.rocmPackages."rocm-toolchain"}/bin:$PATH
+              export PATH=${pkgs-rocm.rocmPackages."rocm-toolchain"}/bin:${pkgs-rocm.rocmPackages.rocprofiler}/bin:$PATH
             '';
           };
 
@@ -193,7 +193,7 @@
 
             buildInputs =
               operon.buildInputs
-              ++ [ adaptivecppWithRocm ];
+              ++ [ adaptivecppWithRocm pkgs-rocm.rocmPackages.rocprofiler ];
 
             # clangJitLink (ACPP's JIT path when hiprtc is disabled) calls the Nix
             # LLVM 20 clang wrapper as a subprocess to compile the SYCL kernel.
@@ -201,10 +201,11 @@
             #  - NIX_HARDENING_ENABLE="" — strips flags unsupported for amdgcn
             #  - ROCM_PATH — lets clang find ROCm device libraries
             #  - rocm-toolchain/bin in PATH — provides lld and llvm-objcopy
+            #  - rocprofiler/bin in PATH — provides rocprof
             shellHook = ''
               export NIX_HARDENING_ENABLE=""
               export ROCM_PATH=${adaptivecppWithRocm.rocmMerged}
-              export PATH=${pkgs-rocm.rocmPackages."rocm-toolchain"}/bin:$PATH
+              export PATH=${pkgs-rocm.rocmPackages."rocm-toolchain"}/bin:${pkgs-rocm.rocmPackages.rocprofiler}/bin:$PATH
             '';
           };
 
