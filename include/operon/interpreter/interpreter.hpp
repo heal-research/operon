@@ -115,7 +115,7 @@ struct Interpreter : public InterpreterBase<T> {
     auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
         InitContext(coeff, range);
         auto const& nodes = tree_->Nodes();
-        auto const nNodes = std::ssize(nodes); 
+        auto const nNodes = std::ssize(nodes);
         auto const nRows  = static_cast<int>(range.Size());
 
         trace_ = Backend::Buffer<T, BatchSize>(BatchSize, nNodes);

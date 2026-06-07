@@ -261,6 +261,9 @@ endif()
 
 if (HAVE_ASMJIT)
     target_link_libraries(operon_operon PUBLIC asmjit::asmjit)
+    target_sources(operon_operon PRIVATE
+        source/interpreter/backend/jit/jit_compiler.cpp
+    )
 endif()
 
 target_compile_definitions(operon_operon PUBLIC
