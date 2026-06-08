@@ -28,6 +28,7 @@
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
+#include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
 
@@ -35,6 +36,25 @@
 #include "pareto_front.hpp"
 #include "reporter.hpp"
 #include "util.hpp"
+
+namespace {
+template<typename EvaluatorType>
+auto FrontSelect(EvaluatorType const& eval, Operon::Span<Operon::Individual const> pop) -> Operon::Individual
+{
+    Operon::RandomGenerator rng(0);
+    std::vector<Operon::Scalar> buf(eval.GetProblem()->TrainingRange().Size());
+    auto span = Operon::Span<Operon::Scalar>{buf.data(), buf.size()};
+
+    Operon::Individual const* best{nullptr};
+    auto bestVal = std::numeric_limits<Operon::Scalar>::max();
+    for (auto const& ind : pop) {
+        if (ind.Rank != 0) { continue; }
+        auto r = eval(rng, ind, span);
+        if (!best || r[0] < bestVal) { bestVal = r[0]; best = &ind; }
+    }
+    return best ? *best : pop.front();
+}
+} // namespace
 
 auto main(int argc, char** argv) -> int
 {
@@ -278,8 +298,34 @@ auto main(int argc, char** argv) -> int
         if (sorterName == "ms") { sorterPtr = &msSorter; }
         Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get(), sorterPtr };
 
+        Operon::ModelSelectorFn modelSelector;
+        auto const modelSelection = result["model-selection"].as<std::string>();
+        if (modelSelection != "obj0") {
+            using DTable = decltype(dtable);
+            if (modelSelection == "mdl") {
+                auto const& lik = result["mdl-likelihood"].as<std::string>();
+                if (lik == "gaussian") {
+                    auto eval = std::make_shared<Operon::MinimumDescriptionLengthEvaluator<DTable, Operon::GaussianLikelihood<Operon::Scalar>>>(&problem, &dtable);
+                    modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
+                } else if (lik == "poisson") {
+                    auto eval = std::make_shared<Operon::MinimumDescriptionLengthEvaluator<DTable, Operon::PoissonLikelihood<Operon::Scalar>>>(&problem, &dtable);
+                    modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
+                } else {
+                    throw std::runtime_error(fmt::format("unknown mdl-likelihood: {}", lik));
+                }
+            } else if (modelSelection == "bic") {
+                auto eval = std::make_shared<Operon::BayesianInformationCriterionEvaluator<DTable>>(&problem, &dtable);
+                modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
+            } else if (modelSelection == "aic") {
+                auto eval = std::make_shared<Operon::AkaikeInformationCriterionEvaluator<DTable>>(&problem, &dtable);
+                modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
+            } else {
+                throw std::runtime_error(fmt::format("unknown model-selection criterion: {}", modelSelection));
+            }
+        }
+
         auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
-        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
+        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector));
         gp.Run(executor, random, [&]() { reporter(executor, gp); });
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
