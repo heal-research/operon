@@ -32,7 +32,7 @@ auto NSGA2::UpdateDistance(Operon::Span<Individual> pop) -> void
 {
     // assign distance. each front is sorted for each objective
     size_t const m = pop.front().Fitness.size();
-    auto inf = std::numeric_limits<Operon::Scalar>::max();
+    auto inf = std::numeric_limits<Operon::Scalar>::infinity();
     for (size_t i = 0; i < fronts_.size(); ++i) {
         auto& front = fronts_[i];
         for (size_t obj = 0; obj < m; ++obj) {

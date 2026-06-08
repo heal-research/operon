@@ -68,6 +68,8 @@ struct OPERON_EXPORT C2 : public ErrorMetric {
 
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept -> std::pair<double, double>;
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target) noexcept -> std::pair<double, double>;
+auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target, Operon::Span<float const> weights) noexcept -> std::pair<double, double>;
+auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target, Operon::Span<double const> weights) noexcept -> std::pair<double, double>;
 
 using E1 = OperatorBase<Operon::Vector<Operon::Scalar>, Individual const&>;
 using E2 = OperatorBase<Operon::Vector<Operon::Scalar>, Individual const&, Operon::Span<Operon::Scalar>>;

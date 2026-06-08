@@ -16,6 +16,10 @@
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
 #include "operon/operators/evaluator.hpp"
+#if defined(HAVE_ASMJIT)
+#include "operon/hash/zobrist.hpp"
+#include "operon/interpreter/backend/jit/jit_evaluator.hpp"
+#endif
 
 namespace Operon::Test {
 
@@ -180,6 +184,15 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
         CHECK(std::isfinite(summary.FinalCost));
         CHECK(!summary.FinalParameters.empty());
     }
+
+#if defined(HAVE_ASMJIT)
+    SECTION("jit tiny solver") {
+        Operon::Zobrist zobrist{rng, 50};
+        JIT::JitEvaluator jitEval{&problem, &zobrist};
+        JitLevenbergMarquardtOptimizer<DTable> optimizer{&dtable, &problem, &jitEval};
+        checkExact(optimizer);
+    }
+#endif
 
     SECTION("ComputeLikelihood virtual dispatch: pred==target => NLL = n/2 * log(2pi)") {
         LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> const optimizer{&dtable, &problem};
