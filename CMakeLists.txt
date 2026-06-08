@@ -265,6 +265,14 @@ if (HAVE_ASMJIT)
         source/interpreter/backend/jit/jit_compiler.cpp
         source/interpreter/backend/jit/jit_evaluator.cpp
     )
+    # jit_compiler.cpp hosts the AVX2 transcendental helpers (vec_sinf etc.) backed
+    # by eve::wide<float, eve::fixed<8>>.  -mavx2 is required so eve maps W8 to a
+    # single ymm register; the helpers are only called from CompileAVX2(), which
+    # guards entry behind a runtime CpuFeatures::X86::kAVX2 check.
+    set_source_files_properties(
+        source/interpreter/backend/jit/jit_compiler.cpp
+        PROPERTIES COMPILE_OPTIONS "-mavx2"
+    )
 endif()
 
 target_compile_definitions(operon_operon PUBLIC

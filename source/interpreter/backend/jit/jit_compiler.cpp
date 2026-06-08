@@ -9,6 +9,9 @@
 #include <asmjit/asmjit.h>
 #include <asmjit/x86.h>
 
+#include <eve/module/core.hpp>
+#include <eve/module/math.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -391,24 +394,26 @@ auto TreeCompiler::Compile(Operon::Tree const& tree) -> std::unique_ptr<Compiled
 
 namespace {
 
-// In-place float[8] transcendental helpers.
-// Signature: void fn(float* p) — applies the operation to 8 floats in-place.
-// Called from JIT via a stack buffer (vmovups/vmovaps in+out), so no __m256 ABI issues.
-static void vec_fabsf (float* p) { for (int i=0;i<8;++i) p[i]=fabsf(p[i]);  }
-static void vec_acosf (float* p) { for (int i=0;i<8;++i) p[i]=acosf(p[i]);  }
-static void vec_asinf (float* p) { for (int i=0;i<8;++i) p[i]=asinf(p[i]);  }
-static void vec_atanf (float* p) { for (int i=0;i<8;++i) p[i]=atanf(p[i]);  }
-static void vec_cbrtf (float* p) { for (int i=0;i<8;++i) p[i]=cbrtf(p[i]);  }
-static void vec_cosf  (float* p) { for (int i=0;i<8;++i) p[i]=cosf(p[i]);   }
-static void vec_coshf (float* p) { for (int i=0;i<8;++i) p[i]=coshf(p[i]);  }
-static void vec_expf  (float* p) { for (int i=0;i<8;++i) p[i]=expf(p[i]);   }
-static void vec_logf  (float* p) { for (int i=0;i<8;++i) p[i]=logf(p[i]);   }
-static void vec_log1pf(float* p) { for (int i=0;i<8;++i) p[i]=log1pf(p[i]); }
-static void vec_sinf  (float* p) { for (int i=0;i<8;++i) p[i]=sinf(p[i]);   }
-static void vec_sinhf (float* p) { for (int i=0;i<8;++i) p[i]=sinhf(p[i]);  }
-static void vec_tanf  (float* p) { for (int i=0;i<8;++i) p[i]=tanf(p[i]);   }
-static void vec_tanhf (float* p) { for (int i=0;i<8;++i) p[i]=tanhf(p[i]);  }
-static void vec_powf  (float* p, float const* q) { for (int i=0;i<8;++i) p[i]=powf(p[i],q[i]); }
+// In-place float[8] transcendental helpers — eve-backed AVX2 SIMD.
+// Signature: void fn(float* p) — operates on exactly 8 floats in-place.
+// Called from CompileAVX2 JIT code via a 32-byte aligned stack buffer.
+// Compiled with -mavx2 so eve::wide<float, eve::fixed<8>> maps to a single ymm register.
+using W8 = eve::wide<float, eve::fixed<8>>;
+static void vec_fabsf (float* p) { eve::store(eve::abs  (W8{p}), p); }
+static void vec_acosf (float* p) { eve::store(eve::acos (W8{p}), p); }
+static void vec_asinf (float* p) { eve::store(eve::asin (W8{p}), p); }
+static void vec_atanf (float* p) { eve::store(eve::atan (W8{p}), p); }
+static void vec_cbrtf (float* p) { eve::store(eve::cbrt (W8{p}), p); }
+static void vec_cosf  (float* p) { eve::store(eve::cos  (W8{p}), p); }
+static void vec_coshf (float* p) { eve::store(eve::cosh (W8{p}), p); }
+static void vec_expf  (float* p) { eve::store(eve::exp  (W8{p}), p); }
+static void vec_logf  (float* p) { eve::store(eve::log  (W8{p}), p); }
+static void vec_log1pf(float* p) { eve::store(eve::log1p(W8{p}), p); }
+static void vec_sinf  (float* p) { eve::store(eve::sin  (W8{p}), p); }
+static void vec_sinhf (float* p) { eve::store(eve::sinh (W8{p}), p); }
+static void vec_tanf  (float* p) { eve::store(eve::tan  (W8{p}), p); }
+static void vec_tanhf (float* p) { eve::store(eve::tanh (W8{p}), p); }
+static void vec_powf  (float* p, float const* q) { eve::store(eve::pow(W8{p}, W8{q}), p); }
 
 // Apply a void(float*) helper to a ymm register via a 32-byte aligned stack buffer.
 // Returns the new ymm register containing the results.
