@@ -11,7 +11,7 @@
 
 namespace Operon {
 
-using ModelSelectorFn = std::function<auto(Span<Individual const>) -> Individual>;
+using ModelSelectorFn = std::function<Individual(Span<Individual const>)>;
 
 template<typename Evaluator>
 class Reporter {
