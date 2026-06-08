@@ -20,7 +20,7 @@ auto ComputeCrowdingDistance(Operon::Span<Individual> pop, std::vector<size_t> c
 {
     if (front.empty()) { return; }
     size_t m = pop[front.front()].Fitness.size();
-    auto inf = std::numeric_limits<Operon::Scalar>::max();
+    auto inf = std::numeric_limits<Operon::Scalar>::infinity();
 
     // Initialize Distance = 0
     for (auto idx : front) {

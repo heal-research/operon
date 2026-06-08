@@ -30,6 +30,11 @@
 #include "operator_factory.hpp"
 #include "util.hpp"
 
+#if defined(HAVE_ASMJIT)
+#include "operon/interpreter/backend/jit/jit_evaluator.hpp"
+#endif
+
+
 namespace {
 auto MakeCoeffAndMutation(bool symbolic)
     -> std::pair<std::unique_ptr<Operon::CoefficientInitializerBase>, std::unique_ptr<Operon::MutatorBase>>
@@ -164,11 +169,42 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         mutator.Add(&discretePoint, 1.0);
 
         Operon::ScalarDispatch dtable;
-        auto const scale = result["linear-scaling"].as<bool>();
-        auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+        auto const scale  = result["linear-scaling"].as<bool>();
+        auto const useJit = result["jit"].as<bool>();
+
+        // Zobrist needed by --jit (JitEvaluator) and/or --transposition-cache.
+        std::unique_ptr<Operon::Zobrist> zobrist;
+        if (useJit || result["transposition-cache"].as<bool>()) {
+            Operon::RandomGenerator cacheRng(config.Seed);
+            zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength));
+            if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
+        }
+
+        std::unique_ptr<Operon::EvaluatorBase> evaluator;
+#if defined(HAVE_ASMJIT)
+        if (useJit) {
+            auto [metric, supportsLinearScale] = Operon::ParseErrorMetric(result["objective"].as<std::string>());
+            evaluator = std::make_unique<Operon::JIT::JitEvaluator>(&problem, zobrist.get(), *metric, scale && supportsLinearScale);
+        } else {
+#endif
+            if (useJit) { fmt::print(stderr, "warning: --jit has no effect: JIT support was not compiled in\n"); }
+            evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+#if defined(HAVE_ASMJIT)
+        }
+#endif
         evaluator->SetBudget(config.Evaluations);
 
-        auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+        std::unique_ptr<Operon::OptimizerBase> optimizer;
+#if defined(HAVE_ASMJIT)
+        if (useJit) {
+            auto* jitEval = dynamic_cast<Operon::JIT::JitEvaluator*>(evaluator.get());
+            optimizer = std::make_unique<Operon::JitLevenbergMarquardtOptimizer<decltype(dtable)>>(&dtable, &problem, jitEval);
+        } else {
+#endif
+            optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+#if defined(HAVE_ASMJIT)
+        }
+#endif
         optimizer->SetIterations(config.Iterations);
 
         Operon::CoefficientOptimizer const cOpt { optimizer.get() };
@@ -183,13 +219,6 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
 
-        std::unique_ptr<Operon::Zobrist> cache;
-        if (result["transposition-cache"].as<bool>()) {
-            Operon::RandomGenerator cacheRng(config.Seed);
-            cache = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength));
-            config.Cache = cache.get();
-        }
-
         Operon::RandomGenerator random(config.Seed);
         if (result["shuffle"].as<bool>()) { problem.GetDataset()->Shuffle(random); }
         if (result["standardize"].as<bool>()) { problem.StandardizeData(problem.TrainingRange()); }
@@ -197,7 +226,14 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         tf::Executor executor(threads);
         Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get() };
 
-        auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
+        std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
+        Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
+        if (useJit) {
+            reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{}, scale);
+            ptr = reporterEvalStorage.get();
+        } else {
+            ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
+        }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
         gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
         auto best = reporter.GetBest();

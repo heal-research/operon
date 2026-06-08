@@ -125,6 +125,16 @@ else()
     set(Ceres_VERSION "n/a")
 endif()
 
+set(HAVE_ASMJIT FALSE)
+if (USE_ASMJIT)
+    if (NOT USE_SINGLE_PRECISION)
+        message(FATAL_ERROR "USE_ASMJIT requires USE_SINGLE_PRECISION=ON")
+    endif()
+    find_package(asmjit REQUIRED)
+    set(HAVE_ASMJIT TRUE)
+endif()
+
+
 if (USE_JEMALLOC)
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
@@ -248,9 +258,26 @@ else()
     target_compile_options(operon_operon PRIVATE "-fno-math-errno")
 endif()
 
+if (HAVE_ASMJIT)
+    target_link_libraries(operon_operon PUBLIC asmjit::asmjit)
+    target_sources(operon_operon PRIVATE
+        source/interpreter/backend/jit/jit_compiler.cpp
+        source/interpreter/backend/jit/jit_evaluator.cpp
+    )
+    # jit_compiler.cpp hosts the AVX2 transcendental helpers (vec_sinf etc.) backed
+    # by eve::wide<float, eve::fixed<8>>.  -mavx2 is required so eve maps W8 to a
+    # single ymm register; the helpers are only called from CompileAVX2(), which
+    # guards entry behind a runtime CpuFeatures::X86::kAVX2 check.
+    set_source_files_properties(
+        source/interpreter/backend/jit/jit_compiler.cpp
+        PROPERTIES COMPILE_OPTIONS "-mavx2"
+    )
+endif()
+
 target_compile_definitions(operon_operon PUBLIC
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
     "$<$<BOOL:${HAVE_CERES}>:HAVE_CERES>"
+    "$<$<BOOL:${HAVE_ASMJIT}>:HAVE_ASMJIT>"
     )
 
 # ---- Install rules ----

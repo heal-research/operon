@@ -31,6 +31,7 @@ stdenv.mkDerivation rec {
 
   buildInputs =
     (with pkgs; [
+      asmjit
       aria-csv
       ceres-solver
       cpp-sort

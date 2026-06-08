@@ -115,7 +115,7 @@ struct Interpreter : public InterpreterBase<T> {
     auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
         InitContext(coeff, range);
         auto const& nodes = tree_->Nodes();
-        auto const nNodes = std::ssize(nodes); 
+        auto const nNodes = std::ssize(nodes);
         auto const nRows  = static_cast<int>(range.Size());
 
         trace_ = Backend::Buffer<T, BatchSize>(BatchSize, nNodes);
@@ -167,6 +167,7 @@ private:
     mutable Operon::Vector<Data> context_;
     mutable Backend::Buffer<T, BatchSize> primal_;
     mutable Backend::Buffer<T, BatchSize> trace_;
+    mutable Operon::Range range_{};
 
     // private methods
     auto ForwardPass(Operon::Range range, int row, bool trace = false) const -> void {
@@ -268,8 +269,9 @@ private:
         }
     }
 
-    // init tree info into context_ and initializes primal_ columns
-    auto InitContext(Operon::Span<T const> coeff, Operon::Range range) const {
+    // Full bind: allocate primal_, build context_ with function/derivative pointers
+    // and variable data spans. Called once per unique (tree, range) pair.
+    auto BindTree(Operon::Range range) const {
         auto const& nodes = tree_->Nodes();
         auto const nRows  = static_cast<int64_t>(range.Size());
         auto const nNodes = std::ssize(nodes);
@@ -282,25 +284,43 @@ private:
         context_.reserve(nNodes);
 
         auto const& dt = dtable_.get();
-        // aggregate necessary info about the tree into a context object
-        for (int64_t i = 0, j = 0; i < nNodes; ++i) {
+        for (int64_t i = 0; i < nNodes; ++i) {
             auto const& n = nodes[i];
-            auto const* ptr      = n.IsVariable() ? dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
-            auto variableValues  = std::tuple_element_t<1, Data>(ptr, nRows);
-            auto nodeCoefficient = (!coeff.empty() && n.Optimize) ? T{coeff[j++]} : T{n.Value};
-            auto nodeFunction    = dt->template TryGetFunction<T>(n.HashValue);
-            auto nodeDerivative  = dt->template TryGetDerivative<T>(n.HashValue);
+            auto const* ptr     = n.IsVariable() ? dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
+            auto variableValues = std::tuple_element_t<1, Data>(ptr, nRows);
+            auto nodeFunction   = dt->template TryGetFunction<T>(n.HashValue);
+            auto nodeDerivative = dt->template TryGetDerivative<T>(n.HashValue);
 
             if (!n.IsLeaf() && !nodeFunction) {
                 throw std::runtime_error(fmt::format("Missing primitive for node {}\n", n.Name()));
             }
 
-            context_.emplace_back(nodeCoefficient, variableValues, nodeFunction, nodeDerivative);
+            context_.emplace_back(T{n.Value}, variableValues, nodeFunction, nodeDerivative);
+        }
+        range_ = range;
+    }
 
+    // Cheap update: patch coefficient values in context_ and re-fill constant columns.
+    // Called on every optimizer step once BindTree has been called for this range.
+    auto UpdateCoefficients(Operon::Span<T const> coeff) const {
+        auto const& nodes = tree_->Nodes();
+        auto const nNodes = std::ssize(nodes);
+        constexpr int64_t S{ BatchSize };
+
+        for (int64_t i = 0, j = 0; i < nNodes; ++i) {
+            auto const& n = nodes[i];
+            if (!coeff.empty() && n.Optimize) {
+                std::get<0>(context_[i]) = T{coeff[j++]};
+            }
             if (n.IsConstant()) {
-                Backend::Fill<T, S>(primal_, i, T{nodeCoefficient});
+                Backend::Fill<T, S>(primal_, i, std::get<0>(context_[i]));
             }
         }
+    }
+
+    auto InitContext(Operon::Span<T const> coeff, Operon::Range range) const {
+        if (range_.Start() != range.Start() || range_.End() != range.End()) { BindTree(range); }
+        UpdateCoefficients(coeff);
     }
 };
 

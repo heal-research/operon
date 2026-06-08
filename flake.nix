@@ -127,6 +127,7 @@
 
             buildInputs =
               operon.buildInputs
+              ++ [ pkgs.asmjit ]
               ++ pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") (
                 with pkgs;
                 [

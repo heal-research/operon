@@ -44,6 +44,14 @@ namespace {
         return FitLeastSquaresImpl<double>(estimated, target);
     }
 
+    auto FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target, Operon::Span<float const> weights) noexcept -> std::pair<double, double> {
+        return FitLeastSquaresImpl<float>(estimated, target, weights);
+    }
+
+    auto FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target, Operon::Span<double const> weights) noexcept -> std::pair<double, double> {
+        return FitLeastSquaresImpl<double>(estimated, target, weights);
+    }
+
     template<> auto OPERON_EXPORT
     Evaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {

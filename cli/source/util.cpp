@@ -149,6 +149,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("objective", "The error metric used for calculating fitness", cxxopts::value<std::string>()->default_value("r2"))
         ("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)", cxxopts::value<std::string>()->default_value("rs"))
         ("linear-scaling", "Apply linear scaling on model predictions", cxxopts::value<bool>()->default_value("true"))
+        ("jit", "Use JIT-compiled evaluator and optimizer (requires HAVE_ASMJIT)", cxxopts::value<bool>()->default_value("false"))
         ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))
         ("pool-size", "Recombination pool size (how many generated offspring per generation)", cxxopts::value<size_t>()->default_value("1000"))
         ("seed", "Random number seed", cxxopts::value<Operon::RandomGenerator::result_type>()->default_value("0"))
