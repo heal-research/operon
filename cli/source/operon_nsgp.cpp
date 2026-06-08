@@ -36,6 +36,9 @@
 #include "pareto_front.hpp"
 #include "reporter.hpp"
 #include "util.hpp"
+#if defined(HAVE_ASMJIT)
+#include "operon/interpreter/backend/jit/jit_evaluator.hpp"
+#endif
 
 namespace {
 template<typename EvaluatorType>
@@ -250,11 +253,41 @@ auto main(int argc, char** argv) -> int
         // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
         // dtable.RegisterCallable(12345UL, f, f);
 
-        auto scale = result["linear-scaling"].as<bool>();
-        auto errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+        auto const scale  = result["linear-scaling"].as<bool>();
+        auto const useJit = result["jit"].as<bool>();
+
+        // Zobrist needed by --jit (JitEvaluator) and/or --transposition-cache.
+        std::unique_ptr<Operon::Zobrist> zobrist;
+        if (useJit || result["transposition-cache"].as<bool>()) {
+            Operon::RandomGenerator cacheRng(config.Seed);
+            zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength));
+            if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
+        }
+
+        std::unique_ptr<Operon::EvaluatorBase> errorEvaluator;
+#if defined(HAVE_ASMJIT)
+        if (useJit) {
+            auto [metric, supportsLinearScale] = Operon::ParseErrorMetric(result["objective"].as<std::string>());
+            errorEvaluator = std::make_unique<Operon::JIT::JitEvaluator>(&problem, zobrist.get(), *metric, scale && supportsLinearScale);
+        } else {
+#endif
+            errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+#if defined(HAVE_ASMJIT)
+        }
+#endif
         errorEvaluator->SetBudget(config.Evaluations);
 
-        auto optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+        std::unique_ptr<Operon::OptimizerBase> optimizer;
+#if defined(HAVE_ASMJIT)
+        if (useJit) {
+            auto* jitEval = dynamic_cast<Operon::JIT::JitEvaluator*>(errorEvaluator.get());
+            optimizer = std::make_unique<Operon::JitLevenbergMarquardtOptimizer<decltype(dtable)>>(&dtable, &problem, jitEval);
+        } else {
+#endif
+            optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+#if defined(HAVE_ASMJIT)
+        }
+#endif
         optimizer->SetIterations(config.Iterations);
         Operon::LengthEvaluator lengthEvaluator(&problem, maxLength);
         // Operon::EntropyEvaluator entropyEvaluator(&problem);
@@ -275,13 +308,6 @@ auto main(int argc, char** argv) -> int
 
         auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
-
-        std::unique_ptr<Operon::Zobrist> cache;
-        if (result["transposition-cache"].as<bool>()) {
-            Operon::RandomGenerator cacheRng(config.Seed);
-            cache = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength));
-            config.Cache = cache.get();
-        }
 
         Operon::RandomGenerator random(config.Seed);
         if (result["shuffle"].as<bool>()) {
@@ -324,7 +350,14 @@ auto main(int argc, char** argv) -> int
             }
         }
 
-        auto const* ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
+        std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
+        Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
+        if (useJit) {
+            reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{}, scale);
+            ptr = reporterEvalStorage.get();
+        } else {
+            ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
+        }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector));
         gp.Run(executor, random, [&]() { reporter(executor, gp); });
         auto best = reporter.GetBest();

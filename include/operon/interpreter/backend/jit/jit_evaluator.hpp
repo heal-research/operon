@@ -48,6 +48,10 @@ public:
 
     void ClearCache();
 
+    // Returns the compiled function for `tree` (compiling on first call).
+    // Public so that JitLevenbergMarquardtOptimizer can share the same cache.
+    [[nodiscard]] auto GetOrCompile(Tree const& tree) const -> std::shared_ptr<CompiledTree>;
+
 private:
     [[nodiscard]] auto GetOrCompile(Tree const& tree, Hash hash) const -> std::shared_ptr<CompiledTree>;
 

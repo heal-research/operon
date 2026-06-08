@@ -31,6 +31,11 @@ JitEvaluator::JitEvaluator(gsl::not_null<Problem const*> problem,
 
 JitEvaluator::~JitEvaluator() = default;
 
+auto JitEvaluator::GetOrCompile(Tree const& tree) const -> std::shared_ptr<CompiledTree>
+{
+    return GetOrCompile(tree, zobrist_->ComputeHash(tree));
+}
+
 auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> std::shared_ptr<CompiledTree>
 {
     std::shared_ptr<CompiledTree> ptr;

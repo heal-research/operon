@@ -510,6 +510,9 @@ def main() -> None:
                    help="Build subdirectory name under ref root (default: build)")
     p.add_argument("--new-build", default="build",
                    help="Build subdirectory name under new root (default: build)")
+    p.add_argument("--new-jit", action="store_true",
+                   help="Pass --jit to the new binary (requires HAVE_ASMJIT build). "
+                        "Implies --no-exact since JIT and interpreter results differ numerically.")
     p.add_argument("--jobs",    type=int, default=2,
                    help="Parallel run pairs (default: 2; each pair = 2 processes, "
                         "so --jobs 2 means 4 operon processes at once)")
@@ -545,6 +548,15 @@ def main() -> None:
     args.objectives = [o.strip() for o in args.objectives.split(",") if o.strip()]
     if not args.objectives:
         sys.exit("--objectives must not be empty")
+
+    if args.new_jit:
+        args.new_extra_args = ["--jit"]
+        args.new_env        = None
+        args.exact          = False   # JIT and interpreter results are statistically equivalent but not bit-identical
+    else:
+        args.new_extra_args = None
+        args.new_env        = None
+
 
     ref_bin = args.ref / args.ref_build / "cli"
     new_bin = args.new / args.new_build / "cli"
