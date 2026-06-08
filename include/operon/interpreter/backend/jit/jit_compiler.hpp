@@ -47,6 +47,10 @@ public:
     // Returns nullptr on compilation failure.
     auto Compile(Operon::Tree const& tree) -> std::unique_ptr<CompiledTree>;
 
+    // AVX2 vectorized path: processes 8 rows/iteration.
+    // Returns nullptr if AVX2 is not available or compilation fails.
+    auto CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<CompiledTree>;
+
     auto Runtime() noexcept -> asmjit::JitRuntime& { return rt_; }
 
 private:
