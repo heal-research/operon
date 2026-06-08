@@ -68,10 +68,11 @@ class Dataset:
 
 
 ALL_DATASETS: list[Dataset] = [
-    Dataset("Poly-10.csv",         "Y", "0:400",  "400:500"),
-    Dataset("Pagie-1.csv",         "F", "0:1340", "1340:1676"),
-    Dataset("Concrete.csv",        "Y", "0:824",  "824:1030"),
-    Dataset("Vladislavleva-4.csv", "Y", "0:4819", "4819:6024"),
+    Dataset("Poly-10.csv",         "Y", "0:400",   "400:500"),
+    Dataset("Pagie-1.csv",         "F", "0:1340",  "1340:1676"),
+    Dataset("Concrete.csv",        "Y", "0:824",   "824:1030"),
+    Dataset("Vladislavleva-4.csv", "Y", "0:4819",  "4819:6024"),
+    Dataset("Friedman-II.csv",     "Y", "0:8000",  "8000:10000"),
 ]
 
 SYMBOL_SETS: list[Optional[str]] = [
