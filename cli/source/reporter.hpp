@@ -5,21 +5,23 @@
 #include <operon/algorithms/ga_base.hpp>
 #include <operon/algorithms/phase_timer.hpp>
 
+#include <functional>
 #include <string>
 #include <taskflow/taskflow.hpp>
 
 namespace Operon {
 
-
+using ModelSelectorFn = std::function<auto(Span<Individual const>) -> Individual>;
 
 template<typename Evaluator>
 class Reporter {
     gsl::not_null<Evaluator const*> evaluator_;
     mutable Operon::Individual best_;
+    ModelSelectorFn selector_;
 
 public:
-    explicit Reporter(gsl::not_null<Evaluator const*> evaluator)
-        : evaluator_(evaluator) {}
+    explicit Reporter(gsl::not_null<Evaluator const*> evaluator, ModelSelectorFn selector = nullptr)
+        : evaluator_(evaluator), selector_(std::move(selector)) {}
 
     static auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const& stats, bool printHeader) -> void {
         std::vector<size_t> widths;
@@ -57,7 +59,7 @@ public:
             return *minElem;
         };
 
-        best_ = getBest(pop);
+        best_ = selector_ ? selector_(pop) : getBest(pop);
         ENSURE(best_.Size() > 0);
 
         tf::Taskflow tf;
