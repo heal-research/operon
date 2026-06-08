@@ -27,6 +27,10 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
+#ifdef HAVE_ASMJIT
+#include "operon/hash/zobrist.hpp"
+#include "operon/interpreter/backend/jit/jit_evaluator.hpp"
+#endif
 
 namespace Operon::Test {
 namespace {
@@ -271,5 +275,233 @@ TEST_CASE("Parallel interpreter", "[performance]")
         b.batch(static_cast<double>(TotalNodes(trees) * range.Size())).run(fmt::format("{} thread(s)", t), [&]() -> void { Operon::EvaluateTrees(trees, &ds, range, result, t); });
     }
 }
+
+#ifdef HAVE_ASMJIT
+TEST_CASE("JIT evaluator performance", "[performance][jit]")
+{
+    constexpr size_t n         = 1000;
+    constexpr size_t maxLength = 64;
+    constexpr size_t maxDepth  = 1000;
+    constexpr size_t nrow      = 10000;
+    constexpr size_t ncol      = 10;
+
+    Operon::RandomGenerator rd(1234);
+    auto ds = Util::RandomDataset(rd, nrow, ncol);
+
+    auto variables = ds.GetVariables();
+    auto target    = variables.back().Name;
+    auto inputs    = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable(target).value().Hash);
+    Range range = {0, ds.Rows<std::size_t>()};
+
+    Problem problem{&ds};
+    problem.SetTrainingRange(range);
+    problem.SetTestRange(range);
+    problem.SetTarget(target);
+
+    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength));
+
+    auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
+        problem.GetPrimitiveSet().SetConfig(cfg);
+        for (auto t : {NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul}) {
+            problem.GetPrimitiveSet().SetMinMaxArity(Node(t).HashValue, 2, 2);
+        }
+
+        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+        auto creator = BalancedTreeCreator{&problem.GetPrimitiveSet(), inputs, 0.0, maxLength};
+
+        Vector<Tree> trees(n);
+        std::ranges::generate(trees, [&]() -> Tree { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+
+        Vector<Individual> individuals(n);
+        for (size_t i = 0; i < n; ++i) individuals[i].Genotype = trees[i];
+
+        auto const totalNodes = TotalNodes(trees);
+
+        ScalarDispatch dtable;
+        Evaluator<ScalarDispatch> interp(&problem, &dtable, MSE{}, /*linearScaling=*/false);
+        JIT::JitEvaluator          jit   (&problem, &zobrist, MSE{}, /*linearScaling=*/false);
+        interp.SetBudget(std::numeric_limits<size_t>::max());
+        jit   .SetBudget(std::numeric_limits<size_t>::max());
+
+        // --- cold-cache run: first pass includes compilation ---
+        {
+            nb::Bench bc;
+            bc.title(title + " / cold cache (1 pass)")
+              .performanceCounters(true).epochs(1).epochIterations(1);
+            tf::Executor executor(1);
+            tf::Taskflow taskflow;
+            Vector<Scalar> buf(range.Size());
+            double sum{0};
+            taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{},
+                [&](Individual& ind) -> Scalar { return jit(rd, ind, {buf}).front(); });
+            bc.batch(static_cast<double>(totalNodes * range.Size()))
+              .run("jit (cold)", [&]() -> double {
+                  jit.ClearCache();
+                  sum = 0;
+                  executor.run(taskflow).wait();
+                  return sum;
+              });
+        }
+
+        // Pre-warm JIT cache for the remaining comparisons.
+        {
+            Vector<Scalar> buf(range.Size());
+            for (auto& ind : individuals) { jit(rd, ind, {buf}); }
+        }
+
+        // --- single-threaded warm comparison ---
+        {
+            nb::Bench bw;
+            bw.title(title + " / warm cache (1 thread)")
+              .relative(true).performanceCounters(true)
+              .epochs(5).minEpochIterations(20);
+
+            auto run1 = [&](std::string const& name, EvaluatorBase& ev) {
+                tf::Executor executor(1);
+                tf::Taskflow taskflow;
+                Vector<Scalar> buf(range.Size());
+                double sum{0};
+                taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{},
+                    [&](Individual& ind) -> Scalar { return ev(rd, ind, {buf}).front(); });
+                bw.batch(static_cast<double>(totalNodes * range.Size()))
+                  .run(name, [&]() -> double {
+                      sum = 0; executor.run(taskflow).wait(); return sum;
+                  });
+            };
+
+            run1("interpreter", interp);
+            run1("jit", jit);
+        }
+
+        // --- parallel warm comparison ---
+        {
+            auto const nThreads = std::thread::hardware_concurrency();
+            nb::Bench bp;
+            bp.title(fmt::format("{} / warm cache ({} threads)", title, nThreads))
+              .relative(true).performanceCounters(true)
+              .epochs(5).minEpochIterations(10);
+
+            auto runN = [&](std::string const& name, EvaluatorBase& ev) {
+                tf::Executor executor(nThreads);
+                tf::Taskflow taskflow;
+                Vector<Vector<Scalar>> slots(executor.num_workers());
+                for (auto& s : slots) s.resize(range.Size());
+                double sum{0};
+                taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{},
+                    [&](Individual& ind) -> Scalar {
+                        auto& buf = slots[executor.this_worker_id()];
+                        return ev(rd, ind, {buf}).front();
+                    });
+                bp.batch(static_cast<double>(totalNodes * range.Size()))
+                  .run(name, [&]() -> double {
+                      sum = 0; executor.run(taskflow).wait(); return sum;
+                  });
+            };
+
+            runN("interpreter", interp);
+            runN("jit", jit);
+        }
+
+        fmt::print("  JIT cache: {} entries, {} hits\n", jit.CacheSize(), jit.CacheHits());
+    };
+
+    SECTION("arithmetic")       { bench_pset(PrimitiveSet::Arithmetic, "arithmetic"); }
+    SECTION("arithmetic + sin") { bench_pset(PrimitiveSet::Arithmetic | NodeType::Sin, "arithmetic+sin"); }
+    SECTION("arithmetic + exp") { bench_pset(PrimitiveSet::Arithmetic | NodeType::Exp, "arithmetic+exp"); }
+}
+
+TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
+{
+    // Compare LevenbergMarquardtOptimizer (interpreter residuals)
+    // vs JitLevenbergMarquardtOptimizer (JIT residuals, interpreter JacRev).
+    // Uses a population of trees with constants so the optimizer has work to do.
+    constexpr size_t n         = 200;
+    constexpr size_t maxLength = 30;
+    constexpr size_t maxDepth  = 1000;
+    constexpr size_t nrow      = 1000;
+    constexpr size_t ncol      = 10;
+    constexpr size_t lmIters   = 50;
+
+    Operon::RandomGenerator rd(42);
+    auto ds = Util::RandomDataset(rd, nrow, ncol);
+
+    auto variables = ds.GetVariables();
+    auto target    = variables.back().Name;
+    auto inputs    = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable(target).value().Hash);
+    Range range = {0, ds.Rows<std::size_t>()};
+
+    Problem problem{&ds};
+    problem.SetTrainingRange(range);
+    problem.SetTestRange(range);
+    problem.SetTarget(target);
+
+    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength));
+
+    auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
+        problem.GetPrimitiveSet().SetConfig(cfg | NodeType::Constant);
+        for (auto t : {NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul}) {
+            problem.GetPrimitiveSet().SetMinMaxArity(Node(t).HashValue, 2, 2);
+        }
+
+        std::uniform_int_distribution<size_t> sizeDistribution(5, maxLength);
+        auto creator = BalancedTreeCreator{&problem.GetPrimitiveSet(), inputs, 0.3, maxLength};
+
+        Vector<Tree> trees(n);
+        std::ranges::generate(trees, [&]() -> Tree { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+        // skip trees with no constants — nothing for LM to do
+        trees.erase(std::remove_if(trees.begin(), trees.end(),
+            [](Tree const& t) { return t.CoefficientsCount() == 0; }), trees.end());
+        if (trees.empty()) { return; }
+
+        ScalarDispatch dtable;
+        JIT::JitEvaluator jitEval{&problem, &zobrist, MSE{}, false};
+
+        // Pre-warm JIT cache.
+        {
+            RandomGenerator rng2{1};
+            Vector<Individual> inds(trees.size());
+            for (size_t i = 0; i < trees.size(); ++i) inds[i].Genotype = trees[i];
+            Vector<Scalar> buf(range.Size());
+            for (auto& ind : inds) { jitEval(rng2, ind, {buf}); }
+        }
+
+        LevenbergMarquardtOptimizer<ScalarDispatch> lmOpt{&dtable, &problem};
+        lmOpt.SetIterations(lmIters);
+
+        JitLevenbergMarquardtOptimizer<ScalarDispatch> jitLmOpt{&dtable, &problem, &jitEval};
+        jitLmOpt.SetIterations(lmIters);
+
+        nb::Bench b;
+        b.title(title)
+         .relative(true)
+         .performanceCounters(true)
+         .epochs(3)
+         .minEpochIterations(5);
+
+        b.batch(static_cast<double>(trees.size()))
+         .run("lm (interpreter)", [&]() {
+             for (auto& tree : trees) {
+                 auto summary = lmOpt.Optimize(rd, tree);
+                 nb::doNotOptimizeAway(summary.FinalCost);
+             }
+         });
+
+        b.batch(static_cast<double>(trees.size()))
+         .run("lm (jit residuals)", [&]() {
+             for (auto& tree : trees) {
+                 auto summary = jitLmOpt.Optimize(rd, tree);
+                 nb::doNotOptimizeAway(summary.FinalCost);
+             }
+         });
+
+        fmt::print("  JIT cache: {} entries, {} hits\n", jitEval.CacheSize(), jitEval.CacheHits());
+    };
+
+    SECTION("arithmetic") { bench_pset(PrimitiveSet::Arithmetic, "arithmetic"); }
+    SECTION("arithmetic + sin") { bench_pset(PrimitiveSet::Arithmetic | NodeType::Sin, "arithmetic+sin"); }
+}
+#endif // HAVE_ASMJIT
 
 } // namespace Operon::Test

@@ -128,6 +128,29 @@ auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dt
     return evaluator;
 }
 
+auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>
+{
+    std::unique_ptr<Operon::ErrorMetric> metric;
+    bool scale{true};
+    if (str == "r2") {
+        metric = std::make_unique<Operon::R2>();
+    } else if (str == "c2") {
+        scale = false;
+        metric = std::make_unique<Operon::C2>();
+    } else if (str == "nmse") {
+        metric = std::make_unique<Operon::NMSE>();
+    } else if (str == "mse") {
+        metric = std::make_unique<Operon::MSE>();
+    } else if (str == "rmse") {
+        metric = std::make_unique<Operon::RMSE>();
+    } else if (str == "mae") {
+        metric = std::make_unique<Operon::MAE>();
+    } else {
+        throw std::runtime_error(fmt::format("unsupported error metric '{}'\n", str));
+    }
+    return { std::move(metric), scale };
+}
+
 auto ParseGenerator(std::string const& str, EvaluatorBase& eval, CrossoverBase& cx, MutatorBase& mut, SelectorBase& femSel, SelectorBase& maleSel, CoefficientOptimizer const* coeffOptimizer = nullptr) -> std::unique_ptr<OffspringGeneratorBase>
 {
     std::unique_ptr<OffspringGeneratorBase> generator;

@@ -27,6 +27,10 @@
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
 #include "solvers/sgd.hpp"
+#if defined(HAVE_ASMJIT)
+#include "jit_lm_cost_function.hpp"
+#include "operon/interpreter/backend/jit/jit_evaluator.hpp"
+#endif
 
 namespace Operon {
 
@@ -412,5 +416,111 @@ struct SGDOptimizer final : public OptimizerBase {
     gsl::not_null<DTable const*> dtable_;
     std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update_{nullptr};
 };
+#if defined(HAVE_ASMJIT)
+// LM optimizer that JIT-compiles the tree and uses the compiled function for
+// residual evaluation while keeping interpreter-backed JacRev for the Jacobian.
+// Pass a JitEvaluator that was already constructed for the same GP run so that
+// the JIT code cache is shared between fitness evaluation and coefficient tuning.
+template <typename DTable, OptimizerType Type = OptimizerType::Tiny>
+struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
+    explicit JitLevenbergMarquardtOptimizer(gsl::not_null<DTable const*>           dtable,
+                                            gsl::not_null<Problem const*>          problem,
+                                            gsl::not_null<JIT::JitEvaluator const*> jitEvaluator)
+        : OptimizerBase{problem}
+        , dtable_{dtable}
+        , jitEval_{jitEvaluator}
+    {}
+
+    [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*rng*/, Operon::Tree const& tree) const -> OptimizerSummary final
+    {
+        auto const* dtable  = dtable_.get();
+        auto const* problem = this->GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto const  range   = problem->TrainingRange();
+        auto const  target  = problem->TargetValues(range);
+        auto const  iters   = this->Iterations();
+
+        // Interpreter is still needed for JacRev (reverse-mode AD).
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
+
+        auto const compiled = jitEval_->GetOrCompile(tree);
+
+        OptimizerSummary summary;
+        auto x0 = tree.GetCoefficients();
+        summary.InitialParameters = x0;
+
+        if (!compiled || x0.empty()) {
+            // Fall back to interpreter-only cost function.
+            Operon::LMCostFunction cf{
+                gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
+                target, range};
+            ceres::TinySolver<decltype(cf)> solver;
+            solver.options.max_num_iterations = static_cast<int>(iters + 1);
+            if (!x0.empty()) {
+                Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
+                typename decltype(solver)::Parameters p = m0.cast<typename decltype(cf)::Scalar>();
+                solver.Solve(cf, &p);
+                m0 = p.template cast<Operon::Scalar>();
+            }
+            summary.FinalParameters       = x0;
+            summary.InitialCost           = solver.summary.initial_cost;
+            summary.FinalCost             = solver.summary.final_cost;
+            summary.Iterations            = solver.summary.iterations;
+            summary.FunctionEvaluations   = cf.ResidualCalls();
+            summary.JacobianEvaluations   = cf.JacobianCalls();
+            summary.Success               = detail::CheckSuccess(summary.InitialCost, summary.FinalCost);
+            return summary;
+        }
+
+        // Build column pointer array (offset to range.Start()).
+        auto const  nVars = compiled->varOrder.size();
+        std::vector<float const*> colPtrs(nVars);
+        for (std::size_t i = 0; i < nVars; ++i) {
+            colPtrs[i] = dataset->GetValues(compiled->varOrder[i]).data()
+                         + static_cast<std::ptrdiff_t>(range.Start());
+        }
+
+        Operon::JitLMCostFunction cf{
+            gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
+            compiled->fn,
+            std::move(colPtrs),
+            target, range};
+
+        ceres::TinySolver<decltype(cf)> solver;
+        solver.options.max_num_iterations = static_cast<int>(iters + 1);
+
+        Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
+        typename decltype(solver)::Parameters p = m0.cast<typename decltype(cf)::Scalar>();
+        solver.Solve(cf, &p);
+        m0 = p.template cast<Operon::Scalar>();
+
+        summary.FinalParameters     = x0;
+        summary.InitialCost         = solver.summary.initial_cost;
+        summary.FinalCost           = solver.summary.final_cost;
+        summary.Iterations          = solver.summary.iterations;
+        summary.FunctionEvaluations = cf.ResidualCalls();
+        summary.JacobianEvaluations = cf.JacobianCalls();
+        summary.Success             = detail::CheckSuccess(summary.InitialCost, summary.FinalCost);
+        return summary;
+    }
+
+    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
+
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar final
+    {
+        return GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(x, y, w);
+    }
+
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final
+    {
+        return GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(pred, jac, sigma);
+    }
+
+private:
+    gsl::not_null<DTable const*>            dtable_;
+    gsl::not_null<JIT::JitEvaluator const*> jitEval_;
+};
+#endif // HAVE_ASMJIT
+
 } // namespace Operon
 #endif
