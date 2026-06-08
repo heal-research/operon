@@ -14,6 +14,10 @@
 #include "operon/core/types.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/interpreter/backend/jit/jit_compiler.hpp"
+#include "operon/interpreter/backend/jit/jit_evaluator.hpp"
+#include "operon/core/problem.hpp"
+#include "operon/hash/zobrist.hpp"
+#include "operon/operators/evaluator.hpp"
 #include "operon/parser/infix.hpp"
 
 namespace Operon::Test {
@@ -171,6 +175,59 @@ TEST_CASE("JIT AVX2 correctness", "[jit][avx2]")
     SECTION("Composite")   { check("sin(X1) * cos(X2) + exp(0 - X3 * X3)"); }
     // Rows=201: 25 full AVX2 iterations (200 rows) + 1 scalar tail row
     SECTION("Tail rows")   { check("X1 * X2 + X3"); }
+}
+
+TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
+{
+    auto ds    = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range{0, std::min(ds.Rows<std::size_t>(), std::size_t{200})};
+
+    Problem problem{&ds};
+    problem.SetTarget("Y");
+    problem.SetTrainingRange(range);
+
+    RandomGenerator rng(1234);
+    Zobrist zobrist(rng, /*maxLength=*/50);
+
+    DTable dtable;
+    Evaluator<DTable> refEval(&problem, &dtable, MSE{}, /*linearScaling=*/true);
+    JIT::JitEvaluator  jitEval(&problem, &zobrist, MSE{}, /*linearScaling=*/true);
+
+    auto check = [&](std::string_view expr) {
+        INFO("expression: " << expr);
+        auto tree = InfixParser::Parse(std::string(expr), ds);
+        Individual refInd(1);
+        Individual jitInd(1);
+        refInd.Genotype = tree;
+        jitInd.Genotype = tree;
+
+        auto refFit = refEval(rng, refInd)[0];
+        auto jitFit = jitEval(rng, jitInd)[0];
+
+        INFO("ref=" << refFit << " jit=" << jitFit);
+        if (std::isfinite(refFit)) {
+            CHECK(jitFit == Catch::Approx(refFit).epsilon(1e-3F));
+        } else {
+            CHECK(!std::isfinite(jitFit));
+        }
+    };
+
+    SECTION("Linear")     { check("X1 + X2 + X3"); }
+    SECTION("Product")    { check("X1 * X2 * X3"); }
+    SECTION("Sin")        { check("sin(X1)"); }
+    SECTION("Composite")  { check("sin(X1) * cos(X2) + exp(0 - X3 * X3)"); }
+
+    SECTION("Cache reuse") {
+        auto tree  = InfixParser::Parse("X1 * X2 + X3", ds);
+        Individual ind(1);
+        ind.Genotype = tree;
+
+        jitEval.operator()(rng, ind);
+        jitEval.operator()(rng, ind);
+
+        CHECK(jitEval.CacheSize()  == 1);
+        CHECK(jitEval.CacheHits() >= 1);
+    }
 }
 
 } // namespace Operon::Test
