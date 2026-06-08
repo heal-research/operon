@@ -4,6 +4,7 @@
 #ifdef HAVE_ASMJIT
 
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
+#include "operon/operators/evaluator.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -97,7 +98,7 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
     }
 
     if (scaling_) {
-        auto [a, b] = FitLeastSquares(Span<Scalar const>(buf.data(), buf.size()), targetValues);
+        auto [a, b] = FitLeastSquares(Span<Scalar const>(buf.data(), buf.size()), targetValues, weights);
         std::ranges::transform(buf, buf.begin(),
             [a=a, b=b](auto x) -> Scalar { return static_cast<Scalar>(a * x + b); });
     }

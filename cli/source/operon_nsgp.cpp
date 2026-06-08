@@ -271,6 +271,7 @@ auto main(int argc, char** argv) -> int
             errorEvaluator = std::make_unique<Operon::JIT::JitEvaluator>(&problem, zobrist.get(), *metric, scale && supportsLinearScale);
         } else {
 #endif
+            if (useJit) { fmt::print(stderr, "warning: --jit has no effect: JIT support was not compiled in\n"); }
             errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
 #if defined(HAVE_ASMJIT)
         }
