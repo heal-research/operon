@@ -38,68 +38,19 @@
 #include "util.hpp"
 
 namespace {
-template<typename Lik, typename DTable>
-auto MdlFrontSelect(DTable const& dtable, Operon::Problem const& problem,
-                    Operon::Span<Operon::Individual const> pop) -> Operon::Individual
+template<typename EvaluatorType>
+auto FrontSelect(EvaluatorType const& eval, Operon::Span<Operon::Individual const> pop) -> Operon::Individual
 {
-    Operon::MinimumDescriptionLengthEvaluator<DTable, Lik> mdlEval(&problem, &dtable);
     Operon::RandomGenerator rng(0);
-    std::vector<Operon::Scalar> buf(problem.TrainingRange().Size());
+    std::vector<Operon::Scalar> buf(eval.GetProblem()->TrainingRange().Size());
     auto span = Operon::Span<Operon::Scalar>{buf.data(), buf.size()};
 
     Operon::Individual const* best{nullptr};
-    auto bestMdl = std::numeric_limits<Operon::Scalar>::max();
+    auto bestVal = std::numeric_limits<Operon::Scalar>::max();
     for (auto const& ind : pop) {
         if (ind.Rank != 0) { continue; }
-        auto r = mdlEval(rng, ind, span);
-        if (!best || r[0] < bestMdl) { bestMdl = r[0]; best = &ind; }
-    }
-    return best ? *best : pop.front();
-}
-
-template<typename Lik, typename DTable>
-auto PenalizedLikelihoodFrontSelect(DTable const& dtable, Operon::Problem const& problem,
-                                    Operon::Span<Operon::Individual const> pop,
-                                    auto penaltyFn) -> Operon::Individual
-{
-    Operon::RandomGenerator rng(0);
-    auto const nObs = static_cast<double>(problem.TrainingRange().Size());
-    std::vector<Operon::Scalar> buf(nObs);
-
-    Operon::Individual const* best{nullptr};
-    auto bestScore = std::numeric_limits<double>::max();
-    for (auto const& ind : pop) {
-        if (ind.Rank != 0) { continue; }
-
-        auto const& tree = ind.Genotype;
-        auto const params = tree.GetCoefficients();
-        auto const p = static_cast<double>(params.size());
-        auto span = Operon::Span<Operon::Scalar>{buf.data(), buf.size()};
-
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{&dtable, problem.GetDataset(), &ind.Genotype};
-        interpreter.Evaluate(params, problem.TrainingRange(), span);
-
-        auto estimated = span;
-        auto target = problem.TargetValues(problem.TrainingRange());
-
-        Operon::Scalar profiledSigma{};
-        std::span<Operon::Scalar const> sigmaSpan{};
-        if constexpr (Lik::UsesSigma) {
-            auto ssr = 0.0;
-            for (auto i = 0; i < static_cast<std::ptrdiff_t>(nObs); ++i) {
-                auto const e = static_cast<double>(estimated[i]) - static_cast<double>(target[i]);
-                ssr += e * e;
-            }
-            profiledSigma = std::max(static_cast<Operon::Scalar>(std::sqrt(ssr / nObs)),
-                                     std::numeric_limits<Operon::Scalar>::epsilon());
-            sigmaSpan = std::span<Operon::Scalar const>{&profiledSigma, 1};
-        }
-
-        auto nll = static_cast<double>(Lik::ComputeLikelihood(estimated, target, sigmaSpan));
-        if (!std::isfinite(nll)) { continue; }
-
-        auto score = nll + penaltyFn(p, nObs);
-        if (!best || score < bestScore) { bestScore = score; best = &ind; }
+        auto r = eval(rng, ind, span);
+        if (!best || r[0] < bestVal) { bestVal = r[0]; best = &ind; }
     }
     return best ? *best : pop.front();
 }
@@ -350,27 +301,25 @@ auto main(int argc, char** argv) -> int
         Operon::ModelSelectorFn modelSelector;
         auto const modelSelection = result["model-selection"].as<std::string>();
         if (modelSelection != "obj0") {
-            auto const& lik = result["mdl-likelihood"].as<std::string>();
-            if (lik == "gaussian") {
-                if (modelSelection == "mdl") {
-                    modelSelector = [&](auto pop) { return MdlFrontSelect<Operon::GaussianLikelihood<Operon::Scalar>>(dtable, problem, pop); };
-                } else if (modelSelection == "bic") {
-                    modelSelector = [&](auto pop) { return PenalizedLikelihoodFrontSelect<Operon::GaussianLikelihood<Operon::Scalar>>(dtable, problem, pop, [](auto p, auto n) { return p * std::log(n); }); };
-                } else if (modelSelection == "aic") {
-                    modelSelector = [&](auto pop) { return PenalizedLikelihoodFrontSelect<Operon::GaussianLikelihood<Operon::Scalar>>(dtable, problem, pop, [](auto, auto) { return 2.0; }); };
+            using DTable = decltype(dtable);
+            if (modelSelection == "mdl") {
+                auto const& lik = result["mdl-likelihood"].as<std::string>();
+                if (lik == "gaussian") {
+                    auto eval = std::make_shared<Operon::MinimumDescriptionLengthEvaluator<DTable, Operon::GaussianLikelihood<Operon::Scalar>>>(&problem, &dtable);
+                    modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
+                } else if (lik == "poisson") {
+                    auto eval = std::make_shared<Operon::MinimumDescriptionLengthEvaluator<DTable, Operon::PoissonLikelihood<Operon::Scalar>>>(&problem, &dtable);
+                    modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
+                } else {
+                    throw std::runtime_error(fmt::format("unknown mdl-likelihood: {}", lik));
                 }
-            } else if (lik == "poisson") {
-                if (modelSelection == "mdl") {
-                    modelSelector = [&](auto pop) { return MdlFrontSelect<Operon::PoissonLikelihood<Operon::Scalar>>(dtable, problem, pop); };
-                } else if (modelSelection == "bic") {
-                    modelSelector = [&](auto pop) { return PenalizedLikelihoodFrontSelect<Operon::PoissonLikelihood<Operon::Scalar>>(dtable, problem, pop, [](auto p, auto n) { return p * std::log(n); }); };
-                } else if (modelSelection == "aic") {
-                    modelSelector = [&](auto pop) { return PenalizedLikelihoodFrontSelect<Operon::PoissonLikelihood<Operon::Scalar>>(dtable, problem, pop, [](auto, auto) { return 2.0; }); };
-                }
+            } else if (modelSelection == "bic") {
+                auto eval = std::make_shared<Operon::BayesianInformationCriterionEvaluator<DTable>>(&problem, &dtable);
+                modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
+            } else if (modelSelection == "aic") {
+                auto eval = std::make_shared<Operon::AkaikeInformationCriterionEvaluator<DTable>>(&problem, &dtable);
+                modelSelector = [eval](auto pop) { return FrontSelect(*eval, pop); };
             } else {
-                throw std::runtime_error(fmt::format("unknown mdl-likelihood: {}", lik));
-            }
-            if (!modelSelector) {
                 throw std::runtime_error(fmt::format("unknown model-selection criterion: {}", modelSelection));
             }
         }
