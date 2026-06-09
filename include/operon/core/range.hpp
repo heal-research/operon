@@ -41,7 +41,7 @@ class Range {
             EXPECT(start <= end);
             return { start, end };
         }
-        std::pair<std::size_t, std::size_t> range_;
+        std::pair<std::size_t, std::size_t> range_{};
 };
 } // namespace Operon
 
