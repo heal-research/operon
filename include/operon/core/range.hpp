@@ -26,6 +26,8 @@ class Range {
         {
         }
 
+        [[nodiscard]] auto operator==(Range const& other) const noexcept -> bool { return range_ == other.range_; }
+
         auto operator=(std::pair<std::size_t, std::size_t> p) -> Range&
         {
             auto [start, end] = p;
