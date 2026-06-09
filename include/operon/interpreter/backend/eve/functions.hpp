@@ -18,7 +18,7 @@ template<std::floating_point T>
 auto FastExp(eve::wide<T> a) -> eve::wide<T> {
     using W = eve::wide<T>;
     if constexpr (std::is_same_v<T, float>) {
-        auto x  = eve::clamp(a, T(-88.723f), T(88.723f));
+        auto x  = eve::clamp(a, T(-88.3762626647950f), T(88.3762626647950f));
         auto m  = eve::floor(eve::fma(x, W{T(1.44269504088896341f)}, W{T(0.5f)}));
         auto r  = eve::fma(m, W{T(-0.693359375f)},    x);
         r       = eve::fma(m, W{T(2.12194440e-4f)},   r);
@@ -84,14 +84,18 @@ auto FastLog(eve::wide<T> a) -> eve::wide<T> {
     }
 }
 
-// FastSin/FastCos: Eigen-style psincos_float polynomial, ~1-2 ULP for |x| < 25966.
-// Falls back to eve::sin/cos for larger inputs. Double uses eve::sin/cos directly.
+// FastSin/FastCos: Eigen-style psincos_float polynomial, ~1-2 ULP.
+// Uses 3-part FMA range reduction (Eigen's __FMA__ path):
+//   sin: valid for |x| < 117435.992, cos: valid for |x| < 71476.0625.
+// Falls back to eve::sin/cos beyond those limits. Double uses eve::sin/cos directly.
 template<bool IsSin, std::floating_point T>
 auto FastSinCos(eve::wide<T> a) -> eve::wide<T> {
     using W  = eve::wide<T>;
     using WI = eve::wide<std::int32_t>;
     if constexpr (std::is_same_v<T, float>) {
-        auto large = eve::abs(a) >= W{25966.0f};
+        // Per Eigen psincos_float __FMA__ path
+        constexpr float LargeThreshold = IsSin ? 117435.992f : 71476.0625f;
+        auto large = eve::abs(a) >= W{LargeThreshold};
         auto x     = eve::abs(a);
 
         // Scale by 2/π and round to nearest integer octant
@@ -100,11 +104,10 @@ auto FastSinCos(eve::wide<T> a) -> eve::wide<T> {
         auto y_int   = eve::bit_cast(y_round, eve::as<WI>{});
         y            = y_round - W{12582912.0f};
 
-        // Range-reduce x to [-π/4, π/4] in four parts
-        x = eve::fma(y, W{-1.5703125f},                              x);
-        x = eve::fma(y, W{-4.83989715576171875E-4f},                 x);
-        x = eve::fma(y, W{1.62865035235881805419921875E-7f},          x);
-        x = eve::fma(y, W{5.56443155441677106E-11f},                  x);
+        // FMA 3-part range-reduce x to [-π/4, π/4]
+        x = eve::fma(y, W{-1.57079601287841796875f},                          x);
+        x = eve::fma(y, W{-3.1391647326017846353352069854736328125E-7f},      x);
+        x = eve::fma(y, W{-5.3903025299577647655446810404100688174E-15f},     x);
 
         // Compute sign bit: sin uses input sign XOR bit-1(octant); cos uses bit-1(octant+1)
         WI sign_i;
