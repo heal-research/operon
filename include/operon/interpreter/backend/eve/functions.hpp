@@ -12,6 +12,147 @@
 
 namespace Operon::Backend::detail {
 
+// FastExp: Cephes-style float polynomial, ~1-2 ULP. Ported from Eigen pexp_float.
+// Double falls back to eve::exp (full accuracy).
+template<std::floating_point T>
+auto FastExp(eve::wide<T> a) -> eve::wide<T> {
+    using W = eve::wide<T>;
+    if constexpr (std::is_same_v<T, float>) {
+        auto x  = eve::clamp(a, T(-88.723f), T(88.723f));
+        auto m  = eve::floor(eve::fma(x, W{T(1.44269504088896341f)}, W{T(0.5f)}));
+        auto r  = eve::fma(m, W{T(-0.693359375f)},    x);
+        r       = eve::fma(m, W{T(2.12194440e-4f)},   r);
+        auto r2 = r * r;
+        auto r3 = r2 * r;
+        auto y  = eve::fma(W{T(1.9875691500E-4f)}, r, W{T(1.3981999507E-3f)});
+        auto y1 = eve::fma(W{T(4.1665795894E-2f)}, r, W{T(1.6666665459E-1f)});
+        auto y2 = r + W{T(1.0f)};
+        y       = eve::fma(y,  r,  W{T(8.3334519073E-3f)});
+        y1      = eve::fma(y1, r,  W{T(5.0000001201E-1f)});
+        y       = eve::fma(y,  r3, y1);
+        y       = eve::fma(y,  r2, y2);
+        return eve::ldexp(y, eve::convert(m, eve::as<std::int32_t>{}));
+    } else {
+        return eve::exp(a);
+    }
+}
+
+// FastLog: Cephes-style float polynomial, ~1-2 ULP. Ported from Eigen plog_impl_float.
+// Double falls back to eve::log (full accuracy).
+template<std::floating_point T>
+auto FastLog(eve::wide<T> a) -> eve::wide<T> {
+    using W = eve::wide<T>;
+    if constexpr (std::is_same_v<T, float>) {
+        constexpr float min_norm = std::bit_cast<float>(0x00800000u);
+        auto x = eve::max(a, W{min_norm});
+
+        // Extract significand in [0.5, 1) and exponent
+        auto [mant, e] = eve::frexp(x);
+        x = mant;
+
+        // Shift [0.5, 1) to [√½, √2): if x < SQRTHF → e-=1, x = 2x-1; else x = x-1
+        auto mask = x < W{0.707106781186547524f};
+        x = eve::fma(eve::if_else(mask, x, W{0.0f}), W{1.0f}, x - W{1.0f});
+        e = e - eve::if_else(mask, W{1.0f}, W{0.0f});
+
+        auto x2 = x * x;
+        auto x3 = x2 * x;
+
+        // 8-degree Cephes polynomial in three parallel chains
+        auto y  = eve::fma(W{7.0376836292E-2f},   x, W{-1.1514610310E-1f});
+        auto y1 = eve::fma(W{-1.2420140846E-1f},  x, W{+1.4249322787E-1f});
+        auto y2 = eve::fma(W{+2.0000714765E-1f},  x, W{-2.4999993993E-1f});
+        y       = eve::fma(y,  x, W{1.1676998740E-1f});
+        y1      = eve::fma(y1, x, W{-1.6668057665E-1f});
+        y2      = eve::fma(y2, x, W{+3.3333331174E-1f});
+        y       = eve::fma(y,  x3, y1);
+        y       = eve::fma(y,  x3, y2);
+        y       = y * x3;
+
+        y = eve::fma(W{-0.5f}, x2, y);
+        x = eve::fma(e, W{0.693147180559945309f}, x + y);  // + e * ln2
+
+        // Edge cases: negative/NaN → NaN, zero → -inf, +inf → +inf
+        auto neg_nan = eve::nan(eve::as<W>{});
+        x = eve::if_else(a < W{0.0f}, neg_nan, x);
+        x = eve::if_else(eve::is_nan(a), neg_nan, x);
+        x = eve::if_else(a == W{0.0f}, W{-std::numeric_limits<float>::infinity()}, x);
+        x = eve::if_else(a == eve::inf(eve::as<W>{}), a, x);
+        return x;
+    } else {
+        return eve::log(a);
+    }
+}
+
+// FastSin/FastCos: Eigen-style psincos_float polynomial, ~1-2 ULP for |x| < 25966.
+// Falls back to eve::sin/cos for larger inputs. Double uses eve::sin/cos directly.
+template<bool IsSin, std::floating_point T>
+auto FastSinCos(eve::wide<T> a) -> eve::wide<T> {
+    using W  = eve::wide<T>;
+    using WI = eve::wide<std::int32_t>;
+    if constexpr (std::is_same_v<T, float>) {
+        auto large = eve::abs(a) >= W{25966.0f};
+        auto x     = eve::abs(a);
+
+        // Scale by 2/π and round to nearest integer octant
+        auto y       = x * W{0.636619746685028076171875f};  // x * 2/π
+        auto y_round = y + W{12582912.0f};                  // rounding magic (2^23 + 2^22)
+        auto y_int   = eve::bit_cast(y_round, eve::as<WI>{});
+        y            = y_round - W{12582912.0f};
+
+        // Range-reduce x to [-π/4, π/4] in four parts
+        x = eve::fma(y, W{-1.5703125f},                              x);
+        x = eve::fma(y, W{-4.83989715576171875E-4f},                 x);
+        x = eve::fma(y, W{1.62865035235881805419921875E-7f},          x);
+        x = eve::fma(y, W{5.56443155441677106E-11f},                  x);
+
+        // Compute sign bit: sin uses input sign XOR bit-1(octant); cos uses bit-1(octant+1)
+        WI sign_i;
+        if constexpr (IsSin) {
+            sign_i = eve::bit_cast(a, eve::as<WI>{}) ^ (y_int << 30);
+        } else {
+            sign_i = (y_int + WI{1}) << 30;
+        }
+        auto sign_bit = eve::bit_cast(sign_i, eve::as<W>{}) & W{-0.0f};
+
+        // Polynomial selection: even octant → use sin kernel (y2) for sin, cos kernel (y1) for cos
+        auto poly_even = (y_int & WI{1}) == WI{0};
+
+        auto x2 = x * x;
+
+        // Cos kernel (even powers)
+        auto y1 = W{2.4372266125283204E-5f};
+        y1 = eve::fma(y1, x2, W{-1.38865201734006405E-3f});
+        y1 = eve::fma(y1, x2, W{4.16661947965621948E-2f});
+        y1 = eve::fma(y1, x2, W{-0.5f});
+        y1 = eve::fma(y1, x2, W{1.0f});
+
+        // Sin kernel (odd)
+        auto y2 = W{-1.9592341140837029E-4f};
+        y2 = eve::fma(y2, x2, W{8.33268736556168517E-3f});
+        y2 = eve::fma(y2, x2, W{-1.66666620398229826E-1f});
+        y2 = y2 * x2;
+        y2 = eve::fma(y2, x, x);
+
+        W result;
+        if constexpr (IsSin) {
+            result = eve::if_else(poly_even, y2, y1);
+        } else {
+            result = eve::if_else(poly_even, y1, y2);
+        }
+        result = eve::bit_xor(result, sign_bit);
+
+        if constexpr (IsSin) {
+            return eve::if_else(large, eve::sin(a), result);
+        } else {
+            return eve::if_else(large, eve::cos(a), result);
+        }
+    } else {
+        if constexpr (IsSin) return eve::sin(a);
+        else return eve::cos(a);
+    }
+}
+
 template<std::floating_point T>
 auto FastTanh(eve::wide<T> a) -> eve::wide<T> {
     using W = eve::wide<T>;
@@ -234,7 +375,7 @@ namespace Operon::Backend {
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(weight * eve::exp(W{arg+i}), res+i);
+            eve::store(weight * detail::FastExp(W{arg+i}), res+i);
         }
     }
 
@@ -244,7 +385,7 @@ namespace Operon::Backend {
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(weight * eve::log(W{arg+i}), res+i);
+            eve::store(weight * detail::FastLog(W{arg+i}), res+i);
         }
     }
 
@@ -264,7 +405,7 @@ namespace Operon::Backend {
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(weight * eve::log(eve::abs(W{arg+i})), res+i);
+            eve::store(weight * detail::FastLog(eve::abs(W{arg+i})), res+i);
         }
     }
 
@@ -274,7 +415,7 @@ namespace Operon::Backend {
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(weight * eve::sin(W{arg + i}), res+i);
+            eve::store(weight * detail::FastSinCos<true>(W{arg + i}), res+i);
         }
     }
 
@@ -284,7 +425,7 @@ namespace Operon::Backend {
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(weight * eve::cos(W{arg + i}), res+i);
+            eve::store(weight * detail::FastSinCos<false>(W{arg + i}), res+i);
         }
     }
 
