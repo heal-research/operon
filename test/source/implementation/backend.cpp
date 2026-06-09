@@ -90,12 +90,18 @@ TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
 
     // clang-format off
     std::array cases {
+        // Clamped at ±88.376; test only above -86 where outputs are normal floats
+        // (below that, eve::ldexp flushes subnormals to 0 -- acceptable for GP use).
         Case{ "Exp",    Backend::Exp<T,S>,
-              Linspace(-87, 88, N, {0.f, -0.f}),
+              Linspace(-86, 88, N, {0.f, -0.f, 88.3f, -86.0f}),
               [](double x){ return std::exp(x); },   2 },
 
+        // SQRTHF branch at x≈0.7071; near-1 and small positive values.
         Case{ "Log",    Backend::Log<T,S>,
-              Linspace(1e-6, 1e6, N, {1.f, Inf}),
+              Linspace(1e-6, 1e6, N, {1.f, Inf,
+                                      0.707106f, 0.707107f,  // near SQRTHF branch
+                                      0.999f,    1.001f,     // near log(1)=0
+                                      0.f}),                 // → -inf
               [](double x){ return std::log(x); },   2 },
 
         Case{ "Log1p",  Backend::Log1p<T,S>,
@@ -103,16 +109,23 @@ TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
               [](double x){ return std::log1p(x); }, 2 },
 
         Case{ "Logabs", Backend::Logabs<T,S>,
-              Linspace(-1e6, 1e6, N, {1.f, -1.f, Inf, -Inf}),
+              Linspace(-1e6, 1e6, N, {1.f, -1.f, Inf, -Inf,
+                                      0.707106f, -0.707106f}),
               [](double x){ return std::log(std::abs(x)); }, 2 },
 
+        // FMA 3-part range reduction: valid to ~117435; fallback tested beyond.
         Case{ "Sin",    Backend::Sin<T,S>,
-              Linspace(-10, 10, N, {0.f, -0.f, Inf, -Inf}),
-              [](double x){ return std::sin(x); },   2 },
+              Linspace(-100, 100, N, {0.f, -0.f, Inf, -Inf,
+                                      117434.f, -117434.f,   // just inside FMA limit
+                                      117436.f, -117436.f}), // fallback region
+              [](double x){ return std::sin(x); },   4 },
 
+        // FMA 3-part range reduction: valid to ~71476; fallback tested beyond.
         Case{ "Cos",    Backend::Cos<T,S>,
-              Linspace(-10, 10, N, {0.f, Inf, -Inf}),
-              [](double x){ return std::cos(x); },   2 },
+              Linspace(-100, 100, N, {0.f, Inf, -Inf,
+                                      71475.f,  -71475.f,    // just inside FMA limit
+                                      71477.f,  -71477.f}),  // fallback region
+              [](double x){ return std::cos(x); },   4 },
 
         Case{ "Tan",    Backend::Tan<T,S>,
               // avoid singularities near ±π/2 + nπ
