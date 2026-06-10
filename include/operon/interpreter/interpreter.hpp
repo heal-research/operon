@@ -286,8 +286,9 @@ private:
         auto const& dt = dtable_.get();
         for (int64_t i = 0; i < nNodes; ++i) {
             auto const& n = nodes[i];
-            auto const* ptr     = n.IsVariable() ? dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data() : nullptr;
-            auto variableValues = std::tuple_element_t<1, Data>(ptr, nRows);
+            auto variableValues = n.IsVariable()
+                ? std::tuple_element_t<1, Data>(dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data(), nRows)
+                : std::tuple_element_t<1, Data>{};
             auto nodeFunction   = dt->template TryGetFunction<T>(n.HashValue);
             auto nodeDerivative = dt->template TryGetDerivative<T>(n.HashValue);
 
@@ -319,7 +320,7 @@ private:
     }
 
     auto InitContext(Operon::Span<T const> coeff, Operon::Range range) const {
-        if (range_.Start() != range.Start() || range_.End() != range.End()) { BindTree(range); }
+        if (context_.empty() || range_ != range) { BindTree(range); }
         UpdateCoefficients(coeff);
     }
 };
