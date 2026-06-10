@@ -145,6 +145,8 @@ auto FastSinCos(eve::wide<T> a) -> eve::wide<T> {
         }
         result = eve::bit_xor(result, sign_bit);
 
+        // eve::any skips the eve::sin/cos computation when all lanes are in range;
+        // the blend (eve::if_else) is unconditional but both arms are already computed.
         if (eve::any(large)) {
             if constexpr (IsSin) { return eve::if_else(large, eve::sin(a), result); }
             else                  { return eve::if_else(large, eve::cos(a), result); }
@@ -215,6 +217,8 @@ auto FastPow(eve::wide<T> x, eve::wide<T> y) -> eve::wide<T> {
         // x<0 with non-integer y is a domain error — match std::pow/eve::pow behaviour.
         z = eve::if_else(eve::is_ltz(x) && !eve::is_flint(y), eve::nan(eve::as<W>{}), z);
         z = eve::if_else(eve::is_ltz(x) && eve::is_odd(y), -z, z);
+        // x==0 with y>0: FastLog(0) clamps to min_norm so z is small but not 0 — fix up.
+        z = eve::if_else(x == W{0} && y > W{0}, W{0}, z);
         z = eve::if_else(y == W{0}, W{1}, z);
         return z;
     } else {
