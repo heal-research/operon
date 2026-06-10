@@ -16,11 +16,12 @@
 #include "operon/core/dispatch.hpp"
 #include "operon/interpreter/functions.hpp"
 
+#ifdef OPERON_HAVE_VDT
 #include <vdt/exp.h>
 #include <vdt/log.h>
 #include <vdt/sin.h>
 #include <vdt/cos.h>
-#include <vdt/tanh.h>
+#endif
 
 namespace Operon::Test {
 
@@ -96,7 +97,7 @@ TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
 
     // clang-format off
     std::array cases {
-        // Clamped at ±88.376; test only above -86 where outputs are normal floats
+        // Clamped at ±88.723; test only above -86 where outputs are normal floats
         // (below that, eve::ldexp flushes subnormals to 0 -- acceptable for GP use).
         Case{ "Exp",    Backend::Exp<T,S>,
               Linspace(-86, 88, N, {0.f, -0.f, 88.3f, -86.0f}),
@@ -205,7 +206,11 @@ TEST_CASE("Backend Pow/Powabs ULP accuracy", "[backend]")
         for (auto i = 0UL; i < n; ++i) {
             auto got      = dst[i/S].v[i%S];
             auto expected = static_cast<T>(ref(static_cast<double>(xs[i]), static_cast<double>(ys[i])));
-            if (std::isnan(expected)) { continue; } // skip cases where reference is NaN (e.g. negative base, non-integer exponent)
+            if (std::isnan(expected)) {
+                // domain error: backend must also return NaN; a finite result is a max-ULP failure
+                if (!std::isnan(got)) { return UlpResult{std::numeric_limits<uint64_t>::max(), xs[i], got, expected}; }
+                continue;
+            }
             if (auto d = UlpDistance(got, expected); d > res.max_ulp) {
                 res = {d, xs[i], got, expected};
             }
@@ -252,48 +257,53 @@ TEST_CASE("Backend Pow/Powabs ULP accuracy", "[backend]")
     }
 }
 
+#ifdef OPERON_HAVE_VDT
 TEST_CASE("Backend vs vdt ULP accuracy", "[backend]")
 {
-    // Compare our Eve SIMD implementations against vdt scalar implementations.
-    // Both use Cephes-derived polynomials; differences arise from FMA vs non-FMA paths.
-    // Expected max ULP is 0-1 for functions sharing identical coefficients.
-    struct Case {
-        std::string_view name;
-        void(*fn)(T*, T, T const*);
-        std::vector<T> inputs;
-        float(*ref)(float);
-        uint64_t max_ulp;
-    };
+    // vdt uses float-only Cephes-derived scalar implementations; only meaningful for float builds.
+    if constexpr (std::is_same_v<T, float>) {
+        // Compare our Eve SIMD implementations against vdt scalar implementations.
+        // Both use Cephes-derived polynomials; differences arise from FMA vs non-FMA paths.
+        // Expected max ULP is 0-1 for functions sharing identical coefficients.
+        struct Case {
+            std::string_view name;
+            void(*fn)(T*, T, T const*);
+            std::vector<T> inputs;
+            float(*ref)(float);
+            uint64_t max_ulp;
+        };
 
-    // clang-format off
-    std::array cases {
-        Case{ "Exp vs vdt",
-              Backend::Exp<T,S>,
-              Linspace(-86, 88, N, {0.f, -0.f, 88.3f, -86.f}),
-              vdt::fast_expf, 1 },
-        Case{ "Log vs vdt",
-              Backend::Log<T,S>,
-              Linspace(1e-6, 1e6, N, {1.f, 0.707106f, 0.707107f, 0.999f, 1.001f}),
-              vdt::fast_logf, 1 },
-        Case{ "Sin vs vdt",
-              Backend::Sin<T,S>,
-              Linspace(-100, 100, N, {0.f, -0.f}),
-              vdt::fast_sinf, 1 },
-        Case{ "Cos vs vdt",
-              Backend::Cos<T,S>,
-              Linspace(-100, 100, N, {0.f}),
-              vdt::fast_cosf, 1 },
-        // vdt fast_tanhf uses a different algorithm (argument-halving + Padé doubling)
-        // vs Eigen's 13/6-degree rational polynomial — comparison not meaningful here.
-    };
-    // clang-format on
+        // clang-format off
+        std::array cases {
+            Case{ "Exp vs vdt",
+                  Backend::Exp<T,S>,
+                  Linspace(-86, 88, N, {0.f, -0.f, 88.3f, -86.f}),
+                  vdt::fast_expf, 1 },
+            Case{ "Log vs vdt",
+                  Backend::Log<T,S>,
+                  Linspace(1e-6, 1e6, N, {1.f, 0.707106f, 0.707107f, 0.999f, 1.001f}),
+                  vdt::fast_logf, 1 },
+            Case{ "Sin vs vdt",
+                  Backend::Sin<T,S>,
+                  Linspace(-100, 100, N, {0.f, -0.f}),
+                  vdt::fast_sinf, 1 },
+            Case{ "Cos vs vdt",
+                  Backend::Cos<T,S>,
+                  Linspace(-100, 100, N, {0.f}),
+                  vdt::fast_cosf, 1 },
+            // vdt fast_tanhf uses a different algorithm (argument-halving + Padé doubling)
+            // vs Eigen's 13/6-degree rational polynomial — comparison not meaningful here.
+        };
+        // clang-format on
 
-    for (auto& [name, fn, inputs, ref, ulp_limit] : cases) {
-        auto [max_ulp, worst, got, expected] = MaxUlpError(fn, [&](double x){ return static_cast<double>(ref(static_cast<float>(x))); }, inputs);
-        INFO(name << ": max ULP = " << max_ulp << " (limit " << ulp_limit
-             << ") at x=" << worst << " got=" << got << " expected=" << expected);
-        CHECK(max_ulp <= ulp_limit);
+        for (auto& [name, fn, inputs, ref, ulp_limit] : cases) {
+            auto [max_ulp, worst, got, expected] = MaxUlpError(fn, [&](double x){ return static_cast<double>(ref(static_cast<float>(x))); }, inputs);
+            INFO(name << ": max ULP = " << max_ulp << " (limit " << ulp_limit
+                 << ") at x=" << worst << " got=" << got << " expected=" << expected);
+            CHECK(max_ulp <= ulp_limit);
+        }
     }
 }
+#endif
 
 } // namespace Operon::Test

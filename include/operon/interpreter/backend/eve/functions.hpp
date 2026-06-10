@@ -212,6 +212,8 @@ auto FastPow(eve::wide<T> x, eve::wide<T> y) -> eve::wide<T> {
     using W = eve::wide<T>;
     if constexpr (std::is_same_v<T, float>) {
         auto z = FastExp(y * FastLog(eve::abs(x)));
+        // x<0 with non-integer y is a domain error — match std::pow/eve::pow behaviour.
+        z = eve::if_else(eve::is_ltz(x) && !eve::is_flint(y), eve::nan(eve::as<W>{}), z);
         z = eve::if_else(eve::is_ltz(x) && eve::is_odd(y), -z, z);
         z = eve::if_else(y == W{0}, W{1}, z);
         return z;
