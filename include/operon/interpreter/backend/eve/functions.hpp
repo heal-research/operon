@@ -145,11 +145,11 @@ auto FastSinCos(eve::wide<T> a) -> eve::wide<T> {
         }
         result = eve::bit_xor(result, sign_bit);
 
-        if constexpr (IsSin) {
-            return eve::if_else(large, eve::sin(a), result);
-        } else {
-            return eve::if_else(large, eve::cos(a), result);
+        if (eve::any(large)) {
+            if constexpr (IsSin) { return eve::if_else(large, eve::sin(a), result); }
+            else                  { return eve::if_else(large, eve::cos(a), result); }
         }
+        return result;
     } else {
         if constexpr (IsSin) return eve::sin(a);
         else return eve::cos(a);
