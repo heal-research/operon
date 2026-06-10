@@ -120,14 +120,16 @@ TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
                                       0.707106f, -0.707106f}),
               [](double x){ return std::log(std::abs(x)); }, 2 },
 
-        // FMA 3-part range reduction: valid to ~117435; fallback tested beyond.
+        // FMA 3-part range reduction: ~1-2 ULP in [-100,100]; limit is 4 to cover
+        // threshold-boundary inputs (117434/117436) where the polynomial is near its
+        // accuracy limit and the eve::sin fallback path may differ by an extra ULP.
         Case{ "Sin",    Backend::Sin<T,S>,
               Linspace(-100, 100, N, {0.f, -0.f, Inf, -Inf,
                                       117434.f, -117434.f,   // just inside FMA limit
                                       117436.f, -117436.f}), // fallback region
               [](double x){ return std::sin(x); },   4 },
 
-        // FMA 3-part range reduction: valid to ~71476; fallback tested beyond.
+        // Same reasoning as Sin above.
         Case{ "Cos",    Backend::Cos<T,S>,
               Linspace(-100, 100, N, {0.f, Inf, -Inf,
                                       71475.f,  -71475.f,    // just inside FMA limit
@@ -234,6 +236,8 @@ TEST_CASE("Backend Pow/Powabs ULP accuracy", "[backend]")
     // Powabs: any x (abs applied internally), any real y.
     auto xs_abs = Linspace(-10, 10, 200, {0.f, 1.f, -1.f});
 
+    // Limit is 8 ULP: FastPow compounds FastExp+FastLog errors (~2 ULP each), and the
+    // sign-correction + x==0 fixup paths add up to ~4-6 ULP in practice.
     SECTION("Pow positive base") {
         auto ref = [](double x, double y){ return std::pow(x, y); };
         auto [max_ulp, worst, got, expected] = MaxUlpError2(Backend::Pow<T,S>, ref, xs_pos, ys_mixed);
