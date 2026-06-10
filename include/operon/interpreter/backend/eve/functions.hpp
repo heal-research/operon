@@ -18,7 +18,7 @@ template<std::floating_point T>
 auto FastExp(eve::wide<T> a) -> eve::wide<T> {
     using W = eve::wide<T>;
     if constexpr (std::is_same_v<T, float>) {
-        auto x  = eve::clamp(a, T(-88.3762626647950f), T(88.3762626647950f));
+        auto x  = eve::clamp(a, T(-88.723f), T(88.723f));
         auto m  = eve::floor(eve::fma(x, W{T(1.44269504088896341f)}, W{T(0.5f)}));
         auto r  = eve::fma(m, W{T(-0.693359375f)},    x);
         r       = eve::fma(m, W{T(2.12194440e-4f)},   r);
@@ -31,7 +31,7 @@ auto FastExp(eve::wide<T> a) -> eve::wide<T> {
         y1      = eve::fma(y1, r,  W{T(5.0000001201E-1f)});
         y       = eve::fma(y,  r3, y1);
         y       = eve::fma(y,  r2, y2);
-        return eve::ldexp(y, eve::convert(m, eve::as<std::int32_t>{}));
+        return eve::max(eve::ldexp(y, eve::convert(m, eve::as<std::int32_t>{})), a);
     } else {
         return eve::exp(a);
     }
