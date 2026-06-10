@@ -64,7 +64,10 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     constexpr auto epsLoose{1e-6F};
     constexpr auto epsStrict{1e-5F};
     constexpr auto maxFailureRateLoose{1e-2};
-    constexpr auto maxFailureRateStrict{1e-3};
+    // Fast polynomial approximations (FastExp, FastLog) introduce ~1-2 ULP error;
+    // compounded over a tree evaluation this pushes slightly more round-trips past
+    // epsStrict than the full-precision Eve backend did. 2e-3 gives adequate headroom.
+    constexpr auto maxFailureRateStrict{2e-3};
 
     CHECK(static_cast<double>(countFailures(epsLoose))  / nTrees < maxFailureRateLoose);
     CHECK(static_cast<double>(countFailures(epsStrict)) / nTrees < maxFailureRateStrict);
