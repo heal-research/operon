@@ -204,6 +204,34 @@ auto FastTanh(eve::wide<T> a) -> eve::wide<T> {
     }
 }
 
+// FastPow: exp(y * log|x|) using FastExp+FastLog, ~2 ULP.
+// Sign rule: negate when x<0 and y is a finite odd integer.
+// Matches SLEEF xfastpowf_u3500 structure. Double falls back to eve::pow.
+template<std::floating_point T>
+auto FastPow(eve::wide<T> x, eve::wide<T> y) -> eve::wide<T> {
+    using W = eve::wide<T>;
+    if constexpr (std::is_same_v<T, float>) {
+        auto z = FastExp(y * FastLog(eve::abs(x)));
+        z = eve::if_else(eve::is_ltz(x) && eve::is_odd(y), -z, z);
+        z = eve::if_else(y == W{0}, W{1}, z);
+        return z;
+    } else {
+        return eve::pow(x, y);
+    }
+}
+
+// FastPowabs: exp(y * log|x|) — same as FastPow but skips sign correction.
+template<std::floating_point T>
+auto FastPowabs(eve::wide<T> x, eve::wide<T> y) -> eve::wide<T> {
+    using W = eve::wide<T>;
+    if constexpr (std::is_same_v<T, float>) {
+        auto z = FastExp(y * FastLog(eve::abs(x)));
+        return eve::if_else(y == W{0}, W{1}, z);
+    } else {
+        return eve::pow(eve::abs(x), y);
+    }
+}
+
 } // namespace Operon::Backend::detail
 
 namespace Operon::Backend {
@@ -291,17 +319,21 @@ namespace Operon::Backend {
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Pow(T* res, T weight, T const* a, T const* b) {
-        eve::algo::transform_to(eve::views::zip(std::span{a, S}, b), res, [weight](auto t) {
-            return weight * eve::pow(eve::get<0>(t), eve::get<1>(t));
-        });
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(weight * detail::FastPow(W{a+i}, W{b+i}), res+i);
+        }
     }
 
     template<typename T, std::size_t S>
     requires (S % eve::wide<T>::size() == 0)
     auto Powabs(T* res, T weight, T const* a, T const* b) {
-        eve::algo::transform_to(eve::views::zip(std::span{a, S}, b), res, [weight](auto t) {
-            return weight * eve::pow(eve::abs(eve::get<0>(t)), eve::get<1>(t));
-        });
+        using W = eve::wide<T>;
+        constexpr auto L = W::size();
+        for (auto i = 0UL; i < S; i += L) {
+            eve::store(weight * detail::FastPowabs(W{a+i}, W{b+i}), res+i);
+        }
     }
 
     // unary functions
