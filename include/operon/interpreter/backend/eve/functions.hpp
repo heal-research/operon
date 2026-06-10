@@ -126,7 +126,7 @@ auto FastSinCos(eve::wide<T> a) -> eve::wide<T> {
         // Cos kernel (even powers)
         auto y1 = W{2.4372266125283204E-5f};
         y1 = eve::fma(y1, x2, W{-1.38865201734006405E-3f});
-        y1 = eve::fma(y1, x2, W{4.16661947965621948E-2f});
+        y1 = eve::fma(y1, x2, W{0.041666619479656219482421875f});
         y1 = eve::fma(y1, x2, W{-0.5f});
         y1 = eve::fma(y1, x2, W{1.0f});
 
