@@ -26,6 +26,8 @@ class Range {
         {
         }
 
+        [[nodiscard]] auto operator==(Range const& other) const noexcept -> bool { return range_ == other.range_; }
+
         auto operator=(std::pair<std::size_t, std::size_t> p) -> Range&
         {
             auto [start, end] = p;
@@ -39,7 +41,7 @@ class Range {
             EXPECT(start <= end);
             return { start, end };
         }
-        std::pair<std::size_t, std::size_t> range_;
+        std::pair<std::size_t, std::size_t> range_{};
 };
 } // namespace Operon
 
