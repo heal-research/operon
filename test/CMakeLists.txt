@@ -13,6 +13,8 @@ endif()
 find_package(Catch2 3 REQUIRED)
 find_package(scn REQUIRED)
 find_package(nanobench REQUIRED)
+# vdt is optional: if found, enables the "Backend vs vdt ULP accuracy" test case
+# (gated by OPERON_HAVE_VDT in backend.cpp). Not in vcpkg.json; provide via overlay or nix.
 find_package(vdt QUIET)
 
 add_executable(operon_test
