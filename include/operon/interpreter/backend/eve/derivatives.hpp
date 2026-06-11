@@ -114,7 +114,7 @@ namespace detail {
             auto const k = i-1;
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * eve::log(W{pk+s}), res+s);
+                eve::store(W{pi+s} * detail::FastLog(W{pk+s}), res+s);
             }
         }
     }
@@ -137,7 +137,7 @@ namespace detail {
             auto const k = i-1;
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * eve::log(eve::abs(W{pk+s})), res+s);
+                eve::store(W{pi+s} * detail::FastLog(eve::abs(W{pk+s})), res+s);
             }
         }
     }
@@ -245,7 +245,7 @@ namespace detail {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(eve::cos(W{pj+s}), res+s);
+            eve::store(detail::FastSinCos</*IsSin=*/false>(W{pj+s}), res+s);
         }
     }
 
@@ -257,7 +257,7 @@ namespace detail {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(-eve::sin(W{pj+s}), res+s);
+            eve::store(-detail::FastSinCos</*IsSin=*/true>(W{pj+s}), res+s);
         }
     }
 
@@ -305,7 +305,7 @@ namespace detail {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(T{1} - eve::sqr(eve::tanh(W{pj+s})), res+s);
+            eve::store(T{1} - eve::sqr(detail::FastTanh(W{pj+s})), res+s);
         }
     }
 
