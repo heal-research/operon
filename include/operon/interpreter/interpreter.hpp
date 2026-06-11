@@ -187,7 +187,10 @@ private:
             auto const& [ p, v, f, df ] = context_[i];
             auto* ptr = primal_.data() + (i * S);
 
-            if (nodes[i].IsVariable()) {
+            if (nodes[i].IsRef()) {
+                auto const* src = primal_.data() + (static_cast<int64_t>(nodes[i].RefTo) * S);
+                std::copy_n(src, S, ptr);
+            } else if (nodes[i].IsVariable()) {
                 std::ranges::transform(v.subspan(row, rem), ptr, [p](auto x) { return x * p; });
             } else {
                 std::invoke(*f, nodes, primal_, i, rg);
@@ -230,6 +233,10 @@ private:
             dot.col(c).head(remainingRows).setConstant(T{1});
 
             for (auto i = 0; i < nNodes; ++i) {
+                if (nodes[i].IsRef()) {
+                    dot.col(i).head(remainingRows) = dot.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows);
+                    continue;
+                }
                 if (nodes[i].IsLeaf()) { continue; }
                 for (auto x : Tree::Indices(nodes, i)) {
                     auto j{ static_cast<int64_t>(x) };
@@ -260,6 +267,12 @@ private:
                 jac.col(--k).segment(row, remainingRows) = trace.col(i).head(remainingRows) * primal.col(i).head(remainingRows) / w;
             }
 
+            if (nodes[i].IsRef()) {
+                // Accumulate gradient into the referenced node (may be referenced >1 time)
+                trace.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows) +=
+                    trace.col(i).head(remainingRows);
+                continue;
+            }
             if (nodes[i].IsLeaf()) { continue; }
 
             for (auto j : Tree::Indices(nodes, i)) {
