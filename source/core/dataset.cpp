@@ -149,6 +149,7 @@ Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
     : variables_(DefaultVariables(cols))
     , view_(data, rows, cols)
 {
+    BuildPaddedCols();
 }
 
 Dataset::Dataset(Dataset const& rhs)
