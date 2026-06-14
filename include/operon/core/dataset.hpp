@@ -32,8 +32,16 @@ private:
 
     std::optional<Vector<Scalar>> weights_;
 
+    // Padded column storage for SIMD consumers (e.g. JIT evaluator).
+    // Same column-major layout as storage_ but with stride = paddedRows_,
+    // so reading up to the next multiple of 8 past nRows is always safe.
+    // Trailing slots are zeroed. Only populated for owning (non-view) datasets.
+    Vector<Scalar> paddedCols_;
+    int            paddedRows_ = 0;
+
     auto ReadCsv(std::string const& path, bool hasHeader) -> Storage;
     void InitializeVariables(std::vector<std::string> const&);
+    void BuildPaddedCols();
 
     [[nodiscard]] auto ColSpan(int idx) const noexcept -> Span<Scalar const> {
         return { view_.data_handle() + (static_cast<ptrdiff_t>(idx) * view_.extent(0)), static_cast<size_t>(view_.extent(0)) };
@@ -79,6 +87,15 @@ public:
     [[nodiscard]] auto GetValues(Operon::Hash hash) const noexcept -> Span<Scalar const>;
     [[nodiscard]] auto GetValues(int64_t index) const noexcept -> Span<Scalar const>;
     [[nodiscard]] auto GetValues(Variable const& var) const noexcept -> Span<Scalar const> { return GetValues(var.Hash); }
+
+    // Padded column accessors for SIMD consumers. Each column is backed by
+    // paddedRows_ = (nRows+7)&~7 floats; slots [nRows, paddedRows_) are zeroed.
+    // Only valid for owning datasets (IsView() == false).
+    [[nodiscard]] auto PaddedRows() const noexcept -> int { return paddedRows_; }
+    [[nodiscard]] auto GetPaddedValues(int64_t index) const noexcept -> Scalar const*;
+    [[nodiscard]] auto GetPaddedValues(Operon::Hash hash) const noexcept -> Scalar const*;
+    [[nodiscard]] auto GetPaddedValues(std::string const& name) const noexcept -> Scalar const*;
+    [[nodiscard]] auto GetPaddedValues(Variable const& var) const noexcept -> Scalar const* { return GetPaddedValues(var.Hash); }
 
     [[nodiscard]] auto GetVariable(std::string const& name) const noexcept -> std::optional<Variable>;
     [[nodiscard]] auto GetVariable(Operon::Hash hash) const noexcept -> std::optional<Variable>;

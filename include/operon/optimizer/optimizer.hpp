@@ -440,10 +440,10 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         auto const  target  = problem->TargetValues(range);
         auto const  iters   = this->Iterations();
 
-        // Interpreter is still needed for JacRev (reverse-mode AD).
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
 
-        auto const compiled = jitEval_->GetOrCompile(tree);
+        auto const compiled    = jitEval_->GetOrCompile(tree);
+        auto const compiledJac = jitEval_->GetOrCompileJacobian(tree);
 
         OptimizerSummary summary;
         auto x0 = tree.GetCoefficients();
@@ -454,52 +454,72 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             Operon::LMCostFunction cf{
                 gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
                 target, range};
-            ceres::TinySolver<decltype(cf)> solver;
-            solver.options.max_num_iterations = static_cast<int>(iters + 1);
+            Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
+            lm.setMaxfev(static_cast<int>(iters + 2));
             if (!x0.empty()) {
                 Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
-                typename decltype(solver)::Parameters p = m0.cast<typename decltype(cf)::Scalar>();
-                solver.Solve(cf, &p);
-                m0 = p.template cast<Operon::Scalar>();
+                Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
+                Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
+                summary.InitialCost = summary.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
+                if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
+                    do { status = lm.minimizeOneStep(m); }
+                    while (status == Eigen::LevenbergMarquardtSpace::Running);
+                }
+                m0 = m;
             }
             summary.FinalParameters       = x0;
-            summary.InitialCost           = solver.summary.initial_cost;
-            summary.FinalCost             = solver.summary.final_cost;
-            summary.Iterations            = solver.summary.iterations;
-            summary.FunctionEvaluations   = cf.ResidualCalls();
-            summary.JacobianEvaluations   = cf.JacobianCalls();
+            summary.FinalCost             = lm.fnorm() * lm.fnorm();
+            summary.Iterations            = static_cast<int>(lm.iterations());
+            summary.FunctionEvaluations   = static_cast<int>(cf.ResidualCalls());
+            summary.JacobianEvaluations   = static_cast<int>(cf.JacobianCalls());
             summary.Success               = detail::CheckSuccess(summary.InitialCost, summary.FinalCost);
             return summary;
         }
 
-        // Build column pointer array (offset to range.Start()).
+        // Build column pointer arrays (offset to range.Start(), padded for JIT).
         auto const  nVars = compiled->varOrder.size();
         std::vector<float const*> colPtrs(nVars);
         for (std::size_t i = 0; i < nVars; ++i) {
-            colPtrs[i] = dataset->GetValues(compiled->varOrder[i]).data()
+            colPtrs[i] = dataset->GetPaddedValues(compiled->varOrder[i])
                          + static_cast<std::ptrdiff_t>(range.Start());
+        }
+
+        std::vector<float const*> jacColPtrs;
+        if (compiledJac) {
+            jacColPtrs.resize(compiledJac->varOrder.size());
+            for (std::size_t i = 0; i < compiledJac->varOrder.size(); ++i) {
+                jacColPtrs[i] = dataset->GetPaddedValues(compiledJac->varOrder[i])
+                                + static_cast<std::ptrdiff_t>(range.Start());
+            }
         }
 
         Operon::JitLMCostFunction cf{
             gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
             compiled->fn,
             std::move(colPtrs),
-            target, range};
+            target, range,
+            compiledJac ? compiledJac->fn : nullptr,
+            std::move(jacColPtrs)};
 
-        ceres::TinySolver<decltype(cf)> solver;
-        solver.options.max_num_iterations = static_cast<int>(iters + 1);
+        Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
+        lm.setMaxfev(static_cast<int>(iters + 2));
 
         Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
-        typename decltype(solver)::Parameters p = m0.cast<typename decltype(cf)::Scalar>();
-        solver.Solve(cf, &p);
-        m0 = p.template cast<Operon::Scalar>();
+        Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
+
+        Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
+        summary.InitialCost = summary.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
+        if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
+            do { status = lm.minimizeOneStep(m); }
+            while (status == Eigen::LevenbergMarquardtSpace::Running);
+        }
+        m0 = m;
 
         summary.FinalParameters     = x0;
-        summary.InitialCost         = solver.summary.initial_cost;
-        summary.FinalCost           = solver.summary.final_cost;
-        summary.Iterations          = solver.summary.iterations;
-        summary.FunctionEvaluations = cf.ResidualCalls();
-        summary.JacobianEvaluations = cf.JacobianCalls();
+        summary.FinalCost           = lm.fnorm() * lm.fnorm();
+        summary.Iterations          = static_cast<int>(lm.iterations());
+        summary.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
+        summary.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
         summary.Success             = detail::CheckSuccess(summary.InitialCost, summary.FinalCost);
         return summary;
     }

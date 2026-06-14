@@ -17,6 +17,19 @@
 
 namespace Operon {
 
+void Dataset::BuildPaddedCols()
+{
+    auto const nrows = Rows<int>();
+    auto const ncols = Cols<int>();
+    paddedRows_ = (nrows + 7) & ~7;
+    paddedCols_.assign(static_cast<std::size_t>(paddedRows_) * static_cast<std::size_t>(ncols), Scalar{0});
+    for (auto j = 0; j < ncols; ++j) {
+        auto const src = ColSpan(j);
+        std::copy(src.begin(), src.end(),
+                  paddedCols_.data() + static_cast<std::ptrdiff_t>(j) * paddedRows_);
+    }
+}
+
 namespace {
     auto VariablesFromNames(auto const& names) -> Dataset::Variables {
         Hasher const hasher;
@@ -113,6 +126,7 @@ Dataset::Dataset(std::string const& path, bool hasHeader)
     : storage_(ReadCsv(path, hasHeader))
     , view_(MakeView(storage_))
 {
+    BuildPaddedCols();
 }
 
 Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<Scalar>> const& vals)
@@ -120,6 +134,7 @@ Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<S
     , storage_(StorageFromCols(vals))
     , view_(MakeView(storage_))
 {
+    BuildPaddedCols();
 }
 
 Dataset::Dataset(std::vector<std::vector<Scalar>> const& vals)
@@ -127,6 +142,7 @@ Dataset::Dataset(std::vector<std::vector<Scalar>> const& vals)
     , storage_(StorageFromCols(vals))
     , view_(MakeView(storage_))
 {
+    BuildPaddedCols();
 }
 
 Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
@@ -138,6 +154,7 @@ Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
 Dataset::Dataset(Dataset const& rhs)
     : variables_(rhs.variables_)
     , weights_(rhs.weights_)
+    , paddedRows_(rhs.paddedRows_)
 {
     auto const nrows = rhs.view_.extent(0);
     auto const ncols = rhs.view_.extent(1);
@@ -145,6 +162,7 @@ Dataset::Dataset(Dataset const& rhs)
     auto const n = static_cast<size_t>(nrows) * static_cast<size_t>(ncols);
     std::copy_n(rhs.view_.data_handle(), n, storage_.container().data());
     view_ = MakeView(storage_);
+    paddedCols_ = rhs.paddedCols_;
 }
 
 Dataset::Dataset(Dataset&& rhs) noexcept
@@ -152,16 +170,20 @@ Dataset::Dataset(Dataset&& rhs) noexcept
     , storage_(std::move(rhs.storage_))
     , view_(rhs.view_)
     , weights_(std::move(rhs.weights_))
+    , paddedCols_(std::move(rhs.paddedCols_))
+    , paddedRows_(rhs.paddedRows_)
 {
 }
 
 auto Dataset::operator=(Dataset&& rhs) noexcept -> Dataset&
 {
     if (this != &rhs) {
-        variables_ = std::move(rhs.variables_);
-        storage_   = std::move(rhs.storage_);
-        view_      = rhs.view_;
-        weights_   = std::move(rhs.weights_);
+        variables_  = std::move(rhs.variables_);
+        storage_    = std::move(rhs.storage_);
+        view_       = rhs.view_;
+        weights_    = std::move(rhs.weights_);
+        paddedCols_ = std::move(rhs.paddedCols_);
+        paddedRows_ = rhs.paddedRows_;
     }
     return *this;
 }
@@ -172,6 +194,8 @@ void Dataset::Swap(Dataset& rhs) noexcept
     std::swap(storage_, rhs.storage_);
     std::swap(view_, rhs.view_);
     std::swap(weights_, rhs.weights_);
+    paddedCols_.swap(rhs.paddedCols_);
+    std::swap(paddedRows_, rhs.paddedRows_);
 }
 
 auto Dataset::operator==(Dataset const& rhs) const noexcept -> bool
@@ -287,6 +311,7 @@ void Dataset::Shuffle(Operon::RandomGenerator& random)
         for (auto i = 0; i < Rows(); ++i) { tmp[i] = (*weights_)[perm[i]]; }
         *weights_ = std::move(tmp);
     }
+    BuildPaddedCols();
 }
 
 void Dataset::Normalize(size_t i, Range range)
@@ -300,6 +325,7 @@ void Dataset::Normalize(size_t i, Range range)
     auto const min = *minIt;
     auto const rng = *maxIt - min;
     std::transform(col, col + Rows(), col, [min, rng](auto v) -> Scalar { return (v - min) / rng; });
+    BuildPaddedCols();
 }
 
 void Dataset::Standardize(size_t i, Range range)
@@ -312,6 +338,7 @@ void Dataset::Standardize(size_t i, Range range)
     auto const stddev = std::sqrt(stats.variance);
     auto const mu     = stats.mean;
     std::transform(col, col + Rows(), col, [mu, stddev](auto v) -> Scalar { return (v - mu) / stddev; });
+    BuildPaddedCols();
 }
 
 void Dataset::PermuteRows(std::vector<int> const& perm)
@@ -327,6 +354,28 @@ void Dataset::PermuteRows(std::vector<int> const& perm)
         for (auto k = 0; k < nrows; ++k) { tmp[k] = col[perm[k]]; }
         std::copy(tmp.begin(), tmp.end(), col);
     }
+    BuildPaddedCols();
+}
+
+auto Dataset::GetPaddedValues(int64_t index) const noexcept -> Scalar const*
+{
+    ENSURE(!IsView());
+    return paddedCols_.data() + static_cast<std::ptrdiff_t>(index) * paddedRows_;
+}
+
+auto Dataset::GetPaddedValues(Operon::Hash hash) const noexcept -> Scalar const*
+{
+    auto it = variables_.find(hash);
+    if (it == variables_.end()) {
+        fmt::print(stderr, "GetPaddedValues: cannot find variable with hash value {}", hash);
+        std::abort();
+    }
+    return GetPaddedValues(static_cast<int64_t>(it->second.Index));
+}
+
+auto Dataset::GetPaddedValues(std::string const& name) const noexcept -> Scalar const*
+{
+    return GetPaddedValues(Hasher{}(name));
 }
 
 } // namespace Operon
