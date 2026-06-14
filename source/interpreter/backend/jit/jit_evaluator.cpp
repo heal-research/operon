@@ -4,6 +4,7 @@
 #ifdef HAVE_ASMJIT
 
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
+#include "operon/core/tree_diff.hpp"
 #include "operon/operators/evaluator.hpp"
 
 #include <algorithm>
@@ -15,8 +16,13 @@
 
 namespace Operon::JIT {
 
-struct JitEvaluator::JitCacheImpl {
-    gtl::parallel_flat_hash_map_m<Operon::Hash, std::shared_ptr<CompiledTree>> Map;
+struct CacheEntry {
+    std::shared_ptr<CompiledTree>     Tree;
+    std::shared_ptr<CompiledJacobian> Jac;
+};
+
+struct JitEvaluator::CacheImpl {
+    gtl::parallel_flat_hash_map_m<Operon::Hash, CacheEntry> Map;
 };
 
 JitEvaluator::JitEvaluator(gsl::not_null<Problem const*> problem,
@@ -27,7 +33,7 @@ JitEvaluator::JitEvaluator(gsl::not_null<Problem const*> problem,
     , zobrist_(zobrist)
     , error_(std::move(error))
     , scaling_(linearScaling)
-    , cache_(std::make_unique<JitCacheImpl>())
+    , cache_(std::make_unique<CacheImpl>())
 {}
 
 JitEvaluator::~JitEvaluator() = default;
@@ -39,25 +45,51 @@ auto JitEvaluator::GetOrCompile(Tree const& tree) const -> std::shared_ptr<Compi
 
 auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> std::shared_ptr<CompiledTree>
 {
-    std::shared_ptr<CompiledTree> ptr;
+    CacheEntry entry;
 
     // Fast path: already in cache.
-    cache_->Map.if_contains(hash, [&](auto const& kv) { ptr = kv.second; });
-    if (ptr) { ++hits_; return ptr; }
+    cache_->Map.if_contains(hash, [&](auto const& kv) { entry = kv.second; });
+    if (entry.Tree) { ++hits_; return entry.Tree; }
 
-    // Slow path: compile then insert.  lazy_emplace_l holds the segment lock,
-    // so only one thread compiles for a given hash simultaneously.
+    // Compile outside the map lock so that cc.finalize() (the expensive part) runs
+    // in parallel across threads.  rt_.add() is internally mutex-protected in asmjit,
+    // so concurrent calls are safe.  A rare double-compile race is harmless: we just
+    // keep whichever result arrives first in the map.
+    std::shared_ptr<CompiledTree> compiled(compiler_.CompileAVX2(tree));
+    if (!compiled) { ++avx2Fails_; compiled.reset(compiler_.Compile(tree).release()); }
+    if (!compiled) { ++compileFails_; }
+
     cache_->Map.lazy_emplace_l(
         hash,
-        [&](auto& kv) { ptr = kv.second; ++hits_; },   // another thread beat us
-        [&](auto const& ctor) {
-            auto compiled = compiler_.CompileAVX2(tree);
-            if (!compiled) { compiled = compiler_.Compile(tree); }
-            ptr = std::move(compiled);
-            ctor(hash, ptr);
-        }
+        [&](auto& kv) { entry = kv.second; ++hits_; },   // another thread beat us
+        [&](auto const& ctor) { entry.Tree = compiled; ctor(hash, entry); }
     );
-    return ptr;
+    return entry.Tree;
+}
+
+auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> std::shared_ptr<CompiledJacobian>
+{
+    auto const hash = zobrist_->ComputeHash(tree);
+
+    // Fast path: Jacobian already compiled.
+    std::shared_ptr<CompiledJacobian> jac;
+    cache_->Map.if_contains(hash, [&](auto const& kv) { jac = kv.second.Jac; });
+    if (jac) { return jac; }
+
+    // Ensure the primal entry exists (compile it if needed).
+    static_cast<void>(GetOrCompile(tree, hash));
+
+    // Compile the Jacobian outside any lock (deterministic — a double-compile on
+    // a very rare race is harmless).
+    auto dag    = Operon::BuildJacobianDag(tree);
+    auto newJac = compiler_.CompileJacobian(dag);
+
+    // Store it; if another thread beat us, use their result.
+    cache_->Map.modify_if(hash, [&](auto& kv) {
+        if (!kv.second.Jac) { kv.second.Jac = std::move(newJac); }
+        jac = kv.second.Jac;
+    });
+    return jac;
 }
 
 auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
@@ -80,18 +112,27 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
     ++ResidualEvaluations;
 
     if (compiled) {
-        auto const  nVars = compiled->varOrder.size();
-        auto const  nRows = static_cast<int32_t>(range.Size());
+        auto const  nVars      = compiled->varOrder.size();
+        auto const  nRows      = static_cast<int32_t>(range.Size());
+        auto const  nRowsPad   = (nRows + 7) & ~7;
 
-        std::vector<float const*> colPtrs(nVars);
+        thread_local std::vector<float const*> colPtrs;
+        colPtrs.resize(nVars);
         for (std::size_t i = 0; i < nVars; ++i) {
-            colPtrs[i] = dataset->GetValues(compiled->varOrder[i]).data()
+            colPtrs[i] = dataset->GetPaddedValues(compiled->varOrder[i])
                          + static_cast<std::ptrdiff_t>(range.Start());
         }
 
-        auto coeff = tree.GetCoefficients();
-        compiled->fn(buf.data(), colPtrs.data(), nRows,
+        // JIT function processes nRowsPad rows (always a multiple of 8, no scalar tail).
+        // Use a thread-local scratch buffer so the extra 0-7 writes don't touch buf.
+        thread_local std::vector<Scalar> scratch;
+        scratch.resize(static_cast<std::size_t>(nRowsPad));
+
+        thread_local std::vector<Scalar> coeff;
+        tree.GetCoefficients(coeff);
+        compiled->fn(scratch.data(), colPtrs.data(), nRowsPad,
                      coeff.empty() ? nullptr : coeff.data());
+        std::copy_n(scratch.data(), nRows, buf.data());
     } else {
         // Compilation failed — fill with a large constant so the individual is culled.
         std::ranges::fill(buf, EvaluatorBase::ErrMax);
