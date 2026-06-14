@@ -35,6 +35,7 @@ try:
 except ImportError:
     HAS_TABULATE = False
 
+sys.path.insert(0, str(Path(__file__).parent))
 from run_operon import (
     ALL_DATASETS, NAMED_SYMBOL_SETS, DEFAULT_SYMBOL_SET_NAMES,
     OBJECTIVES, REPORT_METRICS, LOWER_IS_BETTER,
