@@ -179,7 +179,7 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
             m0 = m;
         }
         summary.FinalParameters = x0;
-        summary.FinalCost = lm.fnorm() * lm.fnorm();
+        summary.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
         summary.Iterations = static_cast<int>(lm.iterations());
         summary.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
         summary.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());

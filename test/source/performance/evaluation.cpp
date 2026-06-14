@@ -325,7 +325,7 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
         jit   .SetBudget(std::numeric_limits<size_t>::max());
 
         // --- cold-cache run: first pass includes compilation ---
-        auto const nThreads = static_cast<std::size_t>(std::thread::hardware_concurrency());
+        auto const nThreads = std::max(std::size_t{1}, static_cast<std::size_t>(std::thread::hardware_concurrency()));
         for (auto nT : {std::size_t{1}, nThreads}) {
             nb::Bench bc;
             bc.title(fmt::format("{} / cold cache ({} thread{})", title, nT, nT == 1 ? "" : "s"))
