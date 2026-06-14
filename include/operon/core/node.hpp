@@ -107,7 +107,7 @@ struct Node {
     NodeType Type;
     bool IsEnabled;
     bool Optimize;
-    uint16_t RefTo; // only meaningful when Type == NodeType::Ref
+    uint16_t RefTo{0}; // only meaningful when Type == NodeType::Ref; must point backward (RefTo < index of this node)
 
     Node() = default;
 
@@ -149,7 +149,8 @@ struct Node {
     static auto Ref(uint16_t target) noexcept
     {
         Node node(NodeType::Ref);
-        node.RefTo = target;
+        node.RefTo    = target;
+        node.Optimize = false; // Ref has no value of its own; excluding it prevents a phantom coefficient
         return node;
     }
 

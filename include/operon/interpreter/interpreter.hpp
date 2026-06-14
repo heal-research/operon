@@ -188,6 +188,7 @@ private:
             auto* ptr = primal_.data() + (i * S);
 
             if (nodes[i].IsRef()) {
+                EXPECT(static_cast<int64_t>(nodes[i].RefTo) < i); // backward reference invariant
                 auto const* src = primal_.data() + (static_cast<int64_t>(nodes[i].RefTo) * S);
                 std::copy_n(src, S, ptr);
             } else if (nodes[i].IsVariable()) {
@@ -234,6 +235,7 @@ private:
 
             for (auto i = 0; i < nNodes; ++i) {
                 if (nodes[i].IsRef()) {
+                    EXPECT(static_cast<int64_t>(nodes[i].RefTo) < i); // backward reference invariant
                     dot.col(i).head(remainingRows) = dot.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows);
                     continue;
                 }
@@ -268,6 +270,7 @@ private:
             }
 
             if (nodes[i].IsRef()) {
+                EXPECT(static_cast<int64_t>(nodes[i].RefTo) < i); // backward ref: target processed after us in reverse sweep
                 // Accumulate gradient into the referenced node (may be referenced >1 time)
                 trace.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows) +=
                     trace.col(i).head(remainingRows);

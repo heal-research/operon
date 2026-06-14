@@ -164,6 +164,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
             if (n.IsRef()) {
                 // A Ref inherits the hash of its target so structurally equivalent
                 // subexpressions produce the same tree hash regardless of sharing.
+                EXPECT(n.RefTo < i); // must be a backward reference
                 n.CalculatedHashValue = nodes_[n.RefTo].CalculatedHashValue;
             } else {
                 n.CalculatedHashValue = n.HashValue;
