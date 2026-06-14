@@ -187,7 +187,7 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
 
 #if defined(HAVE_ASMJIT)
     SECTION("jit tiny solver") {
-        Operon::Zobrist zobrist{rng, 50};
+        Operon::Zobrist zobrist{rng, 50, problem.GetInputs()};
         JIT::JitEvaluator jitEval{&problem, &zobrist};
         JitLevenbergMarquardtOptimizer<DTable> optimizer{&dtable, &problem, &jitEval};
         checkExact(optimizer);
