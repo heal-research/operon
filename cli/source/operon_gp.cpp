@@ -176,7 +176,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         std::unique_ptr<Operon::Zobrist> zobrist;
         if (useJit || result["transposition-cache"].as<bool>()) {
             Operon::RandomGenerator cacheRng(config.Seed);
-            zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength));
+            zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
             if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
         }
 
