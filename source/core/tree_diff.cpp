@@ -40,6 +40,22 @@ auto AppendRef(Nodes& dag, Hashes& h, std::size_t target) -> std::size_t {
     return dag.size() - 1;
 }
 
+// Get or create an unweighted Variable copy of `origNode` (Value=1, Optimize=false).
+// Used for d(w * X_i)/dw = X_i: the unweighted column without the learned weight.
+auto GetVar(Nodes& dag, Memo& memo, Hashes& h,
+            Node const& origNode, std::size_t origIdx) -> std::size_t {
+    auto varHash = Mix(static_cast<uint64_t>(NodeType::Variable),
+                       Mix(origNode.HashValue, ~origIdx));
+    if (auto it = memo.find(varHash); it != memo.end()) { return it->second; }
+    Node col     = origNode;
+    col.Value    = 1.0F;
+    col.Optimize = false;
+    auto idx     = dag.size();
+    Push(dag, h, col, varHash);
+    memo.insert_or_assign(varHash, idx);
+    return idx;
+}
+
 // Get or create a constant node with the given value (hash-consed by value).
 auto GetConst(Nodes& dag, Memo& memo, Hashes& h, Scalar val) -> std::size_t {
     auto hash = Mix(static_cast<uint64_t>(NodeType::Constant),
@@ -124,8 +140,14 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     if (n.IsConstant()) {
         return i == targetC ? GetConst(dag, memo, h, Scalar{1}) : Zero;
     }
-    if (n.IsVariable() || n.IsRef()) {
+    if (n.IsVariable()) {
+        // d(w * X_i)/dw = X_i when differentiating w.r.t. this node's own weight.
+        if (n.Optimize && i == targetC) { return GetVar(dag, memo, h, orig[i], i); }
         return Zero;
+    }
+    if (n.IsRef()) {
+        // Ref is a structural alias; forward the derivative to its target.
+        return Deriv(orig, dag, memo, h, orig[i].RefTo, targetC);
     }
 
     auto const children = ChildIndices(orig, i);
@@ -217,12 +239,17 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             auto dj = Deriv(orig, dag, memo, h, j, targetC);
             auto dk = Deriv(orig, dag, memo, h, k, targetC);
             if (dj == Zero && dk == Zero) { return Zero; }
+            // When only the numerator depends on x, simplify da/b directly.
+            // Avoids (da*b)/b^2 which produces 0*Inf=NaN when b=Inf.
+            if (dk == Zero) {
+                return MakeBinary(dag, memo, h, NodeType::Div, dj, k);
+            }
             auto k2 = MakeBinary(dag, memo, h, NodeType::Mul, k, k);
             std::size_t num = Zero;
             if (dj != Zero) {
                 num = MakeBinary(dag, memo, h, NodeType::Mul, dj, k);
             }
-            if (dk != Zero) {
+            {
                 auto term = MakeBinary(dag, memo, h, NodeType::Mul, j, dk);
                 if (num == Zero) {
                     auto neg1 = GetConst(dag, memo, h, Scalar{-1});

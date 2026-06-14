@@ -77,7 +77,7 @@ auto MakeSupportedPset() -> PrimitiveSet {
         NodeType::Sinh | NodeType::Cosh | NodeType::Tanh |
         NodeType::Sqrt | NodeType::Cbrt | NodeType::Square |
         NodeType::Pow  |
-        NodeType::Constant
+        NodeType::Constant | NodeType::Variable
     );
     return ps;
 }
@@ -101,8 +101,8 @@ auto GenerateTrees(
     for (int i = 0; i < n; ++i) {
         auto tree = btc(rng, lenDist(rng), 1, 1000);
         for (auto& nd : tree.Nodes()) {
-            nd.Optimize = nd.IsConstant();
-            if (nd.IsConstant()) { nd.Value = valDist(rng); }
+            nd.Optimize = nd.IsLeaf(); // both constants and variable weights are coefficients
+            if (nd.IsLeaf()) { nd.Value = valDist(rng); }
         }
         trees.push_back(std::move(tree));
     }
@@ -133,14 +133,30 @@ TEST_CASE("BuildJacobianDag - single constant", "[tree_diff]")
     CHECK(dn.Value == Catch::Approx(1.0F));
 }
 
-TEST_CASE("BuildJacobianDag - variable leaf yields zero gradient", "[tree_diff]")
+TEST_CASE("BuildJacobianDag - non-optimizable variable leaf yields zero gradient", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
-    nodes.push_back(Node{NodeType::Variable});
+    auto v = Node{NodeType::Variable}; v.Optimize = false;
+    nodes.push_back(v);
     Tree tree{nodes};
     auto dag = BuildJacobianDag(tree);
-    REQUIRE(dag.Roots.size() == 1); // Optimize=true by default (IsLeaf)
-    CHECK(dag.Roots[0] == NoGrad);
+    CHECK(dag.Roots.empty()); // no optimizable coefficients → no columns
+}
+
+TEST_CASE("BuildJacobianDag - optimizable variable leaf yields unweighted variable", "[tree_diff]")
+{
+    Operon::Vector<Node> nodes;
+    auto v = Node{NodeType::Variable}; v.Optimize = true; v.Value = 2.5F;
+    nodes.push_back(v);
+    Tree tree{nodes};
+    auto dag = BuildJacobianDag(tree);
+    REQUIRE(dag.Roots.size() == 1); // one coefficient
+    REQUIRE(dag.Roots[0] != NoGrad);
+    // d(w * X)/dw = X: the derivative node should be a Variable with Value=1 (unweighted)
+    auto& dn = dag.Nodes[dag.Roots[0]];
+    CHECK(dn.IsVariable());
+    CHECK(dn.Value == Catch::Approx(1.0F));
+    CHECK_FALSE(dn.Optimize);
 }
 
 TEST_CASE("BuildJacobianDag - no optimizable nodes means no roots", "[tree_diff]")

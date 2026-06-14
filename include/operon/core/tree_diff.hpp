@@ -20,10 +20,11 @@ struct JacobianDag {
 };
 
 // Build a DAG containing the original tree plus symbolic partial derivatives
-// w.r.t. each optimizable constant (Node::Optimize == true). Common
-// subexpressions across derivative columns are deduplicated via hash-consing;
-// shared nodes are referenced with NodeType::Ref. The tree does not need to
-// have been hashed before calling this.
+// w.r.t. each optimizable coefficient (Node::Optimize == true). Coefficients
+// include both Constant nodes and Variable nodes whose weight is being tuned.
+// Common subexpressions across derivative columns are deduplicated via
+// hash-consing; shared nodes are referenced with NodeType::Ref. The tree does
+// not need to have been hashed before calling this.
 OPERON_EXPORT auto BuildJacobianDag(Tree const& tree) -> JacobianDag;
 
 } // namespace Operon
