@@ -80,7 +80,8 @@ auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> std::shared_p
     static_cast<void>(GetOrCompile(tree, hash));
 
     // Compile the Jacobian outside any lock (deterministic — a double-compile on
-    // a very rare race is harmless).
+    // a very rare race is harmless). CompileJacobian is AVX2-only; on non-AVX2
+    // hardware it returns nullptr and JitLMCostFunction falls back to interpreter JacRev.
     auto dag    = Operon::BuildJacobianDag(tree);
     auto newJac = compiler_.CompileJacobian(dag);
 
