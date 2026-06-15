@@ -25,10 +25,11 @@ namespace Operon {
 // borrows the pointer; the caller is responsible for lifetime.
 class OPERON_EXPORT Zobrist {
     using Value = Operon::Vector<Operon::Scalar>;
-    using Extents = std::extents<int, static_cast<int>(NodeTypes::Count), std::dynamic_extent>;
+    using Extents = std::extents<int, std::dynamic_extent, std::dynamic_extent>;
     using Table   = Operon::MDArray<Operon::Hash, Extents>;
 
     Table table_;
+    Operon::Map<Operon::Hash, int> varIndex_;
 
     struct TranspositionTable;
     std::unique_ptr<TranspositionTable> tt_;
@@ -36,7 +37,10 @@ class OPERON_EXPORT Zobrist {
     mutable std::atomic<std::size_t> hits_{0};
 
 public:
-    Zobrist(Operon::RandomGenerator& rng, int maxLength);
+    // variableHashes must include every variable hash that can appear in a tree.
+    // Each variable gets its own row of independent random values so that
+    // permuting variables at different positions always yields a different hash.
+    Zobrist(Operon::RandomGenerator& rng, int maxLength, Operon::Span<Operon::Hash const> variableHashes);
     ~Zobrist();
     Zobrist(Zobrist const&)            = delete;
     Zobrist(Zobrist&&)                 = delete;
@@ -48,10 +52,13 @@ public:
 
     [[nodiscard]] auto ComputeHash(Operon::Node const& n, int pos) const -> Operon::Hash
     {
-        auto const i = NodeTypes::GetIndex(n.Type);
-        auto h = table_(i, pos);
-        if (n.IsVariable()) { h ^= n.HashValue; }
-        return h;
+        if (n.IsVariable()) {
+            auto const it = varIndex_.find(n.HashValue);
+            ENSURE(it != varIndex_.end());
+            auto const row = static_cast<int>(NodeTypes::Count) + it->second;
+            return table_(row, pos);
+        }
+        return table_(NodeTypes::GetIndex(n.Type), pos);
     }
 
     [[nodiscard]] auto ComputeHash(Operon::Tree const& tree) const -> Operon::Hash
