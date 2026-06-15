@@ -140,6 +140,7 @@ Dataset::Dataset(std::vector<std::vector<Scalar>> const& vals)
 
 auto Dataset::Wrap(gsl::not_null<Scalar const*> data, int rows, int cols) -> Dataset
 {
+    EXPECT(rows > 0 && cols > 0);
     return Dataset(ViewTag{}, data, rows, cols);
 }
 
