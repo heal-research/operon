@@ -101,7 +101,6 @@ auto main(int argc, char** argv) -> int
 
             if (key == "dataset") {
                 dataset = std::make_unique<Operon::Dataset>(value, true);
-                ENSURE(!dataset->IsView());
             }
             if (key == "seed") {
                 config.Seed = kv.as<size_t>();

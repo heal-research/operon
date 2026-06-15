@@ -29,22 +29,18 @@ private:
     Variables variables_;
     Storage   storage_;
     View      view_;
+    int       rows_{0}; // logical row count; storage_ has (rows_+7)&~7 rows for owning datasets
 
     std::optional<Vector<Scalar>> weights_;
 
-    // Padded column storage for SIMD consumers (e.g. JIT evaluator).
-    // Same column-major layout as storage_ but with stride = paddedRows_,
-    // so reading up to the next multiple of 8 past nRows is always safe.
-    // Trailing slots are zeroed. Only populated for owning (non-view) datasets.
-    Vector<Scalar> paddedCols_;
-    int            paddedRows_ = 0;
+    struct ViewTag {};
+    Dataset(ViewTag, gsl::not_null<Scalar const*> data, int rows, int cols);
 
-    auto ReadCsv(std::string const& path, bool hasHeader) -> Storage;
+    auto ReadCsv(std::string const& path, bool hasHeader) -> std::pair<Storage, int>;
     void InitializeVariables(std::vector<std::string> const&);
-    void BuildPaddedCols();
 
     [[nodiscard]] auto ColSpan(int idx) const noexcept -> Span<Scalar const> {
-        return { view_.data_handle() + (static_cast<ptrdiff_t>(idx) * view_.extent(0)), static_cast<size_t>(view_.extent(0)) };
+        return { view_.data_handle() + (static_cast<ptrdiff_t>(idx) * view_.extent(0)), static_cast<size_t>(rows_) };
     }
 
 public:
@@ -65,10 +61,19 @@ public:
 
     auto operator==(Dataset const& rhs) const noexcept -> bool;
 
+    // Returns true when the dataset wraps external memory (created via Dataset::Wrap).
+    // Non-owning datasets do not support mutations or GetPaddedValues.
     [[nodiscard]] auto IsView() const noexcept -> bool { return storage_.size() == 0; }
 
+    // Expert factory: wraps an externally-owned, already-padded buffer without copying.
+    // Caller must guarantee:
+    //   - buffer has ((rows+7)&~7) * cols float32 elements in column-major order
+    //   - tail rows [rows, (rows+7)&~7) are zeroed
+    //   - buffer outlives the Dataset
+    static auto Wrap(gsl::not_null<Scalar const*> data, int rows, int cols) -> Dataset;
+
     template<std::integral T = int>
-    [[nodiscard]] auto Rows() const -> T { return static_cast<T>(view_.extent(0)); }
+    [[nodiscard]] auto Rows() const -> T { return static_cast<T>(rows_); }
 
     template<std::integral T = int>
     [[nodiscard]] auto Cols() const -> T { return static_cast<T>(view_.extent(1)); }
@@ -88,10 +93,11 @@ public:
     [[nodiscard]] auto GetValues(int64_t index) const noexcept -> Span<Scalar const>;
     [[nodiscard]] auto GetValues(Variable const& var) const noexcept -> Span<Scalar const> { return GetValues(var.Hash); }
 
-    // Padded column accessors for SIMD consumers. Each column is backed by
-    // paddedRows_ = (nRows+7)&~7 floats; slots [nRows, paddedRows_) are zeroed.
-    // Only valid for owning datasets (IsView() == false).
-    [[nodiscard]] auto PaddedRows() const noexcept -> int { return paddedRows_; }
+    // Padded column accessors for SIMD consumers. For owning datasets, storage_ has
+    // (nRows+7)&~7 rows; for Wrap()-created views, the caller pre-padded the buffer.
+    // In both cases slots [nRows, PaddedRows()) are zero. Not valid for IsView() datasets
+    // created via means other than Wrap() (i.e., there is no un-padded view constructor).
+    [[nodiscard]] auto PaddedRows() const noexcept -> int { return static_cast<int>(view_.extent(0)); }
     [[nodiscard]] auto GetPaddedValues(int64_t index) const noexcept -> Scalar const*;
     [[nodiscard]] auto GetPaddedValues(Operon::Hash hash) const noexcept -> Scalar const*;
     [[nodiscard]] auto GetPaddedValues(std::string const& name) const noexcept -> Scalar const*;

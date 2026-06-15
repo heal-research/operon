@@ -299,7 +299,7 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
     problem.SetTestRange(range);
     problem.SetTarget(target);
 
-    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength));
+    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength), inputs);
 
     auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
         problem.GetPrimitiveSet().SetConfig(cfg);
@@ -443,7 +443,7 @@ TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
     problem.SetTestRange(range);
     problem.SetTarget(target);
 
-    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength));
+    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength), inputs);
 
     auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
         problem.GetPrimitiveSet().SetConfig(cfg | NodeType::Constant);

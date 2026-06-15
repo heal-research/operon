@@ -775,8 +775,8 @@ auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<Comp
     cc.jmp(mainBegin);
     cc.bind(mainEnd_lbl);
 
-    // No scalar tail: callers must round nRows up to the next multiple of 8
-    // and provide column buffers padded to that size (Dataset::paddedCols_).
+    // No scalar tail: callers must use Dataset::GetPaddedValues which returns
+    // columns backed by paddedRows = (nRows+7)&~7 zero-padded floats.
 
     cc.ret();
     cc.end_func();
