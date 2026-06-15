@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "operon/core/tree.hpp"
+#include "operon/core/tree_diff.hpp"
 #include "operon/core/types.hpp"
 
 namespace Operon::JIT {
@@ -21,6 +22,15 @@ namespace Operon::JIT {
 //   nRows:  int32_t
 //   consts: float const[nConsts]   -- optimizable coefficients, postfix order
 using EvalFn = void(*)(float* out, float const* const* cols, int32_t nRows, float const* consts);
+
+// Compiled Jacobian function signature.
+//   outs:   float*[nConsts]        -- one output column pointer per derivative
+//   cols:   float const*[nVars]    -- column pointers, indexed by varOrder
+//   nRows:  int32_t
+//   consts: float const[nConsts]   -- optimizable coefficients, postfix order
+//
+// outs[k][row] = d_f/d_c_k(row).  Caller allocates; each outs[k] must hold nRows floats.
+using EvalJacFn = void(*)(float* const* outs, float const* const* cols, int32_t nRows, float const* consts);
 
 // A compiled tree function.  Non-copyable; owns the JIT-allocated code page.
 struct CompiledTree {
@@ -38,6 +48,21 @@ struct CompiledTree {
     CompiledTree& operator=(CompiledTree&&) = delete;
 };
 
+// A compiled Jacobian (f and all ∂f/∂c_k in one pass).  Non-copyable.
+struct CompiledJacobian {
+    asmjit::JitRuntime& rt;
+    EvalJacFn fn = nullptr;
+    std::vector<Operon::Hash> varOrder;
+    int nConsts{}; // number of derivative output columns
+
+    explicit CompiledJacobian(asmjit::JitRuntime& rt_) noexcept : rt(rt_) {}
+    ~CompiledJacobian() { if (fn) { rt.release(reinterpret_cast<void*>(fn)); } }
+    CompiledJacobian(CompiledJacobian const&) = delete;
+    CompiledJacobian& operator=(CompiledJacobian const&) = delete;
+    CompiledJacobian(CompiledJacobian&&) = delete;
+    CompiledJacobian& operator=(CompiledJacobian&&) = delete;
+};
+
 // JIT-compiles Operon trees to scalar native row-loops (Phase 1).
 // One JitRuntime is shared across all trees compiled by this instance.
 class TreeCompiler {
@@ -50,6 +75,10 @@ public:
     // AVX2 vectorized path: processes 8 rows/iteration.
     // Returns nullptr if AVX2 is not available or compilation fails.
     auto CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<CompiledTree>;
+
+    // Compiles f and all ∂f/∂c_k into a single AVX2 function.
+    // Returns nullptr if AVX2 is unavailable, compilation fails, or dag has no roots.
+    auto CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<CompiledJacobian>;
 
     auto Runtime() noexcept -> asmjit::JitRuntime& { return rt_; }
 

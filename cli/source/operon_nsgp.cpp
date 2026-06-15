@@ -101,7 +101,6 @@ auto main(int argc, char** argv) -> int
 
             if (key == "dataset") {
                 dataset = std::make_unique<Operon::Dataset>(value, true);
-                ENSURE(!dataset->IsView());
             }
             if (key == "seed") {
                 config.Seed = kv.as<size_t>();
@@ -260,7 +259,7 @@ auto main(int argc, char** argv) -> int
         std::unique_ptr<Operon::Zobrist> zobrist;
         if (useJit || result["transposition-cache"].as<bool>()) {
             Operon::RandomGenerator cacheRng(config.Seed);
-            zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength));
+            zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
             if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
         }
 

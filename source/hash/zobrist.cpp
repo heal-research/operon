@@ -12,11 +12,14 @@ struct Zobrist::TranspositionTable {
     gtl::parallel_flat_hash_map_m<Operon::Hash, std::pair<Zobrist::Value, std::size_t>> Map;
 };
 
-Zobrist::Zobrist(Operon::RandomGenerator& rng, int maxLength)
-    : table_(static_cast<int>(NodeTypes::Count), maxLength)
+Zobrist::Zobrist(Operon::RandomGenerator& rng, int maxLength, Operon::Span<Operon::Hash const> variableHashes)
+    : table_(static_cast<int>(NodeTypes::Count) + static_cast<int>(variableHashes.size()), maxLength)
     , tt_(std::make_unique<TranspositionTable>())
 {
     std::generate(table_.container().begin(), table_.container().end(), std::ref(rng));
+    for (int i = 0; i < static_cast<int>(variableHashes.size()); ++i) {
+        varIndex_[variableHashes[i]] = i;
+    }
 }
 
 Zobrist::~Zobrist() = default;
