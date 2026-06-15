@@ -51,14 +51,15 @@ enum class NodeType : uint8_t {
     // nullary symbols (dynamic can be anything)
     Dynamic,
     Constant,
-    Variable
+    Variable,
+    Ref       // structural sharing: a backward reference to another node by index
 };
 
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 
 struct NodeTypes {
     // total number of distinct node types
-    static auto constexpr Count = static_cast<std::size_t>(NodeType::Variable) + 1UL;
+    static auto constexpr Count = static_cast<std::size_t>(NodeType::Ref) + 1UL;
 
     // returns the index of the given type in the NodeType enum
     static constexpr auto GetIndex(NodeType type) -> size_t
@@ -106,6 +107,7 @@ struct Node {
     NodeType Type;
     bool IsEnabled;
     bool Optimize;
+    uint16_t RefTo{0}; // only meaningful when Type == NodeType::Ref; must point backward (RefTo < index of this node)
 
     Node() = default;
 
@@ -141,6 +143,14 @@ struct Node {
     {
         Node node(NodeType::Constant);
         node.Value = static_cast<Operon::Scalar>(value);
+        return node;
+    }
+
+    static auto Ref(uint16_t target) noexcept
+    {
+        Node node(NodeType::Ref);
+        node.RefTo    = target;
+        node.Optimize = false; // Ref has no value of its own; excluding it prevents a phantom coefficient
         return node;
     }
 
@@ -190,6 +200,7 @@ struct Node {
 
     [[nodiscard]] inline auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
     [[nodiscard]] inline auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
+    [[nodiscard]] inline auto IsRef()      const -> bool { return Is<NodeType::Ref>(); }
     [[nodiscard]] inline auto IsAddition() const -> bool { return Is<NodeType::Add>(); }
     [[nodiscard]] inline auto IsSubtraction() const -> bool { return Is<NodeType::Sub>(); }
     [[nodiscard]] inline auto IsMultiplication() const -> bool { return Is<NodeType::Mul>(); }
@@ -218,7 +229,7 @@ struct Node {
     static auto constexpr IsUnary = Type > NodeType::Powabs && Type < NodeType::Dynamic;
 
     template<NodeType Type>
-    static auto constexpr IsNullary = Type > NodeType::Square;
+    static auto constexpr IsNullary = Type > NodeType::Square; // Dynamic, Constant, Variable, Ref
 };
 } // namespace Operon
 #endif
