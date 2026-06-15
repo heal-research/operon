@@ -56,6 +56,7 @@ namespace {
         { NodeType::Dynamic,  std::make_pair("dyn", "user-defined function" ) },
         { NodeType::Constant, std::make_pair("constant", "a constant value" ) },
         { NodeType::Variable, std::make_pair("variable", "a dataset input with an associated weight" ) },
+        { NodeType::Ref,      std::make_pair("ref", "structural reference to another node (enables DAG sharing)" ) },
     };
 
     auto Node::Name() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
