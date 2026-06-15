@@ -107,7 +107,7 @@ struct Node {
     NodeType Type;
     bool IsEnabled;
     bool Optimize;
-    uint16_t RefTo{0}; // only meaningful when Type == NodeType::Ref; must point backward (RefTo < index of this node)
+    uint16_t RefTo; // only meaningful when Type == NodeType::Ref; must point backward (RefTo < index of this node)
 
     Node() = default;
 
@@ -125,6 +125,7 @@ struct Node {
         , Level(0UL)
         , Parent(0UL)
         , Type(type)
+        , RefTo(0)
     {
         if (Type < NodeType::Abs) // Add, Mul, Sub, Div, Fmin, Fmax, Aq, Pow, Powabs
         {
