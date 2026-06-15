@@ -16,6 +16,8 @@
 // Must be included AFTER eve headers so the templates can instantiate.
 #include "operon/interpreter/backend/eve/functions.hpp"
 
+#include <immintrin.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -266,9 +268,7 @@ void emitNodesScalar(
         case NodeType::Cbrt:   { res = invokeF1(cc, reinterpret_cast<void*>(scalar_cbrt), args[0]); break; }
         case NodeType::Ceil: {
             res = cc.new_xmm_ss();
-            cc.vroundss(res, args[0], args[0],
-                        Imm(static_cast<uint8_t>(RoundImm::kUp) |
-                            static_cast<uint8_t>(RoundImm::kSuppress)));
+            cc.vroundss(res, args[0], args[0], Imm(0x0a)); // round-up + suppress
             break;
         }
         case NodeType::Cos:    { res = invokeF1(cc, reinterpret_cast<void*>(scalar_cos),  args[0]); break; }
@@ -276,9 +276,7 @@ void emitNodesScalar(
         case NodeType::Exp:    { res = invokeF1(cc, reinterpret_cast<void*>(scalar_exp),  args[0]); break; }
         case NodeType::Floor: {
             res = cc.new_xmm_ss();
-            cc.vroundss(res, args[0], args[0],
-                        Imm(static_cast<uint8_t>(RoundImm::kDown) |
-                            static_cast<uint8_t>(RoundImm::kSuppress)));
+            cc.vroundss(res, args[0], args[0], Imm(0x09)); // round-down + suppress
             break;
         }
         case NodeType::Log:    { res = invokeF1(cc, reinterpret_cast<void*>(scalar_log),    args[0]); break; }
@@ -409,62 +407,50 @@ auto TreeCompiler::Compile(Operon::Tree const& tree) -> std::unique_ptr<Compiled
 
 namespace {
 
-// In-place float[8] transcendental helpers — eve-backed AVX2 SIMD.
-// Signature: void fn(float* p) — operates on exactly 8 floats in-place.
-// Called from CompileAVX2 JIT code via a 32-byte aligned stack buffer.
-// Compiled with -mavx2 so eve::wide<float, eve::fixed<8>> maps to a single ymm register.
+// AVX2 transcendental helpers — take and return __m256 directly via ymm registers.
+// EVE wide<float,fixed<8>> has an implicit operator storage_type() and a storage_type
+// constructor, so returning/constructing W8(v) is zero-cost: just a ymm register.
 using W8 = eve::wide<float, eve::fixed<8>>;
-static void vec_fabsf (float* p) { eve::store(eve::abs  (W8{p}), p); }
-static void vec_acosf (float* p) { eve::store(eve::acos (W8{p}), p); }
-static void vec_asinf (float* p) { eve::store(eve::asin (W8{p}), p); }
-static void vec_atanf (float* p) { eve::store(eve::atan (W8{p}), p); }
-static void vec_cbrtf (float* p) { eve::store(eve::cbrt (W8{p}), p); }
-static void vec_cosf  (float* p) { eve::store(Operon::Backend::detail::FastSinCos<false, float>(W8{p}), p); }
-static void vec_coshf (float* p) { eve::store(eve::cosh (W8{p}), p); }
-static void vec_expf  (float* p) { eve::store(Operon::Backend::detail::FastExp<float>  (W8{p}), p); }
-static void vec_logf  (float* p) { eve::store(Operon::Backend::detail::FastLog<float>  (W8{p}), p); }
-static void vec_log1pf(float* p) { eve::store(eve::log1p(W8{p}), p); }
-static void vec_sinf  (float* p) { eve::store(Operon::Backend::detail::FastSinCos<true,  float>(W8{p}), p); }
-static void vec_sinhf (float* p) { eve::store(eve::sinh (W8{p}), p); }
-static void vec_tanf  (float* p) { eve::store(eve::tan  (W8{p}), p); }
-static void vec_tanhf (float* p) { eve::store(Operon::Backend::detail::FastTanh<float>(W8{p}), p); }
-// Match interpreter's FastPow exactly: NaN for negative base with non-integer exponent,
-// sign correction for negative base with odd integer exponent, 0^0=1, x^0=1.
-static void vec_powf  (float* p, float const* q) { eve::store(Operon::Backend::detail::FastPow<float>(W8{p}, W8{q}), p); }
+static __m256 vec_fabsf  (__m256 v) noexcept { return eve::abs  (W8(v)); }
+static __m256 vec_acosf  (__m256 v) noexcept { return eve::acos (W8(v)); }
+static __m256 vec_asinf  (__m256 v) noexcept { return eve::asin (W8(v)); }
+static __m256 vec_atanf  (__m256 v) noexcept { return eve::atan (W8(v)); }
+static __m256 vec_cbrtf  (__m256 v) noexcept { return eve::cbrt (W8(v)); }
+static __m256 vec_cosf   (__m256 v) noexcept { return Backend::detail::FastSinCos<false, float>(W8(v)); }
+static __m256 vec_coshf  (__m256 v) noexcept { return eve::cosh (W8(v)); }
+static __m256 vec_expf   (__m256 v) noexcept { return Backend::detail::FastExp <float>(W8(v)); }
+static __m256 vec_logf   (__m256 v) noexcept { return Backend::detail::FastLog <float>(W8(v)); }
+static __m256 vec_logabsf(__m256 v) noexcept { return Backend::detail::FastLog <float>(W8(eve::abs(W8(v)))); }
+static __m256 vec_log1pf (__m256 v) noexcept { return eve::log1p(W8(v)); }
+static __m256 vec_sinf   (__m256 v) noexcept { return Backend::detail::FastSinCos<true, float>(W8(v)); }
+static __m256 vec_sinhf  (__m256 v) noexcept { return eve::sinh (W8(v)); }
+static __m256 vec_tanf   (__m256 v) noexcept { return eve::tan  (W8(v)); }
+static __m256 vec_tanhf  (__m256 v) noexcept { return Backend::detail::FastTanh<float>(W8(v)); }
+// Match interpreter's FastPow exactly.
+static __m256 vec_powf   (__m256 a, __m256 b) noexcept { return Backend::detail::FastPow<float>(W8(a), W8(b)); }
 
-// Apply a void(float*) helper to a ymm register via a 32-byte aligned stack buffer.
-// Returns the new ymm register containing the results.
-auto invokeF1_ps(Compiler& cc, void* fn_ptr, Vec arg) -> Vec {
-    Mem scratch = cc.new_stack(32, 32);
-    cc.vmovaps(scratch, arg);
-    Gp ptr = cc.new_gp_ptr();
-    cc.lea(ptr, scratch);
-    InvokeNode* inv{};
-    cc.invoke(Out(inv), reinterpret_cast<uint64_t>(fn_ptr),
-              FuncSignature::build<void, float*>());
-    inv->set_arg(0, ptr);
+// __m256 TypeId (89 = TypeId::kFloat32x8): passed/returned in ymm registers on x86-64 SysV ABI.
+constexpr FuncSignature ymm_f32x8_f32x8   { CallConvId::kCDecl, FuncSignature::kNoVarArgs, TypeId::kFloat32x8, TypeId::kFloat32x8 };
+constexpr FuncSignature ymm_f32x8_f32x8x2 { CallConvId::kCDecl, FuncSignature::kNoVarArgs, TypeId::kFloat32x8, TypeId::kFloat32x8, TypeId::kFloat32x8 };
+
+// Invoke fn(__m256) -> __m256 directly in ymm registers: no stack spill needed.
+auto invokeF1_ps(Compiler& cc, __m256(*fn)(__m256) noexcept, Vec arg) -> Vec {
     Vec result = cc.new_ymm_ps();
-    cc.vmovaps(result, scratch);
+    InvokeNode* inv{};
+    cc.invoke(Out(inv), reinterpret_cast<uint64_t>(fn), ymm_f32x8_f32x8);
+    inv->set_arg(0, arg);
+    inv->set_ret(0, result);
     return result;
 }
 
-// Apply vec_powf(p, q): store both ymm args to aligned scratch, call, load result.
+// Invoke vec_powf(__m256, __m256) -> __m256 directly in ymm registers.
 auto invokePowf_ps(Compiler& cc, Vec a, Vec b) -> Vec {
-    Mem scratchA = cc.new_stack(32, 32);
-    Mem scratchB = cc.new_stack(32, 32);
-    cc.vmovaps(scratchA, a);
-    cc.vmovaps(scratchB, b);
-    Gp ptrA = cc.new_gp_ptr();
-    Gp ptrB = cc.new_gp_ptr();
-    cc.lea(ptrA, scratchA);
-    cc.lea(ptrB, scratchB);
-    InvokeNode* inv{};
-    cc.invoke(Out(inv), reinterpret_cast<uint64_t>(reinterpret_cast<void*>(vec_powf)),
-              FuncSignature::build<void, float*, float const*>());
-    inv->set_arg(0, ptrA);
-    inv->set_arg(1, ptrB);
     Vec result = cc.new_ymm_ps();
-    cc.vmovaps(result, scratchA);
+    InvokeNode* inv{};
+    cc.invoke(Out(inv), reinterpret_cast<uint64_t>(vec_powf), ymm_f32x8_f32x8x2);
+    inv->set_arg(0, a);
+    inv->set_arg(1, b);
+    inv->set_ret(0, result);
     return result;
 }
 
@@ -628,54 +614,46 @@ void emitNodesAVX2(
         }
         case NodeType::Pow:    { res = invokePowf_ps(cc, args[0], args[1]); break; }
         case NodeType::Powabs: {
-            Vec absA = invokeF1_ps(cc, reinterpret_cast<void*>(vec_fabsf), args[0]);
+            Vec absA = invokeF1_ps(cc, vec_fabsf, args[0]);
             res = invokePowf_ps(cc, absA, args[1]);
             break;
         }
-        case NodeType::Abs:    { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_fabsf), args[0]); break; }
-        case NodeType::Acos:   { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_acosf), args[0]); break; }
-        case NodeType::Asin:   { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_asinf), args[0]); break; }
-        case NodeType::Atan:   { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_atanf), args[0]); break; }
-        case NodeType::Cbrt:   { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_cbrtf), args[0]); break; }
+        case NodeType::Abs:    { res = invokeF1_ps(cc, vec_fabsf,   args[0]); break; }
+        case NodeType::Acos:   { res = invokeF1_ps(cc, vec_acosf,   args[0]); break; }
+        case NodeType::Asin:   { res = invokeF1_ps(cc, vec_asinf,   args[0]); break; }
+        case NodeType::Atan:   { res = invokeF1_ps(cc, vec_atanf,   args[0]); break; }
+        case NodeType::Cbrt:   { res = invokeF1_ps(cc, vec_cbrtf,   args[0]); break; }
         case NodeType::Ceil: {
             res = cc.new_ymm_ps();
-            cc.vroundps(res, args[0],
-                        Imm(static_cast<uint8_t>(RoundImm::kUp) |
-                            static_cast<uint8_t>(RoundImm::kSuppress)));
+            cc.vroundps(res, args[0], Imm(0x0a)); // round-up + suppress
             break;
         }
-        case NodeType::Cos:    { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_cosf),   args[0]); break; }
-        case NodeType::Cosh:   { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_coshf),  args[0]); break; }
-        case NodeType::Exp:    { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_expf),   args[0]); break; }
+        case NodeType::Cos:    { res = invokeF1_ps(cc, vec_cosf,    args[0]); break; }
+        case NodeType::Cosh:   { res = invokeF1_ps(cc, vec_coshf,   args[0]); break; }
+        case NodeType::Exp:    { res = invokeF1_ps(cc, vec_expf,    args[0]); break; }
         case NodeType::Floor: {
             res = cc.new_ymm_ps();
-            cc.vroundps(res, args[0],
-                        Imm(static_cast<uint8_t>(RoundImm::kDown) |
-                            static_cast<uint8_t>(RoundImm::kSuppress)));
+            cc.vroundps(res, args[0], Imm(0x09)); // round-down + suppress
             break;
         }
-        case NodeType::Log:    { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_logf),   args[0]); break; }
-        case NodeType::Logabs: {
-            Vec absVal = invokeF1_ps(cc, reinterpret_cast<void*>(vec_fabsf), args[0]);
-            res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_logf), absVal);
-            break;
-        }
-        case NodeType::Log1p:  { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_log1pf), args[0]); break; }
-        case NodeType::Sin:    { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_sinf),   args[0]); break; }
-        case NodeType::Sinh:   { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_sinhf),  args[0]); break; }
+        case NodeType::Log:    { res = invokeF1_ps(cc, vec_logf,    args[0]); break; }
+        case NodeType::Logabs: { res = invokeF1_ps(cc, vec_logabsf, args[0]); break; }
+        case NodeType::Log1p:  { res = invokeF1_ps(cc, vec_log1pf,  args[0]); break; }
+        case NodeType::Sin:    { res = invokeF1_ps(cc, vec_sinf,    args[0]); break; }
+        case NodeType::Sinh:   { res = invokeF1_ps(cc, vec_sinhf,   args[0]); break; }
         case NodeType::Sqrt: {
             res = cc.new_ymm_ps();
             cc.vsqrtps(res, args[0]);
             break;
         }
         case NodeType::Sqrtabs: {
-            Vec absVal = invokeF1_ps(cc, reinterpret_cast<void*>(vec_fabsf), args[0]);
+            Vec absVal = invokeF1_ps(cc, vec_fabsf, args[0]);
             res = cc.new_ymm_ps();
             cc.vsqrtps(res, absVal);
             break;
         }
-        case NodeType::Tan:    { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_tanf),   args[0]); break; }
-        case NodeType::Tanh:   { res = invokeF1_ps(cc, reinterpret_cast<void*>(vec_tanhf),  args[0]); break; }
+        case NodeType::Tan:    { res = invokeF1_ps(cc, vec_tanf,    args[0]); break; }
+        case NodeType::Tanh:   { res = invokeF1_ps(cc, vec_tanhf,   args[0]); break; }
         case NodeType::Square: {
             res = cc.new_ymm_ps();
             cc.vmulps(res, args[0], args[0]);
