@@ -17,19 +17,6 @@
 
 namespace Operon {
 
-void Dataset::BuildPaddedCols()
-{
-    auto const nrows = Rows<int>();
-    auto const ncols = Cols<int>();
-    paddedRows_ = (nrows + 7) & ~7;
-    paddedCols_.assign(static_cast<std::size_t>(paddedRows_) * static_cast<std::size_t>(ncols), Scalar{0});
-    for (auto j = 0; j < ncols; ++j) {
-        auto const src = ColSpan(j);
-        std::copy(src.begin(), src.end(),
-                  paddedCols_.data() + static_cast<std::ptrdiff_t>(j) * paddedRows_);
-    }
-}
-
 namespace {
     auto VariablesFromNames(auto const& names) -> Dataset::Variables {
         Hasher const hasher;
@@ -51,10 +38,11 @@ namespace {
     auto StorageFromCols(std::vector<std::vector<Operon::Scalar>> const& cols) -> Dataset::Storage {
         auto const ncols = static_cast<int>(cols.size());
         auto const nrows = static_cast<int>(cols.front().size());
-        Dataset::Storage s(nrows, ncols);
+        auto const pr    = (nrows + 7) & ~7; // padded rows; tail is zero (value-init)
+        Dataset::Storage s(pr, ncols);
         auto* dst = s.container().data();
         for (auto j = 0; j < ncols; ++j) {
-            std::copy_n(cols[j].data(), nrows, dst + (static_cast<ptrdiff_t>(j) * nrows));
+            std::copy_n(cols[j].data(), nrows, dst + (static_cast<ptrdiff_t>(j) * pr));
         }
         return s;
     }
@@ -64,7 +52,7 @@ namespace {
     }
 } // namespace
 
-auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Storage
+auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> std::pair<Dataset::Storage, int>
 {
     std::ifstream f(path);
     aria::csv::CsvParser parser(f);
@@ -117,74 +105,95 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> Dataset::Stora
         ++rowIdx;
     }
 
-    Storage s(nrow, ncol);
-    std::copy(buf.begin(), buf.end(), s.container().data());
-    return s;
+    auto const pr = (nrow + 7) & ~7; // padded rows; tail zero-init by value-init of vector
+    Storage s(pr, ncol);
+    auto* dst = s.container().data();
+    for (auto j = 0; j < ncol; ++j) {
+        std::copy_n(buf.data() + static_cast<ptrdiff_t>(j) * nrow, nrow, dst + static_cast<ptrdiff_t>(j) * pr);
+    }
+    return { std::move(s), nrow };
 }
 
 Dataset::Dataset(std::string const& path, bool hasHeader)
-    : storage_(ReadCsv(path, hasHeader))
-    , view_(MakeView(storage_))
 {
-    BuildPaddedCols();
+    auto [stor, nr] = ReadCsv(path, hasHeader);
+    storage_ = std::move(stor);
+    rows_    = nr;
+    view_    = MakeView(storage_);
 }
 
 Dataset::Dataset(std::vector<std::string> const& vars, std::vector<std::vector<Scalar>> const& vals)
     : variables_(VariablesFromNames(vars))
     , storage_(StorageFromCols(vals))
     , view_(MakeView(storage_))
+    , rows_(static_cast<int>(vals.front().size()))
 {
-    BuildPaddedCols();
 }
 
 Dataset::Dataset(std::vector<std::vector<Scalar>> const& vals)
     : variables_(DefaultVariables(static_cast<int>(vals.size())))
     , storage_(StorageFromCols(vals))
     , view_(MakeView(storage_))
+    , rows_(static_cast<int>(vals.front().size()))
 {
-    BuildPaddedCols();
+}
+
+auto Dataset::Wrap(gsl::not_null<Scalar const*> data, int rows, int cols) -> Dataset
+{
+    return Dataset(ViewTag{}, data, rows, cols);
+}
+
+Dataset::Dataset(ViewTag, gsl::not_null<Scalar const*> data, int rows, int cols)
+    : variables_(DefaultVariables(cols))
+    , view_(data, (rows + 7) & ~7, cols)
+    , rows_(rows)
+{
+    // storage_ stays empty → IsView() == true; caller guarantees padding
 }
 
 Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
     : variables_(DefaultVariables(cols))
-    , view_(data, rows, cols)
 {
-    BuildPaddedCols();
+    auto const pr = (rows + 7) & ~7;
+    storage_ = Storage(pr, cols);
+    auto* dst = storage_.container().data();
+    for (auto j = 0; j < cols; ++j) {
+        std::copy_n(data.get() + static_cast<ptrdiff_t>(j) * rows, rows,
+                    dst + static_cast<ptrdiff_t>(j) * pr);
+    }
+    view_ = MakeView(storage_);
+    rows_ = rows;
 }
 
 Dataset::Dataset(Dataset const& rhs)
     : variables_(rhs.variables_)
     , weights_(rhs.weights_)
-    , paddedRows_(rhs.paddedRows_)
 {
-    auto const nrows = rhs.view_.extent(0);
-    auto const ncols = rhs.view_.extent(1);
-    storage_ = Storage(nrows, ncols);
-    auto const n = static_cast<size_t>(nrows) * static_cast<size_t>(ncols);
-    std::copy_n(rhs.view_.data_handle(), n, storage_.container().data());
+    auto const pr    = static_cast<ptrdiff_t>(rhs.view_.extent(0)); // paddedRows
+    auto const ncols = static_cast<int>(rhs.view_.extent(1));
+    storage_ = Storage(pr, ncols);
+    std::copy_n(rhs.view_.data_handle(), static_cast<size_t>(pr) * ncols, storage_.container().data());
     view_ = MakeView(storage_);
-    paddedCols_ = rhs.paddedCols_;
+    rows_ = rhs.rows_;
 }
 
 Dataset::Dataset(Dataset&& rhs) noexcept
     : variables_(std::move(rhs.variables_))
     , storage_(std::move(rhs.storage_))
     , view_(rhs.view_)
+    , rows_(rhs.rows_)
     , weights_(std::move(rhs.weights_))
-    , paddedCols_(std::move(rhs.paddedCols_))
-    , paddedRows_(rhs.paddedRows_)
 {
 }
 
 auto Dataset::operator=(Dataset&& rhs) noexcept -> Dataset&
 {
     if (this != &rhs) {
-        variables_  = std::move(rhs.variables_);
-        storage_    = std::move(rhs.storage_);
-        view_       = rhs.view_;
-        weights_    = std::move(rhs.weights_);
-        paddedCols_ = std::move(rhs.paddedCols_);
-        paddedRows_ = rhs.paddedRows_;
+        variables_ = std::move(rhs.variables_);
+        storage_   = std::move(rhs.storage_);
+        view_      = rhs.view_;
+        rows_      = rhs.rows_;
+        weights_   = std::move(rhs.weights_);
     }
     return *this;
 }
@@ -194,9 +203,8 @@ void Dataset::Swap(Dataset& rhs) noexcept
     variables_.swap(rhs.variables_);
     std::swap(storage_, rhs.storage_);
     std::swap(view_, rhs.view_);
+    std::swap(rows_, rhs.rows_);
     std::swap(weights_, rhs.weights_);
-    paddedCols_.swap(rhs.paddedCols_);
-    std::swap(paddedRows_, rhs.paddedRows_);
 }
 
 auto Dataset::operator==(Dataset const& rhs) const noexcept -> bool
@@ -204,9 +212,15 @@ auto Dataset::operator==(Dataset const& rhs) const noexcept -> bool
     if (Rows() != rhs.Rows() || Cols() != rhs.Cols()) { return false; }
     if (variables_.size() != rhs.variables_.size()) { return false; }
     if (!std::equal(variables_.begin(), variables_.end(), rhs.variables_.begin())) { return false; }
-    auto const n = static_cast<size_t>(Rows()) * static_cast<size_t>(Cols());
-    return std::equal(view_.data_handle(), view_.data_handle() + n, rhs.view_.data_handle(),
-                      [](auto a, auto b) -> bool { return std::abs(a - b) < static_cast<Scalar>(1e-6); });
+    for (auto j = 0; j < Cols(); ++j) {
+        auto a = ColSpan(j);
+        auto b = rhs.ColSpan(j);
+        if (!std::equal(a.begin(), a.end(), b.begin(),
+                        [](auto x, auto y) -> bool { return std::abs(x - y) < static_cast<Scalar>(1e-6); })) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void Dataset::SetVariableNames(std::vector<std::string> const& names)
@@ -302,7 +316,7 @@ auto Dataset::Weights() const noexcept -> std::optional<Span<Scalar const>>
 
 void Dataset::Shuffle(Operon::RandomGenerator& random)
 {
-    if (IsView()) { throw std::runtime_error("Cannot shuffle: dataset does not own the data.\n"); }
+    if (IsView()) { throw std::runtime_error("Cannot shuffle a non-owning dataset.\n"); }
     std::vector<int> perm(Rows());
     std::iota(perm.begin(), perm.end(), 0);
     std::shuffle(perm.begin(), perm.end(), random);
@@ -312,56 +326,55 @@ void Dataset::Shuffle(Operon::RandomGenerator& random)
         for (auto i = 0; i < Rows(); ++i) { tmp[i] = (*weights_)[perm[i]]; }
         *weights_ = std::move(tmp);
     }
-    BuildPaddedCols();
 }
 
 void Dataset::Normalize(size_t i, Range range)
 {
-    if (IsView()) { throw std::runtime_error("Cannot normalize: dataset does not own the data.\n"); }
+    if (IsView()) { throw std::runtime_error("Cannot normalize a non-owning dataset.\n"); }
     EXPECT(range.Start() + range.Size() <= static_cast<size_t>(Rows()));
-    auto* col   = storage_.container().data() + (static_cast<ptrdiff_t>(i) * Rows()); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+    auto const stride = static_cast<ptrdiff_t>(view_.extent(0)); // paddedRows
+    auto* col   = storage_.container().data() + (static_cast<ptrdiff_t>(i) * stride); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
     auto* begin = col + range.Start();
     auto* end   = begin + range.Size();
     auto [minIt, maxIt] = std::minmax_element(begin, end);
     auto const min = *minIt;
     auto const rng = *maxIt - min;
     std::transform(col, col + Rows(), col, [min, rng](auto v) -> Scalar { return (v - min) / rng; });
-    BuildPaddedCols();
 }
 
 void Dataset::Standardize(size_t i, Range range)
 {
-    if (IsView()) { throw std::runtime_error("Cannot standardize: dataset does not own the data.\n"); }
+    if (IsView()) { throw std::runtime_error("Cannot standardize a non-owning dataset.\n"); }
     EXPECT(range.Start() + range.Size() <= static_cast<size_t>(Rows()));
-    auto* col   = storage_.container().data() + (static_cast<ptrdiff_t>(i) * Rows()); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+    auto const stride = static_cast<ptrdiff_t>(view_.extent(0)); // paddedRows
+    auto* col   = storage_.container().data() + (static_cast<ptrdiff_t>(i) * stride); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
     auto* begin = col + range.Start();
     auto const stats  = vstat::univariate::accumulate<Scalar>(begin, begin + range.Size());
     auto const stddev = std::sqrt(stats.variance);
     auto const mu     = stats.mean;
     std::transform(col, col + Rows(), col, [mu, stddev](auto v) -> Scalar { return (v - mu) / stddev; });
-    BuildPaddedCols();
 }
 
 void Dataset::PermuteRows(std::vector<int> const& perm)
 {
-    if (IsView()) { throw std::runtime_error("Cannot permute: dataset does not own the data.\n"); }
+    if (IsView()) { throw std::runtime_error("Cannot permute a non-owning dataset.\n"); }
     ENSURE(std::ssize(perm) == Rows());
-    auto const nrows = Rows();
-    auto const ncols = Cols();
+    auto const nrows  = Rows();
+    auto const stride = static_cast<ptrdiff_t>(view_.extent(0)); // paddedRows
+    auto const ncols  = Cols();
     auto* data = storage_.container().data();
     std::vector<Scalar> tmp(nrows);
     for (auto j = 0; j < ncols; ++j) {
-        auto* col = data + (static_cast<ptrdiff_t>(j) * nrows);
+        auto* col = data + (static_cast<ptrdiff_t>(j) * stride);
         for (auto k = 0; k < nrows; ++k) { tmp[k] = col[perm[k]]; }
         std::copy(tmp.begin(), tmp.end(), col);
+        // tail (col+nrows .. col+stride-1) remains zero
     }
-    BuildPaddedCols();
 }
 
 auto Dataset::GetPaddedValues(int64_t index) const noexcept -> Scalar const*
 {
-    ENSURE(!IsView());
-    return paddedCols_.data() + static_cast<std::ptrdiff_t>(index) * paddedRows_;
+    return view_.data_handle() + static_cast<std::ptrdiff_t>(index) * view_.extent(0);
 }
 
 auto Dataset::GetPaddedValues(Operon::Hash hash) const noexcept -> Scalar const*

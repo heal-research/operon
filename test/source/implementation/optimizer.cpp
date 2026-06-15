@@ -46,7 +46,11 @@ struct OptimizerFixture {
                 std::generate(col.begin(), col.end(), [&]() -> float { return Operon::Random::Uniform(rng, -1.0F, +1.0F); });
             }
             data.col(Ncol - 1) = data.col(0) + data.col(1) + data.col(2);
-            return Operon::Dataset(gsl::not_null{data.data()}, Nrow, Ncol);
+            std::vector<std::vector<Operon::Scalar>> cols(Ncol);
+            for (auto j = 0; j < Ncol; ++j) {
+                cols[j].assign(data.col(j).data(), data.col(j).data() + Nrow);
+            }
+            return Operon::Dataset(cols);
         }())
         , tree([&]() -> Tree {
             auto t = InfixParser::Parse("X1 + X2 + X3", ds);
