@@ -48,6 +48,7 @@ add_library(
     source/core/node.cpp
     source/core/pset.cpp
     source/core/tree.cpp
+    source/core/tree_diff.cpp
     source/core/version.cpp
     source/formatter/dot.cpp
     source/formatter/infix.cpp
