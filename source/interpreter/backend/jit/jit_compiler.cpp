@@ -268,7 +268,8 @@ void emitNodesScalar(
         case NodeType::Cbrt:   { res = invokeF1(cc, reinterpret_cast<void*>(scalar_cbrt), args[0]); break; }
         case NodeType::Ceil: {
             res = cc.new_xmm_ss();
-            cc.vroundss(res, args[0], args[0], Imm(0x0a)); // round-up + suppress
+            cc.vroundss(res, args[0], args[0],
+                        Imm(static_cast<uint8_t>(RoundImm::kUp) | static_cast<uint8_t>(RoundImm::kSuppress)));
             break;
         }
         case NodeType::Cos:    { res = invokeF1(cc, reinterpret_cast<void*>(scalar_cos),  args[0]); break; }
@@ -276,7 +277,8 @@ void emitNodesScalar(
         case NodeType::Exp:    { res = invokeF1(cc, reinterpret_cast<void*>(scalar_exp),  args[0]); break; }
         case NodeType::Floor: {
             res = cc.new_xmm_ss();
-            cc.vroundss(res, args[0], args[0], Imm(0x09)); // round-down + suppress
+            cc.vroundss(res, args[0], args[0],
+                        Imm(static_cast<uint8_t>(RoundImm::kDown) | static_cast<uint8_t>(RoundImm::kSuppress)));
             break;
         }
         case NodeType::Log:    { res = invokeF1(cc, reinterpret_cast<void*>(scalar_log),    args[0]); break; }
@@ -625,7 +627,8 @@ void emitNodesAVX2(
         case NodeType::Cbrt:   { res = invokeF1_ps(cc, vec_cbrtf,   args[0]); break; }
         case NodeType::Ceil: {
             res = cc.new_ymm_ps();
-            cc.vroundps(res, args[0], Imm(0x0a)); // round-up + suppress
+            cc.vroundps(res, args[0],
+                        Imm(static_cast<uint8_t>(RoundImm::kUp) | static_cast<uint8_t>(RoundImm::kSuppress)));
             break;
         }
         case NodeType::Cos:    { res = invokeF1_ps(cc, vec_cosf,    args[0]); break; }
@@ -633,7 +636,8 @@ void emitNodesAVX2(
         case NodeType::Exp:    { res = invokeF1_ps(cc, vec_expf,    args[0]); break; }
         case NodeType::Floor: {
             res = cc.new_ymm_ps();
-            cc.vroundps(res, args[0], Imm(0x09)); // round-down + suppress
+            cc.vroundps(res, args[0],
+                        Imm(static_cast<uint8_t>(RoundImm::kDown) | static_cast<uint8_t>(RoundImm::kSuppress)));
             break;
         }
         case NodeType::Log:    { res = invokeF1_ps(cc, vec_logf,    args[0]); break; }
