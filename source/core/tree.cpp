@@ -129,6 +129,14 @@ auto Tree::GetCoefficients() const -> std::vector<Operon::Scalar>
     return coefficients;
 }
 
+void Tree::GetCoefficients(std::vector<Operon::Scalar>& out) const
+{
+    out.clear();
+    for (auto const& n : nodes_) {
+        if (n.Optimize) { out.push_back(n.Value); }
+    }
+}
+
 void Tree::SetCoefficients(Operon::Span<Operon::Scalar const> coefficients)
 {
     size_t idx = 0;

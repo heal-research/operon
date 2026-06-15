@@ -361,9 +361,8 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
     }
 
     SECTION("Outlier suppression: zero weight on outlier row gives MSE = 0 for perfect model") {
+        data(0, 1) = 1000.0F; // inject outlier before dataset copies the array
         auto ds = makeDataset();
-        // inject a large outlier at row 0
-        data(0, 1) = 1000.0F;
         auto problem = makeProblem(&ds);
         auto perfect = makeInd(ds, 1.0F); // predicts X1 exactly (residual != 0 at row 0)
 

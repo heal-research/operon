@@ -83,6 +83,7 @@ public:
 
     void SetCoefficients(Operon::Span<Operon::Scalar const> coefficients);
     [[nodiscard]] auto GetCoefficients() const -> std::vector<Operon::Scalar>;
+    void GetCoefficients(std::vector<Operon::Scalar>& out) const;
 
     [[nodiscard]] auto ApplyCoefficients(Operon::Span<Operon::Scalar const> coefficients) const
     {

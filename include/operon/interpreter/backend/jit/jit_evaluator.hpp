@@ -48,9 +48,13 @@ public:
 
     void ClearCache();
 
-    // Returns the compiled function for `tree` (compiling on first call).
+    // Returns the compiled forward function for `tree` (compiling on first call).
     // Public so that JitLevenbergMarquardtOptimizer can share the same cache.
     [[nodiscard]] auto GetOrCompile(Tree const& tree) const -> std::shared_ptr<CompiledTree>;
+
+    // Returns the compiled Jacobian function for `tree` (compiling on first call).
+    // Keyed by the same structural hash as GetOrCompile. Thread-safe.
+    [[nodiscard]] auto GetOrCompileJacobian(Tree const& tree) const -> std::shared_ptr<CompiledJacobian>;
 
 private:
     [[nodiscard]] auto GetOrCompile(Tree const& tree, Hash hash) const -> std::shared_ptr<CompiledTree>;
@@ -61,9 +65,15 @@ private:
 
     mutable TreeCompiler compiler_;
 
-    struct JitCacheImpl;
-    mutable std::unique_ptr<JitCacheImpl> cache_;
-    mutable std::atomic<std::size_t>      hits_{0};
+    struct CacheImpl;
+    mutable std::unique_ptr<CacheImpl> cache_;
+    mutable std::atomic<std::size_t> hits_{0};
+    mutable std::atomic<std::size_t> avx2Fails_{0};    // AVX2 compile failed, scalar used
+    mutable std::atomic<std::size_t> compileFails_{0}; // both paths failed, ErrMax used
+
+public:
+    [[nodiscard]] auto Avx2Fails()    const -> std::size_t { return avx2Fails_.load(); }
+    [[nodiscard]] auto CompileFails() const -> std::size_t { return compileFails_.load(); }
 };
 
 } // namespace Operon::JIT

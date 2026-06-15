@@ -31,7 +31,7 @@ TEST_CASE("Zobrist - same tree yields same hash", "[zobrist]")
 {
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
-    Zobrist const cache(rng, MaxLength);
+    Zobrist const cache(rng, MaxLength, inputs);
 
     BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 20, 1, MaxLength);
@@ -47,7 +47,7 @@ TEST_CASE("Zobrist - different coefficients yield same hash", "[zobrist]")
     // search) can be reused for any structurally identical tree.
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
-    Zobrist const cache(rng, MaxLength);
+    Zobrist const cache(rng, MaxLength, inputs);
 
     BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     Operon::NormalCoefficientInitializer const coeffInit;
@@ -66,7 +66,7 @@ TEST_CASE("Zobrist - position sensitivity (deterministic)", "[zobrist]")
     // sin(cos(c)) and cos(sin(c)) have the same node types but at different
     // positions — the position-aware hash must distinguish them.
     Operon::RandomGenerator rng(Seed);
-    Zobrist const cache(rng, MaxLength);
+    Zobrist const cache(rng, MaxLength, {});  // no variables needed: trees use only constants
 
     // postfix: [Constant, Cos, Sin]  =>  sin(cos(c))
     Tree const tree1 = Tree({ Node(NodeType::Constant), Node(NodeType::Cos), Node(NodeType::Sin) }).UpdateNodes();
@@ -76,11 +76,33 @@ TEST_CASE("Zobrist - position sensitivity (deterministic)", "[zobrist]")
     REQUIRE(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
 }
 
+TEST_CASE("Zobrist - commuted variables yield different hashes", "[zobrist]")
+{
+    // Add(X, Y) and Add(Y, X) must hash differently so the JIT cache never
+    // applies a compiled function to a tree with swapped variable columns.
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    Zobrist const cache(rng, MaxLength, inputs);
+
+    auto const varX = ds.GetVariable("X1").value();
+    auto const varY = ds.GetVariable("X2").value();
+
+    Node nX(NodeType::Variable); nX.HashValue = varX.Hash; nX.IsEnabled = true;
+    Node nY(NodeType::Variable); nY.HashValue = varY.Hash; nY.IsEnabled = true;
+
+    // postfix: [X, Y, Add] => Add(X, Y)
+    Tree const treeXY = Tree({ nX, nY, Node(NodeType::Add) }).UpdateNodes();
+    // postfix: [Y, X, Add] => Add(Y, X)
+    Tree const treeYX = Tree({ nY, nX, Node(NodeType::Add) }).UpdateNodes();
+
+    REQUIRE(cache.ComputeHash(treeXY) != cache.ComputeHash(treeYX));
+}
+
 TEST_CASE("Zobrist - TryGet returns false on miss", "[zobrist]")
 {
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
-    Zobrist const cache(rng, MaxLength);
+    Zobrist const cache(rng, MaxLength, inputs);
 
     BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
@@ -95,7 +117,7 @@ TEST_CASE("Zobrist - Insert then TryGet roundtrip", "[zobrist]")
 {
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
-    Zobrist cache(rng, MaxLength);
+    Zobrist cache(rng, MaxLength, inputs);
 
     BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
@@ -116,7 +138,7 @@ TEST_CASE("Zobrist - Clear resets table and hit counter", "[zobrist]")
 {
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
-    Zobrist cache(rng, MaxLength);
+    Zobrist cache(rng, MaxLength, inputs);
 
     BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);
@@ -139,7 +161,7 @@ TEST_CASE("Zobrist - duplicate inserts increment count, not entries", "[zobrist]
 {
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
-    Zobrist cache(rng, MaxLength);
+    Zobrist cache(rng, MaxLength, inputs);
 
     BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
     auto tree = creator(rng, 10, 1, MaxLength);

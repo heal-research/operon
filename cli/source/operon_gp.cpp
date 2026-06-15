@@ -89,7 +89,6 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     // Apply overrides from parsed options
     dataset = std::make_unique<Operon::Dataset>(result["dataset"].as<std::string>(), /*hasHeader=*/true);
-    ENSURE(!dataset->IsView());
     if (result.contains("seed"))             { config.Seed = result["seed"].as<size_t>(); }
     if (result.contains("train"))            { trainingRange = Operon::ParseRange(result["train"].as<std::string>()); }
     if (result.contains("test"))             { testRange = Operon::ParseRange(result["test"].as<std::string>()); }
@@ -176,7 +175,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         std::unique_ptr<Operon::Zobrist> zobrist;
         if (useJit || result["transposition-cache"].as<bool>()) {
             Operon::RandomGenerator cacheRng(config.Seed);
-            zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength));
+            zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
             if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
         }
 

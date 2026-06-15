@@ -299,7 +299,7 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
     problem.SetTestRange(range);
     problem.SetTarget(target);
 
-    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength));
+    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength), inputs);
 
     auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
         problem.GetPrimitiveSet().SetConfig(cfg);
@@ -325,23 +325,29 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
         jit   .SetBudget(std::numeric_limits<size_t>::max());
 
         // --- cold-cache run: first pass includes compilation ---
-        {
+        auto const nThreads = std::max(std::size_t{1}, static_cast<std::size_t>(std::thread::hardware_concurrency()));
+        for (auto nT : {std::size_t{1}, nThreads}) {
             nb::Bench bc;
-            bc.title(title + " / cold cache (1 pass)")
+            bc.title(fmt::format("{} / cold cache ({} thread{})", title, nT, nT == 1 ? "" : "s"))
               .performanceCounters(true).epochs(1).epochIterations(1);
-            tf::Executor executor(1);
+            tf::Executor executor(nT);
             tf::Taskflow taskflow;
-            Vector<Scalar> buf(range.Size());
+            Vector<Vector<Scalar>> slots(executor.num_workers());
+            for (auto& s : slots) { s.resize(range.Size()); }
             double sum{0};
             taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{},
-                [&](Individual& ind) -> Scalar { return jit(rd, ind, {buf}).front(); });
+                [&](Individual& ind) -> Scalar {
+                    auto& buf = slots[executor.this_worker_id()];
+                    return jit(rd, ind, {buf}).front();
+                });
             bc.batch(static_cast<double>(totalNodes * range.Size()))
-              .run("jit (cold)", [&]() -> double {
-                  jit.ClearCache();
-                  sum = 0;
-                  executor.run(taskflow).wait();
-                  return sum;
-              });
+              .run(fmt::format("jit (cold, {} thread{})", nT, nT == 1 ? "" : "s"),
+                   [&]() -> double {
+                       jit.ClearCache();
+                       sum = 0;
+                       executor.run(taskflow).wait();
+                       return sum;
+                   });
         }
 
         // Pre-warm JIT cache for the remaining comparisons.
@@ -437,7 +443,7 @@ TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
     problem.SetTestRange(range);
     problem.SetTarget(target);
 
-    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength));
+    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength), inputs);
 
     auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
         problem.GetPrimitiveSet().SetConfig(cfg | NodeType::Constant);
