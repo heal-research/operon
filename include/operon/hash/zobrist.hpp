@@ -7,12 +7,63 @@
 #include <atomic>
 #include <memory>
 
+#include <gtl/phmap.hpp>
+
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon {
+
+// ── Cache primitives ─────────────────────────────────────────────────────────
+
+// Variadic mixin: assembles a cache entry from multiple data components.
+// Example:  using FitnessEntry = CacheEntry<FitnessData>;
+//           using JitEntry     = CacheEntry<VisitData, MetaData>;
+template<typename... Data>
+struct CacheEntry : Data... {};
+
+// Fitness value produced by the evaluator after local search.
+struct FitnessData {
+    Vector<Scalar>  Value;
+    std::size_t     Visits{1};
+};
+
+using FitnessEntry = CacheEntry<FitnessData>;
+
+// Thread-safe cache keyed by Operon::Hash, backed by gtl::parallel_flat_hash_map_m.
+template<typename Entry>
+class ZobristCache {
+    gtl::parallel_flat_hash_map_m<Hash, Entry> map_;
+
+public:
+    template<typename Fn>
+    auto IfContains(Hash h, Fn&& fn) const -> bool {
+        bool found = false;
+        map_.if_contains(h, [&](auto const& kv) { std::forward<Fn>(fn)(kv.second); found = true; });
+        return found;
+    }
+
+    template<typename Fn>
+    auto ModifyIf(Hash h, Fn&& fn) -> bool {
+        return map_.modify_if(h, [&](auto& kv) { std::forward<Fn>(fn)(kv.second); });
+    }
+
+    template<typename OnExisting, typename OnNew>
+    auto LazyEmplace(Hash h, OnExisting&& onExisting, OnNew&& onNew) -> void {
+        map_.lazy_emplace_l(
+            h,
+            [&](auto& kv)         { std::forward<OnExisting>(onExisting)(kv.second); },
+            [&](auto const& ctor) { Entry e{}; std::forward<OnNew>(onNew)(e); ctor(h, std::move(e)); }
+        );
+    }
+
+    [[nodiscard]] auto Size() const -> std::size_t { return map_.size(); }
+    auto Clear() -> void { map_.clear(); }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Position-aware Zobrist hash for GP trees, plus a transposition table that
 // caches fitness vectors keyed by structural hash.  The hash captures tree
@@ -23,13 +74,16 @@ namespace Operon {
 // Ownership: the caller constructs one Zobrist per experiment (or per run) and
 // passes a raw pointer into GeneticAlgorithmConfig::Cache.  The algorithm
 // borrows the pointer; the caller is responsible for lifetime.
+//
+// Subclassing: JitZobrist (in jit_evaluator.hpp) is the only intended subclass.
+// The virtual destructor exists to support nanobind exposure of both types.
 class OPERON_EXPORT Zobrist {
-    using Value = Operon::Vector<Operon::Scalar>;
+    using Value   = Vector<Scalar>;
     using Extents = std::extents<int, std::dynamic_extent, std::dynamic_extent>;
-    using Table   = Operon::MDArray<Operon::Hash, Extents>;
+    using Table   = MDArray<Hash, Extents>;
 
     Table table_;
-    Operon::Map<Operon::Hash, int> varIndex_;
+    Map<Hash, int> varIndex_;
 
     struct TranspositionTable;
     std::unique_ptr<TranspositionTable> tt_;
@@ -40,8 +94,8 @@ public:
     // variableHashes must include every variable hash that can appear in a tree.
     // Each variable gets its own row of independent random values so that
     // permuting variables at different positions always yields a different hash.
-    Zobrist(Operon::RandomGenerator& rng, int maxLength, Operon::Span<Operon::Hash const> variableHashes);
-    ~Zobrist();
+    Zobrist(RandomGenerator& rng, int maxLength, Span<Hash const> variableHashes);
+    virtual ~Zobrist();
     Zobrist(Zobrist const&)            = delete;
     Zobrist(Zobrist&&)                 = delete;
     auto operator=(Zobrist const&)     -> Zobrist& = delete;
@@ -50,7 +104,7 @@ public:
     [[nodiscard]] auto Rows() const { return table_.extent(0); }
     [[nodiscard]] auto Cols() const { return table_.extent(1); }
 
-    [[nodiscard]] auto ComputeHash(Operon::Node const& n, int pos) const -> Operon::Hash
+    [[nodiscard]] auto ComputeHash(Node const& n, int pos) const -> Hash
     {
         if (n.IsVariable()) {
             auto const it = varIndex_.find(n.HashValue);
@@ -61,10 +115,10 @@ public:
         return table_(NodeTypes::GetIndex(n.Type), pos);
     }
 
-    [[nodiscard]] auto ComputeHash(Operon::Tree const& tree) const -> Operon::Hash
+    [[nodiscard]] auto ComputeHash(Tree const& tree) const -> Hash
     {
         EXPECT(std::ssize(tree.Nodes()) <= Cols());
-        Operon::Hash h{};
+        Hash h{};
         auto const& nodes = tree.Nodes();
         for (auto i = 0; i < std::ssize(nodes); ++i) {
             h ^= ComputeHash(nodes[i], i);
@@ -73,10 +127,10 @@ public:
     }
 
     // Returns true and fills `val` if the hash is found; thread-safe.
-    [[nodiscard]] auto TryGet(Operon::Hash hash, Value& val) const -> bool;
+    [[nodiscard]] auto TryGet(Hash hash, Value& val) const -> bool;
 
     // Inserts or increments the visit counter; thread-safe.
-    auto Insert(Operon::Hash hash, Value const& val) -> void;
+    auto Insert(Hash hash, Value const& val) -> void;
 
     // Clears the transposition table and resets the hit counter.
     // NOT safe to call concurrently with TryGet or Insert — call only after
@@ -86,7 +140,6 @@ public:
     [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(); }
     [[nodiscard]] auto Size() const -> std::size_t;
 };
-
 
 } // namespace Operon
 

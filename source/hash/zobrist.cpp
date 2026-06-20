@@ -4,12 +4,11 @@
 #include "operon/hash/zobrist.hpp"
 
 #include <algorithm>
-#include <gtl/phmap.hpp>
 
 namespace Operon {
 
 struct Zobrist::TranspositionTable {
-    gtl::parallel_flat_hash_map_m<Operon::Hash, std::pair<Zobrist::Value, std::size_t>> Map;
+    ZobristCache<FitnessEntry> Cache;
 };
 
 Zobrist::Zobrist(Operon::RandomGenerator& rng, int maxLength, Operon::Span<Operon::Hash const> variableHashes)
@@ -26,33 +25,28 @@ Zobrist::~Zobrist() = default;
 
 auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
 {
-    bool found{false};
-    tt_->Map.if_contains(hash, [&](auto const& v) -> auto {
-        val = v.second.first;
-        found = true;
-    });
+    bool const found = tt_->Cache.IfContains(hash, [&](FitnessEntry const& e) { val = e.Value; });
     if (found) { ++hits_; }
     return found;
 }
 
 auto Zobrist::Insert(Operon::Hash hash, Value const& val) -> void
 {
-    tt_->Map.lazy_emplace_l(
-        hash,
-        [](auto& v) -> auto { ++v.second.second; },          // already present: bump count
-        [&](auto const& ctor) -> auto { ctor(hash, std::make_pair(val, std::size_t{1})); }  // new entry
+    tt_->Cache.LazyEmplace(hash,
+        [](FitnessEntry& e) { ++e.Visits; },
+        [&](FitnessEntry& e) { e.Value = val; }
     );
 }
 
 auto Zobrist::Clear() -> void
 {
-    tt_->Map.clear();
+    tt_->Cache.Clear();
     hits_.store(0);
 }
 
 auto Zobrist::Size() const -> std::size_t
 {
-    return tt_->Map.size();
+    return tt_->Cache.Size();
 }
 
 } // namespace Operon
