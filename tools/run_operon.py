@@ -5,7 +5,7 @@ Run an operon binary, capture per-generation stats, save to CSV or feather.
 Usage:
     run_operon.py BINARY --output PATH [--all-gens] [--reps N]
                   [--adaptive [--max-reps N] [--tol F] [--window K]]
-                  [--base-seed N] [--append] [-- BINARY_ARGS...]
+                  [--base-seed N] [--timeout S] [--append] [-- BINARY_ARGS...]
 """
 import argparse
 import statistics
@@ -14,8 +14,14 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import yaml
 from loguru import logger
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
+
+
+def load_config(path: Path) -> dict:
+    with open(path) as f:
+        return yaml.safe_load(f)
 
 
 def parse_output(stdout: str, all_gens: bool) -> pd.DataFrame:
@@ -24,12 +30,13 @@ def parse_output(stdout: str, all_gens: bool) -> pd.DataFrame:
     if header_idx is None:
         return pd.DataFrame()
 
-    # Last line is the model expression — exclude it.
-    data_lines = [ln for ln in lines[header_idx + 1 : -1] if ln.strip()]
+    header = lines[header_idx].split()
+    # Only keep lines whose token count matches the header — naturally excludes
+    # the trailing model expression (which is a single string token).
+    data_lines = [ln for ln in lines[header_idx + 1:] if ln.strip() and len(ln.split()) == len(header)]
     if not data_lines:
         return pd.DataFrame()
 
-    header = lines[header_idx].split()
     rows = [ln.split() for ln in data_lines]
     df = pd.DataFrame(rows, columns=header)
     for col in df.columns:
@@ -38,10 +45,15 @@ def parse_output(stdout: str, all_gens: bool) -> pd.DataFrame:
     return df if all_gens else df.iloc[[-1]]
 
 
-def run_once(binary: str, args: list[str], all_gens: bool) -> pd.DataFrame:
-    result = subprocess.run([binary, *args], capture_output=True, text=True)
+def run_once(binary: str, args: list[str], all_gens: bool, timeout: int | None = None) -> pd.DataFrame:
+    try:
+        result = subprocess.run([binary, *args], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Binary timed out after {timeout}s")
+        return pd.DataFrame()
     if result.returncode != 0:
         logger.warning(f"Binary exited {result.returncode}: {result.stderr.strip()[:200]}")
+        return pd.DataFrame()
     return parse_output(result.stdout, all_gens)
 
 
@@ -56,11 +68,13 @@ def run_reps(
     tol: float = 0.005,
     window: int = 5,
     base_seed: int | None = None,
+    metric: str = "r2_te",
+    timeout: int | None = None,
     show_progress: bool = True,
 ) -> pd.DataFrame:
     n = reps if reps is not None else max_reps
     frames: list[pd.DataFrame] = []
-    r2_history: list[float] = []
+    metric_history: list[float] = []
 
     def _args_for_rep(i: int) -> list[str]:
         if base_seed is None:
@@ -69,16 +83,16 @@ def run_reps(
 
     def _do_reps(progress=None, task=None):
         for i in range(n):
-            df = run_once(binary, _args_for_rep(i), all_gens)
+            df = run_once(binary, _args_for_rep(i), all_gens, timeout)
             df.insert(0, "rep", i)
             frames.append(df)
 
             desc = f"rep {i + 1}/{n}"
-            if adaptive and not df.empty and "r2_te" in df.columns:
-                r2_history.append(float(df["r2_te"].iloc[-1]))
-                if len(r2_history) >= window:
-                    std = statistics.stdev(r2_history[-window:])
-                    desc = f"rep {i + 1}  r2_te σ={std:.4f}"
+            if adaptive and not df.empty and metric in df.columns:
+                metric_history.append(float(df[metric].iloc[-1]))
+                if len(metric_history) >= window:
+                    std = statistics.stdev(metric_history[-window:])
+                    desc = f"rep {i + 1}  {metric} σ={std:.4f}"
                     if std < tol:
                         logger.info(f"Adaptive stop at rep {i + 1}: σ={std:.4f} < tol={tol}")
                         if progress:
@@ -128,6 +142,8 @@ def reps_kwargs_from_cfg(cfg: dict, *, show_progress: bool = True) -> dict:
         tol=cfg.get("tol", 0.005),
         window=cfg.get("window", 5),
         base_seed=cfg.get("base_seed"),
+        metric=cfg.get("metric", "r2_te"),
+        timeout=cfg.get("timeout"),
         show_progress=show_progress,
     )
 
@@ -142,15 +158,19 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", required=True, type=Path)
     p.add_argument("--all-gens", action="store_true", help="Keep all generations (default: last only)")
     p.add_argument("--reps", type=int, default=None, help="Fixed number of repetitions")
-    p.add_argument("--adaptive", action="store_true", help="Stop when r2_te variation settles")
+    p.add_argument("--adaptive", action="store_true", help="Stop when metric variation settles")
     p.add_argument("--max-reps", type=int, default=50, metavar="N",
                    help="Safety cap for adaptive mode (default: 50)")
     p.add_argument("--tol", type=float, default=0.005, metavar="F",
                    help="Rolling std threshold for adaptive stop (default: 0.005)")
     p.add_argument("--window", type=int, default=5, metavar="K",
                    help="Window size for adaptive stopping (default: 5)")
+    p.add_argument("--metric", default="r2_te", metavar="COL",
+                   help="Column used for adaptive stopping (default: r2_te)")
     p.add_argument("--base-seed", type=int, default=None, metavar="N",
                    help="Seed for rep 0; rep i gets base-seed+i")
+    p.add_argument("--timeout", type=int, default=None, metavar="S",
+                   help="Per-run timeout in seconds; hung binary is killed and skipped")
     p.add_argument("--append", action="store_true",
                    help="Append to existing output (feather: accumulate across experiments)")
     return p
@@ -178,7 +198,9 @@ def main() -> None:
         max_reps=args.max_reps,
         tol=args.tol,
         window=args.window,
+        metric=args.metric,
         base_seed=args.base_seed,
+        timeout=args.timeout,
     )
 
     if df.empty:

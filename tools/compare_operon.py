@@ -17,6 +17,7 @@ Config format:
     # tol: 0.005
     # window: 5
     # base_seed: 42
+    # timeout: 120
     metric: r2_te          # column to compare (default: r2_te)
     output: results/compare.feather   # optional
 """
@@ -24,36 +25,35 @@ import argparse
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+
 import pandas as pd
-import yaml
 from loguru import logger
 from rich.console import Console
 from rich.table import Table
-from scipy import stats
 
-from run_operon import reps_kwargs_from_cfg, run_reps, save
+from run_operon import load_config, reps_kwargs_from_cfg, run_reps, save
 
-
-def load_config(path: Path) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
+try:
+    from scipy import stats as _stats
+    _HAVE_SCIPY = True
+except ImportError:
+    _HAVE_SCIPY = False
 
 
 def compare_table(df_a: pd.DataFrame, df_b: pd.DataFrame,
-                  name_a: str, name_b: str, metric: str) -> None:
+                  name_a: str, name_b: str, metric: str, alpha: float) -> None:
     a = df_a[metric].dropna()
     b = df_b[metric].dropna()
-
-    _, pvalue = stats.mannwhitneyu(a, b, alternative="two-sided")
-
-    def iqr(s: pd.Series) -> float:
-        return float(s.quantile(0.75) - s.quantile(0.25))
 
     console = Console()
     table = Table(title=f"Comparison — {metric}")
     table.add_column("", style="bold")
     table.add_column(name_a, justify="right")
     table.add_column(name_b, justify="right")
+
+    def iqr(s: pd.Series) -> float:
+        return float(s.quantile(0.75) - s.quantile(0.25))
 
     for label, fa, fb in [
         ("n",      f"{len(a)}",           f"{len(b)}"),
@@ -65,14 +65,21 @@ def compare_table(df_a: pd.DataFrame, df_b: pd.DataFrame,
         table.add_row(label, fa, fb)
 
     console.print(table)
-    sig = "significant" if pvalue < 0.05 else "not significant"
-    console.print(f"Mann-Whitney U  p={pvalue:.4f}  ({sig} at α=0.05)")
+
+    if _HAVE_SCIPY:
+        _, pvalue = _stats.mannwhitneyu(a, b, alternative="two-sided")
+        sig = "significant" if pvalue < alpha else "not significant"
+        console.print(f"Mann-Whitney U  p={pvalue:.4f}  ({sig} at α={alpha})")
+    else:
+        console.print("[yellow]scipy not available — skipping significance test[/yellow]")
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("config", type=Path)
+    p.add_argument("--alpha", type=float, default=0.05, metavar="A",
+                   help="Significance level for Mann-Whitney U test (default: 0.05)")
     args = p.parse_args()
 
     cfg = load_config(args.config)
@@ -99,7 +106,7 @@ def main() -> None:
         combined = pd.concat([df_a, df_b], ignore_index=True)
         save(combined, Path(output))
 
-    compare_table(df_a, df_b, name_a, name_b, metric)
+    compare_table(df_a, df_b, name_a, name_b, metric, args.alpha)
 
 
 if __name__ == "__main__":

@@ -13,10 +13,12 @@ Config format:
     reps: 10
     # adaptive: true / max_reps: 30 / tol: 0.005 / window: 5
     # base_seed: 42
+    # timeout: 120
     trials: 50
     study: friedman_jit_gate
     # storage: sqlite:///optuna.db   # omit for in-memory
-    metric: r2_te                    # maximize this column (default: r2_te)
+    metric: r2_te                    # column to optimise (default: r2_te)
+    direction: maximize              # or minimize (default: maximize)
     output: results/tune.feather     # all trial data; optional
     params:
       jit-min-visits: {type: int,   low: 1,   high: 20}
@@ -25,18 +27,16 @@ Config format:
       crossover-probability: {type: float, low: 0.1, high: 1.0}
 """
 import argparse
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
 
 import yaml
 from loguru import logger
 
 from _optuna import run_study
-from run_operon import reps_kwargs_from_cfg
-
-
-def load_config(path: Path) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
+from run_operon import load_config, reps_kwargs_from_cfg
 
 
 def main() -> None:
@@ -54,6 +54,7 @@ def main() -> None:
         reps_kw=reps_kwargs_from_cfg(cfg),
         params=cfg["params"],
         metric=metric,
+        direction=cfg.get("direction", "maximize"),
         trials=cfg.get("trials", 20),
         study_name=cfg.get("study", "operon_tune"),
         storage=cfg.get("storage"),

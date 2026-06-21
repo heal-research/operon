@@ -8,6 +8,7 @@ Config format (fixed reps):
     threads: 8       # --threads N passed to each invocation
     reps: 30
     # adaptive: true / max_reps: 50 / tol: 0.005 / window: 5 / base_seed: 42
+    # timeout: 120   # per-run timeout in seconds
     output_dir: results/
     shared_args:
       - --generations 500
@@ -28,6 +29,7 @@ Config format (with tuning — Optuna replaces fixed reps):
     tune:
       trials: 20
       metric: r2_te
+      direction: maximize   # or minimize (default: maximize)
       # storage: sqlite:///optuna.db
       params:
         allowed-symbols:
@@ -45,21 +47,18 @@ Config format (with tuning — Optuna replaces fixed reps):
 """
 import argparse
 import json
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+
 import pandas as pd
-import yaml
 from loguru import logger
 from rich.console import Console
 from rich.table import Table
 
-from run_operon import reps_kwargs_from_cfg, run_reps, save
-
-
-def load_config(path: Path) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
+from run_operon import load_config, reps_kwargs_from_cfg, run_reps, save
 
 
 def _load_json_meta(config_path: str) -> dict:
@@ -106,6 +105,7 @@ def _run_problem(binary: str, problem: dict, shared_args: list[str], threads: in
             reps_kw=reps_kw,
             params=tune_cfg["params"],
             metric=tune_cfg.get("metric", "r2_te"),
+            direction=tune_cfg.get("direction", "maximize"),
             trials=tune_cfg.get("trials", 20),
             study_name=f"operon_{name}",
             storage=tune_cfg.get("storage"),
@@ -155,8 +155,9 @@ def main() -> None:
             try:
                 name, df = future.result()
                 results[name] = df
-                r2 = df["r2_te"].median() if "r2_te" in df.columns else float("nan")
-                console.print(f"  [green]✓[/green] {name:30s}  r2_te={r2:.4f}")
+                metric = tune_cfg.get("metric", "r2_te") if tune_cfg else "r2_te"
+                val = df[metric].median() if metric in df.columns else float("nan")
+                console.print(f"  [green]✓[/green] {name:30s}  {metric}={val:.4f}")
             except Exception as exc:
                 console.print(f"  [red]✗[/red] {prob}: {exc}")
                 logger.exception(exc)

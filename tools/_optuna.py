@@ -1,5 +1,8 @@
 """Shared Optuna helpers used by tune_operon.py and operon_experiment.py."""
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
 
 import optuna
 import pandas as pd
@@ -15,7 +18,8 @@ def suggest(trial: optuna.Trial, name: str, spec: dict):
     if t == "int":
         return trial.suggest_int(name, spec["low"], spec["high"], step=spec.get("step", 1))
     if t == "float":
-        return trial.suggest_float(name, spec["low"], spec["high"], log=spec.get("log", False))
+        return trial.suggest_float(name, spec["low"], spec["high"],
+                                   log=spec.get("log", False), step=spec.get("step"))
     if t == "categorical":
         return trial.suggest_categorical(name, spec["choices"])
     raise ValueError(f"Unknown param type '{t}' for '{name}'")
@@ -28,6 +32,7 @@ def run_study(
     params: dict,
     *,
     metric: str = "r2_te",
+    direction: str = "maximize",
     trials: int = 20,
     study_name: str = "operon_tune",
     storage: str | None = None,
@@ -44,7 +49,7 @@ def run_study(
 
         df = run_reps(binary, args, **reps_kw)
         if df.empty or metric not in df.columns:
-            return float("-inf")
+            return float("-inf") if direction == "maximize" else float("inf")
 
         score = float(df[metric].median())
 
@@ -54,18 +59,19 @@ def run_study(
             df[name] = value
         all_frames.append(df)
 
-        if trials_output:
-            save(pd.concat(all_frames, ignore_index=True), trials_output)
-
         logger.info(f"Trial {trial.number:3d}  {metric}={score:.4f}  {suggested}")
         return score
 
     study = optuna.create_study(
-        direction="maximize",
+        direction=direction,
         study_name=study_name,
         storage=storage,
         load_if_exists=True,
     )
     study.optimize(objective, n_trials=trials)
     combined = pd.concat(all_frames, ignore_index=True) if all_frames else pd.DataFrame()
+
+    if trials_output and not combined.empty:
+        save(combined, trials_output)
+
     return study, combined
