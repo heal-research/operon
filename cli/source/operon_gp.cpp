@@ -27,12 +27,9 @@
 #include "operon/operators/selector.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
+#include "jit_setup.hpp"
 #include "operator_factory.hpp"
 #include "util.hpp"
-
-#if defined(HAVE_ASMJIT)
-#include "operon/interpreter/backend/jit/jit_evaluator.hpp"
-#endif
 
 
 namespace {
@@ -168,42 +165,47 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         mutator.Add(&discretePoint, 1.0);
 
         Operon::ScalarDispatch dtable;
-        auto const scale  = result["linear-scaling"].as<bool>();
-        auto const useJit = result["jit"].as<bool>();
+        auto const scale   = result["linear-scaling"].as<bool>();
+        auto const jitMode = result["jit"].as<std::string>(); // "all", "jac", or ""
 
-        // Zobrist needed by --jit (JitEvaluator) and/or --transposition-cache.
-        std::unique_ptr<Operon::Zobrist> zobrist;
-        if (useJit || result["transposition-cache"].as<bool>()) {
-            Operon::RandomGenerator cacheRng(config.Seed);
-            zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
-            if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
-        }
-
+        std::unique_ptr<Operon::Zobrist>       zobrist;
         std::unique_ptr<Operon::EvaluatorBase> evaluator;
-#if defined(HAVE_ASMJIT)
-        if (useJit) {
-            auto [metric, supportsLinearScale] = Operon::ParseErrorMetric(result["objective"].as<std::string>());
-            evaluator = std::make_unique<Operon::JIT::JitEvaluator>(&problem, zobrist.get(), *metric, scale && supportsLinearScale);
-        } else {
-#endif
-            if (useJit) { fmt::print(stderr, "warning: --jit has no effect: JIT support was not compiled in\n"); }
-            evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
-#if defined(HAVE_ASMJIT)
-        }
-#endif
-        evaluator->SetBudget(config.Evaluations);
-
+        std::unique_ptr<Operon::EvaluatorBase> jacEvalStorage;
         std::unique_ptr<Operon::OptimizerBase> optimizer;
-#if defined(HAVE_ASMJIT)
-        if (useJit) {
-            auto* jitEval = dynamic_cast<Operon::JIT::JitEvaluator*>(evaluator.get());
-            optimizer = std::make_unique<Operon::JitLevenbergMarquardtOptimizer<decltype(dtable)>>(&dtable, &problem, jitEval);
-        } else {
-#endif
+        std::function<void()>                  jitReport = [](){};
+
+        if (jitMode.empty()) {
+            if (result["transposition-cache"].as<bool>()) {
+                Operon::RandomGenerator cacheRng(config.Seed);
+                zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
+                config.Cache = zobrist.get();
+            }
+            evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
             optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
-#if defined(HAVE_ASMJIT)
+        } else {
+            auto jobj = Operon::CLI::MakeJitObjects(
+                jitMode, problem, dtable,
+                result["objective"].as<std::string>(), scale,
+                result["jit-max-length"].as<int>(),
+                result["jit-min-visits"].as<std::size_t>(),
+                static_cast<int>(maxLength), config.Seed);
+            if (jobj.Error) { return EXIT_FAILURE; }
+            evaluator     = std::move(jobj.Evaluator);
+            jacEvalStorage = std::move(jobj.OptimizerJacEval);
+            optimizer     = std::move(jobj.Optimizer);
+            zobrist       = std::move(jobj.Zobrist);
+            jitReport     = std::move(jobj.Report);
+            if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
+            // "jac" mode: factory leaves evaluator null; create interpreter evaluator here.
+            if (!evaluator) {
+                evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+            }
+            // unknown mode: factory returned null optimizer; fall back to defaults.
+            if (!optimizer) {
+                optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
+            }
         }
-#endif
+        evaluator->SetBudget(config.Evaluations);
         optimizer->SetIterations(config.Iterations);
 
         Operon::CoefficientOptimizer const cOpt { optimizer.get() };
@@ -227,7 +229,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
         std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
         Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
-        if (useJit) {
+        if (jitMode == "all") {
             reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{}, scale);
             ptr = reporterEvalStorage.get();
         } else {
@@ -235,6 +237,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
         gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
+        jitReport();
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));
     } catch (std::exception& e) {
