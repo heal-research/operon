@@ -116,16 +116,6 @@ else()
 endif()
 
 # ---- Optional dependencies
-set(HAVE_CERES FALSE)
-if (USE_CERES)
-    find_package(Ceres)   # use the Ceres optimizer for coefficients tuning
-    if (Ceres_FOUND)
-        set(HAVE_CERES TRUE)
-    endif()
-else()
-    set(Ceres_VERSION "n/a")
-endif()
-
 set(HAVE_ASMJIT FALSE)
 if (USE_ASMJIT)
     if (NOT USE_SINGLE_PRECISION)
@@ -215,9 +205,6 @@ target_include_directories(
     "${PROJECT_BINARY_DIR}"
 )
 
-if(Ceres_FOUND AND USE_CERES)
-endif()
-
 target_link_libraries(operon_operon INTERFACE
     eve::eve # required by vstat
 )
@@ -243,10 +230,6 @@ target_link_libraries(operon_operon PRIVATE
     gtl::gtl
     tl::expected
 )
-
-if (USE_CERES AND Ceres_FOUND)
-    target_link_libraries(operon_operon PUBLIC Ceres::ceres)
-endif()
 
 target_compile_features(operon_operon PUBLIC cxx_std_20)
 
@@ -278,7 +261,6 @@ endif()
 
 target_compile_definitions(operon_operon PUBLIC
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
-    "$<$<BOOL:${HAVE_CERES}>:HAVE_CERES>"
     "$<$<BOOL:${HAVE_ASMJIT}>:HAVE_ASMJIT>"
     )
 

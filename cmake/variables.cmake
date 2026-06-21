@@ -11,14 +11,12 @@ if(PROJECT_IS_TOP_LEVEL)
   # compile and link-time options
   set(JEMALLOC_DESCRIPTION             "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support [default=OFF].")
   set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes [default=OFF].")
-  set(USE_CERES_DESCRIPTION            "Use the non-linear least squares optimizer from Ceres solver to tune model coefficients (if OFF, Eigen::LevenbergMarquardt will be used instead).")
   set(MATH_BACKEND_DESCRIPTION         "Math library for tree evaluation: Eve (default), MadEve (approximate SIMD), Stl (scalar reference)")
   set(USE_ASMJIT_DESCRIPTION           "Use asmjit to JIT-compile trees to native x86-64 (compiled functions keyed by Zobrist hash, reused across structurally-identical individuals) [default=OFF].")
 
   # option descriptions
   option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
   option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION}  ON)
-  option(USE_CERES            ${USE_CERES_DESCRIPTION}            OFF)
   option(USE_ASMJIT           ${USE_ASMJIT_DESCRIPTION}          OFF)
   option(MATH_BACKEND         ${MATH_BACKEND_DESCRIPTION}        "Eve")
 
@@ -26,7 +24,6 @@ if(PROJECT_IS_TOP_LEVEL)
   include(FeatureSummary)
   add_feature_info(USE_JEMALLOC         USE_JEMALLOC             ${JEMALLOC_DESCRIPTION})
   add_feature_info(USE_SINGLE_PRECISION USE_SINGLE_PRECISION     ${USE_SINGLE_PRECISION_DESCRIPTION})
-  add_feature_info(USE_CERES            USE_CERES                ${USE_CERES_DESCRIPTION})
   add_feature_info(USE_ASMJIT           USE_ASMJIT               ${USE_ASMJIT_DESCRIPTION})
   add_feature_info(MATH_BACKEND         MATH_BACKEND_DESCRIPTION ${MATH_BACKEND_DESCRIPTION})
   set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")

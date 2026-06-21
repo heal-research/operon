@@ -11,11 +11,6 @@
 
 namespace Operon {
 
-// this cost function is adapted to work with both solvers from Ceres: the normal one and the tiny solver
-// for this, a number of template parameters are necessary:
-// - the AutodiffCalculator will compute and return the Jacobian matrix
-// - the StorageOrder specifies the format of the jacobian (row-major for the big Ceres solver, column-major for the tiny solver)
-
 template<typename T = Operon::Scalar, int StorageOrder = Eigen::ColMajor>
 struct CostFunction {
     static auto constexpr Storage{ StorageOrder };
@@ -55,8 +50,6 @@ struct CostFunction {
         return true;
     }
 
-    // ceres solver - jacobian must be in row-major format
-    // tiny solver - jacobian must be in col-major format
     auto operator()(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
     {
         return Evaluate(parameters, residuals, jacobian);

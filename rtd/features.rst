@@ -12,8 +12,8 @@ Implementation
 * Low synchronization overhead via atomic primitives
 * Very fast, vectorized model evaluation using `Eigen <https://eigen.tuxfamily.org/>`_
 * Low memory footprint (linear tree encoding as an array of ``Node`` (40 byte each)
-* Support for numerical and automatic differentiation using `Ceres <http://ceres-solver.org/>`_
-* Nonlinear least squares optimization of model parameters using `Ceres <http://ceres-solver.org/>`_
+* Automatic differentiation using dual numbers (reverse-mode)
+* Nonlinear least squares optimization of model parameters (Levenberg-Marquardt, L-BFGS, SGD)
 * State of the art numerically stable error metrics (R-Squared, MSE, RMSE, NMSE)
 * Python bindings using `pybind11 <https://github.com/pybind/pybind11>`_
 * Modern genetic programming design (see below)
@@ -50,7 +50,7 @@ Hybridization with local search
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Conceptually, this kind of hybridization is useful to shift the effort of finding appropriate numerical coefficients for the model from the evolutionary algorithm itself to a specialized optimization procedure. Algorithms that incorporate some kind of local search optimization step are also called *memetic algorithms*. 
 
-Under the hood, we take advantage of `Ceres <http://ceres-solver.org/>`_' integration with `Eigen <https://eigen.tuxfamily.org/>`_ in order to optionally perform non-linear least squares fitting of model coefficients during the model evaluation step. The local optimization step is typically quite computationally intensive since model derivatives have to be computed (Ceres supports numerical or automatic differentiation).
+Under the hood, we use `Eigen <https://eigen.tuxfamily.org/>`_ to perform non-linear least squares fitting of model coefficients during the model evaluation step. The local optimization step is typically quite computationally intensive since model derivatives have to be computed via reverse-mode automatic differentiation.
 
 In order to promote fair comparison between different algorithmic variants (with and without local search), we allow constraints on an algorithm's evaluation budget -- including local search. 
 
@@ -92,5 +92,5 @@ Supported algorithms:
 
 .. rubric:: Footnotes
 .. [#] https://docs.microsoft.com/en-us/cpp/cpp/trivial-standard-layout-and-pod-types
-.. [#] `Jets/Dual numbers <http://ceres-solver.org/automatic_derivatives.html#dual-numbers-jets>`_ provided by `Ceres Solver <http://ceres-solver.org>`_
+.. [#] `Jets/Dual numbers <http://ceres-solver.org/automatic_derivatives.html#dual-numbers-jets>`_ (bundled from `Ceres Solver <http://ceres-solver.org>`_)
 .. [#] Arbitrary precision support using `MPFR <https://www.mpfr.org>`_ via its C++ interface `MPFR C++ <http://www.holoborodko.com/pavel/mpfr/>`_

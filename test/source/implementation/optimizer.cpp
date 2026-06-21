@@ -155,11 +155,6 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
         checkExact(optimizer);
     }
 
-    SECTION("ceres solver") {
-        LevenbergMarquardtOptimizer<DTable, OptimizerType::Ceres> optimizer{&dtable, &problem};
-        checkExact(optimizer);
-    }
-
     SECTION("lbfgs / gaussian") {
         LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
         checkExact(optimizer);
