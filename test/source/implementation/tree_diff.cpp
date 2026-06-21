@@ -777,7 +777,7 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
     constexpr auto maxLen = 20;
     constexpr auto fdEps  = 1e-3F;
     constexpr auto tol    = 5e-2F;
-    constexpr auto maxFailRate = 0.05;
+    constexpr auto maxFailRate = 0.04;
 
     Operon::RandomGenerator rng(99UL);
     auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
@@ -836,7 +836,7 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
     }
 
     auto rate = static_cast<double>(failedEntries) / static_cast<double>(std::max(totalEntries, 1UL));
-    INFO("FD Hessian: " << failedEntries << " / " << totalEntries << " entries failed (" << rate * 100.0 << "%)");
+    fmt::print("FD Hessian: {} / {} entries failed ({:.2f}%)\n", failedEntries, totalEntries, rate * 100.0);
     CHECK(rate < maxFailRate);
 }
 
