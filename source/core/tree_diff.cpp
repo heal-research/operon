@@ -456,7 +456,7 @@ auto BuildJacobianDag(Tree const& tree) -> JacobianDag {
         if (orig[i].Optimize) { constants.push_back(i); }
     }
 
-    dag.Roots.assign(constants.size(), std::numeric_limits<std::size_t>::max());
+    dag.Roots.resize(constants.size(), std::numeric_limits<std::size_t>::max());
 
     // Differentiate the tree root (last node in postfix order) w.r.t. each constant.
     for (std::size_t ci = 0; ci < constants.size(); ++ci) {
@@ -464,6 +464,55 @@ auto BuildJacobianDag(Tree const& tree) -> JacobianDag {
     }
 
     return dag;
+}
+
+auto BuildHessianDag(Tree const& tree) -> HessianDag {
+    auto const& orig = tree.Nodes();
+    auto const n     = orig.size();
+
+    HessianDag result;
+    result.OriginalSize = n;
+    result.Nodes        = orig;
+    result.Nodes.reserve(n * 32);
+
+    Hashes h;
+    h.reserve(n * 32);
+    for (std::size_t i = 0; i < n; ++i) {
+        h.push_back(static_cast<uint64_t>(i));
+    }
+
+    Memo memo;
+
+    Operon::Vector<std::size_t> constants;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (orig[i].Optimize) { constants.push_back(i); }
+    }
+
+    auto const p = constants.size();
+    result.NumParams = p;
+
+    // First pass: Jacobian (same as BuildJacobianDag).
+    result.JacobianRoots.resize(p, Zero);
+    for (std::size_t ci = 0; ci < p; ++ci) {
+        result.JacobianRoots[ci] = Deriv(orig, result.Nodes, memo, h, n - 1, constants[ci]);
+    }
+
+    // Snapshot the DAG so the second pass can navigate derivative nodes
+    // without aliasing the growing result.Nodes vector.
+    auto const snapshot = result.Nodes;
+
+    // Second pass: Hessian upper triangle d²f/(dc_i dc_j), j >= i.
+    result.HessianRoots.resize(p * (p + 1) / 2, Zero);
+    for (std::size_t i = 0; i < p; ++i) {
+        if (result.JacobianRoots[i] == Zero) { continue; }
+        for (std::size_t j = i; j < p; ++j) {
+            result.HessianRoots[result.UpperIdx(i, j)] =
+                Deriv(snapshot, result.Nodes, memo, h,
+                      result.JacobianRoots[i], constants[j]);
+        }
+    }
+
+    return result;
 }
 
 } // namespace Operon

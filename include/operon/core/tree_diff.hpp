@@ -27,4 +27,23 @@ struct JacobianDag {
 // not need to have been hashed before calling this.
 OPERON_EXPORT auto BuildJacobianDag(Tree const& tree) -> JacobianDag;
 
+// A flat postfix array containing the original tree, first-order derivative
+// subtrees (Jacobian), and second-order derivative subtrees (Hessian).
+// The Hessian is symmetric; only the upper triangle is stored row-major:
+//   H(i,j) with j >= i at index  i*p - i*(i-1)/2 + (j-i)  where p = NumParams.
+struct HessianDag {
+    Operon::Vector<Node> Nodes;
+    std::size_t OriginalSize{};
+    std::size_t NumParams{};
+    Operon::Vector<std::size_t> JacobianRoots; // [p] roots of df/dc_k
+    Operon::Vector<std::size_t> HessianRoots;  // [p*(p+1)/2] upper triangle
+
+    // Index into the upper triangle: returns the flat offset for d²f/(dc_i dc_j).
+    [[nodiscard]] auto UpperIdx(std::size_t i, std::size_t j) const -> std::size_t {
+        return (i * NumParams) - (i * (i - 1) / 2) + (j - i);
+    }
+};
+
+OPERON_EXPORT auto BuildHessianDag(Tree const& tree) -> HessianDag;
+
 } // namespace Operon
