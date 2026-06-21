@@ -26,6 +26,7 @@
 
 namespace Operon::JIT {
 
+
 namespace {
 
 using namespace asmjit;
@@ -317,20 +318,14 @@ void emitNodesScalar(
 
 } // namespace
 
-auto TreeCompiler::Compile(Operon::Tree const& tree) -> std::unique_ptr<CompiledTree> {
-    auto result = std::make_unique<CompiledTree>(rt_);
+auto TreeCompiler::Compile(Operon::Tree const& tree) -> std::unique_ptr<CompileMeta> {
+    auto& rt = pick();
 
     auto const& nodes = tree.Nodes();
-    for (auto const& n : nodes) {
-        if (!n.IsVariable()) { continue; }
-        auto h = n.HashValue;
-        if (std::find(result->varOrder.begin(), result->varOrder.end(), h) == result->varOrder.end()) {
-            result->varOrder.push_back(h);
-        }
-    }
+    auto varOrder = VarOrder(tree);
 
     CodeHolder code;
-    code.init(rt_.environment(), rt_.cpu_features());
+    code.init(rt.environment(), rt.cpu_features());
     Compiler cc(&code);
 
     // void fn(float* out, float const* const* cols, int32_t nRows, float const* consts)
@@ -347,8 +342,8 @@ auto TreeCompiler::Compile(Operon::Tree const& tree) -> std::unique_ptr<Compiled
     fnNode->set_arg(2, nRowsArg);
     fnNode->set_arg(3, constsPtr);
 
-    std::vector<Gp> colPtrs(result->varOrder.size());
-    for (std::size_t i = 0; i < result->varOrder.size(); ++i) {
+    std::vector<Gp> colPtrs(varOrder.size());
+    for (std::size_t i = 0; i < varOrder.size(); ++i) {
         colPtrs[i] = cc.new_gp_ptr();
         cc.mov(colPtrs[i], x86::ptr(colsPtr, static_cast<int32_t>(i * sizeof(void*))));
     }
@@ -379,7 +374,7 @@ auto TreeCompiler::Compile(Operon::Tree const& tree) -> std::unique_ptr<Compiled
         std::vector<Vec> nodeVecs(nodes.size());
         int constIdx = 0;
         stack.reserve(32);
-        emitNodesScalar(cc, nodes, 0, nodes.size(), colPtrs, coeffRegs, result->varOrder, row, stack, nodeVecs, constIdx);
+        emitNodesScalar(cc, nodes, 0, nodes.size(), colPtrs, coeffRegs, varOrder, row, stack, nodeVecs, constIdx);
         cc.vmovss(x86::ptr(outPtr, row, 2), stack.back());
     }
 
@@ -390,16 +385,14 @@ auto TreeCompiler::Compile(Operon::Tree const& tree) -> std::unique_ptr<Compiled
     cc.ret();
     cc.end_func();
 
-    if (auto err = cc.finalize(); err != Error::kOk) {
-        return nullptr;
-    }
+    if (auto err = cc.finalize(); err != Error::kOk) { return nullptr; }
 
     EvalFn fn_ptr = nullptr;
-    if (auto err = rt_.add(&fn_ptr, &code); err != Error::kOk) {
-        return nullptr;
-    }
+    if (auto err = rt.add(&fn_ptr, &code); err != Error::kOk) { return nullptr; }
 
-    result->fn = fn_ptr;
+    auto result = std::make_unique<CompileMeta>();
+    result->rtTree = &rt;
+    result->fn     = fn_ptr;
     return result;
 }
 
@@ -676,30 +669,24 @@ void emitNodesAVX2(
 
 } // namespace (avx2 helpers)
 
-auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<CompiledTree> {
+auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<CompileMeta> {
     using namespace asmjit;
     using namespace asmjit::x86;
 
-    if (!rt_.cpu_features().x86().has(CpuFeatures::X86::kAVX2)) {
+    auto& rt = pick();
+
+    if (!rt.cpu_features().x86().has(CpuFeatures::X86::kAVX2)) {
         return nullptr;
     }
 
-    auto result = std::make_unique<CompiledTree>(rt_);
-
     auto const& nodes = tree.Nodes();
-    for (auto const& n : nodes) {
-        if (!n.IsVariable()) { continue; }
-        auto h = n.HashValue;
-        if (std::find(result->varOrder.begin(), result->varOrder.end(), h) == result->varOrder.end()) {
-            result->varOrder.push_back(h);
-        }
-    }
+    auto varOrder = VarOrder(tree);
 
     int nConsts = 0;
     for (auto const& n : nodes) { if (n.Optimize) { ++nConsts; } }
 
     CodeHolder code;
-    code.init(rt_.environment(), rt_.cpu_features());
+    code.init(rt.environment(), rt.cpu_features());
     Compiler cc(&code);
 
     FuncNode* fnNode = cc.add_func(
@@ -716,8 +703,8 @@ auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<Comp
     fnNode->set_arg(2, nRowsArg);
     fnNode->set_arg(3, constsPtr);
 
-    std::vector<Gp> colPtrs(result->varOrder.size());
-    for (std::size_t i = 0; i < result->varOrder.size(); ++i) {
+    std::vector<Gp> colPtrs(varOrder.size());
+    for (std::size_t i = 0; i < varOrder.size(); ++i) {
         colPtrs[i] = cc.new_gp_ptr();
         cc.mov(colPtrs[i], x86::ptr(colsPtr, static_cast<int32_t>(i * sizeof(void*))));
     }
@@ -749,7 +736,7 @@ auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<Comp
         std::vector<Vec> nodeVecs(nodes.size());
         int constIdx = 0;
         stack.reserve(32);
-        emitNodesAVX2(cc, nodes, 0, nodes.size(), colPtrs, ymmCoeffs, result->varOrder, row, stack, nodeVecs, constIdx);
+        emitNodesAVX2(cc, nodes, 0, nodes.size(), colPtrs, ymmCoeffs, varOrder, row, stack, nodeVecs, constIdx);
         cc.vmovups(x86::ptr(outPtr, row, 2), stack.back());
     }
 
@@ -757,26 +744,27 @@ auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<Comp
     cc.jmp(mainBegin);
     cc.bind(mainEnd_lbl);
 
-    // No scalar tail: callers must use Dataset::GetPaddedValues which returns
-    // columns backed by paddedRows = (nRows+7)&~7 zero-padded floats.
-
     cc.ret();
     cc.end_func();
 
     if (auto err = cc.finalize(); err != Error::kOk) { return nullptr; }
 
     EvalFn fn_ptr = nullptr;
-    if (auto err = rt_.add(&fn_ptr, &code); err != Error::kOk) { return nullptr; }
+    if (auto err = rt.add(&fn_ptr, &code); err != Error::kOk) { return nullptr; }
 
-    result->fn = fn_ptr;
+    auto result = std::make_unique<CompileMeta>();
+    result->rtTree = &rt;
+    result->fn     = fn_ptr;
     return result;
 }
 
-auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<CompiledJacobian> {
+auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<CompileMeta> {
     using namespace asmjit;
     using namespace asmjit::x86;
 
-    if (!rt_.cpu_features().x86().has(CpuFeatures::X86::kAVX2)) {
+    auto& rt = pick();
+
+    if (!rt.cpu_features().x86().has(CpuFeatures::X86::kAVX2)) {
         return nullptr;
     }
 
@@ -785,15 +773,12 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
 
     if (nRoots == 0) { return nullptr; }
 
-    auto result = std::make_unique<CompiledJacobian>(rt_);
-    result->nConsts = nRoots;
-
     // Build var order from all dag nodes (original + derivative).
+    std::vector<Operon::Hash> varOrder;
     for (auto const& n : nodes) {
         if (!n.IsVariable()) { continue; }
-        auto h = n.HashValue;
-        if (std::find(result->varOrder.begin(), result->varOrder.end(), h) == result->varOrder.end()) {
-            result->varOrder.push_back(h);
+        if (std::ranges::find(varOrder, n.HashValue) == varOrder.end()) {
+            varOrder.push_back(n.HashValue);
         }
     }
 
@@ -804,7 +789,7 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
     }
 
     CodeHolder code;
-    code.init(rt_.environment(), rt_.cpu_features());
+    code.init(rt.environment(), rt.cpu_features());
     Compiler cc(&code);
 
     // void fn(float* const* outs, float const* const* cols, int32_t nRows, float const* consts)
@@ -823,8 +808,8 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
     fnNode->set_arg(3, constsPtr);
 
     // Pre-loop: load input column pointers.
-    std::vector<Gp> colPtrs(result->varOrder.size());
-    for (std::size_t i = 0; i < result->varOrder.size(); ++i) {
+    std::vector<Gp> colPtrs(varOrder.size());
+    for (std::size_t i = 0; i < varOrder.size(); ++i) {
         colPtrs[i] = cc.new_gp_ptr();
         cc.mov(colPtrs[i], x86::ptr(colsPtr, static_cast<int32_t>(i * sizeof(void*))));
     }
@@ -872,7 +857,7 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
         {
             std::vector<Vec> stack;
             stack.reserve(32);
-            emitNodesAVX2(cc, nodes, 0, dag.OriginalSize, colPtrs, ymmCoeffs, result->varOrder, row, stack, nodeVecs, constIdx);
+            emitNodesAVX2(cc, nodes, 0, dag.OriginalSize, colPtrs, ymmCoeffs, varOrder, row, stack, nodeVecs, constIdx);
         }
 
         // Phase 2: emit each derivative column's nodes then store immediately.
@@ -885,7 +870,7 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
             } else {
                 std::vector<Vec> stack;
                 stack.reserve(32);
-                emitNodesAVX2(cc, nodes, colStart, r + 1, colPtrs, ymmCoeffs, result->varOrder, row, stack, nodeVecs, constIdx);
+                emitNodesAVX2(cc, nodes, colStart, r + 1, colPtrs, ymmCoeffs, varOrder, row, stack, nodeVecs, constIdx);
                 cc.vmovups(x86::ptr(outPtrs[static_cast<std::size_t>(k)], row, 2), nodeVecs[r]);
                 colStart = r + 1;
             }
@@ -905,9 +890,11 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
     if (auto err = cc.finalize(); err != Error::kOk) { return nullptr; }
 
     EvalJacFn fn_ptr = nullptr;
-    if (auto err = rt_.add(&fn_ptr, &code); err != Error::kOk) { return nullptr; }
+    if (auto err = rt.add(&fn_ptr, &code); err != Error::kOk) { return nullptr; }
 
-    result->fn = fn_ptr;
+    auto result = std::make_unique<CompileMeta>();
+    result->rtJac = &rt;
+    result->jacFn = fn_ptr;
     return result;
 }
 
