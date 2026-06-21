@@ -20,8 +20,8 @@ namespace Operon {
 // functions.  Residuals use the compiled forward pass; Jacobian uses the compiled
 // derivative DAG (EvalJacFn) when available, falling back to interpreter JacRev.
 //
-// colPtrs[i] must point to the dataset column for compiled->varOrder[i],
-// jacColPtrs[i] for compiledJac->varOrder[i], each already offset to range.Start().
+// colPtrs[i] and jacColPtrs[i] must follow the ordering returned by VarOrder(tree),
+// each already offset to range.Start().
 template<typename T = Operon::Scalar, int StorageOrder = Eigen::ColMajor>
 struct JitLMCostFunction {
     static auto constexpr Storage{ StorageOrder };
@@ -85,8 +85,14 @@ struct JitLMCostFunction {
 
         if (residuals != nullptr) {
             ++residualCallCount_;
-            fn_(scratchResiduals_.data(), colPtrs_.data(), nRowsPad, parameters);
-            std::copy_n(scratchResiduals_.data(), numResiduals_, residuals);
+            Operon::Span<Operon::Scalar> res{residuals, numResiduals_};
+            if (fn_ != nullptr) {
+                fn_(scratchResiduals_.data(), colPtrs_.data(), nRowsPad, parameters);
+                std::copy_n(scratchResiduals_.data(), numResiduals_, residuals);
+            } else {
+                Operon::Span<Operon::Scalar const> params{parameters, numParameters_};
+                interpreter_->Evaluate(params, range_, res);
+            }
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, static_cast<Eigen::Index>(numResiduals_));
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), static_cast<Eigen::Index>(numResiduals_));
             x -= y;

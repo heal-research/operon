@@ -6,91 +6,109 @@
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
 #include "operon/core/tree_diff.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/interpreter/interpreter.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <ranges>
+#include <memory>
 #include <vector>
-
-#include <gtl/phmap.hpp>
 
 namespace Operon::JIT {
 
-struct CacheEntry {
-    std::shared_ptr<CompiledTree>     Tree;
-    std::shared_ptr<CompiledJacobian> Jac;
-};
+JitZobrist::JitZobrist(Operon::RandomGenerator& rng, int maxLength,
+                       Operon::Span<Operon::Hash const> variableHashes)
+    : Zobrist(rng, maxLength, variableHashes)
+{}
 
-struct JitEvaluator::CacheImpl {
-    gtl::parallel_flat_hash_map_m<Operon::Hash, CacheEntry> Map;
-};
 
-JitEvaluator::JitEvaluator(gsl::not_null<Problem const*> problem,
-                             gsl::not_null<Zobrist const*>  zobrist,
-                             ErrorMetric                    error,
-                             bool                           linearScaling)
+JitEvaluator::JitEvaluator(gsl::not_null<Problem const*>    problem,
+                             gsl::not_null<JitZobrist const*> zobrist,
+                             ErrorMetric                      error,
+                             bool                             linearScaling)
     : EvaluatorBase(problem)
     , zobrist_(zobrist)
     , error_(std::move(error))
     , scaling_(linearScaling)
-    , cache_(std::make_unique<CacheImpl>())
+    , compiler_(&zobrist->Pool())
 {}
 
 JitEvaluator::~JitEvaluator() = default;
 
-auto JitEvaluator::GetOrCompile(Tree const& tree) const -> std::shared_ptr<CompiledTree>
+auto JitEvaluator::GetOrCompile(Tree const& tree) const -> CompileMeta const*
 {
     return GetOrCompile(tree, zobrist_->ComputeHash(tree));
 }
 
-auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> std::shared_ptr<CompiledTree>
+auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMeta const*
 {
-    CacheEntry entry;
+    if (maxLength_ > 0 && static_cast<int>(tree.Length()) > maxLength_) { ++misses_; return nullptr; }
 
-    // Fast path: already in cache.
-    cache_->Map.if_contains(hash, [&](auto const& kv) { entry = kv.second; });
-    if (entry.Tree) { ++hits_; return entry.Tree; }
+    // Fast path: already compiled.
+    CompileMeta const* result{};
+    if (zobrist_->JitCache().IfContains(hash, [&](JitEntry const& e) {
+            if (e.meta && e.meta->fn) { result = e.meta.get(); }
+        }) && result != nullptr) {
+        ++hits_;
+        return result;
+    }
 
-    // Compile outside the map lock so that cc.finalize() (the expensive part) runs
-    // in parallel across threads.  rt_.add() is internally mutex-protected in asmjit,
-    // so concurrent calls are safe.  A rare double-compile race is harmless: we just
-    // keep whichever result arrives first in the map.
-    std::shared_ptr<CompiledTree> compiled(compiler_.CompileAVX2(tree));
-    if (!compiled) { ++avx2Fails_; compiled.reset(compiler_.Compile(tree).release()); }
+    // Increment visit counter; return nullptr until frequency threshold is met.
+    std::size_t visits{};
+    zobrist_->JitCache().LazyEmplace(hash,
+        [&](JitEntry& e) { visits = ++e.Visits; },
+        [&](JitEntry& e) { visits = ++e.Visits; }
+    );
+    if (visits < minVisits_) { ++misses_; return nullptr; }
+
+    // Compile outside the map lock so cc.finalize() runs in parallel.
+    auto compiled = compiler_.CompileAVX2(tree);
+    if (!compiled) { ++avx2Fails_; compiled = compiler_.Compile(tree); }
     if (!compiled) { ++compileFails_; }
 
-    cache_->Map.lazy_emplace_l(
-        hash,
-        [&](auto& kv) { entry = kv.second; ++hits_; },   // another thread beat us
-        [&](auto const& ctor) { entry.Tree = compiled; ctor(hash, entry); }
-    );
-    return entry.Tree;
+    zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) {
+        if (!e.meta) {
+            e.meta = std::move(compiled);
+        } else if (e.meta->fn == nullptr && compiled) {
+            e.meta->fn    = compiled->fn;    compiled->fn    = nullptr;
+            e.meta->rtTree = compiled->rtTree; compiled->rtTree = nullptr;
+        }
+        if (e.meta && e.meta->fn) { result = e.meta.get(); }
+    });
+    if (result != nullptr) { ++hits_; } else { ++misses_; }
+    return result;
 }
 
-auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> std::shared_ptr<CompiledJacobian>
+auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> CompileMeta const*
 {
     auto const hash = zobrist_->ComputeHash(tree);
 
     // Fast path: Jacobian already compiled.
-    std::shared_ptr<CompiledJacobian> jac;
-    cache_->Map.if_contains(hash, [&](auto const& kv) { jac = kv.second.Jac; });
-    if (jac) { return jac; }
+    CompileMeta const* meta{};
+    if (zobrist_->JitCache().IfContains(hash, [&](JitEntry const& e) {
+            if (e.meta && e.meta->jacFn) { meta = e.meta.get(); }
+        }) && meta != nullptr) {
+        return meta;
+    }
 
-    // Ensure the primal entry exists (compile it if needed).
-    static_cast<void>(GetOrCompile(tree, hash));
+    // Ensure an entry exists and count this as a visit (consistent with GetOrCompile).
+    // Jacobian compilation is not frequency-gated — it is only requested by the optimizer
+    // for trees that have already passed selection, so compiling unconditionally is correct.
+    zobrist_->JitCache().LazyEmplace(hash,
+        [](JitEntry& e) { ++e.Visits; },
+        [](JitEntry& e) { e.Visits = 1; });
 
-    // Compile the Jacobian outside any lock (deterministic — a double-compile on
-    // a very rare race is harmless). CompileJacobian is AVX2-only; on non-AVX2
-    // hardware it returns nullptr and JitLMCostFunction falls back to interpreter JacRev.
     auto dag    = Operon::BuildJacobianDag(tree);
     auto newJac = compiler_.CompileJacobian(dag);
 
-    // Store it; if another thread beat us, use their result.
-    cache_->Map.modify_if(hash, [&](auto& kv) {
-        if (!kv.second.Jac) { kv.second.Jac = std::move(newJac); }
-        jac = kv.second.Jac;
+    zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) {
+        if (!e.meta) {
+            e.meta = std::move(newJac);
+        } else if (e.meta->jacFn == nullptr && newJac) {
+            e.meta->AcceptJac(*newJac);
+        }
+        if (e.meta) { meta = e.meta.get(); }
     });
-    return jac;
+    return meta;
 }
 
 auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
@@ -105,27 +123,28 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
     auto const  weightsOpt    = problem->Weights(range);
     auto const  weights       = weightsOpt.value_or(Span<Scalar const>{});
 
-    auto const& tree    = ind.Genotype;
-    auto const  hash    = zobrist_->ComputeHash(tree);
-    auto const  compiled = GetOrCompile(tree, hash);
+    auto const& tree = ind.Genotype;
+    auto const  hash = zobrist_->ComputeHash(tree);
+    CompileMeta const* compiled = GetOrCompile(tree, hash);
 
     ENSURE(buf.size() >= range.Size());
     ++ResidualEvaluations;
 
-    if (compiled) {
-        auto const  nVars      = compiled->varOrder.size();
-        auto const  nRows      = static_cast<int32_t>(range.Size());
-        auto const  nRowsPad   = (nRows + 7) & ~7;
+    if (compiled != nullptr) {
+        auto const  nRows    = static_cast<int32_t>(range.Size());
+        auto const  nRowsPad = (nRows + 7) & ~7;
 
+        // Rebuild column pointers from the tree (VarOrder is re-derivable since
+        // the Zobrist hash now structurally identifies each unique tree).
+        thread_local std::vector<Hash>         varOrderBuf;
         thread_local std::vector<float const*> colPtrs;
-        colPtrs.resize(nVars);
-        for (std::size_t i = 0; i < nVars; ++i) {
-            colPtrs[i] = dataset->GetPaddedValues(compiled->varOrder[i])
+        varOrderBuf = VarOrder(tree);
+        colPtrs.resize(varOrderBuf.size());
+        for (std::size_t i = 0; i < varOrderBuf.size(); ++i) {
+            colPtrs[i] = dataset->GetPaddedValues(varOrderBuf[i])
                          + static_cast<std::ptrdiff_t>(range.Start());
         }
 
-        // JIT function processes nRowsPad rows (always a multiple of 8, no scalar tail).
-        // Use a thread-local scratch buffer so the extra 0-7 writes don't touch buf.
         thread_local std::vector<Scalar> scratch;
         scratch.resize(static_cast<std::size_t>(nRowsPad));
 
@@ -135,8 +154,11 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
                      coeff.empty() ? nullptr : coeff.data());
         std::copy_n(scratch.data(), nRows, buf.data());
     } else {
-        // Compilation failed — fill with a large constant so the individual is culled.
-        std::ranges::fill(buf, EvaluatorBase::ErrMax);
+        thread_local ScalarDispatch fallbackDtable;
+        thread_local std::vector<Scalar> coeffBuf;
+        tree.GetCoefficients(coeffBuf);
+        Interpreter<Scalar, ScalarDispatch> interp{&fallbackDtable, dataset, &tree};
+        interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, buf);
     }
 
     if (scaling_) {
@@ -160,12 +182,20 @@ auto JitEvaluator::operator()(RandomGenerator& rng, Individual const& ind) const
 
 auto JitEvaluator::CacheSize() const -> std::size_t
 {
-    return cache_->Map.size();
+    return zobrist_->JitCache().Size();
 }
 
 void JitEvaluator::ClearCache()
 {
-    cache_->Map.clear();
+    zobrist_->JitCache().Clear();
+}
+
+void JitEvaluator::ResetCounters()
+{
+    hits_.store(0);
+    misses_.store(0);
+    avx2Fails_.store(0);
+    compileFails_.store(0);
 }
 
 } // namespace Operon::JIT
