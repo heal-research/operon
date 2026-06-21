@@ -25,7 +25,6 @@
 #include <vector>
 
 namespace Operon::JIT {
-
 namespace {
 
 using namespace asmjit;

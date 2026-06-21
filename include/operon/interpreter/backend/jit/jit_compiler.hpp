@@ -70,7 +70,6 @@ struct CompileMeta {
     { o.rtTree = o.rtJac = nullptr; o.fn = nullptr; o.jacFn = nullptr; }
 
     CompileMeta& operator=(CompileMeta&&) = delete;
-
 };
 
 // Pool of K independent JitRuntimes. Each runtime has its own JitAllocator mutex.
