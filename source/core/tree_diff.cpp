@@ -430,78 +430,67 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     return Zero;
 }
 
-} // anonymous namespace
-
-auto BuildJacobianDag(Tree const& tree) -> JacobianDag {
+// Shared first-pass logic: copy original nodes into `dag`, build identity
+// hashes, collect optimizable constants, and differentiate the tree root
+// w.r.t. each constant. Returns the constants vector (needed by the Hessian
+// second pass). The caller owns `dag`, `memo`, and `h` so that BuildHessianDag
+// can continue appending to them.
+auto DifferentiateFirstOrder(
+    Tree const& tree, Nodes& dag, Memo& memo, Hashes& h,
+    Operon::Vector<std::size_t>& roots, std::size_t reserveFactor
+) -> Operon::Vector<std::size_t>
+{
     auto const& orig = tree.Nodes();
     auto const n     = orig.size();
 
-    JacobianDag dag;
-    dag.OriginalSize = n;
-    dag.Nodes        = orig; // copy original nodes into the growing DAG
-    dag.Nodes.reserve(n * 8);
+    dag = orig;
+    dag.reserve(n * reserveFactor);
 
-    // Assign identity hashes to original nodes (index = unique identity).
-    Hashes h;
-    h.reserve(n * 8);
+    h.clear();
+    h.reserve(n * reserveFactor);
     for (std::size_t i = 0; i < n; ++i) {
         h.push_back(static_cast<uint64_t>(i));
     }
 
-    Memo memo;
-
-    // Collect optimizable constants in order.
     Operon::Vector<std::size_t> constants;
     for (std::size_t i = 0; i < n; ++i) {
         if (orig[i].Optimize) { constants.push_back(i); }
     }
 
-    dag.Roots.resize(constants.size(), std::numeric_limits<std::size_t>::max());
-
-    // Differentiate the tree root (last node in postfix order) w.r.t. each constant.
+    roots.resize(constants.size(), Zero);
     for (std::size_t ci = 0; ci < constants.size(); ++ci) {
-        dag.Roots[ci] = Deriv(orig, dag.Nodes, memo, h, n - 1, constants[ci]);
+        roots[ci] = Deriv(orig, dag, memo, h, n - 1, constants[ci]);
     }
 
+    return constants;
+}
+
+} // anonymous namespace
+
+auto BuildJacobianDag(Tree const& tree) -> JacobianDag {
+    JacobianDag dag;
+    Memo memo;
+    Hashes h;
+    DifferentiateFirstOrder(tree, dag.Nodes, memo, h, dag.Roots, 8);
+    dag.OriginalSize = tree.Nodes().size();
     return dag;
 }
 
 auto BuildHessianDag(Tree const& tree) -> HessianDag {
-    auto const& orig = tree.Nodes();
-    auto const n     = orig.size();
-
     HessianDag result;
-    result.OriginalSize = n;
-    result.Nodes        = orig;
-    result.Nodes.reserve(n * 32);
-
-    Hashes h;
-    h.reserve(n * 32);
-    for (std::size_t i = 0; i < n; ++i) {
-        h.push_back(static_cast<uint64_t>(i));
-    }
-
     Memo memo;
+    Hashes h;
+    auto const constants = DifferentiateFirstOrder(
+        tree, result.Nodes, memo, h, result.JacobianRoots, 32);
 
-    Operon::Vector<std::size_t> constants;
-    for (std::size_t i = 0; i < n; ++i) {
-        if (orig[i].Optimize) { constants.push_back(i); }
-    }
-
+    result.OriginalSize = tree.Nodes().size();
     auto const p = constants.size();
     result.NumParams = p;
 
-    // First pass: Jacobian (same as BuildJacobianDag).
-    result.JacobianRoots.resize(p, Zero);
-    for (std::size_t ci = 0; ci < p; ++ci) {
-        result.JacobianRoots[ci] = Deriv(orig, result.Nodes, memo, h, n - 1, constants[ci]);
-    }
-
-    // Snapshot the DAG so the second pass can navigate derivative nodes
-    // without aliasing the growing result.Nodes vector.
+    // Snapshot the DAG so the second pass can navigate first-order derivative
+    // nodes without aliasing the growing result.Nodes vector.
     auto const snapshot = result.Nodes;
 
-    // Second pass: Hessian upper triangle d²f/(dc_i dc_j), j >= i.
     result.HessianRoots.resize(p * (p + 1) / 2, Zero);
     for (std::size_t i = 0; i < p; ++i) {
         if (result.JacobianRoots[i] == Zero) { continue; }
