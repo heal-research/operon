@@ -6,6 +6,7 @@
 #ifdef HAVE_ASMJIT
 
 #include <asmjit/asmjit.h>
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -70,13 +71,6 @@ struct CompileMeta {
 
     CompileMeta& operator=(CompileMeta&&) = delete;
 
-    // Steal the jacFn/rtJac from another CompileMeta (which must have fn==nullptr).
-    void AcceptJac(CompileMeta& other) noexcept {
-        if (jacFn == nullptr && other.jacFn != nullptr) {
-            jacFn  = other.jacFn;  other.jacFn  = nullptr;
-            rtJac  = other.rtJac;  other.rtJac  = nullptr;
-        }
-    }
 };
 
 // Pool of K independent JitRuntimes. Each runtime has its own JitAllocator mutex.

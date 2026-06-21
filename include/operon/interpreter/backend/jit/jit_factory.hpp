@@ -10,7 +10,6 @@
 
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
-#include "operon/hash/zobrist.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/operon_export.hpp"
@@ -26,9 +25,9 @@ namespace Operon::JIT {
 // transposition table is also needed.
 struct JitObjects {
     std::unique_ptr<Operon::EvaluatorBase>  Evaluator;
-    std::unique_ptr<Operon::EvaluatorBase>  JacEvalStorage;
+    std::unique_ptr<Operon::EvaluatorBase>  JitEvalForOptimizer;
     std::unique_ptr<Operon::OptimizerBase>  Optimizer;
-    std::unique_ptr<Operon::Zobrist>        Zobrist;
+    std::unique_ptr<JitZobrist>             Zobrist;
     std::function<void()>                   Report = [](){};
 };
 

@@ -191,7 +191,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                 static_cast<int>(maxLength), config.Seed);
             if (jobj.Error) { return EXIT_FAILURE; }
             evaluator     = std::move(jobj.Evaluator);
-            jacEvalStorage = std::move(jobj.JacEvalStorage);
+            jacEvalStorage = std::move(jobj.JitEvalForOptimizer);
             optimizer     = std::move(jobj.Optimizer);
             zobrist       = std::move(jobj.Zobrist);
             jitReport     = std::move(jobj.Report);
@@ -236,7 +236,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
-        gp.Run(executor, random, [&]() -> void { reporter(executor, gp); jitReport(); });
+        gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
+        jitReport();
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));
     } catch (std::exception& e) {

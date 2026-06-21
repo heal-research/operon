@@ -276,7 +276,7 @@ auto main(int argc, char** argv) -> int
                 static_cast<int>(maxLength), config.Seed);
             if (jobj.Error) { return EXIT_FAILURE; }
             errorEvaluator = std::move(jobj.Evaluator);
-            jacEvalStorage = std::move(jobj.JacEvalStorage);
+            jacEvalStorage = std::move(jobj.JitEvalForOptimizer);
             optimizer      = std::move(jobj.Optimizer);
             zobrist        = std::move(jobj.Zobrist);
             jitReport      = std::move(jobj.Report);
@@ -363,7 +363,8 @@ auto main(int argc, char** argv) -> int
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector));
-        gp.Run(executor, random, [&]() { reporter(executor, gp); jitReport(); });
+        gp.Run(executor, random, [&]() { reporter(executor, gp); });
+        jitReport();
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
         if (result.contains("pareto-front")) {

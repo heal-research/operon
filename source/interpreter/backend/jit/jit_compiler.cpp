@@ -26,7 +26,6 @@
 
 namespace Operon::JIT {
 
-
 namespace {
 
 using namespace asmjit;
