@@ -101,13 +101,18 @@
             });
           };
 
-          devShells.compare = pkgs.mkShell {
-            name = "operon-compare";
+          devShells.tools = pkgs.mkShell {
+            name = "operon-tools";
             packages = [
               (pkgs.python3.withPackages (
                 ps: with ps; [
+                  pandas
+                  pyarrow
+                  optuna
+                  rich
+                  loguru
                   scipy
-                  tabulate
+                  pyyaml
                 ]
               ))
             ];
