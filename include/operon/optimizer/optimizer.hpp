@@ -18,7 +18,6 @@
 
 #include <unsupported/Eigen/LevenbergMarquardt>
 
-#include "dynamic_cost_function.hpp"
 #include "likelihood/gaussian_likelihood.hpp"
 #include "likelihood/poisson_likelihood.hpp"
 // GaussianLoss / PoissonLoss are defined in the same headers above.
@@ -34,7 +33,7 @@
 
 namespace Operon {
 
-enum class OptimizerType : int { Tiny, Eigen, Ceres };
+enum class OptimizerType : int { Tiny, Eigen };
 
 struct OptimizerSummary {
     std::vector<Operon::Scalar> InitialParameters;
@@ -202,71 +201,6 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
     private:
     gsl::not_null<DTable const*> dtable_;
 };
-
-#if defined(HAVE_CERES)
-template <typename DTable>
-struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Ceres> final : public OptimizerBase {
-    explicit LevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
-        : OptimizerBase{problem}, dtable_{dtable}
-    {
-    }
-
-    auto Optimize(Operon::RandomGenerator& /*unused*/, Operon::Tree const& tree) -> std::vector<Operon::Scalar> final
-    {
-        auto const* tree = this->GetTree();
-        auto const* ds = this->GetDataset();
-        auto const* dt = this->GetDispatchTable();
-
-        auto x0 = tree->GetCoefficients();
-
-        Operon::LMCostFunction<DTable, Eigen::RowMajor> cf(tree, ds, target, range, dt);
-        auto costFunction = new Operon::DynamicCostFunction(cf); // NOLINT
-
-        ceres::Solver::Summary s;
-        if (!initialParameters.empty()) {
-            auto sz = std::ssize(finalParameters);
-            Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(finalParameters.data(), sz);
-            Eigen::VectorXd params = m0.template cast<double>();
-            ceres::Problem problem;
-            problem.AddResidualBlock(dynamicCostFunction, nullptr, params.data());
-            ceres::Solver::Options options;
-            options.linear_solver_type = ceres::DENSE_QR;
-            options.logging_type = ceres::LoggingType::SILENT;
-            options.max_num_iterations = static_cast<int>(iterations);
-            options.minimizer_progress_to_stdout = false;
-            options.num_threads = 1;
-            options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
-            options.use_inner_iterations = false;
-            Solve(options, &problem, &s);
-            m0 = params.cast<Operon::Scalar>();
-        }
-        return Operon::OptimizerSummary {
-            .InitialParameters = initialParameters,
-            .FinalParameters = finalParameters,
-            .InitialCost = static_cast<Operon::Scalar>(s.initial_cost),
-            .FinalCost   = static_cast<Operon::Scalar>(s.final_cost),
-            .Iterations  = static_cast<int>(s.iterations.size()),
-            .FunctionEvaluations = s.num_residual_evaluations,
-            .JacobianEvaluations = s.num_jacobian_evaluations,
-            .Success = detail::CheckSuccess(s.initial_cost, s.final_cost)
-        };
-    }
-
-    auto GetDispatchTable() const -> DTable const& { return dtable_.get(); }
-
-    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar final
-    {
-        return GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(x, y, w);
-    }
-
-    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
-        return GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(pred, jac, sigma);
-    }
-
-    private:
-    gsl::not_null<DTable const*> dtable_;
-};
-#endif
 
 template<typename DTable, Concepts::OptimizerLoss LossFunction = GaussianLoss<Operon::Scalar>>
 struct LBFGSOptimizer final : public OptimizerBase {

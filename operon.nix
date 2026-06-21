@@ -33,7 +33,6 @@ stdenv.mkDerivation rec {
     (with pkgs; [
       asmjit
       aria-csv
-      ceres-solver
       cpp-sort
       cpptrace
       cxxopts
