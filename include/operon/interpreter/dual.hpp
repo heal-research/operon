@@ -6,11 +6,7 @@
 
 #include "operon/core/types.hpp"
 
-#if defined(HAVE_CERES)
-#include <ceres/jet.h>
-#else
 #include "operon/ceres/jet.h"
-#endif
 
 namespace Operon {
 using Dual = ceres::Jet<Operon::Scalar, 4 * sizeof(double) / sizeof(Scalar)>;
