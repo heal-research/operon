@@ -31,24 +31,12 @@ from rich.console import Console
 from rich.table import Table
 from scipy import stats
 
-from run_operon import run_reps, save
+from run_operon import reps_kwargs_from_cfg, run_reps, save
 
 
 def load_config(path: Path) -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
-
-
-def _reps_kwargs(cfg: dict) -> dict:
-    return dict(
-        all_gens=cfg.get("all_gens", False),
-        reps=cfg.get("reps"),
-        adaptive=cfg.get("adaptive", False),
-        max_reps=cfg.get("max_reps", 50),
-        tol=cfg.get("tol", 0.005),
-        window=cfg.get("window", 5),
-        base_seed=cfg.get("base_seed"),
-    )
 
 
 def compare_table(df_a: pd.DataFrame, df_b: pd.DataFrame,
@@ -90,7 +78,7 @@ def main() -> None:
     cfg = load_config(args.config)
     shared_args: list[str] = cfg.get("shared_args", [])
     metric: str = cfg.get("metric", "r2_te")
-    kwargs = _reps_kwargs(cfg)
+    kwargs = reps_kwargs_from_cfg(cfg)
 
     name_a = cfg.get("name_a", Path(cfg["binary_a"]).name)
     name_b = cfg.get("name_b", Path(cfg["binary_b"]).name)

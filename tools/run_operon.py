@@ -118,6 +118,20 @@ def save(df: pd.DataFrame, output: Path, *, append: bool = False) -> None:
     logger.info(f"Saved {len(df)} rows → {output}")
 
 
+def reps_kwargs_from_cfg(cfg: dict, *, show_progress: bool = True) -> dict:
+    """Extract run_reps keyword arguments from a YAML config dict."""
+    return dict(
+        all_gens=cfg.get("all_gens", False),
+        reps=cfg.get("reps"),
+        adaptive=cfg.get("adaptive", False),
+        max_reps=cfg.get("max_reps", 50),
+        tol=cfg.get("tol", 0.005),
+        window=cfg.get("window", 5),
+        base_seed=cfg.get("base_seed"),
+        show_progress=show_progress,
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=__doc__,
