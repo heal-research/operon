@@ -10,11 +10,7 @@
 
 #include "operon/error_metrics/sum_of_squared_errors.hpp"
 
-#if defined(HAVE_CERES)
-#include <ceres/tiny_solver.h>
-#else
 #include "operon/ceres/tiny_solver.h"
-#endif
 
 #include <unsupported/Eigen/LevenbergMarquardt>
 
