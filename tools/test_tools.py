@@ -47,8 +47,19 @@ def test_parse_output_all_gens():
 
 def test_parse_output_model_expression_not_in_data():
     df = parse_output(SAMPLE_OUTPUT, all_gens=True)
-    # Model expression line has wrong column count — must be excluded.
-    assert "x0" not in df.values.tolist()[0]
+    assert len(df) == 3  # model expression line must be excluded
+
+def test_parse_output_model_expression_starts_with_number():
+    # Model expression like "3.14 * x0 + 1" has a numeric first token
+    # but non-numeric tokens elsewhere — must still be excluded.
+    stdout = textwrap.dedent("""\
+        iteration  r2_tr  r2_te  mae_tr  mae_te
+        0          0.10   0.09   1.20    1.30
+        500        0.92   0.91   0.12    0.14
+        3.14 * x0 + 1.0 * x1 x2
+    """)
+    df = parse_output(stdout, all_gens=True)
+    assert len(df) == 2
 
 
 def test_parse_output_no_header():

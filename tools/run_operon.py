@@ -38,7 +38,8 @@ def parse_output(stdout: str, all_gens: bool) -> pd.DataFrame:
         if len(parts) != n:
             return False
         try:
-            float(parts[0])   # first column is always a numeric iteration/generation counter
+            for p in parts:
+                float(p)
             return True
         except ValueError:
             return False
