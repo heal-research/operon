@@ -546,6 +546,7 @@ auto EvalDagColumn(
 }
 
 // Find permutation mapping: for each Operon coefficient, which Python index matches.
+// Requires all coefficient values to be distinct (guaranteed by the Python generator).
 // Returns empty vector on failure.
 auto FindCoeffPermutation(
     std::vector<Operon::Scalar> const& operonCoeffs,
@@ -654,7 +655,7 @@ TEST_CASE("BuildHessianDag correctness vs JAX ground truth", "[tree_diff][hessia
     DTable dtable;
     Range const range{0, ds.Rows<std::size_t>()};
 
-    constexpr auto eps = 1e-2F;
+    constexpr auto eps = 1e-4F;
     std::size_t passed = 0;
     std::size_t failed = 0;
     std::size_t skipped = 0;
@@ -776,7 +777,7 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
     constexpr auto maxLen = 20;
     constexpr auto fdEps  = 1e-3F;
     constexpr auto tol    = 5e-2F;
-    constexpr auto maxFailRate = 0.05; // allow 5% failures due to numerics
+    constexpr auto maxFailRate = 0.05;
 
     Operon::RandomGenerator rng(99UL);
     auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
@@ -796,10 +797,6 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
 
         auto const dag = BuildHessianDag(tree);
         Interp const interp{&dtable, &ds, &tree};
-
-        // Compute Hessian by finite differences on JacRev
-        // H(i,j) ≈ (J(c + eps*e_j) - J(c - eps*e_j)) / (2*eps)  column i
-        auto const jacCenter = interp.JacRev(coeff, range);
 
         for (std::size_t i = 0; i < p; ++i) {
             for (std::size_t j = i; j < p; ++j) {

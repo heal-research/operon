@@ -153,6 +153,11 @@ struct Interpreter : public InterpreterBase<T> {
             if (roots[k] == NoRoot) { result.col(k).setZero(); }
         }
 
+        auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
+        for (Eigen::Index k = 0; k < nRoots; ++k) {
+            EXPECT(roots[k] == NoRoot || roots[k] < nNodes);
+        }
+
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/false);
             auto const rem = std::min(S, len - row);

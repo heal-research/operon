@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contracts.hpp"
 #include "node.hpp"
 #include "tree.hpp"
 #include "types.hpp"
@@ -38,8 +39,8 @@ struct HessianDag {
     Operon::Vector<std::size_t> JacobianRoots; // [p] roots of df/dc_k
     Operon::Vector<std::size_t> HessianRoots;  // [p*(p+1)/2] upper triangle
 
-    // Index into the upper triangle: returns the flat offset for d²f/(dc_i dc_j).
     [[nodiscard]] auto UpperIdx(std::size_t i, std::size_t j) const -> std::size_t {
+        EXPECT(i <= j);
         return (i * NumParams) - (i * (i - 1) / 2) + (j - i);
     }
 };
