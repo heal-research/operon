@@ -50,10 +50,7 @@ auto MakeFriedmanDataset(int rows, std::mt19937& rng) -> Operon::Dataset
 // nanobench CSV: title="compile", name="size=NN", batch=1 → elapsed = seconds per compilation.
 TEST_CASE("JIT compile time distribution", "[performance][jit][breakeven]")
 {
-#ifndef HAVE_ASMJIT
-    SKIP("Built without HAVE_ASMJIT");
-#endif
-
+#ifdef HAVE_ASMJIT
     constexpr int MAX_SIZE   = 50;
     constexpr int N_PER_SIZE = 200;
 
@@ -69,7 +66,6 @@ TEST_CASE("JIT compile time distribution", "[performance][jit][breakeven]")
     problem.ConfigurePrimitiveSet(Operon::PrimitiveSet::Arithmetic);
 
     Operon::RandomGenerator zrng(42);  // NOLINT(cert-msc51-cpp)
-#ifdef HAVE_ASMJIT
     Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
     Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE{}, /*linearScaling=*/false);
     jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
@@ -95,6 +91,8 @@ TEST_CASE("JIT compile time distribution", "[performance][jit][breakeven]")
     }
 
     bench.render(nb::templates::csv(), std::cout);
+#else
+    SKIP("Built without HAVE_ASMJIT");
 #endif
 }
 
