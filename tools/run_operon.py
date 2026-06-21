@@ -31,16 +31,26 @@ def parse_output(stdout: str, all_gens: bool) -> pd.DataFrame:
         return pd.DataFrame()
 
     header = lines[header_idx].split()
-    # Only keep lines whose token count matches the header — naturally excludes
-    # the trailing model expression (which is a single string token).
-    data_lines = [ln for ln in lines[header_idx + 1:] if ln.strip() and len(ln.split()) == len(header)]
+    n = len(header)
+
+    def _is_data_line(ln: str) -> bool:
+        parts = ln.split()
+        if len(parts) != n:
+            return False
+        try:
+            float(parts[0])   # first column is always a numeric iteration/generation counter
+            return True
+        except ValueError:
+            return False
+
+    data_lines = [ln for ln in lines[header_idx + 1:] if ln.strip() and _is_data_line(ln)]
     if not data_lines:
         return pd.DataFrame()
 
     rows = [ln.split() for ln in data_lines]
     df = pd.DataFrame(rows, columns=header)
     for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="ignore")
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
     return df if all_gens else df.iloc[[-1]]
 

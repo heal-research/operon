@@ -113,6 +113,7 @@
                   loguru
                   scipy
                   pyyaml
+                  pytest
                 ]
               ))
             ];
