@@ -20,6 +20,11 @@ Config format:
     # timeout: 120
     metric: r2_te          # column to compare (default: r2_te)
     output: results/compare.feather   # optional
+
+CLI flags:
+    --alpha A   significance level for Mann-Whitney U test (default: 0.05)
+
+Note: scipy is optional. If not installed, the significance test is skipped.
 """
 import argparse
 import sys

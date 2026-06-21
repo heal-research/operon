@@ -129,6 +129,12 @@ def main() -> None:
 
     cfg = load_config(args.config)
 
+    if cfg.get("tune"):
+        try:
+            import optuna as _optuna  # noqa: F401
+        except ImportError as e:
+            raise SystemExit("tune mode requires optuna — pip install optuna") from e
+
     binary      = cfg["binary"]
     jobs        = cfg.get("jobs", 1)
     threads     = cfg.get("threads", 1)

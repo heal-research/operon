@@ -84,6 +84,8 @@ def run_reps(
     def _do_reps(progress=None, task=None):
         for i in range(n):
             df = run_once(binary, _args_for_rep(i), all_gens, timeout)
+            if df.empty:
+                continue
             df.insert(0, "rep", i)
             frames.append(df)
 
@@ -134,10 +136,11 @@ def save(df: pd.DataFrame, output: Path, *, append: bool = False) -> None:
 
 def reps_kwargs_from_cfg(cfg: dict, *, show_progress: bool = True) -> dict:
     """Extract run_reps keyword arguments from a YAML config dict."""
+    adaptive = cfg.get("adaptive", False)
     return dict(
         all_gens=cfg.get("all_gens", False),
-        reps=cfg.get("reps"),
-        adaptive=cfg.get("adaptive", False),
+        reps=cfg.get("reps", None if adaptive else 1),
+        adaptive=adaptive,
         max_reps=cfg.get("max_reps", 50),
         tol=cfg.get("tol", 0.005),
         window=cfg.get("window", 5),

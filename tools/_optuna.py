@@ -18,8 +18,11 @@ def suggest(trial: optuna.Trial, name: str, spec: dict):
     if t == "int":
         return trial.suggest_int(name, spec["low"], spec["high"], step=spec.get("step", 1))
     if t == "float":
-        return trial.suggest_float(name, spec["low"], spec["high"],
-                                   log=spec.get("log", False), step=spec.get("step"))
+        log  = spec.get("log", False)
+        step = spec.get("step")
+        if log and step is not None:
+            raise ValueError(f"Param '{name}': log=true and step are mutually exclusive in Optuna")
+        return trial.suggest_float(name, spec["low"], spec["high"], log=log, step=step)
     if t == "categorical":
         return trial.suggest_categorical(name, spec["choices"])
     raise ValueError(f"Unknown param type '{t}' for '{name}'")
@@ -71,7 +74,10 @@ def run_study(
     study.optimize(objective, n_trials=trials)
     combined = pd.concat(all_frames, ignore_index=True) if all_frames else pd.DataFrame()
 
+    # When resuming from persistent storage, all_frames only contains the trials
+    # run in this session. Merge with any pre-existing trials_output so the file
+    # always reflects the full history.
     if trials_output and not combined.empty:
-        save(combined, trials_output)
+        save(combined, trials_output, append=trials_output.exists())
 
     return study, combined
