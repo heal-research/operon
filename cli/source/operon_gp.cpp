@@ -27,12 +27,9 @@
 #include "operon/operators/selector.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
+#include "jit_setup.hpp"
 #include "operator_factory.hpp"
 #include "util.hpp"
-
-#if defined(HAVE_ASMJIT)
-#include "operon/interpreter/backend/jit/jit_evaluator.hpp"
-#endif
 
 
 namespace {
@@ -171,65 +168,42 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         auto const scale   = result["linear-scaling"].as<bool>();
         auto const jitMode = result["jit"].as<std::string>(); // "all", "jac", or ""
 
-        // Zobrist needed by any JIT mode and/or --transposition-cache.
-        std::unique_ptr<Operon::Zobrist> zobrist;
-        Operon::JIT::JitZobrist* jzp = nullptr;
-        if (!jitMode.empty() || result["transposition-cache"].as<bool>()) {
-            Operon::RandomGenerator cacheRng(config.Seed);
-            if (!jitMode.empty()) {
-                auto jz = std::make_unique<Operon::JIT::JitZobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
-                jzp = jz.get();
-                zobrist = std::move(jz);
-            } else {
-                zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
-            }
-            if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
-        }
-
+        std::unique_ptr<Operon::Zobrist>       zobrist;
         std::unique_ptr<Operon::EvaluatorBase> evaluator;
-        std::unique_ptr<Operon::EvaluatorBase> jacJitEvalStorage; // owns JitEvaluator in jac mode
+        std::unique_ptr<Operon::EvaluatorBase> jacEvalStorage;
         std::unique_ptr<Operon::OptimizerBase> optimizer;
-        std::function<void()> jitReport = [](){};
+        std::function<void()>                  jitReport = [](){};
 
         if (jitMode.empty()) {
+            if (result["transposition-cache"].as<bool>()) {
+                Operon::RandomGenerator cacheRng(config.Seed);
+                zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
+                config.Cache = zobrist.get();
+            }
             evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
             optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
         } else {
-#if !defined(HAVE_ASMJIT)
-            fmt::print(stderr, "error: --jit requires a build with JIT support (HAVE_ASMJIT)\n");
-            return EXIT_FAILURE;
-#else
-            auto [metric, supportsLinearScale] = Operon::ParseErrorMetric(result["objective"].as<std::string>());
-            if (jitMode == "all") {
-                evaluator = std::make_unique<Operon::JIT::JitEvaluator>(&problem, jzp, *metric, scale && supportsLinearScale);
-                optimizer = std::make_unique<Operon::JitLevenbergMarquardtOptimizer<decltype(dtable)>>(
-                    &dtable, &problem, dynamic_cast<Operon::JIT::JitEvaluator*>(evaluator.get()));
-            } else if (jitMode == "jac") {
+            auto jobj = Operon::CLI::MakeJitObjects(
+                jitMode, problem, dtable,
+                result["objective"].as<std::string>(), scale,
+                result["jit-max-length"].as<int>(),
+                result["jit-min-visits"].as<std::size_t>(),
+                static_cast<int>(maxLength), config.Seed);
+            if (jobj.Error) { return EXIT_FAILURE; }
+            evaluator     = std::move(jobj.Evaluator);
+            jacEvalStorage = std::move(jobj.JacEvalStorage);
+            optimizer     = std::move(jobj.Optimizer);
+            zobrist       = std::move(jobj.Zobrist);
+            jitReport     = std::move(jobj.Report);
+            if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
+            // "jac" mode: factory leaves evaluator null; create interpreter evaluator here.
+            if (!evaluator) {
                 evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
-                jacJitEvalStorage = std::make_unique<Operon::JIT::JitEvaluator>(&problem, jzp, *metric, scale && supportsLinearScale);
-                optimizer = std::make_unique<Operon::JitLevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen, /*JacobianOnly=*/true>>(
-                    &dtable, &problem, dynamic_cast<Operon::JIT::JitEvaluator*>(jacJitEvalStorage.get()));
-            } else {
-                fmt::print(stderr, "warning: unknown --jit mode '{}', ignoring\n", jitMode);
-                evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+            }
+            // unknown mode: factory returned null optimizer; fall back to defaults.
+            if (!optimizer) {
                 optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
             }
-            auto* jev = dynamic_cast<Operon::JIT::JitEvaluator*>(evaluator.get());
-            if (jev == nullptr) { jev = dynamic_cast<Operon::JIT::JitEvaluator*>(jacJitEvalStorage.get()); }
-            if (jev != nullptr) {
-                jev->SetMaxLength(result["jit-max-length"].as<int>());
-                jev->SetMinVisits(result["jit-min-visits"].as<std::size_t>());
-                jitReport = [jev]() {
-                    auto const hits   = jev->CacheHits();
-                    auto const misses = jev->CacheMisses();
-                    auto const total  = hits + misses;
-                    auto const rate   = total > 0U ? 100.0 * static_cast<double>(hits) / static_cast<double>(total) : 0.0;
-                    fmt::print(stderr, "jit | cache {:5} | hits {:6} | misses {:6} | hit% {:5.1f}\n",
-                               jev->CacheSize(), hits, misses, rate);
-                    jev->ResetCounters();
-                };
-            }
-#endif
         }
         evaluator->SetBudget(config.Evaluations);
         optimizer->SetIterations(config.Iterations);

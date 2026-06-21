@@ -149,7 +149,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("objective", "The error metric used for calculating fitness", cxxopts::value<std::string>()->default_value("r2"))
         ("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)", cxxopts::value<std::string>()->default_value("rs"))
         ("linear-scaling", "Apply linear scaling on model predictions", cxxopts::value<bool>()->default_value("true"))
-        ("jit", "JIT mode: 'all' = JIT evaluator + optimizer, 'jac' = interpreter evaluator + JIT Jacobian optimizer (requires HAVE_ASMJIT)", cxxopts::value<std::string>()->default_value(""))
+        ("jit", "JIT mode: 'all' = JIT evaluator + optimizer, 'jac' = interpreter evaluator + JIT Jacobian optimizer (requires HAVE_ASMJIT)", cxxopts::value<std::string>()->default_value("")->implicit_value("all"))
         ("jit-max-length", "Skip JIT compilation for trees longer than this (0 = disabled)", cxxopts::value<int>()->default_value("0"))
         ("jit-min-visits", "Compile a tree only after it has been seen this many times (default 1 = always)", cxxopts::value<std::size_t>()->default_value("1"))
         ("population-size", "Population size", cxxopts::value<size_t>()->default_value("1000"))

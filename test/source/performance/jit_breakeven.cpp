@@ -69,9 +69,8 @@ TEST_CASE("JIT compile time distribution", "[performance][jit][breakeven]")
     problem.ConfigurePrimitiveSet(Operon::PrimitiveSet::Arithmetic);
 
     Operon::RandomGenerator zrng(42);  // NOLINT(cert-msc51-cpp)
-    Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
-
 #ifdef HAVE_ASMJIT
+    Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
     Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE{}, /*linearScaling=*/false);
     jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 
@@ -123,8 +122,6 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
     problem.ConfigurePrimitiveSet(Operon::PrimitiveSet::Arithmetic);
 
     Operon::RandomGenerator zrng(42);   // NOLINT(cert-msc51-cpp)
-    Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
-
     Operon::BalancedTreeCreator creator(&problem.GetPrimitiveSet(), inputs, 0.0, MAX_SIZE);
     Operon::RandomGenerator treeRng(456);  // NOLINT(cert-msc51-cpp)
 
@@ -135,6 +132,7 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
     std::vector<Operon::Scalar> buf(static_cast<std::size_t>(MAX_ROWS));
 
 #ifdef HAVE_ASMJIT
+    Operon::JIT::JitZobrist zobrist(zrng, MAX_SIZE, inputs);
     Operon::JIT::JitEvaluator jitEval(&problem, &zobrist, Operon::MSE{}, /*linearScaling=*/false);
     jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 #endif
@@ -160,13 +158,13 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
 
 #ifdef HAVE_ASMJIT
         // Pre-build column pointer arrays using VarOrder (no compilation needed).
-        struct ColPtrs { std::vector<Operon::Scalar const*> ptrs; };
+        struct ColPtrs { std::vector<Operon::Scalar const*> Ptrs; };
         std::vector<ColPtrs> colPtrPool(POOL_SIZE);
         for (int k = 0; k < POOL_SIZE; ++k) {
             auto const order = Operon::JIT::VarOrder(pool[k]);
-            colPtrPool[k].ptrs.resize(order.size());
+            colPtrPool[k].Ptrs.resize(order.size());
             for (std::size_t j = 0; j < order.size(); ++j) {
-                colPtrPool[k].ptrs[j] = ds.GetPaddedValues(order[j]);
+                colPtrPool[k].Ptrs[j] = ds.GetPaddedValues(order[j]);
             }
         }
 #endif
@@ -191,7 +189,7 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
                 auto const* c = jitEval.GetOrCompile(pool[i]);
                 if (c != nullptr) {
                     float const* cp = poolCoeffs[i].empty() ? nullptr : poolCoeffs[i].data();
-                    c->fn(scratch.data(), colPtrPool[i].ptrs.data(), nRowsPad, cp);
+                    c->fn(scratch.data(), colPtrPool[i].Ptrs.data(), nRowsPad, cp);
                 }
                 nb::doNotOptimizeAway(scratch.data());
                 ++idx;
@@ -209,10 +207,7 @@ TEST_CASE("JIT vs interpreter break-even", "[performance][jit][breakeven]")
 // batch=1 → elapsed = total seconds per operation.
 TEST_CASE("JIT vs interpreter Jacobian break-even", "[performance][jit][breakeven]")
 {
-#ifndef HAVE_ASMJIT
-    SKIP("Built without HAVE_ASMJIT");
-#endif
-
+#ifdef HAVE_ASMJIT
     constexpr int MAX_ROWS  = 100'000;
     constexpr int POOL_SIZE = 20;
     constexpr std::array SIZES{ 10, 25, 50 };
@@ -260,13 +255,13 @@ TEST_CASE("JIT vs interpreter Jacobian break-even", "[performance][jit][breakeve
         interps.reserve(POOL_SIZE);
         for (auto const& t : pool) { interps.emplace_back(&dtable, &ds, &t); }
 
-        struct JacColPtrs { std::vector<Operon::Scalar const*> ptrs; };
+        struct JacColPtrs { std::vector<Operon::Scalar const*> Ptrs; };
         std::vector<JacColPtrs> jacColPtrPool(POOL_SIZE);
         for (int k = 0; k < POOL_SIZE; ++k) {
             auto const order = Operon::JIT::VarOrder(pool[k]);
-            jacColPtrPool[k].ptrs.resize(order.size());
+            jacColPtrPool[k].Ptrs.resize(order.size());
             for (std::size_t j = 0; j < order.size(); ++j) {
-                jacColPtrPool[k].ptrs[j] = ds.GetPaddedValues(order[j]);
+                jacColPtrPool[k].Ptrs[j] = ds.GetPaddedValues(order[j]);
             }
         }
 
@@ -298,7 +293,7 @@ TEST_CASE("JIT vs interpreter Jacobian break-even", "[performance][jit][breakeve
                 auto const* jac = jitEval.GetOrCompileJacobian(pool[i]);
                 if (jac != nullptr && jac->jacFn != nullptr) {
                     float const* cp = poolCoeffs[i].empty() ? nullptr : poolCoeffs[i].data();
-                    jac->jacFn(jacOutPtrs.data(), jacColPtrPool[i].ptrs.data(), nRowsPad, cp);
+                    jac->jacFn(jacOutPtrs.data(), jacColPtrPool[i].Ptrs.data(), nRowsPad, cp);
                 }
                 nb::doNotOptimizeAway(jacOutPtrs[0]);
                 ++idx;
@@ -307,4 +302,7 @@ TEST_CASE("JIT vs interpreter Jacobian break-even", "[performance][jit][breakeve
     }
 
     bench.render(nb::templates::csv(), std::cout);
+#else
+    SKIP("Built without HAVE_ASMJIT");
+#endif
 }

@@ -454,8 +454,11 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         auto x0 = tree.GetCoefficients();
         summary.InitialParameters = x0;
 
-        bool const hasFn  = meta && meta->fn;
-        bool const useJitCf = !x0.empty() && (JacobianOnly || hasFn);
+        bool const hasFn    = meta && meta->fn;
+        bool const hasJacFn = meta && meta->jacFn;
+        // In JacobianOnly mode only enter the JIT path when the Jacobian was actually compiled;
+        // falling through to JitLMCostFunction with a null jacFn wastes allocation for nothing.
+        bool const useJitCf = !x0.empty() && (hasFn || (JacobianOnly && hasJacFn));
 
         if (!useJitCf) {
             // Pure interpreter fallback — no JIT at all.
