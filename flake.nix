@@ -108,6 +108,9 @@
                 ps: with ps; [
                   scipy
                   tabulate
+                  optuna
+                  matplotlib
+                  numpy
                 ]
               ))
             ];
@@ -134,6 +137,7 @@
                   gdb
                   graphviz
                   hyperfine
+                  linuxPackages.perf
                 ]
               );
           };

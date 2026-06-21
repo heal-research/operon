@@ -264,6 +264,7 @@ if (HAVE_ASMJIT)
     target_sources(operon_operon PRIVATE
         source/interpreter/backend/jit/jit_compiler.cpp
         source/interpreter/backend/jit/jit_evaluator.cpp
+        source/interpreter/backend/jit/jit_factory.cpp
     )
     # jit_compiler.cpp hosts the AVX2 transcendental helpers (vec_sinf etc.) backed
     # by eve::wide<float, eve::fixed<8>>.  -mavx2 is required so eve maps W8 to a

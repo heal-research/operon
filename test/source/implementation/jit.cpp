@@ -36,16 +36,17 @@ namespace {
 using DTable = DispatchTable<Operon::Scalar>;
 
 // Evaluate tree via a compiled function; returns vector of nRows results.
-auto EvalCompiled(JIT::CompiledTree const& compiled,
+auto EvalCompiled(JIT::CompileMeta const& compiled,
                   Operon::Tree const& tree,
                   Operon::Dataset const& ds, Operon::Range range) -> std::vector<float>
 {
     auto const nRows    = static_cast<int32_t>(range.Size());
     auto const nRowsPad = (nRows + 7) & ~7;
 
-    std::vector<float const*> colPtrs(compiled.varOrder.size());
-    for (std::size_t i = 0; i < compiled.varOrder.size(); ++i) {
-        colPtrs[i] = ds.GetPaddedValues(compiled.varOrder[i]) + range.Start();
+    auto const varOrder = JIT::VarOrder(tree);
+    std::vector<float const*> colPtrs(varOrder.size());
+    for (std::size_t i = 0; i < varOrder.size(); ++i) {
+        colPtrs[i] = ds.GetPaddedValues(varOrder[i]) + range.Start();
     }
     auto coeff = tree.GetCoefficients();
     std::vector<float> scratch(nRowsPad);
@@ -91,7 +92,8 @@ TEST_CASE("JIT scalar correctness", "[jit]")
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto range = Range{0, std::min(ds.Rows<std::size_t>(), std::size_t{200})};
 
-    JIT::TreeCompiler compiler;
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
 
     auto check = [&](std::string_view expr) {
         INFO("expression: " << expr);
@@ -141,10 +143,11 @@ TEST_CASE("JIT AVX2 correctness", "[jit][avx2]")
     // Use a row count that is not a multiple of 8 to exercise the tail loop.
     auto range = Range{0, 201};
 
-    JIT::TreeCompiler compiler;
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
 
     // Skip if AVX2 is not available on this CPU.
-    if (!compiler.Runtime().cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2)) {
+    if (!compiler.HasAVX2()) {
         SKIP("AVX2 not available");
     }
 
@@ -210,7 +213,7 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
     problem.SetInputs(inputs);
 
     RandomGenerator rng(1234);
-    Zobrist zobrist(rng, /*maxLength=*/50, inputs);
+    JIT::JitZobrist zobrist(rng, /*maxLength=*/50, inputs);
 
     DTable dtable;
     Evaluator<DTable> refEval(&problem, &dtable, MSE{}, /*linearScaling=*/true);
@@ -251,6 +254,94 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
         CHECK(jitEval.CacheSize()  == 1);
         CHECK(jitEval.CacheHits() >= 1);
     }
+
+    SECTION("CacheMisses and ResetCounters") {
+        // Length gate forces a miss.
+        jitEval.SetMaxLength(1);
+
+        auto tree = InfixParser::Parse("X1 * X2 + X3", ds);  // length > 1
+        auto const* c = jitEval.GetOrCompile(tree);
+        CHECK(c == nullptr);
+        CHECK(jitEval.CacheMisses() >= 1);
+
+        // ResetCounters clears hit/miss/fail counters without touching the cache.
+        jitEval.SetMaxLength(0);
+        auto const* c2 = jitEval.GetOrCompile(tree);  // this will compile and increment hits
+        CHECK(c2 != nullptr);
+
+        jitEval.ResetCounters();
+        CHECK(jitEval.CacheHits()   == 0);
+        CHECK(jitEval.CacheMisses() == 0);
+        // Cache itself is unaffected — the compiled entry is still there.
+        CHECK(jitEval.CacheSize() >= 1);
+    }
+}
+
+// ============================================================
+// Zobrist structural hash: constants and variable weights are ignored
+// ============================================================
+
+TEST_CASE("Zobrist hash is structural: constant values do not affect the hash", "[jit][zobrist]")
+{
+    auto ds       = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto allHashes = ds.VariableHashes();
+
+    constexpr int maxLen = 50;
+    RandomGenerator rng(42); // NOLINT(cert-msc51-cpp)
+    JIT::JitZobrist zobrist(rng, maxLen, allHashes);
+
+    SECTION("same-structure trees with different literal constants get the same hash") {
+        // "X1 + 1.0" → [Variable(X1), Constant(1.0), Add]
+        auto tree1 = InfixParser::Parse("X1 + 1.0", ds);
+        auto tree2 = InfixParser::Parse("X1 + 1.0", ds);
+        for (auto& nd : tree2.Nodes()) {
+            if (nd.IsConstant()) { nd.Value = 99.0F; }
+        }
+        CHECK(zobrist.ComputeHash(tree1) == zobrist.ComputeHash(tree2));
+    }
+
+    SECTION("same-structure trees with different variable weights get the same hash") {
+        auto tree1 = InfixParser::Parse("X1 + X2", ds);
+        auto tree2 = InfixParser::Parse("X1 + X2", ds);
+        for (auto& nd : tree2.Nodes()) {
+            if (nd.IsVariable()) { nd.Value = 42.0F; }
+        }
+        CHECK(zobrist.ComputeHash(tree1) == zobrist.ComputeHash(tree2));
+    }
+
+    SECTION("different-structure trees get different hashes") {
+        auto tree1 = InfixParser::Parse("X1 + X2", ds);
+        auto tree2 = InfixParser::Parse("X1 * X2 + X3", ds);
+        CHECK(zobrist.ComputeHash(tree1) != zobrist.ComputeHash(tree2));
+    }
+
+    SECTION("GetOrCompile reuses the same compiled function for same-structure trees") {
+        auto inputs = ds.VariableHashes();
+        std::erase(inputs, ds.GetVariable("Y").value().Hash);
+
+        Problem problem{&ds};
+        problem.SetTarget("Y");
+        problem.SetTrainingRange({0, 100});
+        problem.SetInputs(inputs);
+
+        JIT::JitEvaluator jitEval(&problem, &zobrist, MSE{}, /*linearScaling=*/false);
+        jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
+
+        auto tree1 = InfixParser::Parse("X1 + 1.0", ds);
+        auto tree2 = InfixParser::Parse("X1 + 1.0", ds);
+        for (auto& nd : tree2.Nodes()) {
+            if (nd.IsConstant()) { nd.Value = 7.0F; }
+        }
+
+        auto const* c1 = jitEval.GetOrCompile(tree1);
+        auto const* c2 = jitEval.GetOrCompile(tree2);
+
+        REQUIRE(c1 != nullptr);
+        REQUIRE(c2 != nullptr);
+        CHECK(c1 == c2);           // same compiled function pointer
+        CHECK(jitEval.CacheSize()  == 1);
+        CHECK(jitEval.CacheHits() >= 1);
+    }
 }
 
 // ============================================================
@@ -275,7 +366,7 @@ TEST_CASE("JitEvaluator vs interpreter on random population", "[jit][evaluator][
 
     // Pass all dataset variable hashes since the creator may produce any variable.
     RandomGenerator rng(42);
-    Zobrist zobrist(rng, /*maxLength=*/50, ds.VariableHashes());
+    JIT::JitZobrist zobrist(rng, /*maxLength=*/50, ds.VariableHashes());
 
     DTable dtable;
     Evaluator<DTable>  refEval(&problem, &dtable, MSE{}, /*linearScaling=*/true);
@@ -284,7 +375,8 @@ TEST_CASE("JitEvaluator vs interpreter on random population", "[jit][evaluator][
     // Generate 200 random trees and compare fitness.
     constexpr int MaxLength = 50;
     BalancedTreeCreator creator{&pset, ds.VariableHashes(), 0.0, MaxLength};
-    JIT::TreeCompiler compiler;
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
     std::size_t fitMismatch = 0;
     std::size_t compileFailAVX2 = 0;
     std::size_t compileFailScalar = 0;
@@ -329,7 +421,8 @@ namespace {
 // Evaluate a compiled Jacobian over `range` and return an Eigen matrix matching
 // the JacRev layout: shape (nRows, nConsts), column-major.
 auto EvalCompiledJacobian(
-    JIT::CompiledJacobian const& compiled,
+    JIT::CompileMeta const& compiled,
+    Operon::Tree const& tree,
     Operon::Span<Operon::Scalar const> coeff,
     Dataset const& ds,
     Range range
@@ -337,9 +430,8 @@ auto EvalCompiledJacobian(
 {
     auto const nRows    = static_cast<int32_t>(range.Size());
     auto const nRowsPad = (nRows + 7) & ~7;
-    auto const nConsts  = static_cast<Eigen::Index>(compiled.nConsts);
+    auto const nConsts  = static_cast<Eigen::Index>(tree.CoefficientsCount());
 
-    // Padded per-column output scratch (JIT writes nRowsPad rows per column).
     std::vector<std::vector<float>> colStorage(static_cast<std::size_t>(nConsts),
                                                std::vector<float>(static_cast<std::size_t>(nRowsPad)));
     std::vector<float*> outPtrs(static_cast<std::size_t>(nConsts));
@@ -347,14 +439,14 @@ auto EvalCompiledJacobian(
         outPtrs[k] = colStorage[k].data();
     }
 
-    // Build input column pointers (padded — safe to read up to nRowsPad rows).
-    std::vector<float const*> colPtrs(compiled.varOrder.size());
-    for (std::size_t i = 0; i < compiled.varOrder.size(); ++i) {
-        colPtrs[i] = ds.GetPaddedValues(compiled.varOrder[i]) + range.Start();
+    auto const varOrder = JIT::VarOrder(tree);
+    std::vector<float const*> colPtrs(varOrder.size());
+    for (std::size_t i = 0; i < varOrder.size(); ++i) {
+        colPtrs[i] = ds.GetPaddedValues(varOrder[i]) + range.Start();
     }
 
-    compiled.fn(outPtrs.data(), colPtrs.data(), nRowsPad,
-                coeff.empty() ? nullptr : coeff.data());
+    compiled.jacFn(outPtrs.data(), colPtrs.data(), nRowsPad,
+                   coeff.empty() ? nullptr : coeff.data());
 
     Eigen::Array<Operon::Scalar, -1, -1> jac(nRows, nConsts);
     for (Eigen::Index k = 0; k < nConsts; ++k) {
@@ -385,8 +477,9 @@ auto MakeSupportedPsetJit() -> PrimitiveSet {
 
 TEST_CASE("CompileJacobian - single constant", "[jit][jacobian]")
 {
-    JIT::TreeCompiler compiler;
-    if (!compiler.Runtime().cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2)) {
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) {
         SKIP("AVX2 not available");
     }
 
@@ -402,11 +495,11 @@ TEST_CASE("CompileJacobian - single constant", "[jit][jacobian]")
     auto dag = BuildJacobianDag(tree);
     auto compiled = compiler.CompileJacobian(dag);
     REQUIRE(compiled != nullptr);
-    REQUIRE(compiled->fn != nullptr);
-    REQUIRE(compiled->nConsts == 1);
+    REQUIRE(compiled->jacFn != nullptr);
+    REQUIRE(tree.CoefficientsCount() == 1);
 
     auto coeff = tree.GetCoefficients();
-    auto jit = EvalCompiledJacobian(*compiled, coeff, ds, range);
+    auto jit = EvalCompiledJacobian(*compiled, tree, coeff, ds, range);
 
     // d(c)/dc = 1 for all rows
     REQUIRE(jit.rows() == static_cast<Eigen::Index>(range.Size()));
@@ -418,8 +511,9 @@ TEST_CASE("CompileJacobian - single constant", "[jit][jacobian]")
 
 TEST_CASE("CompileJacobian correctness vs JacRev - random trees", "[jit][jacobian]")
 {
-    JIT::TreeCompiler compiler;
-    if (!compiler.Runtime().cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2)) {
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) {
         SKIP("AVX2 not available");
     }
 
@@ -462,7 +556,7 @@ TEST_CASE("CompileJacobian correctness vs JacRev - random trees", "[jit][jacobia
         auto const dag = BuildJacobianDag(tree);
         auto compiled  = compiler.CompileJacobian(dag);
         REQUIRE(compiled != nullptr);
-        auto const jjit = EvalCompiledJacobian(*compiled, coeff, ds, range);
+        auto const jjit = EvalCompiledJacobian(*compiled, tree, coeff, ds, range);
 
         auto const nk = jrev.cols();
         totalCols += static_cast<std::size_t>(nk);
@@ -488,8 +582,9 @@ TEST_CASE("CompileJacobian correctness vs JacRev - random trees", "[jit][jacobia
 
 TEST_CASE("CompileJacobian correctness - variable weights", "[jit][jacobian]")
 {
-    JIT::TreeCompiler compiler;
-    if (!compiler.Runtime().cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2)) {
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) {
         SKIP("AVX2 not available");
     }
 
@@ -527,7 +622,7 @@ TEST_CASE("CompileJacobian correctness - variable weights", "[jit][jacobian]")
         auto const dag = BuildJacobianDag(tree);
         auto compiled  = compiler.CompileJacobian(dag);
         REQUIRE(compiled != nullptr);
-        auto const jjit = EvalCompiledJacobian(*compiled, coeff, ds, range);
+        auto const jjit = EvalCompiledJacobian(*compiled, tree, coeff, ds, range);
 
         auto const nk = jrev.cols();
         totalCols += static_cast<std::size_t>(nk);
@@ -553,8 +648,9 @@ TEST_CASE("CompileJacobian correctness - variable weights", "[jit][jacobian]")
 
 TEST_CASE("CompileJacobian performance vs JacRev", "[jit][jacobian][performance]")
 {
-    JIT::TreeCompiler compiler;
-    if (!compiler.Runtime().cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2)) {
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) {
         SKIP("AVX2 not available");
     }
 
@@ -593,7 +689,7 @@ TEST_CASE("CompileJacobian performance vs JacRev", "[jit][jacobian][performance]
     dags.reserve(trees.size());
     for (auto const& tree : trees) { dags.push_back(BuildJacobianDag(tree)); }
 
-    std::vector<std::shared_ptr<JIT::CompiledJacobian>> compiled;
+    std::vector<std::unique_ptr<JIT::CompileMeta>> compiled;
     compiled.reserve(dags.size());
     for (auto const& dag : dags) { compiled.push_back(compiler.CompileJacobian(dag)); }
 
@@ -621,7 +717,7 @@ TEST_CASE("CompileJacobian performance vs JacRev", "[jit][jacobian][performance]
     bench.run("EvalCompiledJac (prebuilt)", [&]() {
         for (std::size_t i = 0; i < compiled.size(); ++i) {
             if (coeffs[i].empty() || !compiled[i]) { continue; }
-            nb::doNotOptimizeAway(EvalCompiledJacobian(*compiled[i], coeffs[i], ds, range));
+            nb::doNotOptimizeAway(EvalCompiledJacobian(*compiled[i], trees[i], coeffs[i], ds, range));
         }
     });
 
@@ -634,8 +730,9 @@ TEST_CASE("CompileJacobian performance vs JacRev", "[jit][jacobian][performance]
 
 TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
 {
-    JIT::TreeCompiler compiler;
-    if (!compiler.Runtime().cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2)) {
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) {
         SKIP("AVX2 not available");
     }
 
@@ -667,8 +764,9 @@ TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
         auto dag         = BuildJacobianDag(tree);
         auto compiledJac = compiler.CompileJacobian(dag);
         REQUIRE(compiledJac != nullptr);
-        REQUIRE(compiledJac->nConsts == static_cast<int>(coeff.size()));
+        REQUIRE(tree.CoefficientsCount() == static_cast<int>(coeff.size()));
 
+        auto const varOrder = JIT::VarOrder(tree);
         auto makeColPtrs = [&](std::vector<Operon::Hash> const& order) {
             std::vector<float const*> ptrs(order.size());
             for (std::size_t i = 0; i < order.size(); ++i) {
@@ -682,10 +780,10 @@ TEST_CASE("JitLMCostFunction residuals vs interpreter", "[jit][lm]")
         JitLMCostFunction<> cf{
             gsl::not_null<InterpreterBase<Operon::Scalar> const*>{&interp},
             compiled->fn,
-            makeColPtrs(compiled->varOrder),
+            makeColPtrs(varOrder),
             target, range,
-            compiledJac->fn,
-            makeColPtrs(compiledJac->varOrder)};
+            compiledJac->jacFn,
+            makeColPtrs(varOrder)};
 
         auto const nRes = static_cast<Eigen::Index>(cf.NumResiduals());
         auto const nPar = static_cast<Eigen::Index>(cf.NumParameters());
@@ -740,8 +838,9 @@ TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
     // Verify that Evaluate uses the supplied coefficient values, not the tree's
     // stored values.  Evaluating at two different parameter sets must produce
     // two different residual/Jacobian results.
-    JIT::TreeCompiler compiler;
-    if (!compiler.Runtime().cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2)) {
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) {
         SKIP("AVX2 not available");
     }
 
@@ -765,6 +864,7 @@ TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
     REQUIRE(compiled    != nullptr);
     REQUIRE(compiledJac != nullptr);
 
+    auto const varOrder = JIT::VarOrder(tree);
     auto makeColPtrs = [&](std::vector<Operon::Hash> const& order) {
         std::vector<float const*> ptrs(order.size());
         for (std::size_t i = 0; i < order.size(); ++i) {
@@ -778,10 +878,10 @@ TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
     JitLMCostFunction<> cf{
         gsl::not_null<InterpreterBase<Operon::Scalar> const*>{&interp},
         compiled->fn,
-        makeColPtrs(compiled->varOrder),
+        makeColPtrs(varOrder),
         target, range,
-        compiledJac->fn,
-        makeColPtrs(compiledJac->varOrder)};
+        compiledJac->jacFn,
+        makeColPtrs(varOrder)};
 
     auto const nRes = static_cast<std::size_t>(cf.NumResiduals());
     auto const nPar = static_cast<std::size_t>(cf.NumParameters());
@@ -835,8 +935,9 @@ TEST_CASE("JitLMCostFunction respects consts parameter", "[jit][lm]")
 
 TEST_CASE("JitLMCostFunction residuals only (no Jacobian)", "[jit][lm]")
 {
-    JIT::TreeCompiler compiler;
-    if (!compiler.Runtime().cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2)) {
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) {
         SKIP("AVX2 not available");
     }
 
@@ -856,9 +957,10 @@ TEST_CASE("JitLMCostFunction residuals only (no Jacobian)", "[jit][lm]")
     auto compiled = compiler.CompileAVX2(tree);
     REQUIRE(compiled != nullptr);
 
-    std::vector<float const*> colPtrs(compiled->varOrder.size());
+    auto const varOrder = JIT::VarOrder(tree);
+    std::vector<float const*> colPtrs(varOrder.size());
     for (std::size_t i = 0; i < colPtrs.size(); ++i) {
-        colPtrs[i] = ds.GetPaddedValues(compiled->varOrder[i]) + range.Start();
+        colPtrs[i] = ds.GetPaddedValues(varOrder[i]) + range.Start();
     }
 
     Interpreter<Operon::Scalar, DTable> interp{&dtable, &ds, &tree};
@@ -894,8 +996,9 @@ TEST_CASE("JitLMCostFunction TinySolver convergence", "[jit][lm]")
 {
     // Run TinySolver + JitLMCostFunction on a problem with a known answer and
     // verify the optimized coefficients are correct.
-    JIT::TreeCompiler compiler;
-    if (!compiler.Runtime().cpu_features().x86().has(asmjit::CpuFeatures::X86::kAVX2)) {
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) {
         SKIP("AVX2 not available");
     }
 
@@ -927,6 +1030,7 @@ TEST_CASE("JitLMCostFunction TinySolver convergence", "[jit][lm]")
     REQUIRE(compiled    != nullptr);
     REQUIRE(compiledJac != nullptr);
 
+    auto const varOrder = JIT::VarOrder(tree);
     auto makeColPtrs = [&](std::vector<Operon::Hash> const& order) {
         std::vector<float const*> ptrs(order.size());
         for (std::size_t i = 0; i < order.size(); ++i) {
@@ -940,10 +1044,10 @@ TEST_CASE("JitLMCostFunction TinySolver convergence", "[jit][lm]")
     JitLMCostFunction<> cf{
         gsl::not_null<InterpreterBase<Operon::Scalar> const*>{&interp},
         compiled->fn,
-        makeColPtrs(compiled->varOrder),
+        makeColPtrs(varOrder),
         target, range,
-        compiledJac->fn,
-        makeColPtrs(compiledJac->varOrder)};
+        compiledJac->jacFn,
+        makeColPtrs(varOrder)};
 
     REQUIRE(cf.NumParameters() == 2);
     REQUIRE(cf.NumResiduals() == NRows);

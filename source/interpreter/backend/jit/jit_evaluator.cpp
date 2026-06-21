@@ -103,8 +103,9 @@ auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> CompileMeta c
     zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) {
         if (!e.meta) {
             e.meta = std::move(newJac);
-        } else if (e.meta->jacFn == nullptr && newJac) {
-            e.meta->AcceptJac(*newJac);
+        } else if (e.meta->jacFn == nullptr && newJac && newJac->jacFn != nullptr) {
+            e.meta->jacFn  = newJac->jacFn;  newJac->jacFn  = nullptr;
+            e.meta->rtJac  = newJac->rtJac;  newJac->rtJac  = nullptr;
         }
         if (e.meta) { meta = e.meta.get(); }
     });

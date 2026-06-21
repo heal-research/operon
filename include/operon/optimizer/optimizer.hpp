@@ -417,11 +417,16 @@ struct SGDOptimizer final : public OptimizerBase {
     std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update_{nullptr};
 };
 #if defined(HAVE_ASMJIT)
-// LM optimizer that JIT-compiles the tree and uses the compiled function for
-// residual evaluation while keeping interpreter-backed JacRev for the Jacobian.
-// Pass a JitEvaluator that was already constructed for the same GP run so that
-// the JIT code cache is shared between fitness evaluation and coefficient tuning.
-template <typename DTable, OptimizerType Type = OptimizerType::Tiny>
+// LM optimizer backed by a JitEvaluator for compiled residuals and/or Jacobian.
+//
+// JacobianOnly=false (default): JIT-compiles both the forward pass (residuals)
+//   and the Jacobian; falls back to interpreter when compilation fails.
+// JacobianOnly=true: uses the interpreter for residuals; only the Jacobian is
+//   JIT-compiled.  Useful when forward-pass compilation overhead exceeds savings.
+//
+// Pass a JitEvaluator constructed for the same GP run so the code cache is
+// shared between fitness evaluation and coefficient optimisation.
+template <typename DTable, OptimizerType Type = OptimizerType::Tiny, bool JacobianOnly = false>
 struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
     explicit JitLevenbergMarquardtOptimizer(gsl::not_null<DTable const*>           dtable,
                                             gsl::not_null<Problem const*>          problem,
@@ -442,15 +447,21 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
 
-        auto const compiled    = jitEval_->GetOrCompile(tree);
-        auto const compiledJac = jitEval_->GetOrCompileJacobian(tree);
+        JIT::CompileMeta const* meta = jitEval_->GetOrCompileJacobian(tree);
+        if (!JacobianOnly && (!meta || !meta->fn)) { meta = jitEval_->GetOrCompile(tree); }
 
         OptimizerSummary summary;
         auto x0 = tree.GetCoefficients();
         summary.InitialParameters = x0;
 
-        if (!compiled || x0.empty()) {
-            // Fall back to interpreter-only cost function.
+        bool const hasFn    = meta && meta->fn;
+        bool const hasJacFn = meta && meta->jacFn;
+        // In JacobianOnly mode only enter the JIT path when the Jacobian was actually compiled;
+        // falling through to JitLMCostFunction with a null jacFn wastes allocation for nothing.
+        bool const useJitCf = !x0.empty() && (hasFn || (JacobianOnly && hasJacFn));
+
+        if (!useJitCf) {
+            // Pure interpreter fallback — no JIT at all.
             Operon::LMCostFunction cf{
                 gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
                 target, range};
@@ -476,29 +487,38 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             return summary;
         }
 
-        // Build column pointer arrays (offset to range.Start(), padded for JIT).
-        auto const  nVars = compiled->varOrder.size();
-        std::vector<float const*> colPtrs(nVars);
-        for (std::size_t i = 0; i < nVars; ++i) {
-            colPtrs[i] = dataset->GetPaddedValues(compiled->varOrder[i])
-                         + static_cast<std::ptrdiff_t>(range.Start());
+        // Column pointer arrays are rebuilt from the tree (VarOrder is re-derivable;
+        // the fixed Zobrist hash makes it structurally unique per entry).
+        // Both fn and jacFn use the same variable ordering, so one colPtrs suffices.
+        auto const varOrder = JIT::VarOrder(tree);
+        auto const start    = static_cast<std::ptrdiff_t>(range.Start());
+
+        std::vector<float const*> colPtrs;
+        JIT::EvalFn evalFn{};
+        if (hasFn) {
+            evalFn = meta->fn;
+            colPtrs.resize(varOrder.size());
+            for (std::size_t i = 0; i < varOrder.size(); ++i) {
+                colPtrs[i] = dataset->GetPaddedValues(varOrder[i]) + start;
+            }
         }
 
         std::vector<float const*> jacColPtrs;
-        if (compiledJac) {
-            jacColPtrs.resize(compiledJac->varOrder.size());
-            for (std::size_t i = 0; i < compiledJac->varOrder.size(); ++i) {
-                jacColPtrs[i] = dataset->GetPaddedValues(compiledJac->varOrder[i])
-                                + static_cast<std::ptrdiff_t>(range.Start());
+        JIT::EvalJacFn jacFn{};
+        if (meta && meta->jacFn) {
+            jacFn = meta->jacFn;
+            jacColPtrs.resize(varOrder.size());
+            for (std::size_t i = 0; i < varOrder.size(); ++i) {
+                jacColPtrs[i] = dataset->GetPaddedValues(varOrder[i]) + start;
             }
         }
 
         Operon::JitLMCostFunction cf{
             gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
-            compiled->fn,
+            evalFn,
             std::move(colPtrs),
             target, range,
-            compiledJac ? compiledJac->fn : nullptr,
+            jacFn,
             std::move(jacColPtrs)};
 
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);

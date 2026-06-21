@@ -45,6 +45,7 @@ add_executable(operon_test
     source/performance/infix_parser.cpp
     source/performance/nondominatedsort.cpp
     source/performance/primitives.cpp
+    source/performance/jit_breakeven.cpp
     source/implementation/jit.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
