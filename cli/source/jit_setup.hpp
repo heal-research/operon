@@ -19,7 +19,7 @@ namespace Operon::CLI {
 // CLI-level wrapper around Operon::JIT::JitObjects; adds Error for the no-ASMJIT case.
 struct JitObjects {
     std::unique_ptr<Operon::EvaluatorBase> Evaluator;             // null in "jac" mode → caller calls ParseEvaluator
-    std::unique_ptr<Operon::EvaluatorBase> JitEvalForOptimizer;  // non-null in "jac" mode, owns the JitEvaluator
+    std::unique_ptr<Operon::EvaluatorBase> OptimizerJacEval;  // non-null in "jac" mode, owns the JitEvaluator
     std::unique_ptr<Operon::OptimizerBase> Optimizer;
     std::unique_ptr<Operon::Zobrist>       Zobrist;        // JitZobrist; suitable for transposition cache too
     std::function<void()>                  Report = [](){};

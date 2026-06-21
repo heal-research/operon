@@ -276,7 +276,7 @@ auto main(int argc, char** argv) -> int
                 static_cast<int>(maxLength), config.Seed);
             if (jobj.Error) { return EXIT_FAILURE; }
             errorEvaluator = std::move(jobj.Evaluator);
-            jacEvalStorage = std::move(jobj.JitEvalForOptimizer);
+            jacEvalStorage = std::move(jobj.OptimizerJacEval);
             optimizer      = std::move(jobj.Optimizer);
             zobrist        = std::move(jobj.Zobrist);
             jitReport      = std::move(jobj.Report);

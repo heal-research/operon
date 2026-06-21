@@ -33,7 +33,7 @@ auto MakeJitObjects(
         maxLength, jitMaxLength, jitMinVisits, seed);
     return JitObjects{
         .Evaluator      = std::move(j.Evaluator),
-        .JitEvalForOptimizer = std::move(j.JitEvalForOptimizer),
+        .OptimizerJacEval = std::move(j.OptimizerJacEval),
         .Optimizer      = std::move(j.Optimizer),
         .Zobrist        = std::move(j.Zobrist),
         .Report         = std::move(j.Report),

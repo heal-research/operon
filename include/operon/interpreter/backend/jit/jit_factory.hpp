@@ -25,7 +25,7 @@ namespace Operon::JIT {
 // transposition table is also needed.
 struct JitObjects {
     std::unique_ptr<Operon::EvaluatorBase>  Evaluator;
-    std::unique_ptr<Operon::EvaluatorBase>  JitEvalForOptimizer;
+    std::unique_ptr<Operon::EvaluatorBase>  OptimizerJacEval;
     std::unique_ptr<Operon::OptimizerBase>  Optimizer;
     std::unique_ptr<JitZobrist>             Zobrist;
     std::function<void()>                   Report = [](){};

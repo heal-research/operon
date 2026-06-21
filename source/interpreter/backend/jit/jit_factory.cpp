@@ -35,19 +35,19 @@ auto MakeJitObjects(
             static_cast<JitEvaluator*>(out.Evaluator.get()));
     } else if (mode == "jac") {
         // Evaluator stays null — caller creates the interpreter evaluator.
-        out.JitEvalForOptimizer = std::make_unique<JitEvaluator>(&problem, jzp, metric, linearScaling);
+        out.OptimizerJacEval = std::make_unique<JitEvaluator>(&problem, jzp, metric, linearScaling);
         out.Optimizer = std::make_unique<JitLevenbergMarquardtOptimizer<Operon::ScalarDispatch,
                                                                          Operon::OptimizerType::Eigen,
                                                                          /*JacobianOnly=*/true>>(
             &dtable, &problem,
-            static_cast<JitEvaluator*>(out.JitEvalForOptimizer.get()));
+            static_cast<JitEvaluator*>(out.OptimizerJacEval.get()));
     } else {
         fmt::print(stderr, "warning: unknown --jit mode '{}', ignoring\n", mode);
         return out; // null evaluator/optimizer — caller falls back to defaults
     }
 
     auto* jev = static_cast<JitEvaluator*>(out.Evaluator.get());
-    if (jev == nullptr) { jev = static_cast<JitEvaluator*>(out.JitEvalForOptimizer.get()); }
+    if (jev == nullptr) { jev = static_cast<JitEvaluator*>(out.OptimizerJacEval.get()); }
     if (jev != nullptr) {
         jev->SetMaxLength(jitMaxLength);
         jev->SetMinVisits(jitMinVisits);
