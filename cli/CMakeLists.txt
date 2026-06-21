@@ -14,6 +14,7 @@ find_package(scn REQUIRED)
 function(add_operon_cli NAME)
     add_executable(${NAME}
         source/${NAME}.cpp
+        source/jit_setup.cpp
         source/operator_factory.cpp
         source/pareto_front.cpp
         source/util.cpp

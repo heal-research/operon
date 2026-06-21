@@ -284,6 +284,9 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
     constexpr size_t maxDepth  = 1000;
     constexpr size_t nrow      = 10000;
     constexpr size_t ncol      = 10;
+    // Use physical core count (SMT doubles the reported value; AVX/FMA units
+    // are shared per physical core so virtual threads add contention, not throughput).
+    auto const nPhysical = std::max(std::size_t{1}, static_cast<std::size_t>(std::thread::hardware_concurrency()) / 2);
 
     Operon::RandomGenerator rd(1234);
     auto ds = Util::RandomDataset(rd, nrow, ncol);
@@ -299,7 +302,7 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
     problem.SetTestRange(range);
     problem.SetTarget(target);
 
-    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength), inputs);
+    Operon::JIT::JitZobrist zobrist(rd, static_cast<int>(maxLength), inputs);
 
     auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
         problem.GetPrimitiveSet().SetConfig(cfg);
@@ -325,7 +328,7 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
         jit   .SetBudget(std::numeric_limits<size_t>::max());
 
         // --- cold-cache run: first pass includes compilation ---
-        auto const nThreads = std::max(std::size_t{1}, static_cast<std::size_t>(std::thread::hardware_concurrency()));
+        auto const nThreads = nPhysical;
         for (auto nT : {std::size_t{1}, nThreads}) {
             nb::Bench bc;
             bc.title(fmt::format("{} / cold cache ({} thread{})", title, nT, nT == 1 ? "" : "s"))
@@ -382,7 +385,7 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
 
         // --- parallel warm comparison ---
         {
-            auto const nThreads = std::thread::hardware_concurrency();
+            auto const nThreads = nPhysical;
             nb::Bench bp;
             bp.title(fmt::format("{} / warm cache ({} threads)", title, nThreads))
               .relative(true).performanceCounters(true)
@@ -443,7 +446,7 @@ TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
     problem.SetTestRange(range);
     problem.SetTarget(target);
 
-    Operon::Zobrist zobrist(rd, static_cast<int>(maxLength), inputs);
+    Operon::JIT::JitZobrist zobrist(rd, static_cast<int>(maxLength), inputs);
 
     auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
         problem.GetPrimitiveSet().SetConfig(cfg | NodeType::Constant);

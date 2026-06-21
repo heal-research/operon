@@ -114,6 +114,9 @@
                   scipy
                   pyyaml
                   pytest
+                  tabulate
+                  matplotlib
+                  numpy
                 ]
               ))
             ];
@@ -140,6 +143,7 @@
                   gdb
                   graphviz
                   hyperfine
+                  linuxPackages.perf
                 ]
               );
           };
