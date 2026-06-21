@@ -446,6 +446,7 @@ auto DifferentiateFirstOrder(
     dag = orig;
     dag.reserve(n * reserveFactor);
 
+    memo.clear();
     h.clear();
     h.reserve(n * reserveFactor);
     for (std::size_t i = 0; i < n; ++i) {
@@ -487,8 +488,10 @@ auto BuildHessianDag(Tree const& tree) -> HessianDag {
     auto const p = constants.size();
     result.NumParams = p;
 
-    // Snapshot the DAG so the second pass can navigate first-order derivative
-    // nodes without aliasing the growing result.Nodes vector.
+    // Snapshot: the second pass calls Deriv(snapshot, result.Nodes, ...) where
+    // snapshot is the source and result.Nodes is the destination. A copy is
+    // needed because result.Nodes grows during the second pass, which would
+    // invalidate iterators/references if used as both source and destination.
     auto const snapshot = result.Nodes;
 
     result.HessianRoots.resize(p * (p + 1) / 2, Zero);
