@@ -136,6 +136,42 @@ struct Interpreter : public InterpreterBase<T> {
         return jacobian;
     }
 
+    // Evaluate the full tree and extract values at multiple node indices.
+    // Roots set to SIZE_MAX produce zero columns.
+    auto EvaluateRoots(Operon::Span<T const> coeff, Operon::Range range,
+                       Operon::Span<std::size_t const> roots) const -> Eigen::Array<T, -1, -1>
+    {
+        InitContext(coeff, range);
+
+        auto const len    = static_cast<int64_t>(range.Size());
+        auto const nRoots = static_cast<Eigen::Index>(roots.size());
+        constexpr int64_t S = BatchSize;
+        constexpr auto NoRoot = std::numeric_limits<std::size_t>::max();
+
+        // Not zero-initialized: every row is written exactly once by the
+        // batch loop below; NoRoot columns are zeroed explicitly.
+        Eigen::Array<T, -1, -1> result(len, nRoots);
+        for (Eigen::Index k = 0; k < nRoots; ++k) {
+            if (roots[k] == NoRoot) { result.col(k).setZero(); }
+        }
+
+        auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
+        for (Eigen::Index k = 0; k < nRoots; ++k) {
+            EXPECT(roots[k] == NoRoot || roots[k] < nNodes);
+        }
+
+        for (auto row = 0L; row < len; row += S) {
+            ForwardPass(range, row, /*trace=*/false);
+            auto const rem = std::min(S, len - row);
+            for (Eigen::Index k = 0; k < nRoots; ++k) {
+                if (roots[k] == NoRoot) { continue; }
+                auto const* src = primal_.data() + (static_cast<int64_t>(roots[k]) * S);
+                std::copy_n(src, rem, result.col(k).data() + row);
+            }
+        }
+        return result;
+    }
+
     [[nodiscard]] auto GetTree() const -> Operon::Tree const* { return tree_.get(); }
     [[nodiscard]] auto GetDataset() const -> Operon::Dataset const* { return dataset_.get(); }
 
