@@ -8,6 +8,7 @@ Usage from other tools:
     db.store(df, binary="build/cli/operon_nsgp", dataset="Poly-10.csv")
     db.summary()
 """
+import json
 import subprocess
 import uuid
 from datetime import datetime, timezone
@@ -43,12 +44,22 @@ def _parse_args(args: list[str]) -> dict:
     while i < len(args):
         a = args[i]
         if a.startswith("--"):
-            key = a[2:]
-            if i + 1 < len(args) and not args[i + 1].startswith("--"):
-                result[key] = args[i + 1]
+            if "=" in a:
+                key, val = a[2:].split("=", 1)
+                result[key] = val
+                i += 1
+            elif i + 1 < len(args) and not args[i + 1].startswith("-"):
+                result[a[2:]] = args[i + 1]
                 i += 2
             else:
-                result[key] = True
+                result[a[2:]] = True
+                i += 1
+        elif a.startswith("-") and len(a) == 2:
+            if i + 1 < len(args) and not args[i + 1].startswith("-"):
+                result[a[1:]] = args[i + 1]
+                i += 2
+            else:
+                result[a[1:]] = True
                 i += 1
         else:
             i += 1
@@ -119,7 +130,6 @@ class ResultsDB:
             parsed = _parse_args(args)
             config = {**(config or {}), **parsed}
 
-        import json
         self.con.execute(
             """INSERT INTO experiments VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [experiment_id, now, commit, dirty, binary, dataset, problem,
@@ -141,7 +151,7 @@ class ResultsDB:
         return experiment_id
 
     def experiments(self, limit: int = 20) -> pd.DataFrame:
-        return self.con.execute(f"""
+        return self.con.execute("""
             SELECT e.experiment_id, e.timestamp, e.git_commit, e.git_dirty,
                    e.binary, e.dataset, e.problem, e.tags,
                    COUNT(DISTINCT r.rep) AS reps,
@@ -151,8 +161,8 @@ class ResultsDB:
             JOIN runs r USING (experiment_id)
             GROUP BY ALL
             ORDER BY e.timestamp DESC
-            LIMIT {limit}
-        """).df()
+            LIMIT ?
+        """, [limit]).df()
 
     def runs(self, experiment_id: str) -> pd.DataFrame:
         return self.con.execute(
