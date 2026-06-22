@@ -79,7 +79,7 @@ public:
                 auto t1 = std::chrono::steady_clock::now();
                 Evaluator()->ResidualEvaluations += summary.FunctionEvaluations;
                 Evaluator()->JacobianEvaluations += summary.JacobianEvaluations;
-                Evaluator()->CostFunctionTime += std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+                Evaluator()->CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
                 res.Child->Genotype = std::move(optimizedTree);
                 res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
 
