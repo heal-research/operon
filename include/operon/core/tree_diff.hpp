@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contracts.hpp"
 #include "node.hpp"
 #include "tree.hpp"
 #include "types.hpp"
@@ -26,5 +27,24 @@ struct JacobianDag {
 // hash-consing; shared nodes are referenced with NodeType::Ref. The tree does
 // not need to have been hashed before calling this.
 OPERON_EXPORT auto BuildJacobianDag(Tree const& tree) -> JacobianDag;
+
+// A flat postfix array containing the original tree, first-order derivative
+// subtrees (Jacobian), and second-order derivative subtrees (Hessian).
+// The Hessian is symmetric; only the upper triangle is stored row-major:
+//   H(i,j) with j >= i at index  i*p - i*(i-1)/2 + (j-i)  where p = NumParams.
+struct HessianDag {
+    Operon::Vector<Node> Nodes;
+    std::size_t OriginalSize{};
+    std::size_t NumParams{};
+    Operon::Vector<std::size_t> JacobianRoots; // [p] roots of df/dc_k
+    Operon::Vector<std::size_t> HessianRoots;  // [p*(p+1)/2] upper triangle
+
+    [[nodiscard]] auto UpperIdx(std::size_t i, std::size_t j) const -> std::size_t {
+        EXPECT(i <= j);
+        return (i * NumParams) - (i * (i - 1) / 2) + (j - i);
+    }
+};
+
+OPERON_EXPORT auto BuildHessianDag(Tree const& tree) -> HessianDag;
 
 } // namespace Operon
