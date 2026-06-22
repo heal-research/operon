@@ -235,7 +235,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         } else {
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
         }
-        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr);
+        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, nullptr, evaluator.get());
         gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
         jitReport();
         auto best = reporter.GetBest();
