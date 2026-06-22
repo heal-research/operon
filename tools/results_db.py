@@ -9,6 +9,7 @@ Usage from other tools:
     db.summary()
 """
 import json
+import logging
 import subprocess
 import uuid
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def _git_commit() -> str:
@@ -38,6 +41,10 @@ def _git_dirty() -> bool:
         return False
 
 
+def _is_flag(token: str) -> bool:
+    return token.startswith("--") or (token.startswith("-") and len(token) == 2 and token[1:].isalpha())
+
+
 def _parse_args(args: list[str]) -> dict:
     result = {}
     i = 0
@@ -48,14 +55,14 @@ def _parse_args(args: list[str]) -> dict:
                 key, val = a[2:].split("=", 1)
                 result[key] = val
                 i += 1
-            elif i + 1 < len(args) and not args[i + 1].startswith("-"):
+            elif i + 1 < len(args) and not _is_flag(args[i + 1]):
                 result[a[2:]] = args[i + 1]
                 i += 2
             else:
                 result[a[2:]] = True
                 i += 1
-        elif a.startswith("-") and len(a) == 2:
-            if i + 1 < len(args) and not args[i + 1].startswith("-"):
+        elif a.startswith("-") and len(a) == 2 and a[1:].isalpha():
+            if i + 1 < len(args) and not _is_flag(args[i + 1]):
                 result[a[1:]] = args[i + 1]
                 i += 2
             else:
@@ -106,6 +113,7 @@ class ResultsDB:
                 FOREIGN KEY (experiment_id) REFERENCES experiments(experiment_id)
             )
         """)
+        self.con.execute("CREATE INDEX IF NOT EXISTS idx_runs_eid ON runs(experiment_id)")
 
     def store(
         self,
@@ -136,13 +144,17 @@ class ResultsDB:
              tags or [], json.dumps(config) if config else None],
         )
 
-        run_cols = [c for c in df.columns if c in {
+        known_cols = {
             "rep", "iteration",
             "r2_tr", "r2_te", "mae_tr", "mae_te",
             "nmse_tr", "nmse_te", "best_fit", "avg_fit",
             "best_len", "avg_len", "eval_cnt", "res_eval",
             "jac_eval", "opt_time", "seed", "sort_ms", "elapsed",
-        }]
+        }
+        run_cols = [c for c in df.columns if c in known_cols]
+        dropped = set(df.columns) - known_cols - {"experiment_id"}
+        if dropped:
+            logger.warning("Dropped columns not in runs schema: %s", sorted(dropped))
 
         run_df = df[run_cols].copy()
         run_df.insert(0, "experiment_id", experiment_id)

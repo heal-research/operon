@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run an operon binary, capture per-generation stats, save to CSV or feather.
+Run an operon binary, capture per-generation stats, save to CSV, feather, or DuckDB.
 
 Usage:
     run_operon.py BINARY --output PATH [--all-gens] [--reps N]
