@@ -148,6 +148,8 @@ struct Interpreter : public InterpreterBase<T> {
         constexpr int64_t S = BatchSize;
         constexpr auto NoRoot = std::numeric_limits<std::size_t>::max();
 
+        // Not zero-initialized: every row is written exactly once by the
+        // batch loop below; NoRoot columns are zeroed explicitly.
         Eigen::Array<T, -1, -1> result(len, nRoots);
         for (Eigen::Index k = 0; k < nRoots; ++k) {
             if (roots[k] == NoRoot) { result.col(k).setZero(); }
