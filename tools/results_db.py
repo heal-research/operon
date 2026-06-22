@@ -6,7 +6,7 @@ Usage from other tools:
     from results_db import ResultsDB
     db = ResultsDB("results.duckdb")
     db.store(df, binary="build/cli/operon_nsgp", dataset="Poly-10.csv")
-    db.summary()
+    db.experiments()
 """
 import json
 import logging
@@ -144,15 +144,15 @@ class ResultsDB:
              tags or [], json.dumps(config) if config else None],
         )
 
-        known_cols = {
+        known_cols = [
             "rep", "iteration",
             "r2_tr", "r2_te", "mae_tr", "mae_te",
             "nmse_tr", "nmse_te", "best_fit", "avg_fit",
             "best_len", "avg_len", "eval_cnt", "res_eval",
             "jac_eval", "opt_time", "seed", "sort_ms", "elapsed",
-        }
-        run_cols = [c for c in df.columns if c in known_cols]
-        dropped = set(df.columns) - known_cols - {"experiment_id"}
+        ]
+        run_cols = [c for c in known_cols if c in df.columns]
+        dropped = set(df.columns) - set(known_cols) - {"experiment_id"}
         if dropped:
             logger.warning("Dropped columns not in runs schema: %s", sorted(dropped))
 
