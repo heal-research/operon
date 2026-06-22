@@ -4,6 +4,7 @@
 #ifndef OPERON_GENERATOR_HPP
 #define OPERON_GENERATOR_HPP
 
+#include <chrono>
 #include "operon/core/operator.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/crossover.hpp"
@@ -73,9 +74,12 @@ public:
         auto evaluate = [&]() {
             if (BernoulliTrial{pLocal}(random)) {
                 auto c = res.Child->Genotype.GetCoefficients(); // save original coefficients
+                auto t0 = std::chrono::steady_clock::now();
                 auto [optimizedTree, summary] = (*Optimizer())(random, std::move(res.Child->Genotype));
+                auto t1 = std::chrono::steady_clock::now();
                 Evaluator()->ResidualEvaluations += summary.FunctionEvaluations;
                 Evaluator()->JacobianEvaluations += summary.JacobianEvaluations;
+                Evaluator()->CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
                 res.Child->Genotype = std::move(optimizedTree);
                 res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
 
