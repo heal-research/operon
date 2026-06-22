@@ -16,12 +16,14 @@ using ModelSelectorFn = std::function<Individual(Span<Individual const>)>;
 template<typename Evaluator>
 class Reporter {
     gsl::not_null<Evaluator const*> evaluator_;
+    EvaluatorBase const* statsSource_{nullptr}; // non-owning; must outlive Reporter (null → use evaluator_)
     mutable Operon::Individual best_;
     ModelSelectorFn selector_;
 
 public:
-    explicit Reporter(gsl::not_null<Evaluator const*> evaluator, ModelSelectorFn selector = nullptr)
-        : evaluator_(evaluator), selector_(std::move(selector)) {}
+    explicit Reporter(gsl::not_null<Evaluator const*> evaluator, ModelSelectorFn selector = nullptr,
+                      EvaluatorBase const* statsSource = nullptr)
+        : evaluator_(evaluator), statsSource_(statsSource), selector_(std::move(selector)) {}
 
     static auto PrintStats(std::vector<std::tuple<std::string, double, std::string>> const& stats, bool printHeader) -> void {
         std::vector<size_t> widths;
@@ -176,7 +178,7 @@ public:
         using T = std::tuple<std::string, double, std::string>;
         auto const* format = ":>#8.3g"; // see https://fmt.dev/latest/syntax.html
 
-        auto [resEval, jacEval, callCount, cfTime ] = evaluator_->Stats();
+        auto [resEval, jacEval, callCount, cfTime ] = statsSource_ ? statsSource_->Stats() : evaluator_->Stats();
         std::array stats {
             T{ "iteration", gp.Generation(), ":>" },
             T{ "r2_tr", r2Train, format },
