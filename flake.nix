@@ -106,6 +106,7 @@
             packages = [
               (pkgs.python3.withPackages (
                 ps: with ps; [
+                  duckdb
                   pandas
                   pyarrow
                   optuna

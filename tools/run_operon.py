@@ -126,9 +126,14 @@ def run_reps(
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def save(df: pd.DataFrame, output: Path, *, append: bool = False) -> None:
+def save(df: pd.DataFrame, output: Path, *, append: bool = False, **db_kwargs) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    if output.suffix == ".feather":
+    if output.suffix == ".duckdb":
+        from results_db import ResultsDB
+        with ResultsDB(output) as db:
+            eid = db.store(df, **db_kwargs)
+        logger.info(f"Stored {len(df)} rows → {output} (experiment {eid})")
+    elif output.suffix == ".feather":
         if append and output.exists():
             existing = pd.read_feather(output)
             if "rep" in existing.columns and "rep" in df.columns:
@@ -136,13 +141,14 @@ def save(df: pd.DataFrame, output: Path, *, append: bool = False) -> None:
                 df["rep"] += int(existing["rep"].max()) + 1
             df = pd.concat([existing, df], ignore_index=True)
         df.to_feather(output)
+        logger.info(f"Saved {len(df)} rows → {output}")
     elif output.suffix == ".csv":
         df.to_csv(output, index=False,
                   mode="a" if append else "w",
                   header=not (append and output.exists()))
+        logger.info(f"Saved {len(df)} rows → {output}")
     else:
-        raise ValueError(f"Unsupported format '{output.suffix}': use .csv or .feather")
-    logger.info(f"Saved {len(df)} rows → {output}")
+        raise ValueError(f"Unsupported format '{output.suffix}': use .duckdb, .csv, or .feather")
 
 
 def reps_kwargs_from_cfg(cfg: dict, *, show_progress: bool = True) -> dict:
