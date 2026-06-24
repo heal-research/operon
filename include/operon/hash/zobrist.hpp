@@ -106,13 +106,19 @@ public:
 
     [[nodiscard]] auto ComputeHash(Node const& n, int pos) const -> Hash
     {
+        Hash h{};
         if (n.IsVariable()) {
             auto const it = varIndex_.find(n.HashValue);
             ENSURE(it != varIndex_.end());
             auto const row = static_cast<int>(NodeTypes::Count) + it->second;
-            return table_(row, pos);
+            h = table_(row, pos);
+        } else {
+            h = table_(NodeTypes::GetIndex(n.Type), pos);
         }
-        return table_(NodeTypes::GetIndex(n.Type), pos);
+        if (n.Optimize) {
+            h ^= table_(static_cast<int>(Rows()) - 1, pos);
+        }
+        return h;
     }
 
     [[nodiscard]] auto ComputeHash(Tree const& tree) const -> Hash
