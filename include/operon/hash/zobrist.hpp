@@ -67,9 +67,16 @@ public:
 
 // Position-aware Zobrist hash for GP trees, plus a transposition table that
 // caches fitness vectors keyed by structural hash.  The hash captures tree
-// topology and variable identity but not coefficient values — by design, so
-// that a cached fitness (computed after local search) can be reused for any
-// structurally identical tree regardless of its current coefficients.
+// topology, variable identity, and the Optimize flag of each node, but not
+// coefficient values — by design, so that a cached fitness (computed after
+// local search) can be reused for any structurally identical tree with the
+// same set of trainable parameters, regardless of current coefficient values.
+//
+// The Optimize flag is included because it determines the number and layout
+// of trainable coefficients; two trees that differ only in which nodes are
+// optimizable are functionally distinct (different coefficient counts) and
+// must not share a cache entry.  IsEnabled is NOT hashed because disabled
+// nodes are erased by Tree::Reduce() before they reach ComputeHash.
 //
 // Ownership: the caller constructs one Zobrist per experiment (or per run) and
 // passes a raw pointer into GeneticAlgorithmConfig::Cache.  The algorithm
@@ -103,6 +110,7 @@ public:
 
     [[nodiscard]] auto Rows() const { return table_.extent(0); }
     [[nodiscard]] auto Cols() const { return table_.extent(1); }
+    [[nodiscard]] auto OptimizeRow() const { return static_cast<int>(Rows()) - 1; }
 
     [[nodiscard]] auto ComputeHash(Node const& n, int pos) const -> Hash
     {
@@ -116,7 +124,7 @@ public:
             h = table_(NodeTypes::GetIndex(n.Type), pos);
         }
         if (n.Optimize) {
-            h ^= table_(static_cast<int>(Rows()) - 1, pos);
+            h ^= table_(OptimizeRow(), pos);
         }
         return h;
     }
