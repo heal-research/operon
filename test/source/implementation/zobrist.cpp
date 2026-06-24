@@ -175,4 +175,20 @@ TEST_CASE("Zobrist - duplicate inserts increment count, not entries", "[zobrist]
     REQUIRE(cache.Size() == 1); // only one entry
 }
 
+TEST_CASE("Zobrist - different Optimize flags yield different hashes", "[zobrist]")
+{
+    Operon::RandomGenerator rng(Seed);
+    Zobrist const cache(rng, MaxLength, {});
+
+    // Two identical trees: sin(constant)
+    // One has the constant optimizable, the other does not.
+    Node c1(NodeType::Constant); c1.Value = 1.0f; c1.Optimize = true;
+    Node c2(NodeType::Constant); c2.Value = 1.0f; c2.Optimize = false;
+
+    Tree const tree1 = Tree({ c1, Node(NodeType::Sin) }).UpdateNodes();
+    Tree const tree2 = Tree({ c2, Node(NodeType::Sin) }).UpdateNodes();
+
+    REQUIRE(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
+}
+
 } // namespace Operon::Test
