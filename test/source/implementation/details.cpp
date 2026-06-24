@@ -37,6 +37,13 @@ TEST_CASE("Node type traits", "[core]")
     SECTION("Node size is at most 64 bytes") {
         CHECK(sizeof(Node) <= size_t{64});
     }
+
+    SECTION("Ref node is not optimizable") {
+        Node ref(NodeType::Ref);
+        CHECK(ref.IsLeaf());
+        CHECK(ref.IsRef());
+        CHECK_FALSE(ref.Optimize);
+    }
 }
 
 TEST_CASE("Tree construction and access", "[core]")
