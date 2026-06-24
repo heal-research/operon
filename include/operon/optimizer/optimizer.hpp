@@ -449,7 +449,9 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             std::move(colPtrs),
             target, range,
             jacFn,
-            std::move(jacColPtrs)};
+            std::move(jacColPtrs),
+            meta->nVars,
+            meta->nConsts};
 
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
         lm.setMaxfev(static_cast<int>(iters + 2));
