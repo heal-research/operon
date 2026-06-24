@@ -151,7 +151,6 @@ struct Node {
     {
         Node node(NodeType::Ref);
         node.RefTo    = target;
-        node.Optimize = false; // Ref has no value of its own; excluding it prevents a phantom coefficient
         return node;
     }
 
