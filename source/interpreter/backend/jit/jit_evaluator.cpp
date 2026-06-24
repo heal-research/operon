@@ -69,8 +69,10 @@ auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMet
         if (!e.meta) {
             e.meta = std::move(compiled);
         } else if (e.meta->fn == nullptr && compiled) {
-            e.meta->fn    = compiled->fn;    compiled->fn    = nullptr;
-            e.meta->rtTree = compiled->rtTree; compiled->rtTree = nullptr;
+            e.meta->fn      = compiled->fn;      compiled->fn      = nullptr;
+            e.meta->rtTree  = compiled->rtTree;  compiled->rtTree  = nullptr;
+            e.meta->nVars   = compiled->nVars;
+            e.meta->nConsts = compiled->nConsts;
         }
         if (e.meta && e.meta->fn) { result = e.meta.get(); }
     });
@@ -151,6 +153,8 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
 
         thread_local std::vector<Scalar> coeff;
         tree.GetCoefficients(coeff);
+        ENSURE(static_cast<int>(varOrderBuf.size()) == compiled->nVars);
+        ENSURE(static_cast<int>(coeff.size()) == compiled->nConsts);
         compiled->fn(scratch.data(), colPtrs.data(), nRowsPad,
                      coeff.empty() ? nullptr : coeff.data());
         std::copy_n(scratch.data(), nRows, buf.data());
