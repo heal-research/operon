@@ -200,6 +200,93 @@ TEST_CASE("JIT AVX2 correctness", "[jit][avx2]")
     }
 }
 
+// Smoke test for Ref node handling in the JIT compiler. The explicit register
+// copy (vmovaps/vmovups) is preventive — it shortens live ranges and simplifies
+// the use graph for asmjit's RA, but no wrong-result bug was observed with the
+// old aliasing code. This test exercises a tree shape with two independent use
+// chains from a shared sub-expression to verify the code path end-to-end.
+TEST_CASE("JIT Ref node forward-pass correctness", "[jit][ref]")
+{
+    auto ds    = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range{0, std::min(ds.Rows<std::size_t>(), std::size_t{200})};
+
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+
+    // Postfix layout:
+    //   0: X1                            (Variable, Len=0)
+    //   1: X2                            (Variable, Len=0)
+    //   2: Add(X1,X2)   Arity=2 Len=2   S = X1+X2 (shared sub-expression)
+    //   3: X3                            (Variable, Len=0)
+    //   4: Ref(2)                        copy of S (Len=0)
+    //   5: Sub(Ref,X3)  Arity=2 Len=2   S - X3   (consumes Ref + X3)
+    //   6: Mul(Add,Sub) Arity=2 Len=6   S * (S - X3) (consumes node 2 + node 5)
+    //
+    // Node 2's value is consumed independently by Mul (directly) and Sub (via Ref
+    // at node 4), creating two live use chains. With the old register-aliasing
+    // code the Ref shared node 2's virtual register, extending its liveness across
+    // the Sub emit region — exactly the pattern that triggered RA mis-scheduling.
+    //
+    // Semantically: (X1+X2) * ((X1+X2) - X3)
+    auto x1Hash = ds.GetVariable("X1").value().Hash;
+    auto x2Hash = ds.GetVariable("X2").value().Hash;
+    auto x3Hash = ds.GetVariable("X3").value().Hash;
+
+    Operon::Vector<Node> nodes;
+    {
+        Node v1(NodeType::Variable); v1.HashValue = v1.CalculatedHashValue = x1Hash; v1.Value = 1.0F;
+        Node v2(NodeType::Variable); v2.HashValue = v2.CalculatedHashValue = x2Hash; v2.Value = 1.0F;
+        Node add(NodeType::Add);     add.Length = 2;
+        Node v3(NodeType::Variable); v3.HashValue = v3.CalculatedHashValue = x3Hash; v3.Value = 1.0F;
+        Node ref = Node::Ref(2);
+        Node sub(NodeType::Sub);     sub.Length = 2;
+        Node mul(NodeType::Mul);     mul.Length = 6;
+        nodes.push_back(v1);
+        nodes.push_back(v2);
+        nodes.push_back(add);
+        nodes.push_back(v3);
+        nodes.push_back(ref);
+        nodes.push_back(sub);
+        nodes.push_back(mul);
+    }
+    Tree tree{nodes};
+
+    // Reference: interpreter
+    auto ref = EvalRef(tree, ds, range);
+
+    // Verify against the known formula: (X1+X2) * ((X1+X2) - X3)
+    {
+        auto const* x1 = ds.GetPaddedValues(x1Hash);
+        auto const* x2 = ds.GetPaddedValues(x2Hash);
+        auto const* x3 = ds.GetPaddedValues(x3Hash);
+        for (std::size_t i = 0; i < range.Size(); ++i) {
+            auto s = x1[i] + x2[i];
+            auto expected = s * (s - x3[i]);
+            INFO("row " << i << ": expected=" << expected << " ref=" << ref[i]);
+            CHECK(ref[i] == Catch::Approx(expected).epsilon(Tol));
+        }
+    }
+
+    SECTION("scalar") {
+        auto jit = EvalJIT(compiler, tree, ds, range);
+        REQUIRE(ref.size() == jit.size());
+        for (std::size_t i = 0; i < ref.size(); ++i) {
+            INFO("row " << i << ": ref=" << ref[i] << " jit=" << jit[i]);
+            CHECK(jit[i] == Catch::Approx(ref[i]).epsilon(Tol));
+        }
+    }
+
+    SECTION("AVX2") {
+        if (!compiler.HasAVX2()) { SKIP("AVX2 not available"); }
+        auto avx2 = EvalJIT_AVX2(compiler, tree, ds, range);
+        REQUIRE(ref.size() == avx2.size());
+        for (std::size_t i = 0; i < ref.size(); ++i) {
+            INFO("row " << i << ": ref=" << ref[i] << " avx2=" << avx2[i]);
+            CHECK(avx2[i] == Catch::Approx(ref[i]).epsilon(Tol));
+        }
+    }
+}
+
 TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
 {
     auto ds    = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);

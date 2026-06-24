@@ -40,8 +40,10 @@ struct JitLMCostFunction {
                       std::vector<float const*>                colPtrs,
                       Operon::Span<Operon::Scalar const>       target,
                       Operon::Range                            range,
-                      JIT::EvalJacFn                           jacFn     = nullptr,
-                      std::vector<float const*>                jacColPtrs = {})
+                      JIT::EvalJacFn                           jacFn      = nullptr,
+                      std::vector<float const*>                jacColPtrs = {},
+                      int                                      nVars      = -1,
+                      int                                      nConsts    = -1)
         : interpreter_(interpreter)
         , fn_(fn)
         , colPtrs_(std::move(colPtrs))
@@ -54,6 +56,8 @@ struct JitLMCostFunction {
         , nRowsPad_(static_cast<std::size_t>((static_cast<int>(range.Size()) + 7) & ~7))
         , scratchResiduals_(nRowsPad_)
         , scratchJac_(nRowsPad_ * numParameters_)
+        , nVars_(nVars)
+        , nConsts_(nConsts)
     {}
 
     inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
@@ -67,6 +71,8 @@ struct JitLMCostFunction {
         if (jacobian != nullptr) {
             ++jacobianCallCount_;
             if (jacFn_ != nullptr) {
+                ENSURE(nVars_   < 0 || static_cast<int>(jacColPtrs_.size()) == nVars_);
+                ENSURE(nConsts_ < 0 || static_cast<int>(numParameters_)     == nConsts_);
                 // Write into padded per-column scratch, then copy valid rows to jacobian.
                 std::vector<float*> outs(numParameters_);
                 for (std::size_t k = 0; k < numParameters_; ++k) {
@@ -87,6 +93,8 @@ struct JitLMCostFunction {
             ++residualCallCount_;
             Operon::Span<Operon::Scalar> res{residuals, numResiduals_};
             if (fn_ != nullptr) {
+                ENSURE(nVars_   < 0 || static_cast<int>(colPtrs_.size()) == nVars_);
+                ENSURE(nConsts_ < 0 || static_cast<int>(numParameters_)  == nConsts_);
                 fn_(scratchResiduals_.data(), colPtrs_.data(), nRowsPad, parameters);
                 std::copy_n(scratchResiduals_.data(), numResiduals_, residuals);
             } else {
@@ -146,6 +154,9 @@ private:
     std::size_t                              nRowsPad_;
     mutable std::vector<Scalar>              scratchResiduals_;
     mutable std::vector<Scalar>              scratchJac_;
+
+    int                                      nVars_   = -1;
+    int                                      nConsts_ = -1;
 
     mutable std::atomic_size_t jacobianCallCount_{0};
     mutable std::atomic_size_t residualCallCount_{0};

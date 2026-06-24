@@ -126,9 +126,11 @@ void emitNodesScalar(
         auto const& n = nodes[ii];
 
         if (n.IsRef()) {
-            Vec v = nodeVecs[n.RefTo];
-            nodeVecs[ii] = v;
-            stack.push_back(v);
+            ENSURE(n.RefTo < ii);
+            Vec copy = cc.new_xmm_ss();
+            cc.vmovaps(copy, nodeVecs[n.RefTo]);
+            nodeVecs[ii] = copy;
+            stack.push_back(copy);
             continue;
         }
 
@@ -389,8 +391,10 @@ auto TreeCompiler::Compile(Operon::Tree const& tree) -> std::unique_ptr<CompileM
     if (auto err = rt.add(&fn_ptr, &code); err != Error::kOk) { return nullptr; }
 
     auto result = std::make_unique<CompileMeta>();
-    result->rtTree = &rt;
-    result->fn     = fn_ptr;
+    result->rtTree  = &rt;
+    result->fn      = fn_ptr;
+    result->nVars   = static_cast<int>(varOrder.size());
+    result->nConsts = nConsts;
     return result;
 }
 
@@ -481,9 +485,11 @@ void emitNodesAVX2(
         auto const& n = nodes[ii];
 
         if (n.IsRef()) {
-            Vec v = nodeVecs[n.RefTo];
-            nodeVecs[ii] = v;
-            stack.push_back(v);
+            ENSURE(n.RefTo < ii);
+            Vec copy = cc.new_ymm_ps();
+            cc.vmovups(copy, nodeVecs[n.RefTo]);
+            nodeVecs[ii] = copy;
+            stack.push_back(copy);
             continue;
         }
 
@@ -751,8 +757,10 @@ auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<Comp
     if (auto err = rt.add(&fn_ptr, &code); err != Error::kOk) { return nullptr; }
 
     auto result = std::make_unique<CompileMeta>();
-    result->rtTree = &rt;
-    result->fn     = fn_ptr;
+    result->rtTree  = &rt;
+    result->fn      = fn_ptr;
+    result->nVars   = static_cast<int>(varOrder.size());
+    result->nConsts = nConsts;
     return result;
 }
 

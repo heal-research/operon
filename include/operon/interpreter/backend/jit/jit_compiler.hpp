@@ -54,6 +54,8 @@ struct CompileMeta {
     asmjit::JitRuntime* rtJac  = nullptr;
     EvalFn    fn    = nullptr;
     EvalJacFn jacFn = nullptr;
+    int nVars   = 0;
+    int nConsts = 0;
 
     CompileMeta() = default;
 
@@ -67,6 +69,7 @@ struct CompileMeta {
 
     CompileMeta(CompileMeta&& o) noexcept
         : rtTree(o.rtTree), rtJac(o.rtJac), fn(o.fn), jacFn(o.jacFn)
+        , nVars(o.nVars), nConsts(o.nConsts)
     { o.rtTree = o.rtJac = nullptr; o.fn = nullptr; o.jacFn = nullptr; }
 
     CompileMeta& operator=(CompileMeta&&) = delete;
