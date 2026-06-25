@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operon/hash/zobrist.hpp"
 
 #include <algorithm>
+#include <utility>
 
 namespace Operon {
 
@@ -16,7 +18,7 @@ Zobrist::Zobrist(Operon::RandomGenerator& rng, int maxLength, Operon::Span<Opero
     , tt_(std::make_unique<TranspositionTable>())
 {
     std::generate(table_.container().begin(), table_.container().end(), std::ref(rng));
-    for (int i = 0; i < static_cast<int>(variableHashes.size()); ++i) {
+    for (int i = 0; std::cmp_less(i, variableHashes.size()); ++i) {
         varIndex_[variableHashes[i]] = i;
     }
 }
@@ -25,7 +27,7 @@ Zobrist::~Zobrist() = default;
 
 auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
 {
-    bool const found = tt_->Cache.IfContains(hash, [&](FitnessEntry const& e) { val = e.Value; });
+    bool const found = tt_->Cache.IfContains(hash, [&](FitnessEntry const& e) -> void { val = e.Value; });
     if (found) { ++hits_; }
     return found;
 }
@@ -33,8 +35,8 @@ auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
 auto Zobrist::Insert(Operon::Hash hash, Value const& val) -> void
 {
     tt_->Cache.LazyEmplace(hash,
-        [](FitnessEntry& e) { ++e.Visits; },
-        [&](FitnessEntry& e) { e.Value = val; }
+        [](FitnessEntry& e) -> void { ++e.Visits; },
+        [&](FitnessEntry& e) -> void { e.Value = val; }
     );
 }
 
