@@ -8,7 +8,6 @@
 #include <functional>
 #include <limits>
 #include <random>
-#include <span>
 #include <utility>
 #include <vector>
 

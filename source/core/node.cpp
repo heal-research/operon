@@ -5,7 +5,6 @@
 #include "operon/core/node.hpp"
 
 #include <iterator>       // for pair
-#include <unordered_map>  // for unordered_map, _Map_base<>::mapped_type
 #include <utility>        // for make_pair, pair
 #include <string>         // for string
 

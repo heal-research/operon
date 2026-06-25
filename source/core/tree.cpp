@@ -8,7 +8,6 @@
 #include <numeric>
 #include <functional>
 #include <iterator>
-#include <span>
 #include <vector>
 
 #include "operon/core/tree.hpp"

@@ -14,7 +14,6 @@
 #include "operon/operators/local_search.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
-#include <cxxopts.hpp>
 
 
 namespace Operon { class PrimitiveSet; }

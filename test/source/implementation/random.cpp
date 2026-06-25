@@ -4,9 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <algorithm>
 #include <cstddef>
-#include <random>
 #include <vector>
 
 #include <operon/core/types.hpp>

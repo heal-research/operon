@@ -9,8 +9,6 @@
 #include <cmath>
 #include <limits>
 
-#include <Eigen/Core>
-#include <fmt/core.h>
 #include <fmt/os.h>
 
 #include "operon/core/node.hpp"
