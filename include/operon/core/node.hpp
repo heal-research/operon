@@ -136,7 +136,7 @@ struct Node {
         }
         Length = Arity;
         IsEnabled = true;
-        Optimize = IsLeaf(); // we only optimize leaf nodes
+        Optimize = IsLeaf() && !IsRef();
         Value = 1.;
     }
 
