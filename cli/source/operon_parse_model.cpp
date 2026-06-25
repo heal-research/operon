@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm>
 #include <memory>
@@ -16,11 +17,9 @@
 #include "operon/parser/infix.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
-#include "util.hpp"
 #include "reporter.hpp"
 
 #include <cxxopts.hpp>
-#include <fmt/core.h>
 #include <scn/scan.h>
 #include <tl/expected.hpp>
 

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <algorithm>
 #include <cstddef>
-#include <random>
 #include <vector>
 
 #include <operon/core/types.hpp>

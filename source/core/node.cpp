@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operon/core/node.hpp"
 
 #include <iterator>       // for pair
-#include <unordered_map>  // for unordered_map, _Map_base<>::mapped_type
 #include <utility>        // for make_pair, pair
 #include <string>         // for string
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm> // for max, min_element
 #include <chrono> // for steady_clock
@@ -12,7 +13,6 @@
 #include <taskflow/algorithm/for_each.hpp> // for taskflow.for_each_index
 #include <taskflow/core/flow_builder.hpp> // for subflow
 #include <taskflow/core/taskflow.hpp> // for taskflow
-#include <taskflow/taskflow.hpp> // for needed macros
 // NOLINTEND(misc-include-cleaner)
 
 #include "operon/algorithms/gp.hpp"

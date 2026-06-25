@@ -1,21 +1,15 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operon/core/distance.hpp"
 #include "operon/core/dispatch.hpp"
-#include "operon/formatter/formatter.hpp"
-#include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
-#include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
-#include "operon/optimizer/optimizer.hpp"
-#include "operon/optimizer/solvers/sgd.hpp"
 #include "operon/random/random.hpp"
 
 #include <algorithm>
 #include <operon/operon_export.hpp>
-#include <taskflow/taskflow.hpp>
 #include <type_traits>
-#include <ranges>
 
 namespace Operon {
 namespace {
@@ -74,7 +68,7 @@ namespace {
         interpreter.Evaluate(coeff, trainingRange, buf);
         if (scaling_) {
             auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues, weights);
-            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) -> auto { return a * x + b; });
+            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
         }
         auto fit = static_cast<Operon::Scalar>(weights.empty() ? error_(buf, targetValues) : error_(buf, targetValues, weights));
 
