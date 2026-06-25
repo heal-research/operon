@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operator_factory.hpp"
 #include <stdexcept>                       // for runtime_error
@@ -13,7 +14,6 @@
 #include "operon/operators/local_search.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
-#include <cxxopts.hpp>
 
 
 namespace Operon { class PrimitiveSet; }

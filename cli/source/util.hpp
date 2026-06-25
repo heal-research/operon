@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #ifndef OPERON_CLI_UTIL_HPP
 #define OPERON_CLI_UTIL_HPP
@@ -11,7 +12,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cxxopts.hpp>
-#include <fmt/core.h>
 #include <string>
 #include <utility>
 #include <vector>

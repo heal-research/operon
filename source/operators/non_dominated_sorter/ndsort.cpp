@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <ndsort/ndsort.hpp>
 
@@ -8,11 +9,11 @@
 
 namespace Operon {
 namespace {
-    auto const proj = [](Individual const& ind) -> Vector<Scalar> const& { return ind.Fitness; };
+    auto const Proj = [](Individual const& ind) -> Vector<Scalar> const& { return ind.Fitness; };
 
     template<typename S>
     auto Wrap(Span<Individual const> pop, Scalar eps) -> NondominatedSorterBase::Result {
-        return S{}(pop, static_cast<double>(eps), proj, ndsort::sorted_unique);
+        return S{}(pop, static_cast<double>(eps), Proj, ndsort::sorted_unique);
     }
 } // namespace
 

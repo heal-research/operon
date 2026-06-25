@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <fmt/core.h>
 #include <random>
 
 #include "operon/core/contracts.hpp"
-#include "operon/formatter/formatter.hpp"
 #include "operon/operators/crossover.hpp"
 #include "operon/random/random.hpp"
 

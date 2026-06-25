@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 #include "jit_setup.hpp"
 
-#include <fmt/core.h>
 
 #include "operator_factory.hpp" // ParseErrorMetric
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #ifndef OPERON_MUTATION_HPP
 #define OPERON_MUTATION_HPP
@@ -7,7 +8,6 @@
 #include <cstddef>
 #include <gsl/pointers>
 #include <utility>
-#include <functional>
 #include <vector>
 
 #include "operon/operon_export.hpp"

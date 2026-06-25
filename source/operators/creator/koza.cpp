@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <cmath>
 #include <cstddef>
 #include <algorithm>
 #include <random>
-#include <span>
 
 #include "operon/operators/creator.hpp"
 #include "operon/core/pset.hpp"

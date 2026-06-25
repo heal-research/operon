@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #ifdef HAVE_ASMJIT
 
-#include <fmt/core.h>
 
 #include "operon/interpreter/backend/jit/jit_factory.hpp"
 #include "operon/optimizer/optimizer.hpp"
@@ -32,7 +32,7 @@ auto MakeJitObjects(
         out.Evaluator = std::make_unique<JitEvaluator>(&problem, jzp, metric, linearScaling);
         out.Optimizer = std::make_unique<JitLevenbergMarquardtOptimizer<Operon::ScalarDispatch>>(
             &dtable, &problem,
-            static_cast<JitEvaluator*>(out.Evaluator.get()));
+            static_cast<JitEvaluator*>(out.Evaluator.get())); // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
     } else if (mode == "jac") {
         // Evaluator stays null — caller creates the interpreter evaluator.
         out.OptimizerJacEval = std::make_unique<JitEvaluator>(&problem, jzp, metric, linearScaling);
@@ -40,18 +40,18 @@ auto MakeJitObjects(
                                                                          Operon::OptimizerType::Eigen,
                                                                          /*JacobianOnly=*/true>>(
             &dtable, &problem,
-            static_cast<JitEvaluator*>(out.OptimizerJacEval.get()));
+            static_cast<JitEvaluator*>(out.OptimizerJacEval.get())); // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
     } else {
         fmt::print(stderr, "warning: unknown --jit mode '{}', ignoring\n", mode);
         return out; // null evaluator/optimizer — caller falls back to defaults
     }
 
-    auto* jev = static_cast<JitEvaluator*>(out.Evaluator.get());
-    if (jev == nullptr) { jev = static_cast<JitEvaluator*>(out.OptimizerJacEval.get()); }
+    auto* jev = static_cast<JitEvaluator*>(out.Evaluator.get()); // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
+    if (jev == nullptr) { jev = static_cast<JitEvaluator*>(out.OptimizerJacEval.get()); } // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
     if (jev != nullptr) {
         jev->SetMaxLength(jitMaxLength);
         jev->SetMinVisits(jitMinVisits);
-        out.Report = [jev]() {
+        out.Report = [jev]() -> void {
             auto const hits   = jev->CacheHits();
             auto const misses = jev->CacheMisses();
             auto const total  = hits + misses;

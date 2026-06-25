@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <cstdint>
 #include <algorithm>
 #include <iterator>
-#include <span>
 #include <vector>
 
 #include "operon/algorithms/solution_archive.hpp"

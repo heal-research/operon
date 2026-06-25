@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <cstddef>
 #include <cstdint>
@@ -7,7 +8,6 @@
 #include <numeric>
 #include <functional>
 #include <iterator>
-#include <span>
 #include <vector>
 
 #include "operon/core/tree.hpp"
