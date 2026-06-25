@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
@@ -36,6 +37,13 @@ TEST_CASE("Node type traits", "[core]")
 
     SECTION("Node size is at most 64 bytes") {
         CHECK(sizeof(Node) <= size_t{64});
+    }
+
+    SECTION("Ref node is not optimizable") {
+        Node ref(NodeType::Ref);
+        CHECK(ref.IsLeaf());
+        CHECK(ref.IsRef());
+        CHECK_FALSE(ref.Optimize);
     }
 }
 

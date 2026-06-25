@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <fmt/core.h>
 #include <fmt/format.h>
 #include <limits>
 #include <memory>
@@ -13,8 +13,6 @@
 #include <sstream>
 #include <stdexcept>
 
-#include <taskflow/taskflow.hpp>
-#include <taskflow/algorithm/reduce.hpp>
 #include "util.hpp"
 
 #include "operon/core/node.hpp"

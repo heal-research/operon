@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #ifndef OPERON_CORE_NODE_HPP
 #define OPERON_CORE_NODE_HPP
@@ -74,7 +75,7 @@ struct NodeTypes {
 using PrimitiveSetConfig = Bitset<NodeTypes::Count>;
 
 // Build a PrimitiveSetConfig from two individual NodeType values.
-inline constexpr auto operator|(NodeType lhs, NodeType rhs) -> PrimitiveSetConfig
+constexpr auto operator|(NodeType lhs, NodeType rhs) -> PrimitiveSetConfig
 {
     PrimitiveSetConfig c{};
     c.Set(NodeTypes::GetIndex(lhs));
@@ -83,13 +84,13 @@ inline constexpr auto operator|(NodeType lhs, NodeType rhs) -> PrimitiveSetConfi
 }
 
 // Extend a PrimitiveSetConfig with one more NodeType.
-inline constexpr auto operator|(PrimitiveSetConfig lhs, NodeType rhs) -> PrimitiveSetConfig
+constexpr auto operator|(PrimitiveSetConfig lhs, NodeType rhs) -> PrimitiveSetConfig
 {
     lhs.Set(NodeTypes::GetIndex(rhs));
     return lhs;
 }
 
-inline constexpr auto operator|=(PrimitiveSetConfig& lhs, NodeType rhs) -> PrimitiveSetConfig&
+constexpr auto operator|=(PrimitiveSetConfig& lhs, NodeType rhs) -> PrimitiveSetConfig&
 {
     lhs.Set(NodeTypes::GetIndex(rhs));
     return lhs;
@@ -151,7 +152,6 @@ struct Node {
     {
         Node node(NodeType::Ref);
         node.RefTo    = target;
-        node.Optimize = false; // Ref has no value of its own; excluding it prevents a phantom coefficient
         return node;
     }
 
@@ -163,62 +163,62 @@ struct Node {
     static OPERON_EXPORT void RegisterName(Operon::Hash hash, std::string name, std::string desc = {});
 
     // comparison operators
-    inline auto operator==(const Node& rhs) const noexcept -> bool
+    auto operator==(const Node& rhs) const noexcept -> bool
     {
         return CalculatedHashValue == rhs.CalculatedHashValue;
     }
 
-    inline auto operator!=(const Node& rhs) const noexcept -> bool
+    auto operator!=(const Node& rhs) const noexcept -> bool
     {
         return !((*this) == rhs);
     }
 
-    inline auto operator<(const Node& rhs) const noexcept -> bool
+    auto operator<(const Node& rhs) const noexcept -> bool
     {
         return std::tie(HashValue, CalculatedHashValue) < std::tie(rhs.HashValue, rhs.CalculatedHashValue);
     }
 
-    inline auto operator<=(const Node& rhs) const noexcept -> bool
+    auto operator<=(const Node& rhs) const noexcept -> bool
     {
         return ((*this) == rhs || (*this) < rhs);
     }
 
-    inline auto operator>(const Node& rhs) const noexcept -> bool
+    auto operator>(const Node& rhs) const noexcept -> bool
     {
         return !((*this) <= rhs);
     }
 
-    inline auto operator>=(const Node& rhs) const noexcept -> bool
+    auto operator>=(const Node& rhs) const noexcept -> bool
     {
         return !((*this) < rhs);
     }
 
-    [[nodiscard]] inline auto IsLeaf() const noexcept -> bool { return Arity == 0; }
-    [[nodiscard]] inline auto IsCommutative() const noexcept -> bool { return Is<NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax>(); }
+    [[nodiscard]] auto IsLeaf() const noexcept -> bool { return Arity == 0; }
+    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return Is<NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax>(); }
 
     template <NodeType... T>
-    [[nodiscard]] inline auto Is() const -> bool { return ((Type == T) || ...); }
+    [[nodiscard]] auto Is() const -> bool { return ((Type == T) || ...); }
 
-    [[nodiscard]] inline auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
-    [[nodiscard]] inline auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
-    [[nodiscard]] inline auto IsRef()      const -> bool { return Is<NodeType::Ref>(); }
-    [[nodiscard]] inline auto IsAddition() const -> bool { return Is<NodeType::Add>(); }
-    [[nodiscard]] inline auto IsSubtraction() const -> bool { return Is<NodeType::Sub>(); }
-    [[nodiscard]] inline auto IsMultiplication() const -> bool { return Is<NodeType::Mul>(); }
-    [[nodiscard]] inline auto IsDivision() const -> bool { return Is<NodeType::Div>(); }
-    [[nodiscard]] inline auto IsAq() const -> bool { return Is<NodeType::Aq>(); }
-    [[nodiscard]] inline auto IsPow() const -> bool { return Is<NodeType::Pow>(); }
-    [[nodiscard]] inline auto IsPowabs() const -> bool { return Is<NodeType::Powabs>(); }
-    [[nodiscard]] inline auto IsExp() const -> bool { return Is<NodeType::Exp>(); }
-    [[nodiscard]] inline auto IsLog() const -> bool { return Is<NodeType::Log>(); }
-    [[nodiscard]] inline auto IsSin() const -> bool { return Is<NodeType::Sin>(); }
-    [[nodiscard]] inline auto IsCos() const -> bool { return Is<NodeType::Cos>(); }
-    [[nodiscard]] inline auto IsTan() const -> bool { return Is<NodeType::Tan>(); }
-    [[nodiscard]] inline auto IsTanh() const -> bool { return Is<NodeType::Tanh>(); }
-    [[nodiscard]] inline auto IsSquareRoot() const -> bool { return Is<NodeType::Sqrt>(); }
-    [[nodiscard]] inline auto IsCubeRoot() const -> bool { return Is<NodeType::Cbrt>(); }
-    [[nodiscard]] inline auto IsSquare() const -> bool { return Is<NodeType::Square>(); }
-    [[nodiscard]] inline auto IsDynamic() const -> bool { return Is<NodeType::Dynamic>(); }
+    [[nodiscard]] auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
+    [[nodiscard]] auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
+    [[nodiscard]] auto IsRef()      const -> bool { return Is<NodeType::Ref>(); }
+    [[nodiscard]] auto IsAddition() const -> bool { return Is<NodeType::Add>(); }
+    [[nodiscard]] auto IsSubtraction() const -> bool { return Is<NodeType::Sub>(); }
+    [[nodiscard]] auto IsMultiplication() const -> bool { return Is<NodeType::Mul>(); }
+    [[nodiscard]] auto IsDivision() const -> bool { return Is<NodeType::Div>(); }
+    [[nodiscard]] auto IsAq() const -> bool { return Is<NodeType::Aq>(); }
+    [[nodiscard]] auto IsPow() const -> bool { return Is<NodeType::Pow>(); }
+    [[nodiscard]] auto IsPowabs() const -> bool { return Is<NodeType::Powabs>(); }
+    [[nodiscard]] auto IsExp() const -> bool { return Is<NodeType::Exp>(); }
+    [[nodiscard]] auto IsLog() const -> bool { return Is<NodeType::Log>(); }
+    [[nodiscard]] auto IsSin() const -> bool { return Is<NodeType::Sin>(); }
+    [[nodiscard]] auto IsCos() const -> bool { return Is<NodeType::Cos>(); }
+    [[nodiscard]] auto IsTan() const -> bool { return Is<NodeType::Tan>(); }
+    [[nodiscard]] auto IsTanh() const -> bool { return Is<NodeType::Tanh>(); }
+    [[nodiscard]] auto IsSquareRoot() const -> bool { return Is<NodeType::Sqrt>(); }
+    [[nodiscard]] auto IsCubeRoot() const -> bool { return Is<NodeType::Cbrt>(); }
+    [[nodiscard]] auto IsSquare() const -> bool { return Is<NodeType::Square>(); }
+    [[nodiscard]] auto IsDynamic() const -> bool { return Is<NodeType::Dynamic>(); }
 
     template<NodeType Type>
     static auto constexpr IsNary = Type < NodeType::Aq;

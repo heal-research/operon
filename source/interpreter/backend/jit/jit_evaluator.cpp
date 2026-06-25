@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #ifdef HAVE_ASMJIT
 
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace Operon::JIT {
@@ -27,7 +29,7 @@ JitEvaluator::JitEvaluator(gsl::not_null<Problem const*>    problem,
                              bool                             linearScaling)
     : EvaluatorBase(problem)
     , zobrist_(zobrist)
-    , error_(std::move(error))
+    , error_(error)
     , scaling_(linearScaling)
     , compiler_(&zobrist->Pool())
 {}
@@ -41,11 +43,11 @@ auto JitEvaluator::GetOrCompile(Tree const& tree) const -> CompileMeta const*
 
 auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMeta const*
 {
-    if (maxLength_ > 0 && static_cast<int>(tree.Length()) > maxLength_) { ++misses_; return nullptr; }
+    if (maxLength_ > 0 && std::cmp_greater(tree.Length(), maxLength_)) { ++misses_; return nullptr; }
 
     // Fast path: already compiled.
     CompileMeta const* result{};
-    if (zobrist_->JitCache().IfContains(hash, [&](JitEntry const& e) {
+    if (zobrist_->JitCache().IfContains(hash, [&](JitEntry const& e) -> void {
             if (e.meta && e.meta->fn) { result = e.meta.get(); }
         }) && result != nullptr) {
         ++hits_;
@@ -55,8 +57,8 @@ auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMet
     // Increment visit counter; return nullptr until frequency threshold is met.
     std::size_t visits{};
     zobrist_->JitCache().LazyEmplace(hash,
-        [&](JitEntry& e) { visits = ++e.Visits; },
-        [&](JitEntry& e) { visits = ++e.Visits; }
+        [&](JitEntry& e) -> void { visits = ++e.Visits; },
+        [&](JitEntry& e) -> void { visits = ++e.Visits; }
     );
     if (visits < minVisits_) { ++misses_; return nullptr; }
 
@@ -65,7 +67,7 @@ auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMet
     if (!compiled) { ++avx2Fails_; compiled = compiler_.Compile(tree); }
     if (!compiled) { ++compileFails_; }
 
-    zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) {
+    zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) -> void {
         if (!e.meta) {
             e.meta = std::move(compiled);
         } else if (e.meta->fn == nullptr && compiled) {
@@ -86,7 +88,7 @@ auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> CompileMeta c
 
     // Fast path: Jacobian already compiled.
     CompileMeta const* meta{};
-    if (zobrist_->JitCache().IfContains(hash, [&](JitEntry const& e) {
+    if (zobrist_->JitCache().IfContains(hash, [&](JitEntry const& e) -> void {
             if (e.meta && e.meta->jacFn) { meta = e.meta.get(); }
         }) && meta != nullptr) {
         return meta;
@@ -96,13 +98,13 @@ auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> CompileMeta c
     // Jacobian compilation is not frequency-gated — it is only requested by the optimizer
     // for trees that have already passed selection, so compiling unconditionally is correct.
     zobrist_->JitCache().LazyEmplace(hash,
-        [](JitEntry& e) { ++e.Visits; },
-        [](JitEntry& e) { e.Visits = 1; });
+        [](JitEntry& e) -> void { ++e.Visits; },
+        [](JitEntry& e) -> void { e.Visits = 1; });
 
     auto dag    = Operon::BuildJacobianDag(tree);
     auto newJac = compiler_.CompileJacobian(dag);
 
-    zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) {
+    zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) -> void {
         if (!e.meta) {
             e.meta = std::move(newJac);
         } else if (e.meta->jacFn == nullptr && newJac && newJac->jacFn != nullptr) {
@@ -135,7 +137,7 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
 
     if (compiled != nullptr) {
         auto const  nRows    = static_cast<int32_t>(range.Size());
-        auto const  nRowsPad = (nRows + 7) & ~7;
+        auto const  nRowsPad = (nRows + 7) & ~7; // NOLINT(hicpp-signed-bitwise)
 
         // Rebuild column pointers from the tree (VarOrder is re-derivable since
         // the Zobrist hash now structurally identifies each unique tree).
@@ -162,14 +164,14 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
         thread_local ScalarDispatch fallbackDtable;
         thread_local std::vector<Scalar> coeffBuf;
         tree.GetCoefficients(coeffBuf);
-        Interpreter<Scalar, ScalarDispatch> interp{&fallbackDtable, dataset, &tree};
+        Interpreter<Scalar, ScalarDispatch> const interp{&fallbackDtable, dataset, &tree};
         interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, buf);
     }
 
     if (scaling_) {
         auto [a, b] = FitLeastSquares(Span<Scalar const>(buf.data(), buf.size()), targetValues, weights);
         std::ranges::transform(buf, buf.begin(),
-            [a=a, b=b](auto x) -> Scalar { return static_cast<Scalar>(a * x + b); });
+            [a=a, b=b](auto x) -> Scalar { return static_cast<Scalar>((a * x) + b); });
     }
 
     auto fit = static_cast<Scalar>(weights.empty()

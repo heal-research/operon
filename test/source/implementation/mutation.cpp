@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <catch2/catch_test_macros.hpp>
 
 #include "operon/core/dataset.hpp"
-#include "operon/formatter/formatter.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/variable.hpp"
 #include "operon/operators/creator.hpp"
-#include "operon/operators/crossover.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/mutation.hpp"
 
