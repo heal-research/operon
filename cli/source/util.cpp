@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <fmt/core.h>
 #include <fmt/format.h>
 #include <limits>
 #include <memory>
@@ -14,8 +13,6 @@
 #include <sstream>
 #include <stdexcept>
 
-#include <taskflow/taskflow.hpp>
-#include <taskflow/algorithm/reduce.hpp>
 #include "util.hpp"
 
 #include "operon/core/node.hpp"

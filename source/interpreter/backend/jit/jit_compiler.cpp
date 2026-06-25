@@ -7,11 +7,7 @@
 #include "operon/interpreter/backend/jit/jit_compiler.hpp"
 #include "operon/core/node.hpp"
 
-#include <asmjit/asmjit.h>
-#include <asmjit/x86.h>
 
-#include <eve/module/core.hpp>
-#include <eve/module/math.hpp>
 
 // Fast polynomial variants matching the interpreter's dispatch table.
 // Must be included AFTER eve headers so the templates can instantiate.
@@ -20,7 +16,6 @@
 #include <immintrin.h>
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <limits>
 #include <utility>

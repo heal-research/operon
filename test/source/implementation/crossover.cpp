@@ -5,10 +5,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <random>
-#include <vstat/vstat.hpp>
 
 #include "operon/core/dataset.hpp"
-#include "operon/formatter/formatter.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/variable.hpp"
 #include "operon/operators/creator.hpp"

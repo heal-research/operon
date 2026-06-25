@@ -10,10 +10,8 @@
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
-#include "operon/formatter/formatter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/optimizer/optimizer.hpp"
-#include "operon/parser/infix.hpp"
 
 namespace nb = ankerl::nanobench;
 

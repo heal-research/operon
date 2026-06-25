@@ -4,19 +4,12 @@
 
 #include "operon/core/distance.hpp"
 #include "operon/core/dispatch.hpp"
-#include "operon/formatter/formatter.hpp"
-#include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
-#include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
-#include "operon/optimizer/optimizer.hpp"
-#include "operon/optimizer/solvers/sgd.hpp"
 #include "operon/random/random.hpp"
 
 #include <algorithm>
 #include <operon/operon_export.hpp>
-#include <taskflow/taskflow.hpp>
 #include <type_traits>
-#include <ranges>
 
 namespace Operon {
 namespace {

@@ -4,7 +4,6 @@
 
 #ifdef HAVE_ASMJIT
 
-#include <fmt/core.h>
 
 #include "operon/interpreter/backend/jit/jit_factory.hpp"
 #include "operon/optimizer/optimizer.hpp"

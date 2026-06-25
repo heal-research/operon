@@ -17,11 +17,9 @@
 #include "operon/parser/infix.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
-#include "util.hpp"
 #include "reporter.hpp"
 
 #include <cxxopts.hpp>
-#include <fmt/core.h>
 #include <scn/scan.h>
 #include <tl/expected.hpp>
 

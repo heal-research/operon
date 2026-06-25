@@ -3,23 +3,18 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm> // for stable_sort, copy_n, max
-#include <atomic> // for atomic_bool
 #include <chrono> // for steady_clock
 #include <cmath> // for isfinite
-#include <fmt/ranges.h>
 #include <iterator> // for move_iterator, back_inse...
 #include <limits> // for numeric_limits
 #include <memory> // for allocator, allocator_tra...
 #include <optional> // for optional
-#include <ranges> // for ranges
 #include <taskflow/algorithm/for_each.hpp> // for taskflow.for_each_index
-#include <taskflow/taskflow.hpp> // for taskflow, subflow
 #include <vector> // for vector, vector::size_type
 
 #include "operon/algorithms/nsga2.hpp"
 #include "operon/algorithms/phase_timer.hpp"
 #include "operon/core/contracts.hpp" // for ENSURE
-#include "operon/core/operator.hpp" // for OperatorBase
 #include "operon/core/problem.hpp" // for Problem
 #include "operon/core/range.hpp" // for Range
 #include "operon/core/tree.hpp" // for Tree

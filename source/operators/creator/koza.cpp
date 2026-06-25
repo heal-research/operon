@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <algorithm>
 #include <random>
-#include <span>
 
 #include "operon/operators/creator.hpp"
 #include "operon/core/pset.hpp"

@@ -4,8 +4,6 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <algorithm>
-#include <random>
 
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"

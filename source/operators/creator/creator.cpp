@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <algorithm>
 #include <ranges>
 #include <vector>
 

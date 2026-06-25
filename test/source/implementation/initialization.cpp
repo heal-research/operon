@@ -8,10 +8,8 @@
 #include <random>
 
 #include "operon/core/dataset.hpp"
-#include "operon/formatter/formatter.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/operators/creator.hpp"
-#include "operon/operators/crossover.hpp"
 #include "operon/operators/initializer.hpp"
 
 namespace Operon::Test {

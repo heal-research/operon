@@ -6,15 +6,12 @@
 #include <catch2/catch_approx.hpp>
 
 #include <unordered_set>
-#include <vstat/vstat.hpp>
 
 #include "operon/core/tree.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/distance.hpp"
-#include "operon/core/operator.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/variable.hpp"
-#include "operon/hash/hash.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
 
