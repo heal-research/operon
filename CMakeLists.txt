@@ -49,6 +49,7 @@ add_library(
     source/core/node.cpp
     source/core/pset.cpp
     source/core/tree.cpp
+    source/core/serialization.cpp
     source/core/tree_diff.cpp
     source/core/version.cpp
     source/formatter/dot.cpp
@@ -86,6 +87,11 @@ find_package(Eigen3 REQUIRED)
 find_package(eve REQUIRED)
 find_package(FastFloat REQUIRED)
 find_package(fluky REQUIRED)
+find_package(glaze REQUIRED)
+# Glaze declares cxx_std_23 in its INTERFACE_COMPILE_FEATURES. Strip it so
+# linking glaze PRIVATE does not upgrade the whole library to C++23; instead
+# we set CXX_STANDARD 23 on serialization.cpp alone via source properties.
+set_target_properties(glaze::glaze PROPERTIES INTERFACE_COMPILE_FEATURES "")
 find_package(fmt REQUIRED)
 find_package(gtl REQUIRED)
 find_package(lbfgs REQUIRED)
@@ -224,6 +230,7 @@ target_link_libraries(operon_operon PUBLIC
 
 target_link_libraries(operon_operon PRIVATE
     AriaCsvParser::AriaCsvParser
+    glaze::glaze
     ndsort::ndsort
     Taskflow::Taskflow
     cpp-sort::cpp-sort
@@ -233,6 +240,9 @@ target_link_libraries(operon_operon PRIVATE
 )
 
 target_compile_features(operon_operon PUBLIC cxx_std_23)
+
+# serialization.cpp includes glaze headers which require C++23.
+set_source_files_properties(source/core/serialization.cpp PROPERTIES COMPILE_OPTIONS "-std=gnu++23")
 
 if(MSVC)
     target_compile_options(operon_operon PRIVATE "/std:c++latest")
@@ -249,14 +259,6 @@ if (HAVE_ASMJIT)
         source/interpreter/backend/jit/jit_compiler.cpp
         source/interpreter/backend/jit/jit_evaluator.cpp
         source/interpreter/backend/jit/jit_factory.cpp
-    )
-    # jit_compiler.cpp hosts the AVX2 transcendental helpers (vec_sinf etc.) backed
-    # by eve::wide<float, eve::fixed<8>>.  -mavx2 is required so eve maps W8 to a
-    # single ymm register; the helpers are only called from CompileAVX2(), which
-    # guards entry behind a runtime CpuFeatures::X86::kAVX2 check.
-    set_source_files_properties(
-        source/interpreter/backend/jit/jit_compiler.cpp
-        PROPERTIES COMPILE_OPTIONS "-mavx2"
     )
 endif()
 
