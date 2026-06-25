@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm>
 #include <cmath>
@@ -38,7 +39,7 @@ namespace {
     auto StorageFromCols(std::vector<std::vector<Operon::Scalar>> const& cols) -> Dataset::Storage {
         auto const ncols = static_cast<int>(cols.size());
         auto const nrows = static_cast<int>(cols.front().size());
-        auto const pr    = (nrows + 7) & ~7; // padded rows; tail is zero (value-init)
+        auto const pr    = (nrows + 7) & ~7; // NOLINT(hicpp-signed-bitwise) padded rows; tail is zero (value-init)
         Dataset::Storage s(pr, ncols);
         auto* dst = s.container().data();
         for (auto j = 0; j < ncols; ++j) {
@@ -105,11 +106,11 @@ auto Dataset::ReadCsv(std::string const& path, bool hasHeader) -> std::pair<Data
         ++rowIdx;
     }
 
-    auto const pr = (nrow + 7) & ~7; // padded rows; tail zero-init by value-init of vector
+    auto const pr = (nrow + 7) & ~7; // NOLINT(hicpp-signed-bitwise) padded rows
     Storage s(pr, ncol);
     auto* dst = s.container().data();
     for (auto j = 0; j < ncol; ++j) {
-        std::copy_n(buf.data() + static_cast<ptrdiff_t>(j) * nrow, nrow, dst + static_cast<ptrdiff_t>(j) * pr);
+        std::copy_n(buf.data() + (static_cast<ptrdiff_t>(j) * nrow), nrow, dst + (static_cast<ptrdiff_t>(j) * pr));
     }
     return { std::move(s), nrow };
 }
@@ -144,9 +145,9 @@ auto Dataset::Wrap(gsl::not_null<Scalar const*> data, int rows, int cols) -> Dat
     return Dataset(ViewTag{}, data, rows, cols);
 }
 
-Dataset::Dataset(ViewTag, gsl::not_null<Scalar const*> data, int rows, int cols)
+Dataset::Dataset(ViewTag /*unused*/, gsl::not_null<Scalar const*> data, int rows, int cols)
     : variables_(DefaultVariables(cols))
-    , view_(data, (rows + 7) & ~7, cols)
+    , view_(data, (rows + 7) & ~7, cols) // NOLINT(hicpp-signed-bitwise)
     , rows_(rows)
 {
     // storage_ stays empty → IsView() == true; caller guarantees padding
@@ -155,12 +156,12 @@ Dataset::Dataset(ViewTag, gsl::not_null<Scalar const*> data, int rows, int cols)
 Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
     : variables_(DefaultVariables(cols))
 {
-    auto const pr = (rows + 7) & ~7;
+    auto const pr = (rows + 7) & ~7; // NOLINT(hicpp-signed-bitwise)
     storage_ = Storage(pr, cols);
     auto* dst = storage_.container().data();
     for (auto j = 0; j < cols; ++j) {
-        std::copy_n(data.get() + static_cast<ptrdiff_t>(j) * rows, rows,
-                    dst + static_cast<ptrdiff_t>(j) * pr);
+        std::copy_n(data.get() + (static_cast<ptrdiff_t>(j) * rows), rows,
+                    dst + (static_cast<ptrdiff_t>(j) * pr));
     }
     view_ = MakeView(storage_);
     rows_ = rows;
@@ -168,14 +169,14 @@ Dataset::Dataset(gsl::not_null<Scalar const*> data, int rows, int cols)
 
 Dataset::Dataset(Dataset const& rhs)
     : variables_(rhs.variables_)
-    , weights_(rhs.weights_)
+    , rows_(rhs.rows_), weights_(rhs.weights_)
 {
     auto const pr    = static_cast<ptrdiff_t>(rhs.view_.extent(0)); // paddedRows
     auto const ncols = static_cast<int>(rhs.view_.extent(1));
     storage_ = Storage(pr, ncols);
     std::copy_n(rhs.view_.data_handle(), static_cast<size_t>(pr) * ncols, storage_.container().data());
     view_ = MakeView(storage_);
-    rows_ = rhs.rows_;
+    
 }
 
 Dataset::Dataset(Dataset&& rhs) noexcept
@@ -273,7 +274,7 @@ auto Dataset::GetValues(Operon::Hash hash) const noexcept -> Span<Scalar const>
         fmt::print(stderr, "GetValues: cannot find variable with hash value {}", hash);
         std::abort();
     }
-    return ColSpan(it->second.Index);
+    return ColSpan(static_cast<int>(it->second.Index));
 }
 
 auto Dataset::GetValues(int64_t index) const noexcept -> Span<Scalar const>
@@ -375,7 +376,7 @@ void Dataset::PermuteRows(std::vector<int> const& perm)
 
 auto Dataset::GetPaddedValues(int64_t index) const noexcept -> Scalar const*
 {
-    return view_.data_handle() + static_cast<std::ptrdiff_t>(index) * view_.extent(0);
+    return view_.data_handle() + (static_cast<std::ptrdiff_t>(index) * view_.extent(0));
 }
 
 auto Dataset::GetPaddedValues(Operon::Hash hash) const noexcept -> Scalar const*

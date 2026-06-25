@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// SPDX-FileCopyrightText: Copyright 2019-2023 Heal Research
+// SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
+// SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operon/core/distance.hpp"
 #include "operon/core/dispatch.hpp"
@@ -74,7 +75,7 @@ namespace {
         interpreter.Evaluate(coeff, trainingRange, buf);
         if (scaling_) {
             auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues, weights);
-            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) -> auto { return a * x + b; });
+            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
         }
         auto fit = static_cast<Operon::Scalar>(weights.empty() ? error_(buf, targetValues) : error_(buf, targetValues, weights));
 
