@@ -12,7 +12,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cxxopts.hpp>
-#include <fmt/core.h>
 #include <string>
 #include <utility>
 #include <vector>

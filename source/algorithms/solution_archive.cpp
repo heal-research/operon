@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <algorithm>
 #include <iterator>
-#include <span>
 #include <vector>
 
 #include "operon/algorithms/solution_archive.hpp"

@@ -5,20 +5,15 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include "../operon_test.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/types.hpp"
-#include "operon/formatter/formatter.hpp"
-#include "operon/interpreter/interpreter.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
-#include "operon/operators/evaluator.hpp"
 #if defined(HAVE_ASMJIT)
-#include "operon/hash/zobrist.hpp"
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
 #endif
 

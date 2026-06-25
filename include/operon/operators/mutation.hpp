@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <gsl/pointers>
 #include <utility>
-#include <functional>
 #include <vector>
 
 #include "operon/operon_export.hpp"
