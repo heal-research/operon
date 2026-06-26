@@ -120,12 +120,12 @@ public:
             auto const it = varIndex_.find(n.HashValue);
             ENSURE(it != varIndex_.end());
             auto const row = static_cast<int>(NodeTypes::Count) + it->second;
-            h = table_(row, pos);
+            h = table_[row, pos];
         } else {
-            h = table_(NodeTypes::GetIndex(n.Type), pos);
+            h = table_[NodeTypes::GetIndex(n.Type), pos];
         }
         if (n.Optimize) {
-            h ^= table_(OptimizeRow(), pos);
+            h ^= table_[OptimizeRow(), pos];
         }
         return h;
     }
