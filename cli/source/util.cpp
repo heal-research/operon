@@ -17,6 +17,7 @@
 
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
+#include "operon/core/serialization.hpp"
 #include "operon/core/version.hpp"
 #include "operon/core/types.hpp"
 
@@ -182,10 +183,53 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("pareto-front", "Write rank-0 Pareto front to this JSON file after the run (only effective with Pareto-based algorithms, e.g. operon_nsgp)", cxxopts::value<std::string>())
         ("model-selection", "Pareto front model selection: obj0 (lowest first objective), mdl, bic, aic", cxxopts::value<std::string>()->default_value("obj0"))
         ("mdl-likelihood", "Likelihood for MDL/BIC/AIC model selection: gaussian or poisson", cxxopts::value<std::string>()->default_value("gaussian"))
+        ("checkpoint-interval", "Save a checkpoint every N generations (0 = disabled)", cxxopts::value<std::size_t>()->default_value("0"))
+        ("checkpoint-file", "Path for checkpoint output (BEVE binary format)", cxxopts::value<std::string>()->default_value("checkpoint.beve"))
+        ("resume", "Resume a previous run from this checkpoint file", cxxopts::value<std::string>())
         ("debug", "Debug mode (more information displayed)")
         ("help", "Print help")
         ("version", "Print version and program information");
     return opts;
+}
+
+auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
+                          cxxopts::ParseResult const& result) -> bool
+{
+    if (!result.contains("resume")) { return false; }
+    auto const path = result["resume"].as<std::string>();
+    auto cp = Serialization::LoadCheckpoint(path);
+    if (cp.Population.empty()) {
+        fmt::print(stderr, "warning: checkpoint '{}' is empty or could not be loaded, starting fresh\n", path);
+        return false;
+    }
+    auto const popSize = algo.GetConfig().PopulationSize;
+    if (cp.Population.size() != popSize) {
+        throw std::runtime_error(fmt::format(
+            "checkpoint population size {} doesn't match --population-size {}",
+            cp.Population.size(), popSize));
+    }
+    rng.set_state(cp.RngState);
+    algo.Generation() = cp.Generation;
+    algo.IsFitted()   = true;
+    auto parents = algo.Parents();
+    for (std::size_t i = 0; i < cp.Population.size(); ++i) {
+        parents[i] = std::move(cp.Population[i]);
+    }
+    return true;
+}
+
+auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const& rng,
+                         cxxopts::ParseResult const& result) -> void
+{
+    auto const interval = result["checkpoint-interval"].as<std::size_t>();
+    auto const gen      = algo.Generation();
+    if (interval == 0 || gen == 0 || gen % interval != 0) { return; }
+    auto const path = result["checkpoint-file"].as<std::string>();
+    Serialization::Checkpoint cp;
+    cp.RngState   = rng.state();
+    cp.Generation = gen;
+    cp.Population.assign(algo.Parents().begin(), algo.Parents().end());
+    Serialization::SaveCheckpoint(cp, path);
 }
 
 auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
