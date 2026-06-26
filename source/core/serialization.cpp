@@ -327,11 +327,17 @@ auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
     auto const tmpPath = std::string(path) + ".tmp";
     auto proxy = ToProxy(cp);
     std::string buf;
-    if (auto ec = glz::write_file_beve(proxy, tmpPath, buf); ec) {
-        fmt::print(stderr, "error writing checkpoint to '{}': {}\n", tmpPath, glz::format_error(ec));
+    if (auto wec = glz::write_file_beve(proxy, tmpPath, buf); wec) {
+        fmt::print(stderr, "error writing checkpoint to '{}': {}\n", tmpPath, glz::format_error(wec));
+        std::filesystem::remove(tmpPath);
         return;
     }
-    std::filesystem::rename(tmpPath, std::string(path));
+    std::error_code ec;
+    std::filesystem::rename(tmpPath, std::string(path), ec);
+    if (ec) {
+        fmt::print(stderr, "error renaming checkpoint '{}' to '{}': {}\n", tmpPath, path, ec.message());
+        std::filesystem::remove(tmpPath);
+    }
 }
 
 auto LoadCheckpoint(std::string_view path) -> Checkpoint
