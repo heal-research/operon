@@ -97,7 +97,9 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 
 auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report, bool warmStart) -> void // NOLINT(readability-function-cognitive-complexity)
 {
+    auto const savedGeneration = Generation();
     Reset();
+    if (warmStart) { Generation() = savedGeneration; }
 
     const auto& config = GetConfig();
     const auto& treeInit = GetTreeInitializer();

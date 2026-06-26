@@ -5,7 +5,14 @@
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 
+#include <filesystem>
+#include <utility>
+#include <fmt/core.h>
 #include <glaze/glaze.hpp>
+
+// Ensure the enumerate below stays in sync with NodeType additions.
+static_assert(Operon::NodeTypes::Count == 33,
+              "NodeType count changed — update glz::meta<Operon::NodeType>");
 
 // glz::meta specializations — all glaze details stay in this translation unit.
 template <>
@@ -83,7 +90,13 @@ struct IndividualProxy {
     Operon::Scalar                 Distance{};
 };
 
+// Bump Version whenever the on-disk layout changes in a backwards-incompatible way.
+constexpr uint32_t CheckpointMagic   = 0x4F50434BU; // "OPCK"
+constexpr uint32_t CheckpointVersion = 1U;
+
 struct CheckpointProxy {
+    uint32_t                                 Magic{CheckpointMagic};
+    uint32_t                                 Version{CheckpointVersion};
     std::array<uint64_t, 4>                  RngState{};
     std::size_t                              Generation{0};
     std::vector<IndividualProxy>             Population;
@@ -156,6 +169,8 @@ template <>
 struct glz::meta<CheckpointProxy> {
     using T = CheckpointProxy;
     static constexpr auto value = glz::object(
+        "magic",            &T::Magic,
+        "version",          &T::Version,
         "rng_state",        &T::RngState,
         "generation",       &T::Generation,
         "population",       &T::Population,
@@ -193,14 +208,20 @@ auto ToJson(std::span<Individual const> front) -> std::string
 auto TreeFromJson(std::string_view json) -> Tree
 {
     TreeProxy tp;
-    if (glz::read_json(tp, json)) { return {}; }
+    if (auto ec = glz::read_json(tp, json); ec) {
+        fmt::print(stderr, "serialization error (TreeFromJson): {}\n", glz::format_error(ec, json));
+        return {};
+    }
     return ProxiesToTree(tp.Nodes);
 }
 
 auto IndividualFromJson(std::string_view json) -> Individual
 {
     IndividualProxy ip;
-    if (glz::read_json(ip, json)) { return {}; }
+    if (auto ec = glz::read_json(ip, json); ec) {
+        fmt::print(stderr, "serialization error (IndividualFromJson): %s\n", glz::format_error(ec, json));
+        return {};
+    }
     return ProxyToIndividual(ip);
 }
 
@@ -232,14 +253,20 @@ auto ToBeve(std::span<Individual const> front) -> std::string
 auto TreeFromBeve(std::string_view data) -> Tree
 {
     TreeProxy tp;
-    if (glz::read_beve(tp, data)) { return {}; }
+    if (auto ec = glz::read_beve(tp, data); ec) {
+        fmt::print(stderr, "serialization error (TreeFromBeve): %s\n", glz::format_error(ec, data));
+        return {};
+    }
     return ProxiesToTree(tp.Nodes);
 }
 
 auto IndividualFromBeve(std::string_view data) -> Individual
 {
     IndividualProxy ip;
-    if (glz::read_beve(ip, data)) { return {}; }
+    if (auto ec = glz::read_beve(ip, data); ec) {
+        fmt::print(stderr, "serialization error (IndividualFromBeve): %s\n", glz::format_error(ec, data));
+        return {};
+    }
     return ProxyToIndividual(ip);
 }
 
@@ -259,6 +286,11 @@ auto ToProxy(Checkpoint const& cp) -> CheckpointProxy
 
 auto FromProxy(CheckpointProxy const& proxy) -> Checkpoint
 {
+    if (proxy.Magic != CheckpointMagic || proxy.Version != CheckpointVersion) {
+        fmt::print(stderr, "error: incompatible checkpoint format (magic={:#010x}, version={})\n",
+                     proxy.Magic, proxy.Version);
+        return {};
+    }
     Checkpoint cp;
     cp.RngState        = proxy.RngState;
     cp.Generation      = proxy.Generation;
@@ -273,28 +305,43 @@ auto ToBeve(Checkpoint const& cp) -> std::string
 {
     auto proxy  = ToProxy(cp);
     auto result = glz::write_beve(proxy);
-    return result ? std::move(*result) : std::string{};
+    if (!result) {
+        fmt::print(stderr, "serialization error (ToBeve Checkpoint): %s\n", glz::format_error(result));
+        return {};
+    }
+    return std::move(*result);
 }
 
 auto CheckpointFromBeve(std::string_view data) -> Checkpoint
 {
     CheckpointProxy proxy;
-    if (glz::read_beve(proxy, data)) { return {}; }
+    if (auto ec = glz::read_beve(proxy, data); ec) {
+        fmt::print(stderr, "serialization error (CheckpointFromBeve): %s\n", glz::format_error(ec, data));
+        return {};
+    }
     return FromProxy(proxy);
 }
 
 auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
 {
+    auto const tmpPath = std::string(path) + ".tmp";
     auto proxy = ToProxy(cp);
     std::string buf;
-    (void)glz::write_file_beve(proxy, std::string(path), buf);
+    if (auto ec = glz::write_file_beve(proxy, tmpPath, buf); ec) {
+        fmt::print(stderr, "error writing checkpoint to '%s': %s\n", tmpPath.c_str(), glz::format_error(ec));
+        return;
+    }
+    std::filesystem::rename(tmpPath, std::string(path));
 }
 
 auto LoadCheckpoint(std::string_view path) -> Checkpoint
 {
     CheckpointProxy proxy;
     std::string buf;
-    if (glz::read_file_beve(proxy, std::string(path), buf)) { return {}; }
+    if (auto ec = glz::read_file_beve(proxy, std::string(path), buf); ec) {
+        fmt::print(stderr, "error loading checkpoint '%s': %s\n", std::string(path).c_str(), glz::format_error(ec, buf));
+        return {};
+    }
     return FromProxy(proxy);
 }
 
