@@ -203,6 +203,9 @@ TEST_CASE("Checkpoint file save/load round-trip", "[serialization]")
     for (std::size_t i = 0; i < original.WorkerRngStates.size(); ++i) {
         CHECK(restored.WorkerRngStates[i] == original.WorkerRngStates[i]);
     }
+
+    std::error_code cleanupEc;
+    std::filesystem::remove(path, cleanupEc);
 }
 
 TEST_CASE("Checkpoint BEVE rejects wrong magic", "[serialization]")

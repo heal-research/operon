@@ -333,6 +333,8 @@ auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
         return;
     }
     std::error_code ec;
+    std::filesystem::remove(std::string(path), ec); // best-effort; rename fails on Windows if dest exists
+    ec.clear();
     std::filesystem::rename(tmpPath, std::string(path), ec);
     if (ec) {
         fmt::print(stderr, "error renaming checkpoint '{}' to '{}': {}\n", tmpPath, path, ec.message());
