@@ -13,19 +13,19 @@
 namespace Operon::CLI {
 
 auto MakeJitObjects(
-    std::string_view              jitMode,
-    Operon::Problem&              problem,
-    Operon::ScalarDispatch const& dtable,
-    std::string const&            objective,
-    bool                          linearScaling,
-    int                           jitMaxLength,
-    std::size_t                   jitMinVisits,
-    int                           maxLength,
-    std::size_t                   seed
+    [[maybe_unused]] std::string_view              jitMode,
+    [[maybe_unused]] Operon::Problem&              problem,
+    [[maybe_unused]] Operon::ScalarDispatch const& dtable,
+    [[maybe_unused]] std::string const&            objective,
+    [[maybe_unused]] bool                          linearScaling,
+    [[maybe_unused]] int                           jitMaxLength,
+    [[maybe_unused]] std::size_t                   jitMinVisits,
+    [[maybe_unused]] int                           maxLength,
+    [[maybe_unused]] std::size_t                   seed
 ) -> JitObjects {
 #if !defined(HAVE_ASMJIT)
     fmt::print(stderr, "error: --jit requires a build with JIT support (HAVE_ASMJIT)\n");
-    return JitObjects{.Error = true};
+    return JitObjects{.Evaluator = nullptr, .OptimizerJacEval = nullptr, .Optimizer = nullptr, .Zobrist = nullptr, .Report = [](){}, .Error = true};
 #else
     auto [metric, supportsLinearScale] = Operon::ParseErrorMetric(objective);
     auto j = Operon::JIT::MakeJitObjects(

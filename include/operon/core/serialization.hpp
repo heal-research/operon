@@ -5,11 +5,11 @@
 #define OPERON_SERIALIZATION_HPP
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "operon/operon_export.hpp"
 #include "operon/core/individual.hpp"
@@ -38,7 +38,7 @@ OPERON_EXPORT auto IndividualFromBeve(std::string_view data) -> Individual;
 
 struct OPERON_EXPORT Checkpoint {
     std::array<uint64_t, 4>                   RngState{};
-    std::size_t                               Generation{0};
+    uint64_t                                  Generation{0};
     Operon::Vector<Individual>                Population;
     std::vector<std::array<uint64_t, 4>>      WorkerRngStates;
 };
