@@ -215,6 +215,13 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
     for (std::size_t i = 0; i < cp.Population.size(); ++i) {
         parents[i] = std::move(cp.Population[i]);
     }
+    auto const& config = algo.GetConfig();
+    auto const workerCount = std::max(config.PopulationSize, config.PoolSize);
+    if (!cp.WorkerRngStates.empty() && cp.WorkerRngStates.size() != workerCount) {
+        throw std::runtime_error(fmt::format(
+            "checkpoint worker RNG count {} doesn't match expected {} (max of --population-size and --pool-size)",
+            cp.WorkerRngStates.size(), workerCount));
+    }
     auto& workers = algo.WorkerRngs();
     workers.clear();
     workers.reserve(cp.WorkerRngStates.size());

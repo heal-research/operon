@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <span>
 #include <string>
 #include <vector>
@@ -186,7 +187,7 @@ TEST_CASE("Checkpoint file save/load round-trip", "[serialization]")
         s = rng.state();
     }
 
-    auto const path = std::string{"/tmp/operon_test_checkpoint.beve"};
+    auto const path = (std::filesystem::temp_directory_path() / "operon_test_checkpoint.beve").string();
     Operon::Serialization::SaveCheckpoint(original, path);
     auto restored = Operon::Serialization::LoadCheckpoint(path);
 
