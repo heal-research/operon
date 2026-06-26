@@ -86,8 +86,8 @@ public:
         EXPECT(inds.size() == config_.PoolSize + config_.PopulationSize,
                 "Mismatched number of individuals (must match pool/population sizes)");
         individuals_ = std::move(inds);
-        parents_ = Operon::Span<Individual>(individuals_.data(), config_.PoolSize);
-        offspring_ = Operon::Span<Individual>(individuals_.data() + config_.PoolSize, config_.PopulationSize);
+        parents_ = Operon::Span<Individual>(individuals_.data(), config_.PopulationSize);
+        offspring_ = Operon::Span<Individual>(individuals_.data() + config_.PopulationSize, config_.PoolSize);
     }
     
 private:
