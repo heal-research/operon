@@ -25,7 +25,9 @@
 namespace Operon {
 auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report, bool warmStart) -> void
 {
+    auto const savedGeneration = Generation();
     Reset();
+    if (warmStart) { Generation() = savedGeneration; }
 
     const auto config = GetConfig();
     const auto& treeInit = GetTreeInitializer();
