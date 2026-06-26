@@ -53,9 +53,7 @@
               foolnotion.overlay
               (final: prev: {
                 fluky = fluky.packages.${system}.default;
-                glaze = prev.glaze.overrideAttrs (old: {
-                  cmakeFlags = (old.cmakeFlags or []) ++ [ "-DGLAZE_ENABLE_SSL=OFF" ];
-                });
+                glaze = prev.glaze.override { enableSSL = false; };
                 lbfgs = lbfgs.packages.${system}.default;
                 infix-parser = infix-parser.packages.${system}.default;
                 ndsort = ndsort.packages.${system}.default;
