@@ -3,6 +3,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -203,49 +205,72 @@ TEST_CASE("Checkpoint file save/load round-trip", "[serialization]")
     }
 }
 
-TEST_CASE("Checkpoint BEVE rejects wrong magic/version", "[serialization]")
+TEST_CASE("Checkpoint BEVE rejects wrong magic", "[serialization]")
 {
     Operon::RandomGenerator rng(3);
     Operon::Serialization::Checkpoint cp;
     cp.RngState   = rng.state();
-    cp.Generation = 1;
+    cp.Generation = 0;
     cp.Population.resize(2);
     for (auto& ind : cp.Population) { ind = MakeIndividual(rng); }
 
     auto beve = Operon::Serialization::ToBeve(cp);
     REQUIRE(!beve.empty());
 
-    // Corrupt the first 4 bytes (magic field) and verify graceful failure.
-    // The corrupted bytes produce a non-zero but wrong magic value; FromProxy
-    // should return an empty Checkpoint (Population.empty()).
-    beve[0] = static_cast<char>(0xDE);
-    beve[1] = static_cast<char>(0xAD);
-    beve[2] = static_cast<char>(0xBE);
-    beve[3] = static_cast<char>(0xEF);
+    // Locate the magic value (0x4F50434B, LE: 4B 43 50 4F) in the BEVE
+    // payload and flip one byte so FromProxy rejects it.
+    constexpr std::array<char, 4> MagicLE{ '\x4B', '\x43', '\x50', '\x4F' };
+    auto it = std::search(beve.begin(), beve.end(), MagicLE.begin(), MagicLE.end());
+    REQUIRE(it != beve.end()); // sanity: magic must be present in valid checkpoint
+    *it ^= static_cast<char>(0xFF);
+
     auto bad = Operon::Serialization::CheckpointFromBeve(beve);
     CHECK(bad.Population.empty());
 }
 
-TEST_CASE("ResumeFromCheckpoint throws on WorkerRngStates size mismatch", "[serialization]")
+TEST_CASE("Checkpoint BEVE rejects wrong version", "[serialization]")
 {
-    // Verify that CheckpointProxy validation catches a corrupt/mismatched
-    // WorkerRngStates vector without needing to wire up a full algorithm.
+    Operon::RandomGenerator rng(3);
+    Operon::Serialization::Checkpoint cp;
+    cp.RngState   = rng.state();
+    cp.Generation = 0; // keep 0 so \x01\x00\x00\x00 uniquely identifies version
+    cp.Population.resize(2);
+    for (auto& ind : cp.Population) { ind = MakeIndividual(rng); }
+
+    auto beve = Operon::Serialization::ToBeve(cp);
+    REQUIRE(!beve.empty());
+
+    // Magic is at some position; version=1 (LE: 01 00 00 00) follows it.
+    // Search starting after the magic bytes so we land on the version value.
+    constexpr std::array<char, 4> MagicLE{ '\x4B', '\x43', '\x50', '\x4F' };
+    auto magicIt = std::search(beve.begin(), beve.end(), MagicLE.begin(), MagicLE.end());
+    REQUIRE(magicIt != beve.end());
+
+    constexpr std::array<char, 4> VersionLE{ '\x01', '\x00', '\x00', '\x00' };
+    auto versionIt = std::search(magicIt + 4, beve.end(), VersionLE.begin(), VersionLE.end());
+    REQUIRE(versionIt != beve.end());
+    *versionIt = static_cast<char>(0x02); // bump version to 2
+
+    auto bad = Operon::Serialization::CheckpointFromBeve(beve);
+    CHECK(bad.Population.empty());
+}
+
+TEST_CASE("Checkpoint BEVE preserves WorkerRngStates for CLI validation", "[serialization]")
+{
+    // The size-mismatch check lives in the CLI layer (ResumeFromCheckpoint),
+    // not in the serialization layer.  Verify the payload survives the BEVE
+    // round-trip intact so the CLI check can fire on the correct values.
     Operon::RandomGenerator rng(5);
     Operon::Serialization::Checkpoint cp;
     cp.RngState   = rng.state();
     cp.Generation = 2;
     cp.Population.resize(4);
     for (auto& ind : cp.Population) { ind = MakeIndividual(rng); }
-    // Put 3 worker states where 4 would be expected (max of popSize/poolSize).
-    cp.WorkerRngStates.resize(3);
+    cp.WorkerRngStates.resize(3); // intentionally mismatched (3 vs popSize 4)
     for (auto& s : cp.WorkerRngStates) { s = rng.state(); }
 
-    // Round-trip through BEVE so we have a realistic serialized payload.
     auto beve     = Operon::Serialization::ToBeve(cp);
     auto restored = Operon::Serialization::CheckpointFromBeve(beve);
-    // The deserialization itself succeeds; the size-mismatch check is in
-    // the CLI layer (ResumeFromCheckpoint).  Here we verify the payload is
-    // faithfully preserved so the CLI check can fire correctly.
     CHECK(restored.WorkerRngStates.size() == 3);
     CHECK(restored.Population.size() == 4);
 }
