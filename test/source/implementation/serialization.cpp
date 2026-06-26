@@ -149,6 +149,11 @@ TEST_CASE("Checkpoint BEVE round-trip", "[serialization]")
     original.Generation = 42;
     original.Population.resize(50);
     for (auto& ind : original.Population) { ind = MakeIndividual(rng); }
+    original.WorkerRngStates.resize(8);
+    for (auto& s : original.WorkerRngStates) {
+        for (auto i = 0; i < 100; ++i) { (void)rng(); }
+        s = rng.state();
+    }
 
     auto beve     = Operon::Serialization::ToBeve(original);
     auto restored = Operon::Serialization::CheckpointFromBeve(beve);
@@ -158,6 +163,10 @@ TEST_CASE("Checkpoint BEVE round-trip", "[serialization]")
     REQUIRE(restored.Population.size() == original.Population.size());
     for (std::size_t i = 0; i < original.Population.size(); ++i) {
         CHECK(IndividualsEqual(original.Population[i], restored.Population[i]));
+    }
+    REQUIRE(restored.WorkerRngStates.size() == original.WorkerRngStates.size());
+    for (std::size_t i = 0; i < original.WorkerRngStates.size(); ++i) {
+        CHECK(restored.WorkerRngStates[i] == original.WorkerRngStates[i]);
     }
 }
 
@@ -171,6 +180,11 @@ TEST_CASE("Checkpoint file save/load round-trip", "[serialization]")
     original.Generation = 10;
     original.Population.resize(20);
     for (auto& ind : original.Population) { ind = MakeIndividual(rng); }
+    original.WorkerRngStates.resize(4);
+    for (auto& s : original.WorkerRngStates) {
+        for (auto i = 0; i < 100; ++i) { (void)rng(); }
+        s = rng.state();
+    }
 
     auto const path = std::string{"/tmp/operon_test_checkpoint.beve"};
     Operon::Serialization::SaveCheckpoint(original, path);
@@ -181,6 +195,10 @@ TEST_CASE("Checkpoint file save/load round-trip", "[serialization]")
     REQUIRE(restored.Population.size() == original.Population.size());
     for (std::size_t i = 0; i < original.Population.size(); ++i) {
         CHECK(IndividualsEqual(original.Population[i], restored.Population[i]));
+    }
+    REQUIRE(restored.WorkerRngStates.size() == original.WorkerRngStates.size());
+    for (std::size_t i = 0; i < original.WorkerRngStates.size(); ++i) {
+        CHECK(restored.WorkerRngStates[i] == original.WorkerRngStates[i]);
     }
 }
 

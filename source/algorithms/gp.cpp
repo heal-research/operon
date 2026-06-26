@@ -41,12 +41,13 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
         return static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()) / ms;
     };
 
-    // random seeds for each thread
+    // random seeds for each thread — reuse existing states on warm resume, seed fresh otherwise
     size_t const s = std::max(config.PopulationSize, config.PoolSize);
-    std::vector<Operon::RandomGenerator> rngs;
-    rngs.reserve(s);
-    for (size_t i = 0; i < s; ++i) {
-        rngs.emplace_back(random());
+    auto& rngs = WorkerRngs();
+    if (rngs.size() != s) {
+        rngs.clear();
+        rngs.reserve(s);
+        for (size_t i = 0; i < s; ++i) { rngs.emplace_back(random()); }
     }
 
     auto idx = 0;

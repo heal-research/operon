@@ -84,9 +84,10 @@ struct IndividualProxy {
 };
 
 struct CheckpointProxy {
-    std::array<uint64_t, 4>      RngState{};
-    std::size_t                  Generation{0};
-    std::vector<IndividualProxy> Population;
+    std::array<uint64_t, 4>                  RngState{};
+    std::size_t                              Generation{0};
+    std::vector<IndividualProxy>             Population;
+    std::vector<std::array<uint64_t, 4>>     WorkerRngStates;
 };
 
 auto NodesToProxies(Operon::Vector<Operon::Node> const& nodes) -> std::vector<NodeProxy>
@@ -155,9 +156,10 @@ template <>
 struct glz::meta<CheckpointProxy> {
     using T = CheckpointProxy;
     static constexpr auto value = glz::object(
-        "rng_state",  &T::RngState,
-        "generation", &T::Generation,
-        "population", &T::Population
+        "rng_state",        &T::RngState,
+        "generation",       &T::Generation,
+        "population",       &T::Population,
+        "worker_rng_states", &T::WorkerRngStates
     );
 };
 
@@ -243,13 +245,33 @@ auto IndividualFromBeve(std::string_view data) -> Individual
 
 // ---- Checkpoint ----
 
-auto ToBeve(Checkpoint const& cp) -> std::string
+namespace {
+auto ToProxy(Checkpoint const& cp) -> CheckpointProxy
 {
     CheckpointProxy proxy;
-    proxy.RngState    = cp.RngState;
-    proxy.Generation  = cp.Generation;
+    proxy.RngState        = cp.RngState;
+    proxy.Generation      = cp.Generation;
+    proxy.WorkerRngStates = cp.WorkerRngStates;
     proxy.Population.reserve(cp.Population.size());
     for (auto const& ind : cp.Population) { proxy.Population.push_back(IndividualToProxy(ind)); }
+    return proxy;
+}
+
+auto FromProxy(CheckpointProxy const& proxy) -> Checkpoint
+{
+    Checkpoint cp;
+    cp.RngState        = proxy.RngState;
+    cp.Generation      = proxy.Generation;
+    cp.WorkerRngStates = proxy.WorkerRngStates;
+    cp.Population.reserve(proxy.Population.size());
+    for (auto const& ip : proxy.Population) { cp.Population.push_back(ProxyToIndividual(ip)); }
+    return cp;
+}
+} // anonymous namespace
+
+auto ToBeve(Checkpoint const& cp) -> std::string
+{
+    auto proxy  = ToProxy(cp);
     auto result = glz::write_beve(proxy);
     return result ? std::move(*result) : std::string{};
 }
@@ -258,21 +280,12 @@ auto CheckpointFromBeve(std::string_view data) -> Checkpoint
 {
     CheckpointProxy proxy;
     if (glz::read_beve(proxy, data)) { return {}; }
-    Checkpoint cp;
-    cp.RngState   = proxy.RngState;
-    cp.Generation = proxy.Generation;
-    cp.Population.reserve(proxy.Population.size());
-    for (auto const& ip : proxy.Population) { cp.Population.push_back(ProxyToIndividual(ip)); }
-    return cp;
+    return FromProxy(proxy);
 }
 
 auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
 {
-    CheckpointProxy proxy;
-    proxy.RngState   = cp.RngState;
-    proxy.Generation = cp.Generation;
-    proxy.Population.reserve(cp.Population.size());
-    for (auto const& ind : cp.Population) { proxy.Population.push_back(IndividualToProxy(ind)); }
+    auto proxy = ToProxy(cp);
     std::string buf;
     (void)glz::write_file_beve(proxy, std::string(path), buf);
 }
@@ -282,12 +295,7 @@ auto LoadCheckpoint(std::string_view path) -> Checkpoint
     CheckpointProxy proxy;
     std::string buf;
     if (glz::read_file_beve(proxy, std::string(path), buf)) { return {}; }
-    Checkpoint cp;
-    cp.RngState   = proxy.RngState;
-    cp.Generation = proxy.Generation;
-    cp.Population.reserve(proxy.Population.size());
-    for (auto const& ip : proxy.Population) { cp.Population.push_back(ProxyToIndividual(ip)); }
-    return cp;
+    return FromProxy(proxy);
 }
 
 } // namespace Operon::Serialization
