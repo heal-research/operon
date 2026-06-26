@@ -22,6 +22,7 @@ find_package(vdt QUIET)
 
 add_executable(operon_test
     source/operon_test.cpp
+    source/implementation/ga_base.cpp
     source/implementation/backend.cpp
     source/implementation/autodiff.cpp
     source/implementation/tree_diff.cpp
