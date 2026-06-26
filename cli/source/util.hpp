@@ -5,6 +5,7 @@
 #ifndef OPERON_CLI_UTIL_HPP
 #define OPERON_CLI_UTIL_HPP
 
+#include "operon/algorithms/ga_base.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/range.hpp"
@@ -36,5 +37,16 @@ auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
 // Throws std::runtime_error if a named variable does not exist in the dataset.
 auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
                  Hash targetHash) -> std::vector<Hash>;
+
+// Restore algorithm state from a checkpoint file specified via --resume.
+// Returns true if a checkpoint was applied (caller should pass warmStart=true to Run()).
+// Throws std::runtime_error if the checkpoint population size mismatches --population-size.
+auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
+                          cxxopts::ParseResult const& result) -> bool;
+
+// Save a checkpoint if --checkpoint-interval is set and the current generation is due.
+// No-op when interval == 0 or when Generation() == 0 (initial evaluation).
+auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const& rng,
+                         cxxopts::ParseResult const& result) -> void;
 } // namespace Operon
 #endif
