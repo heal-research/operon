@@ -260,6 +260,12 @@ if (HAVE_ASMJIT)
         source/interpreter/backend/jit/jit_evaluator.cpp
         source/interpreter/backend/jit/jit_factory.cpp
     )
+    # jit_compiler.cpp emits AVX2 intrinsics; guard explicitly so non-preset
+    # builds (plain cmake -B build) and Windows builds still get AVX2 codegen.
+    if (NOT MSVC)
+        set_source_files_properties(source/interpreter/backend/jit/jit_compiler.cpp
+            PROPERTIES COMPILE_OPTIONS "-mavx2")
+    endif()
 endif()
 
 target_compile_definitions(operon_operon PUBLIC
