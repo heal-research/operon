@@ -210,26 +210,29 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
     }
     rng.set_state(cp.RngState);
     algo.Generation() = cp.Generation;
-    algo.IsFitted()   = true;
     auto parents = algo.Parents();
     for (std::size_t i = 0; i < cp.Population.size(); ++i) {
         parents[i] = std::move(cp.Population[i]);
     }
     auto const& config = algo.GetConfig();
     auto const workerCount = std::max(config.PopulationSize, config.PoolSize);
-    if (!cp.WorkerRngStates.empty() && cp.WorkerRngStates.size() != workerCount) {
+    if (cp.WorkerRngStates.empty()) {
+        fmt::print(stderr, "warning: checkpoint has no worker RNG states — bit-exactness of resumed run is not guaranteed\n");
+    } else if (cp.WorkerRngStates.size() != workerCount) {
         throw std::runtime_error(fmt::format(
             "checkpoint worker RNG count {} doesn't match expected {} (max of --population-size and --pool-size)",
             cp.WorkerRngStates.size(), workerCount));
+    } else {
+        auto& workers = algo.WorkerRngs();
+        workers.clear();
+        workers.reserve(cp.WorkerRngStates.size());
+        for (auto const& state : cp.WorkerRngStates) {
+            RandomGenerator worker(0ULL);
+            worker.set_state(state);
+            workers.push_back(std::move(worker));
+        }
     }
-    auto& workers = algo.WorkerRngs();
-    workers.clear();
-    workers.reserve(cp.WorkerRngStates.size());
-    for (auto const& state : cp.WorkerRngStates) {
-        RandomGenerator worker(0ULL);
-        worker.set_state(state);
-        workers.push_back(std::move(worker));
-    }
+    algo.IsFitted() = true;
     return true;
 }
 

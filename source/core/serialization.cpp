@@ -219,7 +219,7 @@ auto IndividualFromJson(std::string_view json) -> Individual
 {
     IndividualProxy ip;
     if (auto ec = glz::read_json(ip, json); ec) {
-        fmt::print(stderr, "serialization error (IndividualFromJson): %s\n", glz::format_error(ec, json));
+        fmt::print(stderr, "serialization error (IndividualFromJson): {}\n", glz::format_error(ec, json));
         return {};
     }
     return ProxyToIndividual(ip);
@@ -254,7 +254,7 @@ auto TreeFromBeve(std::string_view data) -> Tree
 {
     TreeProxy tp;
     if (auto ec = glz::read_beve(tp, data); ec) {
-        fmt::print(stderr, "serialization error (TreeFromBeve): %s\n", glz::format_error(ec, data));
+        fmt::print(stderr, "serialization error (TreeFromBeve): {}\n", glz::format_error(ec, data));
         return {};
     }
     return ProxiesToTree(tp.Nodes);
@@ -264,7 +264,7 @@ auto IndividualFromBeve(std::string_view data) -> Individual
 {
     IndividualProxy ip;
     if (auto ec = glz::read_beve(ip, data); ec) {
-        fmt::print(stderr, "serialization error (IndividualFromBeve): %s\n", glz::format_error(ec, data));
+        fmt::print(stderr, "serialization error (IndividualFromBeve): {}\n", glz::format_error(ec, data));
         return {};
     }
     return ProxyToIndividual(ip);
@@ -306,7 +306,7 @@ auto ToBeve(Checkpoint const& cp) -> std::string
     auto proxy  = ToProxy(cp);
     auto result = glz::write_beve(proxy);
     if (!result) {
-        fmt::print(stderr, "serialization error (ToBeve Checkpoint): %s\n", glz::format_error(result));
+        fmt::print(stderr, "serialization error (ToBeve Checkpoint): {}\n", glz::format_error(result.error()));
         return {};
     }
     return std::move(*result);
@@ -316,7 +316,7 @@ auto CheckpointFromBeve(std::string_view data) -> Checkpoint
 {
     CheckpointProxy proxy;
     if (auto ec = glz::read_beve(proxy, data); ec) {
-        fmt::print(stderr, "serialization error (CheckpointFromBeve): %s\n", glz::format_error(ec, data));
+        fmt::print(stderr, "serialization error (CheckpointFromBeve): {}\n", glz::format_error(ec, data));
         return {};
     }
     return FromProxy(proxy);
@@ -328,7 +328,7 @@ auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
     auto proxy = ToProxy(cp);
     std::string buf;
     if (auto ec = glz::write_file_beve(proxy, tmpPath, buf); ec) {
-        fmt::print(stderr, "error writing checkpoint to '%s': %s\n", tmpPath.c_str(), glz::format_error(ec));
+        fmt::print(stderr, "error writing checkpoint to '{}': {}\n", tmpPath, glz::format_error(ec));
         return;
     }
     std::filesystem::rename(tmpPath, std::string(path));
@@ -339,7 +339,7 @@ auto LoadCheckpoint(std::string_view path) -> Checkpoint
     CheckpointProxy proxy;
     std::string buf;
     if (auto ec = glz::read_file_beve(proxy, std::string(path), buf); ec) {
-        fmt::print(stderr, "error loading checkpoint '%s': %s\n", std::string(path).c_str(), glz::format_error(ec, buf));
+        fmt::print(stderr, "error loading checkpoint '{}': {}\n", path, glz::format_error(ec, buf));
         return {};
     }
     return FromProxy(proxy);
