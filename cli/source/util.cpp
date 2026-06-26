@@ -215,6 +215,14 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
     for (std::size_t i = 0; i < cp.Population.size(); ++i) {
         parents[i] = std::move(cp.Population[i]);
     }
+    auto& workers = algo.WorkerRngs();
+    workers.clear();
+    workers.reserve(cp.WorkerRngStates.size());
+    for (auto const& state : cp.WorkerRngStates) {
+        RandomGenerator worker(0ULL);
+        worker.set_state(state);
+        workers.push_back(std::move(worker));
+    }
     return true;
 }
 
@@ -229,6 +237,10 @@ auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const
     cp.RngState   = rng.state();
     cp.Generation = gen;
     cp.Population.assign(algo.Parents().begin(), algo.Parents().end());
+    cp.WorkerRngStates.reserve(algo.WorkerRngs().size());
+    for (auto const& worker : algo.WorkerRngs()) {
+        cp.WorkerRngStates.push_back(worker.state());
+    }
     Serialization::SaveCheckpoint(cp, path);
 }
 

@@ -58,6 +58,9 @@ public:
     [[nodiscard]] auto GetGenerator() const -> OffspringGeneratorBase const* { return generator_.get(); }
     [[nodiscard]] auto GetReinserter() const -> ReinserterBase const* { return reinserter_.get(); }
 
+    [[nodiscard]] auto WorkerRngs() const -> std::vector<Operon::RandomGenerator> const& { return workerRngs_; }
+    auto WorkerRngs() -> std::vector<Operon::RandomGenerator>& { return workerRngs_; }
+
     [[nodiscard]] auto Generation() const -> size_t { return generation_; }
     auto Generation() -> size_t& { return generation_; }
 
@@ -103,6 +106,7 @@ private:
     Operon::Span<Individual> parents_;
     Operon::Span<Individual> offspring_;
 
+    std::vector<Operon::RandomGenerator> workerRngs_;
     size_t generation_{0};
     double elapsed_{0};
     Operon::Map<std::string, double> phaseTimes_;

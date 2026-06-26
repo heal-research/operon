@@ -37,9 +37,10 @@ OPERON_EXPORT auto IndividualFromBeve(std::string_view data) -> Individual;
 // ---- Checkpoint (algorithm save / resume) ----
 
 struct OPERON_EXPORT Checkpoint {
-    std::array<uint64_t, 4>    RngState{};
-    std::size_t                Generation{0};
-    Operon::Vector<Individual> Population;
+    std::array<uint64_t, 4>                   RngState{};
+    std::size_t                               Generation{0};
+    Operon::Vector<Individual>                Population;
+    std::vector<std::array<uint64_t, 4>>      WorkerRngStates;
 };
 
 OPERON_EXPORT auto ToBeve(Checkpoint const&) -> std::string;
