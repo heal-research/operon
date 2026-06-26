@@ -246,6 +246,8 @@ TEST_CASE("Checkpoint BEVE rejects wrong version", "[serialization]")
     auto magicIt = std::search(beve.begin(), beve.end(), MagicLE.begin(), MagicLE.end());
     REQUIRE(magicIt != beve.end());
 
+    // Generation=0 avoids a false match; assumes BEVE writes fields in
+    // declaration order with no other \x01\x00\x00\x00 between magic and version.
     constexpr std::array<char, 4> VersionLE{ '\x01', '\x00', '\x00', '\x00' };
     auto versionIt = std::search(magicIt + 4, beve.end(), VersionLE.begin(), VersionLE.end());
     REQUIRE(versionIt != beve.end());
