@@ -149,13 +149,6 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&, timer](tf::Subflow& subflow) -> void {
             auto prepareEval = subflow.emplace([&]() -> void { evaluator->Prepare(parents); }).name("prepare evaluator");
-            auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                   // make sure the worker has a large enough buffer
-                                   auto const id = executor.this_worker_id();
-                                   slots[id].resize(trainSize);
-                                   parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
-                               })
-                            .name("evaluate population");
             auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(parents); }).name(std::string{SortTaskName});
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
@@ -164,18 +157,27 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
                                              }
                                          })
                                       .name("report progress");
-            prepareEval.precede(eval);
-            eval.precede(nonDominatedSort);
             nonDominatedSort.precede(reportProgress);
 
-            if (!(IsFitted() && warmStart)) {
+            if (IsFitted() && warmStart) {
+                // warm resume: population already has valid fitness; skip init and eval to preserve RNG state
+                // nonDominatedSort still runs to rebuild internal fronts_ state from the restored population
+                prepareEval.precede(nonDominatedSort);
+            } else {
+                auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
+                                       auto const id = executor.this_worker_id();
+                                       slots[id].resize(trainSize);
+                                       parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
+                                   })
+                                .name("evaluate population");
                 auto init = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
                                        parents[i].Genotype = (*treeInit)(rngs[i]);
                                        (*coeffInit)(rngs[i], parents[i].Genotype);
                                    })
                                 .name("initialize population");
-
                 init.precede(prepareEval);
+                prepareEval.precede(eval);
+                eval.precede(nonDominatedSort);
             }
         }, // init
         stop, // loop condition

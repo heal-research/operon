@@ -77,30 +77,29 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&, timer](tf::Subflow& subflow) -> void {
             auto prepareEval = subflow.emplace([&]() -> void { evaluator->Prepare(parents); }).name("prepare evaluator");
-            auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                   auto id = executor.this_worker_id();
-                                   // make sure the worker has a large enough buffer
-                                   if (slots[id].size() < trainSize) {
-                                       slots[id].resize(trainSize);
-                                   }
-                                   parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
-                               })
-                            .name("evaluate population");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
                                              if (report) { std::invoke(report); }
                                          }).name("report progress");
-            prepareEval.precede(eval);
-            eval.precede(reportProgress);
 
-            if (!(IsFitted() && warmStart)) {
+            if (IsFitted() && warmStart) {
+                // warm resume: population already has valid fitness; skip init and eval to preserve RNG state
+                prepareEval.precede(reportProgress);
+            } else {
+                auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
+                                       auto id = executor.this_worker_id();
+                                       if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
+                                       parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
+                                   })
+                                .name("evaluate population");
                 auto init = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
                                        parents[i].Genotype = (*treeInit)(rngs[i]);
                                        (*coeffInit)(rngs[i], parents[i].Genotype);
                                    })
                                 .name("initialize population");
-
                 init.precede(prepareEval);
+                prepareEval.precede(eval);
+                eval.precede(reportProgress);
             }
         }, // init
         stop, // loop condition
