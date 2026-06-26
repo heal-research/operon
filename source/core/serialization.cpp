@@ -47,7 +47,8 @@ struct glz::meta<Operon::NodeType> {
     );
 };
 
-// Serialization proxy for Node — excludes fields recomputed by UpdateNodes().
+// Serialization proxies — exclude fields recomputed by UpdateNodes().
+// Member names are CamelCase; serialized key names (in glz::meta) are lowercase.
 namespace {
 struct NodeProxy {
     Operon::NodeType Type{};
@@ -70,32 +71,23 @@ struct NodeProxy {
         return n;
     }
 };
-} // anonymous namespace
 
-template <>
-struct glz::meta<NodeProxy> {
-    using T = NodeProxy;
-    static constexpr auto value = glz::object(
-        "type",      &T::Type,
-        "hash",      &T::HashValue,
-        "value",     &T::Value,
-        "enabled",   &T::IsEnabled,
-        "optimize",  &T::Optimize,
-        "ref_to",    &T::RefTo
-    );
+struct TreeProxy {
+    std::vector<NodeProxy> Nodes;
 };
 
-template <>
-struct glz::meta<Operon::Individual> {
-    using T = Operon::Individual;
-    static constexpr auto value = glz::object(
-        "fitness",  &T::Fitness,
-        "rank",     &T::Rank,
-        "distance", &T::Distance
-    );
+struct IndividualProxy {
+    TreeProxy                      Tree;
+    Operon::Vector<Operon::Scalar> Fitness;
+    std::size_t                    Rank{};
+    Operon::Scalar                 Distance{};
 };
 
-namespace {
+struct CheckpointProxy {
+    std::array<uint64_t, 4>      RngState{};
+    std::size_t                  Generation{0};
+    std::vector<IndividualProxy> Population;
+};
 
 auto NodesToProxies(Operon::Vector<Operon::Node> const& nodes) -> std::vector<NodeProxy>
 {
@@ -113,99 +105,189 @@ auto ProxiesToTree(std::vector<NodeProxy> const& proxies) -> Operon::Tree
     return Operon::Tree(std::move(nodes)).UpdateNodes();
 }
 
-struct TreeJson {
-    std::vector<NodeProxy> nodes;
-};
+auto IndividualToProxy(Operon::Individual const& ind) -> IndividualProxy
+{
+    return { { NodesToProxies(ind.Genotype.Nodes()) }, ind.Fitness, ind.Rank, ind.Distance };
+}
 
-struct IndividualJson {
-    TreeJson               tree;
-    Operon::Vector<Operon::Scalar> fitness;
-    std::size_t            rank{};
-    Operon::Scalar         distance{};
-};
-
+auto ProxyToIndividual(IndividualProxy const& p) -> Operon::Individual
+{
+    Operon::Individual ind;
+    ind.Genotype = ProxiesToTree(p.Tree.Nodes);
+    ind.Fitness  = p.Fitness;
+    ind.Rank     = p.Rank;
+    ind.Distance = p.Distance;
+    return ind;
+}
 } // anonymous namespace
 
 template <>
-struct glz::meta<TreeJson> {
-    using T = TreeJson;
-    static constexpr auto value = glz::object("nodes", &T::nodes);
+struct glz::meta<NodeProxy> {
+    using T = NodeProxy;
+    static constexpr auto value = glz::object(
+        "type",     &T::Type,
+        "hash",     &T::HashValue,
+        "value",    &T::Value,
+        "enabled",  &T::IsEnabled,
+        "optimize", &T::Optimize,
+        "ref_to",   &T::RefTo
+    );
 };
 
 template <>
-struct glz::meta<IndividualJson> {
-    using T = IndividualJson;
+struct glz::meta<TreeProxy> {
+    using T = TreeProxy;
+    static constexpr auto value = glz::object("nodes", &T::Nodes);
+};
+
+template <>
+struct glz::meta<IndividualProxy> {
+    using T = IndividualProxy;
     static constexpr auto value = glz::object(
-        "tree",     &T::tree,
-        "fitness",  &T::fitness,
-        "rank",     &T::rank,
-        "distance", &T::distance
+        "tree",     &T::Tree,
+        "fitness",  &T::Fitness,
+        "rank",     &T::Rank,
+        "distance", &T::Distance
+    );
+};
+
+template <>
+struct glz::meta<CheckpointProxy> {
+    using T = CheckpointProxy;
+    static constexpr auto value = glz::object(
+        "rng_state",  &T::RngState,
+        "generation", &T::Generation,
+        "population", &T::Population
     );
 };
 
 namespace Operon::Serialization {
 
+// ---- JSON ----
+
 auto ToJson(Tree const& tree) -> std::string
 {
-    TreeJson tj{ NodesToProxies(tree.Nodes()) };
-    auto result = glz::write_json(tj);
-    if (!result) {
-        return "{}";
-    }
-    return std::move(*result);
+    TreeProxy tp{ NodesToProxies(tree.Nodes()) };
+    auto result = glz::write_json(tp);
+    return result ? std::move(*result) : "{}";
 }
 
-auto ToJson(Individual const& ind) -> std::string
+auto ToJson(Individual const& individual) -> std::string
 {
-    IndividualJson ij{
-        { NodesToProxies(ind.Genotype.Nodes()) },
-        ind.Fitness,
-        ind.Rank,
-        ind.Distance
-    };
-    auto result = glz::write_json(ij);
-    if (!result) {
-        return "{}";
-    }
-    return std::move(*result);
+    auto ip = IndividualToProxy(individual);
+    auto result = glz::write_json(ip);
+    return result ? std::move(*result) : "{}";
 }
 
 auto ToJson(std::span<Individual const> front) -> std::string
 {
-    std::vector<IndividualJson> arr;
+    std::vector<IndividualProxy> arr;
     arr.reserve(front.size());
-    for (auto const& ind : front) {
-        arr.push_back({
-            { NodesToProxies(ind.Genotype.Nodes()) },
-            ind.Fitness,
-            ind.Rank,
-            ind.Distance
-        });
-    }
+    for (auto const& ind : front) { arr.push_back(IndividualToProxy(ind)); }
     auto result = glz::write_json(arr);
-    if (!result) {
-        return "[]";
-    }
-    return std::move(*result);
+    return result ? std::move(*result) : "[]";
 }
 
 auto TreeFromJson(std::string_view json) -> Tree
 {
-    TreeJson tj;
-    if (glz::read_json(tj, json)) { return {}; }
-    return ProxiesToTree(tj.nodes);
+    TreeProxy tp;
+    if (glz::read_json(tp, json)) { return {}; }
+    return ProxiesToTree(tp.Nodes);
 }
 
 auto IndividualFromJson(std::string_view json) -> Individual
 {
-    IndividualJson ij;
-    if (glz::read_json(ij, json)) { return {}; }
-    Individual ind;
-    ind.Genotype = ProxiesToTree(ij.tree.nodes);
-    ind.Fitness  = std::move(ij.fitness);
-    ind.Rank     = ij.rank;
-    ind.Distance = ij.distance;
-    return ind;
+    IndividualProxy ip;
+    if (glz::read_json(ip, json)) { return {}; }
+    return ProxyToIndividual(ip);
+}
+
+// ---- BEVE ----
+
+auto ToBeve(Tree const& tree) -> std::string
+{
+    TreeProxy tp{ NodesToProxies(tree.Nodes()) };
+    auto result = glz::write_beve(tp);
+    return result ? std::move(*result) : std::string{};
+}
+
+auto ToBeve(Individual const& individual) -> std::string
+{
+    auto ip = IndividualToProxy(individual);
+    auto result = glz::write_beve(ip);
+    return result ? std::move(*result) : std::string{};
+}
+
+auto ToBeve(std::span<Individual const> front) -> std::string
+{
+    std::vector<IndividualProxy> arr;
+    arr.reserve(front.size());
+    for (auto const& ind : front) { arr.push_back(IndividualToProxy(ind)); }
+    auto result = glz::write_beve(arr);
+    return result ? std::move(*result) : std::string{};
+}
+
+auto TreeFromBeve(std::string_view data) -> Tree
+{
+    TreeProxy tp;
+    if (glz::read_beve(tp, data)) { return {}; }
+    return ProxiesToTree(tp.Nodes);
+}
+
+auto IndividualFromBeve(std::string_view data) -> Individual
+{
+    IndividualProxy ip;
+    if (glz::read_beve(ip, data)) { return {}; }
+    return ProxyToIndividual(ip);
+}
+
+// ---- Checkpoint ----
+
+auto ToBeve(Checkpoint const& cp) -> std::string
+{
+    CheckpointProxy proxy;
+    proxy.RngState    = cp.RngState;
+    proxy.Generation  = cp.Generation;
+    proxy.Population.reserve(cp.Population.size());
+    for (auto const& ind : cp.Population) { proxy.Population.push_back(IndividualToProxy(ind)); }
+    auto result = glz::write_beve(proxy);
+    return result ? std::move(*result) : std::string{};
+}
+
+auto CheckpointFromBeve(std::string_view data) -> Checkpoint
+{
+    CheckpointProxy proxy;
+    if (glz::read_beve(proxy, data)) { return {}; }
+    Checkpoint cp;
+    cp.RngState   = proxy.RngState;
+    cp.Generation = proxy.Generation;
+    cp.Population.reserve(proxy.Population.size());
+    for (auto const& ip : proxy.Population) { cp.Population.push_back(ProxyToIndividual(ip)); }
+    return cp;
+}
+
+auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
+{
+    CheckpointProxy proxy;
+    proxy.RngState   = cp.RngState;
+    proxy.Generation = cp.Generation;
+    proxy.Population.reserve(cp.Population.size());
+    for (auto const& ind : cp.Population) { proxy.Population.push_back(IndividualToProxy(ind)); }
+    std::string buf;
+    (void)glz::write_file_beve(proxy, std::string(path), buf);
+}
+
+auto LoadCheckpoint(std::string_view path) -> Checkpoint
+{
+    CheckpointProxy proxy;
+    std::string buf;
+    if (glz::read_file_beve(proxy, std::string(path), buf)) { return {}; }
+    Checkpoint cp;
+    cp.RngState   = proxy.RngState;
+    cp.Generation = proxy.Generation;
+    cp.Population.reserve(proxy.Population.size());
+    for (auto const& ip : proxy.Population) { cp.Population.push_back(ProxyToIndividual(ip)); }
+    return cp;
 }
 
 } // namespace Operon::Serialization
