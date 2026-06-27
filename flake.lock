@@ -135,11 +135,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782506317,
-        "narHash": "sha256-nK9sIJSnSRcg1kP2e1jRPp57gJkZJE1VeOikETnuHtU=",
+        "lastModified": 1782546386,
+        "narHash": "sha256-YjehPpsbznjzVBYi9s1sigLZI07OmsjjbRpdjYndAxE=",
         "owner": "foolnotion",
         "repo": "fluky",
-        "rev": "3f04aa78fbcf4a1175d6936e444ed5686ad9f6cd",
+        "rev": "27b7ea8e4091332770fa74f6ea09f89384c7245b",
         "type": "github"
       },
       "original": {
