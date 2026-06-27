@@ -243,6 +243,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             reporter(executor, gp);
             Operon::MaybeSaveCheckpoint(gp, random, result);
         }, warmStart);
+        Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));

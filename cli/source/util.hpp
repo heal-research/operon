@@ -45,8 +45,9 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
                           cxxopts::ParseResult const& result) -> bool;
 
 // Save a checkpoint if --checkpoint-interval is set and the current generation is due.
+// Pass force=true to save unconditionally (e.g. at end of run).
 // No-op when interval == 0 or when Generation() == 0 (initial evaluation).
 auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const& rng,
-                         cxxopts::ParseResult const& result) -> void;
+                         cxxopts::ParseResult const& result, bool force = false) -> void;
 } // namespace Operon
 #endif

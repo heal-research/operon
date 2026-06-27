@@ -6,7 +6,7 @@
 #include "operon/core/tree.hpp"
 
 #include <filesystem>
-#include <stdexcept>
+#include <optional>
 #include <utility>
 #include <fmt/core.h>
 #include <glaze/glaze.hpp>
@@ -87,7 +87,7 @@ struct TreeProxy {
 struct IndividualProxy {
     TreeProxy                      Tree;
     Operon::Vector<Operon::Scalar> Fitness;
-    std::size_t                    Rank{};
+    uint64_t                       Rank{};
     Operon::Scalar                 Distance{};
 };
 
@@ -99,7 +99,7 @@ struct CheckpointProxy {
     uint32_t                                 Magic{CheckpointMagic};
     uint32_t                                 Version{CheckpointVersion};
     std::array<uint64_t, 4>                  RngState{};
-    std::size_t                              Generation{0};
+    uint64_t                                 Generation{0};
     std::vector<IndividualProxy>             Population;
     std::vector<std::array<uint64_t, 4>>     WorkerRngStates;
 };
@@ -114,9 +114,7 @@ auto NodesToProxies(Operon::Vector<Operon::Node> const& nodes) -> std::vector<No
 
 auto ProxiesToTree(std::vector<NodeProxy> const& proxies) -> Operon::Tree
 {
-    if (proxies.empty()) {
-        throw std::runtime_error("cannot deserialize tree: node list is empty");
-    }
+    if (proxies.empty()) { return {}; }
     Operon::Vector<Operon::Node> nodes;
     nodes.reserve(proxies.size());
     for (auto const& p : proxies) { nodes.push_back(p.ToNode()); }
@@ -209,29 +207,29 @@ auto ToJson(std::span<Individual const> front) -> std::string
     return result ? std::move(*result) : "[]";
 }
 
-auto TreeFromJson(std::string_view json) -> Tree
+auto TreeFromJson(std::string_view json) -> std::optional<Tree>
 {
     TreeProxy tp;
     if (auto ec = glz::read_json(tp, json); ec) {
         fmt::print(stderr, "serialization error (TreeFromJson): {}\n", glz::format_error(ec, json));
-        return {};
+        return std::nullopt;
     }
     try { return ProxiesToTree(tp.Nodes); } catch (std::exception const& e) {
         fmt::print(stderr, "serialization error (TreeFromJson): {}\n", e.what());
-        return {};
+        return std::nullopt;
     }
 }
 
-auto IndividualFromJson(std::string_view json) -> Individual
+auto IndividualFromJson(std::string_view json) -> std::optional<Individual>
 {
     IndividualProxy ip;
     if (auto ec = glz::read_json(ip, json); ec) {
         fmt::print(stderr, "serialization error (IndividualFromJson): {}\n", glz::format_error(ec, json));
-        return {};
+        return std::nullopt;
     }
     try { return ProxyToIndividual(ip); } catch (std::exception const& e) {
         fmt::print(stderr, "serialization error (IndividualFromJson): {}\n", e.what());
-        return {};
+        return std::nullopt;
     }
 }
 
@@ -260,29 +258,29 @@ auto ToBeve(std::span<Individual const> front) -> std::string
     return result ? std::move(*result) : std::string{};
 }
 
-auto TreeFromBeve(std::string_view data) -> Tree
+auto TreeFromBeve(std::string_view data) -> std::optional<Tree>
 {
     TreeProxy tp;
     if (auto ec = glz::read_beve(tp, data); ec) {
         fmt::print(stderr, "serialization error (TreeFromBeve): {}\n", glz::format_error(ec, data));
-        return {};
+        return std::nullopt;
     }
     try { return ProxiesToTree(tp.Nodes); } catch (std::exception const& e) {
         fmt::print(stderr, "serialization error (TreeFromBeve): {}\n", e.what());
-        return {};
+        return std::nullopt;
     }
 }
 
-auto IndividualFromBeve(std::string_view data) -> Individual
+auto IndividualFromBeve(std::string_view data) -> std::optional<Individual>
 {
     IndividualProxy ip;
     if (auto ec = glz::read_beve(ip, data); ec) {
         fmt::print(stderr, "serialization error (IndividualFromBeve): {}\n", glz::format_error(ec, data));
-        return {};
+        return std::nullopt;
     }
     try { return ProxyToIndividual(ip); } catch (std::exception const& e) {
         fmt::print(stderr, "serialization error (IndividualFromBeve): {}\n", e.what());
-        return {};
+        return std::nullopt;
     }
 }
 
@@ -300,12 +298,12 @@ auto ToProxy(Checkpoint const& cp) -> CheckpointProxy
     return proxy;
 }
 
-auto FromProxy(CheckpointProxy const& proxy) -> Checkpoint
+auto FromProxy(CheckpointProxy const& proxy) -> std::optional<Checkpoint>
 {
     if (proxy.Magic != CheckpointMagic || proxy.Version != CheckpointVersion) {
         fmt::print(stderr, "error: incompatible checkpoint format (magic={:#010x}, version={})\n",
                      proxy.Magic, proxy.Version);
-        return {};
+        return std::nullopt;
     }
     Checkpoint cp;
     cp.RngState        = proxy.RngState;
@@ -328,18 +326,18 @@ auto ToBeve(Checkpoint const& cp) -> std::string
     return std::move(*result);
 }
 
-auto CheckpointFromBeve(std::string_view data) -> Checkpoint
+auto CheckpointFromBeve(std::string_view data) -> std::optional<Checkpoint>
 {
     CheckpointProxy proxy;
     if (auto ec = glz::read_beve(proxy, data); ec) {
         fmt::print(stderr, "serialization error (CheckpointFromBeve): {}\n", glz::format_error(ec, data));
-        return {};
+        return std::nullopt;
     }
     try {
         return FromProxy(proxy);
     } catch (std::exception const& e) {
         fmt::print(stderr, "serialization error (CheckpointFromBeve): {}\n", e.what());
-        return {};
+        return std::nullopt;
     }
 }
 
@@ -374,19 +372,19 @@ auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
     }
 }
 
-auto LoadCheckpoint(std::string_view path) -> Checkpoint
+auto LoadCheckpoint(std::string_view path) -> std::optional<Checkpoint>
 {
     CheckpointProxy proxy;
     std::string buf;
     if (auto ec = glz::read_file_beve(proxy, std::string(path), buf); ec) {
         fmt::print(stderr, "error loading checkpoint '{}': {}\n", path, glz::format_error(ec, buf));
-        return {};
+        return std::nullopt;
     }
     try {
         return FromProxy(proxy);
     } catch (std::exception const& e) {
         fmt::print(stderr, "error deserializing checkpoint '{}': {}\n", path, e.what());
-        return {};
+        return std::nullopt;
     }
 }
 

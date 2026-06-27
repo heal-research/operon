@@ -369,6 +369,7 @@ auto main(int argc, char** argv) -> int
             reporter(executor, gp);
             Operon::MaybeSaveCheckpoint(gp, random, result);
         }, warmStart);
+        Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));

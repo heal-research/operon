@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -22,8 +23,8 @@ OPERON_EXPORT auto ToJson(Tree const& tree) -> std::string;
 OPERON_EXPORT auto ToJson(Individual const& individual) -> std::string;
 OPERON_EXPORT auto ToJson(std::span<Individual const> front) -> std::string;
 
-OPERON_EXPORT auto TreeFromJson(std::string_view json) -> Tree;
-OPERON_EXPORT auto IndividualFromJson(std::string_view json) -> Individual;
+OPERON_EXPORT auto TreeFromJson(std::string_view json) -> std::optional<Tree>;
+OPERON_EXPORT auto IndividualFromJson(std::string_view json) -> std::optional<Individual>;
 
 // ---- BEVE (binary) ----
 
@@ -31,8 +32,8 @@ OPERON_EXPORT auto ToBeve(Tree const& tree) -> std::string;
 OPERON_EXPORT auto ToBeve(Individual const& individual) -> std::string;
 OPERON_EXPORT auto ToBeve(std::span<Individual const> front) -> std::string;
 
-OPERON_EXPORT auto TreeFromBeve(std::string_view data) -> Tree;
-OPERON_EXPORT auto IndividualFromBeve(std::string_view data) -> Individual;
+OPERON_EXPORT auto TreeFromBeve(std::string_view data) -> std::optional<Tree>;
+OPERON_EXPORT auto IndividualFromBeve(std::string_view data) -> std::optional<Individual>;
 
 // ---- Checkpoint (algorithm save / resume) ----
 
@@ -44,10 +45,10 @@ struct OPERON_EXPORT Checkpoint {
 };
 
 OPERON_EXPORT auto ToBeve(Checkpoint const&) -> std::string;
-OPERON_EXPORT auto CheckpointFromBeve(std::string_view data) -> Checkpoint;
+OPERON_EXPORT auto CheckpointFromBeve(std::string_view data) -> std::optional<Checkpoint>;
 
 OPERON_EXPORT auto SaveCheckpoint(Checkpoint const&, std::string_view path) -> void;
-OPERON_EXPORT auto LoadCheckpoint(std::string_view path) -> Checkpoint;
+OPERON_EXPORT auto LoadCheckpoint(std::string_view path) -> std::optional<Checkpoint>;
 
 } // namespace Operon::Serialization
 

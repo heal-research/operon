@@ -88,7 +88,8 @@ TEST_CASE("Tree JSON round-trip", "[serialization]")
         auto original = MakeTree(rng);
         auto json     = Operon::Serialization::ToJson(original);
         auto restored = Operon::Serialization::TreeFromJson(json);
-        CHECK(TreesEqual(original, restored));
+        REQUIRE(restored);
+        CHECK(TreesEqual(original, *restored));
     }
 }
 
@@ -99,11 +100,12 @@ TEST_CASE("Individual JSON round-trip", "[serialization]")
         auto original = MakeIndividual(rng);
         auto json     = Operon::Serialization::ToJson(original);
         auto restored = Operon::Serialization::IndividualFromJson(json);
-        CHECK(IndividualsEqual(original, restored));
+        REQUIRE(restored);
+        CHECK(IndividualsEqual(original, *restored));
     }
 }
 
-TEST_CASE("Pareto front JSON round-trip", "[serialization]")
+TEST_CASE("Population span JSON produces array", "[serialization]")
 {
     Operon::RandomGenerator rng(42);
     Operon::Vector<Operon::Individual> front(10);
@@ -116,7 +118,8 @@ TEST_CASE("Pareto front JSON round-trip", "[serialization]")
     for (auto const& original : front) {
         auto elemJson = Operon::Serialization::ToJson(original);
         auto restored = Operon::Serialization::IndividualFromJson(elemJson);
-        CHECK(IndividualsEqual(original, restored));
+        REQUIRE(restored);
+        CHECK(IndividualsEqual(original, *restored));
     }
 }
 
@@ -127,7 +130,8 @@ TEST_CASE("Tree BEVE round-trip", "[serialization]")
         auto original = MakeTree(rng);
         auto beve     = Operon::Serialization::ToBeve(original);
         auto restored = Operon::Serialization::TreeFromBeve(beve);
-        CHECK(TreesEqual(original, restored));
+        REQUIRE(restored);
+        CHECK(TreesEqual(original, *restored));
     }
 }
 
@@ -138,7 +142,8 @@ TEST_CASE("Individual BEVE round-trip", "[serialization]")
         auto original = MakeIndividual(rng);
         auto beve     = Operon::Serialization::ToBeve(original);
         auto restored = Operon::Serialization::IndividualFromBeve(beve);
-        CHECK(IndividualsEqual(original, restored));
+        REQUIRE(restored);
+        CHECK(IndividualsEqual(original, *restored));
     }
 }
 
@@ -160,16 +165,17 @@ TEST_CASE("Checkpoint BEVE round-trip", "[serialization]")
 
     auto beve     = Operon::Serialization::ToBeve(original);
     auto restored = Operon::Serialization::CheckpointFromBeve(beve);
+    REQUIRE(restored);
 
-    CHECK(restored.RngState   == original.RngState);
-    CHECK(restored.Generation == original.Generation);
-    REQUIRE(restored.Population.size() == original.Population.size());
+    CHECK(restored->RngState   == original.RngState);
+    CHECK(restored->Generation == original.Generation);
+    REQUIRE(restored->Population.size() == original.Population.size());
     for (std::size_t i = 0; i < original.Population.size(); ++i) {
-        CHECK(IndividualsEqual(original.Population[i], restored.Population[i]));
+        CHECK(IndividualsEqual(original.Population[i], restored->Population[i]));
     }
-    REQUIRE(restored.WorkerRngStates.size() == original.WorkerRngStates.size());
+    REQUIRE(restored->WorkerRngStates.size() == original.WorkerRngStates.size());
     for (std::size_t i = 0; i < original.WorkerRngStates.size(); ++i) {
-        CHECK(restored.WorkerRngStates[i] == original.WorkerRngStates[i]);
+        CHECK(restored->WorkerRngStates[i] == original.WorkerRngStates[i]);
     }
 }
 
@@ -192,16 +198,17 @@ TEST_CASE("Checkpoint file save/load round-trip", "[serialization]")
     auto const path = (std::filesystem::temp_directory_path() / "operon_test_checkpoint.beve").string();
     Operon::Serialization::SaveCheckpoint(original, path);
     auto restored = Operon::Serialization::LoadCheckpoint(path);
+    REQUIRE(restored);
 
-    CHECK(restored.RngState   == original.RngState);
-    CHECK(restored.Generation == original.Generation);
-    REQUIRE(restored.Population.size() == original.Population.size());
+    CHECK(restored->RngState   == original.RngState);
+    CHECK(restored->Generation == original.Generation);
+    REQUIRE(restored->Population.size() == original.Population.size());
     for (std::size_t i = 0; i < original.Population.size(); ++i) {
-        CHECK(IndividualsEqual(original.Population[i], restored.Population[i]));
+        CHECK(IndividualsEqual(original.Population[i], restored->Population[i]));
     }
-    REQUIRE(restored.WorkerRngStates.size() == original.WorkerRngStates.size());
+    REQUIRE(restored->WorkerRngStates.size() == original.WorkerRngStates.size());
     for (std::size_t i = 0; i < original.WorkerRngStates.size(); ++i) {
-        CHECK(restored.WorkerRngStates[i] == original.WorkerRngStates[i]);
+        CHECK(restored->WorkerRngStates[i] == original.WorkerRngStates[i]);
     }
 
     std::error_code cleanupEc;
@@ -214,6 +221,8 @@ TEST_CASE("Checkpoint BEVE rejects wrong magic", "[serialization]")
     Operon::Serialization::Checkpoint cp;
     cp.RngState   = rng.state();
     cp.Generation = 0;
+    // Population size ≥ 2 ensures the BEVE payload is large enough for std::search
+    // to locate the 4-byte magic pattern without hitting end-of-buffer prematurely.
     cp.Population.resize(2);
     for (auto& ind : cp.Population) { ind = MakeIndividual(rng); }
 
@@ -228,7 +237,7 @@ TEST_CASE("Checkpoint BEVE rejects wrong magic", "[serialization]")
     *it ^= static_cast<char>(0xFF);
 
     auto bad = Operon::Serialization::CheckpointFromBeve(beve);
-    CHECK(bad.Population.empty());
+    CHECK(!bad);
 }
 
 TEST_CASE("Checkpoint BEVE rejects wrong version", "[serialization]")
@@ -257,7 +266,7 @@ TEST_CASE("Checkpoint BEVE rejects wrong version", "[serialization]")
     *versionIt = static_cast<char>(0x02); // bump version to 2
 
     auto bad = Operon::Serialization::CheckpointFromBeve(beve);
-    CHECK(bad.Population.empty());
+    CHECK(!bad);
 }
 
 TEST_CASE("Checkpoint BEVE preserves WorkerRngStates for CLI validation", "[serialization]")
@@ -276,15 +285,17 @@ TEST_CASE("Checkpoint BEVE preserves WorkerRngStates for CLI validation", "[seri
 
     auto beve     = Operon::Serialization::ToBeve(cp);
     auto restored = Operon::Serialization::CheckpointFromBeve(beve);
-    CHECK(restored.WorkerRngStates.size() == 3);
-    CHECK(restored.Population.size() == 4);
+    REQUIRE(restored);
+    CHECK(restored->WorkerRngStates.size() == 3);
+    CHECK(restored->Population.size() == 4);
 }
 
 TEST_CASE("TreeFromJson returns empty tree for empty node list", "[serialization]")
 {
     // Previously: UB crash via UpdateNodes() touching nodes_.back() on empty vector.
     auto tree = Operon::Serialization::TreeFromJson(R"({"nodes":[]})");
-    CHECK(tree.Length() == 0);
+    REQUIRE(tree);
+    CHECK(tree->Length() == 0);
 }
 
 TEST_CASE("TreeFromBeve returns empty tree for empty node list", "[serialization]")
@@ -294,7 +305,8 @@ TEST_CASE("TreeFromBeve returns empty tree for empty node list", "[serialization
     Operon::Tree emptyTree;
     auto beve     = Operon::Serialization::ToBeve(emptyTree);
     auto restored = Operon::Serialization::TreeFromBeve(beve);
-    CHECK(restored.Length() == 0);
+    REQUIRE(restored);
+    CHECK(restored->Length() == 0);
 }
 
 #ifndef _WIN32
@@ -346,7 +358,8 @@ TEST_CASE("SaveCheckpoint is crash-safe: second save overwrites first", "[serial
     Operon::Serialization::SaveCheckpoint(second, path);
 
     auto restored = Operon::Serialization::LoadCheckpoint(path);
-    CHECK(restored.Generation == 2);
+    REQUIRE(restored);
+    CHECK(restored->Generation == 2);
 
     std::error_code ec;
     std::filesystem::remove(path, ec);
