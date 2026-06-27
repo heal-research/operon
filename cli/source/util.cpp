@@ -229,7 +229,7 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
         for (auto const& state : cp->WorkerRngStates) {
             RandomGenerator worker(0ULL);
             worker.set_state(state);
-            workers.push_back(worker);
+            workers.push_back(std::move(worker));
         }
     }
     algo.IsFitted() = true;
@@ -243,6 +243,11 @@ auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const
     auto const gen      = algo.Generation();
     if (interval == 0) { return; }
     if (!force && (gen == 0 || gen % interval != 0)) { return; }
+
+    // Avoid writing the same generation twice when the run ends exactly on an interval boundary.
+    static uint64_t lastSaved = std::numeric_limits<uint64_t>::max();
+    if (force && gen == lastSaved) { return; }
+
     auto const path = result["checkpoint-file"].as<std::string>();
     Serialization::Checkpoint cp;
     cp.RngState   = rng.state();
@@ -252,7 +257,11 @@ auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const
     for (auto const& worker : algo.WorkerRngs()) {
         cp.WorkerRngStates.push_back(worker.state());
     }
-    Serialization::SaveCheckpoint(cp, path);
+    if (!Serialization::SaveCheckpoint(cp, path)) {
+        fmt::print(stderr, "warning: checkpoint save failed at generation {} — run continues but resume may not be possible\n", gen);
+    } else {
+        lastSaved = gen;
+    }
 }
 
 auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
