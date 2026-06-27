@@ -198,38 +198,38 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
     if (!result.contains("resume")) { return false; }
     auto const path = result["resume"].as<std::string>();
     auto cp = Serialization::LoadCheckpoint(path);
-    if (cp.Population.empty()) {
-        fmt::print(stderr, "warning: checkpoint '{}' is empty or could not be loaded, starting fresh\n", path);
+    if (!cp) {
+        fmt::print(stderr, "warning: checkpoint '{}' could not be loaded, starting fresh\n", path);
         return false;
     }
-    auto const popSize = algo.GetConfig().PopulationSize;
-    if (cp.Population.size() != popSize) {
+    auto const& config = algo.GetConfig();
+    auto const popSize = config.PopulationSize;
+    if (cp->Population.size() != popSize) {
         throw std::runtime_error(fmt::format(
             "checkpoint population size {} doesn't match --population-size {}",
-            cp.Population.size(), popSize));
+            cp->Population.size(), popSize));
     }
-    rng.set_state(cp.RngState);
-    algo.Generation() = cp.Generation;
+    rng.set_state(cp->RngState);
+    algo.Generation() = cp->Generation;
     auto parents = algo.Parents();
-    for (std::size_t i = 0; i < cp.Population.size(); ++i) {
-        parents[i] = std::move(cp.Population[i]);
+    for (std::size_t i = 0; i < cp->Population.size(); ++i) {
+        parents[i] = std::move(cp->Population[i]);
     }
-    auto const& config = algo.GetConfig();
     auto const workerCount = std::max(config.PopulationSize, config.PoolSize);
-    if (cp.WorkerRngStates.empty()) {
+    if (cp->WorkerRngStates.empty()) {
         fmt::print(stderr, "warning: checkpoint has no worker RNG states — bit-exactness of resumed run is not guaranteed\n");
-    } else if (cp.WorkerRngStates.size() != workerCount) {
+    } else if (cp->WorkerRngStates.size() != workerCount) {
         throw std::runtime_error(fmt::format(
             "checkpoint worker RNG count {} doesn't match expected {} (max of --population-size and --pool-size)",
-            cp.WorkerRngStates.size(), workerCount));
+            cp->WorkerRngStates.size(), workerCount));
     } else {
         auto& workers = algo.WorkerRngs();
         workers.clear();
-        workers.reserve(cp.WorkerRngStates.size());
-        for (auto const& state : cp.WorkerRngStates) {
+        workers.reserve(cp->WorkerRngStates.size());
+        for (auto const& state : cp->WorkerRngStates) {
             RandomGenerator worker(0ULL);
             worker.set_state(state);
-            workers.push_back(std::move(worker));
+            workers.push_back(worker);
         }
     }
     algo.IsFitted() = true;
@@ -237,11 +237,12 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
 }
 
 auto MaybeSaveCheckpoint(GeneticAlgorithmBase const& algo, RandomGenerator const& rng,
-                         cxxopts::ParseResult const& result) -> void
+                         cxxopts::ParseResult const& result, bool force) -> void
 {
     auto const interval = result["checkpoint-interval"].as<std::size_t>();
     auto const gen      = algo.Generation();
-    if (interval == 0 || gen == 0 || gen % interval != 0) { return; }
+    if (interval == 0) { return; }
+    if (!force && (gen == 0 || gen % interval != 0)) { return; }
     auto const path = result["checkpoint-file"].as<std::string>();
     Serialization::Checkpoint cp;
     cp.RngState   = rng.state();
