@@ -47,7 +47,8 @@ struct OPERON_EXPORT Checkpoint {
 OPERON_EXPORT auto ToBeve(Checkpoint const&) -> std::string;
 OPERON_EXPORT auto CheckpointFromBeve(std::string_view data) -> std::optional<Checkpoint>;
 
-OPERON_EXPORT auto SaveCheckpoint(Checkpoint const&, std::string_view path) -> void;
+// Returns true on success, false if the write or rename failed (error printed to stderr).
+OPERON_EXPORT auto SaveCheckpoint(Checkpoint const&, std::string_view path) -> bool;
 OPERON_EXPORT auto LoadCheckpoint(std::string_view path) -> std::optional<Checkpoint>;
 
 } // namespace Operon::Serialization
