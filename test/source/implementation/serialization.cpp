@@ -280,4 +280,49 @@ TEST_CASE("Checkpoint BEVE preserves WorkerRngStates for CLI validation", "[seri
     CHECK(restored.Population.size() == 4);
 }
 
+TEST_CASE("TreeFromJson returns empty tree for empty node list", "[serialization]")
+{
+    // Previously: UB crash via UpdateNodes() touching nodes_.back() on empty vector.
+    auto tree = Operon::Serialization::TreeFromJson(R"({"nodes":[]})");
+    CHECK(tree.Length() == 0);
+}
+
+TEST_CASE("TreeFromBeve returns empty tree for empty node list", "[serialization]")
+{
+    // A default-constructed Tree serializes with an empty node array; deserializing
+    // it must return a zero-length tree, not crash via UpdateNodes() on nodes_.back().
+    Operon::Tree emptyTree;
+    auto beve     = Operon::Serialization::ToBeve(emptyTree);
+    auto restored = Operon::Serialization::TreeFromBeve(beve);
+    CHECK(restored.Length() == 0);
+}
+
+TEST_CASE("SaveCheckpoint is crash-safe: second save overwrites first", "[serialization]")
+{
+    Operon::RandomGenerator rng(11);
+
+    auto makeCp = [&](std::size_t gen) {
+        Operon::Serialization::Checkpoint cp;
+        cp.RngState   = rng.state();
+        cp.Generation = gen;
+        cp.Population.resize(4);
+        for (auto& ind : cp.Population) { ind = MakeIndividual(rng); }
+        return cp;
+    };
+
+    auto const path = (std::filesystem::temp_directory_path() / "operon_test_overwrite.beve").string();
+
+    auto first  = makeCp(1);
+    auto second = makeCp(2);
+
+    Operon::Serialization::SaveCheckpoint(first, path);
+    Operon::Serialization::SaveCheckpoint(second, path);
+
+    auto restored = Operon::Serialization::LoadCheckpoint(path);
+    CHECK(restored.Generation == 2);
+
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+}
+
 } // namespace Operon::Test
