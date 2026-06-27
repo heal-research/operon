@@ -241,9 +241,6 @@ target_link_libraries(operon_operon PRIVATE
 
 target_compile_features(operon_operon PUBLIC cxx_std_23)
 
-# serialization.cpp includes glaze headers which require C++23.
-set_source_files_properties(source/core/serialization.cpp PROPERTIES COMPILE_OPTIONS "-std=gnu++23")
-
 if(MSVC)
     target_compile_options(operon_operon PRIVATE "/std:c++latest")
 else()
