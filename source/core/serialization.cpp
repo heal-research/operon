@@ -353,15 +353,20 @@ auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
         std::filesystem::remove(tmpPath);
         return;
     }
-    // On POSIX, rename() atomically replaces the destination so the old checkpoint
-    // is never removed before the new one is in place.  On Windows, rename() fails
-    // if the destination exists; only in that case do we remove it and retry.
+    // On POSIX, rename() atomically replaces the destination — no removal needed.
+    // On Windows, rename() fails when the destination already exists as a regular
+    // file; only in that specific case do we remove it and retry.  For any other
+    // failure reason (permissions, I/O, cross-device) we leave the old checkpoint
+    // in place rather than risk destroying it.
     std::error_code ec;
     std::filesystem::rename(tmpPath, std::string(path), ec);
     if (ec) {
-        std::filesystem::remove(std::string(path), ec);
-        ec.clear();
-        std::filesystem::rename(tmpPath, std::string(path), ec);
+        std::error_code existsEc;
+        if (std::filesystem::is_regular_file(std::string(path), existsEc) && !existsEc) {
+            std::filesystem::remove(std::string(path), ec);
+            ec.clear();
+            std::filesystem::rename(tmpPath, std::string(path), ec);
+        }
         if (ec) {
             fmt::print(stderr, "error renaming checkpoint '{}' to '{}': {}\n", tmpPath, path, ec.message());
             std::filesystem::remove(tmpPath, ec);

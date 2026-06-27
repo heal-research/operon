@@ -297,6 +297,33 @@ TEST_CASE("TreeFromBeve returns empty tree for empty node list", "[serialization
     CHECK(restored.Length() == 0);
 }
 
+#ifndef _WIN32
+TEST_CASE("SaveCheckpoint preserves destination on non-file rename failure", "[serialization]")
+{
+    // Place a directory at the checkpoint path so rename(tmp, path) fails with
+    // EISDIR — not the "dest is an existing file" case.  The directory must
+    // survive: SaveCheckpoint must not remove it and must not crash.
+    auto const blockPath = std::filesystem::temp_directory_path() / "operon_test_rename_fail_block";
+    std::filesystem::create_directories(blockPath);
+
+    Operon::RandomGenerator rng(77);
+    Operon::Serialization::Checkpoint cp;
+    cp.RngState   = rng.state();
+    cp.Generation = 1;
+    cp.Population.resize(2);
+    for (auto& ind : cp.Population) { ind = MakeIndividual(rng); }
+
+    Operon::Serialization::SaveCheckpoint(cp, blockPath.string()); // must not crash or delete the dir
+
+    CHECK(std::filesystem::is_directory(blockPath)); // directory still intact
+
+    std::error_code ec;
+    std::filesystem::remove_all(blockPath, ec);
+    // clean up the .tmp file if it was left behind
+    std::filesystem::remove(blockPath.string() + ".tmp", ec);
+}
+#endif
+
 TEST_CASE("SaveCheckpoint is crash-safe: second save overwrites first", "[serialization]")
 {
     Operon::RandomGenerator rng(11);
