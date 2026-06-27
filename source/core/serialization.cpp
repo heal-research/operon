@@ -6,6 +6,7 @@
 #include "operon/core/tree.hpp"
 
 #include <filesystem>
+#include <stdexcept>
 #include <utility>
 #include <fmt/core.h>
 #include <glaze/glaze.hpp>
@@ -113,6 +114,9 @@ auto NodesToProxies(Operon::Vector<Operon::Node> const& nodes) -> std::vector<No
 
 auto ProxiesToTree(std::vector<NodeProxy> const& proxies) -> Operon::Tree
 {
+    if (proxies.empty()) {
+        throw std::runtime_error("cannot deserialize tree: node list is empty");
+    }
     Operon::Vector<Operon::Node> nodes;
     nodes.reserve(proxies.size());
     for (auto const& p : proxies) { nodes.push_back(p.ToNode()); }
@@ -212,7 +216,10 @@ auto TreeFromJson(std::string_view json) -> Tree
         fmt::print(stderr, "serialization error (TreeFromJson): {}\n", glz::format_error(ec, json));
         return {};
     }
-    return ProxiesToTree(tp.Nodes);
+    try { return ProxiesToTree(tp.Nodes); } catch (std::exception const& e) {
+        fmt::print(stderr, "serialization error (TreeFromJson): {}\n", e.what());
+        return {};
+    }
 }
 
 auto IndividualFromJson(std::string_view json) -> Individual
@@ -222,7 +229,10 @@ auto IndividualFromJson(std::string_view json) -> Individual
         fmt::print(stderr, "serialization error (IndividualFromJson): {}\n", glz::format_error(ec, json));
         return {};
     }
-    return ProxyToIndividual(ip);
+    try { return ProxyToIndividual(ip); } catch (std::exception const& e) {
+        fmt::print(stderr, "serialization error (IndividualFromJson): {}\n", e.what());
+        return {};
+    }
 }
 
 // ---- BEVE ----
@@ -257,7 +267,10 @@ auto TreeFromBeve(std::string_view data) -> Tree
         fmt::print(stderr, "serialization error (TreeFromBeve): {}\n", glz::format_error(ec, data));
         return {};
     }
-    return ProxiesToTree(tp.Nodes);
+    try { return ProxiesToTree(tp.Nodes); } catch (std::exception const& e) {
+        fmt::print(stderr, "serialization error (TreeFromBeve): {}\n", e.what());
+        return {};
+    }
 }
 
 auto IndividualFromBeve(std::string_view data) -> Individual
@@ -267,7 +280,10 @@ auto IndividualFromBeve(std::string_view data) -> Individual
         fmt::print(stderr, "serialization error (IndividualFromBeve): {}\n", glz::format_error(ec, data));
         return {};
     }
-    return ProxyToIndividual(ip);
+    try { return ProxyToIndividual(ip); } catch (std::exception const& e) {
+        fmt::print(stderr, "serialization error (IndividualFromBeve): {}\n", e.what());
+        return {};
+    }
 }
 
 // ---- Checkpoint ----
@@ -319,7 +335,12 @@ auto CheckpointFromBeve(std::string_view data) -> Checkpoint
         fmt::print(stderr, "serialization error (CheckpointFromBeve): {}\n", glz::format_error(ec, data));
         return {};
     }
-    return FromProxy(proxy);
+    try {
+        return FromProxy(proxy);
+    } catch (std::exception const& e) {
+        fmt::print(stderr, "serialization error (CheckpointFromBeve): {}\n", e.what());
+        return {};
+    }
 }
 
 auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
@@ -332,13 +353,19 @@ auto SaveCheckpoint(Checkpoint const& cp, std::string_view path) -> void
         std::filesystem::remove(tmpPath);
         return;
     }
+    // On POSIX, rename() atomically replaces the destination so the old checkpoint
+    // is never removed before the new one is in place.  On Windows, rename() fails
+    // if the destination exists; only in that case do we remove it and retry.
     std::error_code ec;
-    std::filesystem::remove(std::string(path), ec); // best-effort; rename fails on Windows if dest exists
-    ec.clear();
     std::filesystem::rename(tmpPath, std::string(path), ec);
     if (ec) {
-        fmt::print(stderr, "error renaming checkpoint '{}' to '{}': {}\n", tmpPath, path, ec.message());
-        std::filesystem::remove(tmpPath);
+        std::filesystem::remove(std::string(path), ec);
+        ec.clear();
+        std::filesystem::rename(tmpPath, std::string(path), ec);
+        if (ec) {
+            fmt::print(stderr, "error renaming checkpoint '{}' to '{}': {}\n", tmpPath, path, ec.message());
+            std::filesystem::remove(tmpPath, ec);
+        }
     }
 }
 
@@ -350,7 +377,12 @@ auto LoadCheckpoint(std::string_view path) -> Checkpoint
         fmt::print(stderr, "error loading checkpoint '{}': {}\n", path, glz::format_error(ec, buf));
         return {};
     }
-    return FromProxy(proxy);
+    try {
+        return FromProxy(proxy);
+    } catch (std::exception const& e) {
+        fmt::print(stderr, "error deserializing checkpoint '{}': {}\n", path, e.what());
+        return {};
+    }
 }
 
 } // namespace Operon::Serialization

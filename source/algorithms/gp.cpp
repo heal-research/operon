@@ -69,6 +69,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
 
     auto parents = Parents();
     auto offspring = Offspring();
+    std::vector<Operon::RandomGenerator> savedRngs; // used only on warm resume
 
     auto timer = executor.make_observer<PhaseTimer>();
 
@@ -82,16 +83,24 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                              if (report) { std::invoke(report); }
                                          }).name("report progress");
 
+            auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
+                                   auto id = executor.this_worker_id();
+                                   if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
+                                   parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
+                               })
+                            .name("evaluate population");
+            eval.precede(reportProgress);
+
             if (IsFitted() && warmStart) {
-                // warm resume: population already has valid fitness; skip init and eval to preserve RNG state
-                prepareEval.precede(reportProgress);
+                // Re-evaluate to catch evaluator/objective config mismatches, but snapshot and restore
+                // the worker RNG states so that subsequent generations remain deterministic.
+                auto saveRngs    = subflow.emplace([&]() { savedRngs = rngs; }).name("save rng states");
+                auto restoreRngs = subflow.emplace([&]() { rngs = std::move(savedRngs); }).name("restore rng states");
+                prepareEval.precede(saveRngs);
+                saveRngs.precede(eval);
+                eval.precede(restoreRngs);
+                restoreRngs.precede(reportProgress);
             } else {
-                auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                       auto id = executor.this_worker_id();
-                                       if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
-                                       parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
-                                   })
-                                .name("evaluate population");
                 auto init = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
                                        parents[i].Genotype = (*treeInit)(rngs[i]);
                                        (*coeffInit)(rngs[i], parents[i].Genotype);
@@ -99,7 +108,6 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                 .name("initialize population");
                 init.precede(prepareEval);
                 prepareEval.precede(eval);
-                eval.precede(reportProgress);
             }
         }, // init
         stop, // loop condition
