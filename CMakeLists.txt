@@ -14,7 +14,7 @@ project(
     LANGUAGES CXX
 )
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 docs_early_return()
@@ -232,7 +232,7 @@ target_link_libraries(operon_operon PRIVATE
     tl::expected
 )
 
-target_compile_features(operon_operon PUBLIC cxx_std_20)
+target_compile_features(operon_operon PUBLIC cxx_std_23)
 
 if(MSVC)
     target_compile_options(operon_operon PRIVATE "/std:c++latest")

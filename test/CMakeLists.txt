@@ -57,7 +57,7 @@ if(vdt_FOUND)
     target_link_libraries(operon_test PRIVATE vdt::vdt)
     target_compile_definitions(operon_test PRIVATE OPERON_HAVE_VDT)
 endif()
-target_compile_features(operon_test PRIVATE cxx_std_20)
+target_compile_features(operon_test PRIVATE cxx_std_23)
 target_include_directories(operon_test PRIVATE ${PROJECT_SOURCE_DIR}/source/thirdparty)
 set_target_properties(operon_test PROPERTIES
     CXX_VISIBILITY_PRESET hidden
