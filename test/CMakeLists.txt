@@ -42,6 +42,7 @@ add_executable(operon_test
     source/implementation/optimizer.cpp
     source/implementation/random.cpp
     source/implementation/selection.cpp
+    source/implementation/serialization.cpp
     source/performance/autodiff.cpp
     source/performance/creator.cpp
     source/performance/distance.cpp

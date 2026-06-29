@@ -228,6 +228,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         tf::Executor executor(threads);
         Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get() };
 
+        auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
+
         std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
         Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
         if (jitMode == "all") {
@@ -237,7 +239,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, nullptr, evaluator.get());
-        gp.Run(executor, random, [&]() -> void { reporter(executor, gp); });
+        gp.Run(executor, random, [&]() -> void {
+            reporter(executor, gp);
+            Operon::MaybeSaveCheckpoint(gp, random, result);
+        }, warmStart);
+        Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));

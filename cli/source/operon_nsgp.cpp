@@ -364,7 +364,12 @@ auto main(int argc, char** argv) -> int
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector), &evaluator);
-        gp.Run(executor, random, [&]() { reporter(executor, gp); });
+        auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
+        gp.Run(executor, random, [&]() {
+            reporter(executor, gp);
+            Operon::MaybeSaveCheckpoint(gp, random, result);
+        }, warmStart);
+        Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));

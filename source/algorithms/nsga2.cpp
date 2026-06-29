@@ -97,7 +97,9 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
 
 auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report, bool warmStart) -> void // NOLINT(readability-function-cognitive-complexity)
 {
+    auto const savedGeneration = Generation();
     Reset();
+    if (warmStart) { Generation() = savedGeneration; }
 
     const auto& config = GetConfig();
     const auto& treeInit = GetTreeInitializer();
@@ -113,12 +115,13 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
         return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) / us;
     };
 
-    // random seeds for each thread
+    // random seeds for each thread — reuse existing states on warm resume, seed fresh otherwise
     size_t const s = std::max(config.PopulationSize, config.PoolSize);
-    std::vector<Operon::RandomGenerator> rngs;
-    rngs.reserve(s);
-    for (size_t i = 0; i < s; ++i) {
-        rngs.emplace_back(random());
+    auto& rngs = WorkerRngs();
+    if (rngs.size() != s) {
+        rngs.clear();
+        rngs.reserve(s);
+        for (size_t i = 0; i < s; ++i) { rngs.emplace_back(random()); }
     }
 
     auto const* evaluator = generator->Evaluator();
@@ -138,6 +141,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     auto& individuals = Individuals();
     auto parents = Parents();
     auto offspring = Offspring();
+    std::vector<Operon::RandomGenerator> savedRngs; // used only on warm resume
 
     // while loop control flow
     auto timer = executor.make_observer<PhaseTimer>();
@@ -146,13 +150,6 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     auto [init, cond, body, back, done] = taskflow.emplace(
         [&, timer](tf::Subflow& subflow) -> void {
             auto prepareEval = subflow.emplace([&]() -> void { evaluator->Prepare(parents); }).name("prepare evaluator");
-            auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                   // make sure the worker has a large enough buffer
-                                   auto const id = executor.this_worker_id();
-                                   slots[id].resize(trainSize);
-                                   parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
-                               })
-                            .name("evaluate population");
             auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(parents); }).name(std::string{SortTaskName});
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
@@ -161,18 +158,34 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
                                              }
                                          })
                                       .name("report progress");
-            prepareEval.precede(eval);
-            eval.precede(nonDominatedSort);
             nonDominatedSort.precede(reportProgress);
 
-            if (!(IsFitted() && warmStart)) {
+            // nonDominatedSort runs after eval in both paths to rebuild fronts_ from current fitness.
+            auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
+                                   auto const id = executor.this_worker_id();
+                                   slots[id].resize(trainSize);
+                                   parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
+                               })
+                            .name("evaluate population");
+            eval.precede(nonDominatedSort);
+
+            if (IsFitted() && warmStart) {
+                // Re-evaluate to catch evaluator/objective config mismatches, but snapshot and restore
+                // the worker RNG states so that subsequent generations remain deterministic.
+                auto saveRngs    = subflow.emplace([&]() { savedRngs = rngs; }).name("save rng states");
+                auto restoreRngs = subflow.emplace([&]() { rngs = std::move(savedRngs); }).name("restore rng states");
+                prepareEval.precede(saveRngs);
+                saveRngs.precede(eval);
+                eval.precede(restoreRngs);
+                restoreRngs.precede(nonDominatedSort);
+            } else {
                 auto init = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
                                        parents[i].Genotype = (*treeInit)(rngs[i]);
                                        (*coeffInit)(rngs[i], parents[i].Genotype);
                                    })
                                 .name("initialize population");
-
                 init.precede(prepareEval);
+                prepareEval.precede(eval);
             }
         }, // init
         stop, // loop condition

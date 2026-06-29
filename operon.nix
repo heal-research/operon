@@ -41,6 +41,7 @@ stdenv.mkDerivation rec {
       fast-float
       fluky
       fmt_11
+      glaze
       gtl
       icu
       lbfgs
