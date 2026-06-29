@@ -220,27 +220,51 @@ public:
                 primal_.push_back(pappus::ops::div<Scalar>(ctx_, primal_[j], denom) * v);
                 break;
             }
-            case NodeType::Abs: {
-                auto const& arg = primal_[i - 1];
-                auto const iv = arg.to_interval();
-                if (iv.inf() >= Scalar{0}) {
-                    // entirely non-negative: abs(x) = x
-                    primal_.push_back(arg * v);
-                } else if (iv.sup() <= Scalar{0}) {
-                    // entirely non-positive: abs(x) = -x
-                    primal_.push_back(pappus::ops::neg<Scalar>(arg) * v);
-                } else {
-                    throw std::runtime_error(
-                        "AffineEvaluator: Abs over a domain containing zero requires "
-                        "a Chebyshev approximation not yet implemented in pappus");
-                }
+            case NodeType::Abs:
+                // May throw if the domain crosses zero (requires Chebyshev V-shape).
+                primal_.push_back(pappus::ops::abs<Scalar>(ctx_, primal_[i - 1]) * v);
+                break;
+            case NodeType::Sqrtabs:
+                primal_.push_back(pappus::ops::sqrt<Scalar>(ctx_, pappus::ops::abs<Scalar>(ctx_, primal_[i - 1])) * v);
+                break;
+            case NodeType::Logabs:
+                primal_.push_back(pappus::ops::log<Scalar>(ctx_, pappus::ops::abs<Scalar>(ctx_, primal_[i - 1])) * v);
+                break;
+            case NodeType::Powabs: {
+                auto const j = static_cast<std::size_t>(i - 1);
+                auto const k = j - (nodes[j].Length + 1);
+                auto absBase = pappus::ops::abs<Scalar>(ctx_, primal_[j]);
+                primal_.push_back(pappus::ops::pow<Scalar>(ctx_, absBase, primal_[k]) * v);
                 break;
             }
+            case NodeType::Fmin: {
+                auto const j = static_cast<std::size_t>(i - 1);
+                auto const k = j - (nodes[j].Length + 1);
+                primal_.push_back(pappus::ops::min<Scalar>(primal_[j], primal_[k]) * v);
+                break;
+            }
+            case NodeType::Fmax: {
+                auto const j = static_cast<std::size_t>(i - 1);
+                auto const k = j - (nodes[j].Length + 1);
+                primal_.push_back(pappus::ops::max<Scalar>(primal_[j], primal_[k]) * v);
+                break;
+            }
+            case NodeType::Cbrt:
+                primal_.push_back(pappus::ops::cbrt<Scalar>(ctx_, primal_[i - 1]) * v);
+                break;
+            case NodeType::Log1p:
+                // May throw if the domain includes values <= -1.
+                primal_.push_back(pappus::ops::log1p<Scalar>(ctx_, primal_[i - 1]) * v);
+                break;
+            case NodeType::Floor:
+                primal_.push_back(pappus::ops::floor<Scalar>(ctx_, primal_[i - 1]) * v);
+                break;
+            case NodeType::Ceil:
+                primal_.push_back(pappus::ops::ceil<Scalar>(ctx_, primal_[i - 1]) * v);
+                break;
             default:
                 throw std::runtime_error(fmt::format(
-                    "AffineEvaluator: node kind `{}` not yet mapped (requires pappus-side "
-                    "implementation: cbrt, log1p, floor, ceil, affine abs over zero, "
-                    "affine min/max, sqrtabs, logabs, powabs)",
+                    "AffineEvaluator: node kind `{}` not yet mapped",
                     node.Name()));
             }
         }

@@ -107,40 +107,27 @@ public:
             EXPECT(!first); // arity > 0 — malformed tree otherwise
             return acc;
         };
-        // abs([a,b]): [0, max(|a|,|b|)] if it contains 0, else [min(|a|,|b|), max(|a|,|b|)].
-        auto const absInterval = [](Interval const& x) {
-            auto const lo = x.inf();
-            auto const hi = x.sup();
-            auto const alo = std::fabs(lo);
-            auto const ahi = std::fabs(hi);
-            if (lo <= Scalar{0} && hi >= Scalar{0}) {
-                return Interval{Scalar{0}, std::max(alo, ahi)};
-            }
-            return Interval{std::min(alo, ahi), std::max(alo, ahi)};
-        };
         // min([a1,b1], [a2,b2], ...) = [min(a1,a2,...), min(b1,b2,...)]
         auto const minFold = [&](std::size_t i) {
             bool first = true;
-            auto accLo = Scalar{0};
-            auto accHi = Scalar{0};
+            auto acc = Interval{Scalar{0}};
             for (auto j : Tree::Indices(nodes, i)) {
-                if (first) { accLo = primal_[j].inf(); accHi = primal_[j].sup(); first = false; }
-                else       { accLo = std::fmin(accLo, primal_[j].inf()); accHi = std::fmin(accHi, primal_[j].sup()); }
+                if (first) { acc = primal_[j]; first = false; }
+                else       { acc = pappus::ops::min<Scalar>(acc, primal_[j]); }
             }
             EXPECT(!first);
-            return Interval{accLo, accHi};
+            return acc;
         };
         // max([a1,b1], [a2,b2], ...) = [max(a1,a2,...), max(b1,b2,...)]
         auto const maxFold = [&](std::size_t i) {
             bool first = true;
-            auto accLo = Scalar{0};
-            auto accHi = Scalar{0};
+            auto acc = Interval{Scalar{0}};
             for (auto j : Tree::Indices(nodes, i)) {
-                if (first) { accLo = primal_[j].inf(); accHi = primal_[j].sup(); first = false; }
-                else       { accLo = std::fmax(accLo, primal_[j].inf()); accHi = std::fmax(accHi, primal_[j].sup()); }
+                if (first) { acc = primal_[j]; first = false; }
+                else       { acc = pappus::ops::max<Scalar>(acc, primal_[j]); }
             }
             EXPECT(!first);
-            return Interval{accLo, accHi};
+            return acc;
         };
 
         for (std::size_t i = 0; i < n; ++i) {
@@ -236,18 +223,18 @@ public:
                 break;
             }
             case NodeType::Abs:
-                primal_[i] = absInterval(primal_[i - 1]) * v;
+                primal_[i] = pappus::ops::abs<Scalar>(primal_[i - 1]) * v;
                 break;
             case NodeType::Sqrtabs:
-                primal_[i] = pappus::ops::sqrt<Scalar>(absInterval(primal_[i - 1])) * v;
+                primal_[i] = pappus::ops::sqrt<Scalar>(pappus::ops::abs<Scalar>(primal_[i - 1])) * v;
                 break;
             case NodeType::Logabs:
-                primal_[i] = pappus::ops::log<Scalar>(absInterval(primal_[i - 1])) * v;
+                primal_[i] = pappus::ops::log<Scalar>(pappus::ops::abs<Scalar>(primal_[i - 1])) * v;
                 break;
             case NodeType::Powabs: {
                 auto const j = static_cast<std::size_t>(i - 1);
                 auto const k = j - (nodes[j].Length + 1);
-                primal_[i] = pappus::ops::pow<Scalar>(absInterval(primal_[j]), primal_[k]) * v;
+                primal_[i] = pappus::ops::pow<Scalar>(pappus::ops::abs<Scalar>(primal_[j]), primal_[k]) * v;
                 break;
             }
             case NodeType::Aq: {
@@ -265,9 +252,21 @@ public:
             case NodeType::Fmax:
                 primal_[i] = maxFold(i) * v;
                 break;
+            case NodeType::Cbrt:
+                primal_[i] = pappus::ops::cbrt<Scalar>(primal_[i - 1]) * v;
+                break;
+            case NodeType::Log1p:
+                primal_[i] = pappus::ops::log1p<Scalar>(primal_[i - 1]) * v;
+                break;
+            case NodeType::Floor:
+                primal_[i] = pappus::ops::floor<Scalar>(primal_[i - 1]) * v;
+                break;
+            case NodeType::Ceil:
+                primal_[i] = pappus::ops::ceil<Scalar>(primal_[i - 1]) * v;
+                break;
             default:
                 throw std::runtime_error(fmt::format(
-                    "IntervalEvaluator: node kind `{}` not yet mapped (requires pappus-side implementation: cbrt, log1p, floor, ceil)",
+                    "IntervalEvaluator: node kind `{}` not yet mapped",
                     node.Name()));
             }
         }
