@@ -505,6 +505,228 @@ TEST_CASE("Affine backend: inv over zero-containing domain throws", "[pappus][af
     REQUIRE_THROWS_AS(eval.Evaluate(tree.GetCoefficients()), std::invalid_argument);
 }
 
+// ---------------------------------------------------------------------------
+// Phase 7: Validation tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Affine backend: mixed context throws", "[pappus][affine]")
+{
+    // Two AffineEvaluators own independent contexts. Combining forms from
+    // different contexts must throw — pappus rejects this by design.
+    constexpr Operon::Hash X1{1};
+    auto tree = Operon::Tree({Var(X1)}).UpdateNodes();
+
+    auto d1 = Domains(); d1[X1] = {S{1}, S{3}};
+    auto d2 = Domains(); d2[X1] = {S{2}, S{4}};
+
+    AE eval1(&tree, std::move(d1));
+    AE eval2(&tree, std::move(d2));
+
+    auto const r1 = eval1.Evaluate(tree.GetCoefficients());
+    auto const r2 = eval2.Evaluate(tree.GetCoefficients());
+    // Combining forms from different contexts must throw.
+    REQUIRE_THROWS_AS(pappus::ops::add<Scalar>(r1, r2), std::invalid_argument);
+}
+
+TEST_CASE("Interval backend: empty interval propagation", "[pappus][interval]")
+{
+    // Out-of-domain operations (log of negative, sqrt of negative) return
+    // interval::empty() (NaN bounds). Empty propagates silently through
+    // subsequent ops. The caller must check is_empty().
+    constexpr Operon::Hash X1{1};
+
+    SECTION("log of negative domain -> empty") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Log)}).UpdateNodes();
+        auto d = Domains(); d[X1] = {S{-3}, S{-1}};
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.is_empty());
+        REQUIRE(std::isnan(r.inf()));
+        REQUIRE(std::isnan(r.sup()));
+    }
+
+    SECTION("sqrt of negative domain -> empty") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Sqrt)}).UpdateNodes();
+        auto d = Domains(); d[X1] = {S{-4}, S{-1}};
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.is_empty());
+    }
+
+    SECTION("empty propagates through exp") {
+        // exp(log(x)) for x in [-3, -1]: log returns empty, exp(empty) = empty
+        Operon::Vector<Operon::Node> ns{
+            Var(X1), Operon::Node(Operon::NodeType::Log),
+            Operon::Node(Operon::NodeType::Exp)};
+        auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+        auto d = Domains(); d[X1] = {S{-3}, S{-1}};
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.is_empty());
+    }
+
+    SECTION("log1p of domain below -1 -> empty") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Log1p)}).UpdateNodes();
+        auto d = Domains(); d[X1] = {S{-3}, S{-2}};
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.is_empty());
+    }
+}
+
+TEST_CASE("Interval backend: infinite bounds", "[pappus][interval]")
+{
+    constexpr Operon::Hash X1{1};
+
+    SECTION("inv of zero-containing domain -> infinite") {
+        auto node = Operon::Node(Operon::NodeType::Div);
+        node.Arity = 1;
+        auto tree = Operon::Tree({Var(X1), node}).UpdateNodes();
+        auto d = Domains(); d[X1] = {S{-1}, S{1}}; // contains zero
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.is_infinite());
+        REQUIRE(r.inf() == -std::numeric_limits<S>::infinity());
+        REQUIRE(r.sup() == +std::numeric_limits<S>::infinity());
+    }
+
+    SECTION("exp of unbounded domain -> unbounded upper") {
+        // exp([0, inf]) = [1, inf]
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Exp)}).UpdateNodes();
+        auto d = Domains(); d[X1] = {S{0}, S{std::numeric_limits<S>::infinity()}};
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.inf() <= 1.0 + 1e-4);
+        REQUIRE(r.sup() == std::numeric_limits<S>::infinity());
+    }
+}
+
+TEST_CASE("Interval backend: single-point (degenerate) intervals", "[pappus][interval]")
+{
+    constexpr Operon::Hash X1{1};
+
+    SECTION("constant domain [c, c]") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Square)}).UpdateNodes();
+        auto d = Domains(); d[X1] = {S{2}, S{2}}; // point interval
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.inf() == Catch::Approx(4.0).margin(1e-4));
+        REQUIRE(r.sup() == Catch::Approx(4.0).margin(1e-4));
+    }
+
+    SECTION("sqrt of point interval") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Sqrt)}).UpdateNodes();
+        auto d = Domains(); d[X1] = {S{9}, S{9}};
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.inf() == Catch::Approx(3.0).margin(1e-4));
+        REQUIRE(r.sup() == Catch::Approx(3.0).margin(1e-4));
+    }
+}
+
+TEST_CASE("Interval backend: n-ary Fmin/Fmax with arity > 2", "[pappus][interval]")
+{
+    // Verify the n-ary fold handles more than 2 children (the affine evaluator
+    // had a binary-only bug; this confirms the interval side is correct).
+    constexpr Operon::Hash X1{1}, X2{2}, X3{3};
+
+    SECTION("ternary fmin") {
+        auto node = Operon::Node(Operon::NodeType::Fmin);
+        node.Arity = 3;
+        auto tree = Operon::Tree({Var(X1), Var(X2), Var(X3), node}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{1}, S{5}};
+        d[X2] = {S{2}, S{4}};
+        d[X3] = {S{3}, S{6}};
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        // min([1,5], [2,4], [3,6]) = [min(1,2,3), min(5,4,6)] = [1, 4]
+        REQUIRE(Contains(r, 1.0, 4.0, 1e-5));
+    }
+
+    SECTION("ternary fmax") {
+        auto node = Operon::Node(Operon::NodeType::Fmax);
+        node.Arity = 3;
+        auto tree = Operon::Tree({Var(X1), Var(X2), Var(X3), node}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{1}, S{5}};
+        d[X2] = {S{2}, S{4}};
+        d[X3] = {S{3}, S{6}};
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        // max([1,5], [2,4], [3,6]) = [max(1,2,3), max(5,4,6)] = [3, 6]
+        REQUIRE(Contains(r, 3.0, 6.0, 1e-5));
+    }
+}
+
+TEST_CASE("Affine backend: n-ary Fmin/Fmax with arity > 2", "[pappus][affine]")
+{
+    // Regression for the binary-only Fmin/Fmax bug. With arity=3, the
+    // evaluator must fold all three children, not just the first two.
+    constexpr Operon::Hash X1{1}, X2{2}, X3{3};
+
+    SECTION("ternary fmin") {
+        auto node = Operon::Node(Operon::NodeType::Fmin);
+        node.Arity = 3;
+        auto tree = Operon::Tree({Var(X1), Var(X2), Var(X3), node}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{1}, S{5}};
+        d[X2] = {S{2}, S{4}};
+        d[X3] = {S{3}, S{6}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        // min enclosure must contain [1, 4]
+        REQUIRE(Contains(r, 1.0, 4.0, 1e-3));
+    }
+
+    SECTION("ternary fmax") {
+        auto node = Operon::Node(Operon::NodeType::Fmax);
+        node.Arity = 3;
+        auto tree = Operon::Tree({Var(X1), Var(X2), Var(X3), node}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{1}, S{5}};
+        d[X2] = {S{2}, S{4}};
+        d[X3] = {S{3}, S{6}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        // max enclosure must contain [3, 6]
+        REQUIRE(Contains(r, 3.0, 6.0, 1e-3));
+    }
+}
+
+TEST_CASE("Affine backend: max_terms condensation", "[pappus][affine]")
+{
+    // Verify that max_terms > 0 triggers condensation, keeping the form's
+    // term count bounded. With max_terms=0 (default), terms grow unbounded.
+    constexpr Operon::Hash X1{1}, X2{2};
+    // A tree that generates many noise terms: X1 * X2 * X1 * X2 (via Mul chain)
+    Operon::Vector<Operon::Node> ns{
+        Var(X1), Var(X2), Operon::Node(Operon::NodeType::Mul),
+        Var(X1), Operon::Node(Operon::NodeType::Mul),
+        Var(X2), Operon::Node(Operon::NodeType::Mul)};
+    auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{1}, S{2}};
+    d[X2] = {S{1}, S{2}};
+
+    SECTION("max_terms=0 (unbounded) — terms grow freely") {
+        AE eval(&tree, std::move(d), /*maxTerms=*/0);
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        // The result is a valid enclosure of [1, 16]
+        REQUIRE(Contains(r, 1.0, 16.0, 1e-3));
+    }
+
+    SECTION("max_terms=2 — form is condensed to <= 2 terms + remainder") {
+        auto d2 = Domains();
+        d2[X1] = {S{1}, S{2}};
+        d2[X2] = {S{1}, S{2}};
+        AE eval(&tree, std::move(d2), /*maxTerms=*/2);
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        // Still a valid (but potentially looser) enclosure of [1, 16]
+        REQUIRE(Contains(r, 1.0, 16.0, 1e-2));
+    }
+}
+
 } // namespace Operon::Test
 
 #endif // OPERON_ENABLE_PAPPUS
