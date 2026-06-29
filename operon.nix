@@ -4,6 +4,8 @@
   system,
   enableShared ? true,
   enableTesting ? true,
+  enablePappus ? false,
+  pappusInclude ? "",
 }:
 stdenv.mkDerivation rec {
   name = "operon";
@@ -17,11 +19,16 @@ stdenv.mkDerivation rec {
     }
     ."${system}";
 
-  cmakeFlags = [
-    "--preset ${cmakePreset}"
-    "-DUSE_SINGLE_PRECISION=ON"
-    "-DBUILD_SHARED_LIBS=${if enableShared then "YES" else "NO"}"
-  ];
+  cmakeFlags =
+    [
+      "--preset ${cmakePreset}"
+      "-DUSE_SINGLE_PRECISION=ON"
+      "-DBUILD_SHARED_LIBS=${if enableShared then "YES" else "NO"}"
+    ]
+    ++ pkgs.lib.optionals enablePappus [
+      "-DOPERON_ENABLE_PAPPUS=ON"
+      "-DPAPPUS_INCLUDE_DIR=${pappusInclude}"
+    ];
   cmakeBuildType = "Release";
 
   nativeBuildInputs = with pkgs; [
@@ -61,6 +68,9 @@ stdenv.mkDerivation rec {
       vstat
       xxHash
       zstd
+    ])
+    ++ (with pkgs; pkgs.lib.optionals enablePappus [
+      gch-small-vector
     ])
     ++ (
       with pkgs;
