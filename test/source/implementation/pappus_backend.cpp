@@ -360,9 +360,9 @@ TEST_CASE("Interval backend: cbrt, log1p, floor, ceil", "[pappus][interval]")
         REQUIRE(r.inf() <= 0.0 + 1e-4);
         REQUIRE(r.sup() + 1e-3 >= 1.0);
     }
-    SECTION("floor([-1.5, 8.7]) -> [-2, 9]") {
+    SECTION("floor([-1.5, 8.7]) -> [-2, 8]") {
         auto r = make({-1.5, 8.7}, Operon::NodeType::Floor);
-        REQUIRE(Contains(r, -2.0, 9.0, 1e-5));
+        REQUIRE(Contains(r, -2.0, 8.0, 1e-5));
     }
     SECTION("ceil([-1.5, 8.7]) -> [-1, 9]") {
         auto r = make({-1.5, 8.7}, Operon::NodeType::Ceil);

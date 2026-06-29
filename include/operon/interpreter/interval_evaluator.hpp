@@ -48,6 +48,16 @@ namespace Operon {
 // Batch size is 1: one evaluation produces one interval enclosure for the whole
 // domain. This is intentional -- interval/affine arithmetic are single-value
 // computations, not per-row fitness evaluations.
+//
+// Domain-error policy: operations on out-of-domain inputs (e.g. log of a
+// negative interval, sqrt of a negative interval, log1p of an interval
+// entirely below -1) return `interval::empty()` — a NaN-bounds interval.
+// This empty result propagates silently through subsequent operations (e.g.
+// exp(empty()) = empty()) and is returned from Evaluate() without throwing.
+// The caller must check `result.is_empty()` if domain validity matters.
+// This differs from AffineEvaluator, which throws std::invalid_argument for
+// the same out-of-domain inputs. See the pappus handoff doc for the rationale:
+// "interval and affine do not have identical domain semantics".
 class IntervalEvaluator {
 public:
     using Scalar = Operon::Scalar;
