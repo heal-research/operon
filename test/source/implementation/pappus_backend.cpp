@@ -323,12 +323,92 @@ TEST_CASE("Affine backend: abs (non-zero-crossing)", "[pappus][affine]")
         REQUIRE(Contains(r, 2.0, 5.0, 1e-4));
     }
 
-    SECTION("abs of zero-crossing domain -> throws") {
+    SECTION("abs of zero-crossing domain -> sound enclosure") {
+        // Now supported via pappus affine abs (Chebyshev V-shape).
         auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Abs)}).UpdateNodes();
         auto d = Domains();
         d[X1] = {S{-1}, S{2}};
         AE eval(&tree, std::move(d));
-        REQUIRE_THROWS_AS(eval.Evaluate(tree.GetCoefficients()), std::runtime_error);
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        // abs([-1, 2]) = [0, 2]; affine enclosure must contain this.
+        REQUIRE(Contains(r, 0.0, 2.0, 1e-3));
+    }
+}
+
+TEST_CASE("Interval backend: cbrt, log1p, floor, ceil", "[pappus][interval]")
+{
+    constexpr Operon::Hash X1{1};
+
+    auto make = [&](IE::Domain dom, Operon::NodeType op) -> IE::Interval {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(op)}).UpdateNodes();
+        auto dm = Domains();
+        dm[X1] = {S{dom.first}, S{dom.second}};
+        IE eval(&tree, std::move(dm));
+        return eval.Evaluate(tree.GetCoefficients());
+    };
+
+    SECTION("cbrt([-1, 8]) -> [-1, 2]") {
+        auto r = make({-1, 8}, Operon::NodeType::Cbrt);
+        REQUIRE(Contains(r, -1.0, 2.0, 1e-4));
+    }
+    SECTION("cbrt([1, 27]) -> [1, 3]") {
+        auto r = make({1, 27}, Operon::NodeType::Cbrt);
+        REQUIRE(Contains(r, 1.0, 3.0, 1e-4));
+    }
+    SECTION("log1p([0, e-1]) -> [0, 1]") {
+        auto r = make({0, std::exp(1.0) - 1.0}, Operon::NodeType::Log1p);
+        REQUIRE(r.inf() <= 0.0 + 1e-4);
+        REQUIRE(r.sup() + 1e-3 >= 1.0);
+    }
+    SECTION("floor([-1.5, 8.7]) -> [-2, 9]") {
+        auto r = make({-1.5, 8.7}, Operon::NodeType::Floor);
+        REQUIRE(Contains(r, -2.0, 9.0, 1e-5));
+    }
+    SECTION("ceil([-1.5, 8.7]) -> [-1, 9]") {
+        auto r = make({-1.5, 8.7}, Operon::NodeType::Ceil);
+        REQUIRE(Contains(r, -1.0, 9.0, 1e-5));
+    }
+}
+
+TEST_CASE("Affine backend: cbrt, log1p, floor, ceil, fmin, fmax", "[pappus][affine]")
+{
+    constexpr Operon::Hash X1{1}, X2{2};
+
+    SECTION("cbrt([1, 27]) -> contains [1, 3]") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Cbrt)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{1}, S{27}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(r, 1.0, 3.0, 1e-3));
+    }
+    SECTION("log1p([0, 1]) -> contains [0, log(2)]") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Log1p)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{0}, S{1}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        auto const iv = r.to_interval();
+        REQUIRE(iv.inf() <= 0.0 + 1e-4);
+        REQUIRE(iv.sup() + 1e-3 >= std::log(2.0));
+    }
+    SECTION("fmin([1,3], [2,4]) -> contains [1, 3]") {
+        auto tree = Operon::Tree({Var(X1), Var(X2), Operon::Node(Operon::NodeType::Fmin)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{1}, S{3}};
+        d[X2] = {S{2}, S{4}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(r, 1.0, 3.0, 1e-3));
+    }
+    SECTION("fmax([1,3], [2,4]) -> contains [2, 4]") {
+        auto tree = Operon::Tree({Var(X1), Var(X2), Operon::Node(Operon::NodeType::Fmax)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{1}, S{3}};
+        d[X2] = {S{2}, S{4}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(r, 2.0, 4.0, 1e-3));
     }
 }
 
