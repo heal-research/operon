@@ -210,9 +210,37 @@ public:
                 primal_.push_back(pappus::ops::pow<Scalar>(ctx_, primal_[j], primal_[k]) * v);
                 break;
             }
+            case NodeType::Aq: {
+                auto const j = static_cast<std::size_t>(i - 1);
+                auto const k = j - (nodes[j].Length + 1);
+                // x / sqrt(1 + y*y) — composable from existing ops
+                auto const one = pappus::ops::constant<Scalar>(ctx_, Scalar{1});
+                auto const y2 = pappus::ops::square<Scalar>(ctx_, primal_[k]);
+                auto const denom = pappus::ops::sqrt<Scalar>(ctx_, pappus::ops::add<Scalar>(ctx_, one, y2));
+                primal_.push_back(pappus::ops::div<Scalar>(ctx_, primal_[j], denom) * v);
+                break;
+            }
+            case NodeType::Abs: {
+                auto const& arg = primal_[i - 1];
+                auto const iv = arg.to_interval();
+                if (iv.inf() >= Scalar{0}) {
+                    // entirely non-negative: abs(x) = x
+                    primal_.push_back(arg * v);
+                } else if (iv.sup() <= Scalar{0}) {
+                    // entirely non-positive: abs(x) = -x
+                    primal_.push_back(pappus::ops::neg<Scalar>(arg) * v);
+                } else {
+                    throw std::runtime_error(
+                        "AffineEvaluator: Abs over a domain containing zero requires "
+                        "a Chebyshev approximation not yet implemented in pappus");
+                }
+                break;
+            }
             default:
                 throw std::runtime_error(fmt::format(
-                    "AffineEvaluator: node kind `{}` not yet mapped (Phase 6)",
+                    "AffineEvaluator: node kind `{}` not yet mapped (requires pappus-side "
+                    "implementation: cbrt, log1p, floor, ceil, affine abs over zero, "
+                    "affine min/max, sqrtabs, logabs, powabs)",
                     node.Name()));
             }
         }
