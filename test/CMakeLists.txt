@@ -52,8 +52,13 @@ add_executable(operon_test
     source/performance/primitives.cpp
     source/performance/jit_breakeven.cpp
     source/implementation/jit.cpp
+    source/implementation/pappus_backend.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
+if(OPERON_ENABLE_PAPPUS)
+    target_link_libraries(operon_test PRIVATE operon::pappus)
+    target_compile_definitions(operon_test PRIVATE OPERON_ENABLE_PAPPUS)
+endif()
 if(vdt_FOUND)
     target_link_libraries(operon_test PRIVATE vdt::vdt)
     target_compile_definitions(operon_test PRIVATE OPERON_HAVE_VDT)
