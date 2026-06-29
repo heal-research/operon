@@ -19,6 +19,7 @@
 namespace Operon {
 auto Tree::UpdateNodes() -> Tree&
 {
+    if (nodes_.empty()) { return *this; }
     for (size_t i = 0; i < nodes_.size(); ++i) {
         auto& s = nodes_[i];
 
