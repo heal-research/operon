@@ -21,6 +21,13 @@
     vstat.inputs.foolnotion.follows = "foolnotion";
     vdt.inputs.nixpkgs.follows = "nixpkgs";
     fluky.inputs.nixpkgs.follows = "nixpkgs";
+
+    # To enable the pappus interval/affine backends locally, add:
+    #   pappus.url = "path:/home/bogdb/src/pappus";
+    #   pappus.inputs.nixpkgs.follows = "nixpkgs";
+    # and pass `enablePappus = true; pappusInclude = "${pappus.outPath}/src";`
+    # to the operon derivation below. Pappus is not yet published as a flake
+    # input — a local path breaks CI and other machines, so it is opt-in.
   };
 
   outputs =
@@ -139,7 +146,7 @@
             buildInputs =
               operon.buildInputs
               ++ [ pkgs.asmjit ]
-              ++ pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") (
+              ++ (with pkgs; pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") (
                 with pkgs;
                 [
                   gdb
@@ -147,7 +154,12 @@
                   hyperfine
                   linuxPackages.perf
                 ]
-              );
+              ))
+              ++ (with pkgs; [
+                # pappus development: needed when building with
+                # -DOPERON_ENABLE_PAPPUS=ON -DPAPPUS_INCLUDE_DIR=...
+                gch-small-vector
+              ]);
           };
 
           apps.operon-gp.program = "${packages.default}/bin/operon_gp";
