@@ -41,8 +41,14 @@ namespace Operon {
 //
 // Domain-error policy: unlike interval arithmetic, `affine_form::inv()` throws
 // when the form's interval contains zero (affine forms cannot represent
-// unbounded values). This evaluator lets such exceptions propagate -- the
-// caller decides whether to catch or treat as a hard failure.
+// unbounded values). Similarly, `log()`, `log1p()`, and `sqrt()` throw
+// std::invalid_argument for out-of-domain inputs. This evaluator lets such
+// exceptions propagate -- the caller decides whether to catch or treat as a
+// hard failure.
+//
+// This differs from IntervalEvaluator, where out-of-domain operations return
+// `interval::empty()` (NaN bounds) silently. See the pappus handoff doc:
+// "interval and affine do not have identical domain semantics".
 //
 // `max_terms` policy: defaults to `0` (unbounded / exact). Set a finite budget
 // only if affine term growth becomes a profiling concern.
@@ -117,6 +123,26 @@ public:
                 else      { acc = pappus::ops::div<Scalar>(ctx_, *acc, primal_[j]); }
             }
             EXPECT(acc.has_value()); // arity > 0 — malformed tree otherwise
+            return std::move(*acc);
+        };
+        // Fmin/Fmax are n-ary (NodeType::IsNary covers Add..Fmax). Fold all
+        // children — do NOT hardcode binary j/k indexing.
+        auto const minFold = [&](std::size_t i) {
+            std::optional<Affine> acc;
+            for (auto j : Tree::Indices(nodes, i)) {
+                if (!acc) { acc = primal_[j]; }
+                else      { acc = pappus::ops::min<Scalar>(ctx_, *acc, primal_[j]); }
+            }
+            EXPECT(acc.has_value());
+            return std::move(*acc);
+        };
+        auto const maxFold = [&](std::size_t i) {
+            std::optional<Affine> acc;
+            for (auto j : Tree::Indices(nodes, i)) {
+                if (!acc) { acc = primal_[j]; }
+                else      { acc = pappus::ops::max<Scalar>(ctx_, *acc, primal_[j]); }
+            }
+            EXPECT(acc.has_value());
             return std::move(*acc);
         };
 
@@ -213,7 +239,10 @@ public:
             case NodeType::Aq: {
                 auto const j = static_cast<std::size_t>(i - 1);
                 auto const k = j - (nodes[j].Length + 1);
-                // x / sqrt(1 + y*y) — composable from existing ops
+                // x / sqrt(1 + y*y) — composable from existing ops.
+                // TODO(perf): this allocates 3 intermediate affine_form objects
+                // (one, y2, denom) each carrying full noise-term vectors. A
+                // dedicated pappus::ops::aq(ctx, x, y) would reduce this to one.
                 auto const one = pappus::ops::constant<Scalar>(ctx_, Scalar{1});
                 auto const y2 = pappus::ops::square<Scalar>(ctx_, primal_[k]);
                 auto const denom = pappus::ops::sqrt<Scalar>(ctx_, pappus::ops::add<Scalar>(ctx_, one, y2));
@@ -237,18 +266,12 @@ public:
                 primal_.push_back(pappus::ops::pow<Scalar>(ctx_, absBase, primal_[k]) * v);
                 break;
             }
-            case NodeType::Fmin: {
-                auto const j = static_cast<std::size_t>(i - 1);
-                auto const k = j - (nodes[j].Length + 1);
-                primal_.push_back(pappus::ops::min<Scalar>(primal_[j], primal_[k]) * v);
+            case NodeType::Fmin:
+                primal_.push_back(minFold(i) * v);
                 break;
-            }
-            case NodeType::Fmax: {
-                auto const j = static_cast<std::size_t>(i - 1);
-                auto const k = j - (nodes[j].Length + 1);
-                primal_.push_back(pappus::ops::max<Scalar>(primal_[j], primal_[k]) * v);
+            case NodeType::Fmax:
+                primal_.push_back(maxFold(i) * v);
                 break;
-            }
             case NodeType::Cbrt:
                 primal_.push_back(pappus::ops::cbrt<Scalar>(ctx_, primal_[i - 1]) * v);
                 break;
