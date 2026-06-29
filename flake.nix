@@ -53,6 +53,7 @@
               foolnotion.overlay
               (final: prev: {
                 fluky = fluky.packages.${system}.default;
+                glaze = prev.glaze.override { enableSSL = false; };
                 lbfgs = lbfgs.packages.${system}.default;
                 infix-parser = infix-parser.packages.${system}.default;
                 ndsort = ndsort.packages.${system}.default;
