@@ -200,6 +200,138 @@ TEST_CASE("Interval backend: nested tree", "[pappus][interval]")
     REQUIRE(Contains(r, 20.0, 36.0, 1e-3));
 }
 
+TEST_CASE("Interval backend: abs and composable ops", "[pappus][interval]")
+{
+    constexpr Operon::Hash X1{1};
+
+    auto make = [&](IE::Domain dom, Operon::NodeType op) -> std::pair<IE, IE::Interval> {
+        static Operon::Tree t; t = Operon::Tree({Var(X1), Operon::Node(op)}).UpdateNodes(); // NOLINT
+        auto dm = Domains();
+        dm[X1] = {S{dom.first}, S{dom.second}};
+        IE eval(&t, std::move(dm));
+        return {eval, eval.Evaluate(eval.GetTree()->GetCoefficients())};
+    };
+
+    SECTION("abs([-3, -1]) -> [1, 3]") {
+        auto [eval, r] = make({-3, -1}, Operon::NodeType::Abs);
+        REQUIRE(Contains(r, 1.0, 3.0, 1e-4));
+    }
+    SECTION("abs([-1, 2]) -> [0, 2]") {
+        auto [eval, r] = make({-1, 2}, Operon::NodeType::Abs);
+        REQUIRE(Contains(r, 0.0, 2.0, 1e-4));
+    }
+    SECTION("abs([2, 5]) -> [2, 5]") {
+        auto [eval, r] = make({2, 5}, Operon::NodeType::Abs);
+        REQUIRE(Contains(r, 2.0, 5.0, 1e-4));
+    }
+    SECTION("sqrtabs([-1, 4]) -> [0, 2]") {
+        auto [eval, r] = make({-1, 4}, Operon::NodeType::Sqrtabs);
+        REQUIRE(Contains(r, 0.0, 2.0, 1e-3));
+    }
+    SECTION("logabs([-3, -1]) -> [0, log(3)]") {
+        auto [eval, r] = make({-3, -1}, Operon::NodeType::Logabs);
+        REQUIRE(r.inf() <= 0.0 + 1e-4);
+        REQUIRE(r.sup() + 1e-3 >= std::log(3.0));
+    }
+}
+
+TEST_CASE("Interval backend: fmin/fmax", "[pappus][interval]")
+{
+    constexpr Operon::Hash X1{1}, X2{2};
+    auto d = Domains();
+    d[X1] = {S{1}, S{3}};
+    d[X2] = {S{2}, S{4}};
+
+    auto make = [&](Operon::Vector<Operon::Node> ns) -> IE::Interval {
+        auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+        IE eval(&tree, IE::DomainMap{d});
+        return eval.Evaluate(tree.GetCoefficients());
+    };
+
+    SECTION("fmin(X1, X2) -> [1, 3]") {
+        // min([1,3], [2,4]) = [min(1,2), min(3,4)] = [1, 3]
+        auto r = make({Var(X1), Var(X2), Operon::Node(Operon::NodeType::Fmin)});
+        REQUIRE(Contains(r, 1.0, 3.0, 1e-5));
+    }
+    SECTION("fmax(X1, X2) -> [2, 4]") {
+        // max([1,3], [2,4]) = [max(1,2), max(3,4)] = [2, 4]
+        auto r = make({Var(X1), Var(X2), Operon::Node(Operon::NodeType::Fmax)});
+        REQUIRE(Contains(r, 2.0, 4.0, 1e-5));
+    }
+}
+
+TEST_CASE("Interval backend: aq", "[pappus][interval]")
+{
+    constexpr Operon::Hash X1{1}, X2{2};
+    // aq(X1, X2) = X1 / sqrt(1 + X2^2)
+    // X1 in [3, 6], X2 in [0, 2] -> 1+X2^2 in [1, 5] -> sqrt in [1, sqrt(5)]
+    // -> aq in [3/sqrt(5), 6/1] = [1.34, 6]
+    Operon::Vector<Operon::Node> ns{
+        Var(X2), Var(X1), Operon::Node(Operon::NodeType::Aq)};
+    auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{3}, S{6}};
+    d[X2] = {S{0}, S{2}};
+    IE eval(&tree, std::move(d));
+    auto const r = eval.Evaluate(tree.GetCoefficients());
+    REQUIRE(r.inf() <= 3.0 / std::sqrt(5.0) + 1e-3);
+    REQUIRE(r.sup() + 1e-3 >= 6.0);
+}
+
+TEST_CASE("Affine backend: aq", "[pappus][affine]")
+{
+    constexpr Operon::Hash X1{1}, X2{2};
+    // aq(X1, X2) = X1 / sqrt(1 + X2^2)
+    // X1 in [3, 6], X2 in [1, 2] -> 1+X2^2 in [2, 5] -> sqrt in [sqrt(2), sqrt(5)]
+    // -> aq in [3/sqrt(5), 6/sqrt(2)] = [1.34, 4.24]
+    // Note: X2 domain [0, 2] would cause affine overestimation in X2^2
+    // (interval [-1, 4] instead of [0, 4]), making 1+X2^2 contain 0 and
+    // triggering inv() to throw. This is a known affine arithmetic limitation.
+    Operon::Vector<Operon::Node> ns{
+        Var(X2), Var(X1), Operon::Node(Operon::NodeType::Aq)};
+    auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{3}, S{6}};
+    d[X2] = {S{1}, S{2}};
+    AE eval(&tree, std::move(d));
+    auto const r = eval.Evaluate(tree.GetCoefficients());
+    auto const iv = r.to_interval();
+    // aq enclosure must contain the true range [3/sqrt(5), 6/sqrt(2)]
+    REQUIRE(iv.inf() <= 3.0 / std::sqrt(5.0) + 1e-3);
+    REQUIRE(iv.sup() + 1e-3 >= 6.0 / std::sqrt(2.0));
+}
+
+TEST_CASE("Affine backend: abs (non-zero-crossing)", "[pappus][affine]")
+{
+    constexpr Operon::Hash X1{1};
+
+    SECTION("abs of positive domain -> identity") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Abs)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{2}, S{5}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(r, 2.0, 5.0, 1e-4));
+    }
+
+    SECTION("abs of negative domain -> negation") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Abs)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{-5}, S{-2}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(r, 2.0, 5.0, 1e-4));
+    }
+
+    SECTION("abs of zero-crossing domain -> throws") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Abs)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{-1}, S{2}};
+        AE eval(&tree, std::move(d));
+        REQUIRE_THROWS_AS(eval.Evaluate(tree.GetCoefficients()), std::runtime_error);
+    }
+}
+
 TEST_CASE("Interval backend: missing domain throws", "[pappus][interval]")
 {
     constexpr Operon::Hash X1{1};
