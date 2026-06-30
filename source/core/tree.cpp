@@ -371,6 +371,18 @@ auto Tree::Simplify() -> Tree& {
                         nodes_[expIdx].IsEnabled = false;
                         n.IsEnabled = false;               // x^1 = x
                         changed = true;
+                    } else if (nodes_[expIdx].Value == S{2}) {
+                        nodes_[expIdx].IsEnabled = false;  // Pow(x,2) → Square(x)
+                        n.Type = NT::Square;
+                        n.HashValue = Node(NT::Square).HashValue;
+                        n.Arity = 1;
+                        changed = true;
+                    } else if (nodes_[expIdx].Value == S{0.5}) {
+                        nodes_[expIdx].IsEnabled = false;  // Pow(x,0.5) → Sqrt(x)
+                        n.Type = NT::Sqrt;
+                        n.HashValue = Node(NT::Sqrt).HashValue;
+                        n.Arity = 1;
+                        changed = true;
                     }
                 } else if (nodes_[baseIdx].IsConstant() && nodes_[baseIdx].Value == S{1}) {
                     foldToConst(i, S{1}); changed = true;  // 1^x = 1
@@ -384,6 +396,27 @@ auto Tree::Simplify() -> Tree& {
                     foldToConst(i, S{1}); changed = true;  // |x|^0 = 1
                 }
                 // Note: |x|^1 = |x| ≠ x in general, so we do NOT simplify Powabs(x,1).
+                break;
+            }
+            case NT::Log:
+            case NT::Logabs: {
+                // log(exp(x)) = x for all x; log|exp(x)| = x likewise.
+                if (ch.size() == 1 && nodes_[ch[0]].Type == NT::Exp) {
+                    n.IsEnabled = false;
+                    nodes_[ch[0]].IsEnabled = false;
+                    changed = true;
+                }
+                break;
+            }
+            case NT::Sqrt:
+            case NT::Sqrtabs: {
+                // sqrt(x^2) = |x|;  sqrt(|x^2|) = |x|
+                if (ch.size() == 1 && nodes_[ch[0]].Type == NT::Square) {
+                    nodes_[ch[0]].IsEnabled = false;
+                    n.Type = NT::Abs;
+                    n.HashValue = Node(NT::Abs).HashValue;
+                    changed = true;
+                }
                 break;
             }
             default: break;
