@@ -5,9 +5,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <algorithm>
+#include <cmath>
 #include <numeric>
 #include <functional>
 #include <iterator>
+#include <optional>
 #include <vector>
 
 #include "operon/core/tree.hpp"
@@ -198,6 +200,200 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
         n.CalculatedHashValue = hasher(std::bit_cast<uint8_t*>(hashes.data()), sizeof(Operon::Hash) * hashes.size()); // NOLINT
         childIndices.clear();
         hashes.clear();
+    }
+
+    return *this;
+}
+
+auto Tree::Simplify() -> Tree& {
+    using NT = NodeType;
+    using S  = Operon::Scalar;
+
+    if (nodes_.empty()) { return *this; }
+
+    // Replace the span [i-L, i] with a single Const node.
+    // Disables all old children; repurposes node i as Const(value).
+    auto foldToConst = [&](std::size_t i, S value) {
+        for (auto j = i - nodes_[i].Length; j < i; ++j) { nodes_[j].IsEnabled = false; }
+        nodes_[i] = Node::Constant(static_cast<double>(value));
+    };
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+
+        for (std::size_t i = 0; i < nodes_.size(); ++i) {
+            auto& n = nodes_[i];
+            if (!n.IsEnabled || n.IsLeaf()) { continue; }
+
+            // Direct child root indices, in first-operand-first order.
+            std::vector<std::size_t> ch;
+            ch.reserve(n.Arity);
+            for (auto j : Indices(i)) { ch.push_back(j); }
+
+            // --- Constant folding: all direct children are Const leaves ---
+            // Running until convergence lets deeper const subtrees fold up in
+            // subsequent passes (bottom-up, one level per pass).
+            bool allConst = std::all_of(ch.begin(), ch.end(),
+                [&](std::size_t j) { return nodes_[j].IsConstant(); });
+
+            if (allConst && !ch.empty()) {
+                std::optional<S> acc;
+                bool handled = true;
+                S val{};
+                switch (n.Type) {
+                case NT::Add:
+                    val = S{0};
+                    for (auto j : ch) { val += nodes_[j].Value; }
+                    break;
+                case NT::Mul:
+                    val = S{1};
+                    for (auto j : ch) { val *= nodes_[j].Value; }
+                    break;
+                case NT::Sub:
+                    for (auto j : ch) { acc = acc ? *acc - nodes_[j].Value : nodes_[j].Value; }
+                    val = acc.value_or(S{0});
+                    break;
+                case NT::Div:
+                    for (auto j : ch) { acc = acc ? *acc / nodes_[j].Value : nodes_[j].Value; }
+                    val = acc.value_or(S{0});
+                    break;
+                case NT::Fmin:
+                    for (auto j : ch) { acc = acc ? std::min(*acc, nodes_[j].Value) : nodes_[j].Value; }
+                    val = acc.value_or(S{0});
+                    break;
+                case NT::Fmax:
+                    for (auto j : ch) { acc = acc ? std::max(*acc, nodes_[j].Value) : nodes_[j].Value; }
+                    val = acc.value_or(S{0});
+                    break;
+                case NT::Pow:    val = std::pow(nodes_[ch[0]].Value, nodes_[ch[1]].Value);                break;
+                case NT::Powabs: val = std::pow(std::abs(nodes_[ch[0]].Value), nodes_[ch[1]].Value);     break;
+                case NT::Aq:     { S y = nodes_[ch[1]].Value; val = nodes_[ch[0]].Value / std::sqrt(S{1} + (y*y)); break; }
+                case NT::Exp:    val = std::exp(nodes_[ch[0]].Value);                                     break;
+                case NT::Log:    val = std::log(nodes_[ch[0]].Value);                                     break;
+                case NT::Log1p:  val = std::log1p(nodes_[ch[0]].Value);                                  break;
+                case NT::Logabs: val = std::log(std::abs(nodes_[ch[0]].Value));                          break;
+                case NT::Sin:    val = std::sin(nodes_[ch[0]].Value);                                     break;
+                case NT::Cos:    val = std::cos(nodes_[ch[0]].Value);                                     break;
+                case NT::Tan:    val = std::tan(nodes_[ch[0]].Value);                                     break;
+                case NT::Sinh:   val = std::sinh(nodes_[ch[0]].Value);                                    break;
+                case NT::Cosh:   val = std::cosh(nodes_[ch[0]].Value);                                    break;
+                case NT::Tanh:   val = std::tanh(nodes_[ch[0]].Value);                                    break;
+                case NT::Sqrt:   val = std::sqrt(nodes_[ch[0]].Value);                                    break;
+                case NT::Sqrtabs:val = std::sqrt(std::abs(nodes_[ch[0]].Value));                         break;
+                case NT::Cbrt:   val = std::cbrt(nodes_[ch[0]].Value);                                    break;
+                case NT::Square: val = nodes_[ch[0]].Value * nodes_[ch[0]].Value;                        break;
+                case NT::Abs:    val = std::abs(nodes_[ch[0]].Value);                                     break;
+                case NT::Floor:  val = std::floor(nodes_[ch[0]].Value);                                   break;
+                case NT::Ceil:   val = std::ceil(nodes_[ch[0]].Value);                                    break;
+                default:         handled = false;                                                          break;
+                }
+                if (handled) {
+                    foldToConst(i, val); // n.Value == 1.0 for all function nodes
+                    changed = true;
+                    continue;
+                }
+            }
+
+            // --- Identity and annihilator rules ---
+            switch (n.Type) {
+            case NT::Add: {
+                auto newArity = n.Arity;
+                for (auto j : ch) {
+                    if (nodes_[j].IsConstant() && nodes_[j].Value == S{0}) {
+                        nodes_[j].IsEnabled = false;
+                        --newArity;
+                        changed = true;
+                    }
+                }
+                if      (newArity == 0) { foldToConst(i, S{0}); }
+                else if (newArity == 1) { n.IsEnabled = false; }
+                else                   { n.Arity = newArity; }
+                break;
+            }
+            case NT::Mul: {
+                bool hasZero = std::any_of(ch.begin(), ch.end(),
+                    [&](std::size_t j) { return nodes_[j].IsConstant() && nodes_[j].Value == S{0}; });
+                if (hasZero) { foldToConst(i, S{0}); changed = true; break; }
+                auto newArity = n.Arity;
+                for (auto j : ch) {
+                    if (nodes_[j].IsConstant() && nodes_[j].Value == S{1}) {
+                        nodes_[j].IsEnabled = false;
+                        --newArity;
+                        changed = true;
+                    }
+                }
+                if      (newArity == 0) { foldToConst(i, S{1}); }
+                else if (newArity == 1) { n.IsEnabled = false; }
+                else                   { n.Arity = newArity; }
+                break;
+            }
+            case NT::Sub: {
+                // Remove Const(0) subtrahends (all children except the first).
+                auto newArity = n.Arity;
+                for (std::size_t ci = 1; ci < ch.size(); ++ci) {
+                    auto j = ch[ci];
+                    if (nodes_[j].IsConstant() && nodes_[j].Value == S{0}) {
+                        nodes_[j].IsEnabled = false;
+                        --newArity;
+                        changed = true;
+                    }
+                }
+                if      (newArity == 0) { foldToConst(i, S{0}); }
+                else if (newArity == 1) { n.IsEnabled = false; } // only minuend left
+                else                   { n.Arity = newArity; }
+                break;
+            }
+            case NT::Div: {
+                // Remove Const(1) denominators (all children except the first).
+                auto newArity = n.Arity;
+                for (std::size_t ci = 1; ci < ch.size(); ++ci) {
+                    auto j = ch[ci];
+                    if (nodes_[j].IsConstant() && nodes_[j].Value == S{1}) {
+                        nodes_[j].IsEnabled = false;
+                        --newArity;
+                        changed = true;
+                    }
+                }
+                if      (newArity == 0) { foldToConst(i, S{1}); }
+                else if (newArity == 1) { n.IsEnabled = false; } // only numerator left
+                else                   { n.Arity = newArity; }
+                break;
+            }
+            case NT::Pow: {
+                if (ch.size() != 2) { break; }
+                auto const baseIdx = ch[0];
+                auto const expIdx  = ch[1];
+                if (nodes_[expIdx].IsConstant()) {
+                    if (nodes_[expIdx].Value == S{0}) {
+                        foldToConst(i, S{1}); changed = true; // x^0 = 1
+                    } else if (nodes_[expIdx].Value == S{1}) {
+                        nodes_[expIdx].IsEnabled = false;
+                        n.IsEnabled = false;               // x^1 = x
+                        changed = true;
+                    }
+                } else if (nodes_[baseIdx].IsConstant() && nodes_[baseIdx].Value == S{1}) {
+                    foldToConst(i, S{1}); changed = true;  // 1^x = 1
+                }
+                break;
+            }
+            case NT::Powabs: {
+                if (ch.size() != 2) { break; }
+                auto const expIdx = ch[1];
+                if (nodes_[expIdx].IsConstant() && nodes_[expIdx].Value == S{0}) {
+                    foldToConst(i, S{1}); changed = true;  // |x|^0 = 1
+                }
+                // Note: |x|^1 = |x| ≠ x in general, so we do NOT simplify Powabs(x,1).
+                break;
+            }
+            default: break;
+            }
+        }
+
+        if (changed) {
+            std::erase_if(nodes_, [](auto const& nd) { return !nd.IsEnabled; });
+            UpdateNodes();
+        }
     }
 
     return *this;
