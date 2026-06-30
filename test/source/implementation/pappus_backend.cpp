@@ -15,10 +15,12 @@
 #include <string>
 #include <utility>
 
+#include "../operon_test.hpp"
+
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
-#include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
+#include "operon/interpreter/interval_evaluator.hpp"
 
 namespace Operon::Test {
 
@@ -410,6 +412,22 @@ TEST_CASE("Affine backend: cbrt, log1p, floor, ceil, fmin, fmax", "[pappus][affi
         auto const r = eval.Evaluate(tree.GetCoefficients());
         REQUIRE(Contains(r, 2.0, 4.0, 1e-3));
     }
+    SECTION("floor([-1.5, 8.7]) -> contains [-2, 8]") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Floor)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{-1.5}, S{8.7}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(r, -2.0, 8.0, 1e-3));
+    }
+    SECTION("ceil([-1.5, 8.7]) -> contains [-1, 9]") {
+        auto tree = Operon::Tree({Var(X1), Operon::Node(Operon::NodeType::Ceil)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{-1.5}, S{8.7}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(r, -1.0, 9.0, 1e-3));
+    }
 }
 
 TEST_CASE("Interval backend: missing domain throws", "[pappus][interval]")
@@ -724,6 +742,175 @@ TEST_CASE("Affine backend: max_terms condensation", "[pappus][affine]")
         auto const r = eval.Evaluate(tree.GetCoefficients());
         // Still a valid (but potentially looser) enclosure of [1, 16]
         REQUIRE(Contains(r, 1.0, 16.0, 1e-2));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: Pow/Powabs child ordering — asymmetric domain detects j/k swap
+// ---------------------------------------------------------------------------
+// Post-order layout {X2, X1, Pow}: j = i-1 = index of X1 (LEFT = base),
+// k = j - (nodes[j].Length+1) = index of X2 (RIGHT = exponent).
+// Using asymmetric domains: pow([2,3],[1,2]) ⊇ [2,9].
+// Swapped: pow([1,2],[2,3]) ⊇ [1,8] — upper bound 8, not 9 — detects the bug.
+
+TEST_CASE("Interval backend: pow/powabs child ordering", "[pappus][interval]")
+{
+    constexpr Operon::Hash X1{1}, X2{2};
+
+    SECTION("pow(base=[2,3], exp=[1,2]) -> contains [2, 9]") {
+        // {X2, X1, Pow}: X1 is base (j=i-1), X2 is exponent (k).
+        Operon::Vector<Operon::Node> ns{Var(X2), Var(X1), Operon::Node(Operon::NodeType::Pow)};
+        auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{2}, S{3}};  // base
+        d[X2] = {S{1}, S{2}};  // exponent
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        // pow([2,3],[1,2]) = [2^1, 3^2] = [2, 9]
+        REQUIRE(r.inf() <= 2.0 + 1e-3);
+        REQUIRE(r.sup() + 1e-2 >= 9.0);
+    }
+
+    SECTION("powabs(base=[-3,2], exp=[2,3]) -> contains [0, 27]") {
+        // {X2, X1, Powabs}: abs(X1) is base, X2 is exponent.
+        Operon::Vector<Operon::Node> ns{Var(X2), Var(X1), Operon::Node(Operon::NodeType::Powabs)};
+        auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{-3}, S{2}};  // abs → [0, 3]
+        d[X2] = {S{2}, S{3}};   // exponent
+        IE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        // pow(abs([-3,2]), [2,3]) = pow([0,3], [2,3]) ⊇ [0, 27]
+        REQUIRE(r.inf() <= 0.0 + 1e-3);
+        REQUIRE(r.sup() + 1e-2 >= 27.0);
+    }
+}
+
+TEST_CASE("Affine backend: pow/powabs child ordering", "[pappus][affine]")
+{
+    constexpr Operon::Hash X1{1};
+
+    // The general affine pow(affine_base, affine_exp) approximation (which
+    // linearises both dimensions jointly) can fail to produce conservative bounds
+    // for some domains. We use a constant-node exponent so the evaluator takes
+    // the simpler affine::pow(T) path, which is conservative.
+    //
+    // Tree layout: {Const(exp), Var(X1), Pow/Powabs}
+    //   j = i-1 = index of Var (LEFT semantic = base)
+    //   k = j - (nodes[j].Length+1) = index of Const (RIGHT semantic = exponent)
+    //
+    // If j/k were swapped: pow(const, var) instead of pow(var, const).
+    //   Correct: pow([2,3], 2)   -> [4, ~9.6], sup > 9
+    //   Swapped: pow(2, [2,3])   -> [4, 8],    sup <= 8
+
+    SECTION("pow(base=[2,3], exp=const_2) -> enclosure contains [4, 9]") {
+        Operon::Vector<Operon::Node> ns{Const(2.0), Var(X1), Operon::Node(Operon::NodeType::Pow)};
+        auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{2}, S{3}};
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(r, 4.0, 9.0, 1e-2));
+        // Key: upper bound must reach 9, not just 8 (the swapped result).
+        REQUIRE(r.to_interval().sup() + 1e-2 >= 9.0);
+    }
+
+    // Powabs: base is X1 (abs applied), exponent is const.
+    // Use X1=[-3,-1] (all negative) so abs(X1)=-X1=[1,3] is exact (negation,
+    // no approximation error) and min(abs(X1))=1 > 0 so pow cannot throw.
+    //   Correct: pow(abs([-3,-1])=[1,3], 3) -> [1, 27]
+    //   Swapped: pow(abs(const_3)=3, [-3,-1]) -> 3^[-3,-1] ≈ [1/27, 1/3]
+
+    SECTION("powabs(base=[-3,-1], exp=const_3) -> enclosure contains [1, 27]") {
+        Operon::Vector<Operon::Node> ns{Const(3.0), Var(X1), Operon::Node(Operon::NodeType::Powabs)};
+        auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{-3}, S{-1}};  // all-negative: abs = exact negation, min(abs) = 1 > 0
+        AE eval(&tree, std::move(d));
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(r, 1.0, 27.0, 1e-2));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8: Performance benchmarks (nanobench, [pappus][performance])
+// ---------------------------------------------------------------------------
+// Tree: exp(X1 + X2) * X3 — mixes n-ary add, a transcendental, and mul.
+//
+// Phase 8a: Throughput of each backend per single Evaluate() call.
+// Phase 8b: Affine term-growth profile — how many noise terms the root form
+//           carries after each evaluation under max_terms=0 vs max_terms=4.
+// Phase 8c: max_terms policy decision (see comment below).
+// Phase 8d: aq/sqrtabs/logabs now use dedicated ops:: wrappers — 2-3 finalize
+//           calls → 1 per composite node.  The tree below doesn't exercise
+//           these directly; the Aq test above is the relevant regression.
+//
+// Scalar baseline: hand-written formula evaluated 1000× to anchor the cost
+// of the arithmetic itself vs pappus overhead.
+
+TEST_CASE("Pappus backends: evaluation throughput", "[pappus][performance]")
+{
+    namespace nb = ankerl::nanobench;
+
+    constexpr Operon::Hash X1{1}, X2{2}, X3{3};
+    Operon::Vector<Operon::Node> ns{
+        Var(X1), Var(X2), Operon::Node(Operon::NodeType::Add),
+        Operon::Node(Operon::NodeType::Exp),
+        Var(X3), Operon::Node(Operon::NodeType::Mul)};
+    auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+    auto coeffs = tree.GetCoefficients();
+
+    auto d = Domains();
+    d[X1] = {S{0}, S{1}};
+    d[X2] = {S{0}, S{1}};
+    d[X3] = {S{1}, S{2}};
+
+    nb::Bench b;
+    b.timeUnit(std::chrono::microseconds(1), "µs").minEpochIterations(1000);
+
+    // Scalar baseline: exp(x1 + x2) * x3 evaluated at the domain midpoints.
+    // Shows the floor cost of the arithmetic itself before pappus overhead.
+    b.run("scalar midpoint (baseline)", [&]() {
+        S x1{0.5}, x2{0.5}, x3{1.5};
+        nb::doNotOptimizeAway(std::exp(x1 + x2) * x3);
+    });
+
+    IE iev(&tree, IE::DomainMap{d});
+    b.run("interval Evaluate", [&]() {
+        nb::doNotOptimizeAway(iev.Evaluate(coeffs));
+    });
+
+    AE aev(&tree, AE::DomainMap{d});
+    b.run("affine Evaluate (max_terms=0)", [&]() {
+        nb::doNotOptimizeAway(aev.Evaluate(coeffs));
+    });
+
+    AE aev4(&tree, AE::DomainMap{d}, /*maxTerms=*/4);
+    b.run("affine Evaluate (max_terms=4)", [&]() {
+        nb::doNotOptimizeAway(aev4.Evaluate(coeffs));
+    });
+
+    // Phase 8b: term-growth report — call Evaluate once per config and print.
+    // Not timed; just measures state after one evaluation.
+    {
+        AE ev_unbounded(&tree, AE::DomainMap{d}, /*maxTerms=*/0);
+        auto const r_u = ev_unbounded.Evaluate(coeffs);
+        auto const terms_u = ev_unbounded.TermCount();
+
+        AE ev_4(&tree, AE::DomainMap{d}, /*maxTerms=*/4);
+        auto const r_4 = ev_4.Evaluate(coeffs);
+        auto const terms_4 = ev_4.TermCount();
+
+        // Sanity: both enclosures must agree (one is tighter, one is looser).
+        REQUIRE(r_u.to_interval().inf() <= r_4.to_interval().sup() + S{1e-2});
+        // The condensed form must not have more terms than its budget.
+        REQUIRE(terms_4 <= 4);
+        // The unbounded form should have at least as many terms (same or more).
+        // (Equal when the tree is shallow enough to stay within 4 terms anyway.)
+        REQUIRE(terms_u >= terms_4);
+        // Make term counts visible in verbose output.
+        INFO("term count (max_terms=0): " << terms_u);
+        INFO("term count (max_terms=4): " << terms_4);
     }
 }
 
