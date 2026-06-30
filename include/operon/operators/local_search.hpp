@@ -23,7 +23,6 @@ public:
         : optimizer_(optimizer)
     { }
 
-    // convenience
     auto operator()(Operon::RandomGenerator& rng, Operon::Tree tree) const -> std::tuple<Operon::Tree, OptimizerSummary> override;
 
 private:

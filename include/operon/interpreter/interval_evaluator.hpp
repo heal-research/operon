@@ -236,10 +236,10 @@ public:
                 primal_[i] = pappus::ops::abs<Scalar>(primal_[i - 1]) * v;
                 break;
             case NodeType::Sqrtabs:
-                primal_[i] = pappus::ops::sqrt<Scalar>(pappus::ops::abs<Scalar>(primal_[i - 1])) * v;
+                primal_[i] = pappus::ops::sqrtabs<Scalar>(primal_[i - 1]) * v;
                 break;
             case NodeType::Logabs:
-                primal_[i] = pappus::ops::log<Scalar>(pappus::ops::abs<Scalar>(primal_[i - 1])) * v;
+                primal_[i] = pappus::ops::logabs<Scalar>(primal_[i - 1]) * v;
                 break;
             case NodeType::Powabs: {
                 auto const j = static_cast<std::size_t>(i - 1);
@@ -250,10 +250,7 @@ public:
             case NodeType::Aq: {
                 auto const j = static_cast<std::size_t>(i - 1);
                 auto const k = j - (nodes[j].Length + 1);
-                // x / sqrt(1 + y*y) — composable from existing ops
-                auto const one = pappus::ops::constant<Scalar>(Scalar{1});
-                auto const y2 = pappus::ops::square<Scalar>(primal_[k]);
-                primal_[i] = pappus::ops::div<Scalar>(primal_[j], pappus::ops::sqrt<Scalar>(pappus::ops::add<Scalar>(one, y2))) * v;
+                primal_[i] = pappus::ops::aq<Scalar>(primal_[j], primal_[k]) * v;
                 break;
             }
             case NodeType::Fmin:

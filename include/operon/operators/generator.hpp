@@ -73,7 +73,7 @@ public:
         }
 
         auto evaluate = [&]() {
-            if (BernoulliTrial{pLocal}(random)) {
+            if (coeffOptimizer_ != nullptr && BernoulliTrial{pLocal}(random)) {
                 auto c = res.Child->Genotype.GetCoefficients(); // save original coefficients
                 auto t0 = std::chrono::steady_clock::now();
                 auto [optimizedTree, summary] = (*Optimizer())(random, std::move(res.Child->Genotype));

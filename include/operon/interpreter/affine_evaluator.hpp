@@ -50,8 +50,11 @@ namespace Operon {
 // `interval::empty()` (NaN bounds) silently. See the pappus handoff doc:
 // "interval and affine do not have identical domain semantics".
 //
-// `max_terms` policy: defaults to `0` (unbounded / exact). Set a finite budget
-// only if affine term growth becomes a profiling concern.
+// `max_terms` policy (Phase 8c): defaults to `0` (unbounded / exact). There is
+// no build-time default — the right budget depends on tree depth and how many
+// Evaluate() calls are composed, which varies per GP individual. Expose it only
+// as a per-instance constructor argument. Set a finite budget only after
+// profiling confirms term growth is a bottleneck (TermCount() helps measure).
 class AffineEvaluator {
 public:
     using Scalar = Operon::Scalar;
@@ -71,6 +74,11 @@ public:
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
     [[nodiscard]] auto Domains() const noexcept -> DomainMap const& { return domains_; }
     [[nodiscard]] auto GetContext() const noexcept -> Context const& { return ctx_; }
+    // Number of noise terms in the last root result (0 if Evaluate has not been called).
+    // Useful for profiling affine term growth under different max_terms settings.
+    [[nodiscard]] auto TermCount() const noexcept -> std::size_t {
+        return primal_.empty() ? 0 : primal_.back().size();
+    }
 
     // The affine interval enclosure of the root.
     [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Affine
@@ -239,14 +247,7 @@ public:
             case NodeType::Aq: {
                 auto const j = static_cast<std::size_t>(i - 1);
                 auto const k = j - (nodes[j].Length + 1);
-                // x / sqrt(1 + y*y) — composable from existing ops.
-                // TODO(perf): this allocates 3 intermediate affine_form objects
-                // (one, y2, denom) each carrying full noise-term vectors. A
-                // dedicated pappus::ops::aq(ctx, x, y) would reduce this to one.
-                auto const one = pappus::ops::constant<Scalar>(ctx_, Scalar{1});
-                auto const y2 = pappus::ops::square<Scalar>(ctx_, primal_[k]);
-                auto const denom = pappus::ops::sqrt<Scalar>(ctx_, pappus::ops::add<Scalar>(ctx_, one, y2));
-                primal_.push_back(pappus::ops::div<Scalar>(ctx_, primal_[j], denom) * v);
+                primal_.push_back(pappus::ops::aq<Scalar>(ctx_, primal_[j], primal_[k]) * v);
                 break;
             }
             case NodeType::Abs:
@@ -254,10 +255,10 @@ public:
                 primal_.push_back(pappus::ops::abs<Scalar>(ctx_, primal_[i - 1]) * v);
                 break;
             case NodeType::Sqrtabs:
-                primal_.push_back(pappus::ops::sqrt<Scalar>(ctx_, pappus::ops::abs<Scalar>(ctx_, primal_[i - 1])) * v);
+                primal_.push_back(pappus::ops::sqrtabs<Scalar>(ctx_, primal_[i - 1]) * v);
                 break;
             case NodeType::Logabs:
-                primal_.push_back(pappus::ops::log<Scalar>(ctx_, pappus::ops::abs<Scalar>(ctx_, primal_[i - 1])) * v);
+                primal_.push_back(pappus::ops::logabs<Scalar>(ctx_, primal_[i - 1]) * v);
                 break;
             case NodeType::Powabs: {
                 auto const j = static_cast<std::size_t>(i - 1);
