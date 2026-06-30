@@ -240,6 +240,55 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(1.0));
     }
+
+    SECTION("strength reduction: Pow(x, 2) -> Square(x)") {
+        // [Const(2), Var, Pow]: base=Var (ch[0]=i-1), exp=Const(2) (ch[1])
+        Operon::Vector<Node> ns{ Const(2), Var(), Node(NT::Pow) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 2);
+        CHECK(tree[1].Type == NT::Square);
+        CHECK(tree[0].IsVariable());
+    }
+
+    SECTION("strength reduction: Pow(x, 0.5) -> Sqrt(x)") {
+        Operon::Vector<Node> ns{ Const(0.5), Var(), Node(NT::Pow) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 2);
+        CHECK(tree[1].Type == NT::Sqrt);
+        CHECK(tree[0].IsVariable());
+    }
+
+    SECTION("structural inverse: Log(Exp(x)) -> x") {
+        // [Var, Exp, Log] in post-order
+        Operon::Vector<Node> ns{ Var(), Node(NT::Exp), Node(NT::Log) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 1);
+        CHECK(tree[0].IsVariable());
+    }
+
+    SECTION("structural inverse: Logabs(Exp(x)) -> x") {
+        Operon::Vector<Node> ns{ Var(), Node(NT::Exp), Node(NT::Logabs) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 1);
+        CHECK(tree[0].IsVariable());
+    }
+
+    SECTION("structural inverse: Sqrt(Square(x)) -> Abs(x)") {
+        // [Var, Square, Sqrt] in post-order
+        Operon::Vector<Node> ns{ Var(), Node(NT::Square), Node(NT::Sqrt) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 2);
+        CHECK(tree[1].Type == NT::Abs);
+        CHECK(tree[0].IsVariable());
+    }
+
+    SECTION("structural inverse: Sqrtabs(Square(x)) -> Abs(x)") {
+        Operon::Vector<Node> ns{ Var(), Node(NT::Square), Node(NT::Sqrtabs) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 2);
+        CHECK(tree[1].Type == NT::Abs);
+        CHECK(tree[0].IsVariable());
+    }
 }
 
 } // namespace Operon::Test
