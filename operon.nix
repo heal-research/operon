@@ -5,7 +5,6 @@
   enableShared ? true,
   enableTesting ? true,
   enablePappus ? false,
-  pappusInclude ? "",
 }:
 stdenv.mkDerivation rec {
   name = "operon";
@@ -27,7 +26,6 @@ stdenv.mkDerivation rec {
     ]
     ++ pkgs.lib.optionals enablePappus [
       "-DOPERON_ENABLE_PAPPUS=ON"
-      "-DPAPPUS_INCLUDE_DIR=${pappusInclude}"
     ];
   cmakeBuildType = "Release";
 
@@ -36,41 +34,51 @@ stdenv.mkDerivation rec {
     git
   ];
 
-  buildInputs =
+  # Deps that cmake/install-config.cmake `find_dependency()`s for consumers of
+  # `find_package(operon CONFIG REQUIRED)` (e.g. pyoperon) must be resolvable
+  # via CMAKE_PREFIX_PATH downstream too, regardless of whether they show up
+  # in operon's public C++ headers — install-config.cmake calls these
+  # unconditionally, even the ones it labels "needed for static library".
+  propagatedBuildInputs =
     (with pkgs; [
-      asmjit
       aria-csv
       cpp-sort
-      cpptrace
-      cxxopts
       eigen
       eve
-      fast-float
       fluky
       fmt_11
-      glaze
       gtl
-      icu
       lbfgs
       libassert
-      libdwarf
       mdspan
       microsoft-gsl
-      ndsort
-      pkg-config
-      infix-parser
-      (scnlib.overrideAttrs { inherit enableShared; })
-      simdutf # required by scnlib
       taskflow
       tl-expected
       unordered_dense
-      vdt
       vstat
+      infix-parser
+    ])
+    ++ (with pkgs; pkgs.lib.optionals enablePappus [ pappus ]);
+
+  # Deps only used in .cpp implementation files or by CLI/test binaries; not
+  # required at compile time by consumers of operon's headers, and not
+  # find_dependency()'d by install-config.cmake.
+  buildInputs =
+    (with pkgs; [
+      asmjit
+      cpptrace
+      cxxopts
+      fast-float
+      glaze
+      icu
+      libdwarf
+      ndsort
+      pkg-config
+      (scnlib.overrideAttrs { inherit enableShared; })
+      simdutf # required by scnlib
+      vdt
       xxHash
       zstd
-    ])
-    ++ (with pkgs; pkgs.lib.optionals enablePappus [
-      gch-small-vector
     ])
     ++ (
       with pkgs;
