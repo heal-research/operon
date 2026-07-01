@@ -108,25 +108,15 @@ find_package(vstat REQUIRED)
 find_package(xxHash)
 
 # ---- Optional: pappus (interval/affine arithmetic backends) ----
-# pappus is a header-only library (https://github.com/.../pappus) providing
-# `pappus::interval<T>` and `pappus::affine_form<T>`. Enable it to compile the
-# IntervalEvaluator / AffineEvaluator headers and their tests.
+# pappus (https://github.com/heal-research/pappus) provides `pappus::interval<T>`
+# and `pappus::affine_form<T>`. Enable it to compile the IntervalEvaluator /
+# AffineEvaluator headers and their tests.
 # Consumed only by the test target for now; the evaluator headers themselves are
 # header-only and live under include/operon/interpreter/.
 set(OPERON_ENABLE_PAPPUS OFF CACHE BOOL "Enable pappus interval/affine backends")
-set(PAPPUS_INCLUDE_DIR "" CACHE PATH "Path to pappus/src include directory")
 if(OPERON_ENABLE_PAPPUS)
-    if(NOT PAPPUS_INCLUDE_DIR OR NOT EXISTS "${PAPPUS_INCLUDE_DIR}/pappus.hpp")
-        message(FATAL_ERROR "OPERON_ENABLE_PAPPUS=ON requires PAPPUS_INCLUDE_DIR pointing at pappus/src (got '${PAPPUS_INCLUDE_DIR}')")
-    endif()
-    find_package(small_vector REQUIRED)
-    add_library(operon_pappus INTERFACE)
-    target_include_directories(operon_pappus INTERFACE "${PAPPUS_INCLUDE_DIR}")
-    target_link_libraries(operon_pappus INTERFACE gch::small_vector eve::eve)
-    # Match pappus's own build default (directed rounding for sound interval bounds).
-    target_compile_definitions(operon_pappus INTERFACE DIRECTED_ROUNDING)
-    add_library(operon::pappus ALIAS operon_pappus)
-    message(STATUS "Pappus: enabled (include: ${PAPPUS_INCLUDE_DIR})")
+    find_package(pappus REQUIRED)
+    message(STATUS "Pappus: enabled")
 endif()
 
 if(xxHash_FOUND)

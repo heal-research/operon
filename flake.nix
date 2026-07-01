@@ -11,6 +11,7 @@
     ndsort.url = "github://git@github.com/foolnotion/ndsort";
     vstat.url = "github:heal-research/vstat";
     vdt.url = "github:foolnotion/vdt/master";
+    pappus.url = "github:heal-research/pappus";
 
     # make everything follow nixpkgs
     foolnotion.inputs.nixpkgs.follows = "nixpkgs";
@@ -21,13 +22,8 @@
     vstat.inputs.foolnotion.follows = "foolnotion";
     vdt.inputs.nixpkgs.follows = "nixpkgs";
     fluky.inputs.nixpkgs.follows = "nixpkgs";
-
-    # To enable the pappus interval/affine backends locally, add:
-    #   pappus.url = "path:/home/bogdb/src/pappus";
-    #   pappus.inputs.nixpkgs.follows = "nixpkgs";
-    # and pass `enablePappus = true; pappusInclude = "${pappus.outPath}/src";`
-    # to the operon derivation below. Pappus is not yet published as a flake
-    # input — a local path breaks CI and other machines, so it is opt-in.
+    pappus.inputs.nixpkgs.follows = "nixpkgs";
+    pappus.inputs.foolnotion.follows = "foolnotion";
   };
 
   outputs =
@@ -42,6 +38,7 @@
       vdt,
       vstat,
       lbfgs,
+      pappus,
     }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
@@ -66,6 +63,7 @@
                 ndsort = ndsort.packages.${system}.default;
                 vdt = vdt.packages.${system}.default;
                 vstat = vstat.packages.${system}.default;
+                pappus = pappus.packages.${system}.default;
               })
             ];
           };
@@ -146,20 +144,22 @@
             buildInputs =
               operon.buildInputs
               ++ [ pkgs.asmjit ]
-              ++ (with pkgs; pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") (
+              ++ (
                 with pkgs;
-                [
-                  gdb
-                  graphviz
-                  hyperfine
-                  linuxPackages.perf
-                ]
-              ))
-              ++ (with pkgs; [
-                # pappus development: needed when building with
-                # -DOPERON_ENABLE_PAPPUS=ON -DPAPPUS_INCLUDE_DIR=...
-                gch-small-vector
-              ]);
+                pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") (
+                  with pkgs;
+                  [
+                    gdb
+                    graphviz
+                    hyperfine
+                    perf
+                  ]
+                )
+              )
+              ++ [
+                # pappus: needed when building with -DOPERON_ENABLE_PAPPUS=ON
+                pkgs.pappus
+              ];
           };
 
           apps.operon-gp.program = "${packages.default}/bin/operon_gp";
