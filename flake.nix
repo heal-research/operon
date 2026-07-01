@@ -69,10 +69,11 @@
           };
           enableShared = !pkgs.stdenv.hostPlatform.isStatic;
           enableTesting = true;
+          enableAsmjit = true;
           inherit (pkgs.llvmPackages_21) stdenv;
           operon = import ./operon.nix {
             inherit stdenv pkgs system;
-            inherit enableShared enableTesting;
+            inherit enableShared enableTesting enableAsmjit;
           };
         in
         rec {
@@ -143,7 +144,7 @@
 
             buildInputs =
               operon.buildInputs
-              ++ [ pkgs.asmjit ]
+              ++ operon.propagatedBuildInputs
               ++ (
                 with pkgs;
                 pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") (

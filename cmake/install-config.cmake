@@ -3,6 +3,7 @@ include(CMakeFindDependencyMacro)
 # PUBLIC dependencies
 find_dependency(Eigen3 CONFIG REQUIRED)
 find_dependency(Threads REQUIRED)
+find_dependency(asmjit CONFIG REQUIRED)
 find_dependency(fluky CONFIG REQUIRED)
 find_dependency(fmt CONFIG REQUIRED)
 find_dependency(lbfgs CONFIG REQUIRED)
