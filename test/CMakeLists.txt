@@ -57,7 +57,7 @@ add_executable(operon_test
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
 if(OPERON_ENABLE_PAPPUS)
-    target_link_libraries(operon_test PRIVATE operon::pappus)
+    target_link_libraries(operon_test PRIVATE pappus::pappus)
     target_compile_definitions(operon_test PRIVATE OPERON_ENABLE_PAPPUS)
 endif()
 if(vdt_FOUND)

@@ -1,5 +1,34 @@
 {
   "nodes": {
+    "aaflib": {
+      "inputs": {
+        "flake-parts": [
+          "pappus",
+          "flake-parts"
+        ],
+        "foolnotion": [
+          "pappus",
+          "foolnotion"
+        ],
+        "nixpkgs": [
+          "pappus",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782807344,
+        "narHash": "sha256-oVhEuu6rEiI2gCz1dY+qe0dOm1UIOqU2qLH8ICZfTSw=",
+        "owner": "foolnotion",
+        "repo": "aaflib",
+        "rev": "af154f66d79998f5b0c9d5f185f6d3d49a859547",
+        "type": "github"
+      },
+      "original": {
+        "owner": "foolnotion",
+        "repo": "aaflib",
+        "type": "github"
+      }
+    },
     "flake-parts": {
       "inputs": {
         "nixpkgs-lib": "nixpkgs-lib"
@@ -95,6 +124,24 @@
         "nixpkgs-lib": "nixpkgs-lib_6"
       },
       "locked": {
+        "lastModified": 1778716662,
+        "narHash": "sha256-m1Yf0wZ8j1OHjTc2UwHwyQRSnNeSgLJOd7q5Y45hzi4=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "f7c1a2d347e4c52d5fb8d10cb4d94b5884e546fb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "flake-parts_7": {
+      "inputs": {
+        "nixpkgs-lib": "nixpkgs-lib_7"
+      },
+      "locked": {
         "lastModified": 1715865404,
         "narHash": "sha256-/GJvTdTpuDjNn84j82cU6bXztE0MSkdnTWClUCRub78=",
         "owner": "hercules-ci",
@@ -108,9 +155,9 @@
         "type": "github"
       }
     },
-    "flake-parts_7": {
+    "flake-parts_8": {
       "inputs": {
-        "nixpkgs-lib": "nixpkgs-lib_7"
+        "nixpkgs-lib": "nixpkgs-lib_8"
       },
       "locked": {
         "lastModified": 1765835352,
@@ -283,11 +330,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1772374010,
-        "narHash": "sha256-2HpYuMXUsPn9fNvbVQiC5T1chKF2eiaA4d3yazGSD7k=",
+        "lastModified": 1782905002,
+        "narHash": "sha256-nfztYPI4FNwU5zdx11nrLeEI+G25HHxd+pGplhi90U0=",
         "owner": "foolnotion",
         "repo": "lbfgs",
-        "rev": "b2e339b7d169ec3905f0f724958ed060acf592c9",
+        "rev": "3033b8ae5e6b2d513bdea564802bc34c065f18f5",
         "type": "github"
       },
       "original": {
@@ -411,6 +458,21 @@
     },
     "nixpkgs-lib_6": {
       "locked": {
+        "lastModified": 1777168982,
+        "narHash": "sha256-GOkGPcboWE9BmGCRMLX3worL4EMnsnG8MyKmXNeYuhQ=",
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "rev": "f5901329dade4a6ea039af1433fb087bd9c1fe14",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "type": "github"
+      }
+    },
+    "nixpkgs-lib_7": {
+      "locked": {
         "lastModified": 1714640452,
         "narHash": "sha256-QBx10+k6JWz6u7VsohfSw8g8hjdBZEf8CFzXH1/1Z94=",
         "type": "tarball",
@@ -421,7 +483,7 @@
         "url": "https://github.com/NixOS/nixpkgs/archive/50eb7ecf4cd0a5756d7275c8ba36790e5bd53e33.tar.gz"
       }
     },
-    "nixpkgs-lib_7": {
+    "nixpkgs-lib_8": {
       "locked": {
         "lastModified": 1765674936,
         "narHash": "sha256-k00uTP4JNfmejrCLJOwdObYC9jHRrr/5M/a/8L2EIdo=",
@@ -436,6 +498,31 @@
         "type": "github"
       }
     },
+    "pappus": {
+      "inputs": {
+        "aaflib": "aaflib",
+        "flake-parts": "flake-parts_6",
+        "foolnotion": [
+          "foolnotion"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782812473,
+        "narHash": "sha256-zKN5lJr6V4l7o/etyhy67BMuoONgc71qAud3ee2qfE8=",
+        "owner": "heal-research",
+        "repo": "pappus",
+        "rev": "ef1dd6b80f296f4c8e646a0eeda9b00a4ae40544",
+        "type": "github"
+      },
+      "original": {
+        "owner": "heal-research",
+        "repo": "pappus",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-parts": "flake-parts",
@@ -445,13 +532,14 @@
         "lbfgs": "lbfgs",
         "ndsort": "ndsort",
         "nixpkgs": "nixpkgs",
+        "pappus": "pappus",
         "vdt": "vdt",
         "vstat": "vstat"
       }
     },
     "vdt": {
       "inputs": {
-        "flake-parts": "flake-parts_6",
+        "flake-parts": "flake-parts_7",
         "nixpkgs": [
           "nixpkgs"
         ]
@@ -473,7 +561,7 @@
     },
     "vstat": {
       "inputs": {
-        "flake-parts": "flake-parts_7",
+        "flake-parts": "flake-parts_8",
         "foolnotion": [
           "foolnotion"
         ],
