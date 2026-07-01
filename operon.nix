@@ -5,6 +5,7 @@
   enableShared ? true,
   enableTesting ? true,
   enablePappus ? false,
+  enableAsmjit ? true,
 }:
 stdenv.mkDerivation rec {
   name = "operon";
@@ -22,6 +23,7 @@ stdenv.mkDerivation rec {
     [
       "--preset ${cmakePreset}"
       "-DUSE_SINGLE_PRECISION=ON"
+      "-DUSE_ASMJIT=${if enableAsmjit then "ON" else "OFF"}"
       "-DBUILD_SHARED_LIBS=${if enableShared then "YES" else "NO"}"
     ]
     ++ pkgs.lib.optionals enablePappus [
@@ -58,6 +60,7 @@ stdenv.mkDerivation rec {
       vstat
       infix-parser
     ])
+    ++ (with pkgs; pkgs.lib.optionals enableAsmjit [ asmjit ])
     ++ (with pkgs; pkgs.lib.optionals enablePappus [ pappus ]);
 
   # Deps only used in .cpp implementation files or by CLI/test binaries; not
@@ -65,7 +68,6 @@ stdenv.mkDerivation rec {
   # find_dependency()'d by install-config.cmake.
   buildInputs =
     (with pkgs; [
-      asmjit
       cpptrace
       cxxopts
       fast-float

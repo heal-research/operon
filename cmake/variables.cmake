@@ -12,12 +12,12 @@ if(PROJECT_IS_TOP_LEVEL)
   set(JEMALLOC_DESCRIPTION             "Link against jemalloc, a general purpose malloc(3) implementation that emphasizes fragmentation avoidance and scalable concurrency support [default=OFF].")
   set(USE_SINGLE_PRECISION_DESCRIPTION "Perform model evaluation using floats (single precision) instead of doubles. Great for reducing runtime, might not be appropriate for all purposes [default=OFF].")
   set(MATH_BACKEND_DESCRIPTION         "Math library for tree evaluation: Eve (default), MadEve (approximate SIMD), Stl (scalar reference)")
-  set(USE_ASMJIT_DESCRIPTION           "Use asmjit to JIT-compile trees to native x86-64 (compiled functions keyed by Zobrist hash, reused across structurally-identical individuals) [default=OFF].")
+  set(USE_ASMJIT_DESCRIPTION           "Use asmjit to JIT-compile trees to native x86-64 (compiled functions keyed by Zobrist hash, reused across structurally-identical individuals) [default=ON].")
 
   # option descriptions
   option(USE_JEMALLOC         ${JEMALLOC_DESCRIPTION}             OFF)
   option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION}  ON)
-  option(USE_ASMJIT           ${USE_ASMJIT_DESCRIPTION}          OFF)
+  option(USE_ASMJIT           ${USE_ASMJIT_DESCRIPTION}          ON)
   option(MATH_BACKEND         ${MATH_BACKEND_DESCRIPTION}        "Eve")
 
   # provide a summary of configured options
