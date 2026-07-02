@@ -28,7 +28,7 @@
 #  pragma GCC diagnostic ignored "-Wmacro-redefined"
 #  pragma GCC diagnostic ignored "-Wdeprecated-copy-with-user-provided-copy"
 #endif
-#include <pappus.hpp>
+#include <pappus/pappus.hpp>
 #if defined(__clang__)
 #  pragma clang diagnostic pop
 #elif defined(__GNUC__)
