@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <ankerl/unordered_dense.h>
 #include <array>
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <iterator>
 #include <stdexcept>
 #include <string>
