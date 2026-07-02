@@ -11,6 +11,7 @@ find_dependency(libassert CONFIG REQUIRED)
 find_dependency(infix-parser CONFIG REQUIRED)
 find_dependency(mdspan CONFIG REQUIRED)
 find_dependency(vstat CONFIG REQUIRED)
+find_dependency(pappus CONFIG REQUIRED)
 
 # INTERFACE dependencies
 find_dependency(eve CONFIG REQUIRED)

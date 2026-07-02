@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
-//
-// Compiled only when pappus is enabled (OPERON_ENABLE_PAPPUS). Otherwise this
-// translation unit is empty so the test executable builds without pappus.
-
-#ifdef OPERON_ENABLE_PAPPUS
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -915,5 +910,3 @@ TEST_CASE("Pappus backends: evaluation throughput", "[pappus][performance]")
 }
 
 } // namespace Operon::Test
-
-#endif // OPERON_ENABLE_PAPPUS

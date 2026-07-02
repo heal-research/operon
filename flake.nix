@@ -158,7 +158,8 @@
                 )
               )
               ++ [
-                # pappus: needed when building with -DOPERON_ENABLE_PAPPUS=ON
+                # pappus: always required — IntervalEvaluator/AffineEvaluator
+                # are public headers with an unconditional pappus dependency.
                 pkgs.pappus
               ];
           };
