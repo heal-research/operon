@@ -49,11 +49,13 @@ stdenv.mkDerivation rec {
       eve
       fluky
       fmt_11
+      glaze
       gtl
       lbfgs
       libassert
       mdspan
       microsoft-gsl
+      ndsort
       taskflow
       tl-expected
       unordered_dense
@@ -71,10 +73,8 @@ stdenv.mkDerivation rec {
       cpptrace
       cxxopts
       fast-float
-      glaze
       icu
       libdwarf
-      ndsort
       pkg-config
       (scnlib.overrideAttrs { inherit enableShared; })
       simdutf # required by scnlib
