@@ -2,9 +2,6 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 //
 // Phase 9: NSGA2 integration test — full evolutionary run + pappus bounds check.
-// Compiled only when pappus is enabled (OPERON_ENABLE_PAPPUS). Otherwise empty.
-
-#ifdef OPERON_ENABLE_PAPPUS
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -196,5 +193,3 @@ TEST_CASE("NSGA2 Pareto front: interval bounds are valid", "[pappus][nsgp]")
 }
 
 } // namespace Operon::Test
-
-#endif // OPERON_ENABLE_PAPPUS

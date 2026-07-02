@@ -107,17 +107,13 @@ find_package(ndsort REQUIRED)
 find_package(vstat REQUIRED)
 find_package(xxHash)
 
-# ---- Optional: pappus (interval/affine arithmetic backends) ----
+# ---- pappus (interval/affine arithmetic backends) ----
 # pappus (https://github.com/heal-research/pappus) provides `pappus::interval<T>`
-# and `pappus::affine_form<T>`. Enable it to compile the IntervalEvaluator /
-# AffineEvaluator headers and their tests.
-# Consumed only by the test target for now; the evaluator headers themselves are
-# header-only and live under include/operon/interpreter/.
-set(OPERON_ENABLE_PAPPUS OFF CACHE BOOL "Enable pappus interval/affine backends")
-if(OPERON_ENABLE_PAPPUS)
-    find_package(pappus REQUIRED)
-    message(STATUS "Pappus: enabled")
-endif()
+# and `pappus::affine_form<T>`, used by the public IntervalEvaluator /
+# AffineEvaluator headers under include/operon/interpreter/. Those headers
+# unconditionally `#include <pappus/pappus.hpp>` with no fallback, so pappus
+# is a real public dependency of operon_operon, not an optional add-on.
+find_package(pappus REQUIRED)
 
 if(xxHash_FOUND)
     target_link_libraries(operon_operon PRIVATE xxHash::xxhash)
@@ -238,6 +234,7 @@ target_link_libraries(operon_operon PUBLIC
     infix-parser::infix-parser # required by infix parser
     vstat::vstat
     std::mdspan
+    pappus::pappus # required by IntervalEvaluator/AffineEvaluator
 )
 
 target_link_libraries(operon_operon PRIVATE

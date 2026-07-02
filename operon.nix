@@ -4,7 +4,6 @@
   system,
   enableShared ? true,
   enableTesting ? true,
-  enablePappus ? false,
   enableAsmjit ? true,
 }:
 stdenv.mkDerivation rec {
@@ -19,16 +18,12 @@ stdenv.mkDerivation rec {
     }
     ."${system}";
 
-  cmakeFlags =
-    [
-      "--preset ${cmakePreset}"
-      "-DUSE_SINGLE_PRECISION=ON"
-      "-DUSE_ASMJIT=${if enableAsmjit then "ON" else "OFF"}"
-      "-DBUILD_SHARED_LIBS=${if enableShared then "YES" else "NO"}"
-    ]
-    ++ pkgs.lib.optionals enablePappus [
-      "-DOPERON_ENABLE_PAPPUS=ON"
-    ];
+  cmakeFlags = [
+    "--preset ${cmakePreset}"
+    "-DUSE_SINGLE_PRECISION=ON"
+    "-DUSE_ASMJIT=${if enableAsmjit then "ON" else "OFF"}"
+    "-DBUILD_SHARED_LIBS=${if enableShared then "YES" else "NO"}"
+  ];
   cmakeBuildType = "Release";
 
   nativeBuildInputs = with pkgs; [
@@ -56,14 +51,14 @@ stdenv.mkDerivation rec {
       mdspan
       microsoft-gsl
       ndsort
+      pappus
       taskflow
       tl-expected
       unordered_dense
       vstat
       infix-parser
     ])
-    ++ (with pkgs; pkgs.lib.optionals enableAsmjit [ asmjit ])
-    ++ (with pkgs; pkgs.lib.optionals enablePappus [ pappus ]);
+    ++ (with pkgs; pkgs.lib.optionals enableAsmjit [ asmjit ]);
 
   # Deps only used in .cpp implementation files or by CLI/test binaries; not
   # required at compile time by consumers of operon's headers, and not
