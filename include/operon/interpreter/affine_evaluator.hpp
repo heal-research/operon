@@ -4,7 +4,7 @@
 #ifndef OPERON_AFFINE_EVALUATOR_HPP
 #define OPERON_AFFINE_EVALUATOR_HPP
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <gsl/pointers>
 #include <optional>
 #include <stdexcept>
