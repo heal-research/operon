@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <ranges>
 #include <cstdint>
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <random>
 #include <stdexcept>
 #include <tuple>
