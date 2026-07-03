@@ -35,6 +35,12 @@ auto MinimumDescriptionLength(Tree const& tree, Operon::Span<Operon::Scalar cons
 {
     constexpr auto eps               = std::numeric_limits<Operon::Scalar>::epsilon();
     constexpr auto uniformPriorScale = 12.0; // di = sqrt(12 / fi) comes from Var(Uniform[-c,c]) = (2c)²/12.
+    // Generous floating-point safety margin for the Fisher diagonal's PSD
+    // invariant (J^T J / sigma^2 is PSD in exact arithmetic, but near-zero
+    // entries can round slightly negative) — not a statistical/physical
+    // bound, just noise tolerance. Matches the eigenvalue guard used for
+    // the same reason in the (experimental) joint-Fisher-matrix variant.
+    constexpr auto fisherNoiseFloor  = -1e-8;
 
     auto [k, fCompl] = WeightedComplexity(tree);
     (void)k;
@@ -45,7 +51,18 @@ auto MinimumDescriptionLength(Tree const& tree, Operon::Span<Operon::Scalar cons
     auto pi          = 0;
     for (auto const& node : tree.Nodes()) {
         if (node.Optimize) {
-            auto const fi = static_cast<double>(fisherDiag(pi));
+            auto fi = static_cast<double>(fisherDiag(pi));
+            // fi == 0 is legitimate (a parameter with zero Fisher information
+            // truly carries no cost — handled below via the ordinary
+            // isfinite(di) quantization check, since sqrt(12/0) = inf).
+            // Non-finite, or negative beyond plausible rounding noise, instead
+            // violates the Fisher diagonal's PSD invariant and signals
+            // invalid/corrupted input upstream, not "no information" — flag
+            // rather than silently charging zero cost. A tiny negative value
+            // within the noise floor is clamped to 0 and falls through to the
+            // same legitimate-zero-info handling.
+            if (!std::isfinite(fi) || fi < fisherNoiseFloor) { return std::numeric_limits<double>::quiet_NaN(); }
+            fi = std::max(fi, 0.0);
             auto const di = std::sqrt(uniformPriorScale / fi);
             auto const ci = std::abs(static_cast<double>(coeffs[pi]));
             if (std::isfinite(ci) && std::isfinite(di) && ci / di >= 1.0) {

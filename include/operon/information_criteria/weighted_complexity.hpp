@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#ifndef OPERON_METRICS_WEIGHTED_COMPLEXITY_HPP
-#define OPERON_METRICS_WEIGHTED_COMPLEXITY_HPP
+#ifndef OPERON_INFORMATION_CRITERIA_WEIGHTED_COMPLEXITY_HPP
+#define OPERON_INFORMATION_CRITERIA_WEIGHTED_COMPLEXITY_HPP
 
 #include <cmath>
 #include <utility>

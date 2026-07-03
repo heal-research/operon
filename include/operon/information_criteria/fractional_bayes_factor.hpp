@@ -23,6 +23,8 @@ namespace Operon {
 // negative log-likelihood).
 inline auto FractionalBayesFactor(Tree const& tree, double n, double nll) -> double
 {
+    if (!(n > 0.0) || !std::isfinite(n)) { return std::numeric_limits<double>::quiet_NaN(); }
+
     auto const p = static_cast<double>(std::count_if(tree.Nodes().begin(), tree.Nodes().end(),
                                                        [](auto const& node) -> bool { return node.Optimize; }));
     auto [k, fCompl] = WeightedComplexity(tree);
