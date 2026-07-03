@@ -14,6 +14,9 @@
 #include "operon/core/operator.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/types.hpp"
+#include "operon/information_criteria/fractional_bayes_factor.hpp"
+#include "operon/information_criteria/minimum_description_length.hpp"
+#include "operon/information_criteria/weighted_complexity.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operon_export.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
@@ -383,7 +386,6 @@ public:
         auto const* dtable = Base::GetDispatchTable();
         auto const* problem = Base::GetProblem();
         auto const* dataset = problem->GetDataset();
-        auto const& nodes = ind.Genotype.Nodes();
 
         // this call will optimize the tree coefficients and compute the SSE
         auto const& tree = ind.Genotype;
@@ -415,63 +417,14 @@ public:
             ? std::span<Operon::Scalar const>{&profiledSigma, 1}  // profiled
             : std::span<Operon::Scalar const>{sigma_};             // fixed scalar, per-sample, or empty (Poisson unweighted)
 
-        // codelength of the complexity
-        // count number of unique functions
-        // - count weight * variable as three nodes
-        // - compute complexity c of the remaining numerical values
-        //   (that are not part of the coefficients that are optimized)
-        static auto const MulHash   = Node{NodeType::Mul}.HashValue;
-        static auto const ParamHash = Node{NodeType::Constant}.HashValue;
-        Operon::Set<Operon::Hash> uniqueFunctions; // to count the number of unique symbol types
-        auto k{0.0}; // number of nodes
-        auto cComplexity { 0.0 };
-
-        // codelength of the parameters
         ++Base::JacobianEvaluations;
         Eigen::Matrix<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, trainingRange); // jacobian
         auto fisherMatrix = Lik::ComputeFisherMatrix(estimatedValues, {jac.data(), static_cast<std::size_t>(jac.size())}, effectiveSigma);
         auto fisherDiag   = fisherMatrix.diagonal().array();
         ENSURE(fisherDiag.size() == p);
 
-        auto cParameters { 0.0 };
-        auto constexpr eps = std::numeric_limits<Operon::Scalar>::epsilon(); // machine epsilon for zero comparison
-
-        for (auto i = 0, pi = 0; i < std::ssize(nodes); ++i) {
-            auto const& n = nodes[i];
-
-            // weighted variables count as 3 symbol types: the variable itself, plus implicit MUL and PARAM
-            // unit-weight variables count as 1 (interpreter skips the multiplication, expression is equivalent)
-            auto const isWeighted = n.IsVariable() && n.Value != Operon::Scalar{1};
-            k += isWeighted ? 3 : 1;
-            uniqueFunctions.insert(n.HashValue);
-            if (isWeighted) {
-                uniqueFunctions.insert(MulHash);
-                uniqueFunctions.insert(ParamHash);
-            }
-
-            if (n.Optimize) {
-                // DL of the parameters to be optimized
-                auto const di = std::sqrt(12 / fisherDiag(pi));
-                auto const ci = std::abs(parameters[pi]);
-
-                if (std::isfinite(ci) && std::isfinite(di) && ci / di >= 1) {
-                    cParameters += (0.5 * std::log(fisherDiag(pi))) + std::log(ci);
-                }
-                ++pi;
-            } else {
-                // DL of the remaining tree structure
-                if (std::abs(n.Value) < eps) { continue; }
-                cComplexity += std::log(std::abs(n.Value));
-            }
-        }
-
-        auto q { static_cast<double>(uniqueFunctions.size()) };
-        if (q > 0) { cComplexity += k * std::log(q); }
-
-        cParameters -= p/2 * std::log(3);
-
-        auto cLikelihood  = Lik::ComputeLikelihood(estimatedValues, targetValues, effectiveSigma);
-        auto mdl = cComplexity + cParameters + cLikelihood;
+        auto cLikelihood = Lik::ComputeLikelihood(estimatedValues, targetValues, effectiveSigma);
+        auto mdl = Operon::MinimumDescriptionLength(tree, parameters, fisherDiag, static_cast<double>(cLikelihood));
         if (!std::isfinite(mdl)) { mdl = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(mdl) };
     }
@@ -504,13 +457,11 @@ public:
         auto const* dtable  = Base::GetDispatchTable();
         auto const* problem = Base::GetProblem();
         auto const* dataset = problem->GetDataset();
-        auto const& nodes   = ind.Genotype.Nodes();
         auto const& tree    = ind.Genotype;
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
         auto parameters = tree.GetCoefficients();
 
-        auto const p { static_cast<double>(parameters.size()) };
         auto const trainingRange = problem->TrainingRange();
         auto const n { static_cast<double>(trainingRange.Size()) };
         ENSURE(buf.size() >= trainingRange.Size());
@@ -537,41 +488,13 @@ public:
             ? std::span<Operon::Scalar const>{&profiledSigma, 1}  // profiled
             : std::span<Operon::Scalar const>{sigma_};             // fixed scalar, per-sample, or empty (Poisson unweighted)
 
-        // structural complexity: k * log(q), matching Julia func_compl
-        static auto const MulHash   = Node{NodeType::Mul}.HashValue;
-        static auto const ParamHash = Node{NodeType::Constant}.HashValue;
-        Operon::Set<Operon::Hash> uniqueSymbols;
-        auto k { 0.0 };
-        for (auto const& node : nodes) {
-            // weighted variables count as 3 symbol types: the variable itself, plus implicit MUL and PARAM
-            // unit-weight variables count as 1 (interpreter skips the multiplication, expression is equivalent)
-            auto const isWeighted = node.IsVariable() && node.Value != Operon::Scalar{1};
-            k += isWeighted ? 3 : 1;
-            uniqueSymbols.insert(node.HashValue);
-            if (isWeighted) {
-                uniqueSymbols.insert(MulHash);
-                uniqueSymbols.insert(ParamHash);
-            }
-        }
-        auto const q { static_cast<double>(uniqueSymbols.size()) };
-        auto const fComplexity = q > 0 ? k * std::log(q) : 0.0;
-
-        // parameter term: (p/2) * (-log(b) + log(2π·nup))
-        // b = 1/sqrt(n)  =>  -log(b) = 0.5·log(n)
-        // nup = exp(1 - log(3))  =>  log(nup) = 1 - log(3)
-        // combined: (p/2) * (0.5·log(n) + log(2π) + 1 - log(3))
-        auto const b { 1.0 / std::sqrt(n) };
-        auto const cParameters = (p / 2.0) * (0.5 * std::log(n) + std::log(Operon::Math::Tau) + 1.0 - std::log(3.0));
-
-        // fractional likelihood: (1 - b) * NLL
         // Profiled case: use pre-computed NLL (avoids second O(n) pass inside ComputeLikelihood).
         // Fixed scalar or per-sample: delegate to ComputeLikelihood.
         auto const nll = (sigma_.empty() && Lik::UsesSigma)
             ? mlNLL
             : static_cast<double>(Lik::ComputeLikelihood(estimatedValues, targetValues, effectiveSigma));
-        auto const cLikelihood = (1.0 - b) * nll;
 
-        auto fbf = fComplexity + cParameters + cLikelihood;
+        auto fbf = Operon::FractionalBayesFactor(tree, n, nll);
         if (!std::isfinite(fbf)) { fbf = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(fbf) };
     }
