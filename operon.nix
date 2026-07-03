@@ -57,6 +57,7 @@ stdenv.mkDerivation rec {
       unordered_dense
       vstat
       infix-parser
+      xxHash
     ])
     ++ (with pkgs; pkgs.lib.optionals enableAsmjit [ asmjit ]);
 
@@ -74,7 +75,6 @@ stdenv.mkDerivation rec {
       (scnlib.overrideAttrs { inherit enableShared; })
       simdutf # required by scnlib
       vdt
-      xxHash
       zstd
     ])
     ++ (
