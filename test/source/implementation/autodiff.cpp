@@ -185,6 +185,40 @@ TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
         checkAnalytic("x * y", yHash, [](auto x, auto /*y*/) { return x; });
     }
 
+    // InfixParser produces one Variable node per textual occurrence — the
+    // "multiple occurrences" case above never exercises the IsRef branch in
+    // ReverseTraceGeneric/ForwardTraceGeneric (a shared-subtree occurrence
+    // accumulating into the referenced node's trace/dot column instead of
+    // its own). Build x * Ref(x) by hand to close that gap: node 0 is the
+    // only Variable node (and thus the only one BuildColumns assigns a
+    // column to); node 1 is a Ref to node 0, so its contribution must flow
+    // back through the Ref-accumulation path for the result to match d/dx(x^2).
+    SECTION("d/dx(x*Ref(x)) = 2x (shared subtree via Ref node)") {
+        Operon::Vector<Operon::Node> nodes;
+        Operon::Node v(Operon::NodeType::Variable);
+        v.HashValue = v.CalculatedHashValue = xHash;
+        v.Value = 1.0F;
+        Operon::Node ref = Operon::Node::Ref(0);
+        Operon::Node mul(Operon::NodeType::Mul);
+        mul.Length = 2;
+        nodes.push_back(v);
+        nodes.push_back(ref);
+        nodes.push_back(mul);
+        Operon::Tree tree{nodes};
+
+        auto coeff = tree.GetCoefficients();
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+        auto rev = interpreter.JacRevVariable(coeff, range, xHash);
+        auto fwd = interpreter.JacFwdVariable(coeff, range, xHash);
+
+        auto const xs = ds.GetValues("x");
+        for (std::size_t i = 0; i < range.Size(); ++i) {
+            auto const expected = 2 * xs[i];
+            CHECK(rev[i] == Catch::Approx(expected).margin(1e-4));
+            CHECK(fwd[i] == Catch::Approx(expected).margin(1e-4));
+        }
+    }
+
     // Cross-check against central finite differences on a larger expression,
     // as a sanity net beyond the hand-derived cases above.
     SECTION("central finite-difference cross-check") {
