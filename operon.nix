@@ -43,7 +43,7 @@ stdenv.mkDerivation rec {
       eigen
       eve
       fluky
-      fmt_11
+      fmt_12
       glaze
       gtl
       lbfgs
