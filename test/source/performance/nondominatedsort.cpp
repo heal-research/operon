@@ -8,7 +8,7 @@
 #include <random>
 #include <ranges>
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include "nanobench.h"
 #include "operon/core/individual.hpp"
