@@ -92,7 +92,7 @@ auto WriteParetoFront(std::string const& path,
         auto const maeTrain  =  MAE{}(estimTrain, targetTrain);
         auto const maeTest   =  MAE{}(estimTest, targetTest);
 
-        auto const [k, fCompl] = WeightedComplexity(ind->Genotype);
+        auto const k = WeightedComplexity(ind->Genotype).first; // fComplexity: computed internally by MDL/FBF below
 
         auto const n        = static_cast<double>(trainRange.Size());
         auto const sigmaArr = std::array<Scalar, 1>{static_cast<Scalar>(std::sqrt(mseTrain))};

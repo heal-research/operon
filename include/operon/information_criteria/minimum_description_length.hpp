@@ -36,10 +36,11 @@ auto MinimumDescriptionLength(Tree const& tree, Operon::Span<Operon::Scalar cons
     constexpr auto eps               = std::numeric_limits<Operon::Scalar>::epsilon();
     constexpr auto uniformPriorScale = 12.0; // di = sqrt(12 / fi) comes from Var(Uniform[-c,c]) = (2c)²/12.
     // Generous floating-point safety margin for the Fisher diagonal's PSD
-    // invariant (J^T J / sigma^2 is PSD in exact arithmetic, but near-zero
-    // entries can round slightly negative) — not a statistical/physical
-    // bound, just noise tolerance. Matches the eigenvalue guard used for
-    // the same reason in the (experimental) joint-Fisher-matrix variant.
+    // invariant: J^T J / sigma^2 is PSD in exact arithmetic, but a
+    // near-zero entry can round slightly negative under floating-point
+    // rounding. Not a statistical/physical bound — just noise tolerance,
+    // chosen well below any Fisher magnitude that would plausibly arise
+    // from real (non-degenerate) coefficients/data.
     constexpr auto fisherNoiseFloor  = -1e-8;
 
     auto [k, fCompl] = WeightedComplexity(tree);
