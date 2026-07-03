@@ -12,6 +12,7 @@ find_dependency(infix-parser CONFIG REQUIRED)
 find_dependency(mdspan CONFIG REQUIRED)
 find_dependency(vstat CONFIG REQUIRED)
 find_dependency(pappus CONFIG REQUIRED)
+find_dependency(xxHash CONFIG REQUIRED)
 
 # INTERFACE dependencies
 find_dependency(eve CONFIG REQUIRED)
