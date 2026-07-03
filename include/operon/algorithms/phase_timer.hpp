@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-#include <taskflow/core/observer.hpp>
+#include <taskflow/observer/interface.hpp>
 
 #include "operon/core/types.hpp"
 
