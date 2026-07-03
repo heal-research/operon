@@ -3,7 +3,9 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
+#include <cmath>
 #include <random>
 
 #include "../operon_test.hpp"
@@ -138,6 +140,84 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
     constexpr auto maxDivergeRate{0.02};
     CHECK(finiteMismatch == 0);
     CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(total) < maxDivergeRate);
+}
+
+TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
+{
+    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
+                       std::vector<std::vector<Operon::Scalar>>{{1.3F, -0.6F, 2.0F}, {0.4F, 1.1F, -0.9F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    auto const xHash = ds.GetVariable("x")->Hash;
+    auto const yHash = ds.GetVariable("y")->Hash;
+
+    // JacRevVariable/JacFwdVariable against hand-derived analytic derivatives.
+    auto checkAnalytic = [&](std::string const& expr, Operon::Hash variable, auto analytic) -> void {
+        auto tree = Operon::InfixParser::Parse(expr, ds, /*reduce=*/false);
+        auto coeff = tree.GetCoefficients();
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+
+        auto rev = interpreter.JacRevVariable(coeff, range, variable);
+        auto fwd = interpreter.JacFwdVariable(coeff, range, variable);
+
+        auto const xs = ds.GetValues("x");
+        auto const ys = ds.GetValues("y");
+        for (std::size_t i = 0; i < range.Size(); ++i) {
+            auto const expected = analytic(xs[i], ys[i]);
+            CHECK(rev[i] == Catch::Approx(expected).margin(1e-4));
+            CHECK(fwd[i] == Catch::Approx(expected).margin(1e-4));
+        }
+    };
+
+    SECTION("d/dx(x^2) = 2x") {
+        checkAnalytic("x ^ 2", xHash, [](auto x, auto /*y*/) { return 2 * x; });
+    }
+    SECTION("d/dx(sin(x)) = cos(x)") {
+        checkAnalytic("sin(x)", xHash, [](auto x, auto /*y*/) { return std::cos(x); });
+    }
+    SECTION("d/dx(x*y) w.r.t. x = y") {
+        checkAnalytic("x * y", xHash, [](auto /*x*/, auto y) { return y; });
+    }
+    SECTION("d/dx(x + x*x) = 1 + 2x (multiple occurrences summed)") {
+        checkAnalytic("x + x * x", xHash, [](auto x, auto /*y*/) { return 1 + 2 * x; });
+    }
+    SECTION("d/dy(x*y) w.r.t. y = x") {
+        checkAnalytic("x * y", yHash, [](auto x, auto /*y*/) { return x; });
+    }
+
+    // Cross-check against central finite differences on a larger expression,
+    // as a sanity net beyond the hand-derived cases above.
+    SECTION("central finite-difference cross-check") {
+        // Separate all-positive-x dataset — the check expression below uses
+        // log(x), which is NaN for the negative x row in the outer `ds`.
+        Operon::Dataset dsPos(std::vector<std::string>{"x", "y"},
+                              std::vector<std::vector<Operon::Scalar>>{{1.3F, 0.6F, 2.0F}, {0.4F, 1.1F, -0.9F}});
+        Operon::Range const rangePos{0, dsPos.Rows<std::size_t>()};
+
+        auto tree = Operon::InfixParser::Parse("log(x) + x * y - sin(y) + exp(x * 0.3)", dsPos, /*reduce=*/false);
+        auto coeff = tree.GetCoefficients();
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &dsPos, &tree};
+        auto rev = interpreter.JacRevVariable(coeff, rangePos, xHash);
+
+        constexpr Operon::Scalar h = 1e-3F;
+        auto const xs = dsPos.GetValues("x");
+        std::vector<Operon::Scalar> xPlus(xs.begin(), xs.end());
+        std::vector<Operon::Scalar> xMinus(xs.begin(), xs.end());
+        for (auto& v : xPlus) { v += h; }
+        for (auto& v : xMinus) { v -= h; }
+        auto const ys = dsPos.GetValues("y");
+        Operon::Dataset dsPlus(std::vector<std::string>{"x", "y"}, std::vector<std::vector<Operon::Scalar>>{xPlus, std::vector<Operon::Scalar>(ys.begin(), ys.end())});
+        Operon::Dataset dsMinus(std::vector<std::string>{"x", "y"}, std::vector<std::vector<Operon::Scalar>>{xMinus, std::vector<Operon::Scalar>(ys.begin(), ys.end())});
+
+        using Interp = Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>>;
+        auto fPlus = Interp::Evaluate(tree, dsPlus, rangePos, coeff);
+        auto fMinus = Interp::Evaluate(tree, dsMinus, rangePos, coeff);
+
+        for (std::size_t i = 0; i < rangePos.Size(); ++i) {
+            auto const fd = (fPlus[i] - fMinus[i]) / (2 * h);
+            CHECK(rev[i] == Catch::Approx(fd).margin(1e-2));
+        }
+    }
 }
 
 TEST_CASE("Autodiff poly-10 expression", "[autodiff]")

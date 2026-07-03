@@ -98,11 +98,19 @@ struct Interpreter : public InterpreterBase<T> {
         trace_ = Backend::Buffer<T, S>(S, nn);
         Backend::Fill<T, S>(trace_, nn-1, T{1});
 
+        std::size_t j = 0;
+        auto const cols = BuildColumns([&](std::size_t i) -> std::size_t { return nodes[i].Optimize ? j++ : NoColumn; });
+
         Eigen::Map<Eigen::Array<T, -1, -1>> jac(jacobian.data(), len, coeff.size());
+        // No zero-init needed: each Optimize node maps to a unique column
+        // (built via BuildColumns above), so every column is written
+        // exactly once (Accumulate=false, plain `=`).
 
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/true);
-            ReverseTrace(range, row, jac);
+            ReverseTraceGeneric<false>(range, row, cols.colOf,
+                [](std::size_t i, auto const& primal, T w) { return primal.col(static_cast<Eigen::Index>(i)) / w; },
+                jac);
         }
     }
 
@@ -122,11 +130,17 @@ struct Interpreter : public InterpreterBase<T> {
         trace_ = Backend::Buffer<T, BatchSize>(BatchSize, nNodes);
         Backend::Fill<T, BatchSize>(trace_, nNodes-1, T{1});
 
+        std::size_t j = 0;
+        auto const cols = BuildColumns([&](std::size_t i) -> std::size_t { return nodes[i].Optimize ? j++ : NoColumn; });
+
         Eigen::Map<Eigen::Array<T, -1, -1>> jac(jacobian.data(), nRows, coeff.size());
+        // No zero-init needed — see JacRev.
 
         for (int row = 0; row < nRows; row += BatchSize) {
             ForwardPass(range, row, /*trace=*/true);
-            ForwardTrace(range, row, jac);
+            ForwardTraceGeneric<false>(range, row, cols.seeds,
+                [](std::size_t i, auto const& primal, T w) { return primal.col(static_cast<Eigen::Index>(i)) / w; },
+                jac);
         }
     }
 
@@ -135,6 +149,71 @@ struct Interpreter : public InterpreterBase<T> {
         Eigen::Array<T, -1, -1> jacobian(nRows, coeff.size());
         JacFwd(coeff, range, { jacobian.data(), static_cast<size_t>(jacobian.size()) });
         return jacobian;
+    }
+
+    // Reverse-mode derivative of the tree output w.r.t. the raw value of
+    // one input Variable (identified by hash), summed over every
+    // occurrence of that variable in the tree via the multivariate chain
+    // rule. Complements JacRev, which differentiates w.r.t. Node::Optimize
+    // coefficients (weights) rather than variable values — same underlying
+    // adjoint sweep (ReverseTraceGeneric), different extraction point.
+    auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable, Operon::Span<T> result) const -> void {
+        InitContext(coeff, range);
+        auto const len{ static_cast<int64_t>(range.Size()) };
+        auto const& nodes = tree_->Nodes();
+        auto const nn { std::ssize(nodes) };
+
+        constexpr int64_t S{ BatchSize };
+        trace_ = Backend::Buffer<T, S>(S, nn);
+        Backend::Fill<T, S>(trace_, nn-1, T{1});
+
+        auto const cols = BuildColumns([&](std::size_t i) -> std::size_t { return (nodes[i].IsVariable() && nodes[i].HashValue == variable) ? 0 : NoColumn; });
+
+        Eigen::Map<Eigen::Array<T, -1, -1>> jac(result.data(), len, 1);
+        jac.setZero(); // needed: multiple occurrences of `variable` can share column 0 (Accumulate=true) — cheap, single-column buffer
+
+        for (auto row = 0L; row < len; row += S) {
+            ForwardPass(range, row, /*trace=*/true);
+            ReverseTraceGeneric<true>(range, row, cols.colOf,
+                [](std::size_t /*i*/, auto const& /*primal*/, T w) { return Eigen::Array<T, S, 1>::Constant(w); },
+                jac);
+        }
+    }
+
+    auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable) const -> Operon::Vector<T> {
+        Operon::Vector<T> result(range.Size());
+        JacRevVariable(coeff, range, variable, { result.data(), result.size() });
+        return result;
+    }
+
+    // Forward-mode counterpart to JacRevVariable — same relationship as
+    // JacFwd has to JacRev.
+    auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable, Operon::Span<T> result) const -> void {
+        InitContext(coeff, range);
+        auto const& nodes = tree_->Nodes();
+        auto const nNodes = std::ssize(nodes);
+        auto const nRows  = static_cast<int>(range.Size());
+
+        trace_ = Backend::Buffer<T, BatchSize>(BatchSize, nNodes);
+        Backend::Fill<T, BatchSize>(trace_, nNodes-1, T{1});
+
+        auto const cols = BuildColumns([&](std::size_t i) -> std::size_t { return (nodes[i].IsVariable() && nodes[i].HashValue == variable) ? 0 : NoColumn; });
+
+        Eigen::Map<Eigen::Array<T, -1, -1>> jac(result.data(), nRows, 1);
+        jac.setZero(); // needed — see JacRevVariable
+
+        for (int row = 0; row < nRows; row += BatchSize) {
+            ForwardPass(range, row, /*trace=*/true);
+            ForwardTraceGeneric<true>(range, row, cols.seeds,
+                [](std::size_t /*i*/, auto const& /*primal*/, T w) { return Eigen::Array<T, BatchSize, 1>::Constant(w); },
+                jac);
+        }
+    }
+
+    auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable) const -> Operon::Vector<T> {
+        Operon::Vector<T> result(range.Size());
+        JacFwdVariable(coeff, range, variable, { result.data(), result.size() });
+        return result;
     }
 
     // Evaluate the full tree and extract values at multiple node indices.
@@ -248,7 +327,50 @@ private:
         }
     }
 
-    auto ForwardTrace(Operon::Range range, int row, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
+    // Sentinel meaning "this node doesn't contribute to any output column",
+    // used by BuildColumns/*TraceGeneric below.
+    static constexpr std::size_t NoColumn = std::numeric_limits<std::size_t>::max();
+
+    // Built once per JacRev/JacFwd/JacRevVariable/JacFwdVariable call (not
+    // per row-batch — it only depends on tree structure, not on which rows
+    // are being processed): `colOf[i]` is the output column node i
+    // contributes to, or NoColumn — used by ReverseTraceGeneric, which
+    // visits every node anyway so an O(1) lookup is free. `seeds` is the
+    // compact list of (node, column) pairs with colOf[i] != NoColumn — used
+    // by ForwardTraceGeneric, which should only iterate actual targets
+    // instead of scanning every node in the tree.
+    struct Columns {
+        Operon::Vector<std::size_t> colOf;
+        Operon::Vector<std::pair<std::size_t, std::size_t>> seeds;
+    };
+
+    template <typename Predicate>
+    auto BuildColumns(Predicate predicate) const -> Columns {
+        auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
+        Columns cols;
+        cols.colOf.assign(nNodes, NoColumn);
+        for (std::size_t i = 0; i < nNodes; ++i) {
+            if (auto const col = predicate(i); col != NoColumn) {
+                cols.colOf[i] = col;
+                cols.seeds.emplace_back(i, col);
+            }
+        }
+        return cols;
+    }
+
+    // Shared forward-mode sweep behind JacFwd/JacFwdVariable. `seeds`: the
+    // (node, column) pairs to seed-and-propagate (see BuildColumns).
+    // `factor(i, primal, w)`: the local d(primal_i)/d(target) multiplier
+    // converting the node's root-adjoint into the derivative w.r.t.
+    // whatever `target` is for this call (a coefficient's weight, or a
+    // variable's raw value) — e.g. primal_i/w for a coefficient target
+    // (primal_i = w * x_i), or w for a variable target. `Accumulate`:
+    // false writes `=` (the coefficient case — each column has exactly one
+    // contributing node, so no zero-init is needed by the caller); true
+    // writes `+=` (the variable case, where multiple nodes/occurrences can
+    // share one column — caller must zero-init `jac` first).
+    template <bool Accumulate, typename LocalFactor>
+    auto ForwardTraceGeneric(Operon::Range range, int row, Operon::Vector<std::pair<std::size_t, std::size_t>> const& seeds, LocalFactor factor, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
         auto const rangeSize     = static_cast<int64_t>(range.Size());
         auto const& nodes        = tree_->Nodes();
         auto const nNodes        = std::ssize(nodes);
@@ -256,19 +378,15 @@ private:
         auto const remainingRows = std::min(S, rangeSize - row);
 
         Eigen::Array<T, S, -1> dot(S, nNodes);
-        Operon::Vector<int64_t> cidx(jac.cols());
 
         Eigen::Map<Eigen::Array<T, S, -1>> primal(primal_.data(), S, nNodes);
         Eigen::Map<Eigen::Array<T, S, -1>> trace(trace_.data(), S, nNodes);
 
-        for (auto i = 0L, j = 0L; i < nNodes; ++i) {
-            if (nodes[i].Optimize) { cidx[j++] = i; }
-        }
+        for (auto const& [c, col] : seeds) {
+            auto const cc = static_cast<int64_t>(c);
 
-        auto k{0};
-        for (auto c : cidx) {
             dot.topRows(remainingRows).setConstant(T{0});
-            dot.col(c).head(remainingRows).setConstant(T{1});
+            dot.col(cc).head(remainingRows).setConstant(T{1});
 
             for (auto i = 0; i < nNodes; ++i) {
                 if (nodes[i].IsRef()) {
@@ -279,31 +397,49 @@ private:
                 if (nodes[i].IsLeaf()) { continue; }
                 for (auto x : Tree::Indices(nodes, i)) {
                     auto j{ static_cast<int64_t>(x) };
-                    if (nodes[j].IsLeaf() && j != c) { continue; }
+                    if (nodes[j].IsLeaf() && j != cc) { continue; }
                     dot.col(i).head(remainingRows) += dot.col(j).head(remainingRows) * trace.col(j).head(remainingRows) * std::get<0>(context_[i]);
                 }
             }
 
-            jac.col(k++).segment(row, remainingRows) = dot.col(nNodes-1).head(remainingRows) * primal.col(c).head(remainingRows) / std::get<0>(context_[c]);
+            auto const w = std::get<0>(context_[c]);
+            auto const contribution = dot.col(nNodes-1).head(remainingRows) * factor(c, primal, w).head(remainingRows);
+            if constexpr (Accumulate) {
+                jac.col(static_cast<Eigen::Index>(col)).segment(row, remainingRows) += contribution;
+            } else {
+                jac.col(static_cast<Eigen::Index>(col)).segment(row, remainingRows) = contribution;
+            }
         }
     }
 
-    auto ReverseTrace(Operon::Range range, int row, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
+    // Shared reverse-mode sweep behind JacRev/JacRevVariable — see
+    // ForwardTraceGeneric above for the `factor`/`Accumulate` contract.
+    // `colOf`: per-node column lookup (see BuildColumns). One backward pass
+    // computes every node's root-adjoint regardless of how many columns are
+    // extracted, unlike the forward-mode sweep above (one seeded pass per
+    // column) — this is why reverse mode is preferred when there are many
+    // targets (JacRev vs JacFwd for coefficients).
+    template <bool Accumulate, typename LocalFactor>
+    auto ReverseTraceGeneric(Operon::Range range, int row, Operon::Vector<std::size_t> const& colOf, LocalFactor factor, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
         auto const rangeSize     = static_cast<int64_t>(range.Size());
         auto const& nodes        = tree_->Nodes();
         auto const nNodes        = std::ssize(nodes);
         constexpr int64_t S      = BatchSize;
         auto const remainingRows = std::min(S, rangeSize - row);
 
-        auto k{jac.cols()};
         Eigen::Map<Eigen::Array<T, S, -1>> primal(primal_.data(), S, nNodes);
         Eigen::Map<Eigen::Array<T, S, -1>> trace(trace_.data(), S, nNodes);
 
         for (auto i = nNodes-1; i >= 0L; --i) {
             auto w = std::get<0>(context_[i]);
 
-            if (nodes[i].Optimize) {
-                jac.col(--k).segment(row, remainingRows) = trace.col(i).head(remainingRows) * primal.col(i).head(remainingRows) / w;
+            if (auto const col = colOf[static_cast<std::size_t>(i)]; col != NoColumn) {
+                auto const contribution = trace.col(i).head(remainingRows) * factor(static_cast<std::size_t>(i), primal, w).head(remainingRows);
+                if constexpr (Accumulate) {
+                    jac.col(static_cast<Eigen::Index>(col)).segment(row, remainingRows) += contribution;
+                } else {
+                    jac.col(static_cast<Eigen::Index>(col)).segment(row, remainingRows) = contribution;
+                }
             }
 
             if (nodes[i].IsRef()) {
@@ -321,6 +457,7 @@ private:
             }
         }
     }
+
 
     // Full bind: allocate primal_, build context_ with function/derivative pointers
     // and variable data spans. Called once per unique (tree, range) pair.
