@@ -133,12 +133,19 @@ auto WriteParetoFront(std::string const& path,
         auto estimTrain = interp.Evaluate(ind->Genotype.GetCoefficients(), trainRange);
         auto estimTest  = interp.Evaluate(ind->Genotype.GetCoefficients(), testRange);
 
+        // Scale factor for the raw tree's Jacobian: the reported model is
+        // y = a * tree(x; coeffs) + b when linear scaling is on, so
+        // d(y)/d(coeffs) = a * d(tree)/d(coeffs) — this must multiply the
+        // Jacobian used for the MDL Fisher-information term below, or the
+        // parameter-cost term is biased by a missing a^2 factor whenever
+        // the fitted slope isn't ~1.
+        auto scale = Scalar{1};
         if (linearScaling) {
             auto [a, b] = FitLeastSquares(Span<Scalar const>{estimTrain}, Span<Scalar const>{targetTrain});
-            auto const as = static_cast<Scalar>(a);
+            scale = static_cast<Scalar>(a);
             auto const bs = static_cast<Scalar>(b);
-            for (auto& v : estimTrain) { v = (v * as) + bs; }
-            for (auto& v : estimTest)  { v = (v * as) + bs; }
+            for (auto& v : estimTrain) { v = (v * scale) + bs; }
+            for (auto& v : estimTest)  { v = (v * scale) + bs; }
         }
 
         auto const r2Train   = -R2{}(estimTrain, targetTrain);
@@ -163,7 +170,8 @@ auto WriteParetoFront(std::string const& path,
         auto const fbf = ComputeFBF(nll, n, p, fCompl);
 
         auto const coeffs  = ind->Genotype.GetCoefficients();
-        auto const jac     = interp.JacRev(coeffs, trainRange);
+        auto jac           = interp.JacRev(coeffs, trainRange);
+        jac *= scale; // d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs); scale == 1 when linearScaling is off
         auto const nrows   = static_cast<Eigen::Index>(trainRange.Size());
         auto const ncols   = static_cast<Eigen::Index>(coeffs.size());
         Eigen::Map<Eigen::Matrix<Scalar, -1, -1> const> const jacMap(jac.data(), nrows, ncols);
