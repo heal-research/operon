@@ -11,8 +11,9 @@
 
 #include <fmt/os.h>
 
-#include "operon/core/node.hpp"
 #include "operon/core/types.hpp"
+#include "operon/error_metrics/error_metrics.hpp"
+#include "operon/information_criteria/information_criteria.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
@@ -21,72 +22,6 @@
 namespace Operon {
 
 namespace {
-
-// A weighted variable node expands to (weight * variable), contributing
-// three logical symbols: Mul, Constant, Variable.
-constexpr auto kWeightedNodeCost = 3.0;
-
-// Uniform-prior precision: di = sqrt(12 / fi) comes from Var(Uniform[-c,c]) = (2c)²/12.
-constexpr auto kUniformPriorScale = 12.0;
-
-auto ComputeWeightedComplexity(Tree const& tree) -> std::pair<double, double>
-{
-    static auto const MulHash   = Node{NodeType::Mul}.HashValue;
-    static auto const ParamHash = Node{NodeType::Constant}.HashValue;
-    Set<Hash> uniqueSymbols;
-    auto k = 0.0;
-    for (auto const& node : tree.Nodes()) {
-        auto const isWeighted = node.IsVariable() && node.Value != Scalar{1};
-        k += isWeighted ? kWeightedNodeCost : 1.0;
-        uniqueSymbols.insert(node.HashValue);
-        if (isWeighted) {
-            uniqueSymbols.insert(MulHash);
-            uniqueSymbols.insert(ParamHash);
-        }
-    }
-    auto const q      = static_cast<double>(uniqueSymbols.size());
-    auto const fCompl = q > 0.0 ? k * std::log(q) : 0.0;
-    return {k, fCompl};
-}
-
-auto ComputeFBF(double nll, double n, double p, double fCompl) -> double
-{
-    auto const b             = 1.0 / std::sqrt(n);
-    auto const fbfParams     = (p / 2.0) * ((0.5 * std::log(n)) + std::log(Math::Tau) + 1.0 - std::log(3.0)); // NOLINT(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
-    auto const fbfLikelihood = (1.0 - b) * nll;
-    auto const fbf           = fCompl + fbfParams + fbfLikelihood;
-    return std::isfinite(fbf) ? fbf : std::numeric_limits<double>::quiet_NaN();
-}
-
-template<typename JacMap>
-auto ComputeMDL(JacMap const& jacMap, Scalar sigma2, Span<Scalar const> coeffs,
-                Tree const& tree, double p, double fCompl, double nll) -> double
-{
-    constexpr auto eps    = std::numeric_limits<Scalar>::epsilon();
-    auto const fisherDiag = (jacMap.colwise().squaredNorm().transpose().array() / sigma2);
-
-    auto cComplexity = fCompl;
-    auto cParameters = 0.0;
-    auto pi          = 0;
-    for (auto const& node : tree.Nodes()) {
-        if (node.Optimize) {
-            auto const fi = static_cast<double>(fisherDiag(pi));
-            auto const di = std::sqrt(kUniformPriorScale / fi);
-            auto const ci = std::abs(static_cast<double>(coeffs[pi]));
-            if (std::isfinite(ci) && std::isfinite(di) && ci / di >= 1.0) {
-                cParameters += (0.5 * std::log(fi)) + std::log(ci); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
-            }
-            ++pi;
-        } else {
-            if (std::abs(node.Value) >= static_cast<double>(eps)) {
-                cComplexity += std::log(std::abs(node.Value));
-            }
-        }
-    }
-    cParameters -= (p / 2.0) * std::log(3.0); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
-    auto const mdl = cComplexity + cParameters + nll;
-    return std::isfinite(mdl) ? mdl : std::numeric_limits<double>::quiet_NaN();
-}
 
 auto EscapeJson(std::string const& s) -> std::string
 {
@@ -157,25 +92,25 @@ auto WriteParetoFront(std::string const& path,
         auto const maeTrain  =  MAE{}(estimTrain, targetTrain);
         auto const maeTest   =  MAE{}(estimTest, targetTest);
 
-        auto const [k, fCompl] = ComputeWeightedComplexity(ind->Genotype);
+        auto const [k, fCompl] = WeightedComplexity(ind->Genotype);
 
         auto const n        = static_cast<double>(trainRange.Size());
         auto const sigmaArr = std::array<Scalar, 1>{static_cast<Scalar>(std::sqrt(mseTrain))};
-        auto const p        = static_cast<double>(ind->Genotype.GetCoefficients().size());
         auto const nll      = static_cast<double>(GaussianLikelihood<Scalar>::ComputeLikelihood(
                                   {estimTrain.data(), estimTrain.size()},
                                   targetTrain,
                                   {sigmaArr.data(), sigmaArr.size()}));
 
-        auto const fbf = ComputeFBF(nll, n, p, fCompl);
+        auto const fbf = FractionalBayesFactor(ind->Genotype, n, nll);
 
         auto const coeffs  = ind->Genotype.GetCoefficients();
         auto jac           = interp.JacRev(coeffs, trainRange);
         jac *= scale; // d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs); scale == 1 when linearScaling is off
-        auto const nrows   = static_cast<Eigen::Index>(trainRange.Size());
-        auto const ncols   = static_cast<Eigen::Index>(coeffs.size());
-        Eigen::Map<Eigen::Matrix<Scalar, -1, -1> const> const jacMap(jac.data(), nrows, ncols);
-        auto const mdl = ComputeMDL(jacMap, static_cast<Scalar>(mseTrain), coeffs, ind->Genotype, p, fCompl, nll);
+        auto fisherMatrix  = GaussianLikelihood<Scalar>::ComputeFisherMatrix(
+                                  {estimTrain.data(), estimTrain.size()},
+                                  {jac.data(), static_cast<std::size_t>(jac.size())},
+                                  {sigmaArr.data(), sigmaArr.size()});
+        auto const mdl = MinimumDescriptionLength(ind->Genotype, coeffs, fisherMatrix.diagonal().array(), nll);
 
         std::string objArr = "[";
         for (auto j = 0UL; j < ind->Fitness.size(); ++j) {
