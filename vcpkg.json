@@ -2,8 +2,10 @@
     "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
     "name": "operon",
     "version-string": "0.3.1",
+    "builtin-baseline": "d87340acc46bdeda386037b38aca30136e667e47",
     "dependencies": [
         "aria-csv",
+        "asmjit",
         "cpp-sort",
         "cxxopts",
         "eigen3",
@@ -11,16 +13,29 @@
         "fast-float",
         "fluky",
         "fmt",
+        "glaze",
+        "gtl",
+        "infix-parser",
         "lbfgs",
         "libassert",
         "mdspan",
         "ms-gsl",
-        "infix-parser",
+        "ndsort",
+        "pappus",
         "scnlib",
         "taskflow",
         "tl-expected",
         "unordered-dense",
         "vstat",
         "xxhash"
-    ]
+    ],
+    "features": {
+        "test": {
+            "description": "Build and run operon's test suite",
+            "dependencies": [
+                "catch2",
+                "nanobench"
+            ]
+        }
+    }
 }
