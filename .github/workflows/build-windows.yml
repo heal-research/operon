@@ -21,6 +21,9 @@ jobs:
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Update vcpkg
+        run: git -C C:/vcpkg fetch origin && git -C C:/vcpkg reset --hard origin/master
+
       - name: Cache vcpkg downloads
         uses: actions/cache@v4
         with:
