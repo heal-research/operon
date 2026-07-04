@@ -273,7 +273,11 @@ if (HAVE_ASMJIT)
     )
     # jit_compiler.cpp emits AVX2 intrinsics; guard explicitly so non-preset
     # builds (plain cmake -B build) and Windows builds still get AVX2 codegen.
-    if (NOT MSVC)
+    # Check CMAKE_CXX_COMPILER_ID rather than the MSVC variable: MSVC is TRUE
+    # for clang-cl too, which accepts "-mavx2" just like clang/gcc do and
+    # needs it - without it, eve::wide<float, fixed<8>>'s storage type isn't
+    # __m256, breaking the direct register conversions used here.
+    if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         set_source_files_properties(source/interpreter/backend/jit/jit_compiler.cpp
             PROPERTIES COMPILE_OPTIONS "-mavx2")
     endif()
