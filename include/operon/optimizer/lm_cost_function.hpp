@@ -5,6 +5,7 @@
 #ifndef OPERON_LM_COST_FUNCTION_HPP
 #define OPERON_LM_COST_FUNCTION_HPP
 
+#include <atomic>
 #include <Eigen/Core>
 #include <gsl/pointers>
 #include "operon/interpreter/interpreter.hpp"
