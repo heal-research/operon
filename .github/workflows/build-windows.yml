@@ -44,7 +44,10 @@ jobs:
         run: cmake --preset=build-windows -B build -DUSE_SINGLE_PRECISION=ON -Doperon_DEVELOPER_MODE=ON -DVCPKG_MANIFEST_FEATURES=test
 
       - name: Build test binary
-        run: cmake --build build --config Release --target operon_test -j4
+        # -j2, not -j4: eve's heavily-templated SIMD headers (e.g. cos_kernel.hpp)
+        # push clang-cl past available heap/RAM on the windows-latest runner when
+        # compiled with more concurrent processes, causing C1002 (out of heap space).
+        run: cmake --build build --config Release --target operon_test -j2
 
       - name: Run tests
         working-directory: build
