@@ -1,0 +1,48 @@
+name: build-windows
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_call:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Add LLVM to PATH
+        run: echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache vcpkg downloads
+        uses: actions/cache@v4
+        with:
+          path: C:/vcpkg/downloads
+          key: operon-vcpkg-downloads-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          restore-keys: operon-vcpkg-downloads-windows-
+
+      - name: Cache vcpkg installed packages
+        uses: actions/cache@v4
+        with:
+          path: C:/vcpkg/installed
+          key: operon-vcpkg-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          restore-keys: operon-vcpkg-windows-
+
+      - name: Configure
+        env:
+          VCPKG_ROOT: C:/vcpkg
+        run: cmake --preset=build-windows -B build -DUSE_SINGLE_PRECISION=ON -Doperon_DEVELOPER_MODE=ON -DVCPKG_MANIFEST_FEATURES=test
+
+      - name: Build test binary
+        run: cmake --build build --config Release --target operon_test -j4
+
+      - name: Run tests
+        working-directory: build
+        run: ctest --output-on-failure -C Release -j4
