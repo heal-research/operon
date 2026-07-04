@@ -133,11 +133,16 @@ endif()
 # ---- Optional dependencies
 set(HAVE_ASMJIT FALSE)
 if (USE_ASMJIT)
-    if (NOT USE_SINGLE_PRECISION)
-        message(FATAL_ERROR "USE_ASMJIT requires USE_SINGLE_PRECISION=ON")
+    if (NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$")
+        message(STATUS "USE_ASMJIT requested but asmjit JIT-compiles to native x86-64; "
+                       "disabling on ${CMAKE_SYSTEM_PROCESSOR}")
+    else()
+        if (NOT USE_SINGLE_PRECISION)
+            message(FATAL_ERROR "USE_ASMJIT requires USE_SINGLE_PRECISION=ON")
+        endif()
+        find_package(asmjit REQUIRED)
+        set(HAVE_ASMJIT TRUE)
     endif()
-    find_package(asmjit REQUIRED)
-    set(HAVE_ASMJIT TRUE)
 endif()
 
 
