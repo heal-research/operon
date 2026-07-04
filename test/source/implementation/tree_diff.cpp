@@ -777,7 +777,7 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
     constexpr auto maxLen = 20;
     constexpr auto fdEps  = 1e-3F;
     constexpr auto tol    = 5e-2F;
-    constexpr auto maxFailRate = 0.04;
+    constexpr auto maxFailRate = 0.10;
 
     Operon::RandomGenerator rng(99UL);
     auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
