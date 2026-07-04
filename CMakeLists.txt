@@ -136,6 +136,13 @@ if (USE_ASMJIT)
     if (NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$")
         message(STATUS "USE_ASMJIT requested but asmjit JIT-compiles to native x86-64; "
                        "disabling on ${CMAKE_SYSTEM_PROCESSOR}")
+    elseif (WIN32)
+        # jit_compiler.cpp's AVX2 intrinsics + heavy inlined Cephes-style
+        # polynomials cause clang-cl's optimizer to hang indefinitely (not a
+        # timeout - observed stuck for 1h45m+ on GitHub Actions windows-latest
+        # runners). Disable until this can be debugged on real Windows.
+        message(STATUS "USE_ASMJIT requested but disabled on Windows: clang-cl "
+                       "hangs compiling jit_compiler.cpp (unresolved)")
     else()
         if (NOT USE_SINGLE_PRECISION)
             message(FATAL_ERROR "USE_ASMJIT requires USE_SINGLE_PRECISION=ON")
@@ -272,15 +279,11 @@ if (HAVE_ASMJIT)
         source/interpreter/backend/jit/jit_factory.cpp
     )
     # jit_compiler.cpp emits AVX2 intrinsics; guard explicitly so non-preset
-    # builds (plain cmake -B build) and Windows builds still get AVX2 codegen.
-    # Check CMAKE_CXX_COMPILER_ID rather than the MSVC variable: MSVC is TRUE
-    # for clang-cl too, which accepts "-mavx2" just like clang/gcc do and
-    # needs it - without it, eve::wide<float, fixed<8>>'s storage type isn't
-    # __m256, breaking the direct register conversions used here.
-    if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-        set_source_files_properties(source/interpreter/backend/jit/jit_compiler.cpp
-            PROPERTIES COMPILE_OPTIONS "-mavx2")
-    endif()
+    # builds (plain cmake -B build) still get AVX2 codegen. HAVE_ASMJIT is
+    # never true on WIN32 (see above), so this only runs on Linux/macOS,
+    # where the compiler is always clang or gcc, never real MSVC.
+    set_source_files_properties(source/interpreter/backend/jit/jit_compiler.cpp
+        PROPERTIES COMPILE_OPTIONS "-mavx2")
 endif()
 
 target_compile_definitions(operon_operon PUBLIC
