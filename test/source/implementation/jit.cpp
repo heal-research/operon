@@ -665,7 +665,7 @@ TEST_CASE("CompileJacobian correctness vs JacRev - random trees", "[jit][jacobia
     INFO("finite mismatch: " << finiteMismatch << " / " << totalCols);
     INFO("finite diverge:  " << finiteDiverge  << " / " << totalCols);
     CHECK(finiteMismatch == 0);
-    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, 1UL)) < maxDivergeRate);
+    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, std::size_t{1})) < maxDivergeRate);
 }
 
 TEST_CASE("CompileJacobian correctness - variable weights", "[jit][jacobian]")
@@ -731,7 +731,7 @@ TEST_CASE("CompileJacobian correctness - variable weights", "[jit][jacobian]")
     INFO("finite mismatch: " << finiteMismatch << " / " << totalCols);
     INFO("finite diverge:  " << finiteDiverge  << " / " << totalCols);
     CHECK(finiteMismatch == 0);
-    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, 1UL)) < maxDivergeRate);
+    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, std::size_t{1})) < maxDivergeRate);
 }
 
 TEST_CASE("CompileJacobian performance vs JacRev", "[jit][jacobian][performance]")
