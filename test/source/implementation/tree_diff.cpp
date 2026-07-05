@@ -312,7 +312,7 @@ TEST_CASE("BuildJacobianDag correctness vs JacRev - random trees", "[tree_diff]"
     INFO("finite mismatch: " << finiteMismatch << " / " << totalCols);
     INFO("finite diverge:  " << finiteDiverge  << " / " << totalCols);
     CHECK(finiteMismatch == 0);
-    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, 1UL)) < maxDivergeRate);
+    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, std::size_t{1})) < maxDivergeRate);
 }
 
 // ============================================================
@@ -835,7 +835,7 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
         }
     }
 
-    auto rate = static_cast<double>(failedEntries) / static_cast<double>(std::max(totalEntries, 1UL));
+    auto rate = static_cast<double>(failedEntries) / static_cast<double>(std::max(totalEntries, std::size_t{1}));
     fmt::print("FD Hessian: {} / {} entries failed ({:.2f}%)\n", failedEntries, totalEntries, rate * 100.0);
     CHECK(rate < maxFailRate);
 }
