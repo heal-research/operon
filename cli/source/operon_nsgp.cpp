@@ -61,6 +61,7 @@ auto FrontSelect(EvaluatorType const& eval, Operon::Span<Operon::Individual cons
 auto main(int argc, char** argv) -> int
 {
     auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
+    opts.add_options()("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)", cxxopts::value<std::string>()->default_value("rs"));
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);
 
     // parse and set default values
@@ -325,8 +326,10 @@ auto main(int argc, char** argv) -> int
         auto const sorterName = result["sorter"].as<std::string>();
         Operon::RankIntersectSorter rsSorter;
         Operon::MergeSorter msSorter;
-        Operon::NondominatedSorterBase* sorterPtr = &rsSorter;
-        if (sorterName == "ms") { sorterPtr = &msSorter; }
+        Operon::NondominatedSorterBase* sorterPtr = nullptr;
+        if (sorterName == "rs") { sorterPtr = &rsSorter; }
+        else if (sorterName == "ms") { sorterPtr = &msSorter; }
+        else { throw std::runtime_error(fmt::format("unknown sorter: {}", sorterName)); }
         Operon::NSGA2 gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get(), sorterPtr };
 
         Operon::ModelSelectorFn modelSelector;
