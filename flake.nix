@@ -58,6 +58,9 @@
               (final: prev: {
                 fluky = fluky.packages.${system}.default;
                 glaze = prev.glaze.override { enableSSL = false; };
+                # Unicode-aware --help wrapping isn't worth pulling in ICU
+                # (and its static archives) just for line-wrapping cosmetics.
+                cxxopts = prev.cxxopts.override { enableUnicodeHelp = false; };
                 lbfgs = lbfgs.packages.${system}.default;
                 infix-parser = infix-parser.packages.${system}.default;
                 ndsort = ndsort.packages.${system}.default;
@@ -67,45 +70,51 @@
               })
             ];
           };
-          enableShared = !pkgs.stdenv.hostPlatform.isStatic;
           enableTesting = true;
           enableAsmjit = true;
           inherit (pkgs.llvmPackages_21) stdenv;
-          operon = import ./operon.nix {
-            inherit stdenv pkgs system;
-            inherit enableShared enableTesting enableAsmjit;
-          };
+          mkOperon =
+            { enableShared }:
+            import ./operon.nix {
+              inherit
+                stdenv
+                pkgs
+                system
+                enableShared
+                enableTesting
+                enableAsmjit
+                ;
+            };
+          operonShared = mkOperon { enableShared = true; };
+          operonStatic = mkOperon { enableShared = false; };
+          operon = operonShared;
         in
         rec {
           packages = {
-            default = operon.overrideAttrs (old: {
+            default = operonShared.overrideAttrs (old: {
               cmakeFlags = old.cmakeFlags ++ [
                 "-DBUILD_CLI_PROGRAMS=ON"
                 "-DCPM_USE_LOCAL_PACKAGES=ON"
               ];
             });
 
-            cli = operon.overrideAttrs (old: {
+            cli = operonShared.overrideAttrs (old: {
               cmakeFlags = old.cmakeFlags ++ [
                 "-DBUILD_CLI_PROGRAMS=ON"
                 "-DCPM_USE_LOCAL_PACKAGES=ON"
               ];
             });
 
-            cli-static = operon.overrideAttrs (old: {
+            cli-static = operonStatic.overrideAttrs (old: {
               cmakeFlags = old.cmakeFlags ++ [
                 "-DBUILD_CLI_PROGRAMS=ON"
                 "-DCPM_USE_LOCAL_PACKAGES=ON"
               ];
             });
 
-            library = operon.overrideAttrs (old: {
-              enableShared = true;
-            });
+            library = operonShared;
 
-            library-static = operon.overrideAttrs (old: {
-              enableShared = false;
-            });
+            library-static = operonStatic;
           };
 
           devShells.tools = pkgs.mkShell {
