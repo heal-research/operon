@@ -239,9 +239,10 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, nullptr, evaluator.get());
-        gp.Run(executor, random, [&]() -> void {
+        gp.Run(executor, random, [&]() -> bool {
             reporter(executor, gp);
             Operon::MaybeSaveCheckpoint(gp, random, result);
+            return false;
         }, warmStart);
         Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();

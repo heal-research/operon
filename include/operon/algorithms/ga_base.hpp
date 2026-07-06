@@ -19,6 +19,12 @@ class ReinserterBase;
 struct CoefficientInitializerBase;
 struct TreeInitializerBase;
 
+// Invoked once per generation by every algorithm's Run() to report progress.
+// Returning true requests early termination; each algorithm's own stop
+// condition ORs StopRequested() in alongside its evaluator-budget,
+// generation-count, and time-limit checks.
+using ReportCallback = std::function<bool()>;
+
 class GeneticAlgorithmBase {
 public:
     virtual ~GeneticAlgorithmBase() = default;
@@ -73,6 +79,11 @@ public:
     [[nodiscard]] auto IsFitted() const -> bool { return isFitted_; }
     auto IsFitted() -> bool& { return isFitted_; }
 
+    // Set by an algorithm's Run() when its ReportCallback returns true; each
+    // algorithm's own stop condition ORs this in.
+    [[nodiscard]] auto StopRequested() const -> bool { return stopRequested_; }
+    auto StopRequested() -> bool& { return stopRequested_; }
+
     // Valid to call between runs only. The PhaseTimer observer owns its own
     // totals and is recreated each Run(), so Reset() mid-run would cause the
     // next reportProgress sync to overwrite the cleared map with stale data.
@@ -80,6 +91,7 @@ public:
     {
         generation_ = 0;
         elapsed_ = 0;
+        stopRequested_ = false;
         phaseTimes_.clear();
         GetGenerator()->Evaluator()->Reset();
     }
@@ -111,6 +123,7 @@ private:
     double elapsed_{0};
     Operon::Map<std::string, double> phaseTimes_;
     bool isFitted_{false};
+    bool stopRequested_{false};
 };
 
 } // namespace Operon
