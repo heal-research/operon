@@ -23,8 +23,6 @@ stdenv.mkDerivation rec {
     "-DUSE_SINGLE_PRECISION=ON"
     "-DUSE_ASMJIT=${if enableAsmjit then "ON" else "OFF"}"
     "-DBUILD_SHARED_LIBS=${if enableShared then "YES" else "NO"}"
-  ] ++ pkgs.lib.optionals (!enableShared) [
-    "-DOPERON_STATIC_CLI=ON"
   ];
   cmakeBuildType = "Release";
 
