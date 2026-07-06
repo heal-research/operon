@@ -9,27 +9,11 @@
 #include "operon/core/types.hpp"
 #include "operon/operon_export.hpp"
 
-// aggregate performancae statistics such as sort duration
-#include <chrono>
-
 namespace Operon {
 
 class NondominatedSorterBase {
 public:
     using Result = Operon::Vector<Operon::Vector<size_t>>;
-
-    mutable struct {
-        size_t LexicographicalComparisons{0}; // both lexicographical and single-objective
-        size_t SingleValueComparisons{0};
-        size_t DominanceComparisons{0};
-        size_t RankComparisons{0};
-        size_t InnerOps{0};
-        double MeanRank{0};
-        double MeanND{0};
-        std::chrono::duration<size_t> Duration{0};
-    } Stats;
-
-    void Reset() { Stats = { 0, 0, 0, 0, 0, 0., 0. }; }
 
     // this method needs to be implemented by all deriving classes
     virtual auto Sort(Operon::Span<Operon::Individual const>, Operon::Scalar) const -> Result = 0;
