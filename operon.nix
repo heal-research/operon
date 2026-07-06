@@ -83,7 +83,7 @@ stdenv.mkDerivation rec {
     ])
     # infix-parser's static archive can't resolve its own private link deps
     # (fmt/FastFloat are already pulled in above; lexy isn't otherwise needed).
-    ++ (with pkgs; pkgs.lib.optionals (!enableShared) [ foonathan-lexy ])
+    ++ (with pkgs; pkgs.lib.optionals (!enableShared) [ foonathan-lexy glibc.static ])
     ++ (
       with pkgs;
       pkgs.lib.optionals enableTesting [
