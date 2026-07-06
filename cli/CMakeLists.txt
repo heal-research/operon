@@ -5,6 +5,11 @@ cmake_minimum_required(VERSION 3.20)
 
 project(operonCli LANGUAGES CXX)
 
+# Unlike BUILD_SHARED_LIBS (liboperon itself as .a vs .so), this also requires
+# every dependency to be static, so it's opt-in for dedicated builds only
+# (e.g. the flake's cli-static output).
+option(OPERON_STATIC_CLI "Fully statically link the CLI executables" OFF)
+
 include(../cmake/project-is-top-level.cmake)
 include(../cmake/windows-set-path.cmake)
 if (PROJECT_IS_TOP_LEVEL)

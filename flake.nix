@@ -111,12 +111,23 @@
               cmakeFlags = old.cmakeFlags ++ [
                 "-DBUILD_CLI_PROGRAMS=ON"
                 "-DCPM_USE_LOCAL_PACKAGES=ON"
+                "-DOPERON_STATIC_CLI=ON"
               ];
             });
 
             library = operonShared;
 
-            library-static = operonStatic;
+            # BUILD_CLI_PROGRAMS defaults to ON at the top level; without
+            # turning it off here, this would build the CLI executables
+            # anyway but without OPERON_STATIC_CLI, so they'd link against
+            # the static-only deps pulled in for !enableShared (glibc.static,
+            # static scnlib/asmjit/etc.) without the -static flag needed to
+            # make that actually work.
+            library-static = operonStatic.overrideAttrs (old: {
+              cmakeFlags = old.cmakeFlags ++ [
+                "-DBUILD_CLI_PROGRAMS=OFF"
+              ];
+            });
           };
 
           devShells.tools = pkgs.mkShell {
