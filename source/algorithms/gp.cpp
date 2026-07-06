@@ -80,7 +80,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             auto prepareEval = subflow.emplace([&]() -> void { evaluator->Prepare(parents); }).name("prepare evaluator");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
-                                             if (report && std::invoke(report)) { StopRequested() = true; }
+                                             if (report && std::invoke(report)) { RequestStop(); }
                                          }).name("report progress");
 
             auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
@@ -132,7 +132,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
-                                             if (report && std::invoke(report)) { StopRequested() = true; }
+                                             if (report && std::invoke(report)) { RequestStop(); }
                                          }).name("report progress");
 
             // set-up subflow graph
