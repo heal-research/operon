@@ -5,6 +5,11 @@ cmake_minimum_required(VERSION 3.20)
 
 project(operonCli LANGUAGES CXX)
 
+# Unlike BUILD_SHARED_LIBS (liboperon itself as .a vs .so), this also requires
+# every dependency to be static, so it's opt-in for dedicated builds only
+# (e.g. the flake's cli-static output).
+option(OPERON_STATIC_CLI "Fully statically link the CLI executables" OFF)
+
 include(../cmake/project-is-top-level.cmake)
 include(../cmake/windows-set-path.cmake)
 if (PROJECT_IS_TOP_LEVEL)
@@ -13,14 +18,6 @@ endif()
 
 find_package(cxxopts REQUIRED)
 find_package(scn REQUIRED)
-
-# Fully static-link the CLI executables (against libc and every dependency,
-# not just liboperon). Distinct from BUILD_SHARED_LIBS (which only controls
-# whether liboperon itself is a .a or .so): this additionally requires every
-# dependency to be available as a static archive, so it's opt-in and only
-# meant for a dedicated build (e.g. the flake's cli-static output) rather
-# than a default derived from BUILD_SHARED_LIBS=OFF.
-option(OPERON_STATIC_CLI "Fully statically link the CLI executables" OFF)
 
 function(add_operon_cli NAME)
     add_executable(${NAME}
@@ -43,7 +40,7 @@ function(add_operon_cli NAME)
     else()
         if (UNIX AND NOT APPLE)
             target_link_options(${NAME} PRIVATE "-Wl,--no-undefined")
-            if (OPERON_STATIC_CLI)
+            if (NOT BUILD_SHARED_LIBS)
                 target_link_options(${NAME} PRIVATE "-static")
             endif()
         endif()
