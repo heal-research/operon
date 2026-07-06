@@ -368,9 +368,10 @@ auto main(int argc, char** argv) -> int
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector), &evaluator);
         auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
-        gp.Run(executor, random, [&]() {
+        gp.Run(executor, random, [&]() -> bool {
             reporter(executor, gp);
             Operon::MaybeSaveCheckpoint(gp, random, result);
+            return false;
         }, warmStart);
         Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();

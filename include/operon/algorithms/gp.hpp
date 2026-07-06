@@ -33,8 +33,8 @@ public:
     {
     }
 
-    auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator& /*rng*/, std::function<void()> /*report*/ = nullptr, /*warmStart*/ bool = false) -> void;
-    auto Run(Operon::RandomGenerator& /*rng*/, std::function<void()> /*report*/ = nullptr, size_t /*threads*/ = 0, /*warmStart*/ bool = false) -> void;
+    auto Run(tf::Executor& /*executor*/, Operon::RandomGenerator& /*rng*/, Operon::ReportCallback /*report*/ = nullptr, /*warmStart*/ bool = false) -> void;
+    auto Run(Operon::RandomGenerator& /*rng*/, Operon::ReportCallback /*report*/ = nullptr, size_t /*threads*/ = 0, /*warmStart*/ bool = false) -> void;
 };
 } // namespace Operon
 
