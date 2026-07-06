@@ -146,7 +146,6 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("inputs", "Comma-separated list of input variables", cxxopts::value<std::string>())
         ("epsilon", "Tolerance for fitness comparison (needed e.g. for eps-dominance)", cxxopts::value<Operon::Scalar>()->default_value("1e-6"))
         ("objective", "The error metric used for calculating fitness", cxxopts::value<std::string>()->default_value("r2"))
-        ("sorter", "Non-dominated sorter: rs (RankIntersect) or ms (Merge)", cxxopts::value<std::string>()->default_value("rs"))
         ("linear-scaling", "Apply linear scaling on model predictions", cxxopts::value<bool>()->default_value("true"))
         ("jit", "JIT mode: 'all' = JIT evaluator + optimizer, 'jac' = interpreter evaluator + JIT Jacobian optimizer (requires HAVE_ASMJIT). Use --jit=jac for jac mode; bare --jit defaults to all.", cxxopts::value<std::string>()->default_value("")->implicit_value("all"))
         ("jit-max-length", "Skip JIT compilation for trees longer than this (0 = disabled)", cxxopts::value<int>()->default_value("0"))
