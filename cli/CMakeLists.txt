@@ -14,6 +14,14 @@ endif()
 find_package(cxxopts REQUIRED)
 find_package(scn REQUIRED)
 
+# Fully static-link the CLI executables (against libc and every dependency,
+# not just liboperon). Distinct from BUILD_SHARED_LIBS (which only controls
+# whether liboperon itself is a .a or .so): this additionally requires every
+# dependency to be available as a static archive, so it's opt-in and only
+# meant for a dedicated build (e.g. the flake's cli-static output) rather
+# than a default derived from BUILD_SHARED_LIBS=OFF.
+option(OPERON_STATIC_CLI "Fully statically link the CLI executables" OFF)
+
 function(add_operon_cli NAME)
     add_executable(${NAME}
         source/${NAME}.cpp
@@ -35,7 +43,7 @@ function(add_operon_cli NAME)
     else()
         if (UNIX AND NOT APPLE)
             target_link_options(${NAME} PRIVATE "-Wl,--no-undefined")
-            if (NOT BUILD_SHARED_LIBS)
+            if (OPERON_STATIC_CLI)
                 target_link_options(${NAME} PRIVATE "-static")
             endif()
         endif()
