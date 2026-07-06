@@ -63,7 +63,7 @@
                 cxxopts = prev.cxxopts.override { enableUnicodeHelp = false; };
                 lbfgs = lbfgs.packages.${system}.default;
                 infix-parser = infix-parser.packages.${system}.default;
-                infix-parser-static = infix-parser.packages.${system}.compat;
+                infix-parser-static = infix-parser.packages.${system}.library-static;
                 ndsort = ndsort.packages.${system}.default;
                 ndsort-static = ndsort.packages.${system}.library-static;
                 vdt = vdt.packages.${system}.default;
