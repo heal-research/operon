@@ -223,11 +223,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783144483,
-        "narHash": "sha256-InCMAjZZE7yZU2zUVAE8RR4v2K3qjuu9oBiFCj2TeZo=",
+        "lastModified": 1783345914,
+        "narHash": "sha256-Th1NPQdVFhvxAV66Reu2XhCCXGEMJpsi58+GWgbNh68=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "26fe2d4395a6a0f66dff237b006526c35a8954cd",
+        "rev": "47c762f58ae57a606708b66211ce65527600d274",
         "type": "github"
       },
       "original": {
@@ -308,11 +308,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783236467,
-        "narHash": "sha256-KIlPT3p0uE137CABZkWkkJ7D0WdZI3ETya2p1LjhwQw=",
+        "lastModified": 1783347040,
+        "narHash": "sha256-eXYxWg0Lb7GpojWUVP+27RtSn3m3POeAEK9hPhS8Hho=",
         "owner": "foolnotion",
         "repo": "infix-parser",
-        "rev": "2e48507942f3c1c6c04385d688402bc1b76220e0",
+        "rev": "27c3e5b9bf26d26e552e4b2abc950db80549b282",
         "type": "github"
       },
       "original": {
@@ -352,11 +352,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783248644,
-        "narHash": "sha256-wyz5WN4s1XwihelhdLGwlmjTf8iRPxlmzGr6fKjwFfE=",
+        "lastModified": 1783344669,
+        "narHash": "sha256-bsu2Hw5o4cMWKAZiYO7lruefQ82as1yw8kHlrD8rfS0=",
         "owner": "foolnotion",
         "repo": "ndsort",
-        "rev": "6313b45ee97e86dbefaad355b0a50b87357db38a",
+        "rev": "bd3b323b8d4373287e8cf303bc6304b929bc8ab1",
         "type": "github"
       },
       "original": {
