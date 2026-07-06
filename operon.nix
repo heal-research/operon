@@ -43,23 +43,27 @@ stdenv.mkDerivation rec {
       eigen
       eve
       fluky
-      fmt_12
+      (fmt_12.override { inherit enableShared; })
       glaze
       gtl
       lbfgs
       libassert
       mdspan
       microsoft-gsl
-      ndsort
+      (if enableShared then ndsort else ndsort-static)
       pappus
       taskflow
       tl-expected
       unordered_dense
       vstat
-      infix-parser
-      xxHash
+      (if enableShared then infix-parser else infix-parser-static)
+      (xxHash.overrideAttrs (old: {
+        cmakeFlags = (old.cmakeFlags or [ ]) ++ pkgs.lib.optionals (!enableShared) [
+          "-DBUILD_SHARED_LIBS=OFF"
+        ];
+      }))
     ])
-    ++ (with pkgs; pkgs.lib.optionals enableAsmjit [ asmjit ]);
+    ++ (with pkgs; pkgs.lib.optionals enableAsmjit [ (asmjit.override { inherit enableShared; }) ]);
 
   # Deps only used in .cpp implementation files or by CLI/test binaries; not
   # required at compile time by consumers of operon's headers, and not
@@ -72,11 +76,14 @@ stdenv.mkDerivation rec {
       icu
       libdwarf
       pkg-config
-      (scnlib.overrideAttrs { inherit enableShared; })
+      (scnlib.override { inherit enableShared; })
       simdutf # required by scnlib
       vdt
       zstd
     ])
+    # infix-parser's static archive can't resolve its own private link deps
+    # (fmt/FastFloat are already pulled in above; lexy isn't otherwise needed).
+    ++ (with pkgs; pkgs.lib.optionals (!enableShared) [ foonathan-lexy ])
     ++ (
       with pkgs;
       pkgs.lib.optionals enableTesting [
