@@ -123,8 +123,8 @@ public:
     // algorithm's own stop condition ORs this in. Atomic so it's also safe to
     // call RequestStop() from outside the callback (e.g. another thread, a
     // signal handler) while Run() is in progress.
-    [[nodiscard]] auto StopRequested() const -> bool { return stopRequested_.load(); }
-    auto RequestStop() -> void { stopRequested_.store(true); }
+    [[nodiscard]] auto StopRequested() const -> bool { return stopRequested_.load(std::memory_order_acquire); }
+    auto RequestStop() -> void { stopRequested_.store(true, std::memory_order_release); }
 
     // Valid to call between runs only. The PhaseTimer observer owns its own
     // totals and is recreated each Run(), so Reset() mid-run would cause the
@@ -133,7 +133,7 @@ public:
     {
         generation_ = 0;
         elapsed_ = 0;
-        stopRequested_.store(false);
+        stopRequested_.store(false, std::memory_order_release);
         phaseTimes_.clear();
         GetGenerator()->Evaluator()->Reset();
     }
