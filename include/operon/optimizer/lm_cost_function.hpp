@@ -31,14 +31,18 @@ struct LMCostFunction {
         , weights_{weights}
         , numResiduals_{range.Size()}
         , numParameters_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
-    { }
+    {
+        // Validated once here rather than per-Evaluate() call: EXPECT (libassert)
+        // is always-on, not debug-only, so an O(N) scan per residual evaluation
+        // would be a real per-LM-iteration cost across a GP run.
+        EXPECT(weights_.empty() || weights_.size() == numResiduals_);
+        EXPECT(std::all_of(weights_.begin(), weights_.end(), [](auto w) { return w >= Operon::Scalar{0}; }));
+    }
 
     inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
     {
         EXPECT(target_.size() == numResiduals_);
         EXPECT(parameters != nullptr);
-        EXPECT(weights_.empty() || weights_.size() == numResiduals_);
-        EXPECT(std::all_of(weights_.begin(), weights_.end(), [](auto w) { return w >= Operon::Scalar{0}; }));
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
         // Standard WLS-via-LM trick: scaling both the residual and its
