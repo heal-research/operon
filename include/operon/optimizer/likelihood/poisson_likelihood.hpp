@@ -99,7 +99,12 @@ template<typename T = Operon::Scalar, bool LogInput = true>
 struct PoissonLoss : public LikelihoodBase<T> {
     static constexpr bool UsesSigma = false;
 
-    PoissonLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
+    // `weights` is accepted only so PoissonLoss shares LBFGSOptimizer/SGDOptimizer's
+    // generic call site with GaussianLoss; it is intentionally not applied here.
+    // Sample weights (precision/multiplicity) and Poisson's existing w-as-exposure
+    // convention in detail::Poisson/PoissonLog are different semantics and
+    // reconciling them is a separate design decision, not yet implemented.
+    PoissonLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0, Operon::Span<Operon::Scalar const> /*weights*/ = {})
         : LikelihoodBase<T>(interpreter)
         , rng_{rng}
         , target_(target)
