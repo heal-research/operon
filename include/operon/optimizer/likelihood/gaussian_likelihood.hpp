@@ -137,12 +137,8 @@ struct GaussianLoss : public LikelihoodBase<T> {
         ++feval_;
         auto const& interpreter = this->GetInterpreter();
         Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
-        auto range = SelectRandomRange();
+        auto const [range, localStart] = SelectBatch();
         auto primal = interpreter->Evaluate(c, range);
-        // range may be a random sub-batch of range_; target_/weights_ are
-        // sized to range_ and indexed from 0, so offset by range_.Start()
-        // (not range.Start(), which is an absolute dataset row index).
-        auto const localStart = range.Start() - range_.Start();
         auto target = target_.segment(localStart, range.Size());
         Eigen::Map<Eigen::Array<Scalar, -1, 1> const> primalMap{primal.data(), std::ssize(primal)};
         auto e = primalMap - target;
@@ -188,10 +184,20 @@ struct GaussianLoss : public LikelihoodBase<T> {
     auto JacobianEvaluations() const -> std::size_t { return jeval_; }
 
 private:
-    auto SelectRandomRange() const -> Operon::Range {
-        if (bs_ >= range_.Size()) { return range_; }
+    // { absolute dataset range (for the interpreter), local offset into
+    // target_/weights_ (which are sized to range_ and indexed from 0) }.
+    // Computed together so callers never need to re-derive one from the
+    // other (in particular: local = absolute.Start() - range_.Start(),
+    // a subtraction that's easy to forget and was previously a live bug).
+    struct Batch {
+        Operon::Range range;
+        std::size_t localStart;
+    };
+
+    auto SelectBatch() const -> Batch {
+        if (bs_ >= range_.Size()) { return {range_, 0UL}; }
         auto s = std::uniform_int_distribution<std::size_t>{0UL, range_.Size()-bs_}(*rng_);
-        return Operon::Range{range_.Start() + s, range_.Start() + s + bs_};
+        return {Operon::Range{range_.Start() + s, range_.Start() + s + bs_}, s};
     }
 
     gsl::not_null<Operon::RandomGenerator*> rng_;

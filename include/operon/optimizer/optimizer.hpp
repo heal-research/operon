@@ -227,11 +227,14 @@ struct LBFGSOptimizer final : public OptimizerBase {
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
-            // Delegated to LossFunction so the diagnostic cost always matches
-            // what operator() actually optimizes (e.g. GaussianLoss::Cost is
-            // weighted, PoissonLoss::Cost ignores weights) - otherwise Success
-            // could be judged against the wrong objective, and
-            // CoefficientOptimizer (local_search.cpp) would drop valid gains.
+            // Delegated to LossFunction so this stays consistent with
+            // operator() on whether weights apply (Gaussian: yes, Poisson:
+            // no) - otherwise Success could be judged against the wrong
+            // objective and CoefficientOptimizer (local_search.cpp) would
+            // drop valid weighted gains. Note Cost is an SSE surrogate, not
+            // each LossFunction's true objective (Poisson::operator()
+            // actually optimizes Poisson NLL) - a pre-existing mismatch
+            // unrelated to weighting.
             return LossFunction::Cost(pred, target, weights);
         };
 
@@ -311,11 +314,14 @@ struct SGDOptimizer final : public OptimizerBase {
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
-            // Delegated to LossFunction so the diagnostic cost always matches
-            // what operator() actually optimizes (e.g. GaussianLoss::Cost is
-            // weighted, PoissonLoss::Cost ignores weights) - otherwise Success
-            // could be judged against the wrong objective, and
-            // CoefficientOptimizer (local_search.cpp) would drop valid gains.
+            // Delegated to LossFunction so this stays consistent with
+            // operator() on whether weights apply (Gaussian: yes, Poisson:
+            // no) - otherwise Success could be judged against the wrong
+            // objective and CoefficientOptimizer (local_search.cpp) would
+            // drop valid weighted gains. Note Cost is an SSE surrogate, not
+            // each LossFunction's true objective (Poisson::operator()
+            // actually optimizes Poisson NLL) - a pre-existing mismatch
+            // unrelated to weighting.
             return LossFunction::Cost(pred, target, weights);
         };
 

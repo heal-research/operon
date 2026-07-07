@@ -482,6 +482,80 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
     }
 }
 
+TEST_CASE("PoissonLoss respects a non-zero training range start", "[optimizer]")
+{
+    // Same off-by-range_.Start() bug class fixed in GaussianLoss, but
+    // exercised directly on PoissonLoss::operator() rather than through a
+    // full optimization run (Poisson doesn't have a clean, guaranteed-
+    // converging target on this kind of problem). Two structurally
+    // identical problems - one with range_.Start()==0, one padded so
+    // range_.Start() > 0 - must produce identical loss/gradient for the
+    // same fixed coefficients; a wrong offset would instead read
+    // out-of-bounds/wrong data for the padded case.
+    using DTable = DispatchTable<Operon::Scalar>;
+    constexpr auto Npad { 37 };
+    constexpr auto Nrow { 50 };
+
+    auto build = [&](int pad) -> Operon::Dataset {
+        std::vector<Operon::Scalar> x(pad + Nrow);
+        std::vector<Operon::Scalar> y(pad + Nrow);
+        for (auto i = 0; i < pad; ++i) { x[i] = Operon::Scalar{999}; y[i] = Operon::Scalar{999}; } // never read
+        for (auto i = 0; i < Nrow; ++i) {
+            x[pad + i] = static_cast<Operon::Scalar>(i + 1) * 0.1F;
+            y[pad + i] = static_cast<Operon::Scalar>(i + 1);
+        }
+        std::vector<std::vector<Operon::Scalar>> cols{x, y};
+        return Operon::Dataset(cols);
+    };
+
+    auto ds0 = build(0);
+    auto dsPad = build(Npad);
+
+    auto tree0 = InfixParser::Parse("X1", ds0);
+    auto treePad = InfixParser::Parse("X1", dsPad);
+    for (auto* t : {&tree0, &treePad}) {
+        for (auto& node : t->Nodes()) {
+            if (node.IsVariable()) { node.Value = Operon::Scalar{1}; }
+        }
+    }
+
+    DTable dtable;
+
+    Operon::Problem problem0(&ds0);
+    problem0.SetTrainingRange({0, Nrow});
+    problem0.SetTarget("X2");
+
+    Operon::Problem problemPad(&dsPad);
+    problemPad.SetTrainingRange({Npad, Npad + Nrow});
+    problemPad.SetTarget("X2");
+
+    Operon::Interpreter<Operon::Scalar, DTable> interp0{&dtable, &ds0, &tree0};
+    Operon::Interpreter<Operon::Scalar, DTable> interpPad{&dtable, &dsPad, &treePad};
+
+    Operon::RandomGenerator rng0{0};
+    Operon::RandomGenerator rngPad{0};
+
+    auto target0 = problem0.TargetValues(problem0.TrainingRange());
+    auto targetPad = problemPad.TargetValues(problemPad.TrainingRange());
+
+    PoissonLoss<Operon::Scalar> loss0{&rng0, &interp0, target0, problem0.TrainingRange()};
+    PoissonLoss<Operon::Scalar> lossPad{&rngPad, &interpPad, targetPad, problemPad.TrainingRange()};
+
+    auto coeff = tree0.GetCoefficients();
+    REQUIRE(!coeff.empty());
+    Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
+    Eigen::Matrix<Operon::Scalar, -1, 1> grad0(coeff.size());
+    Eigen::Matrix<Operon::Scalar, -1, 1> gradPad(coeff.size());
+
+    auto const c0 = loss0(x0, grad0);
+    auto const cPad = lossPad(x0, gradPad);
+
+    CHECK_THAT(static_cast<double>(c0), Catch::Matchers::WithinRel(static_cast<double>(cPad), 1e-5));
+    for (auto i = 0; i < grad0.size(); ++i) {
+        CHECK_THAT(static_cast<double>(grad0(i)), Catch::Matchers::WithinRel(static_cast<double>(gradPad(i)), 1e-5));
+    }
+}
+
 TEST_CASE("SGD update rules", "[optimizer]")
 {
     OptimizerFixture fix;
