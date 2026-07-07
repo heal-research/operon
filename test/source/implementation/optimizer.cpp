@@ -7,6 +7,7 @@
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operators/local_search.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
@@ -265,6 +266,11 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
 
     auto checkRecoversCleanSolution = [&](OptimizerBase& optimizer) -> void {
         auto summary = optimizer.Optimize(rng, tree);
+        // Success must reflect the *weighted* objective actually optimized -
+        // CoefficientOptimizer (local_search.cpp) only applies FinalParameters
+        // when Success is true, so a false negative here would silently drop
+        // a real weighted improvement.
+        CHECK(summary.Success);
         for (auto const p : summary.FinalParameters) {
             CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, paramTol));
         }
@@ -290,12 +296,54 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
         SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem, *rule};
         auto summary = optimizer.Optimize(rng, tree);
+        CHECK(summary.Success);
         // SGD converges more slowly than LM/L-BFGS on this problem within
         // the default iteration budget, so use a looser tolerance - the
         // point is confirming weights are picked up at all, not tight
         // convergence.
         for (auto const p : summary.FinalParameters) {
             CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, 0.1F));
+        }
+    }
+
+    SECTION("lbfgs / gaussian: reported cost matches the weighted objective, not raw SSE") {
+        // Directly pins down the root cause rather than relying on Success
+        // to flip (which only happens for adversarial coefficient
+        // trajectories - not guaranteed by every dataset/tolerance
+        // combination): InitialCost/FinalCost must equal the *weighted* SSE
+        // GaussianLoss actually optimizes, independently recomputed here,
+        // not the unweighted SumOfSquaredErrors the cost lambda used before
+        // the fix.
+        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
+        auto summary = optimizer.Optimize(rng, tree);
+
+        auto const range = problem.TrainingRange();
+        auto const target = problem.TargetValues(range);
+        auto const weights = *problem.Weights(range);
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter{&dtable, &fix.ds, &tree};
+
+        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary.InitialParameters}, range);
+        auto const expectedInitialCost = 0.5 * Operon::SumOfSquaredErrors(pred0.begin(), pred0.end(), target.begin(), weights.begin());
+        CHECK_THAT(static_cast<double>(summary.InitialCost), Catch::Matchers::WithinRel(expectedInitialCost, 1e-3));
+
+        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary.FinalParameters}, range);
+        auto const expectedFinalCost = 0.5 * Operon::SumOfSquaredErrors(pred1.begin(), pred1.end(), target.begin(), weights.begin());
+        CHECK_THAT(static_cast<double>(summary.FinalCost), Catch::Matchers::WithinRel(expectedFinalCost, 1e-3));
+    }
+
+    SECTION("lbfgs / gaussian: CoefficientOptimizer actually applies the weighted-optimal coefficients") {
+        // End-to-end check through the real call path (local_search.cpp),
+        // not just Optimize() directly: CoefficientOptimizer gates
+        // SetCoefficients on summary.Success, so a mis-scored Success would
+        // silently discard a genuine weighted improvement here.
+        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
+        Operon::CoefficientOptimizer const coeffOptimizer{&optimizer};
+        auto [optimizedTree, summary] = coeffOptimizer(rng, tree);
+        REQUIRE(summary.Success);
+        auto const coeffs = optimizedTree.GetCoefficients();
+        REQUIRE(!coeffs.empty());
+        for (auto const c : coeffs) {
+            CHECK_THAT(c, Catch::Matchers::WithinAbs(1.0F, paramTol));
         }
     }
 
