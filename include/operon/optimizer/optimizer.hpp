@@ -97,8 +97,10 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         auto target = problem->TargetValues(range);
         auto iterations = this->Iterations();
 
+        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
+
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        Operon::LMCostFunction cf{gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter}, target, range};
+        Operon::LMCostFunction cf{gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter}, target, range, weights};
         ceres::TinySolver<decltype(cf)> solver;
         solver.options.max_num_iterations = static_cast<int>(iterations+1);
 
@@ -152,8 +154,10 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         auto target = problem->TargetValues(range);
         auto iterations = this->Iterations();
 
+        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
+
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        Operon::LMCostFunction<Operon::Scalar> cf{&interpreter, target, range};
+        Operon::LMCostFunction<Operon::Scalar> cf{&interpreter, target, range, weights};
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
         lm.setMaxfev(static_cast<int>(iterations+2));
 
@@ -216,9 +220,10 @@ struct LBFGSOptimizer final : public OptimizerBase {
         auto iterations = this->Iterations();
         auto batchSize = this->BatchSize();
         if (batchSize == 0) { batchSize = range.Size(); }
+        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        LossFunction loss{&rng, &interpreter, target, range, batchSize};
+        LossFunction loss{&rng, &interpreter, target, range, batchSize, weights};
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
@@ -294,9 +299,10 @@ struct SGDOptimizer final : public OptimizerBase {
         auto iterations = this->Iterations();
         auto batchSize = this->BatchSize();
         if (batchSize == 0) { batchSize = range.Size(); }
+        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        LossFunction loss{&rng, &interpreter, target, range, batchSize};
+        LossFunction loss{&rng, &interpreter, target, range, batchSize, weights};
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
