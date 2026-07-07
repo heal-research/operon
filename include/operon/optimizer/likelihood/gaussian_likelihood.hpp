@@ -99,11 +99,12 @@ template<typename T = Operon::Scalar>
 struct GaussianLoss : public LikelihoodBase<T> {
     static constexpr bool UsesSigma = true;
 
-    GaussianLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0)
+    GaussianLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0, Operon::Span<Operon::Scalar const> weights = {})
         : LikelihoodBase<T>(interpreter)
         , rng_(rng)
         , target_{target.data(), std::ssize(target)}
         , range_{range}
+        , weights_{weights}
         , bs_{batchSize == 0 ? range.Size() : batchSize}
         , np_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
         , nr_{range_.Size()}
@@ -128,14 +129,30 @@ struct GaussianLoss : public LikelihoodBase<T> {
         Eigen::Map<Eigen::Array<Scalar, -1, 1> const> primalMap{primal.data(), std::ssize(primal)};
         auto e = primalMap - target;
 
+        if (weights_.empty()) {
+            if (grad.size() != 0) {
+                assert(grad.size() == x.size());
+                ++jeval_;
+                interpreter->JacRev(c, range, {jac_.data(), np_ * bs_});
+                grad = (e.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
+            }
+            return static_cast<Operon::Scalar>(e.square().sum()) * Operon::Scalar{0.5};
+        }
+
+        // Weighted loss: L = 0.5 * sum(w_i * e_i^2), dL/dtheta = sum(w_i * e_i * J_i).
+        // Applied directly (rather than via the sqrt(w)-residual trick used for
+        // LM) since there's no shared residual vector to keep consistent here.
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> w{weights_.data(), std::ssize(weights_)};
+        auto wSeg = w.segment(range.Start(), range.Size());
         if (grad.size() != 0) {
             assert(grad.size() == x.size());
             ++jeval_;
             interpreter->JacRev(c, range, {jac_.data(), np_ * bs_});
-            grad = (e.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
+            auto we = (e * wSeg).eval();
+            grad = (we.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
         }
 
-        return static_cast<Operon::Scalar>(e.square().sum()) * Operon::Scalar{0.5};
+        return static_cast<Operon::Scalar>((wSeg * e.square()).sum()) * Operon::Scalar{0.5};
     }
 
     // Static delegation — GaussianLoss also satisfies Concepts::Likelihood.
@@ -162,6 +179,7 @@ private:
     gsl::not_null<Operon::RandomGenerator*> rng_;
     Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> target_;
     Operon::Range const range_; // range of the training data NOLINT
+    Operon::Span<Operon::Scalar const> weights_; // optional per-sample weights, empty = unweighted
     std::size_t bs_; // batch size
     std::size_t np_; // number of parameters to optimize
     std::size_t nr_; // number of data points (rows)

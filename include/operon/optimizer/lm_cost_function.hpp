@@ -23,10 +23,11 @@ struct LMCostFunction {
         NUM_PARAMETERS = Eigen::Dynamic, // NOLINT
     };
 
-    explicit LMCostFunction(gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range)
+    explicit LMCostFunction(gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, Operon::Span<Operon::Scalar const> weights = {})
         : interpreter_(interpreter)
         , target_{target}
         , range_{range}
+        , weights_{weights}
         , numResiduals_{range.Size()}
         , numParameters_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
     { }
@@ -35,12 +36,21 @@ struct LMCostFunction {
     {
         EXPECT(target_.size() == numResiduals_);
         EXPECT(parameters != nullptr);
+        EXPECT(weights_.empty() || weights_.size() == numResiduals_);
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
+        // Standard WLS-via-LM trick: scaling both the residual and its
+        // Jacobian row by sqrt(w_i) makes the unweighted LM/GN normal
+        // equations solve the weighted problem (sum(w_i * r_i^2)) instead.
         if (jacobian != nullptr) {
             ++jacobianCallCount_;
             Operon::Span<Operon::Scalar> jac{jacobian, static_cast<size_t>(numResiduals_ * numParameters_)};
             interpreter_->JacRev(params, range_, jac);
+            if (!weights_.empty()) {
+                Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, -1>> J(jacobian, static_cast<Eigen::Index>(numResiduals_), static_cast<Eigen::Index>(numParameters_));
+                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> w(weights_.data(), numResiduals_);
+                J.array().colwise() *= w.sqrt();
+            }
         }
 
         if (residuals != nullptr) {
@@ -50,6 +60,10 @@ struct LMCostFunction {
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, numResiduals_);
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), numResiduals_);
             x -= y;
+            if (!weights_.empty()) {
+                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> w(weights_.data(), numResiduals_);
+                x *= w.sqrt();
+            }
         }
         return true;
     }
@@ -91,6 +105,7 @@ private:
     gsl::not_null<InterpreterBase<T> const*> interpreter_;
     Operon::Span<Operon::Scalar const> target_;
     Operon::Range const range_; // NOLINT
+    Operon::Span<Operon::Scalar const> weights_;
     std::size_t numResiduals_;
     std::size_t numParameters_;
 

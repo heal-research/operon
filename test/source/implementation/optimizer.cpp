@@ -200,6 +200,103 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
     }
 }
 
+// Test problem: a "clean" half of the rows has y = X1 exactly (X1 drawn from
+// Uniform(-1,1), so c0=1 fits them perfectly); a "noisy" half is fixed at
+// X1=1, y=6 - a point consistent with a totally different, unmodelable
+// offset relationship. Those noisy rows deterministically drag an unweighted
+// fit of "c0 * X1" away from c0=1 (unlike a random symmetric perturbation,
+// whose contribution can wash out to ~0 depending on the RNG draw). Zeroing
+// the noisy rows' weights should recover the clean-only solution c0=1 that
+// an unweighted fit cannot reach.
+struct WeightedOptimizerFixture {
+    static constexpr auto Nrow { 400 };
+    static constexpr auto Nclean { Nrow / 2 };
+
+    Operon::RandomGenerator rng{0}; // NOLINT(readability-identifier-naming)
+    Operon::Dataset ds; // NOLINT(readability-identifier-naming)
+    Operon::Tree tree; // NOLINT(readability-identifier-naming)
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable; // NOLINT(readability-identifier-naming)
+    Operon::Problem problem; // NOLINT(readability-identifier-naming)
+
+    WeightedOptimizerFixture()
+        : ds([&]() -> Operon::Dataset {
+            std::vector<Operon::Scalar> x(Nrow);
+            std::vector<Operon::Scalar> y(Nrow);
+            for (auto i = 0; i < Nclean; ++i) {
+                x[i] = Operon::Random::Uniform(rng, -1.0F, +1.0F);
+                y[i] = x[i];
+            }
+            for (auto i = Nclean; i < Nrow; ++i) {
+                x[i] = Operon::Scalar{1};
+                y[i] = Operon::Scalar{6};
+            }
+            std::vector<std::vector<Operon::Scalar>> cols{x, y};
+            return Operon::Dataset(cols);
+        }())
+        , tree([&]() -> Tree {
+            auto t = InfixParser::Parse("X1", ds);
+            for (auto& node : t.Nodes()) {
+                if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.1); }
+            }
+            return t;
+        }())
+        , problem(&ds)
+    {
+        problem.SetTrainingRange({0, Nrow});
+        problem.SetTestRange({0, Nrow});
+        problem.SetTarget("X2");
+        std::vector<Operon::Scalar> weights(Nrow, Operon::Scalar{1});
+        std::fill(weights.begin() + Nclean, weights.end(), Operon::Scalar{0});
+        ds.SetWeights(weights);
+    }
+};
+
+TEST_CASE("Weighted parameter optimization", "[optimizer]")
+{
+    WeightedOptimizerFixture fix;
+    auto& rng     = fix.rng;
+    auto& tree    = fix.tree;
+    auto& dtable  = fix.dtable;
+    auto& problem = fix.problem;
+    using DTable = WeightedOptimizerFixture::DTable;
+
+    constexpr Operon::Scalar paramTol { 0.01F };
+
+    auto checkRecoversCleanSolution = [&](OptimizerBase& optimizer) -> void {
+        auto summary = optimizer.Optimize(rng, tree);
+        for (auto const p : summary.FinalParameters) {
+            CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, paramTol));
+        }
+    };
+
+    SECTION("lm / eigen") {
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer{&dtable, &problem};
+        checkRecoversCleanSolution(optimizer);
+    }
+
+    SECTION("lm / tiny") {
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny> optimizer{&dtable, &problem};
+        checkRecoversCleanSolution(optimizer);
+    }
+
+    SECTION("lbfgs / gaussian") {
+        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
+        checkRecoversCleanSolution(optimizer);
+    }
+
+    SECTION("unweighted sanity check: same problem without weights does NOT recover c0=1") {
+        // Confirms the test problem is actually discriminative - not that
+        // "any optimizer converges to 1 regardless of weights".
+        std::vector<Operon::Scalar> ones(WeightedOptimizerFixture::Nrow, Operon::Scalar{1});
+        fix.problem.GetDataset()->SetWeights(ones);
+        LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer{&dtable, &problem};
+        auto summary = optimizer.Optimize(rng, tree);
+        auto const p = summary.FinalParameters.front();
+        CHECK(std::abs(p - 1.0F) > paramTol);
+    }
+}
+
 TEST_CASE("SGD update rules", "[optimizer]")
 {
     OptimizerFixture fix;
