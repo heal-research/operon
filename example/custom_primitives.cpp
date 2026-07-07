@@ -169,15 +169,16 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     tf::Executor executor(std::thread::hardware_concurrency());
 
     size_t gen = 0;
-    auto report = [&]() -> void {
+    auto report = [&]() -> bool {
         ++gen;
-        if (gen % 10 != 0) { return; }
+        if (gen % 10 != 0) { return false; }
         auto const* first = gp.Individuals().data();
         auto const* last  = first + config.PopulationSize;
         auto const* best  = std::min_element(first, last,
             [](auto const& a, auto const& b) -> auto { return a[0] < b[0]; });
         fmt::print("  gen {:4d}  MSE(train)={:.6f}  len={}\n",
             gen, best->Fitness[0], best->Genotype.Length());
+        return false;
     };
 
     fmt::print("Running GP ({} generations, population {})...\n\n",
