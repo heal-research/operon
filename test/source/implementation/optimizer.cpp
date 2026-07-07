@@ -344,6 +344,96 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
     }
 }
 
+// Same clean/noisy problem as WeightedOptimizerFixture, but padded with
+// Npad unused rows so the training range starts at a non-zero offset
+// (range_.Start() = Npad). GaussianLoss::operator() previously indexed
+// target_/weights_ by the *absolute* range.Start() instead of an offset
+// relative to range_.Start(); since SelectRandomRange() returns range_
+// itself whenever batchSize >= range_.Size() (the default), this reproduces
+// the out-of-bounds read even without any random sub-batching - LBFGS/SGD
+// with a non-zero training-range start alone was enough to trigger it.
+// LM is unaffected (LMCostFunction always indexes 0..numResiduals_-1,
+// never range.Start()), so this only needs to cover LBFGS/SGD.
+struct WeightedOptimizerNonZeroStartFixture {
+    static constexpr auto Npad { 100 };
+    static constexpr auto Nrow { 400 };
+    static constexpr auto Nclean { Nrow / 2 };
+    static constexpr auto Ntotal { Npad + Nrow };
+
+    Operon::RandomGenerator rng{0}; // NOLINT(readability-identifier-naming)
+    Operon::Dataset ds; // NOLINT(readability-identifier-naming)
+    Operon::Tree tree; // NOLINT(readability-identifier-naming)
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable; // NOLINT(readability-identifier-naming)
+    Operon::Problem problem; // NOLINT(readability-identifier-naming)
+
+    WeightedOptimizerNonZeroStartFixture()
+        : ds([&]() -> Operon::Dataset {
+            std::vector<Operon::Scalar> x(Ntotal);
+            std::vector<Operon::Scalar> y(Ntotal);
+            for (auto i = 0; i < Npad; ++i) {
+                x[i] = Operon::Scalar{-2}; // never read - outside training/test range
+                y[i] = Operon::Scalar{100};
+            }
+            for (auto i = 0; i < Nclean; ++i) {
+                x[Npad + i] = Operon::Random::Uniform(rng, -1.0F, +1.0F);
+                y[Npad + i] = x[Npad + i];
+            }
+            for (auto i = Nclean; i < Nrow; ++i) {
+                x[Npad + i] = Operon::Scalar{1};
+                y[Npad + i] = Operon::Scalar{6};
+            }
+            std::vector<std::vector<Operon::Scalar>> cols{x, y};
+            return Operon::Dataset(cols);
+        }())
+        , tree([&]() -> Tree {
+            auto t = InfixParser::Parse("X1", ds);
+            for (auto& node : t.Nodes()) {
+                if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.1); }
+            }
+            return t;
+        }())
+        , problem(&ds)
+    {
+        problem.SetTrainingRange({Npad, Ntotal});
+        problem.SetTestRange({Npad, Ntotal});
+        problem.SetTarget("X2");
+        std::vector<Operon::Scalar> weights(Ntotal, Operon::Scalar{1});
+        std::fill(weights.begin() + Npad + Nclean, weights.end(), Operon::Scalar{0});
+        ds.SetWeights(weights);
+    }
+};
+
+TEST_CASE("Weighted parameter optimization with non-zero training range start", "[optimizer]")
+{
+    WeightedOptimizerNonZeroStartFixture fix;
+    auto& rng     = fix.rng;
+    auto& tree    = fix.tree;
+    auto& dtable  = fix.dtable;
+    auto& problem = fix.problem;
+    using DTable = WeightedOptimizerNonZeroStartFixture::DTable;
+
+    constexpr Operon::Scalar paramTol { 0.01F };
+
+    SECTION("lbfgs / gaussian") {
+        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
+        auto summary = optimizer.Optimize(rng, tree);
+        for (auto const p : summary.FinalParameters) {
+            CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, paramTol));
+        }
+    }
+
+    SECTION("sgd / gaussian") {
+        auto const dim{tree.CoefficientsCount()};
+        auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
+        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem, *rule};
+        auto summary = optimizer.Optimize(rng, tree);
+        for (auto const p : summary.FinalParameters) {
+            CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, 0.1F));
+        }
+    }
+}
+
 TEST_CASE("SGD update rules", "[optimizer]")
 {
     OptimizerFixture fix;

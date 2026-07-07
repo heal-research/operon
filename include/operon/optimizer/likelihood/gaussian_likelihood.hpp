@@ -5,6 +5,7 @@
 #ifndef OPERON_GAUSSIAN_LIKELIHOOD_HPP
 #define OPERON_GAUSSIAN_LIKELIHOOD_HPP
 
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <limits>
@@ -109,7 +110,10 @@ struct GaussianLoss : public LikelihoodBase<T> {
         , np_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
         , nr_{range_.Size()}
         , jac_{bs_, np_}
-    { }
+    {
+        EXPECT(weights_.empty() || weights_.size() == nr_);
+        EXPECT(std::all_of(weights_.begin(), weights_.end(), [](auto w) { return w >= Operon::Scalar{0}; }));
+    }
 
     using Scalar   = typename LikelihoodBase<T>::Scalar;
 
