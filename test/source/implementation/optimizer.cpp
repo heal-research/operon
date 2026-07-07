@@ -285,7 +285,21 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         checkRecoversCleanSolution(optimizer);
     }
 
-    SECTION("unweighted sanity check: same problem without weights does NOT recover c0=1") {
+    SECTION("sgd / gaussian") {
+        auto const dim{tree.CoefficientsCount()};
+        auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
+        SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem, *rule};
+        auto summary = optimizer.Optimize(rng, tree);
+        // SGD converges more slowly than LM/L-BFGS on this problem within
+        // the default iteration budget, so use a looser tolerance - the
+        // point is confirming weights are picked up at all, not tight
+        // convergence.
+        for (auto const p : summary.FinalParameters) {
+            CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, 0.1F));
+        }
+    }
+
+    SECTION("unweighted sanity check: LM does NOT recover c0=1") {
         // Confirms the test problem is actually discriminative - not that
         // "any optimizer converges to 1 regardless of weights".
         std::vector<Operon::Scalar> ones(WeightedOptimizerFixture::Nrow, Operon::Scalar{1});
@@ -294,6 +308,39 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         auto summary = optimizer.Optimize(rng, tree);
         auto const p = summary.FinalParameters.front();
         CHECK(std::abs(p - 1.0F) > paramTol);
+    }
+
+    SECTION("unweighted sanity check: lbfgs does NOT recover c0=1") {
+        std::vector<Operon::Scalar> ones(WeightedOptimizerFixture::Nrow, Operon::Scalar{1});
+        fix.problem.GetDataset()->SetWeights(ones);
+        LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
+        auto summary = optimizer.Optimize(rng, tree);
+        auto const p = summary.FinalParameters.front();
+        CHECK(std::abs(p - 1.0F) > paramTol);
+    }
+
+    SECTION("poisson ignores weights (documented limitation, not yet implemented)") {
+        // PoissonLoss's constructor accepts a weights span only to share
+        // LBFGSOptimizer's generic call site with GaussianLoss; it must
+        // have zero effect on the result until the exposure-vs-precision
+        // weight semantics are reconciled. Verified by re-running with an
+        // all-ones weight vector (fresh rng, same seed) and checking the
+        // result is bit-for-bit identical to the zeroed-weight run.
+        LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizerZeroed{&dtable, &problem};
+        Operon::RandomGenerator rngZeroed{0};
+        auto summaryZeroed = optimizerZeroed.Optimize(rngZeroed, tree);
+
+        std::vector<Operon::Scalar> ones(WeightedOptimizerFixture::Nrow, Operon::Scalar{1});
+        fix.problem.GetDataset()->SetWeights(ones);
+        LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizerOnes{&dtable, &problem};
+        Operon::RandomGenerator rngOnes{0};
+        auto summaryOnes = optimizerOnes.Optimize(rngOnes, tree);
+
+        REQUIRE(summaryZeroed.FinalParameters.size() == summaryOnes.FinalParameters.size());
+        for (auto i = 0UL; i < summaryZeroed.FinalParameters.size(); ++i) {
+            CHECK(summaryZeroed.FinalParameters[i] == summaryOnes.FinalParameters[i]);
+        }
+        CHECK(summaryZeroed.FinalCost == summaryOnes.FinalCost);
     }
 }
 

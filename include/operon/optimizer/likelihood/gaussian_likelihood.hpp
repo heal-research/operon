@@ -125,7 +125,11 @@ struct GaussianLoss : public LikelihoodBase<T> {
         Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
         auto range = SelectRandomRange();
         auto primal = interpreter->Evaluate(c, range);
-        auto target = target_.segment(range.Start(), range.Size());
+        // range may be a random sub-batch of range_; target_/weights_ are
+        // sized to range_ and indexed from 0, so offset by range_.Start()
+        // (not range.Start(), which is an absolute dataset row index).
+        auto const localStart = range.Start() - range_.Start();
+        auto target = target_.segment(localStart, range.Size());
         Eigen::Map<Eigen::Array<Scalar, -1, 1> const> primalMap{primal.data(), std::ssize(primal)};
         auto e = primalMap - target;
 
@@ -143,7 +147,7 @@ struct GaussianLoss : public LikelihoodBase<T> {
         // Applied directly (rather than via the sqrt(w)-residual trick used for
         // LM) since there's no shared residual vector to keep consistent here.
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> w{weights_.data(), std::ssize(weights_)};
-        auto wSeg = w.segment(range.Start(), range.Size());
+        auto wSeg = w.segment(localStart, range.Size());
         if (grad.size() != 0) {
             assert(grad.size() == x.size());
             ++jeval_;
