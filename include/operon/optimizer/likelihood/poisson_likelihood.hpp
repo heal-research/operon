@@ -7,6 +7,7 @@
 
 #include "operon/core/concepts.hpp"
 #include "operon/core/types.hpp"
+#include "operon/error_metrics/sum_of_squared_errors.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "likelihood_base.hpp"
 
@@ -98,10 +99,14 @@ struct PoissonLikelihood {
 template<typename T = Operon::Scalar, bool LogInput = true>
 struct PoissonLoss : public LikelihoodBase<T> {
     static constexpr bool UsesSigma = false;
-    // See GaussianLoss::UsesWeights - PoissonLoss accepts a weights span
-    // (constructor param below) only to share LBFGSOptimizer/SGDOptimizer's
-    // generic call site, but never applies it.
-    static constexpr bool UsesWeights = false;
+
+    // See GaussianLoss::Cost - weights are intentionally ignored here (see
+    // the constructor comment below for why), so this stays unweighted
+    // regardless of what's passed in.
+    template<typename Pred>
+    static auto Cost(Pred const& pred, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> /*weights*/) noexcept -> Operon::Scalar {
+        return static_cast<Operon::Scalar>(0.5 * Operon::SumOfSquaredErrors(pred.begin(), pred.end(), target.begin()));
+    }
 
     // `weights` is accepted only so PoissonLoss shares LBFGSOptimizer/SGDOptimizer's
     // generic call site with GaussianLoss; it is intentionally not applied here.
