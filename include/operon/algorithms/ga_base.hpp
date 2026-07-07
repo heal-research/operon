@@ -5,6 +5,7 @@
 #ifndef GA_BASE_HPP
 #define GA_BASE_HPP
 
+#include <atomic>
 #include <functional>
 #include <string>
 #include <operon/operon_export.hpp>
@@ -19,12 +20,57 @@ class ReinserterBase;
 struct CoefficientInitializerBase;
 struct TreeInitializerBase;
 
+// Invoked once per generation by every algorithm's Run() to report progress.
+// Returning true requests early termination; each algorithm's own stop
+// condition ORs StopRequested() in alongside its evaluator-budget,
+// generation-count, and time-limit checks.
+using ReportCallback = std::function<bool()>;
+
 class GeneticAlgorithmBase {
 public:
     virtual ~GeneticAlgorithmBase() = default;
-    GeneticAlgorithmBase(const GeneticAlgorithmBase&) = default;
+    // std::atomic<bool> isn't copyable, so stopRequested_ needs manual
+    // handling; every other member is copied exactly as the defaulted
+    // versions would have done.
+    GeneticAlgorithmBase(GeneticAlgorithmBase const& other)
+        : config_(other.config_)
+        , problem_(other.problem_)
+        , treeInit_(other.treeInit_)
+        , coeffInit_(other.coeffInit_)
+        , generator_(other.generator_)
+        , reinserter_(other.reinserter_)
+        , individuals_(other.individuals_)
+        , parents_(other.parents_)
+        , offspring_(other.offspring_)
+        , workerRngs_(other.workerRngs_)
+        , generation_(other.generation_)
+        , elapsed_(other.elapsed_)
+        , phaseTimes_(other.phaseTimes_)
+        , isFitted_(other.isFitted_)
+        , stopRequested_(other.stopRequested_.load())
+    {
+    }
     GeneticAlgorithmBase(GeneticAlgorithmBase&&) = delete;
-    auto operator=(const GeneticAlgorithmBase&) -> GeneticAlgorithmBase& = default;
+    auto operator=(GeneticAlgorithmBase const& other) -> GeneticAlgorithmBase&
+    {
+        if (this == &other) { return *this; }
+        config_ = other.config_;
+        problem_ = other.problem_;
+        treeInit_ = other.treeInit_;
+        coeffInit_ = other.coeffInit_;
+        generator_ = other.generator_;
+        reinserter_ = other.reinserter_;
+        individuals_ = other.individuals_;
+        parents_ = other.parents_;
+        offspring_ = other.offspring_;
+        workerRngs_ = other.workerRngs_;
+        generation_ = other.generation_;
+        elapsed_ = other.elapsed_;
+        phaseTimes_ = other.phaseTimes_;
+        isFitted_ = other.isFitted_;
+        stopRequested_.store(other.stopRequested_.load());
+        return *this;
+    }
     auto operator=(GeneticAlgorithmBase&&) -> GeneticAlgorithmBase& = delete;
 
     GeneticAlgorithmBase(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem, gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit, gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter)
@@ -73,6 +119,13 @@ public:
     [[nodiscard]] auto IsFitted() const -> bool { return isFitted_; }
     auto IsFitted() -> bool& { return isFitted_; }
 
+    // Set by an algorithm's Run() when its ReportCallback returns true; each
+    // algorithm's own stop condition ORs this in. Atomic so it's also safe to
+    // call RequestStop() from outside the callback (e.g. another thread, a
+    // signal handler) while Run() is in progress.
+    [[nodiscard]] auto StopRequested() const -> bool { return stopRequested_.load(std::memory_order_acquire); }
+    auto RequestStop() -> void { stopRequested_.store(true, std::memory_order_release); }
+
     // Valid to call between runs only. The PhaseTimer observer owns its own
     // totals and is recreated each Run(), so Reset() mid-run would cause the
     // next reportProgress sync to overwrite the cleared map with stale data.
@@ -80,6 +133,7 @@ public:
     {
         generation_ = 0;
         elapsed_ = 0;
+        stopRequested_.store(false, std::memory_order_release);
         phaseTimes_.clear();
         GetGenerator()->Evaluator()->Reset();
     }
@@ -111,6 +165,7 @@ private:
     double elapsed_{0};
     Operon::Map<std::string, double> phaseTimes_;
     bool isFitted_{false};
+    std::atomic<bool> stopRequested_{false};
 };
 
 } // namespace Operon
