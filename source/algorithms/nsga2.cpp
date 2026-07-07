@@ -95,7 +95,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     std::transform(fronts_.front().begin(), fronts_.front().end(), std::back_inserter(best_), [&](auto i) -> auto { return pop[i]; });
 }
 
-auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::function<void()> report, bool warmStart) -> void // NOLINT(readability-function-cognitive-complexity)
+auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon::ReportCallback report, bool warmStart) -> void // NOLINT(readability-function-cognitive-complexity)
 {
     auto const savedGeneration = Generation();
     Reset();
@@ -135,7 +135,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
 
     auto stop = [&]() -> bool {
         Elapsed() = computeElapsed();
-        return generator->Terminate() || Generation() == config.Generations || Elapsed() > static_cast<double>(config.TimeLimit);
+        return StopRequested() || generator->Terminate() || Generation() == config.Generations || Elapsed() > static_cast<double>(config.TimeLimit);
     };
 
     auto& individuals = Individuals();
@@ -153,9 +153,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
             auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(parents); }).name(std::string{SortTaskName});
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
-                                             if (report) {
-                                                 std::invoke(report);
-                                             }
+                                             if (report && std::invoke(report)) { RequestStop(); }
                                          })
                                       .name("report progress");
             nonDominatedSort.precede(reportProgress);
@@ -209,7 +207,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
-                                             if (report) { std::invoke(report); }
+                                             if (report && std::invoke(report)) { RequestStop(); }
                                          }).name("report progress");
 
             // set-up subflow graph
@@ -240,7 +238,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, std::fu
     executor.remove_observer(std::move(timer));
 }
 
-auto NSGA2::Run(Operon::RandomGenerator& random, std::function<void()> report, size_t threads, bool warmStart) -> void
+auto NSGA2::Run(Operon::RandomGenerator& random, Operon::ReportCallback report, size_t threads, bool warmStart) -> void
 {
     if (threads == 0U) {
         threads = std::thread::hardware_concurrency();
