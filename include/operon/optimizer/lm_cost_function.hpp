@@ -5,6 +5,7 @@
 #ifndef OPERON_LM_COST_FUNCTION_HPP
 #define OPERON_LM_COST_FUNCTION_HPP
 
+#include <algorithm>
 #include <atomic>
 #include <Eigen/Core>
 #include <gsl/pointers>
@@ -37,6 +38,7 @@ struct LMCostFunction {
         EXPECT(target_.size() == numResiduals_);
         EXPECT(parameters != nullptr);
         EXPECT(weights_.empty() || weights_.size() == numResiduals_);
+        EXPECT(std::all_of(weights_.begin(), weights_.end(), [](auto w) { return w >= Operon::Scalar{0}; }));
         Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
 
         // Standard WLS-via-LM trick: scaling both the residual and its
