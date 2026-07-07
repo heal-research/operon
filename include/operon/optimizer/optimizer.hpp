@@ -227,6 +227,17 @@ struct LBFGSOptimizer final : public OptimizerBase {
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
+            // Must match the objective LossFunction actually optimizes -
+            // otherwise Success (InitialCost vs FinalCost) is judged against a
+            // different objective than the one that was improved, and
+            // CoefficientOptimizer (local_search.cpp) drops valid weighted
+            // gains. Gated on UsesWeights since not every LossFunction (e.g.
+            // PoissonLoss) applies weights at all.
+            if constexpr (LossFunction::UsesWeights) {
+                if (!weights.empty()) {
+                    return 0.5 * Operon::SumOfSquaredErrors(pred.begin(), pred.end(), target.begin(), weights.begin());
+                }
+            }
             return 0.5 * Operon::SumOfSquaredErrors(pred.begin(), pred.end(), target.begin());
         };
 
@@ -306,6 +317,17 @@ struct SGDOptimizer final : public OptimizerBase {
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
+            // Must match the objective LossFunction actually optimizes -
+            // otherwise Success (InitialCost vs FinalCost) is judged against a
+            // different objective than the one that was improved, and
+            // CoefficientOptimizer (local_search.cpp) drops valid weighted
+            // gains. Gated on UsesWeights since not every LossFunction (e.g.
+            // PoissonLoss) applies weights at all.
+            if constexpr (LossFunction::UsesWeights) {
+                if (!weights.empty()) {
+                    return 0.5 * Operon::SumOfSquaredErrors(pred.begin(), pred.end(), target.begin(), weights.begin());
+                }
+            }
             return 0.5 * Operon::SumOfSquaredErrors(pred.begin(), pred.end(), target.begin());
         };
 

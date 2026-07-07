@@ -99,6 +99,11 @@ struct GaussianLikelihood {
 template<typename T = Operon::Scalar>
 struct GaussianLoss : public LikelihoodBase<T> {
     static constexpr bool UsesSigma = true;
+    // Whether operator() actually applies sample weights to the loss/gradient
+    // (as opposed to accepting-but-ignoring them, like PoissonLoss). Lets
+    // callers (e.g. LBFGSOptimizer/SGDOptimizer's diagnostic cost lambda)
+    // report a cost consistent with what was actually optimized.
+    static constexpr bool UsesWeights = true;
 
     GaussianLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0, Operon::Span<Operon::Scalar const> weights = {})
         : LikelihoodBase<T>(interpreter)

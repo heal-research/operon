@@ -98,6 +98,10 @@ struct PoissonLikelihood {
 template<typename T = Operon::Scalar, bool LogInput = true>
 struct PoissonLoss : public LikelihoodBase<T> {
     static constexpr bool UsesSigma = false;
+    // See GaussianLoss::UsesWeights - PoissonLoss accepts a weights span
+    // (constructor param below) only to share LBFGSOptimizer/SGDOptimizer's
+    // generic call site, but never applies it.
+    static constexpr bool UsesWeights = false;
 
     // `weights` is accepted only so PoissonLoss shares LBFGSOptimizer/SGDOptimizer's
     // generic call site with GaussianLoss; it is intentionally not applied here.
