@@ -335,4 +335,50 @@ TEST_CASE("GrammarEnumerationAlgorithm - RequestStop halts Run early", "[enumera
     CHECK(reportCalls == 2);
 }
 
+TEST_CASE("GrammarEnumerationAlgorithm - recovers a small ground-truth expression", "[enumeration]")
+{
+    // y = 2*x0 + 3*x1 - 1 : a two-term weighted sum, exercising Expression's
+    // {Term, Expression} continuation production (not just its single-term
+    // base case) - needs complexity 6 (fixedCost 2 for the outer weight+Add,
+    // +1 for x0, +3 for the inner Expression's own minimal "const*x1+const"
+    // shape), the smallest MaxComplexity that can reach a two-term sum.
+    constexpr auto Nrow = 50;
+    Operon::RandomGenerator dataRng(1234);
+    std::vector<Operon::Scalar> x0(Nrow);
+    std::vector<Operon::Scalar> x1(Nrow);
+    std::vector<Operon::Scalar> y(Nrow);
+    for (auto i = 0; i < Nrow; ++i) {
+        x0[i] = Operon::Random::Uniform(dataRng, -1.0F, +1.0F);
+        x1[i] = Operon::Random::Uniform(dataRng, -1.0F, +1.0F);
+        y[i] = 2.0F * x0[i] + 3.0F * x1[i] - 1.0F;
+    }
+    std::vector<std::vector<Operon::Scalar>> cols{ x0, x1, y };
+    Operon::Dataset ds(cols);
+
+    Operon::Problem problem(&ds);
+    std::vector<Operon::Hash> const inputs{ ds.GetVariable("X1").value().Hash, ds.GetVariable("X2").value().Hash };
+    problem.SetInputs(inputs);
+    problem.SetTarget("X3");
+    problem.SetTrainingRange({ 0, Nrow });
+    problem.SetTestRange({ 0, Nrow });
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+
+    Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
+    EnumerationConfig config;
+    config.MaxComplexity = 6;
+    config.TopK = 5;
+
+    Operon::RandomGenerator engineRng(42);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, engineRng);
+    Operon::RandomGenerator fitRng(42);
+    algo.Run(fitRng);
+
+    auto best = algo.BestTrees();
+    REQUIRE_FALSE(best.empty());
+    CHECK(best.front().first < 1e-2); // near-perfect fit for an exactly-representable linear ground truth
+}
+
 } // namespace Operon::Test
