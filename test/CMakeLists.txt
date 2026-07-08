@@ -34,6 +34,7 @@ add_executable(operon_test
     source/implementation/error_metrics.cpp
     source/implementation/information_criteria.cpp
     source/implementation/content_hash.cpp
+    source/implementation/enumeration.cpp
     source/implementation/grammar.cpp
     source/implementation/hashing.cpp
     source/implementation/zobrist.cpp
