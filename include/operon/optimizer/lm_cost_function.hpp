@@ -5,97 +5,66 @@
 #ifndef OPERON_LM_COST_FUNCTION_HPP
 #define OPERON_LM_COST_FUNCTION_HPP
 
-#include <atomic>
-#include <Eigen/Core>
 #include <gsl/pointers>
 #include "operon/interpreter/interpreter.hpp"
+#include "operon/optimizer/lm_cost_function_base.hpp"
 
 namespace Operon {
 
-
 template<typename T = Operon::Scalar, int StorageOrder = Eigen::ColMajor>
-struct LMCostFunction {
-    static auto constexpr Storage{ StorageOrder };
-    using Scalar = Operon::Scalar;
+struct LMCostFunction : public LMCostFunctionBase<LMCostFunction<T, StorageOrder>, StorageOrder> {
+    using Base = LMCostFunctionBase<LMCostFunction<T, StorageOrder>, StorageOrder>;
+    using Scalar = typename Base::Scalar;
 
-    enum {
-        NUM_RESIDUALS = Eigen::Dynamic,  // NOLINT
-        NUM_PARAMETERS = Eigen::Dynamic, // NOLINT
-    };
-
-    explicit LMCostFunction(gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range)
-        : interpreter_(interpreter)
-        , target_{target}
+    // `target` and `weights` must span the *whole* dataset column (absolute,
+    // dataset-row-indexed), same contract as GaussianLoss/PoissonLoss - not a
+    // slice pre-cut to `range`. Unlike those, LM never mini-batches (range_ is
+    // fixed for the object's lifetime), so the local range.Size()-sized slice
+    // this cost function actually reads is computed once here in the ctor
+    // rather than per Evaluate() call.
+    explicit LMCostFunction(gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, Operon::Span<Operon::Scalar const> weights = {})
+        : Base{range.Size(), static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
+        , interpreter_(interpreter)
+        , target_{target.subspan(range.Start(), range.Size())}
         , range_{range}
-        , numResiduals_{range.Size()}
-        , numParameters_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
-    { }
+        , weights_{weights.empty() ? weights : weights.subspan(range.Start(), range.Size())}
+    {
+        // Validated once here rather than per-Evaluate() call: EXPECT (libassert)
+        // is always-on, not debug-only, so an O(N) scan per residual evaluation
+        // would be a real per-LM-iteration cost across a GP run.
+        ValidateLMWeights(weights_, this->numResiduals_);
+    }
 
     inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
     {
-        EXPECT(target_.size() == numResiduals_);
+        EXPECT(target_.size() == this->numResiduals_);
         EXPECT(parameters != nullptr);
-        Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
+        Operon::Span<Operon::Scalar const> params{ parameters, this->numParameters_ };
 
         if (jacobian != nullptr) {
-            ++jacobianCallCount_;
-            Operon::Span<Operon::Scalar> jac{jacobian, static_cast<size_t>(numResiduals_ * numParameters_)};
+            ++this->jacobianCallCount_;
+            Operon::Span<Operon::Scalar> jac{jacobian, this->numResiduals_ * this->numParameters_};
             interpreter_->JacRev(params, range_, jac);
+            ApplyLMJacobianWeights(weights_, jacobian, this->numResiduals_, this->numParameters_);
         }
 
         if (residuals != nullptr) {
-            ++residualCallCount_;
-            Operon::Span<Operon::Scalar> res{ residuals, static_cast<size_t>(numResiduals_) };
+            ++this->residualCallCount_;
+            Operon::Span<Operon::Scalar> res{ residuals, this->numResiduals_ };
             interpreter_->Evaluate(params, range_, res);
-            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, numResiduals_);
-            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), numResiduals_);
+            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, static_cast<Eigen::Index>(this->numResiduals_));
+            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), static_cast<Eigen::Index>(this->numResiduals_));
             x -= y;
+            ApplyLMResidualWeights(weights_, residuals, this->numResiduals_);
         }
         return true;
     }
-
-    auto operator()(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
-    {
-        return Evaluate(parameters, residuals, jacobian);
-    }
-
-    [[nodiscard]] auto NumResiduals() const -> int { return numResiduals_; }
-    [[nodiscard]] auto NumParameters() const -> int { return numParameters_; }
-
-    // required by Eigen::LevenbergMarquardt
-    using JacobianType = Eigen::Matrix<Operon::Scalar, -1, -1>;
-    using QRSolver     = Eigen::ColPivHouseholderQR<JacobianType>;
-
-    // there is no real documentation but looking at Eigen unit tests, these functions should return zero
-    // see: https://gitlab.com/libeigen/eigen/-/blob/master/unsupported/test/NonLinearOptimization.cpp
-    auto operator()(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, 1>& residual) const -> int
-    {
-        Evaluate(input.data(), residual.data(), nullptr);
-        return 0;
-    }
-
-    auto df(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, -1>& jacobian) const -> int // NOLINT
-    {
-        static_assert(StorageOrder == Eigen::ColMajor, "Eigen::LevenbergMarquardt requires the Jacobian to be stored in column-major format.");
-        Evaluate(input.data(), nullptr, jacobian.data());
-        return 0;
-    }
-
-    [[nodiscard]] auto values() const -> int { return NumResiduals(); }  // NOLINT
-    [[nodiscard]] auto inputs() const -> int { return NumParameters(); } // NOLINT
-
-    [[nodiscard]] auto ResidualCalls() const -> std::size_t { return residualCallCount_.load(); }
-    [[nodiscard]] auto JacobianCalls() const -> std::size_t { return jacobianCallCount_.load(); }
 
 private:
     gsl::not_null<InterpreterBase<T> const*> interpreter_;
     Operon::Span<Operon::Scalar const> target_;
     Operon::Range const range_; // NOLINT
-    std::size_t numResiduals_;
-    std::size_t numParameters_;
-
-    mutable std::atomic_size_t jacobianCallCount_{0};
-    mutable std::atomic_size_t residualCallCount_{0};
+    Operon::Span<Operon::Scalar const> weights_;
 };
 } // namespace Operon
 
