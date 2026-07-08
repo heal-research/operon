@@ -16,12 +16,18 @@ struct LMCostFunction : public LMCostFunctionBase<LMCostFunction<T, StorageOrder
     using Base = LMCostFunctionBase<LMCostFunction<T, StorageOrder>, StorageOrder>;
     using Scalar = typename Base::Scalar;
 
+    // `target` and `weights` must span the *whole* dataset column (absolute,
+    // dataset-row-indexed), same contract as GaussianLoss/PoissonLoss - not a
+    // slice pre-cut to `range`. Unlike those, LM never mini-batches (range_ is
+    // fixed for the object's lifetime), so the local range.Size()-sized slice
+    // this cost function actually reads is computed once here in the ctor
+    // rather than per Evaluate() call.
     explicit LMCostFunction(gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, Operon::Span<Operon::Scalar const> weights = {})
         : Base{range.Size(), static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
         , interpreter_(interpreter)
-        , target_{target}
+        , target_{target.subspan(range.Start(), range.Size())}
         , range_{range}
-        , weights_{weights}
+        , weights_{weights.empty() ? weights : weights.subspan(range.Start(), range.Size())}
     {
         // Validated once here rather than per-Evaluate() call: EXPECT (libassert)
         // is always-on, not debug-only, so an O(N) scan per residual evaluation

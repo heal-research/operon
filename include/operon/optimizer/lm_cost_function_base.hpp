@@ -18,9 +18,10 @@ namespace Operon {
 // problem (sum(w_i * r_i^2)) instead. Shared by LMCostFunction and
 // JitLMCostFunction so the two backends can't drift apart on how weighting works.
 //
-// `weights` here is already range-local (callers pass Problem::Weights(range),
-// not the whole dataset column - see GaussianLoss for the contrast), so this
-// all_of only scans the rows this cost function will actually use.
+// Called with `weights` already sliced down to the range-local (numResiduals_-sized)
+// span: LMCostFunction/JitLMCostFunction's ctors take the whole-column target/weights
+// (same contract as GaussianLoss/PoissonLoss) and slice once there before calling this
+// - unlike those, LM never mini-batches, so there's exactly one local slice to derive.
 inline void ValidateLMWeights(Operon::Span<Operon::Scalar const> weights, std::size_t numResiduals)
 {
     EXPECT(weights.empty() || weights.size() == numResiduals);

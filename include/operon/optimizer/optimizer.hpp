@@ -94,10 +94,10 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         auto const* problem = this->GetProblem();
         auto const* dataset = problem->GetDataset();
         auto range  = problem->TrainingRange();
-        auto target = problem->TargetValues(range);
+        auto target = problem->TargetValues();
         auto iterations = this->Iterations();
 
-        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
+        auto weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{});
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
         Operon::LMCostFunction cf{gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter}, target, range, weights};
@@ -151,10 +151,10 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         auto const* problem = this->GetProblem();
         auto const* dataset = problem->GetDataset();
         auto range  = problem->TrainingRange();
-        auto target = problem->TargetValues(range);
+        auto target = problem->TargetValues();
         auto iterations = this->Iterations();
 
-        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
+        auto weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{});
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
         Operon::LMCostFunction<Operon::Scalar> cf{&interpreter, target, range, weights};
@@ -415,9 +415,9 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         auto const* problem = this->GetProblem();
         auto const* dataset = problem->GetDataset();
         auto const  range   = problem->TrainingRange();
-        auto const  target  = problem->TargetValues(range);
+        auto const  target  = problem->TargetValues();
         auto const  iters   = this->Iterations();
-        auto const  weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
+        auto const  weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{});
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
 
