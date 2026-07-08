@@ -6,14 +6,13 @@
 
 #ifdef HAVE_ASMJIT
 
-#include <atomic>
 #include <vector>
 
-#include <Eigen/Core>
 #include <gsl/pointers>
 
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/interpreter/backend/jit/jit_compiler.hpp"
+#include "operon/optimizer/lm_cost_function_base.hpp"
 
 namespace Operon {
 
@@ -24,17 +23,12 @@ namespace Operon {
 // colPtrs[i] and jacColPtrs[i] must follow the ordering returned by VarOrder(tree),
 // each already offset to range.Start().
 template<typename T = Operon::Scalar, int StorageOrder = Eigen::ColMajor>
-struct JitLMCostFunction {
-    static auto constexpr Storage{ StorageOrder };
-    using Scalar = Operon::Scalar;
+struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, StorageOrder>, StorageOrder> {
+    using Base = LMCostFunctionBase<JitLMCostFunction<T, StorageOrder>, StorageOrder>;
+    using Scalar = typename Base::Scalar;
 
     static_assert(std::is_same_v<T, float>,
         "JitLMCostFunction requires float precision (EvalFn operates on float arrays)");
-
-    enum {
-        NUM_RESIDUALS  = Eigen::Dynamic, // NOLINT
-        NUM_PARAMETERS = Eigen::Dynamic, // NOLINT
-    };
 
     JitLMCostFunction(gsl::not_null<InterpreterBase<T> const*> interpreter,
                       JIT::EvalFn                              fn,
@@ -44,103 +38,75 @@ struct JitLMCostFunction {
                       JIT::EvalJacFn                           jacFn      = nullptr,
                       std::vector<float const*>                jacColPtrs = {},
                       int                                      nVars      = -1,
-                      int                                      nConsts    = -1)
-        : interpreter_(interpreter)
+                      int                                      nConsts    = -1,
+                      Operon::Span<Operon::Scalar const>       weights    = {})
+        : Base{range.Size(), static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
+        , interpreter_(interpreter)
         , fn_(fn)
         , colPtrs_(std::move(colPtrs))
         , jacFn_(jacFn)
         , jacColPtrs_(std::move(jacColPtrs))
         , target_(target)
         , range_(range)
-        , numResiduals_(range.Size())
-        , numParameters_(static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount()))
+        , weights_(weights)
         , nRowsPad_(static_cast<std::size_t>((static_cast<int>(range.Size()) + 7) & ~7))
         , scratchResiduals_(nRowsPad_)
-        , scratchJac_(nRowsPad_ * numParameters_)
+        , scratchJac_(nRowsPad_ * this->numParameters_)
         , nVars_(nVars)
         , nConsts_(nConsts)
-    {}
+    {
+        ValidateLMWeights(weights_, this->numResiduals_);
+    }
 
     inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
     {
-        EXPECT(target_.size() == numResiduals_);
+        EXPECT(target_.size() == this->numResiduals_);
         EXPECT(parameters != nullptr);
-        Operon::Span<Operon::Scalar const> params{ parameters, numParameters_ };
+        Operon::Span<Operon::Scalar const> params{ parameters, this->numParameters_ };
 
         auto const nRowsPad = static_cast<int32_t>(nRowsPad_);
 
         if (jacobian != nullptr) {
-            ++jacobianCallCount_;
+            ++this->jacobianCallCount_;
             if (jacFn_ != nullptr) {
                 ENSURE(nVars_   < 0 || static_cast<int>(jacColPtrs_.size()) == nVars_);
-                ENSURE(nConsts_ < 0 || static_cast<int>(numParameters_)     == nConsts_);
+                ENSURE(nConsts_ < 0 || static_cast<int>(this->numParameters_) == nConsts_);
                 // Write into padded per-column scratch, then copy valid rows to jacobian.
-                std::vector<float*> outs(numParameters_);
-                for (std::size_t k = 0; k < numParameters_; ++k) {
+                std::vector<float*> outs(this->numParameters_);
+                for (std::size_t k = 0; k < this->numParameters_; ++k) {
                     outs[k] = scratchJac_.data() + k * nRowsPad_;
                 }
                 jacFn_(outs.data(), jacColPtrs_.data(), nRowsPad, parameters);
-                for (std::size_t k = 0; k < numParameters_; ++k) {
-                    std::copy_n(scratchJac_.data() + k * nRowsPad_, numResiduals_,
-                                jacobian + k * static_cast<std::ptrdiff_t>(numResiduals_));
+                for (std::size_t k = 0; k < this->numParameters_; ++k) {
+                    std::copy_n(scratchJac_.data() + k * nRowsPad_, this->numResiduals_,
+                                jacobian + k * static_cast<std::ptrdiff_t>(this->numResiduals_));
                 }
             } else {
-                Operon::Span<Operon::Scalar> jac{jacobian, numResiduals_ * numParameters_};
+                Operon::Span<Operon::Scalar> jac{jacobian, this->numResiduals_ * this->numParameters_};
                 interpreter_->JacRev(params, range_, jac);
             }
+            ApplyLMJacobianWeights(weights_, jacobian, this->numResiduals_, this->numParameters_);
         }
 
         if (residuals != nullptr) {
-            ++residualCallCount_;
-            Operon::Span<Operon::Scalar> res{residuals, numResiduals_};
+            ++this->residualCallCount_;
+            Operon::Span<Operon::Scalar> res{residuals, this->numResiduals_};
             if (fn_ != nullptr) {
                 ENSURE(nVars_   < 0 || static_cast<int>(colPtrs_.size()) == nVars_);
-                ENSURE(nConsts_ < 0 || static_cast<int>(numParameters_)  == nConsts_);
+                ENSURE(nConsts_ < 0 || static_cast<int>(this->numParameters_) == nConsts_);
                 fn_(scratchResiduals_.data(), colPtrs_.data(), nRowsPad, parameters);
-                std::copy_n(scratchResiduals_.data(), numResiduals_, residuals);
+                std::copy_n(scratchResiduals_.data(), this->numResiduals_, residuals);
             } else {
-                Operon::Span<Operon::Scalar const> params{parameters, numParameters_};
+                Operon::Span<Operon::Scalar const> params{parameters, this->numParameters_};
                 interpreter_->Evaluate(params, range_, res);
             }
-            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, static_cast<Eigen::Index>(numResiduals_));
-            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), static_cast<Eigen::Index>(numResiduals_));
+            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, static_cast<Eigen::Index>(this->numResiduals_));
+            Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), static_cast<Eigen::Index>(this->numResiduals_));
             x -= y;
+            ApplyLMResidualWeights(weights_, residuals, this->numResiduals_);
         }
         return true;
     }
-
-    auto operator()(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
-    {
-        return Evaluate(parameters, residuals, jacobian);
-    }
-
-    [[nodiscard]] auto NumResiduals()  const -> int { return static_cast<int>(numResiduals_); }
-    [[nodiscard]] auto NumParameters() const -> int { return static_cast<int>(numParameters_); }
-
-    using JacobianType = Eigen::Matrix<Operon::Scalar, -1, -1>;
-    using QRSolver     = Eigen::ColPivHouseholderQR<JacobianType>;
-
-    auto operator()(Eigen::Matrix<Scalar, -1, 1> const& input,
-                    Eigen::Matrix<Scalar, -1, 1>&        residual) const -> int
-    {
-        Evaluate(input.data(), residual.data(), nullptr);
-        return 0;
-    }
-
-    auto df(Eigen::Matrix<Scalar, -1, 1> const& input, // NOLINT
-            Eigen::Matrix<Scalar, -1, -1>&       jacobian) const -> int
-    {
-        static_assert(StorageOrder == Eigen::ColMajor,
-            "Eigen::LevenbergMarquardt requires column-major Jacobian.");
-        Evaluate(input.data(), nullptr, jacobian.data());
-        return 0;
-    }
-
-    [[nodiscard]] auto values() const -> int { return NumResiduals(); }  // NOLINT
-    [[nodiscard]] auto inputs() const -> int { return NumParameters(); } // NOLINT
-
-    [[nodiscard]] auto ResidualCalls()  const -> std::size_t { return residualCallCount_.load(); }
-    [[nodiscard]] auto JacobianCalls()  const -> std::size_t { return jacobianCallCount_.load(); }
 
 private:
     gsl::not_null<InterpreterBase<T> const*> interpreter_;
@@ -150,17 +116,13 @@ private:
     std::vector<float const*>                jacColPtrs_;
     Operon::Span<Operon::Scalar const>       target_;
     Operon::Range const                      range_;   // NOLINT
-    std::size_t                              numResiduals_;
-    std::size_t                              numParameters_;
+    Operon::Span<Operon::Scalar const>       weights_;
     std::size_t                              nRowsPad_;
     mutable std::vector<Scalar>              scratchResiduals_;
     mutable std::vector<Scalar>              scratchJac_;
 
     int                                      nVars_   = -1;
     int                                      nConsts_ = -1;
-
-    mutable std::atomic_size_t jacobianCallCount_{0};
-    mutable std::atomic_size_t residualCallCount_{0};
 };
 
 } // namespace Operon

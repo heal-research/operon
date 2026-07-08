@@ -223,18 +223,28 @@ struct LBFGSOptimizer final : public OptimizerBase {
         auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        LossFunction loss{&rng, &interpreter, target, range, batchSize, weights};
+        // LossFunction batches internally (SelectBatch), so it needs the
+        // whole-dataset target/weights columns (absolute, dataset-row-indexed
+        // - the same indexing it hands the interpreter for any sub-range),
+        // not the range-local `target`/`weights` above (which line up with
+        // `pred` in the single-range `cost` lambda below).
+        LossFunction loss{&rng, &interpreter, problem->TargetValues(), range, batchSize, dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{})};
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
-            // Delegated to LossFunction so this stays consistent with
-            // operator() on whether weights apply (Gaussian: yes, Poisson:
-            // no) - otherwise Success could be judged against the wrong
-            // objective and CoefficientOptimizer (local_search.cpp) would
-            // drop valid weighted gains. Note Cost is an SSE surrogate, not
-            // each LossFunction's true objective (Poisson::operator()
-            // actually optimizes Poisson NLL) - a pre-existing mismatch
-            // unrelated to weighting.
+            // Delegated to LossFunction::Cost (not computed unweighted here
+            // directly) so this stays consistent with what operator() actually
+            // optimizes. Do NOT assume this line is weighted just because
+            // `weights` is passed in - each LossFunction decides for itself
+            // whether to apply it (GaussianLoss::Cost: yes; PoissonLoss::Cost:
+            // no, see its comment) - otherwise Success could be judged against
+            // the wrong objective and CoefficientOptimizer (local_search.cpp)
+            // would drop valid weighted gains.
+            //
+            // TODO: Cost is an SSE surrogate for every LossFunction, not each
+            // one's true objective (Poisson::operator() actually optimizes
+            // Poisson NLL) - a pre-existing mismatch, unrelated to weighting,
+            // that should eventually report the real objective per loss type.
             return LossFunction::Cost(pred, target, weights);
         };
 
@@ -310,18 +320,28 @@ struct SGDOptimizer final : public OptimizerBase {
         auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        LossFunction loss{&rng, &interpreter, target, range, batchSize, weights};
+        // LossFunction batches internally (SelectBatch), so it needs the
+        // whole-dataset target/weights columns (absolute, dataset-row-indexed
+        // - the same indexing it hands the interpreter for any sub-range),
+        // not the range-local `target`/`weights` above (which line up with
+        // `pred` in the single-range `cost` lambda below).
+        LossFunction loss{&rng, &interpreter, problem->TargetValues(), range, batchSize, dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{})};
 
         auto cost = [&](auto const& coeff) {
             auto pred = interpreter.Evaluate(coeff, range);
-            // Delegated to LossFunction so this stays consistent with
-            // operator() on whether weights apply (Gaussian: yes, Poisson:
-            // no) - otherwise Success could be judged against the wrong
-            // objective and CoefficientOptimizer (local_search.cpp) would
-            // drop valid weighted gains. Note Cost is an SSE surrogate, not
-            // each LossFunction's true objective (Poisson::operator()
-            // actually optimizes Poisson NLL) - a pre-existing mismatch
-            // unrelated to weighting.
+            // Delegated to LossFunction::Cost (not computed unweighted here
+            // directly) so this stays consistent with what operator() actually
+            // optimizes. Do NOT assume this line is weighted just because
+            // `weights` is passed in - each LossFunction decides for itself
+            // whether to apply it (GaussianLoss::Cost: yes; PoissonLoss::Cost:
+            // no, see its comment) - otherwise Success could be judged against
+            // the wrong objective and CoefficientOptimizer (local_search.cpp)
+            // would drop valid weighted gains.
+            //
+            // TODO: Cost is an SSE surrogate for every LossFunction, not each
+            // one's true objective (Poisson::operator() actually optimizes
+            // Poisson NLL) - a pre-existing mismatch, unrelated to weighting,
+            // that should eventually report the real objective per loss type.
             return LossFunction::Cost(pred, target, weights);
         };
 
@@ -397,6 +417,7 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         auto const  range   = problem->TrainingRange();
         auto const  target  = problem->TargetValues(range);
         auto const  iters   = this->Iterations();
+        auto const  weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
 
@@ -417,7 +438,7 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             // Pure interpreter fallback — no JIT at all.
             Operon::LMCostFunction cf{
                 gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
-                target, range};
+                target, range, weights};
             Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
             lm.setMaxfev(static_cast<int>(iters + 2));
             if (!x0.empty()) {
@@ -474,7 +495,8 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             jacFn,
             std::move(jacColPtrs),
             meta->nVars,
-            meta->nConsts};
+            meta->nConsts,
+            weights};
 
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
         lm.setMaxfev(static_cast<int>(iters + 2));

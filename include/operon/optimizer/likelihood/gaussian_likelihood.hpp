@@ -110,6 +110,13 @@ struct GaussianLoss : public LikelihoodBase<T> {
             : 0.5 * Operon::SumOfSquaredErrors(pred.begin(), pred.end(), target.begin(), weights.begin()));
     }
 
+    // `target` and `weights` must span the *whole* dataset column (absolute,
+    // dataset-row-indexed - the same coordinate system used for `range` and
+    // for any sub-range handed to the interpreter), not a slice pre-cut to
+    // `range`. SelectBatch() below picks a sub-range of `range` for
+    // minibatching and indexes target_/weights_ with that sub-range's
+    // absolute Start() directly - no separate local offset to derive or keep
+    // in sync, because target_/weights_ already use the same coordinates.
     GaussianLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0, Operon::Span<Operon::Scalar const> weights = {})
         : LikelihoodBase<T>(interpreter)
         , rng_(rng)
@@ -121,8 +128,14 @@ struct GaussianLoss : public LikelihoodBase<T> {
         , nr_{range_.Size()}
         , jac_{bs_, np_}
     {
-        EXPECT(weights_.empty() || weights_.size() == nr_);
-        EXPECT(std::all_of(weights_.begin(), weights_.end(), [](auto w) { return w >= Operon::Scalar{0}; }));
+        EXPECT(range_.Start() + range_.Size() <= static_cast<std::size_t>(target_.size()));
+        EXPECT(weights_.empty() || range_.Start() + range_.Size() <= weights_.size());
+        // Only rows inside range_ are ever read (via SelectBatch); weights_ may
+        // legitimately hold negative/placeholder values outside range_ (e.g. for
+        // test/validation rows), so validate just the in-range slice. This can't
+        // be hoisted to Dataset::SetWeights (validate-once-at-the-source) because
+        // SetWeights has no notion of which rows any given Problem will train on.
+        EXPECT(weights_.empty() || std::all_of(weights_.begin() + static_cast<std::ptrdiff_t>(range_.Start()), weights_.begin() + static_cast<std::ptrdiff_t>(range_.Start() + range_.Size()), [](auto w) { return w >= Operon::Scalar{0}; }));
     }
 
     using Scalar   = typename LikelihoodBase<T>::Scalar;
@@ -137,9 +150,9 @@ struct GaussianLoss : public LikelihoodBase<T> {
         ++feval_;
         auto const& interpreter = this->GetInterpreter();
         Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
-        auto const [range, localStart] = SelectBatch();
-        auto primal = interpreter->Evaluate(c, range);
-        auto target = target_.segment(localStart, range.Size());
+        auto const batch = SelectBatch();
+        auto primal = interpreter->Evaluate(c, batch);
+        auto target = target_.segment(batch.Start(), batch.Size());
         Eigen::Map<Eigen::Array<Scalar, -1, 1> const> primalMap{primal.data(), std::ssize(primal)};
         auto e = primalMap - target;
 
@@ -147,7 +160,7 @@ struct GaussianLoss : public LikelihoodBase<T> {
             if (grad.size() != 0) {
                 assert(grad.size() == x.size());
                 ++jeval_;
-                interpreter->JacRev(c, range, {jac_.data(), np_ * bs_});
+                interpreter->JacRev(c, batch, {jac_.data(), np_ * bs_});
                 grad = (e.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
             }
             return static_cast<Operon::Scalar>(e.square().sum()) * Operon::Scalar{0.5};
@@ -157,11 +170,11 @@ struct GaussianLoss : public LikelihoodBase<T> {
         // Applied directly (rather than via the sqrt(w)-residual trick used for
         // LM) since there's no shared residual vector to keep consistent here.
         Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> w{weights_.data(), std::ssize(weights_)};
-        auto wSeg = w.segment(localStart, range.Size());
+        auto wSeg = w.segment(batch.Start(), batch.Size());
         if (grad.size() != 0) {
             assert(grad.size() == x.size());
             ++jeval_;
-            interpreter->JacRev(c, range, {jac_.data(), np_ * bs_});
+            interpreter->JacRev(c, batch, {jac_.data(), np_ * bs_});
             auto we = (e * wSeg).eval();
             grad = (we.matrix().asDiagonal() * jac_.matrix()).colwise().sum();
         }
@@ -184,20 +197,13 @@ struct GaussianLoss : public LikelihoodBase<T> {
     auto JacobianEvaluations() const -> std::size_t { return jeval_; }
 
 private:
-    // { absolute dataset range (for the interpreter), local offset into
-    // target_/weights_ (which are sized to range_ and indexed from 0) }.
-    // Computed together so callers never need to re-derive one from the
-    // other (in particular: local = absolute.Start() - range_.Start(),
-    // a subtraction that's easy to forget and was previously a live bug).
-    struct Batch {
-        Operon::Range range;
-        std::size_t localStart;
-    };
-
-    auto SelectBatch() const -> Batch {
-        if (bs_ >= range_.Size()) { return {range_, 0UL}; }
+    // A random sub-range of range_, in the same absolute (dataset-row) coordinates
+    // as range_ itself - safe to hand directly to the interpreter, and to index
+    // target_/weights_ with, since both span the whole dataset column.
+    auto SelectBatch() const -> Operon::Range {
+        if (bs_ >= range_.Size()) { return range_; }
         auto s = std::uniform_int_distribution<std::size_t>{0UL, range_.Size()-bs_}(*rng_);
-        return {Operon::Range{range_.Start() + s, range_.Start() + s + bs_}, s};
+        return Operon::Range{range_.Start() + s, range_.Start() + s + bs_};
     }
 
     gsl::not_null<Operon::RandomGenerator*> rng_;
