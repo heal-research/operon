@@ -30,6 +30,11 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
     static_assert(std::is_same_v<T, float>,
         "JitLMCostFunction requires float precision (EvalFn operates on float arrays)");
 
+    // `target` and `weights` must span the *whole* dataset column (absolute,
+    // dataset-row-indexed), same contract as GaussianLoss/PoissonLoss/LMCostFunction
+    // - not a slice pre-cut to `range`. JIT LM never mini-batches (range_ is fixed
+    // for the object's lifetime), so the local range.Size()-sized slice this cost
+    // function actually reads is computed once here in the ctor, not per Evaluate().
     JitLMCostFunction(gsl::not_null<InterpreterBase<T> const*> interpreter,
                       JIT::EvalFn                              fn,
                       std::vector<float const*>                colPtrs,
@@ -46,9 +51,9 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
         , colPtrs_(std::move(colPtrs))
         , jacFn_(jacFn)
         , jacColPtrs_(std::move(jacColPtrs))
-        , target_(target)
+        , target_(target.subspan(range.Start(), range.Size()))
         , range_(range)
-        , weights_(weights)
+        , weights_(weights.empty() ? weights : weights.subspan(range.Start(), range.Size()))
         , nRowsPad_(static_cast<std::size_t>((static_cast<int>(range.Size()) + 7) & ~7))
         , scratchResiduals_(nRowsPad_)
         , scratchJac_(nRowsPad_ * this->numParameters_)
