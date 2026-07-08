@@ -46,6 +46,7 @@ add_library(
     source/algorithms/solution_archive.cpp
     source/core/dataset.cpp
     source/core/distance.cpp
+    source/core/grammar.cpp
     source/core/node.cpp
     source/core/pset.cpp
     source/core/tree.cpp
