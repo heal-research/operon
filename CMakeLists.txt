@@ -56,6 +56,7 @@ add_library(
     source/formatter/infix.cpp
     source/formatter/postfix.cpp
     source/formatter/tree.cpp
+    source/hash/content_hash.cpp
     source/hash/hash.cpp
     source/hash/metrohash64.cpp
     source/hash/zobrist.cpp
