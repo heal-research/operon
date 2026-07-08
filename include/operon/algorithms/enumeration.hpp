@@ -5,15 +5,21 @@
 #ifndef OPERON_ALGORITHMS_ENUMERATION_HPP
 #define OPERON_ALGORITHMS_ENUMERATION_HPP
 
+#include <atomic>
+#include <functional>
 #include <span>
+#include <utility>
 #include <vector>
 
+#include <gsl/pointers>
 #include <gtl/phmap.hpp>
 
+#include "operon/algorithms/ga_base.hpp" // for Operon::ReportCallback
 #include "operon/core/grammar.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/hash/content_hash.hpp"
 #include "operon/hash/zobrist.hpp"
+#include "operon/operators/local_search.hpp" // for CoefficientOptimizer, OptimizerBase/OptimizerSummary fwd decls
 #include "operon/operon_export.hpp"
 #include "operon/random/random.hpp"
 
@@ -67,7 +73,19 @@ public:
     EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng);
 
     // Runs the bottom-up construction for budgets 1..maxComplexity in order.
-    void Build();
+    // `shouldStop`, if set, is checked once per budget level (not per
+    // candidate - a level's own fan-out can still run to completion once
+    // started) and stops the construction early if it returns true.
+    void Build(Operon::ReportCallback shouldStop = {});
+
+    // Invoked, if set, whenever a genuinely novel Expression-category tree is
+    // inserted (i.e. not a duplicate already reached via another derivation) -
+    // Expression is the only nonterminal meant to represent a complete
+    // candidate model; Term/RecurringFactor/SimpleExpr/SimpleTerm are purely
+    // compositional intermediates. The hook receives a mutable reference so a
+    // caller (GrammarEnumerationAlgorithm) can fit coefficients in place
+    // before the tree is stored.
+    void SetOnNovelExpression(std::function<void(Operon::Tree&)> hook) { onNovelExpression_ = std::move(hook); }
 
     [[nodiscard]] auto Bucket(GrammarSymbol nt, std::size_t budget) const -> std::span<Operon::Tree const>;
 
@@ -119,6 +137,52 @@ private:
     Operon::Zobrist zobrist_;
     std::vector<std::vector<std::vector<Operon::Tree>>> buckets_; // [GrammarSymbol index][budget][candidate]
     std::vector<std::vector<gtl::parallel_flat_hash_set_m<Operon::Hash>>> seen_; // [GrammarSymbol index][budget]
+    std::function<void(Operon::Tree&)> onNovelExpression_;
+};
+
+struct EnumerationConfig {
+    std::size_t MaxComplexity{20};
+    std::size_t TopK{10}; // how many best-fitness models to retain (see GrammarEnumerationAlgorithm::BestTrees)
+};
+
+// Top-level driver: wraps EnumerationEngine with coefficient fitting (via the
+// existing CoefficientOptimizer - this fully replaces symreg-cpp's Ceres
+// dependency with operon's own optimizer stack, no new fitting code needed)
+// and a stop-condition/reporting surface mirroring GeneticAlgorithmBase's
+// ReportCallback/StopRequested()/RequestStop() idiom (ga_base.hpp), even
+// though this doesn't inherit from GeneticAlgorithmBase - there's no
+// population/generation model here, just a level-by-level DP construction.
+class OPERON_EXPORT GrammarEnumerationAlgorithm {
+public:
+    // `rng` is used once here to build the engine's Zobrist salt table (see
+    // EnumerationEngine); Run()'s own `rng` argument is independent and used
+    // for coefficient fitting - callers may pass the same generator to both
+    // or different ones.
+    GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar, gsl::not_null<Operon::OptimizerBase const*> optimizer, Operon::RandomGenerator& rng);
+
+    // Fits coefficients (via CoefficientOptimizer) for every novel Expression
+    // discovered during construction, tracking the config.TopK best by
+    // FinalCost (lower = better) in BestTrees(). Stops early if `report`
+    // returns true, or if RequestStop() was called.
+    void Run(Operon::RandomGenerator& rng, Operon::ReportCallback report = {});
+
+    [[nodiscard]] auto StopRequested() const -> bool { return stopRequested_.load(std::memory_order_acquire); }
+    void RequestStop() { stopRequested_.store(true, std::memory_order_release); }
+
+    // Best-fitness Expression trees found so far, sorted ascending by
+    // FinalCost (lower = better), capped at EnumerationConfig::TopK.
+    [[nodiscard]] auto BestTrees() const -> std::span<std::pair<Operon::Scalar, Operon::Tree> const> { return best_; }
+
+    [[nodiscard]] auto GetEngine() const -> EnumerationEngine const& { return engine_; }
+
+private:
+    void ConsiderBest(Operon::Scalar fitness, Operon::Tree tree);
+
+    EnumerationConfig config_;
+    EnumerationEngine engine_;
+    gsl::not_null<Operon::OptimizerBase const*> optimizer_;
+    std::atomic<bool> stopRequested_{false};
+    std::vector<std::pair<Operon::Scalar, Operon::Tree>> best_; // sorted ascending by .first, size() <= config_.TopK
 };
 
 } // namespace Operon
