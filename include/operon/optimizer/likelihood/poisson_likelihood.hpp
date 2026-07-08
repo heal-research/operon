@@ -113,6 +113,9 @@ struct PoissonLoss : public LikelihoodBase<T> {
     // Sample weights (precision/multiplicity) and Poisson's existing w-as-exposure
     // convention in detail::Poisson/PoissonLog are different semantics and
     // reconciling them is a separate design decision, not yet implemented.
+    //
+    // `target` must span the *whole* dataset column (absolute, dataset-row-indexed
+    // - see GaussianLoss's constructor comment for why), not a slice pre-cut to `range`.
     PoissonLoss(gsl::not_null<Operon::RandomGenerator*> rng, gsl::not_null<InterpreterBase<T> const*> interpreter, Operon::Span<Operon::Scalar const> target, Operon::Range const range, std::size_t const batchSize = 0, Operon::Span<Operon::Scalar const> /*weights*/ = {})
         : LikelihoodBase<T>(interpreter)
         , rng_{rng}
@@ -122,7 +125,9 @@ struct PoissonLoss : public LikelihoodBase<T> {
         , numParameters_{static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
         , numResiduals_{range_.Size()}
         , jac_{batchSize_, numParameters_}
-    { }
+    {
+        EXPECT(range_.Start() + range_.Size() <= target_.size());
+    }
 
     using Scalar   = typename LikelihoodBase<T>::Scalar;
     using scalar_t = Scalar; // needed by lbfgs library NOLINT
@@ -137,9 +142,9 @@ struct PoissonLoss : public LikelihoodBase<T> {
         ++feval_;
         auto const* interpreter = this->GetInterpreter();
         Operon::Span<Operon::Scalar const> c{x.data(), static_cast<std::size_t>(x.size())};
-        auto const [r, localStart] = SelectBatch();
+        auto const r = SelectBatch();
         auto p = interpreter->Evaluate(c, r);
-        auto t = target_.subspan(localStart, r.Size());
+        auto t = target_.subspan(r.Start(), r.Size());
         auto pmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(p.data(), std::ssize(p));
 
         auto tmap = Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(t.data(), std::ssize(t));
@@ -174,19 +179,12 @@ struct PoissonLoss : public LikelihoodBase<T> {
     auto JacobianEvaluations() const -> std::size_t { return jeval_; }
 
 private:
-    // See GaussianLoss::Batch/SelectBatch - computes the absolute dataset
-    // range (for the interpreter) and the local offset into target_ (which
-    // is sized to range_ and indexed from 0) together, so callers never
-    // have to re-derive one from the other.
-    struct Batch {
-        Operon::Range range;
-        std::size_t localStart;
-    };
-
-    auto SelectBatch() const -> Batch {
-        if (batchSize_ >= range_.Size()) { return {range_, 0UL}; }
+    // See GaussianLoss::SelectBatch - a random sub-range of range_ in the same
+    // absolute (dataset-row) coordinates as range_, safe to index target_ with directly.
+    auto SelectBatch() const -> Operon::Range {
+        if (batchSize_ >= range_.Size()) { return range_; }
         auto s = std::uniform_int_distribution<std::size_t>{0UL, range_.Size()-batchSize_}(*rng_);
-        return {Operon::Range{range_.Start() + s, range_.Start() + s + batchSize_}, s};
+        return Operon::Range{range_.Start() + s, range_.Start() + s + batchSize_};
     }
 
     gsl::not_null<Operon::RandomGenerator*> rng_;
