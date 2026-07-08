@@ -4,9 +4,14 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+
 #include "operon/algorithms/enumeration.hpp"
+#include "operon/core/dataset.hpp"
 #include "operon/core/grammar.hpp"
+#include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
+#include "operon/optimizer/optimizer.hpp"
 
 namespace Operon::Test {
 
@@ -252,6 +257,82 @@ TEST_CASE("EnumerationEngine - unary wraps populate RecurringFactor beyond budge
     for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, 4)) {
         CHECK(SymbolicComplexity(t) == 4);
     }
+}
+
+namespace {
+    // Problem is non-movable, so this configures one in place rather than
+    // returning it - callers construct `Operon::Problem problem(&ds);` and
+    // pass it here by reference.
+    void ConfigureProblem(Operon::Dataset& ds, Operon::Problem& problem) {
+        auto inputs = ds.VariableHashes();
+        std::erase(inputs, ds.GetVariable("Y").value().Hash);
+        problem.SetInputs(inputs);
+        problem.SetTarget("Y");
+        problem.SetTrainingRange({ 0, 50 }); // small subset - this is a wiring smoke test, not a fit-quality test (see Phase 5)
+        problem.SetTestRange({ 0, 50 });
+    }
+} // namespace
+
+TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best trees", "[enumeration]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    Operon::Problem problem(&ds);
+    ConfigureProblem(ds, problem);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+
+    Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
+    EnumerationConfig config;
+    config.MaxComplexity = 4;
+    config.TopK = 3;
+
+    Operon::RandomGenerator engineRng(42);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, engineRng);
+
+    Operon::RandomGenerator fitRng(42);
+    algo.Run(fitRng);
+
+    auto best = algo.BestTrees();
+    REQUIRE_FALSE(best.empty());
+    CHECK(best.size() <= config.TopK);
+    for (auto const& [fitness, tree] : best) {
+        CHECK(std::isfinite(fitness));
+        CHECK(Complexity(tree) <= config.MaxComplexity);
+    }
+    for (std::size_t i = 1; i < best.size(); ++i) {
+        CHECK(best[i - 1].first <= best[i].first); // ascending by fitness (lower = better)
+    }
+}
+
+TEST_CASE("GrammarEnumerationAlgorithm - RequestStop halts Run early", "[enumeration]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    Operon::Problem problem(&ds);
+    ConfigureProblem(ds, problem);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+
+    Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
+    EnumerationConfig config;
+    config.MaxComplexity = 20; // deliberately large, so an early stop is meaningfully "early"
+    config.TopK = 3;
+
+    Operon::RandomGenerator engineRng(42);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, engineRng);
+
+    Operon::RandomGenerator fitRng(42);
+    int reportCalls = 0;
+    algo.Run(fitRng, [&]() -> bool {
+        ++reportCalls;
+        return reportCalls >= 2; // stop after the 2nd budget-level report
+    });
+
+    CHECK(algo.StopRequested());
+    CHECK(reportCalls == 2);
 }
 
 } // namespace Operon::Test

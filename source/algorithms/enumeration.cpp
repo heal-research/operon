@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <array>
 
+#include "operon/optimizer/optimizer.hpp" // for OptimizerSummary::FinalCost
+
 namespace Operon {
 
 auto SymbolicComplexity(Operon::Tree const& tree) noexcept -> std::size_t
@@ -102,6 +104,9 @@ auto EnumerationEngine::TryInsert(GrammarSymbol nt, Operon::Tree tree) -> bool
         [&](auto const& ctor) { ctor(hash); }
     );
     if (novel) {
+        if (nt == GrammarSymbol::Expression && onNovelExpression_) {
+            onNovelExpression_(tree); // may fit coefficients in place
+        }
         buckets_[idx][complexity].push_back(std::move(tree));
     }
     return novel;
@@ -194,7 +199,7 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
     }
 }
 
-void EnumerationEngine::Build()
+void EnumerationEngine::Build(Operon::ReportCallback shouldStop)
 {
     SeedTerminals();
     // Searches up to workingCeiling_ (> maxComplexity_) so combinations whose
@@ -203,10 +208,43 @@ void EnumerationEngine::Build()
     // TryInsert's complexity check guarantees nothing is actually stored past
     // maxComplexity_, so the caller-visible ceiling is unaffected.
     for (std::size_t budget = 1; budget <= workingCeiling_; ++budget) {
+        if (shouldStop && shouldStop()) { return; }
         for (auto nt : ProcessingOrder) {
             ProcessNonterminal(nt, budget);
         }
     }
+}
+
+GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar, gsl::not_null<Operon::OptimizerBase const*> optimizer, Operon::RandomGenerator& rng)
+    : config_(config)
+    , engine_(std::move(grammar), config.MaxComplexity, rng)
+    , optimizer_(optimizer)
+{
+}
+
+void GrammarEnumerationAlgorithm::ConsiderBest(Operon::Scalar fitness, Operon::Tree tree)
+{
+    best_.emplace_back(fitness, std::move(tree));
+    std::ranges::sort(best_, {}, [](auto const& p) { return p.first; });
+    if (best_.size() > config_.TopK) { best_.resize(config_.TopK); }
+}
+
+void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::ReportCallback report)
+{
+    Operon::CoefficientOptimizer coeffOptimizer{optimizer_};
+    engine_.SetOnNovelExpression([&](Operon::Tree& tree) {
+        auto [optimizedTree, summary] = coeffOptimizer(rng, tree);
+        tree = std::move(optimizedTree);
+        ConsiderBest(summary.FinalCost, tree);
+    });
+
+    Operon::ReportCallback shouldStop = [&]() -> bool {
+        if (StopRequested()) { return true; }
+        if (report && report()) { RequestStop(); return true; }
+        return false;
+    };
+
+    engine_.Build(shouldStop);
 }
 
 } // namespace Operon
