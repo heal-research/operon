@@ -88,6 +88,9 @@
             "environment": {
                 "CXX_WARNINGS": "-Wall -Wextra -Werror -pedantic",
                 "CXX_OPT": "-fsized-deallocation -fno-math-errno -march=x86-64-v3"
+            },
+            "cacheVariables": {
+                "BUILD_SHARED_LIBS": "ON"
             }
         },
         {
@@ -98,6 +101,9 @@
             "environment": {
                 "CXX_WARNINGS": "-Wall -Wextra -pedantic",
                 "CXX_OPT": "-fsized-deallocation -fno-math-errno"
+            },
+            "cacheVariables": {
+                "BUILD_SHARED_LIBS": "ON"
             }
         }
     ]
