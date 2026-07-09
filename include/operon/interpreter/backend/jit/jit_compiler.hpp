@@ -16,6 +16,7 @@
 #include "operon/core/tree.hpp"
 #include "operon/core/tree_diff.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operon_export.hpp"
 
 namespace Operon::JIT {
 
@@ -96,7 +97,7 @@ struct JitRuntimePool {
 
 // Stateless JIT code generator. All runtime state lives in the JitRuntimePool
 // provided at construction; TreeCompiler can be destroyed before the pool.
-class TreeCompiler {
+class OPERON_EXPORT TreeCompiler {
 public:
     explicit TreeCompiler(JitRuntimePool const* pool) : pool_(pool) {}
 
