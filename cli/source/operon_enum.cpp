@@ -81,6 +81,10 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::EnumerationConfig config;
         config.MaxComplexity = result["max-complexity"].as<std::size_t>();
         config.TopK = result["top-k"].as<std::size_t>();
+        if (config.TopK == 0) {
+            fmt::print(stderr, "error: --top-k must be at least 1\n");
+            return EXIT_FAILURE;
+        }
 
         Operon::ScalarDispatch dtable;
         Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen> optimizer{ &dtable, &problem };

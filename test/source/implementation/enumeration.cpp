@@ -307,6 +307,34 @@ TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best t
     }
 }
 
+TEST_CASE("GrammarEnumerationAlgorithm - TopK == 0 keeps nothing rather than crashing", "[enumeration]")
+{
+    // Regression test: ConsiderBest's capacity check (best_.size() >=
+    // config_.TopK) is trivially true when TopK == 0 (0 >= 0), and used to
+    // fall through to best_.back() on an empty vector - a segfault.
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    Operon::Problem problem(&ds);
+    ConfigureProblem(ds, problem);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
+
+    Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
+    EnumerationConfig config;
+    config.MaxComplexity = 4;
+    config.TopK = 0;
+
+    Operon::RandomGenerator engineRng(42);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
+
+    Operon::RandomGenerator fitRng(42);
+    algo.Run(fitRng);
+
+    CHECK(algo.BestTrees().empty());
+}
+
 TEST_CASE("GrammarEnumerationAlgorithm - RequestStop halts Run early", "[enumeration]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);

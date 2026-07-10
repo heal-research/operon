@@ -228,6 +228,11 @@ GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig confi
 
 void GrammarEnumerationAlgorithm::ConsiderBest(Operon::Scalar fitness, Operon::Tree tree)
 {
+    // TopK == 0 means "keep nothing" - handle it explicitly before the
+    // capacity check below, which would otherwise call best_.back() on an
+    // empty vector (0 >= 0 is true) and crash.
+    if (config_.TopK == 0) { return; }
+
     // best_ is kept sorted ascending at all times (see the member comment),
     // so a novel candidate that's already worse than the current worst kept
     // entry (once at capacity) can be rejected in O(1) instead of paying for
