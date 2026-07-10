@@ -82,6 +82,17 @@ struct Production {
 // Queryable, config/dataset-parameterized grammar for exhaustive expression
 // enumeration - plays the same role for the enumeration algorithm that
 // PrimitiveSet plays for stochastic tree generation.
+//
+// Configure()'s PrimitiveSetConfig argument only gates which of the five
+// UnaryWraps (Log/Exp/Sin/Sqrt/Cbrt, see grammar.cpp) get wired onto
+// RecurringFactor - it is not a general "enable any PrimitiveSet function"
+// switch. Enabling PrimitiveSet::TypeCoherent or PrimitiveSet::Full still
+// only makes Log/Exp/Sin (of TypeCoherent's Pow/Exp/Log/Sin/Cos/Square) and
+// Sqrt/Cbrt (of Full's additional Aq/Tan/Tanh/Sqrt/Cbrt) reachable; Pow,
+// Cos, Square, Aq, Tan, Tanh are never produced regardless of config, and
+// neither are Sub/Div (see the GrammarSymbol comment above on why 1/x isn't
+// reachable either). This mirrors symreg-cpp's original operator set, not a
+// PrimitiveSet's full vocabulary.
 class OPERON_EXPORT Grammar {
 public:
     // Equivalent to Grammar(PrimitiveSetConfig{}, {}): Rebuild() still runs, so
