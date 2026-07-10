@@ -26,7 +26,7 @@ namespace Operon {
 // intent - free-weight/bias Constants (see Grammar's WeightFirstOperand/
 // TrailingConstant) never contribute, since they're optimized values, not
 // distinct structural symbols.
-[[nodiscard]] OPERON_EXPORT auto Complexity(Operon::Tree const& tree) noexcept -> std::size_t;
+[[nodiscard]] OPERON_EXPORT auto SymbolicComplexity(Operon::Tree const& tree) noexcept -> std::size_t;
 
 // Bottom-up dynamic-programming enumeration engine: builds, for each grammar
 // nonterminal and each complexity budget 1..maxComplexity, the set of
