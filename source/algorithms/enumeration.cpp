@@ -261,6 +261,13 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
     };
 
     engine_.Build(shouldStop);
+
+    // onNovelExpression_ captures coeffOptimizer (and rng) by reference, both
+    // function-locals about to go out of scope - clear the hook so a stale
+    // reference can't be invoked from any future entry point (defensive:
+    // today nothing public can trigger that, since GetEngine() returns a
+    // const& and Build() is non-const, but this shouldn't rely on that).
+    engine_.SetOnNovelExpression(nullptr);
 }
 
 } // namespace Operon
