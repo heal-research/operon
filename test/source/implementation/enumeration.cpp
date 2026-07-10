@@ -299,7 +299,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best t
     CHECK(best.size() <= config.TopK);
     for (auto const& [fitness, tree] : best) {
         CHECK(std::isfinite(fitness));
-        CHECK(Complexity(tree) <= config.MaxComplexity);
+        CHECK(SymbolicComplexity(tree) <= config.MaxComplexity);
     }
     for (std::size_t i = 1; i < best.size(); ++i) {
         CHECK(best[i - 1].first <= best[i].first); // ascending by fitness (lower = better)
