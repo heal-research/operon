@@ -231,9 +231,25 @@ void GrammarEnumerationAlgorithm::ConsiderBest(Operon::Scalar fitness, Operon::T
 
 void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::ReportCallback report)
 {
+    // Iterations() == 0 makes CoefficientOptimizer return a default-
+    // constructed OptimizerSummary (FinalCost == 0.0, Success == false)
+    // without ever calling optimizer_->Optimize() (see local_search.cpp) -
+    // every novel Expression would then tie at cost 0.0 and the top-K
+    // ranking below becomes meaningless. optimizer_ is caller-supplied and
+    // mutable (OptimizerBase::SetIterations()), so this is a real
+    // precondition, not just a theoretical one.
+    EXPECT(optimizer_->Iterations() > 0);
+
     Operon::CoefficientOptimizer coeffOptimizer{optimizer_};
     engine_.SetOnNovelExpression([&](Operon::Tree& tree) {
         auto [optimizedTree, summary] = coeffOptimizer(rng, tree);
+        // CoefficientOptimizer only applies FinalParameters to the tree when
+        // Success is true (see local_search.cpp) - on failure, tree keeps its
+        // placeholder coefficients, so summary.FinalCost (the optimizer's
+        // internal attempt) no longer corresponds to what the stored tree
+        // would actually evaluate to. Skip rather than report a fitness that
+        // doesn't match the reported formula.
+        if (!summary.Success) { return; }
         tree = std::move(optimizedTree);
         ConsiderBest(summary.FinalCost, tree);
     });
