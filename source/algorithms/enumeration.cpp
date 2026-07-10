@@ -224,9 +224,18 @@ GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig confi
 
 void GrammarEnumerationAlgorithm::ConsiderBest(Operon::Scalar fitness, Operon::Tree tree)
 {
-    best_.emplace_back(fitness, std::move(tree));
-    std::ranges::sort(best_, {}, [](auto const& p) { return p.first; });
-    if (best_.size() > config_.TopK) { best_.resize(config_.TopK); }
+    // best_ is kept sorted ascending at all times (see the member comment),
+    // so a novel candidate that's already worse than the current worst kept
+    // entry (once at capacity) can be rejected in O(1) instead of paying for
+    // an insertion + resort that would just be undone by the trailing
+    // resize() anyway. Otherwise, insert in sorted position directly rather
+    // than push_back + full re-sort on every call - this only costs a linear
+    // shift, not an O(n log n) sort, per novel Expression.
+    if (best_.size() >= config_.TopK && fitness >= best_.back().first) { return; }
+
+    auto pos = std::ranges::upper_bound(best_, fitness, {}, [](auto const& p) { return p.first; });
+    best_.emplace(pos, fitness, std::move(tree));
+    if (best_.size() > config_.TopK) { best_.pop_back(); }
 }
 
 void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::ReportCallback report)
