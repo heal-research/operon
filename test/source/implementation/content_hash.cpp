@@ -160,6 +160,29 @@ TEST_CASE("ContentHash - coefficient insensitivity", "[content_hash]")
     REQUIRE(ComputeContentHash(tree1, zobrist) == ComputeContentHash(tree2, zobrist));
 }
 
+TEST_CASE("ContentHash - Optimize-flag insensitivity", "[content_hash]")
+{
+    // Unlike Zobrist::ComputeHash (whole-tree transposition cache, where
+    // Optimize legitimately participates), this hash must ignore which
+    // leaves are marked optimizable: two structurally-identical subtrees
+    // differing only in Optimize flags are the same dedup candidate, since
+    // weights are re-fit rather than treated as distinct symbols.
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    Zobrist const zobrist(rng, MaxLength, inputs);
+
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+
+    auto tree1 = creator(rng, 20, 1, MaxLength);
+    auto tree2 = tree1; // identical structure and coefficients
+
+    for (auto& n : tree2.Nodes()) {
+        if (n.IsLeaf()) { n.Optimize = !n.Optimize; }
+    }
+
+    REQUIRE(ComputeContentHash(tree1, zobrist) == ComputeContentHash(tree2, zobrist));
+}
+
 TEST_CASE("ContentHash - collision rate sanity check", "[content_hash]")
 {
     // Coefficient values don't affect this hash (see "coefficient insensitivity"
