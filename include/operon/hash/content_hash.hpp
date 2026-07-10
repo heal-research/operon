@@ -26,6 +26,12 @@ namespace Operon {
 // than Tree::Hash()'s concatenate-then-XXH64, since this is called on a fixed,
 // tiny number of already-64-bit values per node - a general-purpose streaming
 // hash function is unnecessary overhead here.
+//
+// Two semantic decisions carried over from Tree::Hash(): a node's Optimize
+// flag is masked out (weights are re-fit, not distinct symbols for dedup
+// purposes), and NodeType::Ref nodes inherit their target's hash rather than
+// hashing the Ref node itself, so structurally equivalent subexpressions hash
+// identically regardless of whether they're expressed via Ref sharing.
 
 // Working buffers for the scratch overload below, both sized >= tree.Nodes().size()
 // (Indices holds a node's child indices - a node's Arity is always < its own node

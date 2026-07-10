@@ -77,8 +77,10 @@ void Grammar::Rebuild()
     minComplexity_.fill(Unreachable);
 
     if (!variables_.empty()) {
+        // Both nonterminals here return true from AllowsVariable() by
+        // construction (see grammar.hpp) - no guard needed.
         for (auto nt : { GrammarSymbol::RecurringFactor, GrammarSymbol::SimpleTerm }) {
-            if (AllowsVariable(nt)) { minComplexity_[GrammarSymbols::GetIndex(nt)] = 1; }
+            minComplexity_[GrammarSymbols::GetIndex(nt)] = 1;
         }
     }
 
