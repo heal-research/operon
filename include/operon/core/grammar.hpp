@@ -29,10 +29,12 @@ namespace Operon {
 //
 // Deviates from symreg-cpp in one respect: symreg-cpp's InvFactor/InvExpr/
 // InvTerm (a dedicated 1/x reciprocal wrapper) has no corresponding operon
-// NodeType - operon's Div is already an n-ary/binary operator, so the same
-// expressive need (e.g. 1/x) is already reachable at the RecurringFactor
-// level via Div(Constant, SimpleExpr) when Div is enabled, without a
-// dedicated nonterminal.
+// NodeType, and no corresponding production either - this grammar currently
+// only produces Add/Mul (plus the five unary wraps below), so Div/Sub/Pow
+// (and thus 1/x) aren't reachable yet. Production has no way to express a
+// fixed-constant operand (e.g. a Div's numerator) mixed with a nonterminal
+// operand, so adding this isn't a drop-in rule - it's tracked as follow-up
+// work once the current enumeration stack lands.
 enum class GrammarSymbol : uint8_t {
     Expression,      // Constant*Term + Constant | Constant*Term + Expression
     Term,            // RecurringFactor | Term * Term (flattened by Tree::Reduce())
