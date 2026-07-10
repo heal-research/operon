@@ -27,13 +27,21 @@ namespace Operon {
 // tiny number of already-64-bit values per node - a general-purpose streaming
 // hash function is unnecessary overhead here.
 
-// Computes one content-hash per node into `scratch` (sized >= tree.Nodes().size()),
-// bottom-up; returns the root's (last node's) hash. Exposed so callers processing
-// many candidates can reuse one scratch buffer instead of allocating per call.
+// Working buffers for the scratch overload below, both sized >= tree.Nodes().size()
+// (Indices holds a node's child indices - a node's Arity is always < its own node
+// count). Bundled into one struct so callers processing many candidates can carry
+// and reuse both as a unit instead of allocating per call.
+struct ContentHashScratch {
+    Operon::Span<Operon::Hash> Hashes;
+    Operon::Span<std::size_t> Indices;
+};
+
+// Computes one content-hash per node into `scratch.Hashes`, bottom-up; returns the
+// root's (last node's) hash.
 [[nodiscard]] OPERON_EXPORT auto ComputeContentHash(
     Operon::Tree const& tree,
     Operon::Zobrist const& zobrist,
-    Operon::Span<Operon::Hash> scratch
+    ContentHashScratch scratch
 ) noexcept -> Operon::Hash;
 
 // Convenience overload allocating its own scratch buffer.
