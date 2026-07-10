@@ -36,6 +36,15 @@ auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist, Operon::Span<O
     for (std::size_t i = 0; i < nodes.size(); ++i) {
         auto const& n = nodes[i];
 
+        if (n.IsRef()) {
+            // A Ref inherits its target's hash, same as Tree::Hash() (see
+            // tree.cpp), so structurally equivalent subexpressions hash
+            // identically regardless of whether they're shared via Ref.
+            EXPECT(n.RefTo < i); // must be a backward reference
+            scratch[i] = scratch[n.RefTo];
+            continue;
+        }
+
         // Optimize is masked out: two structurally-identical subtrees that
         // differ only in which leaves are marked optimizable should collide
         // here, since weights are re-fit rather than treated as distinct

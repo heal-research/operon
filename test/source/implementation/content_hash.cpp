@@ -183,6 +183,29 @@ TEST_CASE("ContentHash - Optimize-flag insensitivity", "[content_hash]")
     REQUIRE(ComputeContentHash(tree1, zobrist) == ComputeContentHash(tree2, zobrist));
 }
 
+TEST_CASE("ContentHash - Ref-aware (structural sharing doesn't change the hash)", "[content_hash]")
+{
+    // Mirrors Tree::Hash()'s own Ref-normalization (tree.cpp): x*x built with
+    // an explicit Ref to the first x (structural sharing) must hash the same
+    // as x*x built with two independent Variable nodes (no sharing) - both
+    // are the same expression, and content-hash dedup must not distinguish
+    // them just because one representation happens to use Ref.
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    Zobrist const zobrist(rng, MaxLength, inputs);
+
+    auto const varX = ds.GetVariable("X1").value();
+    Node nX(NodeType::Variable); nX.HashValue = varX.Hash;
+
+    // x * x, no sharing: two independent Variable nodes.
+    Tree const noRef = Tree({ nX, nX, Node(NodeType::Mul) }).UpdateNodes();
+
+    // x * Ref(x), sharing the first x via a backward Ref.
+    Tree const withRef = Tree({ nX, Node::Ref(0), Node(NodeType::Mul) }).UpdateNodes();
+
+    REQUIRE(ComputeContentHash(noRef, zobrist) == ComputeContentHash(withRef, zobrist));
+}
+
 TEST_CASE("ContentHash - collision rate sanity check", "[content_hash]")
 {
     // Coefficient values don't affect this hash (see "coefficient insensitivity"
