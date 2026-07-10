@@ -82,6 +82,7 @@ EnumerationEngine::EnumerationEngine(Operon::Grammar grammar, std::size_t maxCom
 
 auto EnumerationEngine::Bucket(GrammarSymbol nt, std::size_t budget) const -> std::span<Operon::Tree const>
 {
+    EXPECT(budget <= maxComplexity_); // contract is [0, MaxComplexity()], not [0, workingCeiling_]
     return buckets_[GrammarSymbols::GetIndex(nt)][budget];
 }
 
@@ -159,6 +160,17 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
             // final shapes - skip the symmetric half to avoid redundant work
             // (harmless either way, since TryInsert would just dedup them,
             // but there's no reason to pay for it twice).
+            //
+            // WorkingBudgetMargin's value (1) was hand-derived specifically
+            // for the current production table (see Grammar::Rebuild in
+            // grammar.cpp): every flattening self-combine/recursion here has
+            // at most one operand that's already rooted in the combining Op
+            // at a time (see enumeration.hpp's "Budget accounting note").
+            // A future production violating that (e.g. a ternary self-combine,
+            // or one where both operands can simultaneously already be
+            // Op-rooted) could need a larger margin - the completeness tests
+            // in test/source/implementation/enumeration.cpp are the guard;
+            // if a new production is added there, extend those tests first.
             bool const selfCombineUnweighted = (op0 == op1) && !p.WeightFirstOperand;
 
             for (std::size_t b0 = min0; b0 <= remaining; ++b0) {
