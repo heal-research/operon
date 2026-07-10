@@ -36,13 +36,15 @@ namespace {
     }
 
     // Placeholder values for the not-yet-fit weight/bias Constants introduced
-    // by WeightFirstOperand/TrailingConstant. Deliberately NOT 1.0 (Mul's
-    // identity) / 0.0 (Add's identity): Tree::Simplify() removes x*1 and x+0
-    // nodes, so using the identity values here would make Simplify() strip
-    // away the very Mul/Add "glue" a not-yet-fitted weight/bias needs to
-    // survive on, before coefficient fitting ever gets a chance to explore a
-    // non-trivial value. Content-hash ignores Constant leaf values entirely
-    // (see hash/content_hash.hpp), so this choice has no effect on dedup.
+    // by WeightFirstOperand/TrailingConstant. Each deliberately avoids the
+    // identity element of the Op it sits next to: WeightPlaceholder != 1.0
+    // (Mul's identity) and BiasPlaceholder != 0.0 (Add's identity), because
+    // Tree::Simplify() removes x*1 and x+0 nodes - using either identity
+    // value here would let Simplify() strip away the very Mul/Add "glue" a
+    // not-yet-fitted weight/bias needs to survive on, before coefficient
+    // fitting ever gets a chance to explore a non-trivial value. Content-hash
+    // ignores Constant leaf values entirely (see hash/content_hash.hpp), so
+    // this choice has no effect on dedup.
     constexpr Operon::Scalar WeightPlaceholder{2.0};
     constexpr Operon::Scalar BiasPlaceholder{1.0};
 
@@ -64,6 +66,12 @@ EnumerationEngine::EnumerationEngine(Operon::Grammar grammar, std::size_t maxCom
     : grammar_(std::move(grammar))
     , maxComplexity_(maxComplexity)
     , workingCeiling_(maxComplexity_ + WorkingBudgetMargin)
+    // maxLength=1 is correct only because zobrist_ is used exclusively via
+    // ComputeContentHash (see TryInsert), which always calls
+    // Zobrist::ComputeHash with pos=0 - it has no array-position dimension.
+    // This table is NOT sized to double as a general-purpose Zobrist::ComputeHash(tree)
+    // (whole-tree transposition hash) for any tree longer than 1 node; don't
+    // repurpose zobrist_ for that without resizing it first.
     , zobrist_(rng, /*maxLength=*/1, grammar_.VariableHashes())
 {
     buckets_.resize(GrammarSymbols::Count);
