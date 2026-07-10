@@ -15,7 +15,9 @@ namespace {
     // which stays exact at every step since each prefix is itself a binomial
     // coefficient. Used by the completeness tests below to check every
     // Term/SimpleTerm bucket against its closed-form multiset count, rather
-    // than spot-checking a handful of small buckets.
+    // than spot-checking a handful of small buckets. Not overflow-guarded -
+    // fine at these tests' scale (largest call here is well under 1000), but
+    // don't reuse this helper for large n/k without adding a check.
     auto Multichoose(std::size_t n, std::size_t k) -> std::size_t
     {
         std::size_t const top = n + k - 1;
