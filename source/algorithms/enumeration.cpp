@@ -45,17 +45,31 @@ namespace {
     // (see hash/content_hash.hpp), so this choice has no effect on dedup.
     constexpr Operon::Scalar WeightPlaceholder{2.0};
     constexpr Operon::Scalar BiasPlaceholder{1.0};
+
+    // How many nominal budget levels beyond maxComplexity_ the DP must search
+    // to discover every tree whose *realized* complexity is exactly
+    // maxComplexity_ (see enumeration.hpp's "Budget accounting note"). Derived
+    // by hand: peeling off one operand at a time (b0=1, b1=target-1) always
+    // has overshoot exactly 1 for both the Mul self-combine (one operand,
+    // the size->=2 side, already Mul-rooted) and the Add recursion (the
+    // Expression operand is always Add-rooted) - and that overshoot doesn't
+    // compound across recursive steps, since each step reads its operand from
+    // the operand's own already-shrunk bucket, not a carried-over nominal
+    // value. Verified empirically by the SimpleTerm closed-form completeness
+    // test in test/source/implementation/enumeration.cpp.
+    constexpr std::size_t WorkingBudgetMargin = 1;
 } // namespace
 
 EnumerationEngine::EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng)
     : grammar_(std::move(grammar))
     , maxComplexity_(maxComplexity)
+    , workingCeiling_(maxComplexity_ + WorkingBudgetMargin)
     , zobrist_(rng, /*maxLength=*/1, grammar_.VariableHashes())
 {
     buckets_.resize(GrammarSymbols::Count);
     seen_.resize(GrammarSymbols::Count);
-    for (auto& row : buckets_) { row.resize(maxComplexity_ + 1); }
-    for (auto& row : seen_) { row.resize(maxComplexity_ + 1); }
+    for (auto& row : buckets_) { row.resize(workingCeiling_ + 1); }
+    for (auto& row : seen_) { row.resize(workingCeiling_ + 1); }
 }
 
 auto EnumerationEngine::Bucket(GrammarSymbol nt, std::size_t budget) const -> std::span<Operon::Tree const>
@@ -163,7 +177,12 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
 void EnumerationEngine::Build()
 {
     SeedTerminals();
-    for (std::size_t budget = 1; budget <= maxComplexity_; ++budget) {
+    // Searches up to workingCeiling_ (> maxComplexity_) so combinations whose
+    // *nominal* budget overshoots maxComplexity_ but whose realized (post-
+    // Reduce()) complexity doesn't still get tried - see WorkingBudgetMargin.
+    // TryInsert's complexity check guarantees nothing is actually stored past
+    // maxComplexity_, so the caller-visible ceiling is unaffected.
+    for (std::size_t budget = 1; budget <= workingCeiling_; ++budget) {
         for (auto nt : ProcessingOrder) {
             ProcessNonterminal(nt, budget);
         }
