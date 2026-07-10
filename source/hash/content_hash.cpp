@@ -35,7 +35,15 @@ auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist, Operon::Span<O
 
     for (std::size_t i = 0; i < nodes.size(); ++i) {
         auto const& n = nodes[i];
-        auto h = zobrist.ComputeHash(n, /*pos=*/0);
+
+        // Optimize is masked out: two structurally-identical subtrees that
+        // differ only in which leaves are marked optimizable should collide
+        // here, since weights are re-fit rather than treated as distinct
+        // symbols (unlike Zobrist::ComputeHash's whole-tree role, where
+        // Optimize legitimately participates - see zobrist.hpp).
+        auto masked = n;
+        masked.Optimize = false;
+        auto h = zobrist.ComputeHash(masked, /*pos=*/0);
 
         if (!n.IsLeaf()) {
             std::ranges::copy(Tree::Indices(nodes, i), std::back_inserter(childIndices));
