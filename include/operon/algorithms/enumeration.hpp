@@ -43,6 +43,16 @@ namespace Operon {
 // interact correctly with the budget accounting, and that content-hash dedup
 // collapses duplicates reached via different derivation paths.
 //
+// Budget accounting note: combining two operands' node counts plus a fixed
+// per-Op cost is only an accurate prediction of the *realized* (post-
+// Reduce()) complexity when neither operand's own root is already the same
+// Op being applied. Term/SimpleTerm's Mul self-combine and Expression/
+// SimpleExpr's Add(Term, Expression) recursion both violate this (Reduce()
+// merges the new Op into an operand's pre-existing same-type root instead of
+// adding a distinct node), so the naive per-combination budget overshoots the
+// true complexity by a small constant - see WorkingBudgetMargin in
+// enumeration.cpp for how the DP compensates.
+//
 // Thread-safety: the per-(nonterminal, budget) dedup sets are
 // gtl::parallel_flat_hash_set_m (the same primitive ZobristCache uses for its
 // transposition cache, see hash/zobrist.hpp), so concurrent candidate
@@ -82,6 +92,12 @@ private:
 
     Operon::Grammar grammar_;
     std::size_t maxComplexity_;
+    // Internal working budget ceiling, strictly >= maxComplexity_ - see
+    // WorkingBudgetMargin in enumeration.cpp for why the DP needs to search
+    // beyond the caller-visible ceiling. buckets_/seen_ are sized to this,
+    // not to maxComplexity_; rows beyond maxComplexity_ are scratch space
+    // that TryInsert's complexity check guarantees stays empty.
+    std::size_t workingCeiling_;
     Operon::Zobrist zobrist_;
     std::vector<std::vector<std::vector<Operon::Tree>>> buckets_; // [GrammarSymbol index][budget][candidate]
     std::vector<std::vector<gtl::parallel_flat_hash_set_m<Operon::Hash>>> seen_; // [GrammarSymbol index][budget]
