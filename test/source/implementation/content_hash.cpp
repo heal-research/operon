@@ -115,8 +115,10 @@ TEST_CASE("ContentHash - position independence", "[content_hash]")
 
     std::vector<Operon::Hash> scratchA(treeA.Nodes().size());
     std::vector<Operon::Hash> scratchB(treeB.Nodes().size());
-    std::ignore = ComputeContentHash(treeA, zobrist, scratchA);
-    std::ignore = ComputeContentHash(treeB, zobrist, scratchB);
+    std::vector<std::size_t> indexScratchA(treeA.Nodes().size());
+    std::vector<std::size_t> indexScratchB(treeB.Nodes().size());
+    std::ignore = ComputeContentHash(treeA, zobrist, { .Hashes = scratchA, .Indices = indexScratchA });
+    std::ignore = ComputeContentHash(treeB, zobrist, { .Hashes = scratchB, .Indices = indexScratchB });
 
     REQUIRE(scratchA[2] == scratchB[3]);
 }
@@ -131,7 +133,8 @@ TEST_CASE("ContentHash - scratch overload matches allocating overload", "[conten
     auto tree = creator(rng, 20, 1, MaxLength);
 
     std::vector<Operon::Hash> scratch(tree.Nodes().size());
-    auto viaScratch = ComputeContentHash(tree, zobrist, scratch);
+    std::vector<std::size_t> indexScratch(tree.Nodes().size());
+    auto viaScratch = ComputeContentHash(tree, zobrist, { .Hashes = scratch, .Indices = indexScratch });
     auto viaAlloc = ComputeContentHash(tree, zobrist);
 
     REQUIRE(viaScratch == viaAlloc);

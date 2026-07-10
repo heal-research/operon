@@ -23,15 +23,16 @@ namespace {
     }
 } // namespace
 
-auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist, Operon::Span<Operon::Hash> scratch) noexcept -> Operon::Hash
+auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist, ContentHashScratch scratch) noexcept -> Operon::Hash
 {
     auto const& nodes = tree.Nodes();
-    EXPECT(scratch.size() >= nodes.size());
+    auto& hashes = scratch.Hashes;
+    auto& indices = scratch.Indices;
 
     if (nodes.empty()) { return 0; } // matches Tree::HashValue()'s empty-tree convention
 
-    std::vector<std::size_t> childIndices;
-    childIndices.reserve(nodes.size());
+    EXPECT(hashes.size() >= nodes.size());
+    EXPECT(indices.size() >= nodes.size());
 
     for (std::size_t i = 0; i < nodes.size(); ++i) {
         auto const& n = nodes[i];
@@ -41,7 +42,7 @@ auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist, Operon::Span<O
             // tree.cpp), so structurally equivalent subexpressions hash
             // identically regardless of whether they're shared via Ref.
             EXPECT(n.RefTo < i); // must be a backward reference
-            scratch[i] = scratch[n.RefTo];
+            hashes[i] = hashes[n.RefTo];
             continue;
         }
 
@@ -55,26 +56,25 @@ auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist, Operon::Span<O
         auto h = zobrist.ComputeHash(masked, /*pos=*/0);
 
         if (!n.IsLeaf()) {
-            std::ranges::copy(Tree::Indices(nodes, i), std::back_inserter(childIndices));
-            auto begin = childIndices.begin();
-            auto end = begin + n.Arity;
+            auto begin = indices.begin();
+            auto end = std::ranges::copy(Tree::Indices(nodes, i), begin).out;
             if (n.IsCommutative()) {
-                std::sort(begin, end, [&](auto a_, auto b_) { return scratch[a_] < scratch[b_]; });
+                std::sort(begin, end, [&](auto a_, auto b_) { return hashes[a_] < hashes[b_]; });
             }
-            for (auto it = begin; it != end; ++it) { h = MixHash(h, scratch[*it]); }
-            childIndices.clear();
+            for (auto it = begin; it != end; ++it) { h = MixHash(h, hashes[*it]); }
         }
 
-        scratch[i] = h;
+        hashes[i] = h;
     }
 
-    return scratch[nodes.size() - 1];
+    return hashes[nodes.size() - 1];
 }
 
 auto ComputeContentHash(Tree const& tree, Zobrist const& zobrist) -> Operon::Hash
 {
-    std::vector<Operon::Hash> scratch(tree.Nodes().size());
-    return ComputeContentHash(tree, zobrist, scratch);
+    std::vector<Operon::Hash> hashes(tree.Nodes().size());
+    std::vector<std::size_t> indices(tree.Nodes().size());
+    return ComputeContentHash(tree, zobrist, ContentHashScratch{ .Hashes = hashes, .Indices = indices });
 }
 
 } // namespace Operon
