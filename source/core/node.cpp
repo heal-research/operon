@@ -15,12 +15,12 @@ using std::string;
 
 namespace Operon {
 namespace {
-    Operon::Map<Operon::Hash, pair<string, string>> kDynDesc; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    Operon::Map<Operon::Hash, pair<string, string>> DynDesc; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 } // namespace
 
     void Node::RegisterName(Operon::Hash hash, string name, string desc)
     {
-        kDynDesc[hash] = { std::move(name), std::move(desc) };
+        DynDesc[hash] = { std::move(name), std::move(desc) };
     }
 
     static const Operon::Map<NodeType, pair<string, string>> NodeDesc = {
@@ -62,7 +62,7 @@ namespace {
     auto Node::Name() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
     {
         if (Type == NodeType::Dynamic) {
-            if (auto it = kDynDesc.find(HashValue); it != kDynDesc.end()) {
+            if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {
                 return it->second.first;
             }
         }
@@ -72,7 +72,7 @@ namespace {
     auto Node::Desc() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
     {
         if (Type == NodeType::Dynamic) {
-            if (auto it = kDynDesc.find(HashValue); it != kDynDesc.end()) {
+            if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {
                 return it->second.second;
             }
         }
