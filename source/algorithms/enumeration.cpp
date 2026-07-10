@@ -23,7 +23,7 @@ namespace {
     // makes it safe to fully complete one nonterminal's candidate generation
     // (including any Simplify()-driven "shrink into a lower bucket") before
     // moving on to the next.
-    constexpr std::array kProcessingOrder {
+    constexpr std::array ProcessingOrder {
         GrammarSymbol::SimpleTerm,
         GrammarSymbol::SimpleExpr,
         GrammarSymbol::RecurringFactor,
@@ -43,8 +43,8 @@ namespace {
     // survive on, before coefficient fitting ever gets a chance to explore a
     // non-trivial value. Content-hash ignores Constant leaf values entirely
     // (see hash/content_hash.hpp), so this choice has no effect on dedup.
-    constexpr Operon::Scalar kWeightPlaceholder{2.0};
-    constexpr Operon::Scalar kBiasPlaceholder{1.0};
+    constexpr Operon::Scalar WeightPlaceholder{2.0};
+    constexpr Operon::Scalar BiasPlaceholder{1.0};
 } // namespace
 
 EnumerationEngine::EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng)
@@ -118,10 +118,10 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
             auto operandIdx = GrammarSymbols::GetIndex(operand);
             for (auto const& t : buckets_[operandIdx][remaining]) {
                 Operon::Vector<Node> nodes;
-                if (p.WeightFirstOperand) { nodes.push_back(Node::Constant(kWeightPlaceholder)); }
+                if (p.WeightFirstOperand) { nodes.push_back(Node::Constant(WeightPlaceholder)); }
                 AppendNodes(nodes, t.Nodes());
                 if (p.WeightFirstOperand) { nodes.push_back(Node(NodeType::Mul)); }
-                if (p.TrailingConstant) { nodes.push_back(Node::Constant(kBiasPlaceholder)); }
+                if (p.TrailingConstant) { nodes.push_back(Node::Constant(BiasPlaceholder)); }
                 nodes.push_back(Node(p.Op));
                 TryInsert(nt, Tree(std::move(nodes)).UpdateNodes());
             }
@@ -147,7 +147,7 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
                 for (auto const& t0 : buckets_[idx0][b0]) {
                     for (auto const& t1 : buckets_[idx1][b1]) {
                         Operon::Vector<Node> nodes;
-                        if (p.WeightFirstOperand) { nodes.push_back(Node::Constant(kWeightPlaceholder)); }
+                        if (p.WeightFirstOperand) { nodes.push_back(Node::Constant(WeightPlaceholder)); }
                         AppendNodes(nodes, t0.Nodes());
                         if (p.WeightFirstOperand) { nodes.push_back(Node(NodeType::Mul)); }
                         AppendNodes(nodes, t1.Nodes());
@@ -164,7 +164,7 @@ void EnumerationEngine::Build()
 {
     SeedTerminals();
     for (std::size_t budget = 1; budget <= maxComplexity_; ++budget) {
-        for (auto nt : kProcessingOrder) {
+        for (auto nt : ProcessingOrder) {
             ProcessNonterminal(nt, budget);
         }
     }
