@@ -32,20 +32,20 @@ TEST_CASE("Complexity - counts all non-Constant nodes", "[enumeration]")
     Node nx(NodeType::Variable); nx.HashValue = 1;
     Node ny(NodeType::Variable); ny.HashValue = 2;
     Tree const tree = Tree({ nx, ny, Node(NodeType::Add), Node::Constant(2.0), Node(NodeType::Mul) }).UpdateNodes();
-    CHECK(Complexity(tree) == 4);
+    CHECK(SymbolicComplexity(tree) == 4);
 }
 
 TEST_CASE("Complexity - single variable has complexity 1", "[enumeration]")
 {
     Node nx(NodeType::Variable); nx.HashValue = 1;
     Tree const tree = Tree({ nx }).UpdateNodes();
-    CHECK(Complexity(tree) == 1);
+    CHECK(SymbolicComplexity(tree) == 1);
 }
 
 TEST_CASE("Complexity - single constant has complexity 0", "[enumeration]")
 {
     Tree const tree = Tree({ Node::Constant(3.0) }).UpdateNodes();
-    CHECK(Complexity(tree) == 0);
+    CHECK(SymbolicComplexity(tree) == 0);
 }
 
 TEST_CASE("EnumerationEngine - seeds RecurringFactor/SimpleTerm/Term at budget 1", "[enumeration]")
@@ -62,7 +62,7 @@ TEST_CASE("EnumerationEngine - seeds RecurringFactor/SimpleTerm/Term at budget 1
     // Term[1] = RecurringFactor[1] via coercion - same count, no new nodes.
     CHECK(engine.Bucket(GrammarSymbol::Term, 1).size() == vars.size());
     for (auto const& t : engine.Bucket(GrammarSymbol::Term, 1)) {
-        CHECK(Complexity(t) == 1);
+        CHECK(SymbolicComplexity(t) == 1);
     }
 }
 
@@ -82,7 +82,7 @@ TEST_CASE("EnumerationEngine - Term products dedup commutative reorderings", "[e
     auto term3 = engine.Bucket(GrammarSymbol::Term, 3);
     CHECK(term3.size() == 3);
     for (auto const& t : term3) {
-        CHECK(Complexity(t) == 3);
+        CHECK(SymbolicComplexity(t) == 3);
     }
 }
 
@@ -181,7 +181,7 @@ TEST_CASE("EnumerationEngine - Expression's cheapest shape has complexity 3", "[
     CHECK(engine.Bucket(GrammarSymbol::Expression, 2).empty());
     CHECK(engine.Bucket(GrammarSymbol::Expression, 3).size() == vars.size());
     for (auto const& t : engine.Bucket(GrammarSymbol::Expression, 3)) {
-        CHECK(Complexity(t) == 3);
+        CHECK(SymbolicComplexity(t) == 3);
     }
 }
 
@@ -214,7 +214,7 @@ TEST_CASE("EnumerationEngine - Expression's recursive term-accumulation isn't si
     auto expr5 = engine.Bucket(GrammarSymbol::Expression, maxComplexity);
     CHECK(expr5.size() > term3.size());
     for (auto const& t : expr5) {
-        CHECK(Complexity(t) == maxComplexity);
+        CHECK(SymbolicComplexity(t) == maxComplexity);
     }
 }
 
@@ -231,7 +231,7 @@ TEST_CASE("EnumerationEngine - MaxComplexity bound is respected", "[enumeration]
     for (auto nt : { GrammarSymbol::Expression, GrammarSymbol::Term, GrammarSymbol::RecurringFactor,
                      GrammarSymbol::SimpleExpr, GrammarSymbol::SimpleTerm }) {
         for (auto const& t : engine.Bucket(nt, maxComplexity)) {
-            CHECK(Complexity(t) <= maxComplexity);
+            CHECK(SymbolicComplexity(t) <= maxComplexity);
         }
     }
 }
@@ -248,7 +248,7 @@ TEST_CASE("EnumerationEngine - unary wraps populate RecurringFactor beyond budge
 
     CHECK_FALSE(engine.Bucket(GrammarSymbol::RecurringFactor, 4).empty());
     for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, 4)) {
-        CHECK(Complexity(t) == 4);
+        CHECK(SymbolicComplexity(t) == 4);
     }
 }
 

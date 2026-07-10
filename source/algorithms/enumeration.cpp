@@ -9,7 +9,7 @@
 
 namespace Operon {
 
-auto Complexity(Operon::Tree const& tree) noexcept -> std::size_t
+auto SymbolicComplexity(Operon::Tree const& tree) noexcept -> std::size_t
 {
     auto const& nodes = tree.Nodes();
     return static_cast<std::size_t>(std::ranges::count_if(nodes, [](auto const& n) { return !n.IsConstant(); }));
@@ -81,7 +81,7 @@ auto EnumerationEngine::TryInsert(GrammarSymbol nt, Operon::Tree tree) -> bool
 {
     tree.Reduce();
     tree.Simplify();
-    auto complexity = Complexity(tree);
+    auto complexity = SymbolicComplexity(tree);
     if (complexity == 0 || complexity > maxComplexity_) { return false; }
 
     auto idx = GrammarSymbols::GetIndex(nt);
