@@ -13,10 +13,20 @@
 #include "operon/formatter/formatter.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
+#include "operator_factory.hpp"
 #include "util.hpp"
 
 auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 {
+    // InitOptions registers the full shared option set (population-size,
+    // crossover-probability, etc.) used by all CLIs (operon_gp/operon_nsgp/
+    // operon_parse_model) - most of those are GP-specific and don't apply to
+    // this non-population-based algorithm. operon_enum only reads dataset/
+    // train/test/target/inputs/enable-symbols/disable-symbols/show-primitives/
+    // objective/linear-scaling/iterations/seed from it, plus its own
+    // max-complexity/top-k below; everything else shown in --help is inert
+    // here. Trimming InitOptions itself would mean restructuring a utility
+    // shared by every existing CLI - out of scope for this addition.
     auto opts = Operon::InitOptions("operon_enum", "Exhaustive grammar enumeration symbolic regression");
     opts.add_options()
         ("max-complexity", "Maximum expression complexity (count of all non-Constant nodes)", cxxopts::value<std::size_t>()->default_value("20"))
@@ -82,11 +92,16 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         auto const iterations = result["iterations"].as<std::size_t>();
         optimizer.SetIterations(iterations == 0 ? 50 : iterations);
 
+        // optimizer only drives CoefficientOptimizer's internal fit - ranking
+        // is via evaluator (same --objective option GP/NSGP expose), so
+        // --objective actually changes which models are reported here.
+        auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, result["linear-scaling"].as<bool>());
+
         auto seed = result["seed"].as<Operon::RandomGenerator::result_type>();
         if (seed == 0) { seed = std::random_device{}(); }
         Operon::RandomGenerator rng(seed);
 
-        Operon::GrammarEnumerationAlgorithm algo(config, std::move(grammar), &optimizer, rng);
+        Operon::GrammarEnumerationAlgorithm algo(config, std::move(grammar), &optimizer, evaluator.get(), rng);
 
         algo.Run(rng, [&]() -> bool {
             auto best = algo.BestTrees();
@@ -109,5 +124,5 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         return EXIT_FAILURE;
     }
 
-    return 0;
+    return EXIT_SUCCESS;
 }
