@@ -4,7 +4,6 @@
 
 #include "operon/core/grammar.hpp"
 
-#include <algorithm>
 #include <limits>
 
 namespace Operon {
@@ -83,7 +82,8 @@ void Grammar::Rebuild()
         }
     }
 
-    for (std::size_t pass = 0; pass < GrammarSymbols::Count; ++pass) {
+    for (bool changed = true; changed;) {
+        changed = false;
         for (std::size_t i = 0; i < GrammarSymbols::Count; ++i) {
             for (auto const& p : rules_[i]) {
                 bool reachable = true;
@@ -93,8 +93,9 @@ void Grammar::Rebuild()
                     if (c == Unreachable) { reachable = false; break; }
                     total += c;
                 }
-                if (reachable) {
-                    minComplexity_[i] = std::min(minComplexity_[i], total);
+                if (reachable && total < minComplexity_[i]) {
+                    minComplexity_[i] = total;
+                    changed = true;
                 }
             }
         }
