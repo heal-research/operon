@@ -19,6 +19,7 @@
 #include "operon/core/tree.hpp"
 #include "operon/hash/content_hash.hpp"
 #include "operon/hash/zobrist.hpp"
+#include "operon/operators/evaluator.hpp" // for EvaluatorBase, Individual
 #include "operon/operators/local_search.hpp" // for CoefficientOptimizer, OptimizerBase/OptimizerSummary fwd decls
 #include "operon/operon_export.hpp"
 #include "operon/random/random.hpp"
@@ -152,25 +153,38 @@ struct EnumerationConfig {
 // ReportCallback/StopRequested()/RequestStop() idiom (ga_base.hpp), even
 // though this doesn't inherit from GeneticAlgorithmBase - there's no
 // population/generation model here, just a level-by-level DP construction.
+//
+// Coefficient fitting and fitness scoring are deliberately separate
+// concerns, mirroring BasicOffspringGenerator's evaluate step
+// (operators/generator.hpp): `optimizer` only drives CoefficientOptimizer's
+// internal loss (used to fit parameters, e.g. LM's sum-of-squares) and is
+// never itself surfaced as a score; `evaluator` is the user-selectable
+// ErrorMetric (R2/NMSE/MSE/MAE/...) that actually ranks candidates in
+// BestTrees(), same as GP/NSGA2. Always taking the optimizer's resulting
+// tree (regardless of OptimizerSummary::Success) and re-scoring it via
+// evaluator - rather than trusting OptimizerSummary's own cost fields -
+// keeps this consistent with the rest of the codebase and avoids coupling
+// ranking to whichever internal loss a given OptimizerBase happens to use.
 class OPERON_EXPORT GrammarEnumerationAlgorithm {
 public:
     // `rng` is used once here to build the engine's Zobrist salt table (see
     // EnumerationEngine); Run()'s own `rng` argument is independent and used
     // for coefficient fitting - callers may pass the same generator to both
     // or different ones.
-    GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar, gsl::not_null<Operon::OptimizerBase const*> optimizer, Operon::RandomGenerator& rng);
+    GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar, gsl::not_null<Operon::OptimizerBase const*> optimizer, gsl::not_null<Operon::EvaluatorBase const*> evaluator, Operon::RandomGenerator& rng);
 
     // Fits coefficients (via CoefficientOptimizer) for every novel Expression
-    // discovered during construction, tracking the config.TopK best by
-    // FinalCost (lower = better) in BestTrees(). Stops early if `report`
-    // returns true, or if RequestStop() was called.
+    // discovered during construction, scores the result via `evaluator`, and
+    // tracks the config.TopK best (lower = better, matching every Operon
+    // ErrorMetric's minimization convention) in BestTrees(). Stops early if
+    // `report` returns true, or if RequestStop() was called.
     void Run(Operon::RandomGenerator& rng, Operon::ReportCallback report = {});
 
     [[nodiscard]] auto StopRequested() const -> bool { return stopRequested_.load(std::memory_order_acquire); }
     void RequestStop() { stopRequested_.store(true, std::memory_order_release); }
 
     // Best-fitness Expression trees found so far, sorted ascending by
-    // FinalCost (lower = better), capped at EnumerationConfig::TopK.
+    // evaluator score (lower = better), capped at EnumerationConfig::TopK.
     [[nodiscard]] auto BestTrees() const -> std::span<std::pair<Operon::Scalar, Operon::Tree> const> { return best_; }
 
     [[nodiscard]] auto GetEngine() const -> EnumerationEngine const& { return engine_; }
@@ -181,6 +195,7 @@ private:
     EnumerationConfig config_;
     EnumerationEngine engine_;
     gsl::not_null<Operon::OptimizerBase const*> optimizer_;
+    gsl::not_null<Operon::EvaluatorBase const*> evaluator_;
     std::atomic<bool> stopRequested_{false};
     std::vector<std::pair<Operon::Scalar, Operon::Tree>> best_; // sorted ascending by .first, size() <= config_.TopK
 };

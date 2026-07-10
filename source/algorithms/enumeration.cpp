@@ -215,10 +215,11 @@ void EnumerationEngine::Build(Operon::ReportCallback shouldStop)
     }
 }
 
-GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar, gsl::not_null<Operon::OptimizerBase const*> optimizer, Operon::RandomGenerator& rng)
+GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar, gsl::not_null<Operon::OptimizerBase const*> optimizer, gsl::not_null<Operon::EvaluatorBase const*> evaluator, Operon::RandomGenerator& rng)
     : config_(config)
     , engine_(std::move(grammar), config.MaxComplexity, rng)
     , optimizer_(optimizer)
+    , evaluator_(evaluator)
 {
 }
 
@@ -251,16 +252,18 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
 
     Operon::CoefficientOptimizer coeffOptimizer{optimizer_};
     engine_.SetOnNovelExpression([&](Operon::Tree& tree) {
-        auto [optimizedTree, summary] = coeffOptimizer(rng, tree);
-        // CoefficientOptimizer only applies FinalParameters to the tree when
-        // Success is true (see local_search.cpp) - on failure, tree keeps its
-        // placeholder coefficients, so summary.FinalCost (the optimizer's
-        // internal attempt) no longer corresponds to what the stored tree
-        // would actually evaluate to. Skip rather than report a fitness that
-        // doesn't match the reported formula.
-        if (!summary.Success) { return; }
-        tree = std::move(optimizedTree);
-        ConsiderBest(summary.FinalCost, tree);
+        // Always take the optimizer's resulting tree, regardless of
+        // OptimizerSummary::Success - mirrors BasicOffspringGenerator's own
+        // evaluate step (operators/generator.hpp), which never branches on
+        // Success either. Fitness is then computed fresh via evaluator_
+        // rather than trusting OptimizerSummary's own cost fields, which
+        // reflect whatever internal loss optimizer_ happens to minimize
+        // (e.g. LM's sum-of-squares), not the user-selected ErrorMetric.
+        tree = std::get<0>(coeffOptimizer(rng, tree));
+        Operon::Individual ind{1};
+        ind.Genotype = tree;
+        auto fitness = (*evaluator_)(rng, ind);
+        ConsiderBest(fitness.front(), tree);
     });
 
     Operon::ReportCallback shouldStop = [&]() -> bool {
