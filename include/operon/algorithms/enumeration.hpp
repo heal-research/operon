@@ -74,9 +74,11 @@ public:
     EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng);
 
     // Runs the bottom-up construction for budgets 1..maxComplexity in order.
-    // `shouldStop`, if set, is checked once per budget level (not per
-    // candidate - a level's own fan-out can still run to completion once
-    // started) and stops the construction early if it returns true.
+    // `shouldStop`, if set, is checked once after each budget level finishes
+    // (not per candidate, and not before the level starts - a level's own
+    // fan-out always runs to completion first, so a caller's progress report
+    // reflects that level's results rather than the previous one) and stops
+    // the construction early if it returns true.
     void Build(Operon::ReportCallback shouldStop = {});
 
     // Invoked, if set, whenever a genuinely novel Expression-category tree is

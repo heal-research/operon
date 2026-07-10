@@ -208,10 +208,13 @@ void EnumerationEngine::Build(Operon::ReportCallback shouldStop)
     // TryInsert's complexity check guarantees nothing is actually stored past
     // maxComplexity_, so the caller-visible ceiling is unaffected.
     for (std::size_t budget = 1; budget <= workingCeiling_; ++budget) {
-        if (shouldStop && shouldStop()) { return; }
         for (auto nt : ProcessingOrder) {
             ProcessNonterminal(nt, budget);
         }
+        // Checked after this level's own processing (not before), so a
+        // caller's progress report reflects this level's results rather than
+        // lagging one level behind.
+        if (shouldStop && shouldStop()) { return; }
     }
 }
 
