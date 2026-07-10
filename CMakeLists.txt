@@ -46,6 +46,7 @@ add_library(
     source/algorithms/solution_archive.cpp
     source/core/dataset.cpp
     source/core/distance.cpp
+    source/core/grammar.cpp
     source/core/node.cpp
     source/core/pset.cpp
     source/core/tree.cpp
@@ -56,6 +57,7 @@ add_library(
     source/formatter/infix.cpp
     source/formatter/postfix.cpp
     source/formatter/tree.cpp
+    source/hash/content_hash.cpp
     source/hash/hash.cpp
     source/hash/metrohash64.cpp
     source/hash/zobrist.cpp
