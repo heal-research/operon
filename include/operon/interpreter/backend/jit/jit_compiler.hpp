@@ -81,13 +81,13 @@ struct CompileMeta {
 // Lifetime rule: must outlive every CompileMeta that was produced from it.
 // JitZobrist declares pool_ before cache_, guaranteeing correct destruction order.
 struct JitRuntimePool {
-    static constexpr int kPoolSize = 8;
+    static constexpr int PoolSize = 8;
 
-    mutable std::array<asmjit::JitRuntime, kPoolSize> runtimes;
+    mutable std::array<asmjit::JitRuntime, PoolSize> runtimes;
     mutable std::atomic<unsigned> next{0};
 
     auto pick() const noexcept -> asmjit::JitRuntime& {
-        return runtimes[next.fetch_add(1U, std::memory_order_relaxed) % static_cast<unsigned>(kPoolSize)];
+        return runtimes[next.fetch_add(1U, std::memory_order_relaxed) % static_cast<unsigned>(PoolSize)];
     }
 
     [[nodiscard]] auto HasAVX2() const noexcept -> bool {
