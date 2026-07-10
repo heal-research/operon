@@ -282,6 +282,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best t
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
     LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
     EnumerationConfig config;
@@ -289,7 +290,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best t
     config.TopK = 3;
 
     Operon::RandomGenerator engineRng(42);
-    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, engineRng);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
 
     Operon::RandomGenerator fitRng(42);
     algo.Run(fitRng);
@@ -315,6 +316,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - RequestStop halts Run early", "[enumera
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
     LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
     EnumerationConfig config;
@@ -322,7 +324,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - RequestStop halts Run early", "[enumera
     config.TopK = 3;
 
     Operon::RandomGenerator engineRng(42);
-    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, engineRng);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
 
     Operon::RandomGenerator fitRng(42);
     int reportCalls = 0;
@@ -365,6 +367,7 @@ TEST_CASE("GrammarEnumerationAlgorithm - recovers a small ground-truth expressio
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
     LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
 
     Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
     EnumerationConfig config;
@@ -372,13 +375,15 @@ TEST_CASE("GrammarEnumerationAlgorithm - recovers a small ground-truth expressio
     config.TopK = 5;
 
     Operon::RandomGenerator engineRng(42);
-    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, engineRng);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
     Operon::RandomGenerator fitRng(42);
     algo.Run(fitRng);
 
     auto best = algo.BestTrees();
     REQUIRE_FALSE(best.empty());
-    CHECK(best.front().first < 1e-2); // near-perfect fit for an exactly-representable linear ground truth
+    // R2's Evaluator convention is -R2Score (lower = better, matching every
+    // other Operon ErrorMetric) - a near-perfect fit approaches -1, not 0.
+    CHECK(best.front().first < -0.99); // near-perfect fit for an exactly-representable linear ground truth
 }
 
 } // namespace Operon::Test
