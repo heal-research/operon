@@ -96,6 +96,13 @@ public:
     // operator[] isn't disabled by the span object's own constness), i.e.
     // it wouldn't actually be const-correct. The conditional_t below keeps
     // the const-correctness the original two overloads had.
+    //
+    // Self& (not Self&&): the original non-ref-qualified overloads were
+    // technically callable on an rvalue *this, immediately returning a Span
+    // into that rvalue's about-to-be-destroyed individuals_ - a dangling
+    // Span by construction. Self& refuses to compile for an rvalue caller
+    // instead, a deliberate, source-incompatible tightening (no in-repo or
+    // downstream caller does this).
     template<typename Self>
     [[nodiscard]] auto Parents(this Self& self) -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>> { return self.parents_; }
 
@@ -104,10 +111,13 @@ public:
 
     // Individuals()/WorkerRngs()/Timings() only ever changed reference
     // qualification (T& vs T const&) between overloads, so ordinary
-    // forwarding-reference deduction via `auto&&` reproduces both exactly -
-    // unlike decltype(auto), which would strip the reference entirely for
-    // an unparenthesized member-access return expression (see Nodes() in
-    // tree.hpp for the full explanation of why that pitfall matters here).
+    // forwarding-reference deduction via `auto&&` reproduces both exactly.
+    // decltype(auto) would have been the wrong choice here for the lvalue/
+    // const-lvalue cases specifically: on an unparenthesized member-access
+    // return expression it yields the *declared* member type by value (a
+    // silent copy), losing reference identity - see Nodes() in tree.hpp for
+    // the full explanation, including why the rvalue case isn't part of
+    // that particular defect.
     template<typename Self>
     [[nodiscard]] auto&& Individuals(this Self&& self) { return std::forward<Self>(self).individuals_; }
 
@@ -126,8 +136,13 @@ public:
     // whose non-const overload existed only to allow direct assignment
     // (e.g. `algo.IsFitted() = true;`). `auto&&` gives `size_t const&`/
     // `bool const&`/etc. for a const Self instead of the original
-    // return-by-value - a strictly compatible relaxation for read-only
-    // callers, while still supporting assignment through the mutable case.
+    // return-by-value - compatible for ordinary read-only use (auto/T/
+    // const T&, arithmetic, comparison), while still supporting assignment
+    // through the mutable case. The one caller shape this changes is a
+    // decltype(auto) capture on a const object (`decltype(auto) x =
+    // constObj.Generation();`), which now aliases the member instead of
+    // snapshotting it - vanishingly unlikely for a scalar getter, but not
+    // literally "no behavior change" in that one case.
     template<typename Self>
     [[nodiscard]] auto&& Generation(this Self&& self) { return std::forward<Self>(self).generation_; }
 
