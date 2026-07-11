@@ -100,9 +100,12 @@ public:
     // Self& (not Self&&): the original non-ref-qualified overloads were
     // technically callable on an rvalue *this, immediately returning a Span
     // into that rvalue's about-to-be-destroyed individuals_ - a dangling
-    // Span by construction. Self& refuses to compile for an rvalue caller
-    // instead, a deliberate, source-incompatible tightening (no in-repo or
-    // downstream caller does this).
+    // Span by construction. Self& refuses to compile for a *mutable* rvalue
+    // caller instead, a deliberate, source-incompatible tightening (no
+    // in-repo or downstream caller does this). A const rvalue caller still
+    // compiles here (Self deduces to a const type, so Self& becomes
+    // Self const&, which binds a const rvalue same as it always could) -
+    // this only closes off the mutable-rvalue case, not rvalues generally.
     template<typename Self>
     [[nodiscard]] auto Parents(this Self& self) -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>> { return self.parents_; }
 
@@ -110,14 +113,22 @@ public:
     [[nodiscard]] auto Offspring(this Self& self) -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>> { return self.offspring_; }
 
     // Individuals()/WorkerRngs()/Timings() only ever changed reference
-    // qualification (T& vs T const&) between overloads, so ordinary
-    // forwarding-reference deduction via `auto&&` reproduces both exactly.
-    // decltype(auto) would have been the wrong choice here for the lvalue/
-    // const-lvalue cases specifically: on an unparenthesized member-access
-    // return expression it yields the *declared* member type by value (a
-    // silent copy), losing reference identity - see Nodes() in tree.hpp for
-    // the full explanation, including why the rvalue case isn't part of
-    // that particular defect.
+    // qualification (T& vs T const&) between overloads (never by-value, so
+    // these don't need the conditional_t treatment Generation()/Elapsed()/
+    // IsFitted() below get), and ordinary forwarding-reference deduction via
+    // `auto&&` reproduces both lvalue cases exactly. It's not a byte-for-
+    // byte match for rvalue callers specifically - the old, non-ref-
+    // qualified overloads always returned a plain T&/T const& regardless of
+    // the object's value category, while `auto&&` forwarding gives T&&/
+    // T const&& for a (mutable or const) rvalue caller instead. Not a new
+    // hazard (both are still references, and neither version's reference
+    // outlives the rvalue any better than the other - no in-repo or
+    // downstream caller does this), just a different reference category
+    // than before. decltype(auto) would have been the wrong choice here for
+    // the lvalue/const-lvalue cases specifically: on an unparenthesized
+    // member-access return expression it yields the *declared* member type
+    // by value (a silent copy), losing reference identity entirely - see
+    // Nodes() in tree.hpp for the full explanation.
     template<typename Self>
     [[nodiscard]] auto&& Individuals(this Self&& self) { return std::forward<Self>(self).individuals_; }
 
