@@ -184,7 +184,7 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
 
 auto JitEvaluator::operator()(RandomGenerator& rng, Individual const& ind) const -> ReturnType
 {
-    return EvaluatorBase::Evaluate(this, rng, ind);
+    return Evaluate(rng, ind);
 }
 
 auto JitEvaluator::CacheSize() const -> std::size_t

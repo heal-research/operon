@@ -81,7 +81,7 @@ namespace {
     template<> auto OPERON_EXPORT
     Evaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType
     {
-        return EvaluatorBase::Evaluate(this, rng, ind);
+        return Evaluate(rng, ind);
     }
 
     auto DiversityEvaluator::Prepare(Operon::Span<Operon::Individual const> pop) const -> void {
@@ -99,7 +99,7 @@ namespace {
 
     auto
     DiversityEvaluator::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType {
-        return EvaluatorBase::Evaluate(this, rng, ind);
+        return Evaluate(rng, ind);
     }
 
     auto
@@ -124,7 +124,7 @@ namespace {
     auto
     AggregateEvaluator::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType
     {
-        return EvaluatorBase::Evaluate(this, rng, ind);
+        return Evaluate(rng, ind);
     }
 
     auto
