@@ -22,15 +22,56 @@ struct TreeInitializerBase;
 class GeneticAlgorithmBase : public StoppableAlgorithm {
 public:
     ~GeneticAlgorithmBase() override = default;
-    // The atomic stopRequested_ that used to force a hand-written copy
-    // ctor/assign here now lives in StoppableAlgorithm, which provides its
-    // own copy handling for it - so copying *this* class is back to plain
-    // memberwise copy, and `= default` is correct (not just convenient).
-    // Move stays deleted: there's no use case for moving a live search
-    // driver.
-    GeneticAlgorithmBase(GeneticAlgorithmBase const&) = default;
+    // Not `= default`: parents_/offspring_ are non-owning spans into
+    // individuals_'s storage, so a plain memberwise copy would leave the
+    // copy's spans pointing at the *source* object's individuals_ buffer
+    // (dangling once the source is destroyed, and aliasing it while both
+    // are alive). They're rebound here to the copy's own individuals_,
+    // exactly like the primary constructor and RestoreIndividuals() do -
+    // both derive them from config_.PopulationSize/PoolSize rather than
+    // copying the span objects themselves. The atomic stopRequested_ still
+    // gets its own handling via StoppableAlgorithm's copy ctor/assign
+    // (invoked explicitly here since every other member is memberwise-safe
+    // to copy or, like the spans, needs deriving instead).
+    GeneticAlgorithmBase(GeneticAlgorithmBase const& other)
+        : StoppableAlgorithm(other)
+        , config_(other.config_)
+        , problem_(other.problem_)
+        , treeInit_(other.treeInit_)
+        , coeffInit_(other.coeffInit_)
+        , generator_(other.generator_)
+        , reinserter_(other.reinserter_)
+        , individuals_(other.individuals_)
+        , parents_(individuals_.data(), config_.PopulationSize)
+        , offspring_(individuals_.data() + config_.PopulationSize, config_.PoolSize)
+        , workerRngs_(other.workerRngs_)
+        , generation_(other.generation_)
+        , elapsed_(other.elapsed_)
+        , phaseTimes_(other.phaseTimes_)
+        , isFitted_(other.isFitted_)
+    {
+    }
     GeneticAlgorithmBase(GeneticAlgorithmBase&&) = delete;
-    auto operator=(GeneticAlgorithmBase const&) -> GeneticAlgorithmBase& = default;
+    auto operator=(GeneticAlgorithmBase const& other) -> GeneticAlgorithmBase&
+    {
+        if (this == &other) { return *this; }
+        StoppableAlgorithm::operator=(other);
+        config_ = other.config_;
+        problem_ = other.problem_;
+        treeInit_ = other.treeInit_;
+        coeffInit_ = other.coeffInit_;
+        generator_ = other.generator_;
+        reinserter_ = other.reinserter_;
+        individuals_ = other.individuals_;
+        parents_ = Operon::Span<Individual>(individuals_.data(), config_.PopulationSize);
+        offspring_ = Operon::Span<Individual>(individuals_.data() + config_.PopulationSize, config_.PoolSize);
+        workerRngs_ = other.workerRngs_;
+        generation_ = other.generation_;
+        elapsed_ = other.elapsed_;
+        phaseTimes_ = other.phaseTimes_;
+        isFitted_ = other.isFitted_;
+        return *this;
+    }
     auto operator=(GeneticAlgorithmBase&&) -> GeneticAlgorithmBase& = delete;
 
     GeneticAlgorithmBase(GeneticAlgorithmConfig config, gsl::not_null<Problem const*> problem, gsl::not_null<TreeInitializerBase const*> treeInit, gsl::not_null<CoefficientInitializerBase const*> coeffInit, gsl::not_null<OffspringGeneratorBase const*> generator, gsl::not_null<ReinserterBase const*> reinserter)

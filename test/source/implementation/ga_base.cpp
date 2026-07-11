@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
@@ -126,6 +127,44 @@ TEST_CASE("RestoreIndividuals maps parents and offspring spans correctly", "[alg
     for (std::size_t i = 0; i < poolSize; ++i) {
         CHECK(offspring[i].Fitness[0] == static_cast<Operon::Scalar>(popSize + i));
     }
+}
+
+TEST_CASE("Copying a GeneticAlgorithmBase-derived object rebinds Parents()/Offspring() to its own storage", "[algorithms]")
+{
+    GaBaseFixture f;
+    constexpr auto popSize  = GaBaseFixture::PopSize;
+    constexpr auto poolSize = GaBaseFixture::PoolSize;
+    constexpr auto total    = popSize + poolSize;
+
+    std::vector<Operon::Individual> inds(total);
+    for (std::size_t i = 0; i < total; ++i) {
+        inds[i].Fitness.resize(1);
+        inds[i].Fitness[0] = static_cast<Operon::Scalar>(i);
+    }
+    f.Gp.RestoreIndividuals(inds);
+    f.Gp.RequestStop(); // exercise StopRequested() being copied too
+
+    Operon::GeneticProgrammingAlgorithm copy{f.Gp}; // NOLINT(performance-unnecessary-copy-initialization)
+
+    // Parents()/Offspring() must point into the *copy*'s own Individuals(),
+    // not the original's - otherwise they dangle once the original that
+    // still owns that storage goes out of scope, or alias it while both are
+    // alive. std::addressof on the first element is the simplest way to
+    // check "same underlying storage" without relying on span internals.
+    CHECK(std::addressof(copy.Parents()[0]) == std::addressof(copy.Individuals()[0]));
+    CHECK(std::addressof(copy.Offspring()[0]) == std::addressof(copy.Individuals()[popSize]));
+    CHECK(std::addressof(copy.Parents()[0]) != std::addressof(f.Gp.Parents()[0]));
+
+    // Content and stop-flag state are still copied correctly.
+    REQUIRE(copy.Parents().size()   == popSize);
+    REQUIRE(copy.Offspring().size() == poolSize);
+    for (std::size_t i = 0; i < popSize; ++i) {
+        CHECK(copy.Parents()[i].Fitness[0] == static_cast<Operon::Scalar>(i));
+    }
+    for (std::size_t i = 0; i < poolSize; ++i) {
+        CHECK(copy.Offspring()[i].Fitness[0] == static_cast<Operon::Scalar>(popSize + i));
+    }
+    CHECK(copy.StopRequested());
 }
 
 TEST_CASE("ReportCallback returning true stops the run before the next generation", "[algorithms]")
