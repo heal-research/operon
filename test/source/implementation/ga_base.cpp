@@ -7,6 +7,8 @@
 #include <memory>
 #include <numeric>
 #include <random>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "operon/algorithms/config.hpp"
@@ -215,6 +217,35 @@ TEST_CASE("NSGA2: ReportCallback returning false lets the run reach the configur
 
     CHECK(f.Nsga.Generation() == f.Config.Generations);
     CHECK(calls == 2); // one report from init, one from the single generation's body
+}
+
+TEST_CASE("Generation/Elapsed/IsFitted return by value for const objects, by reference for mutable, regardless of value category", "[algorithms]")
+{
+    // The pre-deducing-this overloads were never ref-qualified, so the const
+    // overload returned by value for both lvalues and rvalues, and the
+    // non-const overload returned a reference for both. A naive `auto&&`
+    // deducing-this replacement gets the const-rvalue case wrong (a
+    // reference into a temporary instead of a safe copy) - this locks in
+    // that all four Self x value-category combinations still match the
+    // original behavior exactly.
+    using Algo = Operon::GeneticProgrammingAlgorithm;
+
+    static_assert(std::is_same_v<decltype(std::declval<Algo&>().Generation()), std::size_t&>);
+    static_assert(std::is_same_v<decltype(std::declval<Algo const&>().Generation()), std::size_t>);
+    static_assert(std::is_same_v<decltype(std::declval<Algo&&>().Generation()), std::size_t&>);
+    static_assert(std::is_same_v<decltype(std::declval<Algo const&&>().Generation()), std::size_t>);
+
+    static_assert(std::is_same_v<decltype(std::declval<Algo&>().Elapsed()), double&>);
+    static_assert(std::is_same_v<decltype(std::declval<Algo const&>().Elapsed()), double>);
+    static_assert(std::is_same_v<decltype(std::declval<Algo&&>().Elapsed()), double&>);
+    static_assert(std::is_same_v<decltype(std::declval<Algo const&&>().Elapsed()), double>);
+
+    static_assert(std::is_same_v<decltype(std::declval<Algo&>().IsFitted()), bool&>);
+    static_assert(std::is_same_v<decltype(std::declval<Algo const&>().IsFitted()), bool>);
+    static_assert(std::is_same_v<decltype(std::declval<Algo&&>().IsFitted()), bool&>);
+    static_assert(std::is_same_v<decltype(std::declval<Algo const&&>().IsFitted()), bool>);
+
+    SUCCEED("all four Self x value-category combinations verified at compile time");
 }
 
 } // namespace Operon::Test
