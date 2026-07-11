@@ -221,6 +221,7 @@ TEST_CASE("MDL evaluator", "[evaluator]")
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
     }
+
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -275,6 +276,39 @@ TEST_CASE("FBF evaluator", "[evaluator]")
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// detail::ProfileSigma
+// ──────────────────────────────────────────────────────────────────────────────
+TEST_CASE("ProfileSigma", "[evaluator]")
+{
+    SECTION("estimated longer than target: bounded by the shorter span, no out-of-bounds read") {
+        // Regression guard: EvaluatorBase::Evaluate's contract only requires
+        // buf.size() >= TrainingRange().Size(), not equality, so a caller
+        // may legitimately hand ProfileSigma an oversized `estimated` span.
+        // It must not index `target` past its own (shorter) length.
+        std::vector<Operon::Scalar> const target{1.0F, 2.0F, 3.0F};
+        std::vector<Operon::Scalar> estimated{1.1F, 2.1F, 3.1F, 999.F, 999.F}; // 2 extra, unrelated entries
+        auto const sigma = Operon::detail::ProfileSigma(estimated, target);
+        CHECK(std::isfinite(sigma));
+        // sqrt(SSR/n) over exactly the 3 overlapping entries (residual 0.1 each): sqrt(3*0.01/3) = 0.1
+        CHECK_THAT(static_cast<double>(sigma), Catch::Matchers::WithinRel(0.1, 1e-3));
+    }
+
+    SECTION("exact-size spans: matches the straightforward SSR/n computation") {
+        std::vector<Operon::Scalar> const estimated{1.0F, 2.0F, 3.0F, 4.0F};
+        std::vector<Operon::Scalar> const target{0.0F, 0.0F, 0.0F, 0.0F};
+        auto const sigma = Operon::detail::ProfileSigma(estimated, target);
+        // SSR = 1+4+9+16 = 30, n = 4, sigma = sqrt(30/4)
+        CHECK_THAT(static_cast<double>(sigma), Catch::Matchers::WithinRel(std::sqrt(30.0 / 4.0), 1e-3));
+    }
+
+    SECTION("SSR=0 clamps to epsilon rather than returning exactly zero") {
+        std::vector<Operon::Scalar> const v{1.0F, 2.0F, 3.0F};
+        auto const sigma = Operon::detail::ProfileSigma(v, v);
+        CHECK(sigma == std::numeric_limits<Operon::Scalar>::epsilon());
     }
 }
 
