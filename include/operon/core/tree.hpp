@@ -73,9 +73,25 @@ public:
         }
     }
 
-    auto Nodes() & -> Operon::Vector<Node>& { return nodes_; }
-    auto Nodes() && -> Operon::Vector<Node>&& { return std::move(nodes_); }
-    [[nodiscard]] auto Nodes() const& -> Operon::Vector<Node> const& { return nodes_; }
+    // One deducing-this member replaces the former &/&&/const& overload
+    // triplet: Self deduces the caller's value category and cv-qualifier,
+    // and forwarding through it onto nodes_ reproduces exactly the same
+    // three return types (Vector<Node>&, Vector<Node> const&,
+    // Vector<Node>&&) the overloads gave.
+    //
+    // Return type is `auto&&`, not `decltype(auto)`. For the lvalue and
+    // const-lvalue cases, decltype(auto) on an unparenthesized member-access
+    // return expression yields the *declared* member type by value
+    // (Operon::Vector<Node>, a silent copy) rather than a reference - the
+    // real defect: it loses reference identity, not just "the value
+    // category." For the rvalue case specifically, decltype(auto) would
+    // still move (the expression is still an xvalue, so the by-value result
+    // is move-constructed, not copied) - it only changes the return *type*
+    // from Vector<Node>&& to a by-value Vector<Node> prvalue. `auto&&`
+    // performs ordinary forwarding-reference deduction instead, which
+    // reproduces all three original reference types exactly.
+    template<typename Self>
+    [[nodiscard]] auto&& Nodes(this Self&& self) { return std::forward<Self>(self).nodes_; }
 
     [[nodiscard]] auto CoefficientsCount() const
     {
