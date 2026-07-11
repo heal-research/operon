@@ -8,6 +8,7 @@
 #include <catch2/catch_approx.hpp>
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include "operon/core/dataset.hpp"
@@ -362,6 +363,72 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
         CHECK(jitEval.CacheMisses() == 0);
         // Cache itself is unaffected — the compiled entry is still there.
         CHECK(jitEval.CacheSize() >= 1);
+    }
+}
+
+// Same oversized-scratch-buffer bug class as issue #114/#116 (fixed there for
+// Evaluator<DTable>), but for JitEvaluator's own operator(): the compiled
+// path only ever writes range.Size() rows, and the fallback path's
+// Interpreter::Evaluate only writes when given a span sized exactly to the
+// range - so an oversized caller-owned buffer's tail must never leak into
+// scaling/the error metric. The tail is poisoned with NaN so a wrong slice
+// shows up as a non-finite result rather than passing by coincidence.
+TEST_CASE("JitEvaluator: oversized buffer matches exact-size buffer", "[jit][evaluator]")
+{
+    auto ds    = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range{0, std::min(ds.Rows<std::size_t>(), std::size_t{200})};
+
+    Problem problem{&ds};
+    problem.SetTarget("Y");
+    problem.SetTrainingRange(range);
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
+    problem.SetInputs(inputs);
+
+    RandomGenerator rng(1234);
+    auto tree = InfixParser::Parse("X1 + X2 + X3", ds);
+    Individual ind(1);
+    ind.Genotype = tree;
+
+    auto makeOversizedBuf = [&] {
+        std::vector<Scalar> buf(range.Size() + 50, std::numeric_limits<Scalar>::quiet_NaN());
+        return buf;
+    };
+
+    SECTION("Compiled path") {
+        JIT::JitZobrist   zobrist(rng, /*maxLength=*/50, inputs);
+        JIT::JitEvaluator jitEval(&problem, &zobrist, MSE{}, /*linearScaling=*/true);
+        jitEval.SetMinVisits(1); // compile on first call
+
+        std::vector<Scalar> exactBuf(range.Size());
+        auto const exactResult = jitEval(rng, ind, exactBuf);
+        REQUIRE(jitEval.GetOrCompile(tree) != nullptr); // sanity: compiled path was actually taken
+
+        auto oversizedBuf = makeOversizedBuf();
+        auto const oversizedResult = jitEval(rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
+    }
+
+    SECTION("Fallback (uncompiled) path") {
+        JIT::JitZobrist   zobrist(rng, /*maxLength=*/50, inputs);
+        JIT::JitEvaluator jitEval(&problem, &zobrist, MSE{}, /*linearScaling=*/true);
+        jitEval.SetMaxLength(1); // forces GetOrCompile to return nullptr for this tree
+
+        std::vector<Scalar> exactBuf(range.Size());
+        auto const exactResult = jitEval(rng, ind, exactBuf);
+        REQUIRE(jitEval.GetOrCompile(tree) == nullptr); // sanity: fallback path was actually taken
+
+        auto oversizedBuf = makeOversizedBuf();
+        auto const oversizedResult = jitEval(rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
     }
 }
 

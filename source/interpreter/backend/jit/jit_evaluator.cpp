@@ -135,6 +135,15 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
     ENSURE(buf.size() >= range.Size());
     ++ResidualEvaluations;
 
+    // Same oversized-scratch-buffer contract as Evaluator<DTable>::operator()
+    // (source/operators/evaluator.cpp): buf may legitimately be larger than
+    // range.Size() for a reused caller-owned buffer, but the compiled path
+    // below only ever writes nRows entries and the fallback path's
+    // Interpreter::Evaluate only writes when given a span sized exactly to
+    // the range - so scaling and the error metric must operate on a view
+    // sliced down to range.Size(), not the full (possibly oversized) buf.
+    auto estimatedValues = buf.subspan(0, range.Size());
+
     if (compiled != nullptr) {
         auto const  nRows    = static_cast<int32_t>(range.Size());
         auto const  nRowsPad = (nRows + 7) & ~7; // NOLINT(hicpp-signed-bitwise)
@@ -159,24 +168,24 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
         ENSURE(static_cast<int>(coeff.size()) == compiled->nConsts);
         compiled->fn(scratch.data(), colPtrs.data(), nRowsPad,
                      coeff.empty() ? nullptr : coeff.data());
-        std::copy_n(scratch.data(), nRows, buf.data());
+        std::copy_n(scratch.data(), nRows, estimatedValues.data());
     } else {
         thread_local ScalarDispatch fallbackDtable;
         thread_local std::vector<Scalar> coeffBuf;
         tree.GetCoefficients(coeffBuf);
         Interpreter<Scalar, ScalarDispatch> const interp{&fallbackDtable, dataset, &tree};
-        interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, buf);
+        interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, estimatedValues);
     }
 
     if (scaling_) {
-        auto [a, b] = FitLeastSquares(Span<Scalar const>(buf.data(), buf.size()), targetValues, weights);
-        std::ranges::transform(buf, buf.begin(),
+        auto [a, b] = FitLeastSquares(Span<Scalar const>(estimatedValues.data(), estimatedValues.size()), targetValues, weights);
+        std::ranges::transform(estimatedValues, estimatedValues.begin(),
             [a=a, b=b](auto x) -> Scalar { return static_cast<Scalar>((a * x) + b); });
     }
 
     auto fit = static_cast<Scalar>(weights.empty()
-        ? error_(buf, targetValues)
-        : error_(buf, targetValues, weights));
+        ? error_(estimatedValues, targetValues)
+        : error_(estimatedValues, targetValues, weights));
 
     if (!std::isfinite(fit)) { fit = EvaluatorBase::ErrMax; }
     return ReturnType{ fit };
