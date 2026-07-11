@@ -362,6 +362,25 @@ private:
     std::size_t sampleSize_ {};
 };
 
+namespace detail {
+    // Profile MLE sigma-hat = sqrt(SSR/n) from residuals (estimated - target),
+    // clamped away from zero so a downstream log(sigma^2) or division by
+    // sigma can't hit zero. Shared by evaluators that fall back to this
+    // estimate when the caller hasn't supplied a sigma of their own (see the
+    // `sigma_.empty() && Lik::UsesSigma` gating at each call site).
+    inline auto ProfileSigma(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) -> Operon::Scalar
+    {
+        auto const n = static_cast<double>(estimated.size());
+        auto ssr = 0.0;
+        for (std::size_t i = 0; i < estimated.size(); ++i) {
+            auto const e = static_cast<double>(estimated[i]) - static_cast<double>(target[i]);
+            ssr += e * e;
+        }
+        return std::max(static_cast<Operon::Scalar>(std::sqrt(ssr / n)),
+                         std::numeric_limits<Operon::Scalar>::epsilon());
+    }
+} // namespace detail
+
 template <typename DTable, Concepts::Likelihood Lik>
 requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
@@ -403,15 +422,8 @@ public:
         auto estimatedValues = buf;
         auto targetValues    = problem->TargetValues(trainingRange);
         Operon::Scalar profiledSigma{};
-        if (sigma_.empty() && Lik::UsesSigma) { // profile MLE σ̂ = sqrt(SSR/n) from residuals
-            auto const nObs = static_cast<double>(trainingRange.Size());
-            auto ssr = 0.0;
-            for (auto i = 0; i < static_cast<std::ptrdiff_t>(trainingRange.Size()); ++i) {
-                auto const e = static_cast<double>(estimatedValues[i]) - static_cast<double>(targetValues[i]);
-                ssr += e * e;
-            }
-            profiledSigma = std::max(static_cast<Operon::Scalar>(std::sqrt(ssr / nObs)),
-                                     std::numeric_limits<Operon::Scalar>::epsilon());
+        if (sigma_.empty() && Lik::UsesSigma) {
+            profiledSigma = detail::ProfileSigma(estimatedValues, targetValues);
         }
         auto const effectiveSigma = (sigma_.empty() && Lik::UsesSigma)
             ? std::span<Operon::Scalar const>{&profiledSigma, 1}  // profiled
@@ -473,14 +485,8 @@ public:
         auto targetValues    = problem->TargetValues(trainingRange);
         double mlNLL{};
         Operon::Scalar profiledSigma{};
-        if (sigma_.empty() && Lik::UsesSigma) { // profile MLE σ̂ = sqrt(SSR/n); NLL = 0.5·n·(log(2π·σ̂²)+1), clamped to avoid log(0)
-            auto ssr = 0.0;
-            for (auto i = 0; i < static_cast<std::ptrdiff_t>(trainingRange.Size()); ++i) {
-                auto const e = static_cast<double>(estimatedValues[i]) - static_cast<double>(targetValues[i]);
-                ssr += e * e;
-            }
-            profiledSigma = std::max(static_cast<Operon::Scalar>(std::sqrt(ssr / n)),
-                                     std::numeric_limits<Operon::Scalar>::epsilon());
+        if (sigma_.empty() && Lik::UsesSigma) { // NLL = 0.5*n*(log(2*pi*sigma^2)+1), clamped to avoid log(0)
+            profiledSigma = detail::ProfileSigma(estimatedValues, targetValues);
             auto const s = static_cast<double>(profiledSigma);
             mlNLL = 0.5 * n * (std::log(Operon::Math::Tau * s * s) + 1.0);
         }
