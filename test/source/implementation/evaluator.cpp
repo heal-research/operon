@@ -222,6 +222,28 @@ TEST_CASE("MDL evaluator", "[evaluator]")
         CHECK(std::isfinite(result[0]));
     }
 
+    // End-to-end regression test (through the real evaluator path, not just
+    // detail::ProfileSigma in isolation): EvaluatorBase::Evaluate's contract
+    // permits buf.size() > TrainingRange().Size(), and the operator() body
+    // now slices down to exactly TrainingRange().Size() before using it
+    // anywhere (interpreter output, ComputeFisherMatrix's row-count
+    // inference) - so an oversized buffer must produce the same result as
+    // an exactly-sized one, not crash or silently diverge.
+    SECTION("Gaussian / profiled sigma: oversized buffer matches exact-size buffer") {
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        std::vector<Operon::Scalar> oversizedBuf(EvaluatorFixture::Nrow + 50);
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -268,6 +290,23 @@ TEST_CASE("FBF evaluator", "[evaluator]")
         auto const rG = evG(fix.rng, ind);
         auto const rP = evP(fix.rng, ind);
         CHECK(rG[0] != rP[0]);
+    }
+
+    // Same regression guard as MDL's - see the comment there.
+    SECTION("Gaussian / profiled sigma: oversized buffer matches exact-size buffer") {
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        std::vector<Operon::Scalar> oversizedBuf(EvaluatorFixture::Nrow + 50);
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
     }
 
     SECTION("Gaussian / profiled sigma: SSR=0 does not produce NaN (epsilon clamp)") {
