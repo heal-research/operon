@@ -230,6 +230,12 @@ GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig confi
     , optimizer_(optimizer)
     , evaluator_(evaluator)
 {
+    // ConsiderBest/BestTrees rank candidates by fitness.front() alone - a
+    // multi-objective evaluator (e.g. MultiEvaluator, ObjectiveCount() > 1)
+    // would silently have every objective past the first ignored, giving
+    // plausible-looking but wrong model selection with no diagnostic. Reject
+    // it here rather than let it compile and misbehave.
+    EXPECT(evaluator_->ObjectiveCount() == 1);
 }
 
 void GrammarEnumerationAlgorithm::ConsiderBest(Operon::Scalar fitness, Operon::Tree tree)
@@ -287,6 +293,21 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
         // with nothing else pending on it, so it can be moved into
         // ConsiderBest below instead of copying `tree` a second time.
         ind.Genotype = tree;
+        // Re-simplify the *copy* only - `tree` itself must stay exactly as
+        // TryInsert computed its bucket/dedup complexity for (see above),
+        // but nothing stops the fitted coefficients from turning a
+        // placeholder weight/bias into an identity or annihilator element
+        // that Reduce()/Simplify() would have folded away had it been there
+        // from the start: a WeightFirstOperand Constant multiplying a
+        // *compound* Term (e.g. Constant * sin(...)) fitted to exactly 1.0,
+        // or a TrailingConstant bias fitted to exactly 0.0. (A bare Variable
+        // operand's own weight - e.g. the "1.000000" in a printed
+        // "1.000000 * X6" - is not an example of this: InfixFormatter always
+        // prints a Variable's weight explicitly, and Simplify() correctly
+        // never strips a Variable node just because its weight is 1, since
+        // the variable's contribution itself would be lost.)
+        ind.Genotype.Reduce();
+        ind.Genotype.Simplify();
         auto fitness = (*evaluator_)(rng, ind, evalBuf);
         ConsiderBest(fitness.front(), std::move(ind.Genotype));
     });
