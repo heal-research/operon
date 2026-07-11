@@ -422,12 +422,21 @@ public:
 
         auto const trainingRange = problem->TrainingRange();
         ENSURE(buf.size() >= trainingRange.Size());
+        // EvaluatorBase::Evaluate's contract permits buf.size() >
+        // trainingRange.Size() (a caller-owned scratch buffer sized for
+        // reuse across calls), but everything below - the interpreter's
+        // fixed-size write, the Jacobian's row count, ComputeFisherMatrix's
+        // row-count inference from estimatedValues.size() - is built
+        // around exactly trainingRange.Size() rows. Slice once, up front,
+        // so every downstream use (including Interpreter::Evaluate's own
+        // result buffer, which it silently leaves untouched if given a
+        // mismatched size) sees a span sized to match.
+        auto estimatedValues = buf.subspan(0, trainingRange.Size());
 
         ++Base::ResidualEvaluations;
-        interpreter.Evaluate(parameters, trainingRange, buf);
+        interpreter.Evaluate(parameters, trainingRange, estimatedValues);
 
-        auto estimatedValues = buf;
-        auto targetValues    = problem->TargetValues(trainingRange);
+        auto targetValues = problem->TargetValues(trainingRange);
         Operon::Scalar profiledSigma{};
         if (sigma_.empty() && Lik::UsesSigma) {
             profiledSigma = detail::ProfileSigma(estimatedValues, targetValues);
@@ -484,12 +493,15 @@ public:
         auto const trainingRange = problem->TrainingRange();
         auto const n { static_cast<double>(trainingRange.Size()) };
         ENSURE(buf.size() >= trainingRange.Size());
+        // See MinimumDescriptionLengthEvaluator's operator() for why this
+        // slice is needed: everything downstream assumes exactly
+        // trainingRange.Size() rows, but buf may legitimately be larger.
+        auto estimatedValues = buf.subspan(0, trainingRange.Size());
 
         ++Base::ResidualEvaluations;
-        interpreter.Evaluate(parameters, trainingRange, buf);
+        interpreter.Evaluate(parameters, trainingRange, estimatedValues);
 
-        auto estimatedValues = buf;
-        auto targetValues    = problem->TargetValues(trainingRange);
+        auto targetValues = problem->TargetValues(trainingRange);
         double mlNLL{};
         Operon::Scalar profiledSigma{};
         if (sigma_.empty() && Lik::UsesSigma) { // NLL = 0.5*n*(log(2*pi*sigma^2)+1), clamped to avoid log(0)
@@ -570,11 +582,14 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
 
         auto const trainingRange = problem->TrainingRange();
         ENSURE(buf.size() >= trainingRange.Size());
+        // See MinimumDescriptionLengthEvaluator's operator() for why this
+        // slice is needed: everything downstream assumes exactly
+        // trainingRange.Size() rows, but buf may legitimately be larger.
+        auto estimatedValues = buf.subspan(0, trainingRange.Size());
         ++Base::ResidualEvaluations;
-        interpreter.Evaluate(parameters, trainingRange, buf);
+        interpreter.Evaluate(parameters, trainingRange, estimatedValues);
 
-        auto estimatedValues = buf;
-        auto targetValues    = problem->TargetValues(trainingRange);
+        auto targetValues = problem->TargetValues(trainingRange);
 
         auto lik = Likelihood::ComputeLikelihood(estimatedValues, targetValues, sigma_);
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(lik) };
