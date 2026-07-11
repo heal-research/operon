@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <array>
 
+#include "operon/optimizer/optimizer.hpp" // for OptimizerSummary::FinalCost
+
 namespace Operon {
 
 auto SymbolicComplexity(Operon::Tree const& tree) noexcept -> std::size_t
@@ -102,6 +104,9 @@ auto EnumerationEngine::TryInsert(GrammarSymbol nt, Operon::Tree tree) -> bool
         [&](auto const& ctor) { ctor(hash); }
     );
     if (novel) {
+        if (nt == GrammarSymbol::Expression && onNovelExpression_) {
+            onNovelExpression_(tree); // may fit coefficients in place
+        }
         buckets_[idx][complexity].push_back(std::move(tree));
     }
     return novel;
@@ -194,7 +199,7 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
     }
 }
 
-void EnumerationEngine::Build()
+void EnumerationEngine::Build(Operon::ReportCallback shouldStop)
 {
     SeedTerminals();
     // Searches up to workingCeiling_ (> maxComplexity_) so combinations whose
@@ -206,7 +211,121 @@ void EnumerationEngine::Build()
         for (auto nt : ProcessingOrder) {
             ProcessNonterminal(nt, budget);
         }
+        // Checked after this level's own processing (not before), so a
+        // caller's progress report reflects this level's results rather than
+        // lagging one level behind. Note this runs once more than a caller
+        // might expect - budget == workingCeiling_ (the WorkingBudgetMargin
+        // level) still processes candidates and still triggers this check,
+        // even though every candidate at that level has realized complexity
+        // > maxComplexity_ and TryInsert rejects all of them. Harmless (the
+        // callback just sees "nothing new" one extra time) so not worth
+        // special-casing out.
+        if (shouldStop && shouldStop()) { return; }
     }
+}
+
+GrammarEnumerationAlgorithm::GrammarEnumerationAlgorithm(EnumerationConfig config, Operon::Grammar grammar, gsl::not_null<Operon::OptimizerBase const*> optimizer, gsl::not_null<Operon::EvaluatorBase const*> evaluator, Operon::RandomGenerator& rng)
+    : config_(config)
+    , engine_(std::move(grammar), config.MaxComplexity, rng)
+    , optimizer_(optimizer)
+    , evaluator_(evaluator)
+{
+    // ConsiderBest/BestTrees rank candidates by fitness.front() alone - a
+    // multi-objective evaluator (e.g. MultiEvaluator, ObjectiveCount() > 1)
+    // would silently have every objective past the first ignored, giving
+    // plausible-looking but wrong model selection with no diagnostic. Reject
+    // it here rather than let it compile and misbehave.
+    EXPECT(evaluator_->ObjectiveCount() == 1);
+}
+
+void GrammarEnumerationAlgorithm::ConsiderBest(Operon::Scalar fitness, Operon::Tree tree)
+{
+    // TopK == 0 means "keep nothing" - handle it explicitly before the
+    // capacity check below, which would otherwise call best_.back() on an
+    // empty vector (0 >= 0 is true) and crash.
+    if (config_.TopK == 0) { return; }
+
+    // best_ is kept sorted ascending at all times (see the member comment),
+    // so a novel candidate that's already worse than the current worst kept
+    // entry (once at capacity) can be rejected in O(1) instead of paying for
+    // an insertion + resort that would just be undone by the trailing
+    // resize() anyway. Otherwise, insert in sorted position directly rather
+    // than push_back + full re-sort on every call - this only costs a linear
+    // shift, not an O(n log n) sort, per novel Expression.
+    if (best_.size() >= config_.TopK && fitness >= best_.back().first) { return; }
+
+    auto pos = std::ranges::upper_bound(best_, fitness, {}, [](auto const& p) { return p.first; });
+    best_.emplace(pos, fitness, std::move(tree));
+    if (best_.size() > config_.TopK) { best_.pop_back(); }
+}
+
+void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::ReportCallback report)
+{
+    // Iterations() == 0 makes CoefficientOptimizer return a default-
+    // constructed OptimizerSummary (FinalCost == 0.0, Success == false)
+    // without ever calling optimizer_->Optimize() (see local_search.cpp) -
+    // every novel Expression would then tie at cost 0.0 and the top-K
+    // ranking below becomes meaningless. optimizer_ is caller-supplied and
+    // mutable (OptimizerBase::SetIterations()), so this is a real
+    // precondition, not just a theoretical one.
+    EXPECT(optimizer_->Iterations() > 0);
+
+    Operon::CoefficientOptimizer coeffOptimizer{optimizer_};
+    // Reused across every novel Expression rather than letting the 2-arg
+    // evaluator_ overload allocate its own scratch buffer per call (see
+    // EvaluatorBase::Evaluate) - enumeration can produce thousands of
+    // candidates per run, so a per-candidate heap allocation here adds up.
+    std::vector<Operon::Scalar> evalBuf(evaluator_->GetProblem()->TrainingRange().Size());
+    engine_.SetOnNovelExpression([&](Operon::Tree& tree) {
+        // Always take the optimizer's resulting tree, regardless of
+        // OptimizerSummary::Success - mirrors BasicOffspringGenerator's own
+        // evaluate step (operators/generator.hpp), which never branches on
+        // Success either. Fitness is then computed fresh via evaluator_
+        // rather than trusting OptimizerSummary's own cost fields, which
+        // reflect whatever internal loss optimizer_ happens to minimize
+        // (e.g. LM's sum-of-squares), not the user-selected ErrorMetric.
+        tree = std::get<0>(coeffOptimizer(rng, tree));
+        Operon::Individual ind{1};
+        // Copy (not move) here: `tree` is a reference into the engine's own
+        // novel-candidate slot (see TryInsert), which moves it into storage
+        // right after this hook returns - moving from it here would leave
+        // that slot empty. ind.Genotype is a distinct, already-owned copy
+        // with nothing else pending on it, so it can be moved into
+        // ConsiderBest below instead of copying `tree` a second time.
+        ind.Genotype = tree;
+        // Re-simplify the *copy* only - `tree` itself must stay exactly as
+        // TryInsert computed its bucket/dedup complexity for (see above),
+        // but nothing stops the fitted coefficients from turning a
+        // placeholder weight/bias into an identity or annihilator element
+        // that Reduce()/Simplify() would have folded away had it been there
+        // from the start: a WeightFirstOperand Constant multiplying a
+        // *compound* Term (e.g. Constant * sin(...)) fitted to exactly 1.0,
+        // or a TrailingConstant bias fitted to exactly 0.0. (A bare Variable
+        // operand's own weight - e.g. the "1.000000" in a printed
+        // "1.000000 * X6" - is not an example of this: InfixFormatter always
+        // prints a Variable's weight explicitly, and Simplify() correctly
+        // never strips a Variable node just because its weight is 1, since
+        // the variable's contribution itself would be lost.)
+        ind.Genotype.Reduce();
+        ind.Genotype.Simplify();
+        auto fitness = (*evaluator_)(rng, ind, evalBuf);
+        ConsiderBest(fitness.front(), std::move(ind.Genotype));
+    });
+
+    Operon::ReportCallback shouldStop = [&]() -> bool {
+        if (StopRequested()) { return true; }
+        if (report && report()) { RequestStop(); return true; }
+        return false;
+    };
+
+    engine_.Build(shouldStop);
+
+    // onNovelExpression_ captures coeffOptimizer (and rng) by reference, both
+    // function-locals about to go out of scope - clear the hook so a stale
+    // reference can't be invoked from any future entry point (defensive:
+    // today nothing public can trigger that, since GetEngine() returns a
+    // const& and Build() is non-const, but this shouldn't rely on that).
+    engine_.SetOnNovelExpression(nullptr);
 }
 
 } // namespace Operon
