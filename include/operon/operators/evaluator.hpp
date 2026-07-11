@@ -100,16 +100,23 @@ struct EvaluatorBase : public E1, E2
     {
     }
 
-    template<typename Derived>
-    static auto Evaluate(Derived const* self, Operon::RandomGenerator& rng, Operon::Individual const& ind, std::span<Operon::Scalar> buf) {
-        ENSURE(buf.size() >= self->GetProblem()->TrainingRange().Size());
-        return std::invoke(*self, rng, ind, buf);
+    // Deducing-this in place of the old `static Evaluate(Derived const*
+    // self, ...)` CRTP helper: Self deduces to the most-derived type at each
+    // call site (a derived operator()'s own `this`), so std::invoke(self,
+    // ...) below still calls that concrete override directly rather than
+    // going through this base's virtual operator(). Not virtual - can't be,
+    // per the language rule on explicit-object member functions - which
+    // matches the original static member's own non-virtual-ness.
+    template<typename Self>
+    auto Evaluate(this Self const& self, Operon::RandomGenerator& rng, Operon::Individual const& ind, std::span<Operon::Scalar> buf) {
+        ENSURE(buf.size() >= self.GetProblem()->TrainingRange().Size());
+        return std::invoke(self, rng, ind, buf);
     }
 
-    template<typename Derived>
-    static auto Evaluate(Derived const* self, Operon::RandomGenerator& rng, Operon::Individual const& ind) {
-        std::vector<Operon::Scalar> buf(self->GetProblem()->TrainingRange().Size());
-        return std::invoke(*self, rng, ind, buf);
+    template<typename Self>
+    auto Evaluate(this Self const& self, Operon::RandomGenerator& rng, Operon::Individual const& ind) {
+        std::vector<Operon::Scalar> buf(self.GetProblem()->TrainingRange().Size());
+        return std::invoke(self, rng, ind, buf);
     }
 
     virtual void Prepare(Operon::Span<Individual const> /*pop*/) const
@@ -177,7 +184,7 @@ public:
     }
 
     auto operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
-        return EvaluatorBase::Evaluate(this, rng, ind);
+        return Evaluate(rng, ind);
     }
 
 private:
@@ -240,7 +247,7 @@ public:
     auto
     operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override
     {
-        return EvaluatorBase::Evaluate(this, rng, ind);
+        return Evaluate(rng, ind);
     }
 
     auto
@@ -377,7 +384,7 @@ public:
     auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
 
     auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
-        return EvaluatorBase::Evaluate(this, rng, ind);
+        return this->Evaluate(rng, ind);
     }
 
     auto operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
@@ -448,7 +455,7 @@ public:
     auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
 
     auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
-        return EvaluatorBase::Evaluate(this, rng, ind);
+        return this->Evaluate(rng, ind);
     }
 
     auto operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
