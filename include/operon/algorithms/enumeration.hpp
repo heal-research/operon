@@ -180,6 +180,22 @@ public:
     // tracks the config.TopK best (lower = better, matching every Operon
     // ErrorMetric's minimization convention) in BestTrees(). Stops early if
     // `report` returns true, or if RequestStop() was called.
+    //
+    // Precondition: optimizer->Iterations() > 0 (enforced via an always-on
+    // EXPECT, not stripped under NDEBUG). At Iterations() == 0,
+    // CoefficientOptimizer never calls Optimize() and every candidate ties
+    // at cost 0.0, making the top-K ranking meaningless - callers that
+    // expose `optimizer` configuration to end users (CLIs, language
+    // bindings) must reject or default away iterations == 0 themselves, the
+    // way operon_enum does, rather than let it reach here.
+    //
+    // Single-shot: Run() is not meant to be called more than once on the
+    // same instance - RequestStop() is one-way (nothing clears
+    // stopRequested_) and the underlying EnumerationEngine::Build() is not
+    // re-runnable (its buckets/dedup sets are already populated after the
+    // first call). Construct a new GrammarEnumerationAlgorithm for another
+    // run, mirroring the one-shot (not warm-restartable) contract already
+    // implied by EnumerationEngine.
     void Run(Operon::RandomGenerator& rng, Operon::ReportCallback report = {});
 
     [[nodiscard]] auto StopRequested() const -> bool { return stopRequested_.load(std::memory_order_acquire); }

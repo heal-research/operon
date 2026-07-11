@@ -213,7 +213,13 @@ void EnumerationEngine::Build(Operon::ReportCallback shouldStop)
         }
         // Checked after this level's own processing (not before), so a
         // caller's progress report reflects this level's results rather than
-        // lagging one level behind.
+        // lagging one level behind. Note this runs once more than a caller
+        // might expect - budget == workingCeiling_ (the WorkingBudgetMargin
+        // level) still processes candidates and still triggers this check,
+        // even though every candidate at that level has realized complexity
+        // > maxComplexity_ and TryInsert rejects all of them. Harmless (the
+        // callback just sees "nothing new" one extra time) so not worth
+        // special-casing out.
         if (shouldStop && shouldStop()) { return; }
     }
 }
@@ -274,9 +280,15 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
         // (e.g. LM's sum-of-squares), not the user-selected ErrorMetric.
         tree = std::get<0>(coeffOptimizer(rng, tree));
         Operon::Individual ind{1};
+        // Copy (not move) here: `tree` is a reference into the engine's own
+        // novel-candidate slot (see TryInsert), which moves it into storage
+        // right after this hook returns - moving from it here would leave
+        // that slot empty. ind.Genotype is a distinct, already-owned copy
+        // with nothing else pending on it, so it can be moved into
+        // ConsiderBest below instead of copying `tree` a second time.
         ind.Genotype = tree;
         auto fitness = (*evaluator_)(rng, ind, evalBuf);
-        ConsiderBest(fitness.front(), tree);
+        ConsiderBest(fitness.front(), std::move(ind.Genotype));
     });
 
     Operon::ReportCallback shouldStop = [&]() -> bool {
