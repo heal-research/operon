@@ -64,13 +64,24 @@ namespace {
 
         ++ResidualEvaluations;
         ENSURE(buf.size() >= trainingRange.Size());
+        // EvaluatorBase::Evaluate's contract permits buf.size() >
+        // trainingRange.Size() (a caller-owned scratch buffer sized for
+        // reuse across calls), but Interpreter::Evaluate only writes into
+        // its result span when it's sized exactly to the range (silently
+        // leaving an oversized buffer's tail untouched), and targetValues/
+        // weights are always sized to exactly trainingRange.Size(). Slice
+        // once, up front, so scaling and the error metric both operate on
+        // the same exactly-sized view as the interpreter writes into -
+        // same pattern as MinimumDescriptionLengthEvaluator/
+        // FractionalBayesFactorEvaluator/LikelihoodEvaluator in evaluator.hpp.
+        auto estimatedValues = buf.subspan(0, trainingRange.Size());
         auto coeff = tree.GetCoefficients();
-        interpreter.Evaluate(coeff, trainingRange, buf);
+        interpreter.Evaluate(coeff, trainingRange, estimatedValues);
         if (scaling_) {
-            auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(buf, targetValues, weights);
-            std::ranges::transform(buf, buf.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+            auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues, weights);
+            std::ranges::transform(estimatedValues, estimatedValues.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
         }
-        auto fit = static_cast<Operon::Scalar>(weights.empty() ? error_(buf, targetValues) : error_(buf, targetValues, weights));
+        auto fit = static_cast<Operon::Scalar>(weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));
 
         if (!std::isfinite(fit)) {
             fit = EvaluatorBase::ErrMax;
