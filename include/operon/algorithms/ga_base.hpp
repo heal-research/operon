@@ -132,28 +132,38 @@ public:
     template<typename Self>
     [[nodiscard]] auto&& WorkerRngs(this Self&& self) { return std::forward<Self>(self).workerRngs_; }
 
-    // Generation()/Elapsed()/IsFitted() are trivially-copyable scalars
-    // whose non-const overload existed only to allow direct assignment
-    // (e.g. `algo.IsFitted() = true;`). `auto&&` gives `size_t const&`/
-    // `bool const&`/etc. for a const Self instead of the original
-    // return-by-value - compatible for ordinary read-only use (auto/T/
-    // const T&, arithmetic, comparison), while still supporting assignment
-    // through the mutable case. The one caller shape this changes is a
-    // decltype(auto) capture on a const object (`decltype(auto) x =
-    // constObj.Generation();`), which now aliases the member instead of
-    // snapshotting it - vanishingly unlikely for a scalar getter, but not
-    // literally "no behavior change" in that one case.
+    // Generation()/Elapsed()/IsFitted() are trivially-copyable scalars whose
+    // non-const overload existed only to allow direct assignment (e.g.
+    // `algo.IsFitted() = true;`); neither original overload was ref-
+    // qualified, so the const one returned by value regardless of whether
+    // the object was an lvalue or rvalue. A plain `auto&&` here would get
+    // that wrong for a const *rvalue* specifically: Self deduces to a
+    // non-reference type, and forwarding through it yields a `T const&&`
+    // binding - a reference into a temporary - where the old code always
+    // handed back a safe, independent copy. (Reading through a const
+    // *lvalue* isn't affected: only the reference category changes there,
+    // same as Individuals()/WorkerRngs()/Timings() above.)
+    //
+    // No caller does this today (confirmed: nothing in this repo or its
+    // downstream consumers calls these getters on a const rvalue), but it's
+    // one line of conditional_t to close off entirely rather than leave as
+    // a latent trap. Note this deliberately does *not* forward self: naming
+    // `self` inside the function body is always an lvalue expression
+    // regardless of which reference type Self deduced to, so branching the
+    // return *type* on constness alone (ignoring value category) is enough
+    // to reproduce the original by-value-for-const/reference-for-mutable
+    // split exactly, for all four Self×value-category combinations.
     template<typename Self>
-    [[nodiscard]] auto&& Generation(this Self&& self) { return std::forward<Self>(self).generation_; }
+    [[nodiscard]] auto Generation(this Self&& self) -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, size_t, size_t&> { return self.generation_; } // NOLINT(cppcoreguidelines-missing-std-forward)
 
     template<typename Self>
-    [[nodiscard]] auto&& Elapsed(this Self&& self) { return std::forward<Self>(self).elapsed_; }
+    [[nodiscard]] auto Elapsed(this Self&& self) -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, double, double&> { return self.elapsed_; } // NOLINT(cppcoreguidelines-missing-std-forward)
 
     template<typename Self>
     [[nodiscard]] auto&& Timings(this Self&& self) { return std::forward<Self>(self).phaseTimes_; }
 
     template<typename Self>
-    [[nodiscard]] auto&& IsFitted(this Self&& self) { return std::forward<Self>(self).isFitted_; }
+    [[nodiscard]] auto IsFitted(this Self&& self) -> std::conditional_t<std::is_const_v<std::remove_reference_t<Self>>, bool, bool&> { return self.isFitted_; } // NOLINT(cppcoreguidelines-missing-std-forward)
 
     // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
 
