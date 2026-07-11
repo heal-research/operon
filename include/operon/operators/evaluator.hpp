@@ -370,9 +370,16 @@ namespace detail {
     // `sigma_.empty() && Lik::UsesSigma` gating at each call site).
     inline auto ProfileSigma(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target) -> Operon::Scalar
     {
-        auto const n = static_cast<double>(estimated.size());
+        // Bounded by the shorter of the two spans, not just estimated's -
+        // callers only guarantee estimated.size() >= target.size() (e.g. a
+        // reused scratch buffer sized to a training range but possibly
+        // larger; see EvaluatorBase::Evaluate's ENSURE), not equality, so
+        // indexing target[i] up to estimated.size() alone would read past
+        // target's end whenever the buffer is oversized.
+        auto const count = std::min(estimated.size(), target.size());
+        auto const n = static_cast<double>(count);
         auto ssr = 0.0;
-        for (std::size_t i = 0; i < estimated.size(); ++i) {
+        for (std::size_t i = 0; i < count; ++i) {
             auto const e = static_cast<double>(estimated[i]) - static_cast<double>(target[i]);
             ssr += e * e;
         }
