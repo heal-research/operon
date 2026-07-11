@@ -221,6 +221,29 @@ TEST_CASE("MDL evaluator", "[evaluator]")
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
     }
+
+    // End-to-end regression test (through the real evaluator path, not just
+    // detail::ProfileSigma in isolation): EvaluatorBase::Evaluate's contract
+    // permits buf.size() > TrainingRange().Size(), and the operator() body
+    // now slices down to exactly TrainingRange().Size() before using it
+    // anywhere (interpreter output, ComputeFisherMatrix's row-count
+    // inference) - so an oversized buffer must produce the same result as
+    // an exactly-sized one, not crash or silently diverge.
+    SECTION("Gaussian / profiled sigma: oversized buffer matches exact-size buffer") {
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        std::vector<Operon::Scalar> oversizedBuf(EvaluatorFixture::Nrow + 50);
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -269,12 +292,102 @@ TEST_CASE("FBF evaluator", "[evaluator]")
         CHECK(rG[0] != rP[0]);
     }
 
+    // Same regression guard as MDL's - see the comment there.
+    SECTION("Gaussian / profiled sigma: oversized buffer matches exact-size buffer") {
+        FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        std::vector<Operon::Scalar> oversizedBuf(EvaluatorFixture::Nrow + 50);
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
+    }
+
     SECTION("Gaussian / profiled sigma: SSR=0 does not produce NaN (epsilon clamp)") {
         FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.perfectTree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// LikelihoodEvaluator
+// ──────────────────────────────────────────────────────────────────────────────
+TEST_CASE("LikelihoodEvaluator", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    using DTable = EvaluatorFixture::DTable;
+
+    SECTION("Gaussian: finite result") {
+        // LikelihoodEvaluator only overrides the 3-arg operator() (unlike
+        // MDL/FBF, which also provide their own 2-arg override), so this
+        // always calls the buffered form directly rather than through
+        // EvaluatorBase::Evaluate.
+        GaussianLikelihoodEvaluator<DTable> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        std::vector<Operon::Scalar> buf(EvaluatorFixture::Nrow);
+        auto const result = ev(fix.rng, ind, buf);
+        REQUIRE(result.size() == 1);
+        CHECK(std::isfinite(result[0]));
+    }
+
+    // Same regression guard as MDL/FBF's - see MinimumDescriptionLengthEvaluator's
+    // operator() for why the slice fix is needed.
+    SECTION("Gaussian: oversized buffer matches exact-size buffer") {
+        GaussianLikelihoodEvaluator<DTable> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        std::vector<Operon::Scalar> oversizedBuf(EvaluatorFixture::Nrow + 50);
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// detail::ProfileSigma
+// ──────────────────────────────────────────────────────────────────────────────
+TEST_CASE("ProfileSigma", "[evaluator]")
+{
+    SECTION("estimated longer than target: bounded by the shorter span, no out-of-bounds read") {
+        // Regression guard: EvaluatorBase::Evaluate's contract only requires
+        // buf.size() >= TrainingRange().Size(), not equality, so a caller
+        // may legitimately hand ProfileSigma an oversized `estimated` span.
+        // It must not index `target` past its own (shorter) length.
+        std::vector<Operon::Scalar> const target{1.0F, 2.0F, 3.0F};
+        std::vector<Operon::Scalar> estimated{1.1F, 2.1F, 3.1F, 999.F, 999.F}; // 2 extra, unrelated entries
+        auto const sigma = Operon::detail::ProfileSigma(estimated, target);
+        CHECK(std::isfinite(sigma));
+        // sqrt(SSR/n) over exactly the 3 overlapping entries (residual 0.1 each): sqrt(3*0.01/3) = 0.1
+        CHECK_THAT(static_cast<double>(sigma), Catch::Matchers::WithinRel(0.1, 1e-3));
+    }
+
+    SECTION("exact-size spans: matches the straightforward SSR/n computation") {
+        std::vector<Operon::Scalar> const estimated{1.0F, 2.0F, 3.0F, 4.0F};
+        std::vector<Operon::Scalar> const target{0.0F, 0.0F, 0.0F, 0.0F};
+        auto const sigma = Operon::detail::ProfileSigma(estimated, target);
+        // SSR = 1+4+9+16 = 30, n = 4, sigma = sqrt(30/4)
+        CHECK_THAT(static_cast<double>(sigma), Catch::Matchers::WithinRel(std::sqrt(30.0 / 4.0), 1e-3));
+    }
+
+    SECTION("SSR=0 clamps to epsilon rather than returning exactly zero") {
+        std::vector<Operon::Scalar> const v{1.0F, 2.0F, 3.0F};
+        auto const sigma = Operon::detail::ProfileSigma(v, v);
+        CHECK(sigma == std::numeric_limits<Operon::Scalar>::epsilon());
     }
 }
 
