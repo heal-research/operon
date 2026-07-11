@@ -5,6 +5,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <limits>
+
 #include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"
@@ -532,6 +534,88 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
 
         CHECK_THAT(static_cast<double>(mseSlope2), Catch::Matchers::WithinAbs(0.0, 1e-4));
         CHECK_THAT(static_cast<double>(mseSlope3), Catch::Matchers::WithinAbs(0.0, 1e-4));
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Evaluator<DTable> (default R2/MSE/NMSE/MAE path) and the BIC/AIC evaluators
+// that delegate to it - same oversized-scratch-buffer bug class as the MDL/
+// FBF/Likelihood evaluators above (issue #114), but on the evaluator behind
+// every R2/MSE/NMSE/MAE run plus BayesianInformationCriterionEvaluator/
+// AkaikeInformationCriterionEvaluator. The buffer's unused tail is poisoned
+// with NaN rather than left zeroed, so a wrong slice (reading/writing past
+// TrainingRange().Size()) shows up as a non-finite result instead of
+// accidentally matching by coincidence.
+// ──────────────────────────────────────────────────────────────────────────────
+TEST_CASE("Evaluator<DTable>: oversized buffer matches exact-size buffer", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    using DTable = EvaluatorFixture::DTable;
+    auto ind = EvaluatorFixture::MakeIndividual(fix.tree); // imperfect fit: SSR > 0, scaling has real work to do
+
+    auto makeOversizedBuf = [] {
+        std::vector<Operon::Scalar> buf(EvaluatorFixture::Nrow + 50, std::numeric_limits<Operon::Scalar>::quiet_NaN());
+        return buf;
+    };
+
+    SECTION("Scaling on (default)") {
+        Evaluator<DTable> const ev{&fix.problem, &fix.dtable};
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        auto oversizedBuf = makeOversizedBuf();
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
+    }
+
+    SECTION("Scaling off") {
+        Evaluator<DTable> const ev{&fix.problem, &fix.dtable, MSE{}, /*linearScaling=*/false};
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        auto oversizedBuf = makeOversizedBuf();
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
+    }
+
+    SECTION("BayesianInformationCriterionEvaluator (delegates to Evaluator<DTable>)") {
+        BayesianInformationCriterionEvaluator<DTable> const ev{&fix.problem, &fix.dtable};
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        auto oversizedBuf = makeOversizedBuf();
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
+    }
+
+    SECTION("AkaikeInformationCriterionEvaluator (delegates to Evaluator<DTable>)") {
+        AkaikeInformationCriterionEvaluator<DTable> const ev{&fix.problem, &fix.dtable};
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        auto oversizedBuf = makeOversizedBuf();
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
     }
 }
 
