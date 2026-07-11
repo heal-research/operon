@@ -319,6 +319,46 @@ TEST_CASE("FBF evaluator", "[evaluator]")
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// LikelihoodEvaluator
+// ──────────────────────────────────────────────────────────────────────────────
+TEST_CASE("LikelihoodEvaluator", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    using DTable = EvaluatorFixture::DTable;
+
+    SECTION("Gaussian: finite result") {
+        // LikelihoodEvaluator only overrides the 3-arg operator() (unlike
+        // MDL/FBF, which also provide their own 2-arg override), so this
+        // always calls the buffered form directly rather than through
+        // EvaluatorBase::Evaluate.
+        GaussianLikelihoodEvaluator<DTable> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        std::vector<Operon::Scalar> buf(EvaluatorFixture::Nrow);
+        auto const result = ev(fix.rng, ind, buf);
+        REQUIRE(result.size() == 1);
+        CHECK(std::isfinite(result[0]));
+    }
+
+    // Same regression guard as MDL/FBF's - see MinimumDescriptionLengthEvaluator's
+    // operator() for why the slice fix is needed.
+    SECTION("Gaussian: oversized buffer matches exact-size buffer") {
+        GaussianLikelihoodEvaluator<DTable> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+        std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
+        auto const exactResult = ev(fix.rng, ind, exactBuf);
+
+        std::vector<Operon::Scalar> oversizedBuf(EvaluatorFixture::Nrow + 50);
+        auto const oversizedResult = ev(fix.rng, ind, oversizedBuf);
+
+        REQUIRE(exactResult.size() == 1);
+        REQUIRE(oversizedResult.size() == 1);
+        CHECK(std::isfinite(oversizedResult[0]));
+        CHECK(oversizedResult[0] == exactResult[0]);
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // detail::ProfileSigma
 // ──────────────────────────────────────────────────────────────────────────────
 TEST_CASE("ProfileSigma", "[evaluator]")
