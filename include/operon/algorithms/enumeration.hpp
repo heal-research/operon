@@ -5,7 +5,6 @@
 #ifndef OPERON_ALGORITHMS_ENUMERATION_HPP
 #define OPERON_ALGORITHMS_ENUMERATION_HPP
 
-#include <atomic>
 #include <functional>
 #include <span>
 #include <utility>
@@ -14,7 +13,7 @@
 #include <gsl/pointers>
 #include <gtl/phmap.hpp>
 
-#include "operon/algorithms/ga_base.hpp" // for Operon::ReportCallback
+#include "operon/algorithms/stoppable.hpp" // for Operon::ReportCallback, StoppableAlgorithm
 #include "operon/core/grammar.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/hash/content_hash.hpp"
@@ -150,11 +149,12 @@ struct EnumerationConfig {
 
 // Top-level driver: wraps EnumerationEngine with coefficient fitting (via the
 // existing CoefficientOptimizer - this fully replaces symreg-cpp's Ceres
-// dependency with operon's own optimizer stack, no new fitting code needed)
-// and a stop-condition/reporting surface mirroring GeneticAlgorithmBase's
-// ReportCallback/StopRequested()/RequestStop() idiom (ga_base.hpp), even
-// though this doesn't inherit from GeneticAlgorithmBase - there's no
-// population/generation model here, just a level-by-level DP construction.
+// dependency with operon's own optimizer stack, no new fitting code needed).
+// Shares its stop-condition/reporting surface (ReportCallback/
+// StopRequested()/RequestStop()) with GeneticAlgorithmBase-derived
+// algorithms via StoppableAlgorithm, even though this doesn't inherit
+// GeneticAlgorithmBase itself - there's no population/generation model
+// here, just a level-by-level DP construction.
 //
 // Coefficient fitting and fitness scoring are deliberately separate
 // concerns, mirroring BasicOffspringGenerator's evaluate step
@@ -167,7 +167,7 @@ struct EnumerationConfig {
 // evaluator - rather than trusting OptimizerSummary's own cost fields -
 // keeps this consistent with the rest of the codebase and avoids coupling
 // ranking to whichever internal loss a given OptimizerBase happens to use.
-class OPERON_EXPORT GrammarEnumerationAlgorithm {
+class OPERON_EXPORT GrammarEnumerationAlgorithm : public StoppableAlgorithm {
 public:
     // `rng` is used once here to build the engine's Zobrist salt table (see
     // EnumerationEngine); Run()'s own `rng` argument is independent and used
@@ -190,16 +190,15 @@ public:
     // way operon_enum does, rather than let it reach here.
     //
     // Single-shot: Run() is not meant to be called more than once on the
-    // same instance - RequestStop() is one-way (nothing clears
-    // stopRequested_) and the underlying EnumerationEngine::Build() is not
-    // re-runnable (its buckets/dedup sets are already populated after the
-    // first call). Construct a new GrammarEnumerationAlgorithm for another
-    // run, mirroring the one-shot (not warm-restartable) contract already
-    // implied by EnumerationEngine.
+    // same instance - unlike GeneticAlgorithmBase, this class has no
+    // Reset() to clear StopRequested() between runs, and the underlying
+    // EnumerationEngine::Build() is not re-runnable (its buckets/dedup sets
+    // are already populated after the first call). Construct a new
+    // GrammarEnumerationAlgorithm for another run, mirroring the one-shot
+    // (not warm-restartable) contract already implied by EnumerationEngine.
     void Run(Operon::RandomGenerator& rng, Operon::ReportCallback report = {});
 
-    [[nodiscard]] auto StopRequested() const -> bool { return stopRequested_.load(std::memory_order_acquire); }
-    void RequestStop() { stopRequested_.store(true, std::memory_order_release); }
+    // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
 
     // Best-fitness Expression trees found so far, sorted ascending by
     // evaluator score (lower = better), capped at EnumerationConfig::TopK.
@@ -214,7 +213,6 @@ private:
     EnumerationEngine engine_;
     gsl::not_null<Operon::OptimizerBase const*> optimizer_;
     gsl::not_null<Operon::EvaluatorBase const*> evaluator_;
-    std::atomic<bool> stopRequested_{false};
     std::vector<std::pair<Operon::Scalar, Operon::Tree>> best_; // sorted ascending by .first, size() <= config_.TopK
 };
 
