@@ -73,9 +73,19 @@ public:
         }
     }
 
-    auto Nodes() & -> Operon::Vector<Node>& { return nodes_; }
-    auto Nodes() && -> Operon::Vector<Node>&& { return std::move(nodes_); }
-    [[nodiscard]] auto Nodes() const& -> Operon::Vector<Node> const& { return nodes_; }
+    // One deducing-this member replaces the former &/&&/const& overload
+    // triplet: Self deduces the caller's value category and cv-qualifier,
+    // and forwarding through it onto nodes_ reproduces exactly the same
+    // three return types (Node&, Node const&, Node&&) the overloads gave.
+    //
+    // Return type is `auto&&`, not `decltype(auto)`: decltype(auto) treats
+    // an unparenthesized member-access return expression as the *declared*
+    // member type (Operon::Vector<Node>, by value - a silent copy, and a
+    // silent move-into-copy for the && case), discarding the value
+    // category entirely. `auto&&` performs ordinary forwarding-reference
+    // deduction instead, which does propagate it correctly.
+    template<typename Self>
+    [[nodiscard]] auto&& Nodes(this Self&& self) { return std::forward<Self>(self).nodes_; }
 
     [[nodiscard]] auto CoefficientsCount() const
     {

@@ -88,14 +88,28 @@ public:
         generator_->SetCache(config.Cache);
     }
 
-    [[nodiscard]] auto Parents() const -> Operon::Span<Individual const> { return { parents_.data(), parents_.size() }; }
-    auto Parents() -> Operon::Span<Individual> { return parents_; }
+    // Parents()/Offspring() genuinely change *type* between const and
+    // non-const (Span<Individual const> vs Span<Individual>), not just
+    // reference-qualification - a plain forwarding-reference return would
+    // return `Operon::Span<Individual> const&` for a const Self, which
+    // still exposes mutable *elements* through that span (Span's
+    // operator[] isn't disabled by the span object's own constness), i.e.
+    // it wouldn't actually be const-correct. The conditional_t below keeps
+    // the const-correctness the original two overloads had.
+    template<typename Self>
+    [[nodiscard]] auto Parents(this Self& self) -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>> { return self.parents_; }
 
-    [[nodiscard]] auto Offspring() const -> Operon::Span<Individual const> { return { offspring_.data(), offspring_.size() }; }
-    auto Offspring() -> Operon::Span<Individual> { return offspring_; }
+    template<typename Self>
+    [[nodiscard]] auto Offspring(this Self& self) -> Operon::Span<std::conditional_t<std::is_const_v<Self>, Individual const, Individual>> { return self.offspring_; }
 
-    [[nodiscard]] auto Individuals() -> Operon::Vector<Operon::Individual>& { return individuals_; }
-    [[nodiscard]] auto Individuals() const -> Operon::Vector<Operon::Individual> const& { return individuals_; }
+    // Individuals()/WorkerRngs()/Timings() only ever changed reference
+    // qualification (T& vs T const&) between overloads, so ordinary
+    // forwarding-reference deduction via `auto&&` reproduces both exactly -
+    // unlike decltype(auto), which would strip the reference entirely for
+    // an unparenthesized member-access return expression (see Nodes() in
+    // tree.hpp for the full explanation of why that pitfall matters here).
+    template<typename Self>
+    [[nodiscard]] auto&& Individuals(this Self&& self) { return std::forward<Self>(self).individuals_; }
 
     [[nodiscard]] auto GetProblem() const -> const Problem* { return problem_.get(); }
     [[nodiscard]] auto GetConfig() const -> GeneticAlgorithmConfig { return config_; }
@@ -105,20 +119,26 @@ public:
     [[nodiscard]] auto GetGenerator() const -> OffspringGeneratorBase const* { return generator_.get(); }
     [[nodiscard]] auto GetReinserter() const -> ReinserterBase const* { return reinserter_.get(); }
 
-    [[nodiscard]] auto WorkerRngs() const -> std::vector<Operon::RandomGenerator> const& { return workerRngs_; }
-    auto WorkerRngs() -> std::vector<Operon::RandomGenerator>& { return workerRngs_; }
+    template<typename Self>
+    [[nodiscard]] auto&& WorkerRngs(this Self&& self) { return std::forward<Self>(self).workerRngs_; }
 
-    [[nodiscard]] auto Generation() const -> size_t { return generation_; }
-    auto Generation() -> size_t& { return generation_; }
+    // Generation()/Elapsed()/IsFitted() are trivially-copyable scalars
+    // whose non-const overload existed only to allow direct assignment
+    // (e.g. `algo.IsFitted() = true;`). `auto&&` gives `size_t const&`/
+    // `bool const&`/etc. for a const Self instead of the original
+    // return-by-value - a strictly compatible relaxation for read-only
+    // callers, while still supporting assignment through the mutable case.
+    template<typename Self>
+    [[nodiscard]] auto&& Generation(this Self&& self) { return std::forward<Self>(self).generation_; }
 
-    [[nodiscard]] auto Elapsed() const -> double { return elapsed_; }
-    auto Elapsed() -> double& { return elapsed_; }
+    template<typename Self>
+    [[nodiscard]] auto&& Elapsed(this Self&& self) { return std::forward<Self>(self).elapsed_; }
 
-    [[nodiscard]] auto Timings() const -> Operon::Map<std::string, double> const& { return phaseTimes_; }
-    auto Timings() -> Operon::Map<std::string, double>& { return phaseTimes_; }
+    template<typename Self>
+    [[nodiscard]] auto&& Timings(this Self&& self) { return std::forward<Self>(self).phaseTimes_; }
 
-    [[nodiscard]] auto IsFitted() const -> bool { return isFitted_; }
-    auto IsFitted() -> bool& { return isFitted_; }
+    template<typename Self>
+    [[nodiscard]] auto&& IsFitted(this Self&& self) { return std::forward<Self>(self).isFitted_; }
 
     // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
 
