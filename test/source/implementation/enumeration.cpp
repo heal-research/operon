@@ -4,9 +4,14 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+
 #include "operon/algorithms/enumeration.hpp"
+#include "operon/core/dataset.hpp"
 #include "operon/core/grammar.hpp"
+#include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
+#include "operon/optimizer/optimizer.hpp"
 
 namespace Operon::Test {
 
@@ -252,6 +257,161 @@ TEST_CASE("EnumerationEngine - unary wraps populate RecurringFactor beyond budge
     for (auto const& t : engine.Bucket(GrammarSymbol::RecurringFactor, 4)) {
         CHECK(SymbolicComplexity(t) == 4);
     }
+}
+
+namespace {
+    // Problem is non-movable, so this configures one in place rather than
+    // returning it - callers construct `Operon::Problem problem(&ds);` and
+    // pass it here by reference.
+    void ConfigureProblem(Operon::Dataset& ds, Operon::Problem& problem) {
+        auto inputs = ds.VariableHashes();
+        std::erase(inputs, ds.GetVariable("Y").value().Hash);
+        problem.SetInputs(inputs);
+        problem.SetTarget("Y");
+        problem.SetTrainingRange({ 0, 50 }); // small subset - this is a wiring smoke test, not a fit-quality test (see Phase 5)
+        problem.SetTestRange({ 0, 50 });
+    }
+} // namespace
+
+TEST_CASE("GrammarEnumerationAlgorithm - Run fits coefficients and tracks best trees", "[enumeration]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    Operon::Problem problem(&ds);
+    ConfigureProblem(ds, problem);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
+
+    Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
+    EnumerationConfig config;
+    config.MaxComplexity = 4;
+    config.TopK = 3;
+
+    Operon::RandomGenerator engineRng(42);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
+
+    Operon::RandomGenerator fitRng(42);
+    algo.Run(fitRng);
+
+    auto best = algo.BestTrees();
+    REQUIRE_FALSE(best.empty());
+    CHECK(best.size() <= config.TopK);
+    for (auto const& [fitness, tree] : best) {
+        CHECK(std::isfinite(fitness));
+        CHECK(SymbolicComplexity(tree) <= config.MaxComplexity);
+    }
+    for (std::size_t i = 1; i < best.size(); ++i) {
+        CHECK(best[i - 1].first <= best[i].first); // ascending by fitness (lower = better)
+    }
+}
+
+TEST_CASE("GrammarEnumerationAlgorithm - TopK == 0 keeps nothing rather than crashing", "[enumeration]")
+{
+    // Regression test: ConsiderBest's capacity check (best_.size() >=
+    // config_.TopK) is trivially true when TopK == 0 (0 >= 0), and used to
+    // fall through to best_.back() on an empty vector - a segfault.
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    Operon::Problem problem(&ds);
+    ConfigureProblem(ds, problem);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
+
+    Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
+    EnumerationConfig config;
+    config.MaxComplexity = 4;
+    config.TopK = 0;
+
+    Operon::RandomGenerator engineRng(42);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
+
+    Operon::RandomGenerator fitRng(42);
+    algo.Run(fitRng);
+
+    CHECK(algo.BestTrees().empty());
+}
+
+TEST_CASE("GrammarEnumerationAlgorithm - RequestStop halts Run early", "[enumeration]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    Operon::Problem problem(&ds);
+    ConfigureProblem(ds, problem);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
+
+    Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
+    EnumerationConfig config;
+    config.MaxComplexity = 20; // deliberately large, so an early stop is meaningfully "early"
+    config.TopK = 3;
+
+    Operon::RandomGenerator engineRng(42);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
+
+    Operon::RandomGenerator fitRng(42);
+    int reportCalls = 0;
+    algo.Run(fitRng, [&]() -> bool {
+        ++reportCalls;
+        return reportCalls >= 2; // stop after the 2nd budget-level report
+    });
+
+    CHECK(algo.StopRequested());
+    CHECK(reportCalls == 2);
+}
+
+TEST_CASE("GrammarEnumerationAlgorithm - recovers a small ground-truth expression", "[enumeration]")
+{
+    // y = 2*x0 + 3*x1 - 1 : a two-term weighted sum, exercising Expression's
+    // {Term, Expression} continuation production (not just its single-term
+    // base case) - needs complexity 6 (fixedCost 2 for the outer weight+Add,
+    // +1 for x0, +3 for the inner Expression's own minimal "const*x1+const"
+    // shape), the smallest MaxComplexity that can reach a two-term sum.
+    constexpr auto Nrow = 50;
+    Operon::RandomGenerator dataRng(1234);
+    std::vector<Operon::Scalar> x0(Nrow);
+    std::vector<Operon::Scalar> x1(Nrow);
+    std::vector<Operon::Scalar> y(Nrow);
+    for (auto i = 0; i < Nrow; ++i) {
+        x0[i] = Operon::Random::Uniform(dataRng, -1.0F, +1.0F);
+        x1[i] = Operon::Random::Uniform(dataRng, -1.0F, +1.0F);
+        y[i] = 2.0F * x0[i] + 3.0F * x1[i] - 1.0F;
+    }
+    std::vector<std::vector<Operon::Scalar>> cols{ x0, x1, y };
+    Operon::Dataset ds(cols);
+
+    Operon::Problem problem(&ds);
+    std::vector<Operon::Hash> const inputs{ ds.GetVariable("X1").value().Hash, ds.GetVariable("X2").value().Hash };
+    problem.SetInputs(inputs);
+    problem.SetTarget("X3");
+    problem.SetTrainingRange({ 0, Nrow });
+    problem.SetTestRange({ 0, Nrow });
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{ &dtable, &problem };
+    Operon::Evaluator<DTable> evaluator{ &problem, &dtable, Operon::R2{} };
+
+    Grammar grammar(PrimitiveSet::Arithmetic, problem.GetInputs());
+    EnumerationConfig config;
+    config.MaxComplexity = 6;
+    config.TopK = 5;
+
+    Operon::RandomGenerator engineRng(42);
+    GrammarEnumerationAlgorithm algo(config, grammar, &optimizer, &evaluator, engineRng);
+    Operon::RandomGenerator fitRng(42);
+    algo.Run(fitRng);
+
+    auto best = algo.BestTrees();
+    REQUIRE_FALSE(best.empty());
+    // R2's Evaluator convention is -R2Score (lower = better, matching every
+    // other Operon ErrorMetric) - a near-perfect fit approaches -1, not 0.
+    CHECK(best.front().first < -0.99); // near-perfect fit for an exactly-representable linear ground truth
 }
 
 } // namespace Operon::Test
