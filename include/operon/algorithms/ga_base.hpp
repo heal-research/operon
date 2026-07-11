@@ -5,13 +5,12 @@
 #ifndef GA_BASE_HPP
 #define GA_BASE_HPP
 
-#include <atomic>
-#include <functional>
 #include <string>
 #include <operon/operon_export.hpp>
 #include "operon/core/types.hpp"
 #include "operon/operators/generator.hpp"
 #include "config.hpp"
+#include "stoppable.hpp"
 
 namespace Operon {
 
@@ -20,40 +19,43 @@ class ReinserterBase;
 struct CoefficientInitializerBase;
 struct TreeInitializerBase;
 
-// Invoked once per generation by every algorithm's Run() to report progress.
-// Returning true requests early termination; each algorithm's own stop
-// condition ORs StopRequested() in alongside its evaluator-budget,
-// generation-count, and time-limit checks.
-using ReportCallback = std::function<bool()>;
-
-class GeneticAlgorithmBase {
+class GeneticAlgorithmBase : public StoppableAlgorithm {
 public:
-    virtual ~GeneticAlgorithmBase() = default;
-    // std::atomic<bool> isn't copyable, so stopRequested_ needs manual
-    // handling; every other member is copied exactly as the defaulted
-    // versions would have done.
+    ~GeneticAlgorithmBase() override = default;
+    // Not `= default`: parents_/offspring_ are non-owning spans into
+    // individuals_'s storage, so a plain memberwise copy would leave the
+    // copy's spans pointing at the *source* object's individuals_ buffer
+    // (dangling once the source is destroyed, and aliasing it while both
+    // are alive). They're rebound here to the copy's own individuals_,
+    // exactly like the primary constructor and RestoreIndividuals() do -
+    // both derive them from config_.PopulationSize/PoolSize rather than
+    // copying the span objects themselves. The atomic stopRequested_ still
+    // gets its own handling via StoppableAlgorithm's copy ctor/assign
+    // (invoked explicitly here since every other member is memberwise-safe
+    // to copy or, like the spans, needs deriving instead).
     GeneticAlgorithmBase(GeneticAlgorithmBase const& other)
-        : config_(other.config_)
+        : StoppableAlgorithm(other)
+        , config_(other.config_)
         , problem_(other.problem_)
         , treeInit_(other.treeInit_)
         , coeffInit_(other.coeffInit_)
         , generator_(other.generator_)
         , reinserter_(other.reinserter_)
         , individuals_(other.individuals_)
-        , parents_(other.parents_)
-        , offspring_(other.offspring_)
+        , parents_(individuals_.data(), config_.PopulationSize)
+        , offspring_(individuals_.data() + config_.PopulationSize, config_.PoolSize)
         , workerRngs_(other.workerRngs_)
         , generation_(other.generation_)
         , elapsed_(other.elapsed_)
         , phaseTimes_(other.phaseTimes_)
         , isFitted_(other.isFitted_)
-        , stopRequested_(other.stopRequested_.load())
     {
     }
     GeneticAlgorithmBase(GeneticAlgorithmBase&&) = delete;
     auto operator=(GeneticAlgorithmBase const& other) -> GeneticAlgorithmBase&
     {
         if (this == &other) { return *this; }
+        StoppableAlgorithm::operator=(other);
         config_ = other.config_;
         problem_ = other.problem_;
         treeInit_ = other.treeInit_;
@@ -61,14 +63,13 @@ public:
         generator_ = other.generator_;
         reinserter_ = other.reinserter_;
         individuals_ = other.individuals_;
-        parents_ = other.parents_;
-        offspring_ = other.offspring_;
+        parents_ = Operon::Span<Individual>(individuals_.data(), config_.PopulationSize);
+        offspring_ = Operon::Span<Individual>(individuals_.data() + config_.PopulationSize, config_.PoolSize);
         workerRngs_ = other.workerRngs_;
         generation_ = other.generation_;
         elapsed_ = other.elapsed_;
         phaseTimes_ = other.phaseTimes_;
         isFitted_ = other.isFitted_;
-        stopRequested_.store(other.stopRequested_.load());
         return *this;
     }
     auto operator=(GeneticAlgorithmBase&&) -> GeneticAlgorithmBase& = delete;
@@ -119,12 +120,7 @@ public:
     [[nodiscard]] auto IsFitted() const -> bool { return isFitted_; }
     auto IsFitted() -> bool& { return isFitted_; }
 
-    // Set by an algorithm's Run() when its ReportCallback returns true; each
-    // algorithm's own stop condition ORs this in. Atomic so it's also safe to
-    // call RequestStop() from outside the callback (e.g. another thread, a
-    // signal handler) while Run() is in progress.
-    [[nodiscard]] auto StopRequested() const -> bool { return stopRequested_.load(std::memory_order_acquire); }
-    auto RequestStop() -> void { stopRequested_.store(true, std::memory_order_release); }
+    // StopRequested()/RequestStop() are inherited from StoppableAlgorithm.
 
     // Valid to call between runs only. The PhaseTimer observer owns its own
     // totals and is recreated each Run(), so Reset() mid-run would cause the
@@ -133,7 +129,7 @@ public:
     {
         generation_ = 0;
         elapsed_ = 0;
-        stopRequested_.store(false, std::memory_order_release);
+        ClearStopRequested();
         phaseTimes_.clear();
         GetGenerator()->Evaluator()->Reset();
     }
@@ -165,7 +161,6 @@ private:
     double elapsed_{0};
     Operon::Map<std::string, double> phaseTimes_;
     bool isFitted_{false};
-    std::atomic<bool> stopRequested_{false};
 };
 
 } // namespace Operon
