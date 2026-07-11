@@ -422,4 +422,93 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
     }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// EvaluatorBase::Evaluate (deducing-this) dispatch
+//
+// Regression coverage for the CRTP-to-deducing-this rewrite: the unbuffered
+// 2-arg operator() overload must reach the *concrete derived* 3-arg
+// override via std::invoke(self, ...) - not the base's own pure-virtual
+// operator(), and not some other evaluator's override. Verified per class by
+// checking the 2-arg result matches an independently-computed expectation
+// (either a direct 3-arg call, or - for the one evaluator whose 3-arg body
+// consumes RNG state - a separately-seeded but identical RNG sequence).
+// ──────────────────────────────────────────────────────────────────────────────
+TEST_CASE("EvaluatorBase::Evaluate dispatch reaches the concrete derived override", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    using DTable = EvaluatorFixture::DTable;
+
+    SECTION("UserDefinedEvaluator") {
+        int calls = 0;
+        Operon::UserDefinedEvaluator ev{&fix.problem, [&](Operon::RandomGenerator&, Operon::Individual const&) -> Operon::EvaluatorBase::ReturnType {
+            ++calls;
+            return { Operon::Scalar{42} };
+        }};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        auto const result = ev(fix.rng, ind); // 2-arg
+        REQUIRE(result.size() == 1);
+        CHECK(result[0] == Operon::Scalar{42});
+        CHECK(calls == 1); // the 3-arg override's lambda ran exactly once, not zero or twice
+    }
+
+    SECTION("MultiEvaluator") {
+        Operon::Evaluator<DTable> r2{&fix.problem, &fix.dtable, Operon::R2{}};
+        Operon::Evaluator<DTable> mse{&fix.problem, &fix.dtable, Operon::MSE{}};
+        Operon::MultiEvaluator me{&fix.problem};
+        me.Add(&r2);
+        me.Add(&mse);
+
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        auto const combined = me(fix.rng, ind); // 2-arg
+        auto const expectedR2  = r2(fix.rng, ind);
+        auto const expectedMse = mse(fix.rng, ind);
+
+        REQUIRE(combined.size() == 2);
+        CHECK(combined[0] == expectedR2[0]);
+        CHECK(combined[1] == expectedMse[0]);
+    }
+
+    SECTION("AggregateEvaluator") {
+        // Aggregating a single-objective evaluator is a no-op regardless of
+        // AggregateType (min/max/median/mean of one element is that
+        // element), so the 2-arg result must equal the wrapped evaluator's
+        // own 2-arg result exactly.
+        Operon::Evaluator<DTable> inner{&fix.problem, &fix.dtable, Operon::MSE{}};
+        Operon::AggregateEvaluator ae{&inner};
+
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        auto const aggregated = ae(fix.rng, ind); // 2-arg
+        auto const expected   = inner(fix.rng, ind);
+
+        REQUIRE(aggregated.size() == 1);
+        CHECK(aggregated[0] == expected[0]);
+    }
+
+    SECTION("DiversityEvaluator") {
+        // The 3-arg override consumes RNG state (Operon::Random::Sample per
+        // sample), so two independently-seeded-but-identical RandomGenerator
+        // instances must produce bit-identical results if the 2-arg path
+        // reaches the same code as a direct 3-arg call.
+        Operon::DiversityEvaluator dv{&fix.problem};
+        std::vector<Operon::Individual> pop{
+            EvaluatorFixture::MakeIndividual(fix.tree),
+            EvaluatorFixture::MakeIndividual(fix.perfectTree),
+        };
+        dv.Prepare(pop);
+
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        Operon::RandomGenerator rngA{123};
+        Operon::RandomGenerator rngB{123};
+
+        auto const via2Arg = dv(rngA, ind); // 2-arg
+        std::vector<Operon::Scalar> buf(fix.problem.TrainingRange().Size());
+        auto const via3Arg = dv(rngB, ind, buf); // 3-arg, direct
+
+        REQUIRE(via2Arg.size() == 1);
+        REQUIRE(via3Arg.size() == 1);
+        CHECK(std::isfinite(via2Arg[0]));
+        CHECK(via2Arg[0] == via3Arg[0]);
+    }
+}
+
 } // namespace Operon::Test
