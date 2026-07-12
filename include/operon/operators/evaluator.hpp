@@ -551,6 +551,13 @@ class OPERON_EXPORT BayesianInformationCriterionEvaluator final : public Evaluat
     using Base = Evaluator<DTable>;
 
 public:
+    // Un-hide Base's 2-arg operator(): declaring only the 3-arg override
+    // below would otherwise hide the inherited 2-arg overload from
+    // unqualified lookup, so a bare `t(rng, ind)` call - and
+    // Concepts::EvaluatorCallable, which relies on that exact call form -
+    // would fail to find it.
+    using Base::operator();
+
     explicit BayesianInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable, MSE{})
     {
@@ -565,6 +572,9 @@ class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator
     using Base = Evaluator<DTable>;
 
 public:
+    // See BayesianInformationCriterionEvaluator's using-declaration above for why this is needed.
+    using Base::operator();
+
     explicit AkaikeInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable, MSE{})
     {
@@ -580,6 +590,9 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
     public:
+    // See BayesianInformationCriterionEvaluator's using-declaration above for why this is needed.
+    using Base::operator();
+
     explicit LikelihoodEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable), sigma_(1, 0.001)
     {
@@ -625,6 +638,15 @@ using GaussianLikelihoodEvaluator = LikelihoodEvaluator<DTable, GaussianLikeliho
 
 template<typename DTable>
 using PoissonLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>;
+
+// These three previously did not satisfy Concepts::EvaluatorCallable: each
+// declared only the 3-arg buffered operator(), which hides Evaluator<DTable>'s
+// 2-arg override from unqualified lookup (see the `using Base::operator();`
+// declarations added to each class above). Asserted here, after their
+// definitions, since they're templates.
+static_assert(Concepts::EvaluatorCallable<BayesianInformationCriterionEvaluator<ScalarDispatch>>);
+static_assert(Concepts::EvaluatorCallable<AkaikeInformationCriterionEvaluator<ScalarDispatch>>);
+static_assert(Concepts::EvaluatorCallable<LikelihoodEvaluator<ScalarDispatch>>);
 
 } // namespace Operon
 #endif
