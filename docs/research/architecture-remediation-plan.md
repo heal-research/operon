@@ -241,7 +241,7 @@ and acceptance criteria.
 - **Acceptance:** Builds unchanged; a deliberate local reorder makes the
   build fail (verify once locally, then revert the reorder).
 
-#### B2. Name the interpreter's thread-affinity contract in the type
+#### B2. Name the interpreter's thread-affinity contract in the type — DONE (documentation-only variant)
 
 - **Effort:** medium · **pyoperon-facing:** no
 - **What:** Make invariant III self-documenting. Minimum: a class-level
@@ -357,11 +357,15 @@ parallel; Phase 3–4 items want a decision or careful staging first.
 | A2  | Shared `ProfileSigma`                   |   1   | Small  |    No    | Done   | —              |
 | A3  | `StoppableAlgorithm` mixin              |   1   | Small  |    No    | Done   | —              |
 | B1  | `NodeType` order asserts                |   2   | Small  |    No    | Done   | —              |
-| B2  | Interpreter thread-affinity contract    |   2   | Medium |    No    |        | —              |
+| B2  | Interpreter thread-affinity contract    |   2   | Medium |    No    | Done*  | —              |
 | C1  | Concepts vs vtable                      |   3   | Medium |    No    |        | Direction call |
 | C2  | `move_only_function` callbacks          |   3   | Small  |   Yes    |        | —              |
 | D1  | `std::expected` lookups                 |   4   | Medium |  Maybe   |        | —              |
 | D2  | Optimizer result type                   |   4   | Large  |   Yes    |        | Stage last     |
+
+\* B2 landed the documentation-only variant (class-level contract comment).
+The structural `ScratchContext` handle described as a stronger option remains
+open as a follow-up if the team wants compile-time enforcement.
 
 ## 6. Scope note
 
