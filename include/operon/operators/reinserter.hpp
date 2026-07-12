@@ -6,6 +6,7 @@
 #define OPERON_REINSERTER_HPP
 
 #include <algorithm>
+#include "operon/core/concepts.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/individual.hpp"
 
@@ -73,6 +74,10 @@ public:
         std::swap_ranges(pool.begin(), pool.begin() + offset, pop.end() - offset);
     }
 };
+
+// See core/concepts.hpp for why these are asserted here rather than constraining a template.
+static_assert(Concepts::Reinserter<KeepBestReinserter>);
+static_assert(Concepts::Reinserter<ReplaceWorstReinserter>);
 
 } // namespace Operon
 

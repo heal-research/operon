@@ -5,6 +5,7 @@
 #ifndef OPERON_SELECTOR_HPP
 #define OPERON_SELECTOR_HPP
 
+#include "operon/core/concepts.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/operator.hpp"
 
@@ -96,6 +97,11 @@ public:
         return std::uniform_int_distribution<size_t>(0, Population().size() - 1)(random);
     }
 };
+
+// See core/concepts.hpp for why these are asserted here rather than constraining a template.
+static_assert(Concepts::Selector<TournamentSelector>);
+static_assert(Concepts::Selector<ProportionalSelector>);
+static_assert(Concepts::Selector<RandomSelector>);
 
 } //namespace Operon
 

@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "operon/operon_export.hpp"
+#include "operon/core/concepts.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/node.hpp"
@@ -46,6 +47,9 @@ private:
     size_t maxDepth_;
     size_t maxLength_;
 };
+
+// See core/concepts.hpp for why this is asserted here rather than constraining a template.
+static_assert(Concepts::Crossover<SubtreeCrossover>);
 
 } // namespace Operon
 #endif
