@@ -176,9 +176,10 @@ struct OPERON_EXPORT ShuffleSubtreesMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 };
 
-// The concrete mutators satisfy Concepts::Mutator; MutatorBase itself stays
-// virtual-dispatch (pyoperon/CLI factories need dynamic wiring), but pinning
-// these asserts here catches signature drift against the concept at compile time.
+// See core/concepts.hpp for why these are asserted here rather than constraining a template.
+// OnePointMutation/MultiPointMutation are templated on Dist, but satisfying
+// Mutator doesn't depend on which Dist is plugged in (only on the fixed
+// operator() signature), so asserting one canonical instantiation suffices.
 static_assert(Concepts::Mutator<OnePointMutation<std::normal_distribution<Operon::Scalar>>>);
 static_assert(Concepts::Mutator<MultiPointMutation<std::normal_distribution<Operon::Scalar>>>);
 static_assert(Concepts::Mutator<DiscretePointMutation>);

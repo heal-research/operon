@@ -12,9 +12,12 @@
 
 namespace Operon {
 
-// The concrete creators satisfy Concepts::Creator; CreatorBase itself stays
-// virtual-dispatch (pyoperon/CLI factories need dynamic wiring), but pinning
-// these asserts here catches signature drift against the concept at compile time.
+// See core/concepts.hpp for why these are asserted here rather than
+// constraining a template. Asserted from this .cpp rather than creator.hpp:
+// Concepts::Creator's return-type check needs Tree complete, and
+// creator.hpp only forward-declares it. If BalancedTreeCreator/
+// GrowTreeCreator/ProbabilisticTreeCreator's definitions ever move out of
+// this translation unit, move these asserts (and the tree.hpp include) with them.
 static_assert(Concepts::Creator<BalancedTreeCreator>);
 static_assert(Concepts::Creator<GrowTreeCreator>);
 static_assert(Concepts::Creator<ProbabilisticTreeCreator>);

@@ -48,9 +48,7 @@ private:
     size_t maxLength_;
 };
 
-// SubtreeCrossover satisfies Concepts::Crossover; CrossoverBase itself stays
-// virtual-dispatch (pyoperon/CLI factories need dynamic wiring), but pinning
-// this assert here catches signature drift against the concept at compile time.
+// See core/concepts.hpp for why this is asserted here rather than constraining a template.
 static_assert(Concepts::Crossover<SubtreeCrossover>);
 
 } // namespace Operon

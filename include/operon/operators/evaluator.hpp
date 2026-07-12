@@ -370,10 +370,10 @@ private:
     std::size_t sampleSize_ {};
 };
 
-// The concrete evaluators satisfy Concepts::EvaluatorCallable; EvaluatorBase
-// itself stays virtual-dispatch (pyoperon/CLI factories need dynamic wiring),
-// but pinning these asserts here catches signature drift against the concept
-// at compile time.
+// See core/concepts.hpp for why these are asserted here rather than constraining a template.
+// LengthEvaluator/ShapeEvaluator aren't asserted separately: they inherit
+// UserDefinedEvaluator's operator() overloads without overriding either one,
+// so UserDefinedEvaluator's assert below already covers them.
 static_assert(Concepts::EvaluatorCallable<UserDefinedEvaluator>);
 static_assert(Concepts::EvaluatorCallable<Evaluator<ScalarDispatch>>);
 static_assert(Concepts::EvaluatorCallable<MultiEvaluator>);

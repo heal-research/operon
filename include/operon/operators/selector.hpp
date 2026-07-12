@@ -98,9 +98,7 @@ public:
     }
 };
 
-// The concrete selectors satisfy Concepts::Selector; SelectorBase itself stays
-// virtual-dispatch (pyoperon/CLI factories need dynamic wiring), but pinning
-// these asserts here catches signature drift against the concept at compile time.
+// See core/concepts.hpp for why these are asserted here rather than constraining a template.
 static_assert(Concepts::Selector<TournamentSelector>);
 static_assert(Concepts::Selector<ProportionalSelector>);
 static_assert(Concepts::Selector<RandomSelector>);

@@ -75,10 +75,7 @@ public:
     }
 };
 
-// The concrete reinserters satisfy Concepts::Reinserter; ReinserterBase itself
-// stays virtual-dispatch (pyoperon/CLI factories need dynamic wiring), but
-// pinning these asserts here catches signature drift against the concept at
-// compile time.
+// See core/concepts.hpp for why these are asserted here rather than constraining a template.
 static_assert(Concepts::Reinserter<KeepBestReinserter>);
 static_assert(Concepts::Reinserter<ReplaceWorstReinserter>);
 
