@@ -15,7 +15,13 @@ namespace Operon {
 // Run() to report progress. Returning true requests early termination; each
 // algorithm's own stop condition ORs StopRequested() in alongside its own
 // generation-count/budget, evaluator-budget, and time-limit checks.
-using ReportCallback = std::function<bool()>;
+// move_only_function, not function: this is only ever called and moved
+// (passed by value into Run(), never copied), so it permits move-only
+// captures (e.g. a captured unique_ptr progress sink) that std::function
+// couldn't hold. pyoperon binds this via an explicit std::function-taking
+// lambda shim rather than nb::overload_cast directly, since nanobind has no
+// built-in caster for move_only_function - see pyoperon's source/algorithm.cpp.
+using ReportCallback = std::move_only_function<bool()>;
 
 // Shared stopRequested_ + StopRequested()/RequestStop() idiom for search
 // drivers, whether population-based (GeneticAlgorithmBase) or not

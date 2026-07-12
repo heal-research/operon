@@ -305,7 +305,7 @@ and acceptance criteria.
 - **Acceptance:** Exactly one contract mechanism remains authoritative;
   concept names either constrain real templates or are removed entirely.
 
-#### C2. `std::move_only_function` for callbacks
+#### C2. `std::move_only_function` for callbacks — DONE
 
 - **Effort:** small · **pyoperon-facing:** yes
 - **What:** Swap `std::function` for `std::move_only_function` on
@@ -314,13 +314,40 @@ and acceptance criteria.
 - **Why:** These are only ever called and moved; dropping the copyability
   requirement permits move-only captures (e.g. a captured `unique_ptr`
   progress sink) and is marginally cheaper to construct.
-- **Files:** `algorithms/ga_base.hpp` (the `ReportCallback` alias),
-  `algorithms/enumeration.hpp`.
+- **Files:** `algorithms/stoppable.hpp` (the `ReportCallback` alias — moved
+  here from `ga_base.hpp` by A3), `algorithms/enumeration.hpp`.
 - **Watch:** `ReportCallback` is passed by value into several `Run()`
   signatures and used from Python — confirm pybind11 can still bind it, or
   keep a `std::function`-typed shim at the binding boundary if not.
+- **What actually happened:** pyoperon uses nanobind, not pybind11, and
+  nanobind has no built-in caster for `std::move_only_function` (only
+  `nanobind/stl/function.h`, i.e. `std::function`). `GeneticProgrammingAlgorithm::Run`/
+  `NSGA2::Run`'s pyoperon bindings were changed from
+  `nb::overload_cast<...>(&Run)` to explicit lambdas taking
+  `std::function<bool()>` and converting to `Operon::ReportCallback` at the
+  call site — verified end-to-end via a local flake `path:` override
+  (co-developed per this doc's cross-repo guardrail, reverted before
+  merging): built, then ran a real GP fit from Python with a report
+  callback, confirming it fires correctly across the full run. The
+  enumeration engine's `onNovelExpression_` hook isn't exposed to Python at
+  all, so it had zero binding risk. Only one call site in
+  `GrammarEnumerationAlgorithm::Run` needed a fix: `engine_.Build(shouldStop)`
+  became `engine_.Build(std::move(shouldStop))` since the local
+  `ReportCallback` there is no longer copyable.
+- **Also found (unrelated to C2, fixed alongside it in the same pyoperon
+  PR):** pyoperon's bindings for `GeneticAlgorithmBase::Generation/
+  Individuals/Parents/Offspring` and `GeneticProgrammingAlgorithm/NSGA2::
+  IsFitted` were still written against the pre-A1 getter-pair style
+  (`nb::overload_cast<...>(&Generation)` etc.) and no longer compiled
+  against A1's deducing-this getters (PR #115) — exactly the risk A1's own
+  entry flagged ("Verify pybind11 signatures still resolve") but which
+  wasn't caught at the time, since pyoperon's pin never advanced past A1
+  until this work needed to build against current `main`. Fixed with
+  lambda wrappers calling the deducing-this getters directly.
 - **Acceptance:** GP/NSGA2/enumeration report callbacks work from both C++
-  and pyoperon; a move-only-captured callback compiles and runs.
+  and pyoperon; a move-only-captured callback compiles and runs — both
+  verified (a new `ga_base.cpp` test case for the C++ side, a live Python
+  GP run for the pyoperon side).
 
 ### Phase 4 — Error-handling modernization (largest blast radius, do last)
 
@@ -381,7 +408,7 @@ parallel; Phase 3–4 items want a decision or careful staging first.
 | B1  | `NodeType` order asserts                |   2   | Small  |    No    | Done   | —              |
 | B2  | Interpreter thread-affinity contract    |   2   | Medium |    No    | Done*  | —              |
 | C1  | Concepts vs vtable                      |   3   | Medium |    No    | Done   | —              |
-| C2  | `move_only_function` callbacks          |   3   | Small  |   Yes    |        | —              |
+| C2  | `move_only_function` callbacks          |   3   | Small  |   Yes    | Done   | —              |
 | D1  | `std::expected` lookups                 |   4   | Medium |  Maybe   |        | —              |
 | D2  | Optimizer result type                   |   4   | Large  |   Yes    |        | Stage last     |
 
