@@ -250,6 +250,7 @@ target_link_libraries(operon_operon PUBLIC
     vstat::vstat
     std::mdspan
     pappus::pappus # required by IntervalEvaluator/AffineEvaluator
+    tl::expected # Dataset::GetVariable returns tl::expected in the public dataset.hpp header
 )
 
 target_link_libraries(operon_operon PRIVATE
@@ -260,7 +261,6 @@ target_link_libraries(operon_operon PRIVATE
     cpp-sort::cpp-sort
     unordered_dense::unordered_dense
     gtl::gtl
-    tl::expected
 )
 
 target_compile_features(operon_operon PUBLIC cxx_std_23)

@@ -12,6 +12,7 @@
 #include <scn/scan.h>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 
 #include "util.hpp"
 
@@ -281,13 +282,22 @@ auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
     }
 }
 
-auto ResolveTarget(Dataset const& dataset, std::string const& targetName) -> Variable
+namespace {
+// Looks up a variable by name, throwing std::runtime_error with a message
+// prefixed by `label` (e.g. "target variable" or "variable") if not found.
+auto ResolveVariable(Dataset const& dataset, std::string const& name, std::string_view label) -> Variable
 {
-    auto res = dataset.GetVariable(targetName);
+    auto res = dataset.GetVariable(name);
     if (!res) {
-        throw std::runtime_error(fmt::format("target variable {} does not exist in the dataset", targetName));
+        throw std::runtime_error(fmt::format("{} {} does not exist in the dataset", label, name));
     }
     return *res;
+}
+} // namespace
+
+auto ResolveTarget(Dataset const& dataset, std::string const& targetName) -> Variable
+{
+    return ResolveVariable(dataset, targetName, "target variable");
 }
 
 auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
@@ -300,11 +310,7 @@ auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
     }
     std::vector<Hash> inputs;
     for (auto const& tok : Split(result["inputs"].as<std::string>(), ',')) {
-        if (auto res = dataset.GetVariable(tok); res.has_value()) {
-            inputs.push_back(res->Hash);
-        } else {
-            throw std::runtime_error(fmt::format("variable {} does not exist in the dataset", tok));
-        }
+        inputs.push_back(ResolveVariable(dataset, tok, "variable").Hash);
     }
     return inputs;
 }
