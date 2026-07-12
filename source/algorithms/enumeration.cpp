@@ -318,7 +318,7 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
         return false;
     };
 
-    engine_.Build(shouldStop);
+    engine_.Build(std::move(shouldStop));
 
     // onNovelExpression_ captures coeffOptimizer (and rng) by reference, both
     // function-locals about to go out of scope - clear the hook so a stale

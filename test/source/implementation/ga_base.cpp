@@ -183,6 +183,24 @@ TEST_CASE("ReportCallback returning true stops the run before the next generatio
     CHECK(f.Gp.Generation() == 0);
 }
 
+TEST_CASE("ReportCallback accepts a move-only capture (unique_ptr progress sink)", "[algorithms]")
+{
+    // ReportCallback is std::move_only_function<bool()>; this exercises the
+    // one property std::function couldn't have offered - a lambda that
+    // captures a move-only type by value, moved (not copied) into Run().
+    GaBaseFixture f; // Config.Generations == 1
+    Operon::RandomGenerator rng{42};
+
+    auto calls = std::make_unique<std::size_t>(0);
+    Operon::ReportCallback report = [sink = std::move(calls)]() mutable -> bool {
+        ++*sink;
+        return true;
+    };
+    f.Gp.Run(rng, std::move(report), /*threads=*/1);
+
+    CHECK(f.Gp.Generation() == 0);
+}
+
 TEST_CASE("ReportCallback returning false lets the run reach the configured generations", "[algorithms]")
 {
     GaBaseFixture f; // Config.Generations == 1
