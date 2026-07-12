@@ -92,7 +92,7 @@ public:
     // compositional intermediates. The hook receives a mutable reference so a
     // caller (GrammarEnumerationAlgorithm) can fit coefficients in place
     // before the tree is stored.
-    void SetOnNovelExpression(std::move_only_function<void(Operon::Tree&)> hook) { onNovelExpression_ = std::move(hook); }
+    void SetOnNovelExpression(Operon::MoveOnlyFunction<void(Operon::Tree&)> hook) { onNovelExpression_ = std::move(hook); }
 
     [[nodiscard]] auto Bucket(GrammarSymbol nt, std::size_t budget) const -> std::span<Operon::Tree const>;
 
@@ -144,7 +144,7 @@ private:
     Operon::Zobrist zobrist_;
     std::vector<std::vector<std::vector<Operon::Tree>>> buckets_; // [GrammarSymbol index][budget][candidate]
     std::vector<std::vector<gtl::parallel_flat_hash_set_m<Operon::Hash>>> seen_; // [GrammarSymbol index][budget]
-    std::move_only_function<void(Operon::Tree&)> onNovelExpression_;
+    Operon::MoveOnlyFunction<void(Operon::Tree&)> onNovelExpression_;
 };
 
 struct EnumerationConfig {
