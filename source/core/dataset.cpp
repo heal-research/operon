@@ -296,16 +296,16 @@ auto Dataset::GetValues(int64_t index) const noexcept -> Span<Scalar const>
     return ColSpan(static_cast<int>(index)); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
-auto Dataset::GetVariable(std::string const& name) const noexcept -> std::optional<Variable>
+auto Dataset::GetVariable(std::string const& name) const noexcept -> tl::expected<Variable, DatasetError>
 {
     return GetVariable(Hasher {}(name));
 }
 
-auto Dataset::GetVariable(Operon::Hash hash) const noexcept -> std::optional<Variable>
+auto Dataset::GetVariable(Operon::Hash hash) const noexcept -> tl::expected<Variable, DatasetError>
 {
     auto it = variables_.find(hash);
     if (it == variables_.end()) {
-        return std::nullopt;
+        return tl::make_unexpected(DatasetError::VariableNotFound);
     }
     return it->second;
 }

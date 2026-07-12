@@ -142,13 +142,7 @@ auto main(int argc, char** argv) -> int
         }
 
         // set the target
-        Operon::Variable target;
-        auto res = dataset->GetVariable(targetName);
-        if (!res) {
-            fmt::print(stderr, "error: target variable {} does not exist in the dataset.", targetName);
-            return EXIT_FAILURE;
-        }
-        target = *res;
+        auto const target = Operon::ResolveTarget(*dataset, targetName);
         auto const rows { dataset->Rows<std::size_t>() };
         if (result.count("train") == 0) {
             trainingRange = Operon::Range { 0, 2 * rows / 3 }; // by default use 66% of the data as training
@@ -174,23 +168,7 @@ auto main(int argc, char** argv) -> int
             return EXIT_FAILURE;
         }
 
-        std::vector<Operon::Hash> inputs;
-        if (result.count("inputs") == 0) {
-            inputs = dataset->VariableHashes();
-            std::erase(inputs, target.Hash);
-        } else {
-            auto str = result["inputs"].as<std::string>();
-            auto tokens = Operon::Split(str, ',');
-
-            for (auto const& tok : tokens) {
-                if (auto res = dataset->GetVariable(tok); res.has_value()) {
-                    inputs.push_back(res->Hash);
-                } else {
-                    fmt::print(stderr, "error: variable {} does not exist in the dataset.", tok);
-                    return EXIT_FAILURE;
-                }
-            }
-        }
+        auto inputs = Operon::BuildInputs(result, *dataset, target.Hash);
         Operon::Problem problem(std::move(dataset));
         problem.SetTrainingRange(trainingRange);
         problem.SetTestRange(testRange);

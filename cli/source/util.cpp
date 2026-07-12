@@ -281,6 +281,15 @@ auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
     }
 }
 
+auto ResolveTarget(Dataset const& dataset, std::string const& targetName) -> Variable
+{
+    auto res = dataset.GetVariable(targetName);
+    if (!res) {
+        throw std::runtime_error(fmt::format("target variable {} does not exist in the dataset", targetName));
+    }
+    return *res;
+}
+
 auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
                  Hash targetHash) -> std::vector<Hash>
 {
