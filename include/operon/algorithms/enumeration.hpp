@@ -68,6 +68,11 @@ namespace Operon {
 // is later work, and will need to guard that append too (e.g. per-bucket
 // mutex, or a lock-free append structure), not just reuse seen_'s primitive.
 // Build() only ever runs single-threaded today, so this is moot for now.
+// Move-only: onNovelExpression_ is a std::move_only_function member, which
+// implicitly deletes this class's copy constructor/assignment. Nothing in
+// the codebase copies an EnumerationEngine today, but this is a real API
+// surface change worth flagging explicitly rather than leaving the next
+// caller to discover it as a compile error.
 class OPERON_EXPORT EnumerationEngine {
 public:
     EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng);
