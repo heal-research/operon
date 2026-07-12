@@ -17,6 +17,13 @@ class Tree;
 struct Individual;
 } // namespace Operon
 
+// Runtime dispatch for Creator/Mutator/Crossover/Selector/Reinserter/
+// EvaluatorCallable stays on the OperatorBase virtual hierarchy (pyoperon and
+// the CLI factories need dynamic wiring), so these concepts don't constrain a
+// template anywhere. Instead, each concrete operator type gets
+// `static_assert(Concepts::X<ConcreteType>)` immediately after its
+// definition, pinning "this type satisfies its concept" as a compile-time
+// fact so signature drift is a build error rather than a silent mismatch.
 namespace Operon::Concepts {
 
 template<typename T>

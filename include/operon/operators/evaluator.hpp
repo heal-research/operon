@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "operon/collections/projection.hpp"
+#include "operon/core/concepts.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/problem.hpp"
@@ -369,6 +370,16 @@ private:
     std::size_t sampleSize_ {};
 };
 
+// See core/concepts.hpp for why these are asserted here rather than constraining a template.
+// LengthEvaluator/ShapeEvaluator aren't asserted separately: they inherit
+// UserDefinedEvaluator's operator() overloads without overriding either one,
+// so UserDefinedEvaluator's assert below already covers them.
+static_assert(Concepts::EvaluatorCallable<UserDefinedEvaluator>);
+static_assert(Concepts::EvaluatorCallable<Evaluator<ScalarDispatch>>);
+static_assert(Concepts::EvaluatorCallable<MultiEvaluator>);
+static_assert(Concepts::EvaluatorCallable<AggregateEvaluator>);
+static_assert(Concepts::EvaluatorCallable<DiversityEvaluator>);
+
 namespace detail {
     // Profile MLE sigma-hat = sqrt(SSR/n) from residuals (estimated - target),
     // clamped away from zero so a downstream log(sigma^2) or division by
@@ -540,6 +551,13 @@ class OPERON_EXPORT BayesianInformationCriterionEvaluator final : public Evaluat
     using Base = Evaluator<DTable>;
 
 public:
+    // Un-hide Base's 2-arg operator(): declaring only the 3-arg override
+    // below would otherwise hide the inherited 2-arg overload from
+    // unqualified lookup, so a bare `t(rng, ind)` call - and
+    // Concepts::EvaluatorCallable, which relies on that exact call form -
+    // would fail to find it.
+    using Base::operator();
+
     explicit BayesianInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable, MSE{})
     {
@@ -554,6 +572,9 @@ class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator
     using Base = Evaluator<DTable>;
 
 public:
+    // See BayesianInformationCriterionEvaluator's using-declaration above for why this is needed.
+    using Base::operator();
+
     explicit AkaikeInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable, MSE{})
     {
@@ -569,6 +590,9 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
     public:
+    // See BayesianInformationCriterionEvaluator's using-declaration above for why this is needed.
+    using Base::operator();
+
     explicit LikelihoodEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable), sigma_(1, 0.001)
     {
@@ -614,6 +638,15 @@ using GaussianLikelihoodEvaluator = LikelihoodEvaluator<DTable, GaussianLikeliho
 
 template<typename DTable>
 using PoissonLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>;
+
+// These three previously did not satisfy Concepts::EvaluatorCallable: each
+// declared only the 3-arg buffered operator(), which hides Evaluator<DTable>'s
+// 2-arg override from unqualified lookup (see the `using Base::operator();`
+// declarations added to each class above). Asserted here, after their
+// definitions, since they're templates.
+static_assert(Concepts::EvaluatorCallable<BayesianInformationCriterionEvaluator<ScalarDispatch>>);
+static_assert(Concepts::EvaluatorCallable<AkaikeInformationCriterionEvaluator<ScalarDispatch>>);
+static_assert(Concepts::EvaluatorCallable<LikelihoodEvaluator<ScalarDispatch>>);
 
 } // namespace Operon
 #endif

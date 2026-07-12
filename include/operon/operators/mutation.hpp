@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "operon/operon_export.hpp"
+#include "operon/core/concepts.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
@@ -174,6 +175,22 @@ private:
 struct OPERON_EXPORT ShuffleSubtreesMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 };
+
+// See core/concepts.hpp for why these are asserted here rather than constraining a template.
+// OnePointMutation/MultiPointMutation are templated on Dist, but satisfying
+// Mutator doesn't depend on which Dist is plugged in (only on the fixed
+// operator() signature), so asserting one canonical instantiation suffices.
+static_assert(Concepts::Mutator<OnePointMutation<std::normal_distribution<Operon::Scalar>>>);
+static_assert(Concepts::Mutator<MultiPointMutation<std::normal_distribution<Operon::Scalar>>>);
+static_assert(Concepts::Mutator<DiscretePointMutation>);
+static_assert(Concepts::Mutator<MultiMutation>);
+static_assert(Concepts::Mutator<ChangeVariableMutation>);
+static_assert(Concepts::Mutator<ChangeFunctionMutation>);
+static_assert(Concepts::Mutator<RemoveSubtreeMutation>);
+static_assert(Concepts::Mutator<InsertSubtreeMutation>);
+static_assert(Concepts::Mutator<ReplaceSubtreeMutation>);
+static_assert(Concepts::Mutator<ShuffleSubtreesMutation>);
+
 } // namespace Operon
 
 #endif

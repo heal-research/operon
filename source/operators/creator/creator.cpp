@@ -5,10 +5,22 @@
 #include <ranges>
 #include <vector>
 
+#include "operon/core/concepts.hpp"
 #include "operon/core/pset.hpp"
+#include "operon/core/tree.hpp"
 #include "operon/operators/creator.hpp"
 
 namespace Operon {
+
+// See core/concepts.hpp for why these are asserted here rather than
+// constraining a template. Asserted from this .cpp rather than creator.hpp:
+// Concepts::Creator's return-type check needs Tree complete, and
+// creator.hpp only forward-declares it. If BalancedTreeCreator/
+// GrowTreeCreator/ProbabilisticTreeCreator's definitions ever move out of
+// this translation unit, move these asserts (and the tree.hpp include) with them.
+static_assert(Concepts::Creator<BalancedTreeCreator>);
+static_assert(Concepts::Creator<GrowTreeCreator>);
+static_assert(Concepts::Creator<ProbabilisticTreeCreator>);
 
 CreatorBase::CreatorBase(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, size_t maxLength)
     : pset_(pset)
