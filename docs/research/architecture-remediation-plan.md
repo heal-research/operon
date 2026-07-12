@@ -263,7 +263,7 @@ and acceptance criteria.
 
 ### Phase 3 — Contract clarity (pick a lane)
 
-#### C1. Resolve the concepts-vs-vtable duplication — direction resolved, implementation pending PR
+#### C1. Resolve the concepts-vs-vtable duplication — DONE
 
 - **Effort:** medium · **needs a direction call first**
 - **What:** Decide the role of `core/concepts.hpp`. Recommended: keep
@@ -286,7 +286,7 @@ and acceptance criteria.
   (`Mutator`/`Crossover`: `Tree -> Tree`) vs. population (`Selector`/
   `Reinserter`: `Span<Individual> -> ...`). That broader axis is scoped as a
   separate follow-up, not part of C1 itself.
-- **Planned implementation:** A survey found zero existing templated
+- **What actually landed:** A survey found zero existing templated
   adapter/wrapper sites for Creator/Mutator/Crossover/Selector/Reinserter/
   EvaluatorCallable — every one of them is a concrete subclass behind pure
   virtual `OperatorBase` dispatch, nothing generic to constrain (only
@@ -302,11 +302,6 @@ and acceptance criteria.
   type's signature drifts from its concept, with zero runtime change.
   Introducing lego-block-style templated adapters is left to the
   individual/population-level follow-up.
-- **Status note:** this implementation was drafted and briefly pushed
-  directly to `main`, then reverted (2026-07-13) because it should have gone
-  through the same branch → PR → review flow as A1–A3 instead of a direct
-  push. The plan above still reflects the intended shape; redo via a feature
-  branch and PR before landing again.
 - **Acceptance:** Exactly one contract mechanism remains authoritative;
   concept names either constrain real templates or are removed entirely.
 
@@ -385,7 +380,7 @@ parallel; Phase 3–4 items want a decision or careful staging first.
 | A3  | `StoppableAlgorithm` mixin              |   1   | Small  |    No    | Done   | —              |
 | B1  | `NodeType` order asserts                |   2   | Small  |    No    | Done   | —              |
 | B2  | Interpreter thread-affinity contract    |   2   | Medium |    No    | Done*  | —              |
-| C1  | Concepts vs vtable                      |   3   | Medium |    No    | Pending PR | Direction resolved |
+| C1  | Concepts vs vtable                      |   3   | Medium |    No    | Done   | —              |
 | C2  | `move_only_function` callbacks          |   3   | Small  |   Yes    |        | —              |
 | D1  | `std::expected` lookups                 |   4   | Medium |  Maybe   |        | —              |
 | D2  | Optimizer result type                   |   4   | Large  |   Yes    |        | Stage last     |
