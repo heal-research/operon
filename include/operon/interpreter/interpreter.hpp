@@ -59,6 +59,17 @@ struct InterpreterBase {
     [[nodiscard]] virtual auto GetDataset() const -> Operon::Dataset const* = 0;
 };
 
+// Thread affinity: Evaluate/JacRev/JacFwd/... look const from the outside but
+// bind lazily into the `mutable` scratch state below (context_/primal_/trace_/
+// range_), then reuse that binding across calls for the same (tree, range) via
+// UpdateCoefficients — that's the bind-once/re-evaluate fast path. None of it
+// is synchronized, so a single Interpreter instance must not be called
+// concurrently from more than one thread. It's cheap to construct (just three
+// non-owning pointers), so the convention throughout this codebase is one
+// instance per worker thread, constructed locally in the hot loop (see the
+// per-call `Interpreter` locals in operators/evaluator.hpp and gp.cpp's
+// per-worker scratch slots) rather than one instance shared and reused across
+// threads.
 template<typename T = Operon::Scalar, typename DTable = ScalarDispatch>
 requires DTable::template SupportsType<T>
 struct Interpreter : public InterpreterBase<T> {
@@ -288,7 +299,8 @@ private:
     gsl::not_null<Operon::Dataset const*> dataset_;
     gsl::not_null<Operon::Tree const*> tree_;
 
-    // mutable internal state (used by all the forward/reverse passes)
+    // mutable internal state (used by all the forward/reverse passes).
+    // Not synchronized — see the thread-affinity contract on the class above.
     mutable Operon::Vector<Data> context_;
     mutable Backend::Buffer<T, BatchSize> primal_;
     mutable Backend::Buffer<T, BatchSize> trace_;
