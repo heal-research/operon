@@ -56,6 +56,15 @@ enum class NodeType : uint8_t {
     Ref       // structural sharing: a backward reference to another node by index
 };
 
+// Arity and category (IsNary/IsBinary/IsUnary/IsNullary below, and the arity
+// inference in Node::Node) are derived from enumerator *position* in the
+// NodeType enum above, not from any per-type tag. These asserts pin the
+// ordering invariants that inference relies on, so a future reorder of the
+// enum is a compile error rather than a silent arity miscompute.
+static_assert(NodeType::Fmax < NodeType::Aq, "n-ary/binary boundary: Fmax must be the last n-ary symbol");
+static_assert(NodeType::Powabs < NodeType::Abs, "binary/unary boundary: Powabs must be the last binary symbol");
+static_assert(NodeType::Square < NodeType::Dynamic, "unary/nullary boundary: Square must be the last unary symbol");
+
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 
 struct NodeTypes {
