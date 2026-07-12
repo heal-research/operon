@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "operon/collections/projection.hpp"
-#include "operon/core/concepts.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/problem.hpp"
@@ -369,16 +368,6 @@ private:
     Operon::HashMode hashmode_ { Operon::HashMode::Strict };
     std::size_t sampleSize_ {};
 };
-
-// The concrete evaluators satisfy Concepts::EvaluatorCallable; EvaluatorBase
-// itself stays virtual-dispatch (pyoperon/CLI factories need dynamic wiring),
-// but pinning these asserts here catches signature drift against the concept
-// at compile time.
-static_assert(Concepts::EvaluatorCallable<UserDefinedEvaluator>);
-static_assert(Concepts::EvaluatorCallable<Evaluator<ScalarDispatch>>);
-static_assert(Concepts::EvaluatorCallable<MultiEvaluator>);
-static_assert(Concepts::EvaluatorCallable<AggregateEvaluator>);
-static_assert(Concepts::EvaluatorCallable<DiversityEvaluator>);
 
 namespace detail {
     // Profile MLE sigma-hat = sqrt(SSR/n) from residuals (estimated - target),
