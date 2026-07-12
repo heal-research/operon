@@ -263,7 +263,7 @@ and acceptance criteria.
 
 ### Phase 3 — Contract clarity (pick a lane)
 
-#### C1. Resolve the concepts-vs-vtable duplication
+#### C1. Resolve the concepts-vs-vtable duplication — DONE
 
 - **Effort:** medium · **needs a direction call first**
 - **What:** Decide the role of `core/concepts.hpp`. Recommended: keep
@@ -280,6 +280,28 @@ and acceptance criteria.
   `static_assert(Concepts::Mutator<T>)` at adapter boundaries.
 - **Decide:** This needs a human call (constrain vs. delete) before an
   agent proceeds — surface it as a question rather than guessing.
+- **Direction (resolved):** Keep `core/concepts.hpp`; don't delete. Long-term
+  intent is to "conceptify" operon toward lego-block composition of
+  algorithms from operators, reasoned about at two levels — individual
+  (`Mutator`/`Crossover`: `Tree -> Tree`) vs. population (`Selector`/
+  `Reinserter`: `Span<Individual> -> ...`). That broader axis is scoped as a
+  separate follow-up, not part of C1 itself.
+- **What actually landed:** A survey found zero existing templated
+  adapter/wrapper sites for Creator/Mutator/Crossover/Selector/Reinserter/
+  EvaluatorCallable — every one of them is a concrete subclass behind pure
+  virtual `OperatorBase` dispatch, nothing generic to constrain (only
+  `Concepts::Likelihood` had real constrained templates already, at the
+  MDL/FBF/LikelihoodEvaluator sites). So instead of inventing new templated
+  machinery, each concrete operator type got a
+  `static_assert(Concepts::X<ConcreteType>)` immediately after its
+  definition (`operators/creator.hpp`'s concretes asserted from
+  `source/operators/creator/creator.cpp`, where `Tree` is a complete type;
+  `operators/mutation.hpp`, `crossover.hpp`, `selector.hpp`,
+  `reinserter.hpp`, `evaluator.hpp` asserted in-header). This is real
+  verification, not decoration: it fails to compile the moment a concrete
+  type's signature drifts from its concept, with zero runtime change.
+  Introducing lego-block-style templated adapters is left to the
+  individual/population-level follow-up.
 - **Acceptance:** Exactly one contract mechanism remains authoritative;
   concept names either constrain real templates or are removed entirely.
 
@@ -358,7 +380,7 @@ parallel; Phase 3–4 items want a decision or careful staging first.
 | A3  | `StoppableAlgorithm` mixin              |   1   | Small  |    No    | Done   | —              |
 | B1  | `NodeType` order asserts                |   2   | Small  |    No    | Done   | —              |
 | B2  | Interpreter thread-affinity contract    |   2   | Medium |    No    | Done*  | —              |
-| C1  | Concepts vs vtable                      |   3   | Medium |    No    |        | Direction call |
+| C1  | Concepts vs vtable                      |   3   | Medium |    No    | Done   | Direction call |
 | C2  | `move_only_function` callbacks          |   3   | Small  |   Yes    |        | —              |
 | D1  | `std::expected` lookups                 |   4   | Medium |  Maybe   |        | —              |
 | D2  | Optimizer result type                   |   4   | Large  |   Yes    |        | Stage last     |
@@ -366,6 +388,17 @@ parallel; Phase 3–4 items want a decision or careful staging first.
 \* B2 landed the documentation-only variant (class-level contract comment).
 The structural `ScratchContext` handle described as a stronger option remains
 open as a follow-up if the team wants compile-time enforcement.
+
+**Open follow-up (not yet scoped as a phase item):** compose algorithms from
+operators as lego-blocks, using the concepts as the plug-in contract.
+Candidate reasoning tool: an explicit individual-level (`Mutator`,
+`Crossover`: `Tree -> Tree`) vs. population-level (`Selector`, `Reinserter`:
+`Span<Individual> -> ...`) axis, currently only an implicit convention. Seams
+where the level is already fuzzy: `OffspringGenerator`'s internal per-offspring
+crossover/mutation counts, and `Selector`/evaluator `Prepare(Span<Individual
+const>)` (population-level context fed into an otherwise individual-level
+operator, e.g. `DiversityEvaluator`). Revisit once there's a concrete need for
+templated (rather than virtual-dispatch) operator composition.
 
 ## 6. Scope note
 
