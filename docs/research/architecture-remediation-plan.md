@@ -351,10 +351,10 @@ and acceptance criteria.
 
 ### Phase 4 — Error-handling modernization (largest blast radius, do last)
 
-#### D1. `std::expected` at the CLI / lookup boundaries
+#### D1. `tl::expected` at `Dataset::GetVariable` / CLI target lookups — DONE (narrow scope)
 
-- **Effort:** medium · **pyoperon-facing:** maybe
-- **What:** Return `std::expected<T, Error>` from fallible lookups that
+- **Effort:** medium · **pyoperon-facing:** yes
+- **What:** Return `expected<T, Error>` from fallible lookups that
   currently return a bare `optional` (losing the *why*) or throw:
   `Dataset::GetVariable`, CLI option parsing, target-hash resolution in the
   CLI entry points.
@@ -363,13 +363,45 @@ and acceptance criteria.
 - **Files:** `core/dataset.hpp`, CLI option-parsing utilities
   (`cli/source/util.*`, `cli/source/operator_factory.*`),
   `cli/source/*.cpp`.
-- **Idiom:** C++23 `std::expected`; `.transform`/`.or_else` monadic
-  chaining at call sites instead of nested `if`s.
+- **Idiom (revised):** `tl::expected`, not `std::expected` — the one
+  existing precedent in the codebase (`operon_parse_model.cpp`'s
+  `ParseOptions`) already uses `tl::expected`, and the project already
+  depends on it (`find_package(tl-expected REQUIRED)`, linked into
+  `operon_operon`). `tl::expected` predates the C++23 migration and offers
+  a richer monadic interface; kept for consistency rather than migrating to
+  `std::expected`.
 - **Watch:** Do `Dataset::GetVariable` in isolation first — it has the
-  widest fan-out across CLIs. pyoperon may depend on the current `optional`
-  return; provide a shim if so.
-- **Acceptance:** CLI error messages unchanged or improved; callers handle
-  the error arm explicitly; no new throws introduced on the hot path.
+  widest fan-out across CLIs. pyoperon depends on the current `optional`
+  return via `nb::overload_cast`; needed a shim.
+- **What actually landed (narrow scope, by design):** `Dataset::GetVariable`
+  now returns `tl::expected<Variable, DatasetError>` (new single-member
+  `DatasetError::VariableNotFound` enum next to `Dataset` in
+  `core/dataset.hpp`). Direct call sites (`Problem::GetVariable`'s `PANIC`
+  path, the infix parser, the full test suite) needed no changes beyond a
+  rebuild — `tl::expected` supports `.has_value()`/`operator*`/`operator->`
+  identically to `optional`. Consolidated the 3x-duplicated "look up
+  target, print to stderr, exit" logic in `operon_gp.cpp`/`operon_nsgp.cpp`/
+  `operon_enum.cpp` into one `Operon::ResolveTarget` helper in
+  `cli/source/util.*` (throws `std::runtime_error`, caught by each CLI
+  main's existing top-level `catch`); `operon_nsgp.cpp` also had its own
+  inline reimplementation of `BuildInputs`'s input-list logic, now replaced
+  with a call to the shared `BuildInputs`. pyoperon's `Dataset::GetVariable`
+  binding (`source/dataset.cpp`) was changed from a direct
+  `nb::overload_cast` to a lambda shim converting back to
+  `std::optional<Variable>`, preserving the `None`-on-miss Python contract
+  (verified via a local flake `path:` override build + a live Python
+  `Dataset.GetVariable` call for both a valid and invalid name); needed an
+  added `#include <nanobind/stl/optional.h>` for the caster.
+- **Explicitly deferred, not part of this item:** `Problem::GetVariable`'s
+  wider `PANIC` semantics, dozens of test call sites (all compiled
+  unchanged), and `cli/source/operator_factory.cpp`'s six throwing `Parse*`
+  factories (`ParseReinserter`/`Selector`/`Creator`/`Evaluator`/
+  `ErrorMetric`/`Generator`) — a separate, larger conversion, left as its
+  own follow-up PR per this doc's "one item ≈ one PR" convention.
+- **Acceptance:** CLI error messages unchanged or improved (verified
+  manually against all three CLI mains, valid and invalid target/input
+  names); full test suite green (194 test cases); pyoperon builds and runs
+  against a local path override with the `None`-on-miss contract intact.
 
 #### D2. Richer optimizer result type
 
@@ -409,7 +441,7 @@ parallel; Phase 3–4 items want a decision or careful staging first.
 | B2  | Interpreter thread-affinity contract    |   2   | Medium |    No    | Done*  | —              |
 | C1  | Concepts vs vtable                      |   3   | Medium |    No    | Done   | —              |
 | C2  | `move_only_function` callbacks          |   3   | Small  |   Yes    | Done   | —              |
-| D1  | `std::expected` lookups                 |   4   | Medium |  Maybe   |        | —              |
+| D1  | `tl::expected` lookups (narrow scope)    |   4   | Medium |   Yes    | Done   | —              |
 | D2  | Optimizer result type                   |   4   | Large  |   Yes    |        | Stage last     |
 
 \* B2 landed the documentation-only variant (class-level contract comment).
