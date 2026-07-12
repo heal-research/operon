@@ -144,19 +144,7 @@ auto main(int argc, char** argv) -> int
         // set the target
         auto const target = Operon::ResolveTarget(*dataset, targetName);
         auto const rows { dataset->Rows<std::size_t>() };
-        if (result.count("train") == 0) {
-            trainingRange = Operon::Range { 0, 2 * rows / 3 }; // by default use 66% of the data as training
-        }
-        if (result.count("test") == 0) {
-            // if no test range is specified, we try to infer a reasonable range based on the trainingRange
-            if (trainingRange.Start() > 0) {
-                testRange = Operon::Range { 0, trainingRange.Start() };
-            } else if (trainingRange.End() < rows) {
-                testRange = Operon::Range { trainingRange.End(), dataset->Rows<std::size_t>() };
-            } else {
-                testRange = Operon::Range { 0, 1 };
-            }
-        }
+        Operon::SetupRanges(result, *dataset, trainingRange, testRange);
         // validate training range
         if (trainingRange.Start() >= rows || trainingRange.End() > rows) {
             fmt::print(stderr, "error: the training range {}:{} exceeds the available data range ({} rows)\n", trainingRange.Start(), trainingRange.End(), dataset->Rows());
