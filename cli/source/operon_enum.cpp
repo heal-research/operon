@@ -48,12 +48,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     if (result.contains("show-primitives")) { Operon::PrintPrimitives(primitiveSetConfig); return EXIT_SUCCESS; }
 
     try {
-        auto res = dataset->GetVariable(targetName);
-        if (!res) {
-            fmt::print(stderr, "error: target variable {} does not exist in the dataset.", targetName);
-            return EXIT_FAILURE;
-        }
-        auto const& target = *res;
+        auto const target = Operon::ResolveTarget(*dataset, targetName);
         auto const rows { dataset->Rows<std::size_t>() };
 
         Operon::SetupRanges(result, *dataset, trainingRange, testRange);

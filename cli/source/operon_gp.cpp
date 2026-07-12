@@ -103,12 +103,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         }
 
         // set the target
-        auto res = dataset->GetVariable(targetName);
-        if (!res) {
-            fmt::print(stderr, "error: target variable {} does not exist in the dataset.", targetName);
-            return EXIT_FAILURE;
-        }
-        auto const& target = *res;
+        auto const target = Operon::ResolveTarget(*dataset, targetName);
         auto const rows { dataset->Rows<std::size_t>() };
 
         Operon::SetupRanges(result, *dataset, trainingRange, testRange);

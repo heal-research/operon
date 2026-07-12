@@ -33,6 +33,10 @@ auto ParseOptions(cxxopts::Options&& opts, int argc, char** argv) -> cxxopts::Pa
 auto SetupRanges(cxxopts::ParseResult const& result, Dataset const& dataset,
                  Range& trainingRange, Range& testRange) -> void;
 
+// Look up the target variable by name.
+// Throws std::runtime_error if the named variable does not exist in the dataset.
+auto ResolveTarget(Dataset const& dataset, std::string const& targetName) -> Variable;
+
 // Return input variable hashes from CLI options, excluding targetHash.
 // Throws std::runtime_error if a named variable does not exist in the dataset.
 auto BuildInputs(cxxopts::ParseResult const& result, Dataset const& dataset,
