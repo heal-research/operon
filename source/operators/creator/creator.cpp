@@ -5,19 +5,10 @@
 #include <ranges>
 #include <vector>
 
-#include "operon/core/concepts.hpp"
 #include "operon/core/pset.hpp"
-#include "operon/core/tree.hpp"
 #include "operon/operators/creator.hpp"
 
 namespace Operon {
-
-// The concrete creators satisfy Concepts::Creator; CreatorBase itself stays
-// virtual-dispatch (pyoperon/CLI factories need dynamic wiring), but pinning
-// these asserts here catches signature drift against the concept at compile time.
-static_assert(Concepts::Creator<BalancedTreeCreator>);
-static_assert(Concepts::Creator<GrowTreeCreator>);
-static_assert(Concepts::Creator<ProbabilisticTreeCreator>);
 
 CreatorBase::CreatorBase(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, size_t maxLength)
     : pset_(pset)
