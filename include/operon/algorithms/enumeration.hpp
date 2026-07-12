@@ -68,6 +68,11 @@ namespace Operon {
 // is later work, and will need to guard that append too (e.g. per-bucket
 // mutex, or a lock-free append structure), not just reuse seen_'s primitive.
 // Build() only ever runs single-threaded today, so this is moot for now.
+// Move-only: onNovelExpression_ is a std::move_only_function member, which
+// implicitly deletes this class's copy constructor/assignment. Nothing in
+// the codebase copies an EnumerationEngine today, but this is a real API
+// surface change worth flagging explicitly rather than leaving the next
+// caller to discover it as a compile error.
 class OPERON_EXPORT EnumerationEngine {
 public:
     EnumerationEngine(Operon::Grammar grammar, std::size_t maxComplexity, Operon::RandomGenerator& rng);
@@ -87,7 +92,7 @@ public:
     // compositional intermediates. The hook receives a mutable reference so a
     // caller (GrammarEnumerationAlgorithm) can fit coefficients in place
     // before the tree is stored.
-    void SetOnNovelExpression(std::function<void(Operon::Tree&)> hook) { onNovelExpression_ = std::move(hook); }
+    void SetOnNovelExpression(std::move_only_function<void(Operon::Tree&)> hook) { onNovelExpression_ = std::move(hook); }
 
     [[nodiscard]] auto Bucket(GrammarSymbol nt, std::size_t budget) const -> std::span<Operon::Tree const>;
 
@@ -139,7 +144,7 @@ private:
     Operon::Zobrist zobrist_;
     std::vector<std::vector<std::vector<Operon::Tree>>> buckets_; // [GrammarSymbol index][budget][candidate]
     std::vector<std::vector<gtl::parallel_flat_hash_set_m<Operon::Hash>>> seen_; // [GrammarSymbol index][budget]
-    std::function<void(Operon::Tree&)> onNovelExpression_;
+    std::move_only_function<void(Operon::Tree&)> onNovelExpression_;
 };
 
 struct EnumerationConfig {
