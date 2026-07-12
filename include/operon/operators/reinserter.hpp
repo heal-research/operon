@@ -6,6 +6,7 @@
 #define OPERON_REINSERTER_HPP
 
 #include <algorithm>
+#include "operon/core/concepts.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/individual.hpp"
 
@@ -73,6 +74,13 @@ public:
         std::swap_ranges(pool.begin(), pool.begin() + offset, pop.end() - offset);
     }
 };
+
+// The concrete reinserters satisfy Concepts::Reinserter; ReinserterBase itself
+// stays virtual-dispatch (pyoperon/CLI factories need dynamic wiring), but
+// pinning these asserts here catches signature drift against the concept at
+// compile time.
+static_assert(Concepts::Reinserter<KeepBestReinserter>);
+static_assert(Concepts::Reinserter<ReplaceWorstReinserter>);
 
 } // namespace Operon
 

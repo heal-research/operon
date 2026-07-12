@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "operon/operon_export.hpp"
+#include "operon/core/concepts.hpp"
 #include "operon/core/operator.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/node.hpp"
@@ -46,6 +47,11 @@ private:
     size_t maxDepth_;
     size_t maxLength_;
 };
+
+// SubtreeCrossover satisfies Concepts::Crossover; CrossoverBase itself stays
+// virtual-dispatch (pyoperon/CLI factories need dynamic wiring), but pinning
+// this assert here catches signature drift against the concept at compile time.
+static_assert(Concepts::Crossover<SubtreeCrossover>);
 
 } // namespace Operon
 #endif
