@@ -42,6 +42,7 @@ stdenv.mkDerivation rec {
       cpp-sort
       eigen
       eve
+      fast-float
       fluky
       (fmt_12.override { inherit enableShared; })
       glaze
@@ -63,7 +64,13 @@ stdenv.mkDerivation rec {
         ];
       }))
     ])
-    ++ (with pkgs; pkgs.lib.optionals enableAsmjit [ (asmjit.override { inherit enableShared; }) ]);
+    ++ (with pkgs; pkgs.lib.optionals enableAsmjit [ (asmjit.override { inherit enableShared; }) ])
+    # infix-parser-static's installed config find_dependency()s lexy
+    # unconditionally - a static consumer like pyoperon fails at configure
+    # time without it on CMAKE_PREFIX_PATH. (FastFloat is covered above
+    # already, since operon's own CMakeLists needs it regardless of
+    # enableShared; fmt likewise.)
+    ++ (with pkgs; pkgs.lib.optionals (!enableShared) [ foonathan-lexy ]);
 
   # Deps only used in .cpp implementation files or by CLI/test binaries; not
   # required at compile time by consumers of operon's headers, and not
@@ -72,7 +79,6 @@ stdenv.mkDerivation rec {
     (with pkgs; [
       cpptrace
       cxxopts
-      fast-float
       icu
       libdwarf
       pkg-config
@@ -81,9 +87,9 @@ stdenv.mkDerivation rec {
       vdt
       zstd
     ])
-    # infix-parser's static archive can't resolve its own private link deps
-    # (fmt/FastFloat are already pulled in above; lexy isn't otherwise needed).
-    ++ (with pkgs; pkgs.lib.optionals (!enableShared) [ foonathan-lexy glibc.static ])
+    # glibc.static is a link-time-only requirement for static builds, not a
+    # cmake package find_dependency()'d by consumers - stays here, not above.
+    ++ (with pkgs; pkgs.lib.optionals (!enableShared) [ glibc.static ])
     ++ (
       with pkgs;
       pkgs.lib.optionals enableTesting [
