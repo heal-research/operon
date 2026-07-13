@@ -116,8 +116,8 @@ auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> CompileMeta c
     return meta;
 }
 
-auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
-                               Span<Scalar> buf) const -> ReturnType
+auto JitEvaluator::Evaluate(RandomGenerator& /*rng*/, Individual const& ind,
+                             Span<Scalar> buf) const -> ReturnType
 {
     ++CallCount;
 
@@ -135,7 +135,7 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
     ENSURE(buf.size() >= range.Size());
     ++ResidualEvaluations;
 
-    // Same oversized-scratch-buffer contract as Evaluator<DTable>::operator()
+    // Same oversized-scratch-buffer contract as Evaluator<DTable>::Evaluate
     // (source/operators/evaluator.cpp): buf may legitimately be larger than
     // range.Size() for a reused caller-owned buffer, but the compiled path
     // below only ever writes nRows entries and the fallback path's
@@ -189,11 +189,6 @@ auto JitEvaluator::operator()(RandomGenerator& /*rng*/, Individual const& ind,
 
     if (!std::isfinite(fit)) { fit = EvaluatorBase::ErrMax; }
     return ReturnType{ fit };
-}
-
-auto JitEvaluator::operator()(RandomGenerator& rng, Individual const& ind) const -> ReturnType
-{
-    return Evaluate(rng, ind);
 }
 
 auto JitEvaluator::CacheSize() const -> std::size_t

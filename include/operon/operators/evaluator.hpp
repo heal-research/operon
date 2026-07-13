@@ -76,12 +76,31 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon:
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target, Operon::Span<float const> weights) noexcept -> std::pair<double, double>;
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target, Operon::Span<double const> weights) noexcept -> std::pair<double, double>;
 
-using E1 = OperatorBase<Operon::Vector<Operon::Scalar>, Individual const&>;
-using E2 = OperatorBase<Operon::Vector<Operon::Scalar>, Individual const&, Operon::Span<Operon::Scalar>>;
-
-struct EvaluatorBase : public E1, E2
+// EvaluatorBase inherits OperatorBase once, like every other operator family
+// (CreatorBase, MutatorBase, CrossoverBase, ...) - the buffered 3-arg shape is
+// the canonical one. The previous design instead inherited OperatorBase TWICE
+// (E1 for the unbuffered call, E2 for the buffered call) to get two
+// `operator()` overloads directly from the base; any subclass overriding just
+// one of them (the common case) hid the other via C++ name hiding, forcing
+// `using Base::operator();` in three subclasses plus a redundant 2-arg
+// `operator() override { return Evaluate(rng, ind); }` boilerplate in every
+// class. The fix keeps the single-inheritance shape uniform with every other
+// family and splits the two roles `operator()` was playing:
+//   - `Evaluate(rng, ind, buf)` below is the ONE hook subclasses override to
+//     score an individual. It is NOT named `operator()`, so a subclass
+//     overriding it never declares an `operator()` of its own and therefore
+//     can never trigger name hiding.
+//   - EvaluatorBase itself closes out OperatorBase's pure-virtual
+//     `operator()(rng, ind, buf)` with a `final` override that just forwards
+//     to `Evaluate` (no subclass can re-override it, so hiding never has a
+//     chance to recur below EvaluatorBase), and adds a non-virtual
+//     deducing-this `operator()(rng, ind)` facade that allocates a scratch
+//     buffer and forwards too. Both call forms the codebase and pyoperon use
+//     (`eval(rng, ind, buf)` and `eval(rng, ind)`) keep working unchanged.
+struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Operon::Individual const&, Operon::Span<Operon::Scalar>>
 {
-    using ReturnType = E1::ReturnType;
+    using Base = OperatorBase<Operon::Vector<Operon::Scalar>, Operon::Individual const&, Operon::Span<Operon::Scalar>>;
+    using ReturnType = Base::ReturnType;
 
     mutable std::atomic_ulong ResidualEvaluations { 0 }; // NOLINT
     mutable std::atomic_ulong JacobianEvaluations { 0 }; // NOLINT
@@ -92,32 +111,41 @@ struct EvaluatorBase : public E1, E2
 
     static auto constexpr ErrMax { std::numeric_limits<Operon::Scalar>::max() };
 
-    auto operator()(Operon::RandomGenerator& /*unused*/, Operon::Individual const& /*unused*/, Operon::Span<Operon::Scalar> /*unused*/) const -> ReturnType override = 0;
-
-    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> ReturnType override = 0;
+    // EvaluatorBase has mutable atomic counters and a gsl::not_null member, so
+    // the copy/move/default special members are implicitly deleted; it's held
+    // by pointer throughout (EvaluatorBase const*) and never copied or moved.
+    ~EvaluatorBase() override = default;
 
     explicit EvaluatorBase(gsl::not_null<Problem const*> problem)
         : problem_(problem)
     {
     }
 
-    // Deducing-this in place of the old `static Evaluate(Derived const*
-    // self, ...)` CRTP helper: Self deduces to the most-derived type at each
-    // call site (a derived operator()'s own `this`), so std::invoke(self,
-    // ...) below still calls that concrete override directly rather than
-    // going through this base's virtual operator(). Not virtual - can't be,
-    // per the language rule on explicit-object member functions - which
-    // matches the original static member's own non-virtual-ness.
-    template<typename Self>
-    auto Evaluate(this Self const& self, Operon::RandomGenerator& rng, Operon::Individual const& ind, std::span<Operon::Scalar> buf) {
-        ENSURE(buf.size() >= self.GetProblem()->TrainingRange().Size());
-        return std::invoke(self, rng, ind, buf);
+    // Closes out OperatorBase's pure-virtual 3-arg operator() by forwarding
+    // to the Evaluate hook below. `final` so no subclass can re-declare
+    // operator() and reintroduce the name-hiding hazard this design avoids.
+    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> ReturnType final {
+        return Evaluate(rng, ind, buf);
     }
 
+    // The single hook subclasses override. `buf` is a caller-owned scratch
+    // buffer of size >= TrainingRange().Size().
+    virtual auto Evaluate(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> ReturnType = 0;
+
+    // 2-arg convenience: non-virtual deducing-this facade (can't be virtual -
+    // explicit-object members can't be) that allocates a scratch buffer of
+    // TrainingRange().Size() and forwards to the 3-arg operator() above.
+    // Self deduces to the static type at the call site (including when the
+    // call comes through an `EvaluatorBase&`), so this works polymorphically
+    // without itself needing to be virtual. Buffer-size contract is on each
+    // concrete Evaluate override that actually reads/writes the buffer (they
+    // each carry their own ENSURE), not here: UserDefinedEvaluator and
+    // DiversityEvaluator legitimately ignore `buf` and accept any size,
+    // including the empty span pyoperon passes for UserDefinedEvaluator.
     template<typename Self>
-    auto Evaluate(this Self const& self, Operon::RandomGenerator& rng, Operon::Individual const& ind) {
+    auto operator()(this Self const& self, Operon::RandomGenerator& rng, Operon::Individual const& ind) -> ReturnType {
         std::vector<Operon::Scalar> buf(self.GetProblem()->TrainingRange().Size());
-        return std::invoke(self, rng, ind, buf);
+        return self.Evaluate(rng, ind, buf);
     }
 
     virtual void Prepare(Operon::Span<Individual const> /*pop*/) const
@@ -178,14 +206,10 @@ public:
     }
 
     auto
-    operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> /*args*/) const -> typename EvaluatorBase::ReturnType override
+    Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> /*buf*/) const -> typename EvaluatorBase::ReturnType override
     {
         ++this->CallCount;
         return fptr_ ? fptr_(&rng, ind) : fref_(rng, ind);
-    }
-
-    auto operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
-        return Evaluate(rng, ind);
     }
 
 private:
@@ -210,10 +234,7 @@ public:
     auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
 
     auto
-    operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
-
-    auto
-    operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override;
+    Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
     gsl::not_null<DTable const*> dtable_;
@@ -246,13 +267,7 @@ public:
     }
 
     auto
-    operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override
-    {
-        return Evaluate(rng, ind);
-    }
-
-    auto
-    operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
+    Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
     {
         EvaluatorBase::ReturnType fit;
         fit.reserve(ind.Size());
@@ -315,10 +330,7 @@ public:
     auto GetAggregateType() const { return aggtype_; }
 
     auto
-    operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType override;
-
-    auto
-    operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
 private:
     gsl::not_null<EvaluatorBase const*> evaluator_;
@@ -357,10 +369,7 @@ public:
     }
 
     auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual const& ind) const -> typename EvaluatorBase::ReturnType override;
-
-    auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    Evaluate(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
 
@@ -372,7 +381,7 @@ private:
 
 // See core/concepts.hpp for why these are asserted here rather than constraining a template.
 // LengthEvaluator/ShapeEvaluator aren't asserted separately: they inherit
-// UserDefinedEvaluator's operator() overloads without overriding either one,
+// UserDefinedEvaluator's Evaluate override without overriding it themselves,
 // so UserDefinedEvaluator's assert below already covers them.
 static_assert(Concepts::EvaluatorCallable<UserDefinedEvaluator>);
 static_assert(Concepts::EvaluatorCallable<Evaluator<ScalarDispatch>>);
@@ -420,11 +429,7 @@ public:
     auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
     auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
 
-    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
-        return this->Evaluate(rng, ind);
-    }
-
-    auto operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
+    auto Evaluate(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
         ++Base::CallCount;
 
         auto const* dtable = Base::GetDispatchTable();
@@ -493,11 +498,7 @@ public:
     auto Sigma() const { return std::span<Operon::Scalar const>{sigma_}; }
     auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
 
-    auto operator()(Operon::RandomGenerator& rng, Operon::Individual const& ind) const -> typename EvaluatorBase::ReturnType override {
-        return this->Evaluate(rng, ind);
-    }
-
-    auto operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
+    auto Evaluate(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
         ++Base::CallCount;
 
         auto const* dtable  = Base::GetDispatchTable();
@@ -511,7 +512,7 @@ public:
         auto const trainingRange = problem->TrainingRange();
         auto const n { static_cast<double>(trainingRange.Size()) };
         ENSURE(buf.size() >= trainingRange.Size());
-        // See MinimumDescriptionLengthEvaluator's operator() for why this
+        // See MinimumDescriptionLengthEvaluator's Evaluate() for why this
         // slice is needed: everything downstream assumes exactly
         // trainingRange.Size() rows, but buf may legitimately be larger.
         auto estimatedValues = buf.subspan(0, trainingRange.Size());
@@ -551,20 +552,13 @@ class OPERON_EXPORT BayesianInformationCriterionEvaluator final : public Evaluat
     using Base = Evaluator<DTable>;
 
 public:
-    // Un-hide Base's 2-arg operator(): declaring only the 3-arg override
-    // below would otherwise hide the inherited 2-arg overload from
-    // unqualified lookup, so a bare `t(rng, ind)` call - and
-    // Concepts::EvaluatorCallable, which relies on that exact call form -
-    // would fail to find it.
-    using Base::operator();
-
     explicit BayesianInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable, MSE{})
     {
     }
 
     auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    Evaluate(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 };
 
 template <typename DTable>
@@ -572,16 +566,13 @@ class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator
     using Base = Evaluator<DTable>;
 
 public:
-    // See BayesianInformationCriterionEvaluator's using-declaration above for why this is needed.
-    using Base::operator();
-
     explicit AkaikeInformationCriterionEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable, MSE{})
     {
     }
 
     auto
-    operator()(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    Evaluate(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 };
 
 template<typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
@@ -590,16 +581,13 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
     using Base = Evaluator<DTable>;
 
     public:
-    // See BayesianInformationCriterionEvaluator's using-declaration above for why this is needed.
-    using Base::operator();
-
     explicit LikelihoodEvaluator(Operon::Problem const* problem, DTable const* dtable)
         : Base(problem, dtable), sigma_(1, 0.001)
     {
     }
 
     auto
-    operator()(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
+    Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override {
         ++Base::CallCount;
 
         auto const* dtable  = Base::Evaluator::GetDispatchTable();
@@ -613,7 +601,7 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
 
         auto const trainingRange = problem->TrainingRange();
         ENSURE(buf.size() >= trainingRange.Size());
-        // See MinimumDescriptionLengthEvaluator's operator() for why this
+        // See MinimumDescriptionLengthEvaluator's Evaluate() for why this
         // slice is needed: everything downstream assumes exactly
         // trainingRange.Size() rows, but buf may legitimately be larger.
         auto estimatedValues = buf.subspan(0, trainingRange.Size());
@@ -639,11 +627,14 @@ using GaussianLikelihoodEvaluator = LikelihoodEvaluator<DTable, GaussianLikeliho
 template<typename DTable>
 using PoissonLikelihoodEvaluator = LikelihoodEvaluator<DTable, PoissonLikelihood<Operon::Scalar>>;
 
-// These three previously did not satisfy Concepts::EvaluatorCallable: each
-// declared only the 3-arg buffered operator(), which hides Evaluator<DTable>'s
-// 2-arg override from unqualified lookup (see the `using Base::operator();`
-// declarations added to each class above). Asserted here, after their
-// definitions, since they're templates.
+// These three were previously at risk of not satisfying
+// Concepts::EvaluatorCallable: each declared only the 3-arg buffered
+// operator(), which hid Evaluator<DTable>'s 2-arg overload from unqualified
+// lookup and forced a `using Base::operator();` in each. The deducing-this
+// facade in EvaluatorBase removed that hazard (subclasses now override a
+// differently-named `Evaluate` and never declare `operator()`), but the
+// asserts stay as a permanent guard on the call forms the concept requires.
+// Asserted here, after their definitions, since they're templates.
 static_assert(Concepts::EvaluatorCallable<BayesianInformationCriterionEvaluator<ScalarDispatch>>);
 static_assert(Concepts::EvaluatorCallable<AkaikeInformationCriterionEvaluator<ScalarDispatch>>);
 static_assert(Concepts::EvaluatorCallable<LikelihoodEvaluator<ScalarDispatch>>);

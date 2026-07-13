@@ -67,8 +67,7 @@ public:
     JitEvaluator(JitEvaluator&&)                 = delete;
     JitEvaluator& operator=(JitEvaluator&&)      = delete;
 
-    auto operator()(RandomGenerator& rng, Individual const& ind, Span<Scalar> buf) const -> ReturnType override;
-    auto operator()(RandomGenerator& rng, Individual const& ind)                  const -> ReturnType override;
+    auto Evaluate(RandomGenerator& rng, Individual const& ind, Span<Scalar> buf) const -> ReturnType override;
 
     [[nodiscard]] auto CacheSize()   const -> std::size_t;
     [[nodiscard]] auto CacheHits()   const -> std::size_t { return hits_.load(); }
