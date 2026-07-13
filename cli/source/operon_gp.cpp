@@ -214,7 +214,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
 
         auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
-        auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
+        // Default 1: preserves GP's historical single-elite behavior (previously
+        // a hardcoded offspring[0] overwrite in gp.cpp, now handled uniformly by
+        // ReinserterBase - see reinserter.hpp).
+        auto const eliteCount = result.count("elitism") ? result["elitism"].as<size_t>() : size_t{1};
+        auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp, eliteCount);
 
         Operon::RandomGenerator random(config.Seed);
         if (result["shuffle"].as<bool>()) { problem.GetDataset()->Shuffle(random); }
