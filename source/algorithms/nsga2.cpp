@@ -94,7 +94,7 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     Operon::Vector<Individual> uniq;
     uniq.reserve(static_cast<size_t>(std::distance(order.begin(), r)));
     for (auto it = order.begin(); it < r; ++it) {
-        Individual ind(pop[*it].Fitness.size());
+        Individual ind; // default ctor only fills a 1-element placeholder Fitness, unlike Individual(nObj)
         ind.Fitness = pop[*it].Fitness;
         uniq.push_back(std::move(ind));
     }
