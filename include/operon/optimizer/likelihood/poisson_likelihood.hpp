@@ -12,6 +12,7 @@
 #include "likelihood_base.hpp"
 
 #include <functional>
+#include <random>
 #include <type_traits>
 #include <vstat/univariate.hpp>
 #include <vstat/vstat.hpp>
