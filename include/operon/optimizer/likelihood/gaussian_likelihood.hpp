@@ -9,6 +9,7 @@
 #include <array>
 #include <functional>
 #include <limits>
+#include <random>
 
 #include "operon/core/concepts.hpp"
 #include "operon/core/types.hpp"
