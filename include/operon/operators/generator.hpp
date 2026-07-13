@@ -76,10 +76,11 @@ public:
             if (coeffOptimizer_ != nullptr && BernoulliTrial{pLocal}(random)) {
                 auto c = res.Child->Genotype.GetCoefficients(); // save original coefficients
                 auto t0 = std::chrono::steady_clock::now();
-                auto [optimizedTree, summary] = (*Optimizer())(random, std::move(res.Child->Genotype));
+                auto [optimizedTree, outcome] = (*Optimizer())(random, std::move(res.Child->Genotype));
                 auto t1 = std::chrono::steady_clock::now();
-                Evaluator()->ResidualEvaluations += summary.FunctionEvaluations;
-                Evaluator()->JacobianEvaluations += summary.JacobianEvaluations;
+                auto const& diag = Diagnostics(outcome);
+                Evaluator()->ResidualEvaluations += diag.FunctionEvaluations;
+                Evaluator()->JacobianEvaluations += diag.JacobianEvaluations;
                 Evaluator()->CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
                 res.Child->Genotype = std::move(optimizedTree);
                 res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);

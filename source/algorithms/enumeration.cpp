@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <array>
 
-#include "operon/optimizer/optimizer.hpp" // for OptimizerSummary::FinalCost
+#include "operon/optimizer/optimizer.hpp" // for FitResult/FitFailure::FinalCost
 
 namespace Operon {
 
@@ -262,12 +262,12 @@ void GrammarEnumerationAlgorithm::ConsiderBest(Operon::Scalar fitness, Operon::T
 void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::ReportCallback report)
 {
     // Iterations() == 0 makes CoefficientOptimizer return a default-
-    // constructed OptimizerSummary (FinalCost == 0.0, Success == false)
-    // without ever calling optimizer_->Optimize() (see local_search.cpp) -
-    // every novel Expression would then tie at cost 0.0 and the top-K
-    // ranking below becomes meaningless. optimizer_ is caller-supplied and
-    // mutable (OptimizerBase::SetIterations()), so this is a real
-    // precondition, not just a theoretical one.
+    // constructed FitFailure (FinalCost == 0.0) without ever calling
+    // optimizer_->Optimize() (see local_search.cpp) - every novel Expression
+    // would then tie at cost 0.0 and the top-K ranking below becomes
+    // meaningless. optimizer_ is caller-supplied and mutable
+    // (OptimizerBase::SetIterations()), so this is a real precondition, not
+    // just a theoretical one.
     EXPECT(optimizer_->Iterations() > 0);
 
     Operon::CoefficientOptimizer coeffOptimizer{optimizer_};
@@ -277,13 +277,14 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
     // candidates per run, so a per-candidate heap allocation here adds up.
     std::vector<Operon::Scalar> evalBuf(evaluator_->GetProblem()->TrainingRange().Size());
     engine_.SetOnNovelExpression([&](Operon::Tree& tree) {
-        // Always take the optimizer's resulting tree, regardless of
-        // OptimizerSummary::Success - mirrors BasicOffspringGenerator's own
-        // evaluate step (operators/generator.hpp), which never branches on
-        // Success either. Fitness is then computed fresh via evaluator_
-        // rather than trusting OptimizerSummary's own cost fields, which
-        // reflect whatever internal loss optimizer_ happens to minimize
-        // (e.g. LM's sum-of-squares), not the user-selected ErrorMetric.
+        // Always take the optimizer's resulting tree, regardless of whether
+        // the fit outcome was FitResult or FitFailure - mirrors
+        // BasicOffspringGenerator's own evaluate step (operators/generator.hpp),
+        // which never branches on the outcome either. Fitness is then
+        // computed fresh via evaluator_ rather than trusting the outcome's
+        // own cost fields, which reflect whatever internal loss optimizer_
+        // happens to minimize (e.g. LM's sum-of-squares), not the
+        // user-selected ErrorMetric.
         tree = std::get<0>(coeffOptimizer(rng, tree));
         Operon::Individual ind{1};
         // Copy (not move) here: `tree` is a reference into the engine's own

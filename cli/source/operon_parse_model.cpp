@@ -156,10 +156,11 @@ namespace {
         Operon::Reporter<void>::PrintStats(stats, /*printHeader=*/true);
 
         if (opt->Iterations() > 0) {
+            auto const& diag = Operon::Diagnostics(summary);
             fmt::print("optimization summary:\n");
-            fmt::print("status: {}\n", summary.Success);
-            fmt::print("initial cost: {}\n", summary.InitialCost);
-            fmt::print("final cost: {}\n", summary.FinalCost);
+            fmt::print("status: {}\n", summary.has_value());
+            fmt::print("initial cost: {}\n", diag.InitialCost);
+            fmt::print("final cost: {}\n", diag.FinalCost);
         }
     }
 } // namespace

@@ -19,7 +19,7 @@
 #include "operon/hash/content_hash.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/evaluator.hpp" // for EvaluatorBase, Individual
-#include "operon/operators/local_search.hpp" // for CoefficientOptimizer, OptimizerBase/OptimizerSummary fwd decls
+#include "operon/operators/local_search.hpp" // for CoefficientOptimizer, OptimizerBase/FitResult/FitFailure fwd decls
 #include "operon/operon_export.hpp"
 #include "operon/random/random.hpp"
 
@@ -168,8 +168,9 @@ struct EnumerationConfig {
 // never itself surfaced as a score; `evaluator` is the user-selectable
 // ErrorMetric (R2/NMSE/MSE/MAE/...) that actually ranks candidates in
 // BestTrees(), same as GP/NSGA2. Always taking the optimizer's resulting
-// tree (regardless of OptimizerSummary::Success) and re-scoring it via
-// evaluator - rather than trusting OptimizerSummary's own cost fields -
+// tree (regardless of whether the fit outcome was FitResult or FitFailure)
+// and re-scoring it via evaluator - rather than trusting the outcome's own
+// cost fields -
 // keeps this consistent with the rest of the codebase and avoids coupling
 // ranking to whichever internal loss a given OptimizerBase happens to use.
 class OPERON_EXPORT GrammarEnumerationAlgorithm : public StoppableAlgorithm {

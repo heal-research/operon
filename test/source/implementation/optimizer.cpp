@@ -129,17 +129,19 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
 
     auto checkExact = [&](OptimizerBase& optimizer) -> void {
         auto summary = optimizer.Optimize(rng, tree);
-        CHECK(summary.FinalCost < summary.InitialCost);
-        CHECK(summary.FinalCost < tightTol);
-        for (auto const p : summary.FinalParameters) {
+        REQUIRE(summary.has_value());
+        CHECK(summary->FinalCost < summary->InitialCost);
+        CHECK(summary->FinalCost < tightTol);
+        for (auto const p : summary->FinalParameters) {
             CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, paramTol));
         }
     };
 
     auto checkImproved = [&](OptimizerBase& optimizer) -> void {
         auto summary = optimizer.Optimize(rng, tree);
-        CHECK(summary.FinalCost < summary.InitialCost);
-        CHECK(summary.FinalCost < looseTol);
+        REQUIRE(summary.has_value());
+        CHECK(summary->FinalCost < summary->InitialCost);
+        CHECK(summary->FinalCost < looseTol);
     };
 
     SECTION("tiny solver") {
@@ -161,8 +163,9 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
         // Poisson loss on a continuous target: just verify it runs and improves
         LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizer{&dtable, &problem};
         auto summary = optimizer.Optimize(rng, tree);
-        CHECK(std::isfinite(summary.FinalCost));
-        CHECK(!summary.FinalParameters.empty());
+        REQUIRE(summary.has_value());
+        CHECK(std::isfinite(summary->FinalCost));
+        CHECK(!summary->FinalParameters.empty());
     }
 
     SECTION("sgd / gaussian") {
@@ -177,8 +180,9 @@ TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-functio
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
         SGDOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizer{&dtable, &problem, *rule};
         auto summary = optimizer.Optimize(rng, tree);
-        CHECK(std::isfinite(summary.FinalCost));
-        CHECK(!summary.FinalParameters.empty());
+        REQUIRE(summary.has_value());
+        CHECK(std::isfinite(summary->FinalCost));
+        CHECK(!summary->FinalParameters.empty());
     }
 
 #if defined(HAVE_ASMJIT)
@@ -266,12 +270,12 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
 
     auto checkRecoversCleanSolution = [&](OptimizerBase& optimizer) -> void {
         auto summary = optimizer.Optimize(rng, tree);
-        // Success must reflect the *weighted* objective actually optimized -
-        // CoefficientOptimizer (local_search.cpp) only applies FinalParameters
-        // when Success is true, so a false negative here would silently drop
-        // a real weighted improvement.
-        CHECK(summary.Success);
-        for (auto const p : summary.FinalParameters) {
+        // The outcome must reflect the *weighted* objective actually
+        // optimized - CoefficientOptimizer (local_search.cpp) only applies
+        // FinalParameters when the outcome has a value, so a false failure
+        // here would silently drop a real weighted improvement.
+        CHECK(summary.has_value());
+        for (auto const p : summary->FinalParameters) {
             CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, paramTol));
         }
     };
@@ -311,12 +315,12 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
         SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem, *rule};
         auto summary = optimizer.Optimize(rng, tree);
-        CHECK(summary.Success);
+        CHECK(summary.has_value());
         // SGD converges more slowly than LM/L-BFGS on this problem within
         // the default iteration budget, so use a looser tolerance - the
         // point is confirming weights are picked up at all, not tight
         // convergence.
-        for (auto const p : summary.FinalParameters) {
+        for (auto const p : summary->FinalParameters) {
             CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, 0.1F));
         }
     }
@@ -331,19 +335,20 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         // the fix.
         LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
         auto summary = optimizer.Optimize(rng, tree);
+        REQUIRE(summary.has_value());
 
         auto const range = problem.TrainingRange();
         auto const target = problem.TargetValues(range);
         auto const weights = *problem.Weights(range);
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{&dtable, &fix.ds, &tree};
 
-        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary.InitialParameters}, range);
+        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary->InitialParameters}, range);
         auto const expectedInitialCost = 0.5 * Operon::SumOfSquaredErrors(pred0.begin(), pred0.end(), target.begin(), weights.begin());
-        CHECK_THAT(static_cast<double>(summary.InitialCost), Catch::Matchers::WithinRel(expectedInitialCost, 1e-3));
+        CHECK_THAT(static_cast<double>(summary->InitialCost), Catch::Matchers::WithinRel(expectedInitialCost, 1e-3));
 
-        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary.FinalParameters}, range);
+        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary->FinalParameters}, range);
         auto const expectedFinalCost = 0.5 * Operon::SumOfSquaredErrors(pred1.begin(), pred1.end(), target.begin(), weights.begin());
-        CHECK_THAT(static_cast<double>(summary.FinalCost), Catch::Matchers::WithinRel(expectedFinalCost, 1e-3));
+        CHECK_THAT(static_cast<double>(summary->FinalCost), Catch::Matchers::WithinRel(expectedFinalCost, 1e-3));
     }
 
     SECTION("lm / eigen: reported cost matches the weighted objective, not raw SSE") {
@@ -354,30 +359,31 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         // directly rather than relying on it transitively via Success/params.
         LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer{&dtable, &problem};
         auto summary = optimizer.Optimize(rng, tree);
+        REQUIRE(summary.has_value());
 
         auto const range = problem.TrainingRange();
         auto const target = problem.TargetValues(range);
         auto const weights = *problem.Weights(range);
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{&dtable, &fix.ds, &tree};
 
-        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary.InitialParameters}, range);
+        auto const pred0 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary->InitialParameters}, range);
         auto const expectedInitialCost = 0.5 * Operon::SumOfSquaredErrors(pred0.begin(), pred0.end(), target.begin(), weights.begin());
-        CHECK_THAT(static_cast<double>(summary.InitialCost), Catch::Matchers::WithinRel(expectedInitialCost, 1e-3));
+        CHECK_THAT(static_cast<double>(summary->InitialCost), Catch::Matchers::WithinRel(expectedInitialCost, 1e-3));
 
-        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary.FinalParameters}, range);
+        auto const pred1 = interpreter.Evaluate(Operon::Span<Operon::Scalar const>{summary->FinalParameters}, range);
         auto const expectedFinalCost = 0.5 * Operon::SumOfSquaredErrors(pred1.begin(), pred1.end(), target.begin(), weights.begin());
-        CHECK_THAT(static_cast<double>(summary.FinalCost), Catch::Matchers::WithinRel(expectedFinalCost, 1e-3));
+        CHECK_THAT(static_cast<double>(summary->FinalCost), Catch::Matchers::WithinRel(expectedFinalCost, 1e-3));
     }
 
     SECTION("lbfgs / gaussian: CoefficientOptimizer actually applies the weighted-optimal coefficients") {
         // End-to-end check through the real call path (local_search.cpp),
         // not just Optimize() directly: CoefficientOptimizer gates
-        // SetCoefficients on summary.Success, so a mis-scored Success would
-        // silently discard a genuine weighted improvement here.
+        // SetCoefficients on the outcome having a value, so a mis-scored
+        // outcome would silently discard a genuine weighted improvement here.
         LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
         Operon::CoefficientOptimizer const coeffOptimizer{&optimizer};
         auto [optimizedTree, summary] = coeffOptimizer(rng, tree);
-        REQUIRE(summary.Success);
+        REQUIRE(summary.has_value());
         auto const coeffs = optimizedTree.GetCoefficients();
         REQUIRE(!coeffs.empty());
         for (auto const c : coeffs) {
@@ -392,7 +398,8 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         fix.problem.GetDataset()->SetWeights(ones);
         LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> optimizer{&dtable, &problem};
         auto summary = optimizer.Optimize(rng, tree);
-        auto const p = summary.FinalParameters.front();
+        REQUIRE(summary.has_value());
+        auto const p = summary->FinalParameters.front();
         CHECK(std::abs(p - 1.0F) > paramTol);
     }
 
@@ -401,7 +408,8 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         fix.problem.GetDataset()->SetWeights(ones);
         LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
         auto summary = optimizer.Optimize(rng, tree);
-        auto const p = summary.FinalParameters.front();
+        REQUIRE(summary.has_value());
+        auto const p = summary->FinalParameters.front();
         CHECK(std::abs(p - 1.0F) > paramTol);
     }
 
@@ -418,18 +426,20 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
         LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizerZeroed{&dtable, &problem};
         Operon::RandomGenerator rngZeroed{0};
         auto summaryZeroed = optimizerZeroed.Optimize(rngZeroed, tree);
+        REQUIRE(summaryZeroed.has_value());
 
         std::vector<Operon::Scalar> ones(WeightedOptimizerFixture::Nrow, Operon::Scalar{1});
         fix.problem.GetDataset()->SetWeights(ones);
         LBFGSOptimizer<DTable, PoissonLoss<Operon::Scalar>> const optimizerOnes{&dtable, &problem};
         Operon::RandomGenerator rngOnes{0};
         auto summaryOnes = optimizerOnes.Optimize(rngOnes, tree);
+        REQUIRE(summaryOnes.has_value());
 
-        REQUIRE(summaryZeroed.FinalParameters.size() == summaryOnes.FinalParameters.size());
-        for (auto i = 0UL; i < summaryZeroed.FinalParameters.size(); ++i) {
-            CHECK_THAT(summaryZeroed.FinalParameters[i], Catch::Matchers::WithinRel(summaryOnes.FinalParameters[i], 1e-5F));
+        REQUIRE(summaryZeroed->FinalParameters.size() == summaryOnes->FinalParameters.size());
+        for (auto i = 0UL; i < summaryZeroed->FinalParameters.size(); ++i) {
+            CHECK_THAT(summaryZeroed->FinalParameters[i], Catch::Matchers::WithinRel(summaryOnes->FinalParameters[i], 1e-5F));
         }
-        CHECK_THAT(static_cast<double>(summaryZeroed.FinalCost), Catch::Matchers::WithinRel(static_cast<double>(summaryOnes.FinalCost), 1e-5));
+        CHECK_THAT(static_cast<double>(summaryZeroed->FinalCost), Catch::Matchers::WithinRel(static_cast<double>(summaryOnes->FinalCost), 1e-5));
     }
 }
 
@@ -507,7 +517,8 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
     SECTION("lbfgs / gaussian") {
         LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
         auto summary = optimizer.Optimize(rng, tree);
-        for (auto const p : summary.FinalParameters) {
+        REQUIRE(summary.has_value());
+        for (auto const p : summary->FinalParameters) {
             CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, paramTol));
         }
     }
@@ -517,7 +528,8 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
         auto rule = std::make_unique<UpdateRule::Adam<Operon::Scalar>>(dim);
         SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem, *rule};
         auto summary = optimizer.Optimize(rng, tree);
-        for (auto const p : summary.FinalParameters) {
+        REQUIRE(summary.has_value());
+        for (auto const p : summary->FinalParameters) {
             CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, 0.1F));
         }
     }
@@ -535,7 +547,8 @@ TEST_CASE("Weighted parameter optimization with non-zero training range start", 
 
         LBFGSOptimizer<DTable, GaussianLoss<Operon::Scalar>> optimizer{&dtable, &problem};
         auto summary = optimizer.Optimize(rng, tree);
-        for (auto const p : summary.FinalParameters) {
+        REQUIRE(summary.has_value());
+        for (auto const p : summary->FinalParameters) {
             CHECK_THAT(p, Catch::Matchers::WithinAbs(1.0F, paramTol));
         }
     }
@@ -643,10 +656,15 @@ TEST_CASE("SGD update rules", "[optimizer]")
     for (auto const& rule : rules) {
         SGDOptimizer<DTable, GaussianLoss<Operon::Scalar>> const optimizer{&dtable, &problem, *rule};
         auto summary = optimizer.Optimize(rng, tree);
-        CHECK(summary.Iterations > 0);
+        // Not gated on summary.has_value(): some rules (see YamAdam note
+        // below) may not actually improve the cost on this fixture, but
+        // diagnostics are populated either way (FitResult/FitFailure both
+        // carry them) - this test only cares that the run itself is sane.
+        auto const& diag = Diagnostics(summary);
+        CHECK(diag.Iterations > 0);
         // YamAdam applies the raw (summed) gradient as its first step (step size ≈ 1),
         // which overshoots on unnormalized losses with large n. We only require finite output.
-        CHECK(std::isfinite(summary.FinalCost));
+        CHECK(std::isfinite(diag.FinalCost));
     }
 }
 
