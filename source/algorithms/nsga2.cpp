@@ -203,7 +203,16 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                             })
                                          .name("generate offspring");
             auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(individuals); }).name(std::string{SortTaskName});
-            auto reinsert = subflow.emplace([&]() -> void { reinserter->Sort(individuals); }).name("reinsert");
+            // Delegates to the reinserter's actual merge strategy (same call
+            // shape as GP, gp.cpp) instead of just truncating a globally
+            // sorted array via ReinserterBase::Sort. This makes the
+            // --reinserter choice (keep-best vs. replace-worst) a real,
+            // meaningful knob for NSGA2 rather than a silently inert one -
+            // note KeepBestReinserter's merge is a positional pairwise
+            // tournament, not a global top-K selection, so this is not
+            // guaranteed to reproduce the old truncation-based selection
+            // byte-for-byte even at default settings.
+            auto reinsert = subflow.emplace([&]() -> void { (*reinserter)(random, parents, offspring); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
