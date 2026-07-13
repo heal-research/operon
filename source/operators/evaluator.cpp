@@ -47,7 +47,7 @@ namespace {
     }
 
     template<> auto OPERON_EXPORT
-    Evaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
+    Evaluator<ScalarDispatch>::Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
         ++CallCount;
         auto const* problem = GetProblem();
@@ -89,12 +89,6 @@ namespace {
         return typename EvaluatorBase::ReturnType{ fit };
     }
 
-    template<> auto OPERON_EXPORT
-    Evaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType
-    {
-        return Evaluate(rng, ind);
-    }
-
     auto DiversityEvaluator::Prepare(Operon::Span<Operon::Individual const> pop) const -> void {
         divmap_.clear();
         for (auto const& individual : pop) {
@@ -109,12 +103,7 @@ namespace {
     }
 
     auto
-    DiversityEvaluator::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType {
-        return Evaluate(rng, ind);
-    }
-
-    auto
-    DiversityEvaluator::operator()(Operon::RandomGenerator& random, Individual const& ind, Operon::Span<Operon::Scalar>  /*buf*/) const -> typename EvaluatorBase::ReturnType
+    DiversityEvaluator::Evaluate(Operon::RandomGenerator& random, Individual const& ind, Operon::Span<Operon::Scalar>  /*buf*/) const -> typename EvaluatorBase::ReturnType
     {
         (void)ind.Genotype.Hash(hashmode_);
         Operon::Vector<Operon::Hash> lhs(ind.Genotype.Length());
@@ -133,13 +122,7 @@ namespace {
     }
 
     auto
-    AggregateEvaluator::operator()(Operon::RandomGenerator& rng, Individual const& ind) const -> typename EvaluatorBase::ReturnType
-    {
-        return Evaluate(rng, ind);
-    }
-
-    auto
-    AggregateEvaluator::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
+    AggregateEvaluator::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
         using vstat::univariate::accumulate;
         auto f = (*evaluator_)(rng, ind, buf);
@@ -177,19 +160,19 @@ namespace {
     }
 
     template<> auto OPERON_EXPORT
-    BayesianInformationCriterionEvaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+    BayesianInformationCriterionEvaluator<ScalarDispatch>::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
         auto const& tree = ind.Genotype;
         auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
         auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
-        auto mse = Evaluator::operator()(rng, ind, buf).front();
+        auto mse = Evaluator::Evaluate(rng, ind, buf).front();
         auto bic = (n * std::log(mse)) + (p * std::log(n));
         if (!std::isfinite(bic)) { bic = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(bic) };
     }
 
     template<> auto OPERON_EXPORT
-    AkaikeInformationCriterionEvaluator<ScalarDispatch>::operator()(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
-        auto mse = Evaluator::operator()(rng, ind, buf).front();
+    AkaikeInformationCriterionEvaluator<ScalarDispatch>::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType {
+        auto mse = Evaluator::Evaluate(rng, ind, buf).front();
         auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
         auto aik = n/2 * (std::log(Operon::Math::Tau) + std::log(mse) + 1);
         if (!std::isfinite(aik)) { aik = EvaluatorBase::ErrMax; }
