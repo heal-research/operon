@@ -279,7 +279,10 @@ auto main(int argc, char** argv) -> int
         Operon::CoefficientOptimizer cOpt { optimizer.get() };
 
         auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
-        auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp);
+        // Default 0: NSGA2 had no elitism before this option existed, so an
+        // unspecified --elitism preserves that. Opt in explicitly to enable it.
+        auto const eliteCount = result.count("elitism") ? result["elitism"].as<size_t>() : size_t{0};
+        auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp, eliteCount);
 
         Operon::RandomGenerator random(config.Seed);
         if (result["shuffle"].as<bool>()) {

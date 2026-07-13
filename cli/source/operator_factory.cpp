@@ -30,13 +30,13 @@ namespace {
     }
 } // namespace
 
-auto ParseReinserter(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<ReinserterBase>
+auto ParseReinserter(std::string const& str, ComparisonCallback&& comp, size_t eliteCount) -> std::unique_ptr<ReinserterBase>
 {
     std::unique_ptr<ReinserterBase> reinserter;
     if (str == "keep-best") {
-        reinserter = std::make_unique<KeepBestReinserter>(std::move(comp));
+        reinserter = std::make_unique<KeepBestReinserter>(std::move(comp), eliteCount);
     } else if (str == "replace-worst") {
-        reinserter = std::make_unique<ReplaceWorstReinserter>(std::move(comp));
+        reinserter = std::make_unique<ReplaceWorstReinserter>(std::move(comp), eliteCount);
     } else {
         throw std::invalid_argument(GetErrorString("reinserter", str));
     }

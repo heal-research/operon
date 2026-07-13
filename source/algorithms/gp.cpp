@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <algorithm> // for max, min_element
+#include <algorithm> // for max
 #include <chrono> // for steady_clock
 #include <cstddef> // for size_t
 #include <functional> // for std::function
@@ -52,7 +52,6 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
         for (size_t i = 0; i < s; ++i) { rngs.emplace_back(random()); }
     }
 
-    auto idx = 0;
     auto const& evaluator = generator->Evaluator();
 
     // we want to allocate all the memory that will be necessary for evaluation (e.g. for storing model responses)
@@ -112,12 +111,12 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
         }, // init
         stop, // loop condition
         [&, timer](tf::Subflow& subflow) -> void {
-            auto keepElite = subflow.emplace([&]() -> void {
-                                        offspring[0] = *std::ranges::min_element(parents, [&](const auto& lhs, const auto& rhs) -> auto { return lhs[idx] < rhs[idx]; });
-                                    })
-                                 .name("keep elite");
+            // Elitism (if any) is now handled uniformly by ReinserterBase
+            // (reinserter.hpp) - it protects the top EliteCount() parents
+            // before reinsert() runs, so no offspring slot needs to be
+            // reserved for a hand-picked elite here anymore.
             auto prepareGenerator = subflow.emplace([&]() -> void { generator->Prepare(parents); }).name("prepare generator");
-            auto generateOffspring = subflow.for_each_index(size_t { 1 }, offspring.size(), size_t { 1 }, [&](size_t i) -> void {
+            auto generateOffspring = subflow.for_each_index(size_t { 0 }, offspring.size(), size_t { 1 }, [&](size_t i) -> void {
                                                 slots[executor.this_worker_id()].resize(trainSize);
                                                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                                                 while (!stop()) {
@@ -136,7 +135,6 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                          }).name("report progress");
 
             // set-up subflow graph
-            keepElite.precede(prepareGenerator);
             prepareGenerator.precede(generateOffspring);
             generateOffspring.precede(reinsert);
             reinsert.precede(incrementGeneration);
