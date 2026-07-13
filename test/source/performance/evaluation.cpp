@@ -494,7 +494,7 @@ TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
          .run("lm (interpreter)", [&]() {
              for (auto& tree : trees) {
                  auto summary = lmOpt.Optimize(rd, tree);
-                 nb::doNotOptimizeAway(summary.FinalCost);
+                 nb::doNotOptimizeAway(Operon::Diagnostics(summary).FinalCost);
              }
          });
 
@@ -502,7 +502,7 @@ TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
          .run("lm (jit residuals)", [&]() {
              for (auto& tree : trees) {
                  auto summary = jitLmOpt.Optimize(rd, tree);
-                 nb::doNotOptimizeAway(summary.FinalCost);
+                 nb::doNotOptimizeAway(Operon::Diagnostics(summary).FinalCost);
              }
          });
 

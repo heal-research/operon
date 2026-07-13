@@ -238,7 +238,7 @@ TEST_CASE("Optimizer performance", "[performance]")
                 for (auto const& tree : trees) {
                     Operon::LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> const optimizer{&dt, &problem};
                     auto summary = optimizer.Optimize(rng, tree);
-                    sz += summary.FinalParameters.size();
+                    sz += Operon::Diagnostics(summary).FinalParameters.size();
                 }
                 return sz;
             });
