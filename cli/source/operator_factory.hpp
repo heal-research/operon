@@ -33,7 +33,7 @@ namespace Operon { struct Variable; }
 
 namespace Operon {
 
-auto ParseReinserter(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<ReinserterBase>;
+auto ParseReinserter(std::string const& str, ComparisonCallback&& comp, size_t eliteCount = 0) -> std::unique_ptr<ReinserterBase>;
 
 auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<SelectorBase>;
 
