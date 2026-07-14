@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "operon/core/contracts.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
@@ -29,6 +30,8 @@ namespace Operon {
 inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range range) -> std::vector<std::pair<Operon::Hash, double>>
 {
     using Interp = Operon::Interpreter<>;
+
+    EXPECT(range.Size() > 0);
 
     std::vector<Operon::Hash> vars;
     for (auto const& n : tree.Nodes()) {

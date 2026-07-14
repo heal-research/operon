@@ -47,6 +47,42 @@ TEST_CASE("PermutationImportance - relevant variable outranks unused one", "[ana
     CHECK(importance.front().Mean > 0.5); // shuffling the one variable the model uses should tank R2
 }
 
+TEST_CASE("PermutationImportance - a non-zero-start range aligns predictions against the matching target rows", "[analyzers][permutation_importance]")
+{
+    // Same 200 real rows as MakeLinearDataset, with two junk rows prepended
+    // that only the [2, Rows()) range should ever see - if `actual` isn't
+    // sliced to `range` the same way the (perturbed) predictions are, this
+    // scores against the wrong rows and the two computations below diverge.
+    auto ds = MakeLinearDataset();
+    auto const x0 = ds.GetVariable("x0").value();
+    auto const target = ds.GetVariable("y").value().Hash;
+
+    std::vector<Operon::Scalar> x0p{ 100, 100 };
+    std::vector<Operon::Scalar> x1p{ 100, 100 };
+    std::vector<Operon::Scalar> yp{ 100, 100 };
+    auto appendCol = [](std::vector<Operon::Scalar>& dst, Operon::Span<Operon::Scalar const> src) -> void {
+        dst.insert(dst.end(), src.begin(), src.end());
+    };
+    appendCol(x0p, ds.GetValues(x0.Hash));
+    appendCol(x1p, ds.GetValues(ds.GetVariable("x1").value().Hash));
+    appendCol(yp, ds.GetValues(target));
+    Operon::Dataset const prefixed({ "x0", "x1", "y" }, { x0p, x1p, yp });
+
+    Node nX0(NodeType::Variable); nX0.HashValue = x0.Hash;
+    Tree const tree = Tree({ nX0 }).UpdateNodes(); // y_hat = x0
+
+    Operon::RandomGenerator rngFull(1234);
+    auto const importanceFull = Operon::PermutationImportance(tree, ds, target, Operon::Range(0, ds.Rows()), rngFull, /*nRepeats=*/10);
+
+    Operon::RandomGenerator rngPrefixed(1234);
+    auto const importancePrefixed = Operon::PermutationImportance(tree, prefixed, target, Operon::Range(2, prefixed.Rows()), rngPrefixed, /*nRepeats=*/10);
+
+    REQUIRE(importanceFull.size() == 1);
+    REQUIRE(importancePrefixed.size() == 1);
+    CHECK(std::abs(importanceFull.front().Mean - importancePrefixed.front().Mean) < 1e-6);
+    CHECK(std::abs(importanceFull.front().Std - importancePrefixed.front().Std) < 1e-6);
+}
+
 TEST_CASE("GradientImportance - relevant variable outranks unused one", "[analyzers][gradient_importance]")
 {
     auto ds = MakeLinearDataset();
