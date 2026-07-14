@@ -52,6 +52,36 @@ TEST_CASE("NodeImpact - irrelevant subtree has ~zero impact, relevant subtree do
     CHECK(std::abs(impact[rootIdx] - impact[addX0X1Idx]) < 1e-6);
 }
 
+TEST_CASE("NodeImpact - a non-zero-start range aligns predictions against the matching target rows", "[analyzers][node_impact]")
+{
+    // Same (x0, x1, y) relationship as the linear dataset above, but with two
+    // junk rows prepended that only the [2, Rows()) range should ever see -
+    // if `actual` isn't sliced to `range` the same way `predicted` is, this
+    // scores against the wrong rows and the two computations below diverge.
+    std::vector<Operon::Scalar> x0{ 100, 100, 1, 2, 3, 4, 5, 6, 7, 8 };
+    std::vector<Operon::Scalar> x1{ 100, 100, 2, 3, 4, 5, 6, 7, 8, 9 };
+    std::vector<Operon::Scalar> y(x0.size());
+    for (size_t i = 0; i < x0.size(); ++i) { y[i] = x0[i] + x1[i]; }
+    Operon::Dataset const prefixed({ "x0", "x1", "y" }, { x0, x1, y });
+
+    auto ds = MakeLinearDataset(); // the same 8 real rows, with no junk prefix
+    auto const x0Var = ds.GetVariable("x0").value();
+    auto const x1Var = ds.GetVariable("x1").value();
+    auto const target = ds.GetVariable("y").value().Hash;
+
+    Node nX0(NodeType::Variable); nX0.HashValue = x0Var.Hash;
+    Node nX1(NodeType::Variable); nX1.HashValue = x1Var.Hash;
+    Tree const tree = Tree({ nX0, nX1, Node(NodeType::Add) }).UpdateNodes();
+
+    auto const impactFull = Operon::NodeImpact(tree, ds, target, Operon::Range(0, ds.Rows()));
+    auto const impactPrefixed = Operon::NodeImpact(tree, prefixed, target, Operon::Range(2, prefixed.Rows()));
+
+    REQUIRE(impactFull.size() == impactPrefixed.size());
+    for (size_t i = 0; i < impactFull.size(); ++i) {
+        CHECK(std::abs(impactFull[i] - impactPrefixed[i]) < 1e-6);
+    }
+}
+
 TEST_CASE("NodeImpact - trees with Ref nodes are unsupported", "[analyzers][node_impact]")
 {
     auto ds = MakeLinearDataset();

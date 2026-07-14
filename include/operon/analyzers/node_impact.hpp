@@ -8,6 +8,7 @@
 #include <numeric>
 #include <vector>
 
+#include "operon/core/contracts.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/range.hpp"
@@ -37,11 +38,17 @@ inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset,
 {
     using Interp = Operon::Interpreter<>;
 
+    EXPECT(range.Size() > 0);
+
     if (std::ranges::any_of(tree.Nodes(), [](auto const& n) -> bool { return n.IsRef(); })) {
         return {};
     }
 
-    auto const actual = dataset.GetValues(target);
+    // Sliced to `range`, matching what Evaluate() below actually returns -
+    // dataset.GetValues(target) alone is the *whole* column, so comparing it
+    // directly against a `range`-sized prediction silently misaligns rows
+    // whenever range.Start() != 0.
+    auto const actual = dataset.GetValues(target).subspan(range.Start(), range.Size());
     auto const predicted = Interp::Evaluate(tree, dataset, range);
     Operon::Span<Operon::Scalar const> const predictedSpan{ predicted.data(), predicted.size() };
     auto const baseline = Operon::R2Score(predictedSpan, actual);
@@ -52,6 +59,7 @@ inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset,
     for (size_t i = 0; i < nodes.size(); ++i) {
         auto const subtree = tree.Splice(i);
         auto const subtreeValues = Interp::Evaluate(subtree, dataset, range);
+        EXPECT(!subtreeValues.empty()); // guaranteed by the range.Size() > 0 check above
         auto const mean = std::reduce(subtreeValues.begin(), subtreeValues.end(), Operon::Scalar{0}) / static_cast<Operon::Scalar>(subtreeValues.size());
 
         auto replacedNodes = nodes;
