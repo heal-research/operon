@@ -79,6 +79,17 @@ inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset,
     return impact;
 }
 
+// Whole-dataset convenience overload. This is post-hoc analysis on an
+// already-fixed tree - unlike training, there's no leakage risk in reading
+// test rows here, and using every row available gives a less noisy result
+// than restricting to a training-only range. Pass an explicit range only if
+// there's a specific reason to isolate a subset (e.g. comparing train vs.
+// test impact).
+inline auto NodeImpact(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target) -> std::vector<double>
+{
+    return NodeImpact(tree, dataset, target, Operon::Range(0, dataset.Rows<std::size_t>()));
+}
+
 } // namespace Operon
 
 #endif

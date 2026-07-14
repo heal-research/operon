@@ -50,6 +50,17 @@ inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& 
     return result;
 }
 
+// Whole-dataset convenience overload. This is post-hoc analysis on an
+// already-fixed tree - unlike training, there's no leakage risk in reading
+// test rows here, and using every row available gives a less noisy result
+// than restricting to a training-only range. Pass an explicit range only if
+// there's a specific reason to isolate a subset (e.g. comparing train vs.
+// test importance).
+inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& dataset) -> std::vector<std::pair<Operon::Hash, double>>
+{
+    return GradientImportance(tree, dataset, Operon::Range(0, dataset.Rows<std::size_t>()));
+}
+
 } // namespace Operon
 
 #endif

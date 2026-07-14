@@ -47,6 +47,26 @@ TEST_CASE("PermutationImportance - relevant variable outranks unused one", "[ana
     CHECK(importance.front().Mean > 0.5); // shuffling the one variable the model uses should tank R2
 }
 
+TEST_CASE("PermutationImportance - range-less overload matches an explicit whole-dataset range", "[analyzers][permutation_importance]")
+{
+    auto ds = MakeLinearDataset();
+    auto const x0 = ds.GetVariable("x0").value();
+    auto const target = ds.GetVariable("y").value().Hash;
+
+    Node nX0(NodeType::Variable); nX0.HashValue = x0.Hash;
+    Tree const tree = Tree({ nX0 }).UpdateNodes();
+
+    Operon::RandomGenerator rngExplicit(1234);
+    auto const importanceExplicit = Operon::PermutationImportance(tree, ds, target, Operon::Range(0, ds.Rows()), rngExplicit, /*nRepeats=*/10);
+
+    Operon::RandomGenerator rngDefault(1234);
+    auto const importanceDefault = Operon::PermutationImportance(tree, ds, target, rngDefault, /*nRepeats=*/10);
+
+    REQUIRE(importanceExplicit.size() == importanceDefault.size());
+    CHECK(importanceExplicit.front().Mean == importanceDefault.front().Mean);
+    CHECK(importanceExplicit.front().Std == importanceDefault.front().Std);
+}
+
 TEST_CASE("PermutationImportance - a non-zero-start range aligns predictions against the matching target rows", "[analyzers][permutation_importance]")
 {
     // Same 200 real rows as MakeLinearDataset, with two junk rows prepended
@@ -140,6 +160,21 @@ TEST_CASE("GradientImportance - relevant variable outranks unused one", "[analyz
 
     CHECK(x0It->second > 0.9);  // d(x0)/d(x0) = 1 exactly
     CHECK(x1It->second < 1e-6); // d(0*x1)/d(x1) = 0 exactly
+}
+
+TEST_CASE("GradientImportance - range-less overload matches an explicit whole-dataset range", "[analyzers][gradient_importance]")
+{
+    auto ds = MakeLinearDataset();
+    auto const x0 = ds.GetVariable("x0").value();
+
+    Node nX0(NodeType::Variable); nX0.HashValue = x0.Hash;
+    Tree const tree = Tree({ nX0 }).UpdateNodes();
+
+    auto const importanceExplicit = Operon::GradientImportance(tree, ds, Operon::Range(0, ds.Rows()));
+    auto const importanceDefault = Operon::GradientImportance(tree, ds);
+
+    REQUIRE(importanceExplicit.size() == importanceDefault.size());
+    CHECK(importanceExplicit.front().second == importanceDefault.front().second);
 }
 
 } // namespace Operon::Test
