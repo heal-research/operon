@@ -82,6 +82,31 @@ TEST_CASE("NodeImpact - a non-zero-start range aligns predictions against the ma
     }
 }
 
+TEST_CASE("NodeImpact - duplicate variable occurrences are scored independently", "[analyzers][node_impact]")
+{
+    // y = x0 * x0 - x0 appears twice as two separate leaf nodes (not shared
+    // via Ref), so each occurrence is its own postfix index and should get
+    // its own (here: equal, by symmetry) impact rather than one shared value.
+    std::vector<Operon::Scalar> x0{ 1, 2, 3, 4, 5, 6, 7, 8 };
+    std::vector<Operon::Scalar> y(x0.size());
+    for (size_t i = 0; i < x0.size(); ++i) { y[i] = x0[i] * x0[i]; }
+    Operon::Dataset ds({ "x0", "y" }, { x0, y });
+    auto const x0Var = ds.GetVariable("x0").value();
+    auto const target = ds.GetVariable("y").value().Hash;
+
+    Node nX0a(NodeType::Variable); nX0a.HashValue = x0Var.Hash;
+    Node nX0b(NodeType::Variable); nX0b.HashValue = x0Var.Hash;
+    Tree const tree = Tree({ nX0a, nX0b, Node(NodeType::Mul) }).UpdateNodes();
+
+    auto const range = Operon::Range(0, ds.Rows());
+    auto const impact = Operon::NodeImpact(tree, ds, target, range);
+
+    REQUIRE(impact.size() == 3);
+    CHECK(impact[0] > 0.2);  // replacing either leaf occurrence with mean(x0) should hurt R2 ...
+    CHECK(impact[1] > 0.2);
+    CHECK(std::abs(impact[0] - impact[1]) < 1e-6); // ... and by symmetry, identically
+}
+
 TEST_CASE("NodeImpact - trees with Ref nodes are unsupported", "[analyzers][node_impact]")
 {
     auto ds = MakeLinearDataset();
