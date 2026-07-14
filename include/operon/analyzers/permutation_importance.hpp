@@ -10,9 +10,9 @@
 #include <numeric>
 #include <vector>
 
+#include "operon/analyzers/detail/variables_used_in.hpp"
 #include "operon/core/contracts.hpp"
 #include "operon/core/dataset.hpp"
-#include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/error_metrics/r2_score.hpp"
@@ -25,19 +25,6 @@ struct VariableImportance {
     double Mean; // average, over repeated shuffles, of R2(tree) - R2(tree with this variable's column shuffled)
     double Std;  // population std of the same per-repeat differences
 };
-
-namespace detail {
-    inline auto VariablesUsedIn(Operon::Tree const& tree) -> std::vector<Operon::Hash>
-    {
-        std::vector<Operon::Hash> vars;
-        for (auto const& n : tree.Nodes()) {
-            if (n.IsVariable() && std::ranges::find(vars, n.HashValue) == vars.end()) {
-                vars.push_back(n.HashValue);
-            }
-        }
-        return vars;
-    }
-} // namespace detail
 
 // Permutation importance (cf. HeuristicLab's RegressionSolutionVariableImpactsCalculator
 // "Shuffle" method, and sklearn's permutation_importance, whose default nRepeats=5 this
@@ -84,6 +71,12 @@ inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset cons
         std::vector<double> diffs;
         diffs.reserve(nRepeats);
 
+        // std::shuffle produces a uniform random permutation of whatever the
+        // container currently holds, regardless of its starting order, so
+        // reshuffling `shuffled` in place across repeats (rather than
+        // resetting to `original` each time) is still a uniform-random
+        // permutation of the same underlying values on every repeat - just
+        // one fewer O(|range|) copy per repeat.
         auto shuffled = original;
         for (size_t rep = 0; rep < nRepeats; ++rep) {
             std::shuffle(shuffled.begin(), shuffled.end(), rng);
@@ -94,7 +87,6 @@ inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset cons
             auto const perturbedR2 = Operon::R2Score(perturbedSpan, actual);
 
             diffs.push_back(baseline - perturbedR2);
-            shuffled = original; // reset before the next repeat re-shuffles from scratch
         }
 
         workingCopy.SetValues(variable, range, { original.data(), original.size() });

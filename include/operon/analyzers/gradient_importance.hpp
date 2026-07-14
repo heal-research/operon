@@ -4,16 +4,15 @@
 #ifndef OPERON_ANALYZERS_GRADIENT_IMPORTANCE_HPP
 #define OPERON_ANALYZERS_GRADIENT_IMPORTANCE_HPP
 
-#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <numeric>
 #include <utility>
 #include <vector>
 
+#include "operon/analyzers/detail/variables_used_in.hpp"
 #include "operon/core/contracts.hpp"
 #include "operon/core/dataset.hpp"
-#include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/interpreter/interpreter.hpp"
@@ -33,12 +32,7 @@ inline auto GradientImportance(Operon::Tree const& tree, Operon::Dataset const& 
 
     EXPECT(range.Size() > 0);
 
-    std::vector<Operon::Hash> vars;
-    for (auto const& n : tree.Nodes()) {
-        if (n.IsVariable() && std::ranges::find(vars, n.HashValue) == vars.end()) {
-            vars.push_back(n.HashValue);
-        }
-    }
+    auto const vars = detail::VariablesUsedIn(tree);
 
     Operon::ScalarDispatch dtable;
     Interp const interpreter{ &dtable, &dataset, &tree };

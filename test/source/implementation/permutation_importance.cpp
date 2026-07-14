@@ -83,6 +83,38 @@ TEST_CASE("PermutationImportance - a non-zero-start range aligns predictions aga
     CHECK(std::abs(importanceFull.front().Std - importancePrefixed.front().Std) < 1e-6);
 }
 
+TEST_CASE("PermutationImportance - duplicate variable occurrences collapse to one entry", "[analyzers][permutation_importance]")
+{
+    // y = x0 * x0 - x0 appears twice in the tree (two separate leaf nodes,
+    // not shared via Ref), but importance is inherently per-*variable*, not
+    // per-occurrence: shuffling the one underlying dataset column perturbs
+    // both references simultaneously, so there should be exactly one entry,
+    // not two.
+    std::vector<Operon::Scalar> x0(200);
+    std::vector<Operon::Scalar> y(200);
+    Operon::RandomGenerator seedRng(7);
+    std::uniform_real_distribution<Operon::Scalar> dist(-1.F, 1.F);
+    for (size_t i = 0; i < x0.size(); ++i) {
+        x0[i] = dist(seedRng);
+        y[i] = x0[i] * x0[i];
+    }
+    Operon::Dataset ds({ "x0", "y" }, { x0, y });
+    auto const x0Var = ds.GetVariable("x0").value();
+    auto const target = ds.GetVariable("y").value().Hash;
+
+    Node nX0a(NodeType::Variable); nX0a.HashValue = x0Var.Hash;
+    Node nX0b(NodeType::Variable); nX0b.HashValue = x0Var.Hash;
+    Tree const tree = Tree({ nX0a, nX0b, Node(NodeType::Mul) }).UpdateNodes();
+
+    auto const range = Operon::Range(0, ds.Rows());
+    Operon::RandomGenerator rng(1234);
+    auto const importance = Operon::PermutationImportance(tree, ds, target, range, rng, /*nRepeats=*/10);
+
+    REQUIRE(importance.size() == 1);
+    CHECK(importance.front().Variable == x0Var.Hash);
+    CHECK(importance.front().Mean > 0.5);
+}
+
 TEST_CASE("GradientImportance - relevant variable outranks unused one", "[analyzers][gradient_importance]")
 {
     auto ds = MakeLinearDataset();
