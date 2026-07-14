@@ -101,6 +101,17 @@ inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset cons
     return result;
 }
 
+// Whole-dataset convenience overload. This is post-hoc analysis on an
+// already-fixed tree - unlike training, there's no leakage risk in reading
+// test rows here, and using every row available gives less noisy Mean/Std
+// estimates than restricting to a training-only range. Pass an explicit
+// range only if there's a specific reason to isolate a subset (e.g.
+// comparing train vs. test importance).
+inline auto PermutationImportance(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Hash target, Operon::RandomGenerator& rng, size_t nRepeats = 5) -> std::vector<VariableImportance>
+{
+    return PermutationImportance(tree, dataset, target, Operon::Range(0, dataset.Rows<std::size_t>()), rng, nRepeats);
+}
+
 } // namespace Operon
 
 #endif

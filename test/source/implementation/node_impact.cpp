@@ -52,6 +52,26 @@ TEST_CASE("NodeImpact - irrelevant subtree has ~zero impact, relevant subtree do
     CHECK(std::abs(impact[rootIdx] - impact[addX0X1Idx]) < 1e-6);
 }
 
+TEST_CASE("NodeImpact - range-less overload matches an explicit whole-dataset range", "[analyzers][node_impact]")
+{
+    auto ds = MakeLinearDataset();
+    auto const x0 = ds.GetVariable("x0").value();
+    auto const x1 = ds.GetVariable("x1").value();
+    auto const target = ds.GetVariable("y").value().Hash;
+
+    Node nX0(NodeType::Variable); nX0.HashValue = x0.Hash;
+    Node nX1(NodeType::Variable); nX1.HashValue = x1.Hash;
+    Tree const tree = Tree({ nX0, nX1, Node(NodeType::Add) }).UpdateNodes();
+
+    auto const impactExplicit = Operon::NodeImpact(tree, ds, target, Operon::Range(0, ds.Rows()));
+    auto const impactDefault = Operon::NodeImpact(tree, ds, target);
+
+    REQUIRE(impactExplicit.size() == impactDefault.size());
+    for (size_t i = 0; i < impactExplicit.size(); ++i) {
+        CHECK(impactExplicit[i] == impactDefault[i]);
+    }
+}
+
 TEST_CASE("NodeImpact - a non-zero-start range aligns predictions against the matching target rows", "[analyzers][node_impact]")
 {
     // Same (x0, x1, y) relationship as the linear dataset above, but with two
