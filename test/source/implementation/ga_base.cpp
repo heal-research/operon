@@ -248,6 +248,71 @@ TEST_CASE("NSGA2: ReportCallback returning false lets the run reach the configur
     CHECK(calls == 2); // one report from init, one from the single generation's body
 }
 
+TEST_CASE("NSGA2: keep-best and replace-worst reinserters produce different results", "[algorithms][nsga2]")
+{
+    // Regression test for the reinserter-delegation fix: before it, NSGA2
+    // called only ReinserterBase::Sort (ignoring the concrete reinserter's
+    // operator()), so --reinserter keep-best vs replace-worst was silently
+    // inert. This runs identical NSGA2 setups (same seed, same everything
+    // except the reinserter) and asserts the final populations differ.
+    Operon::Dataset ds{ MakeDataset() };
+    Operon::Problem problem{ gsl::not_null<Operon::Dataset*>(&ds) };
+    problem.SetTrainingRange({0, 10});
+    problem.SetTestRange({0, 10});
+    problem.SetTarget("Y");
+    Operon::PrimitiveSet pset{ MakePset() };
+    std::vector<Operon::Hash> vars{ ds.GetVariable("X1")->Hash };
+
+    DTable dtable;
+    Operon::Evaluator<DTable> rmseEval{ &problem, &dtable };
+    Operon::LengthEvaluator lenEval{ &problem, /*maxLength=*/20 };
+    Operon::MultiEvaluator multiEval{ &problem };
+    multiEval.Add(&rmseEval);
+    multiEval.Add(&lenEval);
+
+    Operon::SubtreeCrossover crossover{ 0.9, /*maxDepth=*/6, /*maxLength=*/20 };
+    Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> onePoint;
+    onePoint.ParameterizeDistribution(Operon::Scalar{0}, Operon::Scalar{1});
+    Operon::MultiMutation mutator;
+    mutator.Add(&onePoint, 1.0);
+
+    Operon::CrowdedComparison comp;
+    Operon::TournamentSelector femSel{ comp };
+    Operon::TournamentSelector maleSel{ comp };
+    Operon::BasicOffspringGenerator generator{ &multiEval, &crossover, &mutator, &femSel, &maleSel };
+
+    Operon::BalancedTreeCreator creator{ &pset, vars, 0.0, 10 };
+    Operon::UniformTreeInitializer treeInit{ &creator };
+    treeInit.ParameterizeDistribution(std::size_t{1}, std::size_t{10});
+    Operon::UniformCoefficientInitializer coeffInit;
+    Operon::DeductiveSorter sorter;
+
+    auto config = MakeConfig(/*popSize=*/20, /*poolSize=*/20);
+    config.Generations = 3;
+
+    Operon::KeepBestReinserter keepBest{ comp };
+    Operon::NSGA2 nsgaKeepBest{ config, &problem, &treeInit, &coeffInit, &generator, &keepBest, &sorter };
+    Operon::RandomGenerator rngKeepBest{42};
+    nsgaKeepBest.Run(rngKeepBest, nullptr, /*threads=*/1);
+
+    Operon::ReplaceWorstReinserter replaceWorst{ comp };
+    Operon::NSGA2 nsgaReplaceWorst{ config, &problem, &treeInit, &coeffInit, &generator, &replaceWorst, &sorter };
+    Operon::RandomGenerator rngReplaceWorst{42};
+    nsgaReplaceWorst.Run(rngReplaceWorst, nullptr, /*threads=*/1);
+
+    auto keepBestFitness = std::vector<Operon::Scalar>{};
+    for (auto const& ind : nsgaKeepBest.Individuals()) {
+        keepBestFitness.insert(keepBestFitness.end(), ind.Fitness.begin(), ind.Fitness.end());
+    }
+    auto replaceWorstFitness = std::vector<Operon::Scalar>{};
+    for (auto const& ind : nsgaReplaceWorst.Individuals()) {
+        replaceWorstFitness.insert(replaceWorstFitness.end(), ind.Fitness.begin(), ind.Fitness.end());
+    }
+
+    REQUIRE(keepBestFitness.size() == replaceWorstFitness.size());
+    CHECK(keepBestFitness != replaceWorstFitness);
+}
+
 TEST_CASE("Generation/Elapsed/IsFitted return by value for const objects, by reference for mutable, regardless of value category", "[algorithms]")
 {
     // The pre-deducing-this overloads were never ref-qualified, so the const
