@@ -388,6 +388,23 @@ void Dataset::Standardize(size_t i, Range range)
     std::transform(col, col + Rows(), col, [mu, stddev](auto v) -> Scalar { return (v - mu) / stddev; });
 }
 
+void Dataset::SetValues(Operon::Hash hash, Range range, Span<Scalar const> values)
+{
+    if (IsView()) {
+        throw std::runtime_error("Cannot mutate a non-owning dataset.\n");
+    }
+    EXPECT(values.size() == range.Size());
+    EXPECT(range.Start() + range.Size() <= static_cast<size_t>(Rows()));
+    auto it = variables_.find(hash);
+    if (it == variables_.end()) {
+        fmt::print(stderr, "SetValues: cannot find variable with hash value {}", hash);
+        std::abort();
+    }
+    auto const stride = static_cast<ptrdiff_t>(view_.extent(0)); // paddedRows
+    auto* col = storage_.container().data() + (static_cast<ptrdiff_t>(it->second.Index) * stride); // NOLINT(bugprone-implicit-widening-of-multiplication-result)
+    std::copy(values.begin(), values.end(), col + range.Start());
+}
+
 void Dataset::PermuteRows(std::vector<int> const& perm)
 {
     if (IsView()) {

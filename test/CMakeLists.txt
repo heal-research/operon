@@ -41,7 +41,9 @@ add_executable(operon_test
     source/implementation/infix_parser.cpp
     source/implementation/initialization.cpp
     source/implementation/mutation.cpp
+    source/implementation/node_impact.cpp
     source/implementation/nondominatedsort.cpp
+    source/implementation/permutation_importance.cpp
     source/implementation/evaluator.cpp
     source/implementation/optimizer.cpp
     source/implementation/random.cpp

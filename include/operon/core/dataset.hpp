@@ -120,6 +120,14 @@ public:
     void Normalize(size_t i, Range range);
     void Standardize(size_t i, Range range);
     void PermuteRows(std::vector<int> const& perm);
+
+    // Overwrites the [range.Start(), range.Start() + range.Size()) slice of
+    // one column in place - e.g. for permutation-importance-style analyses
+    // that need to swap a column's values out, evaluate, then swap the
+    // originals back in without cloning the rest of the dataset (see
+    // analyzers/permutation_importance.hpp). Rows outside `range` and every
+    // other column are untouched.
+    void SetValues(Operon::Hash hash, Range range, Span<Scalar const> values);
 };
 
 } // namespace Operon
