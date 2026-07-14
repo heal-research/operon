@@ -11,6 +11,12 @@
 
 namespace Operon {
 
+// Contract relied on by NSGA2::Sort (nsga2.cpp): every implementation reads
+// only Individual::Fitness, never Genotype/Rank/Distance. NSGA2 exploits
+// this to sort a permutation of indices instead of the population's actual
+// storage, feeding this interface lightweight fitness-only stand-ins for
+// the unique individuals rather than deep-copying genotype trees. A future
+// sorter that reads anything beyond Fitness would silently break that.
 class NondominatedSorterBase {
 public:
     using Result = Operon::Vector<Operon::Vector<size_t>>;

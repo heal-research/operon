@@ -64,12 +64,13 @@ public:
     // replace the worst individuals in pop with the best individuals from pool
     void operator()(Operon::RandomGenerator& /*random*/, Operon::Span<Individual> pop, Operon::Span<Individual> pool) const override
     {
-        // typically the pool and the population are the same size
-        if (pop.size() > pool.size()) {
-            Sort(pop);
-        } else if (pop.size() < pool.size()) {
-            Sort(pool);
-        }
+        // Both spans must be sorted by the comparator regardless of their
+        // relative sizes - when pop.size() == pool.size() (the common case),
+        // skipping this would make offset cover the *entire* span and this
+        // become an unconditional full swap, never consulting the
+        // comparator at all.
+        Sort(pop);
+        Sort(pool);
         auto offset = static_cast<std::ptrdiff_t>(std::min(pop.size(), pool.size()));
         std::swap_ranges(pool.begin(), pool.begin() + offset, pop.end() - offset);
     }

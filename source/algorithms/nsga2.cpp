@@ -63,29 +63,56 @@ auto NSGA2::Sort(Operon::Span<Individual> pop) -> void
     auto config = GetConfig();
     auto eps = static_cast<Operon::Scalar>(config.Epsilon);
     auto eq = [eps](auto const& lhs, auto const& rhs) -> auto { return Operon::Equal {}(lhs.Fitness, rhs.Fitness, eps); };
-    // sort the population lexicographically
-    std::stable_sort(pop.begin(), pop.end(), [](auto const& a, auto const& b) -> auto { return std::ranges::lexicographical_compare(a.Fitness, b.Fitness); });
+
+    // Sort an index permutation instead of physically reordering `pop`.
+    // `pop` here is the caller's combined parents+offspring storage, and
+    // Run() hands ReinserterBase::operator() fixed Parents()/Offspring()
+    // subspans over that same storage after this call returns - if we
+    // physically reordered pop, those subspans would silently become
+    // arbitrary halves of a fitness-sorted array rather than "the actual
+    // previous parents" / "the actual freshly generated offspring", which
+    // would undermine reinsertion strategies that rely on that distinction
+    // (e.g. ReplaceWorstReinserter). Rank/Distance below are still written
+    // directly into pop[order[i]], so they land on the correct individual
+    // regardless of pop's storage order.
+    Operon::Vector<size_t> order(pop.size());
+    std::iota(order.begin(), order.end(), size_t{0});
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) -> auto { return std::ranges::lexicographical_compare(pop[a].Fitness, pop[b].Fitness); });
     // mark the duplicates for stable_partition
-    for (auto i = pop.begin(); i < pop.end();) {
-        i->Rank = 0;
+    for (auto i = order.begin(); i < order.end();) {
+        pop[*i].Rank = 0;
         auto j = i + 1;
-        for (; j < pop.end() && eq(*i, *j); ++j) {
-            j->Rank = 1;
+        for (; j < order.end() && eq(pop[*i], pop[*j]); ++j) {
+            pop[*j].Rank = 1;
         }
         i = j;
     }
-    auto r = std::stable_partition(pop.begin(), pop.end(), [](auto const& ind) -> auto { return !ind.Rank; });
-    Operon::Span<Operon::Individual const> const uniq(pop.begin(), r);
+    auto r = std::stable_partition(order.begin(), order.end(), [&](size_t i) -> auto { return !pop[i].Rank; });
+    // The sorter needs Span<Individual const>, but only ever reads .Fitness
+    // (never .Genotype/.Rank/.Distance) - build lightweight fitness-only
+    // stand-ins instead of deep-copying every unique individual's tree.
+    Operon::Vector<Individual> uniq;
+    uniq.reserve(static_cast<size_t>(std::distance(order.begin(), r)));
+    for (auto it = order.begin(); it < r; ++it) {
+        Individual ind; // default ctor only fills a 1-element placeholder Fitness, unlike Individual(nObj)
+        ind.Fitness = pop[*it].Fitness;
+        uniq.push_back(std::move(ind));
+    }
     // do the sorting
-    fronts_ = (*sorter_)(uniq, eps);
+    fronts_ = (*sorter_)(Operon::Span<Operon::Individual const>(uniq.data(), uniq.size()), eps);
+    // translate front indices (into uniq) back to true indices into pop
+    for (auto& f : fronts_) {
+        for (auto& idx : f) { idx = order[idx]; }
+    }
     // sort the fronts for consistency between sorting algos
     for (auto& f : fronts_) {
         std::stable_sort(f.begin(), f.end());
     }
-    // banish the duplicates into the last front
-    if (r < pop.end()) {
-        Operon::Vector<size_t> last(pop.size() - uniq.size());
-        std::iota(last.begin(), last.end(), uniq.size());
+    // banish the duplicates into the last front (already true pop indices)
+    if (r < order.end()) {
+        Operon::Vector<size_t> last(static_cast<size_t>(std::distance(r, order.end())));
+        std::copy(r, order.end(), last.begin());
+        std::stable_sort(last.begin(), last.end());
         fronts_.push_back(last);
     }
     // calculate crowding distance
@@ -203,7 +230,16 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                             })
                                          .name("generate offspring");
             auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(individuals); }).name(std::string{SortTaskName});
-            auto reinsert = subflow.emplace([&]() -> void { reinserter->Sort(individuals); }).name("reinsert");
+            // Delegates to the reinserter's actual merge strategy (same call
+            // shape as GP, gp.cpp) instead of just truncating a globally
+            // sorted array via ReinserterBase::Sort. This makes the
+            // --reinserter choice (keep-best vs. replace-worst) a real,
+            // meaningful knob for NSGA2 rather than a silently inert one -
+            // note KeepBestReinserter's merge is a positional pairwise
+            // tournament, not a global top-K selection, so this is not
+            // guaranteed to reproduce the old truncation-based selection
+            // byte-for-byte even at default settings.
+            auto reinsert = subflow.emplace([&]() -> void { (*reinserter)(random, parents, offspring); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
