@@ -291,7 +291,7 @@ auto Tree::Simplify() -> Tree& {
                 if (handled) {
                     foldToConst(i, val); // n.Value == 1.0 for all function nodes
                     changed = true;
-                    continue;
+                    break; // see the `if (changed) { break; }` below - same reasoning
                 }
             }
 
@@ -421,6 +421,18 @@ auto Tree::Simplify() -> Tree& {
             }
             default: break;
             }
+
+            // A fold/rewrite at index i can leave any node's Length stale
+            // relative to the physical array (erase_if/UpdateNodes haven't
+            // run yet this pass) - Indices()/Children() for any later j
+            // read Length to step between siblings (see
+            // Subtree::SubtreeIterator::operator++), so continuing this
+            // scan past a just-mutated node risks walking off into
+            // already-disabled leftover nodes instead of the true next
+            // sibling. Bail out to resync (erase_if + UpdateNodes) before
+            // any later index is examined; the outer while(changed) picks
+            // the scan back up from a consistent array.
+            if (changed) { break; }
         }
 
         if (changed) {
