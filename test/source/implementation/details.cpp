@@ -289,6 +289,27 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[1].Type == NT::Abs);
         CHECK(tree[0].IsVariable());
     }
+
+    SECTION("regression: a same-pass fold must not corrupt an outer node's sibling lookup") {
+        // x + (2 + 3): the inner Add(2,3) folds to Const(5) via foldToConst,
+        // which overwrites that node in place as a bare Constant leaf
+        // (Length 0) *within the same linear pass* that later visits the
+        // outer Add. The outer Add's own child lookup (Indices(), see
+        // Subtree::SubtreeIterator::operator++ in subtree.hpp) steps back
+        // between siblings using Length - if it reads the inner Add's
+        // now-zeroed Length instead of its original span, it lands on a
+        // leftover disabled node instead of `x`, and can spuriously see both
+        // "children" as constant, collapsing the whole expression (losing
+        // the Variable dependency entirely) instead of correctly leaving a
+        // Var+Const(5).
+        Operon::Vector<Node> ns{ Var(), Const(2), Const(3), Node(NT::Add), Node(NT::Add) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 3);
+        CHECK(tree[0].IsVariable());
+        REQUIRE(tree[1].IsConstant());
+        CHECK(tree[1].Value == Catch::Approx(5.0));
+        CHECK(tree[2].Type == NT::Add);
+    }
 }
 
 } // namespace Operon::Test

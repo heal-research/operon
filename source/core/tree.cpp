@@ -291,7 +291,7 @@ auto Tree::Simplify() -> Tree& {
                 if (handled) {
                     foldToConst(i, val); // n.Value == 1.0 for all function nodes
                     changed = true;
-                    continue;
+                    break; // see the `if (changed) { break; }` below - same reasoning
                 }
             }
 
@@ -421,6 +421,23 @@ auto Tree::Simplify() -> Tree& {
             }
             default: break;
             }
+
+            // foldToConst above overwrites node i in place as a Length-0
+            // Constant leaf, while erase_if/UpdateNodes haven't run yet this
+            // pass - Indices()/Children() for any later j read Length to
+            // step between siblings (see Subtree::SubtreeIterator::
+            // operator++), so continuing this scan past a just-folded node
+            // risks walking off into already-disabled leftover nodes instead
+            // of the true next sibling. The other rewrites in this switch
+            // (identity/annihilator disables, Pow/Sqrt type rewrites) don't
+            // touch Length and would be safe to keep scanning past, but
+            // bailing out unconditionally on any `changed` is simplest and
+            // cheap here - Simplify() only runs per-candidate in
+            // algorithms/enumeration.cpp, not in the GP hot loop. Resync
+            // (erase_if + UpdateNodes) before any later index is examined;
+            // the outer while(changed) picks the scan back up from a
+            // consistent array.
+            if (changed) { break; }
         }
 
         if (changed) {
