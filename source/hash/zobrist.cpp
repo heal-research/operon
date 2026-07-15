@@ -27,6 +27,7 @@ Zobrist::~Zobrist() = default;
 
 auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
 {
+    ++lookups_;
     bool const found = tt_->Cache.IfContains(hash, [&](FitnessEntry const& e) -> void { val = e.Value; });
     if (found) { ++hits_; }
     return found;
@@ -44,6 +45,7 @@ auto Zobrist::Clear() -> void
 {
     tt_->Cache.Clear();
     hits_.store(0);
+    lookups_.store(0);
 }
 
 auto Zobrist::Size() const -> std::size_t
