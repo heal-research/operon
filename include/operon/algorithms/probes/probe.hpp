@@ -16,9 +16,7 @@
 namespace Operon {
 
 // A single named value emitted by a probe for one generation. Vectors cover
-// per-individual/per-variable readings (e.g. a diversity probe's raw
-// pairwise distances) that don't collapse to one scalar; scalars cover
-// everything else (counts, rates, sizes).
+// per-individual/per-variable readings that don't collapse to one scalar.
 using ResultValue = std::variant<
     std::int64_t,
     double,
@@ -27,22 +25,16 @@ using ResultValue = std::variant<
     std::vector<std::int64_t>,
     std::vector<double>>;
 
-// One generation's worth of named values, handed to a RecordSink. Deliberately
-// not a fixed-column struct: Operon::Map is unordered (ankerl::unordered_dense),
-// so probes are free to emit whatever keys are relevant that generation and the
-// sink (NDJSON) serializes each record as a self-describing object.
+// One generation's worth of named values, handed to a RecordSink. Not a
+// fixed-column struct: probes are free to emit whatever keys apply that
+// generation, and the sink (NDJSON) serializes each record self-describingly.
 using ResultRecord = Operon::Map<std::string, ResultValue>;
 
 // Read-only view into the running algorithm plus a handle to the current
-// generation's record. Deliberately built on GeneticAlgorithmBase rather
-// than a narrower per-algorithm type: GeneticProgrammingAlgorithm and NSGA2
-// both derive from it and share this exact surface, so a probe written
-// against ProbeContext works for either without modification.
-//
-// GrammarEnumerationAlgorithm is intentionally not supported here: it has no
-// population and no Parents()/Offspring(), and its ReportCallback fires per
-// budget level, not per generation - forcing it under this interface would
-// be the wrong abstraction rather than a missing feature.
+// generation's record. Built on GeneticAlgorithmBase (not a narrower
+// per-algorithm type) so a probe works for both GeneticProgrammingAlgorithm
+// and NSGA2 unmodified. GrammarEnumerationAlgorithm has no population and
+// reports per budget level, not per generation, so it's out of scope here.
 class ProbeContext {
 public:
     ProbeContext(GeneticAlgorithmBase const& algo, ResultRecord& record)
@@ -65,20 +57,14 @@ public:
     }
 
 private:
-    // Reference members are intentional: ProbeContext is a throwaway view
-    // constructed fresh by ProbeChain once per generation and passed by
-    // reference to each probe in turn - it never outlives that call and is
-    // never copied or stored, so there's no dangling-reference hazard to
-    // guard against by switching to pointers.
+    // Reference members are fine here: ProbeContext is a throwaway view
+    // built fresh by ProbeChain each generation and never stored or copied.
     GeneticAlgorithmBase const& algo_; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
     ResultRecord& record_; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
 };
 
-// A pluggable, per-generation diagnostic. Deliberately one interface, not
-// split by output kind (e.g. "emits a metric" vs "writes an artifact"): a
-// probe may do either or both via the same call - see PopulationTraceProbe
-// (writes its own file) vs CacheHitRateProbe (only calls Emit) vs
-// StructuralDiversityProbe (could do both) in the sibling headers.
+// A pluggable, per-generation diagnostic. One interface, not split by output
+// kind: a probe may emit a scalar, write its own artifact, or both.
 struct GenerationProbe {
     virtual ~GenerationProbe() = default;
     GenerationProbe() = default;
