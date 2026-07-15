@@ -22,20 +22,20 @@ namespace {
 // that distinction for every integer field in the config.
 using Json = glz::generic_i64;
 
-auto ToParamValue(Json const& v) -> ProbeParamValue
+auto ToParamValue(Json const& v, std::string const& key) -> ProbeParamValue
 {
     if (v.is_boolean()) { return ProbeParamValue{v.get<bool>()}; }
     if (v.holds<std::int64_t>()) { return ProbeParamValue{v.get<std::int64_t>()}; }
     if (v.is_number()) { return ProbeParamValue{v.get<double>()}; }
     if (v.is_string()) { return ProbeParamValue{v.get<std::string>()}; }
-    throw std::runtime_error("probes config: probe params must be a bool, number, or string");
+    throw std::runtime_error(fmt::format("probes config: param '{}' must be a bool, number, or string", key));
 }
 
 auto ToParams(Json const& obj) -> ProbeParams
 {
     ProbeParams params;
     for (auto const& [key, value] : obj.get_object()) {
-        params.insert_or_assign(key, ToParamValue(value));
+        params.insert_or_assign(key, ToParamValue(value, key));
     }
     return params;
 }
@@ -75,7 +75,7 @@ auto LoadProbeConfig(std::string const& path) -> std::optional<ProbeChain>
 
     Json doc;
     if (auto ec = glz::read_json(doc, text); ec) {
-        throw std::runtime_error(fmt::format("probes config: {}", glz::format_error(ec, text)));
+        throw std::runtime_error(fmt::format("probes config '{}': {}", path, glz::format_error(ec, text)));
     }
 
     ProbeRegistry registry;

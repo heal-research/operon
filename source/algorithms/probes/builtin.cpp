@@ -20,6 +20,9 @@ auto RegisterBuiltinProbes(ProbeRegistry& registry) -> void
         if (!params.contains("path")) {
             throw std::runtime_error("population_trace probe requires a 'path' param");
         }
+        if (!params.at("path").Holds<std::string>()) {
+            throw std::runtime_error("population_trace probe's 'path' param must be a string");
+        }
         return std::make_unique<PopulationTraceProbe>(params.at("path").Get<std::string>());
     });
 
@@ -30,6 +33,9 @@ auto RegisterBuiltinProbes(ProbeRegistry& registry) -> void
     registry.Register("structural_diversity", [](ProbeParams const& params) -> std::unique_ptr<GenerationProbe> {
         auto mode = HashMode::Strict;
         if (params.contains("hash_mode")) {
+            if (!params.at("hash_mode").Holds<std::string>()) {
+                throw std::runtime_error("structural_diversity probe's 'hash_mode' param must be a string");
+            }
             auto const& m = params.at("hash_mode").Get<std::string>();
             if (m == "relaxed") {
                 mode = HashMode::Relaxed;

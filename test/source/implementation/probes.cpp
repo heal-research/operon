@@ -480,6 +480,18 @@ TEST_CASE("RegisterBuiltinProbes: population_trace requires a 'path' param", "[p
     std::filesystem::remove(path);
 }
 
+TEST_CASE("RegisterBuiltinProbes: population_trace rejects a non-string 'path' with a clear error", "[probes]")
+{
+    Operon::ProbeRegistry registry;
+    Operon::RegisterBuiltinProbes(registry);
+
+    Operon::ProbeParams params;
+    params.insert_or_assign("path", Operon::ProbeParamValue{std::int64_t{123}});
+    // Must be a descriptive std::runtime_error, not a raw std::bad_variant_access
+    // from an unchecked Get<std::string>() inside the factory.
+    CHECK_THROWS_AS(registry.Create("population_trace", params), std::runtime_error);
+}
+
 TEST_CASE("RegisterBuiltinProbes: cache_hit_rate needs no params", "[probes]")
 {
     Operon::ProbeRegistry registry;
@@ -507,6 +519,11 @@ TEST_CASE("RegisterBuiltinProbes: structural_diversity accepts strict/relaxed an
     Operon::ProbeParams bogus;
     bogus.insert_or_assign("hash_mode", Operon::ProbeParamValue{std::string{"bogus"}});
     CHECK_THROWS_AS(registry.Create("structural_diversity", bogus), std::runtime_error);
+
+    Operon::ProbeParams wrongType;
+    wrongType.insert_or_assign("hash_mode", Operon::ProbeParamValue{true});
+    // Must be a descriptive std::runtime_error, not a raw std::bad_variant_access.
+    CHECK_THROWS_AS(registry.Create("structural_diversity", wrongType), std::runtime_error);
 }
 
 TEST_CASE("PopulationTraceProbe appends framed BEVE population dumps", "[probes]")
