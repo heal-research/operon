@@ -21,6 +21,13 @@ namespace Operon::Distance {
         template<typename T>
         inline auto CountIntersect(Operon::Span<T const> lhs, Operon::Span<T const> rhs) noexcept -> size_t
         {
+            // An empty span has no intersection with anything, trivially -
+            // and returning early here avoids `*(pN - 1)` below forming a
+            // pointer one element before the start of the span, which is
+            // undefined behavior when the span is empty (pN == p0 in that
+            // case), not merely a degenerate value.
+            if (lhs.empty() || rhs.empty()) { return 0; }
+
             size_t constexpr S = eve::wide<T>::size();
             T const *p0 = lhs.data();
             T const *pS = p0 + (lhs.size() & (-S));
@@ -68,6 +75,7 @@ namespace Operon::Distance {
     auto Jaccard(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept -> double
     {
         size_t const n = lhs.size() + rhs.size();
+        if (n == 0) { return 0.0; } // both empty -> identical by convention, not 0/0 NaN
         size_t const c = CountIntersect(lhs, rhs);
         return static_cast<double>(n - (2 * c)) / static_cast<double>(n);
     }
@@ -75,6 +83,7 @@ namespace Operon::Distance {
     auto SorensenDice(Operon::Vector<Operon::Hash> const& lhs, Operon::Vector<Operon::Hash> const& rhs) noexcept -> double
     {
         size_t const n = lhs.size() + rhs.size();
+        if (n == 0) { return 0.0; } // both empty -> identical by convention, not 0/0 NaN
         size_t const c = CountIntersect(lhs, rhs);
         return 1 - (2 * static_cast<double>(c) / static_cast<double>(n));
     }
