@@ -497,6 +497,7 @@ TEST_CASE("PopulationTraceProbe appends framed BEVE population dumps", "[probes]
     char extra{};
     in.read(&extra, 1);
     CHECK(in.eof()); // exactly 3 frames, nothing trailing
+    in.close(); // Windows can't remove a file with an open handle
 
     std::filesystem::remove(path);
 }
