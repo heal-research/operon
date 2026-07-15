@@ -21,6 +21,13 @@ namespace Operon {
 // lives in a public header, so the JSON-vs-YAML-vs-whatever config format
 // question stays entirely on the parsing side (cli/source/probes_config.cpp)
 // - this registry only ever sees the result.
+// Caution for the config-parsing side (cli/source/probes_config.cpp):
+// initializing this variant from a `const char*` selects the `bool`
+// alternative, not `std::string` - a well-known variant overload-resolution
+// trap (pointer-to-bool is a standard conversion, favored over the
+// user-defined conversion to std::string). Construct std::string values
+// explicitly (e.g. ProbeParamValue{std::string{...}}) at the parse boundary
+// rather than relying on implicit conversion from a string literal.
 using ProbeParamValue = std::variant<std::int64_t, double, bool, std::string>;
 using ProbeParams = Operon::Map<std::string, ProbeParamValue>;
 
