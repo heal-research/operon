@@ -15,18 +15,16 @@ namespace Operon {
 
 struct JsonlSink::Impl {
     std::ofstream Out;
-    std::string Path;
 };
 
 JsonlSink::JsonlSink(std::string_view path)
     : impl_(std::make_unique<Impl>())
 {
-    impl_->Path = std::string(path);
     // Truncates by default rather than appending, to avoid silently mixing
     // an old trace's lines into a new run.
-    impl_->Out.open(impl_->Path, std::ios::out | std::ios::trunc);
+    impl_->Out.open(std::string(path), std::ios::out | std::ios::trunc);
     if (!impl_->Out) {
-        fmt::print(stderr, "JsonlSink: failed to open '{}' for writing\n", impl_->Path);
+        fmt::print(stderr, "JsonlSink: failed to open '{}' for writing\n", path);
     }
 }
 
@@ -34,7 +32,7 @@ JsonlSink::~JsonlSink() = default;
 JsonlSink::JsonlSink(JsonlSink&&) noexcept = default;
 auto JsonlSink::operator=(JsonlSink&&) noexcept -> JsonlSink& = default;
 
-auto JsonlSink::Write(std::size_t /*generation*/, ResultRecord const& record) -> void
+auto JsonlSink::Write(ResultRecord const& record) -> void
 {
     if (!impl_->Out) { return; }
     // No glz::meta needed: ResultRecord's map and ResultValue's variant are
@@ -86,7 +84,7 @@ auto ProbeChain::operator()(GeneticAlgorithmBase const& algo) -> void
         (*entry.Probe)(ctx);
         ran = true;
     }
-    if (ran && sink_) { sink_->Write(generation, record); }
+    if (ran && sink_) { sink_->Write(record); }
 }
 
 auto ProbeChain::Finish() -> void
