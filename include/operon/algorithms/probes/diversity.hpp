@@ -28,6 +28,23 @@ namespace detail {
         std::stable_sort(hashes.begin(), hashes.end());
         return hashes;
     }
+    // Distance::Jaccard's CountIntersect dereferences one-before-the-start
+    // of either span when it's empty (undefined behavior, not just a 0/0
+    // NaN) - see source/core/distance.cpp. An empty hash vector means an
+    // individual with an empty/default-constructed Genotype, which
+    // shouldn't occur on a live algorithm's Parents() (TreeInitializer
+    // always produces non-empty trees before any report callback runs) but
+    // is cheap to guard against here rather than depend on that invariant
+    // holding at every call site. Convention: two empty sets are identical
+    // (distance 0); an empty set vs. a non-empty one is maximally
+    // dissimilar (distance 1), matching the usual 0/0 := 1 similarity
+    // convention for the Jaccard index.
+    inline auto SafeJaccard(Vector<Hash> const& lhs, Vector<Hash> const& rhs) -> double
+    {
+        if (lhs.empty() && rhs.empty()) { return 0.0; }
+        if (lhs.empty() || rhs.empty()) { return 1.0; }
+        return Distance::Jaccard(lhs, rhs);
+    }
 } // namespace detail
 
 // Mean pairwise Jaccard distance over each individual's sorted per-node hash
@@ -45,7 +62,7 @@ namespace detail {
     std::size_t count{0};
     for (std::size_t i = 0; i + 1 < pop.size(); ++i) {
         for (std::size_t j = i + 1; j < pop.size(); ++j) {
-            sum += Distance::Jaccard(hashes[i], hashes[j]);
+            sum += detail::SafeJaccard(hashes[i], hashes[j]);
             ++count;
         }
     }

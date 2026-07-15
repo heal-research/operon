@@ -24,8 +24,12 @@ public:
 
         auto const hits = cache->Hits();
         auto const lookups = cache->Lookups();
-        auto const deltaHits = hits - prevHits_;
-        auto const deltaLookups = lookups - prevLookups_;
+        // A caller may Clear() the cache between generations (resetting its
+        // counters to 0), which would otherwise underflow these unsigned
+        // deltas into a huge value; treat a backward jump as "counting
+        // resumed from zero" instead.
+        auto const deltaHits = hits >= prevHits_ ? hits - prevHits_ : hits;
+        auto const deltaLookups = lookups >= prevLookups_ ? lookups - prevLookups_ : lookups;
         prevHits_ = hits;
         prevLookups_ = lookups;
 
