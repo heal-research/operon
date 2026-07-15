@@ -97,6 +97,7 @@ class OPERON_EXPORT Zobrist {
     std::unique_ptr<TranspositionTable> tt_;
 
     mutable std::atomic<std::size_t> hits_{0};
+    mutable std::atomic<std::size_t> lookups_{0};
 
 public:
     // variableHashes must include every variable hash that can appear in a tree.
@@ -153,6 +154,9 @@ public:
     auto Clear() -> void;
 
     [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(); }
+    // Total TryGet() calls regardless of outcome - the denominator Hits()
+    // needs to express an actual hit *rate* rather than a raw count.
+    [[nodiscard]] auto Lookups() const -> std::size_t { return lookups_.load(); }
     [[nodiscard]] auto Size() const -> std::size_t;
 };
 
