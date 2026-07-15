@@ -477,6 +477,7 @@ TEST_CASE("RegisterBuiltinProbes: population_trace requires a 'path' param", "[p
     params.insert_or_assign("path", Operon::ProbeParamValue{path.string()});
     auto probe = registry.Create("population_trace", params);
     REQUIRE(probe != nullptr);
+    probe.reset(); // Windows can't remove a file with an open handle
     std::filesystem::remove(path);
 }
 
