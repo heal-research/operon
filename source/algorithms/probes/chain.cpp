@@ -22,7 +22,10 @@ JsonlSink::JsonlSink(std::string_view path)
     : impl_(std::make_unique<Impl>())
 {
     impl_->Path = std::string(path);
-    impl_->Out.open(impl_->Path, std::ios::out | std::ios::app);
+    // Truncates by default: silently mixing an old trace's lines into a new
+    // run (if this instead opened in append mode) would be a worse surprise
+    // than losing an old file the caller pointed a fresh sink at.
+    impl_->Out.open(impl_->Path, std::ios::out | std::ios::trunc);
     if (!impl_->Out) {
         fmt::print(stderr, "JsonlSink: failed to open '{}' for writing\n", impl_->Path);
     }
@@ -52,6 +55,11 @@ auto JsonlSink::Write(std::size_t /*generation*/, ResultRecord const& record) ->
 auto JsonlSink::Flush() -> void
 {
     if (impl_->Out) { impl_->Out.flush(); }
+}
+
+auto JsonlSink::IsOpen() const -> bool
+{
+    return static_cast<bool>(impl_->Out);
 }
 
 // ---- ProbeChain ----
@@ -87,6 +95,8 @@ auto ProbeChain::operator()(GeneticAlgorithmBase const& algo) -> void
 
 auto ProbeChain::Finish() -> void
 {
+    if (finished_) { return; }
+    finished_ = true;
     for (auto& entry : entries_) { entry.Probe->Finish(); }
     if (sink_) { sink_->Flush(); }
 }

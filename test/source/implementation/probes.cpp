@@ -97,7 +97,12 @@ struct ProbeFixture {
 // so both ResultValue shapes get exercised through ProbeContext::Emit.
 struct RecordingProbe final : Operon::GenerationProbe {
     std::vector<std::size_t> Seen;
-    bool Finished{false};
+    int FinishCount{0};
+    // Points at a counter outliving the probe itself, for tests that need
+    // to observe Finish() calls after the owning ProbeChain (and hence this
+    // probe) has already been destroyed - reading FinishCount through a
+    // dangling `this` at that point would be a use-after-free.
+    int* ExternalFinishCount{nullptr};
 
     auto operator()(Operon::ProbeContext& ctx) -> void override
     {
@@ -106,7 +111,11 @@ struct RecordingProbe final : Operon::GenerationProbe {
         ctx.Emit("readings", std::vector<double>{1.0, 2.0, 3.0});
     }
 
-    auto Finish() -> void override { Finished = true; }
+    auto Finish() -> void override
+    {
+        ++FinishCount;
+        if (ExternalFinishCount != nullptr) { ++*ExternalFinishCount; }
+    }
 };
 
 // Bumps Generation() on the fixture's Gp directly (no public setter exists;
@@ -157,7 +166,38 @@ TEST_CASE("ProbeChain runs a probe every generation by default", "[probes]")
     REQUIRE(probe->Seen == std::vector<std::size_t>{0, 1, 2, 3});
 
     chain.Finish();
-    CHECK(probe->Finished);
+    CHECK(probe->FinishCount == 1);
+}
+
+TEST_CASE("ProbeChain::Finish is idempotent across explicit calls and destruction", "[probes]")
+{
+    int finishCount = 0;
+    {
+        Operon::ProbeChain chain;
+        auto owned = std::make_unique<RecordingProbe>();
+        owned->ExternalFinishCount = &finishCount;
+        chain.Add(std::move(owned));
+
+        chain.Finish();
+        chain.Finish(); // explicit double-call must not re-run probe Finish()
+        CHECK(finishCount == 1);
+    } // destructor also calls Finish() - must not run it a second time either
+
+    CHECK(finishCount == 1);
+}
+
+TEST_CASE("ProbeChain destructor runs Finish() if the caller never called it", "[probes]")
+{
+    int finishCount = 0;
+    {
+        Operon::ProbeChain chain;
+        auto owned = std::make_unique<RecordingProbe>();
+        owned->ExternalFinishCount = &finishCount;
+        chain.Add(std::move(owned));
+        CHECK(finishCount == 0);
+    } // no explicit Finish() call before scope exit
+
+    CHECK(finishCount == 1);
 }
 
 TEST_CASE("ProbeChain respects every/offset scheduling", "[probes]")
@@ -230,6 +270,48 @@ TEST_CASE("JsonlSink writes one line per generation that ran a probe, none other
         CHECK(line.find("\"seen_count\"") != std::string::npos);
         CHECK(line.find("\"readings\"") != std::string::npos);
     }
+}
+
+TEST_CASE("JsonlSink truncates a pre-existing file rather than appending", "[probes]")
+{
+    auto const path = std::filesystem::temp_directory_path() / "operon_probes_truncate_test.jsonl";
+    {
+        std::ofstream seed(path);
+        seed << "{\"stale\":true}\n{\"stale\":true}\n";
+    }
+
+    {
+        Operon::ResultRecord record;
+        record.insert_or_assign("fresh", true);
+        Operon::JsonlSink sink(path.string());
+        CHECK(sink.IsOpen());
+        sink.Write(0, record);
+    }
+
+    std::ifstream in(path);
+    std::vector<std::string> lines;
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty()) { lines.push_back(line); }
+    }
+    in.close();
+    std::filesystem::remove(path);
+
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0].find("\"stale\"") == std::string::npos);
+    CHECK(lines[0].find("\"fresh\"") != std::string::npos);
+}
+
+TEST_CASE("JsonlSink reports IsOpen() == false when it fails to open", "[probes]")
+{
+    // A path under a directory that doesn't exist can't be opened.
+    auto const path = std::filesystem::temp_directory_path() / "operon_probes_missing_dir" / "out.jsonl";
+    Operon::JsonlSink sink(path.string());
+    CHECK_FALSE(sink.IsOpen());
+
+    // Write() on a sink that failed to open must no-op, not crash.
+    Operon::ResultRecord record;
+    record.insert_or_assign("x", std::int64_t{1});
+    sink.Write(0, record);
 }
 
 TEST_CASE("ProbeRegistry creates probes by registered type name", "[probes]")

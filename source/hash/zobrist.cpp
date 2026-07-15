@@ -27,9 +27,12 @@ Zobrist::~Zobrist() = default;
 
 auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
 {
-    ++lookups_;
+    // relaxed: these are statistics counters with no ordering requirement
+    // on anything else, and TryGet is in the per-individual evaluation hot
+    // path - the default seq_cst RMW would tax every lookup for no benefit.
+    lookups_.fetch_add(1, std::memory_order_relaxed);
     bool const found = tt_->Cache.IfContains(hash, [&](FitnessEntry const& e) -> void { val = e.Value; });
-    if (found) { ++hits_; }
+    if (found) { hits_.fetch_add(1, std::memory_order_relaxed); }
     return found;
 }
 
@@ -44,8 +47,8 @@ auto Zobrist::Insert(Operon::Hash hash, Value const& val) -> void
 auto Zobrist::Clear() -> void
 {
     tt_->Cache.Clear();
-    hits_.store(0);
-    lookups_.store(0);
+    hits_.store(0, std::memory_order_relaxed);
+    lookups_.store(0, std::memory_order_relaxed);
 }
 
 auto Zobrist::Size() const -> std::size_t

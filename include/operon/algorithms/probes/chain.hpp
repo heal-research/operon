@@ -46,6 +46,11 @@ public:
     auto Write(std::size_t generation, ResultRecord const& record) -> void override;
     auto Flush() -> void override;
 
+    // False if the file failed to open (error already printed to stderr by
+    // the constructor) - Write() silently no-ops in that state, so a caller
+    // that cares whether its trace actually landed should check this.
+    [[nodiscard]] auto IsOpen() const -> bool;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
@@ -63,6 +68,17 @@ private:
 // generation, on whichever thread runs the report task.
 class OPERON_EXPORT ProbeChain {
 public:
+    ProbeChain() = default;
+    ~ProbeChain() { Finish(); }
+    ProbeChain(ProbeChain const&) = delete;
+    ProbeChain(ProbeChain&&) noexcept = default;
+    auto operator=(ProbeChain const&) -> ProbeChain& = delete;
+    // A user-declared destructor suppresses the implicitly-generated move
+    // operations, so they're spelled out here explicitly - ProbeChain needs
+    // to stay movable (e.g. returned by value from a future
+    // LoadProbeConfig(path) -> ProbeChain factory in the CLI-wiring PR).
+    auto operator=(ProbeChain&&) noexcept -> ProbeChain& = default;
+
     // every == 0 disables the probe (kept registered but never invoked) -
     // this is deliberately not rejected/asserted against so config-driven
     // callers can toggle a probe off without removing its entry.
@@ -78,7 +94,10 @@ public:
     // scheduled don't produce empty lines.
     auto operator()(GeneticAlgorithmBase const& algo) -> void;
 
-    // Call once after the algorithm's Run() returns.
+    // Call once after the algorithm's Run() returns. Idempotent - safe to
+    // call explicitly and then let the ProbeChain go out of scope (the
+    // destructor also calls this, as a safety net for callers who forget or
+    // unwind via an exception before reaching an explicit call).
     auto Finish() -> void;
 
 private:
@@ -90,6 +109,7 @@ private:
 
     std::vector<Entry> entries_;
     std::unique_ptr<RecordSink> sink_;
+    bool finished_{false};
 };
 
 } // namespace Operon

@@ -153,10 +153,10 @@ public:
     // the algorithm has fully stopped (e.g. after GeneticAlgorithm::Run returns).
     auto Clear() -> void;
 
-    [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(); }
+    [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(std::memory_order_relaxed); }
     // Total TryGet() calls regardless of outcome - the denominator Hits()
     // needs to express an actual hit *rate* rather than a raw count.
-    [[nodiscard]] auto Lookups() const -> std::size_t { return lookups_.load(); }
+    [[nodiscard]] auto Lookups() const -> std::size_t { return lookups_.load(std::memory_order_relaxed); }
     [[nodiscard]] auto Size() const -> std::size_t;
 };
 
