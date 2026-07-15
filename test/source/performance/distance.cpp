@@ -7,7 +7,7 @@
 #include "operon/core/dataset.hpp"
 #include "operon/core/distance.hpp"
 #include "operon/core/pset.hpp"
-#include "operon/analyzers/diversity.hpp"
+#include "operon/algorithms/probes/diversity.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/initializer.hpp"
 
@@ -58,7 +58,7 @@ TEST_CASE("Intersection performance", "[performance]") // NOLINT(readability-fun
     std::vector<Operon::Vector<Operon::Hash>> hashesStrict(trees.size());
     std::vector<Operon::Vector<Operon::Hash>> hashesStruct(trees.size());
 
-    const auto hashFunc = [](auto& tree, Operon::HashMode mode) -> auto { return MakeHashes(tree, mode); };
+    const auto hashFunc = [](auto& tree, Operon::HashMode mode) -> auto { return Operon::detail::SortedNodeHashes(tree, mode); };
     std::transform(trees.begin(), trees.end(), hashesStrict.begin(), [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Strict); });
     std::transform(trees.begin(), trees.end(), hashesStruct.begin(), [&](Tree tree) -> Operon::Vector<Operon::Hash> { return hashFunc(tree, Operon::HashMode::Relaxed); });
 
