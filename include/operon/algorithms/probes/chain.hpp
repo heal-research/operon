@@ -15,8 +15,7 @@
 namespace Operon {
 
 // Consumes one generation's ResultRecord. Separate from GenerationProbe so
-// probes stay agnostic of the output format (NDJSON today, something else
-// later) and multiple probes can share one sink/one file.
+// probes stay agnostic of the output format and can share one sink/file.
 struct RecordSink {
     virtual ~RecordSink() = default;
     RecordSink() = default;
@@ -29,11 +28,8 @@ struct RecordSink {
     virtual auto Flush() -> void { }
 };
 
-// Writes one JSON object per line (NDJSON). Chosen over a fixed-column
-// format (e.g. CSV) because ResultRecord is an unordered, self-describing
-// bag of keys that can differ from one generation to the next depending on
-// which probes ran that generation - NDJSON records their keys inline
-// instead of requiring a stable schema up front.
+// Writes one JSON object per line (NDJSON) - chosen over a fixed-column
+// format like CSV because ResultRecord's keys can differ per generation.
 class OPERON_EXPORT JsonlSink final : public RecordSink {
 public:
     explicit JsonlSink(std::string_view path);
@@ -46,9 +42,7 @@ public:
     auto Write(std::size_t generation, ResultRecord const& record) -> void override;
     auto Flush() -> void override;
 
-    // False if the file failed to open (error already printed to stderr by
-    // the constructor) - Write() silently no-ops in that state, so a caller
-    // that cares whether its trace actually landed should check this.
+    // False if the file failed to open - Write() then silently no-ops.
     [[nodiscard]] auto IsOpen() const -> bool;
 
 private:
@@ -57,15 +51,11 @@ private:
 };
 
 // Runs a set of GenerationProbes, each on its own (every, offset) schedule,
-// and hands the combined per-generation record to one shared sink.
-// Deliberately not integrated with taskflow's ObserverInterface: that
-// observes per-task entry/exit across worker threads (used today only for
-// PhaseTimer's wall-clock profiling) and carries no domain data - a probe
-// would still need a side channel back to the algorithm's state, which the
-// existing ReportCallback closure already provides directly at exactly
-// generation granularity. ProbeChain is meant to be invoked from inside
-// that same report lambda (see cli/source/probes_config.hpp), one call per
-// generation, on whichever thread runs the report task.
+// and hands the combined per-generation record to one shared sink. Not
+// integrated with taskflow's ObserverInterface: that observes per-task
+// entry/exit with no domain data, whereas the existing ReportCallback
+// closure already gives direct, generation-granular access to algorithm
+// state. ProbeChain is meant to be invoked from inside that report lambda.
 class OPERON_EXPORT ProbeChain {
 public:
     ProbeChain() = default;
@@ -73,31 +63,24 @@ public:
     ProbeChain(ProbeChain const&) = delete;
     ProbeChain(ProbeChain&&) noexcept = default;
     auto operator=(ProbeChain const&) -> ProbeChain& = delete;
-    // A user-declared destructor suppresses the implicitly-generated move
-    // operations, so they're spelled out here explicitly - ProbeChain needs
-    // to stay movable (e.g. returned by value from a future
-    // LoadProbeConfig(path) -> ProbeChain factory in the CLI-wiring PR).
+    // Spelled out explicitly because the user-declared destructor otherwise
+    // suppresses the implicit move ops, and ProbeChain needs to stay
+    // movable (e.g. returned by value from a future config-loading factory).
     auto operator=(ProbeChain&&) noexcept -> ProbeChain& = default;
 
-    // every == 0 disables the probe (kept registered but never invoked) -
-    // this is deliberately not rejected/asserted against so config-driven
-    // callers can toggle a probe off without removing its entry.
+    // every == 0 disables the probe without removing it, so config-driven
+    // callers can toggle a probe off without editing the entry list.
     auto Add(std::unique_ptr<GenerationProbe> probe, std::size_t every = 1, std::size_t offset = 0) -> void;
     auto SetSink(std::unique_ptr<RecordSink> sink) -> void;
 
     [[nodiscard]] auto Empty() const noexcept -> bool { return entries_.empty(); }
 
-    // Intended to be called once per generation (e.g. from an algorithm's
-    // ReportCallback). Builds this generation's record, runs every probe
-    // whose schedule matches, and writes the record via the sink - but only
-    // if at least one probe actually ran, so generations with nothing
-    // scheduled don't produce empty lines.
+    // Call once per generation (e.g. from an algorithm's ReportCallback).
+    // Only writes to the sink if at least one probe actually ran.
     auto operator()(GeneticAlgorithmBase const& algo) -> void;
 
-    // Call once after the algorithm's Run() returns. Idempotent - safe to
-    // call explicitly and then let the ProbeChain go out of scope (the
-    // destructor also calls this, as a safety net for callers who forget or
-    // unwind via an exception before reaching an explicit call).
+    // Call once after the algorithm's Run() returns. Idempotent - the
+    // destructor also calls this as a safety net.
     auto Finish() -> void;
 
 private:

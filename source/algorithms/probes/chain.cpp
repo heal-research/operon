@@ -22,9 +22,8 @@ JsonlSink::JsonlSink(std::string_view path)
     : impl_(std::make_unique<Impl>())
 {
     impl_->Path = std::string(path);
-    // Truncates by default: silently mixing an old trace's lines into a new
-    // run (if this instead opened in append mode) would be a worse surprise
-    // than losing an old file the caller pointed a fresh sink at.
+    // Truncates by default rather than appending, to avoid silently mixing
+    // an old trace's lines into a new run.
     impl_->Out.open(impl_->Path, std::ios::out | std::ios::trunc);
     if (!impl_->Out) {
         fmt::print(stderr, "JsonlSink: failed to open '{}' for writing\n", impl_->Path);
@@ -38,11 +37,8 @@ auto JsonlSink::operator=(JsonlSink&&) noexcept -> JsonlSink& = default;
 auto JsonlSink::Write(std::size_t /*generation*/, ResultRecord const& record) -> void
 {
     if (!impl_->Out) { return; }
-    // ResultRecord (Operon::Map<string, ResultValue>) is written directly:
-    // ankerl::unordered_dense::table satisfies glaze's writable_map_t
-    // concept generically (range of pair-like elements), and ResultValue's
-    // is_variant writer emits just the active alternative untagged - no
-    // glz::meta specialization needed, unlike the fixed-shape proxies in
+    // No glz::meta needed: ResultRecord's map and ResultValue's variant are
+    // both generically supported by glaze, unlike the proxies in
     // core/serialization.cpp.
     auto result = glz::write_json(record);
     if (!result) {

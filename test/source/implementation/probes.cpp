@@ -51,9 +51,8 @@ auto MakePset() -> Operon::PrimitiveSet
     return p;
 }
 
-// Trimmed down from ga_base.cpp's GaBaseFixture: just enough wiring to get a
-// GeneticAlgorithmBase-derived object whose Parents()/Offspring() can be
-// populated via RestoreIndividuals(), which is all ProbeContext reads.
+// Trimmed down from ga_base.cpp's GaBaseFixture - just enough to populate
+// Parents()/Offspring() via RestoreIndividuals(), which is all ProbeContext reads.
 struct ProbeFixture {
     static constexpr std::size_t PopSize  = 6;
     static constexpr std::size_t PoolSize = 4;
@@ -98,10 +97,8 @@ struct ProbeFixture {
 struct RecordingProbe final : Operon::GenerationProbe {
     std::vector<std::size_t> Seen;
     int FinishCount{0};
-    // Points at a counter outliving the probe itself, for tests that need
-    // to observe Finish() calls after the owning ProbeChain (and hence this
-    // probe) has already been destroyed - reading FinishCount through a
-    // dangling `this` at that point would be a use-after-free.
+    // Outlives the probe, for tests checking Finish() after the owning
+    // ProbeChain (and thus this probe) is already destroyed.
     int* ExternalFinishCount{nullptr};
 
     auto operator()(Operon::ProbeContext& ctx) -> void override
@@ -118,10 +115,8 @@ struct RecordingProbe final : Operon::GenerationProbe {
     }
 };
 
-// Bumps Generation() on the fixture's Gp directly (no public setter exists;
-// GeneticAlgorithmBase::Generation() is a non-const-returning reference for
-// mutable callers, same as production code uses via ++Generation() in
-// source/algorithms/gp.cpp).
+// Generation() returns a mutable reference for non-const callers (same as
+// production's ++Generation() in source/algorithms/gp.cpp); no setter exists.
 auto AdvanceTo(Operon::GeneticProgrammingAlgorithm& gp, std::size_t generation) -> void
 {
     gp.Generation() = generation;
