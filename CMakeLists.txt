@@ -44,6 +44,8 @@ add_library(
     source/algorithms/enumeration.cpp
     source/algorithms/gp.cpp
     source/algorithms/nsga2.cpp
+    source/algorithms/probes/chain.cpp
+    source/algorithms/probes/registry.cpp
     source/algorithms/solution_archive.cpp
     source/core/dataset.cpp
     source/core/distance.cpp

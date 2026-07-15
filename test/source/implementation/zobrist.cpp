@@ -112,6 +112,7 @@ TEST_CASE("Zobrist - TryGet returns false on miss", "[zobrist]")
     Operon::Vector<Operon::Scalar> val;
     REQUIRE_FALSE(cache.TryGet(hash, val));
     REQUIRE(cache.Hits() == 0);
+    REQUIRE(cache.Lookups() == 1);
 }
 
 TEST_CASE("Zobrist - Insert then TryGet roundtrip", "[zobrist]")
@@ -131,6 +132,7 @@ TEST_CASE("Zobrist - Insert then TryGet roundtrip", "[zobrist]")
     Operon::Vector<Operon::Scalar> retrieved(2);
     REQUIRE(cache.TryGet(hash, retrieved));
     REQUIRE(cache.Hits() == 1);
+    REQUIRE(cache.Lookups() == 1);
     REQUIRE(retrieved[0] == stored[0]);
     REQUIRE(retrieved[1] == stored[1]);
 }
@@ -154,8 +156,34 @@ TEST_CASE("Zobrist - Clear resets table and hit counter", "[zobrist]")
     cache.Clear();
     REQUIRE(cache.Size() == 0);
     REQUIRE(cache.Hits() == 0);
+    REQUIRE(cache.Lookups() == 0);
 
     REQUIRE_FALSE(cache.TryGet(hash, tmp));
+}
+
+TEST_CASE("Zobrist - Lookups counts every TryGet call regardless of outcome", "[zobrist]")
+{
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    Zobrist cache(rng, MaxLength, inputs);
+
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    auto tree1 = creator(rng, 10, 1, MaxLength);
+    auto tree2 = creator(rng, 10, 1, MaxLength);
+    auto hash1 = cache.ComputeHash(tree1);
+    auto hash2 = cache.ComputeHash(tree2);
+
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    cache.Insert(hash1, val);
+
+    Operon::Vector<Operon::Scalar> tmp;
+    std::ignore = cache.TryGet(hash1, tmp); // hit
+    std::ignore = cache.TryGet(hash2, tmp); // miss (unless hash1==hash2, vanishingly unlikely here)
+    std::ignore = cache.TryGet(hash1, tmp); // hit
+
+    REQUIRE(cache.Lookups() == 3);
+    REQUIRE(cache.Hits() <= cache.Lookups());
+    REQUIRE(cache.Hits() >= 2);
 }
 
 TEST_CASE("Zobrist - duplicate inserts increment count, not entries", "[zobrist]")
