@@ -556,6 +556,51 @@ TEST_CASE("CacheHitRateProbe reports per-generation deltas of hits/lookups/rate/
     }
 }
 
+TEST_CASE("CacheHitRateProbe does not underflow when the cache is Clear()-ed between calls", "[probes]")
+{
+    CacheProbeFixture f;
+    Operon::CacheHitRateProbe probe;
+
+    auto const hash1 = Operon::Hash{1};
+    f.Cache.Insert(hash1, { Operon::Scalar{0.1} });
+    Operon::Vector<Operon::Scalar> val;
+    std::ignore = f.Cache.TryGet(hash1, val); // hit -> cumulative hits=1, lookups=1
+
+    {
+        Operon::ResultRecord record;
+        Operon::ProbeContext ctx{f.Gp, record};
+        probe(ctx);
+        CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 1);
+        CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 1);
+    }
+
+    // Simulates an external reset (e.g. between GP runs sharing one cache).
+    // cache->Hits()/Lookups() now report 0, below the probe's remembered
+    // previous cumulative values - a naive unsigned subtraction would wrap
+    // around to a huge value here instead of falling back to 0.
+    f.Cache.Clear();
+    {
+        Operon::ResultRecord record;
+        Operon::ProbeContext ctx{f.Gp, record};
+        probe(ctx);
+        CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 0);
+        CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 0);
+        CHECK(std::get<double>(record.at("cache_hit_rate")) == 0.0);
+    }
+
+    // Activity resumes post-reset - deltas should reflect it normally, not
+    // still be thrown off by the earlier reset.
+    f.Cache.Insert(hash1, { Operon::Scalar{0.2} });
+    std::ignore = f.Cache.TryGet(hash1, val);
+    {
+        Operon::ResultRecord record;
+        Operon::ProbeContext ctx{f.Gp, record};
+        probe(ctx);
+        CHECK(std::get<std::int64_t>(record.at("cache_hits")) == 1);
+        CHECK(std::get<std::int64_t>(record.at("cache_lookups")) == 1);
+    }
+}
+
 TEST_CASE("PopulationDiversity: 0 for identical trees, positive for different ones, 0 below 2 individuals", "[probes]")
 {
     ProbeFixture f;
@@ -579,6 +624,34 @@ TEST_CASE("PopulationDiversity: 0 for identical trees, positive for different on
 
     std::vector<Operon::Individual> const empty;
     CHECK(Operon::PopulationDiversity(empty) == 0.0);
+}
+
+TEST_CASE("PopulationDiversity handles individuals with an empty/default Genotype without UB or NaN", "[probes]")
+{
+    // Distance::Jaccard's CountIntersect dereferences one-before-the-start
+    // of an empty span; PopulationDiversity must never call it with an
+    // empty hash vector on either side. Default-constructed Individuals
+    // have a default-constructed (zero-length) Genotype, exactly this case.
+    ProbeFixture f;
+    Operon::RandomGenerator rng(11);
+    Operon::BalancedTreeCreator creator{ &f.Pset, f.Vars, 0.0, 10 };
+    auto tree = creator(rng, 5, 1, 10);
+
+    std::vector<Operon::Individual> bothEmpty(2); // default Genotype on both
+    CHECK(Operon::PopulationDiversity(bothEmpty) == 0.0);
+
+    std::vector<Operon::Individual> oneEmpty(2);
+    oneEmpty[0].Genotype = tree; // oneEmpty[1] stays default (empty)
+    CHECK(Operon::PopulationDiversity(oneEmpty) == 1.0);
+
+    std::vector<Operon::Individual> mixedWithEmpty(3);
+    mixedWithEmpty[0].Genotype = tree;
+    mixedWithEmpty[1].Genotype = tree;
+    // mixedWithEmpty[2] stays default (empty) - exercises the empty-vs-non-empty
+    // path alongside a non-degenerate pair in the same population.
+    auto const d = Operon::PopulationDiversity(mixedWithEmpty);
+    CHECK(d > 0.0);
+    CHECK(d < 1.0); // one of the three pairs is identical (distance 0), pulling the mean down
 }
 
 TEST_CASE("StructuralDiversityProbe emits diversity_jaccard from ctx.Parents()", "[probes]")
