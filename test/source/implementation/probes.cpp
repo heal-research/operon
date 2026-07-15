@@ -104,7 +104,12 @@ struct RecordingProbe final : Operon::GenerationProbe {
     auto operator()(Operon::ProbeContext& ctx) -> void override
     {
         Seen.push_back(ctx.Generation());
+        // Exercises every ResultValue alternative, not just int64_t/vector<double>.
         ctx.Emit("seen_count", static_cast<std::int64_t>(Seen.size()));
+        ctx.Emit("mean", 1.5);
+        ctx.Emit("flag", true);
+        ctx.Emit("label", std::string{"gen"});
+        ctx.Emit("counts", std::vector<std::int64_t>{1, 2, 3});
         ctx.Emit("readings", std::vector<double>{1.0, 2.0, 3.0});
     }
 
@@ -226,6 +231,49 @@ TEST_CASE("ProbeChain every=0 disables a probe without removing it", "[probes]")
     }
 
     CHECK(probe->Seen.empty());
+
+    // A disabled probe still gets cleaned up: Finish() runs regardless of
+    // Every, only the per-generation call is gated.
+    chain.Finish();
+    CHECK(probe->FinishCount == 1);
+}
+
+TEST_CASE("ProbeChain runs every registered probe and later probes win on shared keys", "[probes]")
+{
+    ProbeFixture f;
+    Operon::ProbeChain chain;
+    auto first = std::make_unique<RecordingProbe>();
+    auto* firstPtr = first.get();
+    auto second = std::make_unique<RecordingProbe>();
+    auto* secondPtr = second.get();
+    chain.Add(std::move(first));
+    chain.Add(std::move(second));
+
+    AdvanceTo(f.Gp, 0);
+    chain(f.Gp);
+
+    // Both probes ran (each independently tracks that it saw generation 0).
+    CHECK(firstPtr->Seen == std::vector<std::size_t>{0});
+    CHECK(secondPtr->Seen == std::vector<std::size_t>{0});
+}
+
+TEST_CASE("ProbeChain move-construction preserves single Finish() semantics", "[probes]")
+{
+    int finishCount = 0;
+    auto owned = std::make_unique<RecordingProbe>();
+    owned->ExternalFinishCount = &finishCount;
+
+    Operon::ProbeChain original;
+    original.Add(std::move(owned));
+
+    Operon::ProbeChain moved{std::move(original)};
+    CHECK(finishCount == 0);
+
+    // The moved-from chain's entries_ is now empty, so its destructor's
+    // Finish() call has nothing to iterate - only `moved`'s Finish() should
+    // ever reach the probe.
+    moved.Finish();
+    CHECK(finishCount == 1);
 }
 
 TEST_CASE("JsonlSink writes one line per generation that ran a probe, none otherwise", "[probes]")
@@ -263,7 +311,11 @@ TEST_CASE("JsonlSink writes one line per generation that ran a probe, none other
         CHECK(line.back() == '}');
         CHECK(line.find("\"generation\"") != std::string::npos);
         CHECK(line.find("\"seen_count\"") != std::string::npos);
-        CHECK(line.find("\"readings\"") != std::string::npos);
+        CHECK(line.find("\"mean\":1.5") != std::string::npos);
+        CHECK(line.find("\"flag\":true") != std::string::npos);
+        CHECK(line.find("\"label\":\"gen\"") != std::string::npos);
+        CHECK(line.find("\"counts\":[1,2,3]") != std::string::npos);
+        CHECK(line.find("\"readings\":[1,2,3]") != std::string::npos);
     }
 }
 
@@ -280,7 +332,7 @@ TEST_CASE("JsonlSink truncates a pre-existing file rather than appending", "[pro
         record.insert_or_assign("fresh", true);
         Operon::JsonlSink sink(path.string());
         CHECK(sink.IsOpen());
-        sink.Write(0, record);
+        sink.Write(record);
     }
 
     std::ifstream in(path);
@@ -306,7 +358,7 @@ TEST_CASE("JsonlSink reports IsOpen() == false when it fails to open", "[probes]
     // Write() on a sink that failed to open must no-op, not crash.
     Operon::ResultRecord record;
     record.insert_or_assign("x", std::int64_t{1});
-    sink.Write(0, record);
+    sink.Write(record);
 }
 
 TEST_CASE("ProbeRegistry creates probes by registered type name", "[probes]")
