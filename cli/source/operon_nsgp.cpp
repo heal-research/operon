@@ -338,6 +338,9 @@ auto main(int argc, char** argv) -> int
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector), &evaluator);
         auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
+        if (warmStart && result.contains("probes-config")) {
+            fmt::print(stderr, "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior instrumentation history at any reused output path\n");
+        }
         auto probes = Operon::LoadProbeConfig(result.contains("probes-config") ? result["probes-config"].as<std::string>() : std::string{});
         gp.Run(executor, random, [&]() -> bool {
             reporter(executor, gp);
