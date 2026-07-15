@@ -101,6 +101,25 @@ TEST_CASE("Hash-based distance", "[core]")
     }
 }
 
+TEST_CASE("Jaccard/SorensenDice handle empty spans without UB or NaN", "[core]")
+{
+    // CountIntersect used to dereference one element before the start of an
+    // empty span (undefined behavior, not just a 0/0 NaN) when either side
+    // was empty - both empty (n==0) additionally hit an explicit 0/0
+    // division. Convention: two empty sets are identical (distance 0); an
+    // empty set vs. a non-empty one is maximally dissimilar (distance 1).
+    Operon::Vector<Operon::Hash> const empty;
+    Operon::Vector<Operon::Hash> const nonEmpty{ 1, 2, 3 };
+
+    CHECK(Operon::Distance::Jaccard(empty, empty) == Catch::Approx(0.0));
+    CHECK(Operon::Distance::Jaccard(empty, nonEmpty) == Catch::Approx(1.0));
+    CHECK(Operon::Distance::Jaccard(nonEmpty, empty) == Catch::Approx(1.0));
+
+    CHECK(Operon::Distance::SorensenDice(empty, empty) == Catch::Approx(0.0));
+    CHECK(Operon::Distance::SorensenDice(empty, nonEmpty) == Catch::Approx(1.0));
+    CHECK(Operon::Distance::SorensenDice(nonEmpty, empty) == Catch::Approx(1.0));
+}
+
 TEST_CASE("Sorensen-Dice distance", "[core]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
