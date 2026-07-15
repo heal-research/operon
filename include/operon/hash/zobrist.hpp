@@ -97,6 +97,7 @@ class OPERON_EXPORT Zobrist {
     std::unique_ptr<TranspositionTable> tt_;
 
     mutable std::atomic<std::size_t> hits_{0};
+    mutable std::atomic<std::size_t> lookups_{0};
 
 public:
     // variableHashes must include every variable hash that can appear in a tree.
@@ -152,7 +153,10 @@ public:
     // the algorithm has fully stopped (e.g. after GeneticAlgorithm::Run returns).
     auto Clear() -> void;
 
-    [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(); }
+    [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(std::memory_order_relaxed); }
+    // Total TryGet() calls regardless of outcome - the denominator Hits()
+    // needs to express an actual hit *rate* rather than a raw count.
+    [[nodiscard]] auto Lookups() const -> std::size_t { return lookups_.load(std::memory_order_relaxed); }
     [[nodiscard]] auto Size() const -> std::size_t;
 };
 
