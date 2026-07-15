@@ -30,6 +30,7 @@
 
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
+#include "probes_config.hpp"
 #include "util.hpp"
 
 
@@ -238,11 +239,14 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
         }
         Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, nullptr, evaluator.get());
+        auto probes = Operon::LoadProbeConfig(result.contains("probes-config") ? result["probes-config"].as<std::string>() : std::string{});
         gp.Run(executor, random, [&]() -> bool {
             reporter(executor, gp);
+            if (probes) { (*probes)(gp); }
             Operon::MaybeSaveCheckpoint(gp, random, result);
             return false;
         }, warmStart);
+        if (probes) { probes->Finish(); }
         Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();

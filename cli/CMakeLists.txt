@@ -18,7 +18,11 @@ endif()
 
 find_package(cxxopts REQUIRED)
 find_package(scn REQUIRED)
+find_package(glaze REQUIRED)
 
+# Extra per-target sources (e.g. probes_config.cpp for operon_gp/operon_nsgp
+# only - operon_parse_model/operon_enum don't run a GeneticAlgorithmBase
+# loop, so they have nothing to wire a ProbeChain into) are passed as ARGN.
 function(add_operon_cli NAME)
     add_executable(${NAME}
         source/${NAME}.cpp
@@ -26,9 +30,10 @@ function(add_operon_cli NAME)
         source/operator_factory.cpp
         source/pareto_front.cpp
         source/util.cpp
+        ${ARGN}
     )
 
-    target_link_libraries(${NAME} PRIVATE operon::operon cxxopts::cxxopts scn::scn)
+    target_link_libraries(${NAME} PRIVATE operon::operon cxxopts::cxxopts scn::scn glaze::glaze)
     target_compile_features(${NAME} PRIVATE cxx_std_23)
     set_target_properties(${NAME} PROPERTIES
         CXX_VISIBILITY_PRESET hidden
@@ -53,7 +58,7 @@ function(add_operon_cli NAME)
         )
 endfunction()
 
-add_operon_cli(operon_gp)
-add_operon_cli(operon_nsgp)
+add_operon_cli(operon_gp source/probes_config.cpp)
+add_operon_cli(operon_nsgp source/probes_config.cpp)
 add_operon_cli(operon_parse_model)
 add_operon_cli(operon_enum)

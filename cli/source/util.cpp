@@ -187,6 +187,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("checkpoint-interval", "Save a checkpoint every N generations (0 = disabled)", cxxopts::value<std::size_t>()->default_value("0"))
         ("checkpoint-file", "Path for checkpoint output (BEVE binary format)", cxxopts::value<std::string>()->default_value("checkpoint.beve"))
         ("resume", "Resume a previous run from this checkpoint file", cxxopts::value<std::string>())
+        ("probes-config", R"(Path to a JSON config file describing per-generation instrumentation probes to run, e.g. {"probes":[{"type":"cache_hit_rate","every":1}],"sink":{"type":"jsonl","path":"metrics.jsonl"}})", cxxopts::value<std::string>())
         ("debug", "Debug mode (more information displayed)")
         ("help", "Print help")
         ("version", "Print version and program information");
