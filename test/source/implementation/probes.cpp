@@ -336,7 +336,7 @@ TEST_CASE("ProbeRegistry factory receives its params", "[probes]")
     Operon::ProbeRegistry registry;
     registry.Register("check-params", [](Operon::ProbeParams const& params) -> std::unique_ptr<Operon::GenerationProbe> {
         REQUIRE(params.contains("path"));
-        CHECK(std::get<std::string>(params.at("path")) == "out.beve");
+        CHECK(params.at("path").Get<std::string>() == "out.beve");
         return std::make_unique<RecordingProbe>();
     });
 
