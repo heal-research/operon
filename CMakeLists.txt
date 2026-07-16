@@ -278,6 +278,21 @@ else()
     target_compile_options(operon_operon PRIVATE "-fno-math-errno")
 endif()
 
+# The Eve backend's FastSinCos (include/operon/interpreter/backend/eve/
+# functions.hpp) does 3-part FMA range reduction that is only numerically
+# correct with genuine single-rounding hardware FMA, and Eve only selects
+# the FMA-capable 256-bit vector path when AVX2 is enabled. The
+# build-linux preset sets -march=x86-64-v3 (which implies both); mirror
+# that here as PUBLIC so a plain `cmake -S . -B build` (no preset) gets
+# identical codegen, and so consumers/tests that instantiate FastSinCos
+# from the public backend headers are compiled correctly too. Scoped to
+# x86_64/non-Windows (same gate as the USE_ASMJIT check above); Windows
+# gets /arch:AVX2 from the build-windows preset and clang-cl does not take
+# -march. Apple Silicon is arm64 and naturally excluded.
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" AND NOT WIN32)
+    target_compile_options(operon_operon PUBLIC "-march=x86-64-v3")
+endif()
+
 if (HAVE_ASMJIT)
     target_link_libraries(operon_operon PUBLIC asmjit::asmjit)
     target_sources(operon_operon PRIVATE
