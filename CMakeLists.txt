@@ -286,10 +286,15 @@ endif()
 # that here as PUBLIC so a plain `cmake -S . -B build` (no preset) gets
 # identical codegen, and so consumers/tests that instantiate FastSinCos
 # from the public backend headers are compiled correctly too. Scoped to
-# x86_64/non-Windows (same gate as the USE_ASMJIT check above); Windows
-# gets /arch:AVX2 from the build-windows preset and clang-cl does not take
-# -march. Apple Silicon is arm64 and naturally excluded.
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" AND NOT WIN32)
+# 64-bit x86_64/non-Windows (same gate as the USE_ASMJIT check above);
+# -march=x86-64-v3 is a 64-bit-only architecture level, so 32-bit x86
+# (i386/i486/.../i686) is excluded. Windows gets /arch:AVX2 from the
+# build-windows preset and clang-cl does not take -march. Apple Silicon
+# is arm64 and naturally excluded.
+#
+# NOTE: this raises the minimum supported CPU to Haswell-era (2013+)
+# x86-64 for non-preset builds - see BUILDING.md.
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$" AND NOT WIN32)
     target_compile_options(operon_operon PUBLIC "-march=x86-64-v3")
 endif()
 
