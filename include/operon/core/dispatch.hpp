@@ -328,35 +328,25 @@ public:
     DispatchTable(DispatchTable const& other) : map_(other.map_) { }
     DispatchTable(DispatchTable &&other) noexcept : map_(std::move(other.map_)) { }
 
-    auto GetMap() -> Map& { return map_; }
-    auto GetMap() const -> Map const& { return map_; }
+    template<typename Self>
+    [[nodiscard]] auto GetMap(this Self& self) -> decltype(auto) { return (self.map_); }
 
-    template<typename T>
-    auto GetFunction(Operon::Hash const h) -> Callable<T>&
+    // Self&, not Self&&: rejects a mutable rvalue *this, which would
+    // otherwise return a reference into an about-to-be-destroyed temporary.
+    template<typename T, typename Self>
+    [[nodiscard]] auto GetFunction(this Self& self, Operon::Hash const h) -> decltype(auto)
     {
-        return const_cast<Callable<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->GetFunction(h)); // NOLINT
-    }
-
-    template<typename T>
-    auto GetDerivative(Operon::Hash const h) -> CallableDiff<T>&
-    {
-        return const_cast<CallableDiff<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->GetDerivative(h)); // NOLINT
-    }
-
-    template<typename T>
-    [[nodiscard]] auto GetFunction(Operon::Hash const h) const -> Callable<T> const&
-    {
-        if (auto it = map_.find(h); it != map_.end()) {
-            return std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<0>(it->second));
+        if (auto it = self.map_.find(h); it != self.map_.end()) {
+            return (std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<0>(it->second)));
         }
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
 
-    template<typename T>
-    [[nodiscard]] auto GetDerivative(Operon::Hash const h) const -> CallableDiff<T> const&
+    template<typename T, typename Self>
+    [[nodiscard]] auto GetDerivative(this Self& self, Operon::Hash const h) -> decltype(auto)
     {
-        if (auto it = map_.find(h); it != map_.end()) {
-            return std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<1>(it->second));
+        if (auto it = self.map_.find(h); it != self.map_.end()) {
+            return (std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<1>(it->second)));
         }
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
