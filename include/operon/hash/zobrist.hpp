@@ -5,6 +5,7 @@
 #ifndef OPERON_HASH_ZOBRIST_HPP
 #define OPERON_HASH_ZOBRIST_HPP
 
+#include <array>
 #include <atomic>
 #include <memory>
 
@@ -13,6 +14,7 @@
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/hash/hash.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon {
@@ -90,7 +92,16 @@ class OPERON_EXPORT Zobrist {
     using Extents = std::extents<int, std::dynamic_extent, std::dynamic_extent>;
     using Table   = MDArray<Hash, Extents>;
 
+    // table_ holds one precomputed random row per variable (known and finite
+    // upfront, from variableHashes) plus one row for the Optimize marker.
+    // Non-variable node identity (built-in or user-registered function hash)
+    // is NOT table-indexed: that identity space is open-ended by design (any
+    // number of functions can be registered, at any time, not necessarily
+    // before a Zobrist is constructed), so there is no safe upper bound to
+    // size a table row-count from. Instead it's combined via seed_ below -
+    // see ComputeHash.
     Table table_;
+    Hash seed_{};
     Map<Hash, int> varIndex_;
 
     struct TranspositionTable;
@@ -120,10 +131,13 @@ public:
         if (n.IsVariable()) {
             auto const it = varIndex_.find(n.HashValue);
             ENSURE(it != varIndex_.end());
-            auto const row = static_cast<int>(NodeTypes::Count) + it->second;
-            h = table_[row, pos];
+            h = table_[it->second, pos];
         } else {
-            h = table_[NodeTypes::GetIndex(n.Type), pos];
+            // Combine the node's own identity hash with its tree position and
+            // this instance's random seed, rather than a table lookup - see
+            // the comment on table_ above for why.
+            std::array<Hash, 3> const buf{ n.HashValue, static_cast<Hash>(pos), seed_ };
+            h = Operon::Hasher{}(reinterpret_cast<uint8_t const*>(buf.data()), sizeof(buf)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
         }
         if (n.Optimize) {
             h ^= table_[OptimizeRow(), pos];

@@ -204,6 +204,45 @@ TEST_CASE("Zobrist - duplicate inserts increment count, not entries", "[zobrist]
     REQUIRE(cache.Size() == 1); // only one entry
 }
 
+TEST_CASE("Zobrist - distinct built-in ops at the same position yield distinct hashes", "[zobrist]")
+{
+    // Regression test: ComputeHash used to index a table row by
+    // NodeTypes::GetIndex(n.Type) for every non-variable node, so this
+    // already held for distinct built-ins (they have distinct NodeType
+    // values) - this test pins that property now that non-variable
+    // identity is combined from n.HashValue instead of table-indexed.
+    Operon::RandomGenerator rng(Seed);
+    Zobrist const cache(rng, MaxLength, {});
+
+    REQUIRE(cache.ComputeHash(Node(NodeType::Add), 0) != cache.ComputeHash(Node(NodeType::Mul), 0));
+    REQUIRE(cache.ComputeHash(Node(NodeType::Sin), 0) != cache.ComputeHash(Node(NodeType::Cos), 0));
+}
+
+TEST_CASE("Zobrist - distinct Dynamic-hash user functions yield distinct hashes", "[zobrist]")
+{
+    // Regression test for the actual bug this fix addresses: previously
+    // ALL NodeType::Dynamic nodes shared one table row via
+    // NodeTypes::GetIndex(NodeType::Dynamic), regardless of HashValue -
+    // meaning two different user-registered functions collided onto the
+    // same Zobrist identity and could cause a cached fitness value to be
+    // wrongly reused for a structurally different tree using a different
+    // custom function at the same position.
+    Operon::RandomGenerator rng(Seed);
+    Zobrist const cache(rng, MaxLength, {});
+
+    Operon::Hash const hashA = Operon::Hasher{}("userFunctionA");
+    Operon::Hash const hashB = Operon::Hasher{}("userFunctionB");
+    REQUIRE(hashA != hashB);
+
+    Node const nodeA(NodeType::Dynamic, hashA);
+    Node const nodeB(NodeType::Dynamic, hashB);
+
+    REQUIRE(cache.ComputeHash(nodeA, 0) != cache.ComputeHash(nodeB, 0));
+
+    // Also distinct from a built-in occupying the same tree position.
+    REQUIRE(cache.ComputeHash(nodeA, 0) != cache.ComputeHash(Node(NodeType::Add), 0));
+}
+
 TEST_CASE("Zobrist - different Optimize flags yield different hashes", "[zobrist]")
 {
     Operon::RandomGenerator rng(Seed);
