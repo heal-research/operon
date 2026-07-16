@@ -377,12 +377,13 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
     pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
 
     Operon::FunctionInfo const info{
-        .Hash      = Operon::Hasher{}("test::cube"),
         .Name      = "cube",
         .Desc      = "cube function f(x) = x^3",
         .Arity     = 1,
         .Frequency = 1
     };
+    // RegisterUnaryFunction derives the hash from info.Name the same way.
+    auto const hash = Operon::Hasher{}(info.Name);
 
     auto primal  = [](auto v) -> auto { return v * v * v; };
     auto dprimal = [](auto v) -> auto { return 3 * v * v; };
@@ -390,22 +391,22 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
     Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
 
     SECTION("Name and Desc are registered on the node") {
-        Operon::Node const dynNode(Operon::NodeType::Dynamic, info.Hash);
+        Operon::Node const dynNode(Operon::NodeType::Dynamic, hash);
         CHECK(dynNode.Name() == "cube");
         CHECK(dynNode.Desc() == "cube function f(x) = x^3");
     }
 
     SECTION("Hash is present in dispatch table and primitive set") {
-        CHECK(dt.Contains(info.Hash));
-        CHECK(pset.Contains(info.Hash));
-        CHECK(pset.MinimumArity(info.Hash) == 1);
+        CHECK(dt.Contains(hash));
+        CHECK(pset.Contains(hash));
+        CHECK(pset.MinimumArity(hash) == 1);
     }
 
     SECTION("Evaluation is correct") {
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
-        Operon::Node dynNode(Operon::NodeType::Dynamic, info.Hash);
+        Operon::Node dynNode(Operon::NodeType::Dynamic, hash);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
@@ -423,13 +424,24 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
-        Operon::Node dynNode(Operon::NodeType::Dynamic, info.Hash);
+        Operon::Node dynNode(Operon::NodeType::Dynamic, hash);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
         Operon::Tree const tree({ varNode, dynNode });
         auto formatted = InfixFormatter::Format(tree, ds);
         CHECK(formatted.find("cube") != std::string::npos);
+    }
+
+    SECTION("PostfixFormatter and DotFormatter use registered built-in names") {
+        auto builtInTree = InfixParser::Parse("sin(x)");
+
+        auto postfix = PostfixFormatter::Format(builtInTree, ds);
+        CHECK(postfix == "((1.00 * x) sin) ");
+
+        auto dot = DotFormatter::Format(builtInTree, ds);
+        CHECK(dot.find("[label=\"sin\"]") != std::string::npos);
+        CHECK(dot.find("0 -> 1") != std::string::npos);
     }
 }
 

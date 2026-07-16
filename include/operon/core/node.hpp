@@ -164,8 +164,10 @@ struct Node {
         return node;
     }
 
-    [[nodiscard]] OPERON_EXPORT auto Name() const noexcept -> std::string const&;
-    [[nodiscard]] OPERON_EXPORT auto Desc() const noexcept -> std::string const&;
+    // Not noexcept: unlike the old std::string const& return, this now
+    // copies (and, on invariant violation, can throw std::out_of_range).
+    [[nodiscard]] OPERON_EXPORT auto Name() const -> std::string;
+    [[nodiscard]] OPERON_EXPORT auto Desc() const -> std::string;
 
     // Register a display name (and optional description) for a Dynamic node hash.
     // After registration, Name() and Desc() return the provided strings instead of "dyn".
