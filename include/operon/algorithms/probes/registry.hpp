@@ -71,6 +71,12 @@ private:
     Operon::Map<std::string, ProbeFactory> factories_;
 };
 
+// Registers the three built-in probes ("population_trace", "cache_hit_rate",
+// "structural_diversity") by name. A plain function, not static/global
+// registration, to avoid static-init-order surprises - call it explicitly
+// on a registry before parsing config that might reference these types.
+OPERON_EXPORT auto RegisterBuiltinProbes(ProbeRegistry& registry) -> void;
+
 } // namespace Operon
 
 #endif
