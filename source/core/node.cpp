@@ -26,6 +26,17 @@ namespace {
     {
         return node.IsVariable() ? Node(NodeType::Variable).HashValue : node.HashValue;
     }
+
+    auto LookupDescription(Node const& node) -> pair<string, string> const&
+    {
+        auto& d = Descriptions();
+        auto const h = LookupHash(node);
+        auto const it = d.find(h);
+        if (it != d.end()) {
+            return it->second;
+        }
+        return d.at(node.IsDynamic() ? Node(NodeType::Dynamic).HashValue : h);
+    }
 } // namespace
 
     void Node::RegisterName(Operon::Hash hash, string name, string desc)
@@ -36,13 +47,13 @@ namespace {
     auto Node::Name() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
     {
         StandardLibrary::RegisterNames();
-        return Descriptions().at(LookupHash(*this)).first;
+        return LookupDescription(*this).first;
     }
 
     auto Node::Desc() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
     {
         StandardLibrary::RegisterNames();
-        return Descriptions().at(LookupHash(*this)).second;
+        return LookupDescription(*this).second;
     }
 
 } // namespace Operon

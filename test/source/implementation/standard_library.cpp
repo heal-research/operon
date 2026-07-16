@@ -6,6 +6,7 @@
 
 #include "operon/core/node.hpp"
 #include "operon/core/standard_library.hpp"
+#include "operon/hash/hash.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/parser/infix.hpp"
 
@@ -92,6 +93,30 @@ TEST_CASE("StandardLibrary populates dispatch tables and node names consistently
                 CHECK(rDefault[i] == rRuntime[i]); // bit-identical: same compiled kernels
             }
         }
+    }
+}
+
+TEST_CASE("Unregistered Dynamic nodes fall back to the generic name/desc", "[interpreter]")
+{
+    Operon::StandardLibrary::RegisterNames();
+
+    Operon::Hash const unregisteredHash = Operon::Hasher{}("test::unregistered_dynamic_fallback");
+    Operon::Node const dynNode(Operon::NodeType::Dynamic, unregisteredHash);
+
+    SECTION("Name() returns the generic \"dyn\" fallback") {
+        CHECK(dynNode.Name() == "dyn");
+    }
+
+    SECTION("Desc() returns the generic \"user-defined function\" fallback") {
+        CHECK(dynNode.Desc() == "user-defined function");
+    }
+
+    SECTION("A registered Dynamic node still resolves to its specific name") {
+        Operon::Hash const registeredHash = Operon::Hasher{}("test::registered_dynamic_fallback");
+        Operon::Node::RegisterName(registeredHash, "myop", "my custom op");
+        Operon::Node const registeredDyn(Operon::NodeType::Dynamic, registeredHash);
+        CHECK(registeredDyn.Name() == "myop");
+        CHECK(registeredDyn.Desc() == "my custom op");
     }
 }
 
