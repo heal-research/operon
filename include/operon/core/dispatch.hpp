@@ -334,13 +334,13 @@ public:
     template<typename T>
     auto GetFunction(Operon::Hash const h) -> Callable<T>&
     {
-        return const_cast<Callable<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->GetFunction(h)); // NOLINT
+        return const_cast<Callable<T>&>(const_cast<DispatchTable<Ts...> const*>(this)->template GetFunction<T>(h)); // NOLINT
     }
 
     template<typename T>
     auto GetDerivative(Operon::Hash const h) -> CallableDiff<T>&
     {
-        return const_cast<CallableDiff<T>&>(const_cast<DispatchTable<Ts...> const*>(*this)->GetDerivative(h)); // NOLINT
+        return const_cast<CallableDiff<T>&>(const_cast<DispatchTable<Ts...> const*>(this)->template GetDerivative<T>(h)); // NOLINT
     }
 
     template<typename T>
