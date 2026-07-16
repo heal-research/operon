@@ -241,6 +241,12 @@ TEST_CASE("Zobrist - distinct Dynamic-hash user functions yield distinct hashes"
 
     // Also distinct from a built-in occupying the same tree position.
     REQUIRE(cache.ComputeHash(nodeA, 0) != cache.ComputeHash(Node(NodeType::Add), 0));
+
+    // Same Dynamic hash at two different positions must also differ - pins
+    // position-sensitivity for the non-table combine path specifically,
+    // not just (as the pre-existing "position sensitivity" test covers)
+    // for built-ins via full-tree XOR.
+    REQUIRE(cache.ComputeHash(nodeA, 0) != cache.ComputeHash(nodeA, 1));
 }
 
 TEST_CASE("Zobrist - different Optimize flags yield different hashes", "[zobrist]")
