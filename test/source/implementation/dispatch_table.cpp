@@ -431,6 +431,17 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         auto formatted = InfixFormatter::Format(tree, ds);
         CHECK(formatted.find("cube") != std::string::npos);
     }
+
+    SECTION("PostfixFormatter and DotFormatter use registered built-in names") {
+        auto builtInTree = InfixParser::Parse("sin(x)");
+
+        auto postfix = PostfixFormatter::Format(builtInTree, ds);
+        CHECK(postfix == "((1.00 * x) sin) ");
+
+        auto dot = DotFormatter::Format(builtInTree, ds);
+        CHECK(dot.find("[label=\"sin\"]") != std::string::npos);
+        CHECK(dot.find("0 -> 1") != std::string::npos);
+    }
 }
 
 } // namespace Operon::Test

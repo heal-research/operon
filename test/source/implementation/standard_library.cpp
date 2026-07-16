@@ -14,7 +14,7 @@
 
 namespace Operon::Test {
 
-TEST_CASE("StandardLibrary::Register matches the default DispatchTable construction", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
+TEST_CASE("StandardLibrary populates dispatch tables and node names consistently", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
@@ -22,7 +22,7 @@ TEST_CASE("StandardLibrary::Register matches the default DispatchTable construct
     using FnPtr  = void (*)(Operon::Vector<Node> const&, Backend::View<Scalar, S>, size_t, Operon::Range);
     using DfPtr  = void (*)(Operon::Vector<Node> const&, Backend::View<Scalar const, S>, Backend::View<Scalar, S>, int, int);
 
-    DT const dtDefault; // populated by the existing compile-time enum loop
+    DT const dtDefault;
 
     DT dtRuntime;
     dtRuntime.GetMap().clear();
@@ -34,6 +34,13 @@ TEST_CASE("StandardLibrary::Register matches the default DispatchTable construct
             CHECK(dtDefault.Contains(h));
             CHECK(dtRuntime.Contains(h));
         }
+    }
+
+    SECTION("Built-in names and descriptions are available through the unified hash registry") {
+        CHECK(Operon::Node(Operon::NodeType::Add).Name() == "+");
+        CHECK(Operon::Node(Operon::NodeType::Add).Desc() == "n-ary addition f(a,b,c,...) = a + b + c + ...");
+        CHECK(Operon::Node(Operon::NodeType::Dynamic).Name() == "dyn");
+        CHECK(Operon::Node(Operon::NodeType::Variable).Name() == "variable");
     }
 
     SECTION("Registered callables are the identical compiled kernels (same function pointer target)") {
