@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <vector>
 #include <numeric>
+#include <type_traits>
 
 #include "contracts.hpp"
 #include "subtree.hpp"
@@ -109,8 +110,8 @@ public:
         return tree;
     }
 
-    auto operator[](size_t i) noexcept -> Node& { return nodes_[i]; }
-    auto operator[](size_t i) const noexcept -> Node const& { return nodes_[i]; }
+    template<typename Self>
+    auto operator[](this Self& self, size_t i) noexcept -> decltype(auto) { return (self.nodes_[i]); }
 
     [[nodiscard]] auto Length() const noexcept -> size_t { return nodes_.size(); }
     [[nodiscard]] auto AdjustedLength() const noexcept -> size_t {
@@ -126,8 +127,10 @@ public:
 
     [[nodiscard]] auto HashValue() const -> Operon::Hash { return nodes_.empty() ? 0 : nodes_.back().CalculatedHashValue; }
 
-    [[nodiscard]] auto Children(size_t i) { return Subtree<Node>{nodes_, i}.Nodes(); }
-    [[nodiscard]] auto Children(size_t i) const { return Subtree<Node const>{nodes_, i}.Nodes(); }
+    template<typename Self>
+    [[nodiscard]] auto Children(this Self& self, size_t i) {
+        return Subtree<std::conditional_t<std::is_const_v<Self>, Node const, Node>>{self.nodes_, i}.Nodes();
+    }
     [[nodiscard]] auto Indices(size_t i) const { return Subtree<Node const>{nodes_, i}.Indices(); }
 
     // convenience methods

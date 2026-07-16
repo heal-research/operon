@@ -21,8 +21,8 @@ struct Individual {
     size_t Rank{}; // domination rank; used by NSGA2
     Operon::Scalar Distance{}; // crowding distance; used by NSGA2
 
-    inline auto operator[](size_t const i) noexcept -> Operon::Scalar& { return Fitness[i]; }
-    inline auto operator[](size_t const i) const noexcept -> Operon::Scalar { return Fitness[i]; }
+    template<typename Self>
+    auto operator[](this Self& self, size_t const i) noexcept -> decltype(auto) { return (self.Fitness[i]); }
 
     [[nodiscard]] inline auto Size() const noexcept -> size_t { return Fitness.size(); }
 

@@ -6,6 +6,7 @@
 #define PROBLEM_HPP
 
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 #include <gsl/pointers>
@@ -111,12 +112,16 @@ public:
         return variables;
     }
 
-    [[nodiscard]] auto GetPrimitiveSet() const -> PrimitiveSet const& { return pset_; }
-    auto GetPrimitiveSet() -> PrimitiveSet& { return pset_; }
+    template<typename Self>
+    [[nodiscard]] auto GetPrimitiveSet(this Self& self) -> decltype(auto) { return (self.pset_); }
     auto ConfigurePrimitiveSet(Operon::PrimitiveSetConfig config) { pset_.SetConfig(config); }
 
-    [[nodiscard]] auto GetDataset() const -> Dataset const* { return dataset_.get(); }
-    auto GetDataset() -> Dataset* { return dataset_.get(); }
+    // unique_ptr::get() doesn't propagate constness (it's a const member
+    // function that always returns a non-const pointer), so the two
+    // overloads it replaced deliberately re-added const-correctness by
+    // hand; the explicit conditional_t return type reproduces that here.
+    template<typename Self>
+    [[nodiscard]] auto GetDataset(this Self& self) -> std::conditional_t<std::is_const_v<Self>, Dataset const*, Dataset*> { return self.dataset_.get(); }
 
     [[nodiscard]] auto TargetValues() const -> Operon::Span<Operon::Scalar const> { return dataset_->GetValues(target_.Index); }
     [[nodiscard]] auto TargetValues(Operon::Range range) const -> Operon::Span<Operon::Scalar const> {
