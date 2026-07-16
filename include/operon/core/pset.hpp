@@ -5,6 +5,9 @@
 #ifndef OPERON_PSET_HPP
 #define OPERON_PSET_HPP
 
+#include <fmt/format.h>
+#include <stdexcept>
+
 #include "contracts.hpp"
 #include "node.hpp"
 
@@ -21,10 +24,13 @@ class PrimitiveSet {
 
     Operon::Map<Operon::Hash, Primitive> pset_;
 
-    [[nodiscard]] auto OPERON_EXPORT GetPrimitive(Operon::Hash hash) const -> Primitive const&;
-
-    auto GetPrimitive(Operon::Hash hash) -> Primitive& {
-        return const_cast<Primitive&>(const_cast<PrimitiveSet const*>(this)->GetPrimitive(hash)); // NOLINT
+    template<typename Self>
+    [[nodiscard]] auto GetPrimitive(this Self& self, Operon::Hash hash) -> decltype(auto) {
+        auto it = self.pset_.find(hash);
+        if (it == self.pset_.end()) {
+            throw std::runtime_error(fmt::format("Unknown node hash {}\n", hash));
+        }
+        return (it->second);
     }
 
 public:
