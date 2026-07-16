@@ -278,6 +278,19 @@ else()
     target_compile_options(operon_operon PRIVATE "-fno-math-errno")
 endif()
 
+# FastSinCos's range reduction (interpreter/backend/eve/functions.hpp)
+# requires genuine hardware FMA, and Eve needs AVX2 to select that code
+# path. PUBLIC: FastSinCos is instantiated from public headers, so
+# consumers need the flag too. 64-bit x86_64/non-Windows only:
+# -march=x86-64-v3 is 64-bit-only (excludes i386/i486/.../i686); Windows
+# gets /arch:AVX2 via the build-windows preset.
+#
+# Raises the minimum supported CPU to Haswell-era (2013+) x86-64 - see
+# BUILDING.md.
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$" AND NOT WIN32)
+    target_compile_options(operon_operon PUBLIC "-march=x86-64-v3")
+endif()
+
 if (HAVE_ASMJIT)
     target_link_libraries(operon_operon PUBLIC asmjit::asmjit)
     target_sources(operon_operon PRIVATE
