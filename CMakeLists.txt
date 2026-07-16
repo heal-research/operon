@@ -278,22 +278,15 @@ else()
     target_compile_options(operon_operon PRIVATE "-fno-math-errno")
 endif()
 
-# The Eve backend's FastSinCos (include/operon/interpreter/backend/eve/
-# functions.hpp) does 3-part FMA range reduction that is only numerically
-# correct with genuine single-rounding hardware FMA, and Eve only selects
-# the FMA-capable 256-bit vector path when AVX2 is enabled. The
-# build-linux preset sets -march=x86-64-v3 (which implies both); mirror
-# that here as PUBLIC so a plain `cmake -S . -B build` (no preset) gets
-# identical codegen, and so consumers/tests that instantiate FastSinCos
-# from the public backend headers are compiled correctly too. Scoped to
-# 64-bit x86_64/non-Windows (same gate as the USE_ASMJIT check above);
-# -march=x86-64-v3 is a 64-bit-only architecture level, so 32-bit x86
-# (i386/i486/.../i686) is excluded. Windows gets /arch:AVX2 from the
-# build-windows preset and clang-cl does not take -march. Apple Silicon
-# is arm64 and naturally excluded.
+# FastSinCos's range reduction (interpreter/backend/eve/functions.hpp)
+# requires genuine hardware FMA, and Eve needs AVX2 to select that code
+# path. PUBLIC: FastSinCos is instantiated from public headers, so
+# consumers need the flag too. 64-bit x86_64/non-Windows only:
+# -march=x86-64-v3 is 64-bit-only (excludes i386/i486/.../i686); Windows
+# gets /arch:AVX2 via the build-windows preset.
 #
-# NOTE: this raises the minimum supported CPU to Haswell-era (2013+)
-# x86-64 for non-preset builds - see BUILDING.md.
+# Raises the minimum supported CPU to Haswell-era (2013+) x86-64 - see
+# BUILDING.md.
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$" AND NOT WIN32)
     target_compile_options(operon_operon PUBLIC "-march=x86-64-v3")
 endif()
