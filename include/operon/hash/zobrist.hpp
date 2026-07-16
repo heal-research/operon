@@ -98,10 +98,9 @@ class OPERON_EXPORT Zobrist {
     // is NOT table-indexed: that identity space is open-ended by design (any
     // number of functions can be registered, at any time, not necessarily
     // before a Zobrist is constructed), so there is no safe upper bound to
-    // size a table row-count from. Instead it's combined via seed_ below -
-    // see ComputeHash.
+    // size a table row-count from. Instead it's combined directly from the
+    // node's HashValue - see ComputeHash.
     Table table_;
-    Hash seed_{};
     Map<Hash, int> varIndex_;
 
     struct TranspositionTable;
@@ -133,10 +132,13 @@ public:
             ENSURE(it != varIndex_.end());
             h = table_[it->second, pos];
         } else {
-            // Combine the node's own identity hash with its tree position and
-            // this instance's random seed, rather than a table lookup - see
-            // the comment on table_ above for why.
-            std::array<Hash, 3> const buf{ n.HashValue, static_cast<Hash>(pos), seed_ };
+            // Combine the node's own identity hash with its tree position,
+            // rather than a table lookup - see the comment on table_ above
+            // for why. No per-instance salt is needed: nothing in this
+            // codebase compares or merges hash values across different
+            // Zobrist instances (each owns its own private cache), so there's
+            // no cross-instance independence property to preserve here.
+            std::array<Hash, 2> const buf{ n.HashValue, static_cast<Hash>(pos) };
             h = Operon::Hasher{}(reinterpret_cast<uint8_t const*>(buf.data()), sizeof(buf)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
         }
         if (n.Optimize) {

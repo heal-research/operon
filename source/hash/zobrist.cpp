@@ -15,7 +15,6 @@ struct Zobrist::TranspositionTable {
 
 Zobrist::Zobrist(Operon::RandomGenerator& rng, int maxLength, Operon::Span<Operon::Hash const> variableHashes)
     : table_(static_cast<int>(variableHashes.size()) + 1, maxLength)
-    , seed_(rng())
     , tt_(std::make_unique<TranspositionTable>())
 {
     std::generate(table_.container().begin(), table_.container().end(), std::ref(rng));
