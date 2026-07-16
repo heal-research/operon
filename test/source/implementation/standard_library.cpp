@@ -6,6 +6,7 @@
 
 #include "operon/core/node.hpp"
 #include "operon/core/standard_library.hpp"
+#include "operon/hash/hash.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/parser/infix.hpp"
 
@@ -14,7 +15,7 @@
 
 namespace Operon::Test {
 
-TEST_CASE("StandardLibrary::Register matches the default DispatchTable construction", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
+TEST_CASE("StandardLibrary populates dispatch tables and node names consistently", "[interpreter]") // NOLINT(readability-function-cognitive-complexity)
 {
     using DT = Operon::DispatchTable<Operon::Scalar>;
     using Scalar = Operon::Scalar;
@@ -22,7 +23,7 @@ TEST_CASE("StandardLibrary::Register matches the default DispatchTable construct
     using FnPtr  = void (*)(Operon::Vector<Node> const&, Backend::View<Scalar, S>, size_t, Operon::Range);
     using DfPtr  = void (*)(Operon::Vector<Node> const&, Backend::View<Scalar const, S>, Backend::View<Scalar, S>, int, int);
 
-    DT const dtDefault; // populated by the existing compile-time enum loop
+    DT const dtDefault;
 
     DT dtRuntime;
     dtRuntime.GetMap().clear();
@@ -34,6 +35,13 @@ TEST_CASE("StandardLibrary::Register matches the default DispatchTable construct
             CHECK(dtDefault.Contains(h));
             CHECK(dtRuntime.Contains(h));
         }
+    }
+
+    SECTION("Built-in names and descriptions are available through the unified hash registry") {
+        CHECK(Operon::Node(Operon::NodeType::Add).Name() == "+");
+        CHECK(Operon::Node(Operon::NodeType::Add).Desc() == "n-ary addition f(a,b,c,...) = a + b + c + ...");
+        CHECK(Operon::Node(Operon::NodeType::Dynamic).Name() == "dyn");
+        CHECK(Operon::Node(Operon::NodeType::Variable).Name() == "variable");
     }
 
     SECTION("Registered callables are the identical compiled kernels (same function pointer target)") {
@@ -85,6 +93,30 @@ TEST_CASE("StandardLibrary::Register matches the default DispatchTable construct
                 CHECK(rDefault[i] == rRuntime[i]); // bit-identical: same compiled kernels
             }
         }
+    }
+}
+
+TEST_CASE("Unregistered Dynamic nodes fall back to the generic name/desc", "[interpreter]")
+{
+    Operon::StandardLibrary::RegisterNames();
+
+    Operon::Hash const unregisteredHash = Operon::Hasher{}("test::unregistered_dynamic_fallback");
+    Operon::Node const dynNode(Operon::NodeType::Dynamic, unregisteredHash);
+
+    SECTION("Name() returns the generic \"dyn\" fallback") {
+        CHECK(dynNode.Name() == "dyn");
+    }
+
+    SECTION("Desc() returns the generic \"user-defined function\" fallback") {
+        CHECK(dynNode.Desc() == "user-defined function");
+    }
+
+    SECTION("A registered Dynamic node still resolves to its specific name") {
+        Operon::Hash const registeredHash = Operon::Hasher{}("test::registered_dynamic_fallback");
+        Operon::Node::RegisterName(registeredHash, "myop", "my custom op");
+        Operon::Node const registeredDyn(Operon::NodeType::Dynamic, registeredHash);
+        CHECK(registeredDyn.Name() == "myop");
+        CHECK(registeredDyn.Desc() == "my custom op");
     }
 }
 

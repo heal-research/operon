@@ -4,10 +4,13 @@
 
 #include "operon/core/node.hpp"
 
-#include <iterator>       // for pair
-#include <utility>        // for make_pair, pair
+#include <gtl/phmap.hpp>
+
+#include <stdexcept>      // for invalid_argument, out_of_range
+#include <utility>        // for make_pair, pair, move
 #include <string>         // for string
 
+#include "operon/core/standard_library.hpp"
 #include "operon/core/types.hpp"
 
 using std::pair;
@@ -15,69 +18,63 @@ using std::string;
 
 namespace Operon {
 namespace {
-    Operon::Map<Operon::Hash, pair<string, string>> DynDesc; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+    // Thread-safe: Name()/Desc() are read on every tree format/print, which
+    // can happen concurrently with RegisterName() calls registering
+    // user-defined Dynamic functions during setup.
+    auto Descriptions() -> gtl::parallel_flat_hash_map_m<Operon::Hash, pair<string, string>>&
+    {
+        static gtl::parallel_flat_hash_map_m<Operon::Hash, pair<string, string>> desc; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+        return desc;
+    }
+
+    auto LookupHash(Node const& node) -> Operon::Hash
+    {
+        return node.IsVariable() ? Node(NodeType::Variable).HashValue : node.HashValue;
+    }
+
+    // Returns by value: a reference into the map would not be safe to hand
+    // back once the lookup's internal lock (gtl::parallel_flat_hash_map_m
+    // shards its locking per bucket) has been released.
+    auto LookupDescription(Node const& node) -> pair<string, string>
+    {
+        auto& d = Descriptions();
+        auto const h = LookupHash(node);
+        pair<string, string> result;
+        if (d.if_contains(h, [&](auto const& kv) { result = kv.second; })) {
+            return result;
+        }
+        auto const fallback = node.IsDynamic() ? Node(NodeType::Dynamic).HashValue : h;
+        if (d.if_contains(fallback, [&](auto const& kv) { result = kv.second; })) {
+            return result;
+        }
+        throw std::out_of_range("Node: no description registered for this hash");
+    }
 } // namespace
 
     void Node::RegisterName(Operon::Hash hash, string name, string desc)
     {
-        DynDesc[hash] = { std::move(name), std::move(desc) };
+        // Also used internally by StandardLibrary::RegisterNames() to seed
+        // built-in entries, whose hashes ARE in [0, NodeTypes::Count) by
+        // construction (Node(NodeType) ctor) - so this can't reject that
+        // range itself. User-facing callers (symbol_library.hpp) guard
+        // against landing in the reserved range before calling this.
+        Descriptions().lazy_emplace_l(
+            hash,
+            [&](auto& kv)         { kv.second = { std::move(name), std::move(desc) }; },
+            [&](auto const& ctor) { ctor(hash, std::make_pair(std::move(name), std::move(desc))); }
+        );
     }
 
-    static const Operon::Map<NodeType, pair<string, string>> NodeDesc = {
-        { NodeType::Add,      std::make_pair("+", "n-ary addition f(a,b,c,...) = a + b + c + ...") },
-        { NodeType::Mul,      std::make_pair("*", "n-ary multiplication f(a,b,c,...) = a * b * c * ..." ) },
-        { NodeType::Sub,      std::make_pair("-", "n-ary subtraction f(a,b,c,...) = a - (b + c + ...)" ) },
-        { NodeType::Div,      std::make_pair("/", "n-ary division f(a,b,c,..) = a / (b * c * ...)" ) },
-        { NodeType::Fmin,     std::make_pair("fmin", "minimum function f(a,b) = min(a,b)" ) },
-        { NodeType::Fmax,     std::make_pair("fmax", "maximum function f(a,b) = max(a,b)" ) },
-        { NodeType::Aq,       std::make_pair("aq", "analytical quotient f(a,b) = a / sqrt(1 + b^2)" ) },
-        { NodeType::Pow,      std::make_pair("pow", "raise to power f(a,b) = a^b" ) },
-        { NodeType::Powabs,   std::make_pair("powabs", "raise absolute value to power f(a,b) = |a|^b" ) },
-        { NodeType::Abs,      std::make_pair("abs", "absolute value function f(a) = abs(a)" ) },
-        { NodeType::Acos,     std::make_pair("acos", "inverse cosine function f(a) = acos(a)" ) },
-        { NodeType::Asin,     std::make_pair("asin", "inverse sine function f(a) = asin(a)" ) },
-        { NodeType::Atan,     std::make_pair("atan", "inverse tangent function f(a) = atan(a)" ) },
-        { NodeType::Cbrt,     std::make_pair("cbrt", "cube root function f(a) = cbrt(a)" ) },
-        { NodeType::Ceil,     std::make_pair("ceil", "ceiling function f(a) = ceil(a)" ) },
-        { NodeType::Cos,      std::make_pair("cos", "cosine function f(a) = cos(a)" ) },
-        { NodeType::Cosh,     std::make_pair("cosh", "hyperbolic cosine function f(a) = cosh(a)" ) },
-        { NodeType::Exp,      std::make_pair("exp", "e raised to the given power f(a) = e^a" ) },
-        { NodeType::Floor,    std::make_pair("floor", "floor function f(a) = floor(a)" ) },
-        { NodeType::Log,      std::make_pair("log", "natural (base e) logarithm f(a) = ln(a)" ) },
-        { NodeType::Logabs,   std::make_pair("logabs", "natural (base e) logarithm of absolute value f(a) = ln(|a|)" ) },
-        { NodeType::Log1p,    std::make_pair("log1p", "f(a) = ln(a + 1), accurate even when a is close to zero" ) },
-        { NodeType::Sin,      std::make_pair("sin", "sine function f(a) = sin(a)" ) },
-        { NodeType::Sinh,     std::make_pair("sinh", "hyperbolic sine function f(a) = sinh(a)" ) },
-        { NodeType::Sqrt,     std::make_pair("sqrt", "square root function f(a) = sqrt(a)" ) },
-        { NodeType::Sqrtabs,  std::make_pair("sqrtabs", "square root of absolute value function f(a) = sqrt(|a|)" ) },
-        { NodeType::Tan,      std::make_pair("tan", "tangent function f(a) = tan(a)" ) },
-        { NodeType::Tanh,     std::make_pair("tanh", "hyperbolic tangent function f(a) = tanh(a)" ) },
-        { NodeType::Square,   std::make_pair("square", "square function f(a) = a^2" ) },
-        { NodeType::Dynamic,  std::make_pair("dyn", "user-defined function" ) },
-        { NodeType::Constant, std::make_pair("constant", "a constant value" ) },
-        { NodeType::Variable, std::make_pair("variable", "a dataset input with an associated weight" ) },
-        { NodeType::Ref,      std::make_pair("ref", "structural reference to another node (enables DAG sharing)" ) },
-    };
-
-    auto Node::Name() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
+    auto Node::Name() const -> std::string
     {
-        if (Type == NodeType::Dynamic) {
-            if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {
-                return it->second.first;
-            }
-        }
-        return NodeDesc.at(Type).first;
+        StandardLibrary::RegisterNames();
+        return LookupDescription(*this).first;
     }
 
-    auto Node::Desc() const noexcept -> std::string const& // NOLINT(bugprone-exception-escape)
+    auto Node::Desc() const -> std::string
     {
-        if (Type == NodeType::Dynamic) {
-            if (auto it = DynDesc.find(HashValue); it != DynDesc.end()) {
-                return it->second.second;
-            }
-        }
-        return NodeDesc.at(Type).second;
+        StandardLibrary::RegisterNames();
+        return LookupDescription(*this).second;
     }
 
 } // namespace Operon
-

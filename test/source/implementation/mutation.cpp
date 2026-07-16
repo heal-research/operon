@@ -69,4 +69,36 @@ TEST_CASE("Mutation tree stays within bounds", "[operators]")
     }
 }
 
+TEST_CASE("InsertSubtreeMutation leaves trees without eligible n-ary operators unchanged", "[operators]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", true);
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
+    auto const maxDepth{1000};
+    auto const maxLength{50};
+
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic);
+
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    UniformCoefficientInitializer cfi;
+
+    auto const variableHash = ds.GetVariable("X1").value().Hash;
+    Node variable(NodeType::Variable);
+    variable.HashValue = variable.CalculatedHashValue = variableHash;
+
+    Node sin(NodeType::Sin);
+    sin.Length = 1;
+
+    Tree const tree({ variable, sin });
+
+    Operon::RandomGenerator random(1234);
+    InsertSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*>{&btc}, gsl::not_null<Operon::CoefficientInitializerBase const*>{&cfi}, maxLength, maxDepth);
+    auto child = mut(random, tree);
+
+    CHECK(child.Length() == tree.Length());
+    CHECK(child[child.Length() - 1].Type == NodeType::Sin);
+    CHECK(child[0].HashValue == variableHash);
+}
+
 } // namespace Operon::Test
