@@ -331,16 +331,8 @@ public:
     template<typename Self>
     [[nodiscard]] auto GetMap(this Self& self) -> decltype(auto) { return (self.map_); }
 
-    // Single deducing-this member replaces the former const_cast-delegating
-    // non-const/const overload pair (Meyers Item 3): Self's constness
-    // follows from the caller's object, and std::get on it->second (whose
-    // constness already follows map_'s constness through find()) reproduces
-    // Callable<T>& / Callable<T> const& exactly, with no const_cast at all.
-    // Self& (not Self&&), matching Parents()/Offspring() in ga_base.hpp:
-    // the original overloads were unqualified and thus technically callable
-    // on a mutable rvalue *this, returning a reference into an
-    // about-to-be-destroyed temporary. Self& deliberately closes that off
-    // instead of preserving it.
+    // Self&, not Self&&: rejects a mutable rvalue *this, which would
+    // otherwise return a reference into an about-to-be-destroyed temporary.
     template<typename T, typename Self>
     [[nodiscard]] auto GetFunction(this Self& self, Operon::Hash const h) -> decltype(auto)
     {

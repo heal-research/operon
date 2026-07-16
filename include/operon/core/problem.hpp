@@ -116,10 +116,7 @@ public:
     [[nodiscard]] auto GetPrimitiveSet(this Self& self) -> decltype(auto) { return (self.pset_); }
     auto ConfigurePrimitiveSet(Operon::PrimitiveSetConfig config) { pset_.SetConfig(config); }
 
-    // unique_ptr::get() doesn't propagate constness (it's a const member
-    // function that always returns a non-const pointer), so the two
-    // overloads it replaced deliberately re-added const-correctness by
-    // hand; the explicit conditional_t return type reproduces that here.
+    // unique_ptr::get() doesn't propagate constness; conditional_t restores it.
     template<typename Self>
     [[nodiscard]] auto GetDataset(this Self& self) -> std::conditional_t<std::is_const_v<Self>, Dataset const*, Dataset*> { return self.dataset_.get(); }
 

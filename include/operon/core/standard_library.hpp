@@ -7,26 +7,13 @@
 #include "dispatch.hpp"
 #include "node.hpp"
 
-// standard_library.hpp: registers the built-in math ops into a DispatchTable
-// via the same public RegisterFunction<T> API used for user-defined Dynamic
-// functions (see symbol_library.hpp), instead of the compile-time
-// index_sequence loop DispatchTable's default constructor uses.
-//
-// This is Phase 1 of the generic-node-registry migration
-// (docs/research plan: NodeType -> {Constant,Variable,Ref,Unary,Binary,Nary}).
-// It is purely additive: it does not change DispatchTable's default
-// construction path, Node::Type values, or any existing behavior. Its only
-// purpose is to prove that built-in ops can be populated through the exact
-// same runtime registration mechanism as custom functions, with identical
-// underlying callables (see test/source/implementation/standard_library.cpp
-// for the equivalence proof), before anything downstream is migrated to
-// depend on it.
-//
-// Each built-in's Callable/CallableDiff is built via Dispatch::MakeFunctionCall
-// / MakeDiffCall<Type,T,S> - the exact same compile-time-specialized kernels
-// (NaryOp/BinaryOp/UnaryOp wrapping Func<T,Type,C,S>/Diff<T,Type,S>) that
-// DispatchTable's constructor already uses. Only the population code path
-// differs; the compiled kernel for a given (Type,T,S) is identical either way.
+// Registers the built-in math ops into a DispatchTable via the same
+// RegisterFunction<T> API used for user-defined Dynamic functions (see
+// symbol_library.hpp). Each entry's Callable/CallableDiff comes from
+// Dispatch::MakeFunctionCall/MakeDiffCall<Type,T,S> - the same
+// compile-time-specialized kernels DispatchTable's constructor uses
+// directly, so the compiled code for a given (Type,T,S) is unaffected by
+// which path registered it.
 
 namespace Operon {
 
