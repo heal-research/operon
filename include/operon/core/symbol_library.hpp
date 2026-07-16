@@ -5,9 +5,12 @@
 #ifndef OPERON_SYMBOL_LIBRARY_HPP
 #define OPERON_SYMBOL_LIBRARY_HPP
 
+#include <stdexcept>
+
 #include "dispatch.hpp"
 #include "node.hpp"
 #include "pset.hpp"
+#include "operon/hash/hash.hpp"
 #include "operon/interpreter/dual.hpp"
 
 // symbol_library.hpp: scalar-lambda adapters for registering user-defined
@@ -221,13 +224,34 @@ void RegisterBinary(DTable& dt, Operon::Hash hash, F primal,
 }
 
 // Bundles the metadata needed to register a user-defined function symbol.
+// Hash is derived from Name (via Operon::Hasher) rather than supplied by the
+// caller, so it can't accidentally collide with the small-integer hash range
+// reserved for built-ins (see NodeType's HashValue == static_cast<Hash>(type)).
 struct FunctionInfo {
-    Operon::Hash Hash;
-    std::string  Name;
-    std::string  Desc;
-    uint16_t     Arity;
-    size_t       Frequency{1};
+    std::string Name;
+    std::string Desc;
+    uint16_t    Arity;
+    size_t      Frequency{1};
 };
+
+namespace detail {
+    // [0, NodeTypes::Count) is reserved for built-in NodeType ordinals
+    // (Node(NodeType) ctor sets HashValue = static_cast<Hash>(type)); a
+    // name-derived hash landing there would silently overwrite a built-in's
+    // dispatch entry / name+desc. A real 64-bit XXHash of a non-empty name
+    // landing in that ~30-value range is not a plausible accident, but the
+    // check is nearly free and turns the impossible case into a clear error
+    // instead of silent corruption.
+    inline void ValidateUserHash(Operon::Hash hash, std::string_view name)
+    {
+        if (name.empty()) {
+            throw std::invalid_argument("FunctionInfo::Name must not be empty (it seeds the function's hash)");
+        }
+        if (hash < NodeTypes::Count) {
+            throw std::invalid_argument("FunctionInfo: name-derived hash falls in the range reserved for built-in NodeTypes");
+        }
+    }
+} // namespace detail
 
 // Register a unary function in the dispatch table, PrimitiveSet, and name
 // registry in a single call.  An optional explicit derivative may be supplied;
@@ -236,9 +260,11 @@ template<typename DTable, typename T, typename F, typename DF = Dispatch::Noop>
 void RegisterUnaryFunction(DTable& dt, PrimitiveSet& pset,
                            FunctionInfo const& info, F primal, DF deriv = {})
 {
-    RegisterUnary<DTable, T>(dt, info.Hash, std::move(primal), std::move(deriv));
-    pset.AddFunction(info.Hash, info.Arity, info.Frequency);
-    if (!info.Name.empty()) { Node::RegisterName(info.Hash, info.Name, info.Desc); }
+    auto const hash = Operon::Hasher{}(info.Name);
+    detail::ValidateUserHash(hash, info.Name);
+    RegisterUnary<DTable, T>(dt, hash, std::move(primal), std::move(deriv));
+    pset.AddFunction(hash, info.Arity, info.Frequency);
+    Node::RegisterName(hash, info.Name, info.Desc);
 }
 
 // Register a binary function in the dispatch table, PrimitiveSet, and name
@@ -250,10 +276,12 @@ void RegisterBinaryFunction(DTable& dt, PrimitiveSet& pset,
                             FunctionInfo const& info, F primal,
                             DFa derivA = {}, DFb derivB = {})
 {
-    RegisterBinary<DTable, T>(dt, info.Hash, std::move(primal),
+    auto const hash = Operon::Hasher{}(info.Name);
+    detail::ValidateUserHash(hash, info.Name);
+    RegisterBinary<DTable, T>(dt, hash, std::move(primal),
                               std::move(derivA), std::move(derivB));
-    pset.AddFunction(info.Hash, info.Arity, info.Frequency);
-    if (!info.Name.empty()) { Node::RegisterName(info.Hash, info.Name, info.Desc); }
+    pset.AddFunction(hash, info.Arity, info.Frequency);
+    Node::RegisterName(hash, info.Name, info.Desc);
 }
 
 } // namespace Operon

@@ -31,7 +31,6 @@
 #include "operon/core/problem.hpp"
 #include "operon/core/symbol_library.hpp"
 #include "operon/formatter/formatter.hpp"
-#include "operon/hash/hash.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/crossover.hpp"
 #include "operon/operators/evaluator.hpp"
@@ -77,23 +76,20 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     // sincos(x) = sin(x) + cos(x) — explicit derivative provided
     Operon::RegisterUnaryFunction<DT, Operon::Scalar>(dtable, pset,
-        { .Hash = Operon::Hasher{}("sincos"),
-          .Name = "sincos", .Desc = "sin(x) + cos(x)",
+        { .Name = "sincos", .Desc = "sin(x) + cos(x)",
           .Arity = 1, .Frequency = 2 },
         [](auto v) -> auto { using std::sin, std::cos; return sin(v) + cos(v); },
         [](auto v) -> auto { using std::sin, std::cos; return cos(v) - sin(v); });
 
     // gaussian(x) = exp(-x²) — derivative via Jet<T,1> auto-diff
     Operon::RegisterUnaryFunction<DT, Operon::Scalar>(dtable, pset,
-        { .Hash = Operon::Hasher{}("gaussian"),
-          .Name = "gaussian", .Desc = "exp(-x * x)",
+        { .Name = "gaussian", .Desc = "exp(-x * x)",
           .Arity = 1, .Frequency = 2 },
         [](auto const& v) -> auto { using std::exp; return exp(-v * v); });
 
     // hypot(a, b) = sqrt(a² + b²) — derivative via Jet<T,1> auto-diff
     Operon::RegisterBinaryFunction<DT, Operon::Scalar>(dtable, pset,
-        { .Hash = Operon::Hasher{}("hypot"),
-          .Name = "hypot", .Desc = "sqrt(a^2 + b^2)",
+        { .Name = "hypot", .Desc = "sqrt(a^2 + b^2)",
           .Arity = 2, .Frequency = 1 },
         [](auto const& a, auto const& b) -> auto { using std::sqrt; return sqrt((a * a) + (b * b)); });
 
