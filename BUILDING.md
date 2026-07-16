@@ -3,7 +3,9 @@
 ## Build
 
 This project doesn't require any special command-line flags to build to keep
-things simple.
+things simple. Note: on non-Windows x86-64, the build targets `-march=x86-64-v3`
+(Haswell-era, 2013+) unconditionally, so binaries built here will not run on
+older x86-64 CPUs.
 
 ### Using nix
 The recommended way to build operon is to use nix package manager.
