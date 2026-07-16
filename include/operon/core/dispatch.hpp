@@ -18,6 +18,8 @@
 
 namespace Operon {
 
+struct StandardLibrary;
+
 namespace Backend {
 template<typename T>
 static auto constexpr BatchSize = 512UL / sizeof(T);
@@ -296,13 +298,7 @@ private:
     Map map_;
 
 public:
-    DispatchTable()
-    {
-        auto constexpr f = [](auto i) { return static_cast<NodeType>(i); };
-        [&]<auto ...I>(std::index_sequence<I...>){
-            (map_.insert({ Node(f(I)).HashValue, MakeTuple<f(I)>() }), ...);
-        }(std::make_index_sequence<NodeTypes::Count-4>{}); // exclude Dynamic, Constant, Variable, Ref
-    }
+    DispatchTable();
 
     ~DispatchTable() = default;
 
@@ -394,5 +390,7 @@ public:
 
 using ScalarDispatch = DispatchTable<Operon::Scalar>;
 } // namespace Operon
+
+#include "standard_library.hpp"
 
 #endif
