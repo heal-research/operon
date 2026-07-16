@@ -44,6 +44,7 @@ add_library(
     source/algorithms/enumeration.cpp
     source/algorithms/gp.cpp
     source/algorithms/nsga2.cpp
+    source/algorithms/probes/builtin.cpp
     source/algorithms/probes/chain.cpp
     source/algorithms/probes/population_trace.cpp
     source/algorithms/probes/registry.cpp
