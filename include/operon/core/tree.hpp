@@ -142,20 +142,14 @@ public:
         return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.EnumerateIndices();
     }
 
-    static auto Nodes(auto const& nodes, auto i) {
-        return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.Nodes();
+    static auto Nodes(auto&& nodes, auto i) {
+        using NodeT = std::conditional_t<std::is_const_v<std::remove_reference_t<decltype(nodes)>>, Node const, Node>;
+        return Subtree<NodeT>{ nodes, static_cast<std::size_t>(i) }.Nodes();
     }
 
-    static auto Nodes(auto& nodes, auto i) {
-        return Subtree<Node> { nodes, static_cast<std::size_t>(i) }.Nodes();
-    }
-
-    static auto EnumerateNodes(auto const& nodes, auto i) {
-        return Subtree<Node const>{ nodes, static_cast<std::size_t>(i) }.EnumerateNodes();
-    }
-
-    static auto EnumerateNodes(auto& nodes, auto i) {
-        return Subtree<Node>{ nodes, static_cast<std::size_t>(i) }.EnumerateNodes();
+    static auto EnumerateNodes(auto&& nodes, auto i) {
+        using NodeT = std::conditional_t<std::is_const_v<std::remove_reference_t<decltype(nodes)>>, Node const, Node>;
+        return Subtree<NodeT>{ nodes, static_cast<std::size_t>(i) }.EnumerateNodes();
     }
 
 private:
