@@ -9,13 +9,8 @@
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/parser/infix.hpp"
 
-// Phase 1 of the generic-node-registry migration: prove that populating a
-// DispatchTable via StandardLibrary::Register (the same public
-// RegisterFunction<T> API used for custom Dynamic functions) is exactly
-// equivalent to DispatchTable's default constructor (compile-time
-// index_sequence loop) - same callables, same evaluation results. This is
-// the load-bearing "no behavior change" proof the rest of the migration
-// plan depends on.
+// StandardLibrary::Register must be exactly equivalent to DispatchTable's
+// default constructor: same callables, same evaluation results.
 
 namespace Operon::Test {
 
