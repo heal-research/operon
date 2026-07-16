@@ -328,35 +328,33 @@ public:
     DispatchTable(DispatchTable const& other) : map_(other.map_) { }
     DispatchTable(DispatchTable &&other) noexcept : map_(std::move(other.map_)) { }
 
-    auto GetMap() -> Map& { return map_; }
-    auto GetMap() const -> Map const& { return map_; }
+    template<typename Self>
+    [[nodiscard]] auto GetMap(this Self& self) -> decltype(auto) { return (self.map_); }
 
-    template<typename T>
-    auto GetFunction(Operon::Hash const h) -> Callable<T>&
+    // Single deducing-this member replaces the former const_cast-delegating
+    // non-const/const overload pair (Meyers Item 3): Self's constness
+    // follows from the caller's object, and std::get on it->second (whose
+    // constness already follows map_'s constness through find()) reproduces
+    // Callable<T>& / Callable<T> const& exactly, with no const_cast at all.
+    // Self& (not Self&&), matching Parents()/Offspring() in ga_base.hpp:
+    // the original overloads were unqualified and thus technically callable
+    // on a mutable rvalue *this, returning a reference into an
+    // about-to-be-destroyed temporary. Self& deliberately closes that off
+    // instead of preserving it.
+    template<typename T, typename Self>
+    [[nodiscard]] auto GetFunction(this Self& self, Operon::Hash const h) -> decltype(auto)
     {
-        return const_cast<Callable<T>&>(const_cast<DispatchTable<Ts...> const*>(this)->template GetFunction<T>(h)); // NOLINT
-    }
-
-    template<typename T>
-    auto GetDerivative(Operon::Hash const h) -> CallableDiff<T>&
-    {
-        return const_cast<CallableDiff<T>&>(const_cast<DispatchTable<Ts...> const*>(this)->template GetDerivative<T>(h)); // NOLINT
-    }
-
-    template<typename T>
-    [[nodiscard]] auto GetFunction(Operon::Hash const h) const -> Callable<T> const&
-    {
-        if (auto it = map_.find(h); it != map_.end()) {
-            return std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<0>(it->second));
+        if (auto it = self.map_.find(h); it != self.map_.end()) {
+            return (std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<0>(it->second)));
         }
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
 
-    template<typename T>
-    [[nodiscard]] auto GetDerivative(Operon::Hash const h) const -> CallableDiff<T> const&
+    template<typename T, typename Self>
+    [[nodiscard]] auto GetDerivative(this Self& self, Operon::Hash const h) -> decltype(auto)
     {
-        if (auto it = map_.find(h); it != map_.end()) {
-            return std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<1>(it->second));
+        if (auto it = self.map_.find(h); it != self.map_.end()) {
+            return (std::get<static_cast<size_t>(TypeIndex<T>)>(std::get<1>(it->second)));
         }
         throw std::runtime_error(fmt::format("Hash value {} is not in the map\n", h));
     }
