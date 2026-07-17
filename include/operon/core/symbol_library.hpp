@@ -387,6 +387,9 @@ template<typename DTable, typename T, typename F>
 void RegisterNaryFunction(DTable& dt, PrimitiveSet& pset,
                           FunctionInfo const& info, uint16_t maxArity, F primal)
 {
+    if (info.Arity < 2) {
+        throw std::invalid_argument("RegisterNaryFunction: info.Arity must be >= 2 (n-ary means 2 or more children)");
+    }
     if (maxArity < info.Arity) {
         throw std::invalid_argument("RegisterNaryFunction: maxArity must be >= info.Arity");
     }

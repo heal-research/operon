@@ -215,6 +215,48 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
             CHECK(jac(0, c) == Catch::Approx(1.0).epsilon(1e-5));
         }
     }
+
+    SECTION("Auto-diff seeds exactly one child per column (fn is non-linear)") {
+        // Add's fold gives every child a partial of 1 regardless of seeding
+        // correctness, so it can't tell a correct single-child seed apart
+        // from the historical bug where every non-target child was also
+        // seeded to unit tangent. A product fold can: partials differ by
+        // position, so a wrong seed produces a value that doesn't match the
+        // closed-form product-rule partial for that position.
+        DT dtProd;
+        Operon::PrimitiveSet psetProd;
+        Operon::FunctionInfo const prodInfo{
+            .Name      = "prod3",
+            .Desc      = "n-ary product",
+            .Arity     = 3,
+            .Frequency = 1
+        };
+        auto const prodHash = Operon::Hasher{}(prodInfo.Name);
+        auto prodPrimal = [](auto acc, auto x) -> auto { return acc * x; };
+        Operon::RegisterNaryFunction<DT, Scalar>(dtProd, psetProd, prodInfo, /*maxArity=*/3, prodPrimal);
+
+        Operon::Node dyn(Operon::NodeType::Dynamic, prodHash);
+        dyn.Arity    = 3;
+        dyn.Length   = 3;
+        dyn.Optimize = false;
+        Operon::Tree const tree({
+            Operon::Node::Constant(2.0),
+            Operon::Node::Constant(3.0),
+            Operon::Node::Constant(4.0),
+            dyn,
+        });
+
+        std::string const x{"x"};
+        Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
+        auto coeff = tree.GetCoefficients();
+        auto jac = Operon::Interpreter<Scalar, DT>(&dtProd, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1));
+
+        REQUIRE(jac.rows() == 1);
+        REQUIRE(jac.cols() == 3);
+        CHECK(jac(0, 0) == Catch::Approx(12.0).epsilon(1e-5)); // d(c0*c1*c2)/dc0 = c1*c2 = 3*4
+        CHECK(jac(0, 1) == Catch::Approx(8.0).epsilon(1e-5));  // d/dc1 = c0*c2 = 2*4
+        CHECK(jac(0, 2) == Catch::Approx(6.0).epsilon(1e-5));  // d/dc2 = c0*c1 = 2*3
+    }
 }
 
 } // namespace Operon::Test
