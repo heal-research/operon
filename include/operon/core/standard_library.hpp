@@ -29,8 +29,11 @@ namespace Operon {
 enum class FormatRule : uint8_t {
     GenericCall,    // name(a) / name(a, b, ...)
     Infix,          // a <op> b <op> c ...
-    PrefixNegation, // unary form renders as -a (Sub with arity 1)
-    Inversion,      // unary form renders as 1 / a (Div with arity 1)
+    PrefixNegation, // unary form renders as -a (Sub with arity 1; not
+                    // reachable via the registry below since Sub's
+                    // MinArity/MaxArity is fixed at 2 there)
+    Inversion,      // unary form renders as 1 / a (Div with arity 1; same
+                    // caveat as PrefixNegation)
     PowerNotation,  // a ^ b
     MinMaxCall,     // min(a, b) / max(a, b)
     Composite,      // bespoke multi-token expansion, e.g. log(abs(a))
@@ -83,8 +86,8 @@ private:
     static constexpr std::array Entries {
         Entry{ NodeType::Add, "+", "n-ary addition f(a,b,c,...) = a + b + c + ...", 2, 2, FormatRule::Infix },
         Entry{ NodeType::Mul, "*", "n-ary multiplication f(a,b,c,...) = a * b * c * ...", 2, 2, FormatRule::Infix },
-        Entry{ NodeType::Sub, "-", "n-ary subtraction f(a,b,c,...) = a - (b + c + ...)", 2, 2, FormatRule::PrefixNegation },
-        Entry{ NodeType::Div, "/", "n-ary division f(a,b,c,..) = a / (b * c * ...)", 2, 2, FormatRule::Inversion },
+        Entry{ NodeType::Sub, "-", "n-ary subtraction f(a,b,c,...) = a - (b + c + ...)", 2, 2, FormatRule::Infix },
+        Entry{ NodeType::Div, "/", "n-ary division f(a,b,c,..) = a / (b * c * ...)", 2, 2, FormatRule::Infix },
         Entry{ NodeType::Fmin, "fmin", "minimum function f(a,b) = min(a,b)", 2, 2, FormatRule::MinMaxCall },
         Entry{ NodeType::Fmax, "fmax", "maximum function f(a,b) = max(a,b)", 2, 2, FormatRule::MinMaxCall },
         Entry{ NodeType::Aq, "aq", "analytical quotient f(a,b) = a / sqrt(1 + b^2)", 2, 2, FormatRule::Composite },

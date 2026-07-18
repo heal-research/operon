@@ -195,9 +195,13 @@ inline auto ChildIndices(Operon::Vector<Node> const& nodes, size_t i) -> std::ve
 }
 
 // Wrap a scalar binary reduce lambda f(acc, x) -> acc' into a batched
-// Callable<T> for n-ary (arity >= 2) functions. Children are folded
+// Callable<T> for n-ary (arity >= 2) functions. Children are folded strictly
 // left-to-right: acc = f(f(c0, c1), c2, ...). Arity is read per-instance
-// from nodes[i].Arity, mirroring Dispatch::NaryOp's built-in n-ary ops.
+// from nodes[i].Arity, mirroring how built-in Add/Mul accumulate. This does
+// NOT match every built-in n-ary op's semantics: Sub/Div compute
+// c0 - (c1+c2+...) / c0 / (c1*c2*...) (head vs. reduced tail), not a strict
+// left fold, so this adapter is only correct for associative reductions
+// like Add/Mul; a Sub/Div-shaped n-ary function needs a different adapter.
 template<typename DTable, typename T, typename F>
 auto MakeNaryCallable(F primal) -> typename DTable::template Callable<T>
 {
