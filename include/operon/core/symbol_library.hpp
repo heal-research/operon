@@ -5,7 +5,9 @@
 #ifndef OPERON_SYMBOL_LIBRARY_HPP
 #define OPERON_SYMBOL_LIBRARY_HPP
 
+#include <algorithm>
 #include <stdexcept>
+#include <vector>
 
 #include "dispatch.hpp"
 #include "node.hpp"
@@ -177,6 +179,101 @@ auto MakeBinaryAutoDiff(F primal) -> typename DTable::template CallableDiff<T>
     };
 }
 
+// Collect the column indices of node i's children, in left-to-right tree
+// order (Nodes() stores children right-to-left of their parent).
+inline auto ChildIndices(Operon::Vector<Node> const& nodes, size_t i) -> std::vector<size_t>
+{
+    std::vector<size_t> children;
+    children.reserve(nodes[i].Arity);
+    auto j = i - 1;
+    for (auto a = 0; a < nodes[i].Arity; ++a) {
+        children.push_back(j);
+        j -= nodes[j].Length + 1;
+    }
+    std::ranges::reverse(children);
+    return children;
+}
+
+// Wrap a scalar binary reduce lambda f(acc, x) -> acc' into a batched
+// Callable<T> for n-ary (arity >= 2) functions. Children are folded strictly
+// left-to-right: acc = f(f(c0, c1), c2, ...). Arity is read per-instance
+// from nodes[i].Arity, mirroring how built-in Add/Mul accumulate. This does
+// NOT match every built-in n-ary op's semantics: Sub/Div compute
+// c0 - (c1+c2+...) / c0 / (c1*c2*...) (head vs. reduced tail), not a strict
+// left fold, so this adapter is only correct for associative reductions
+// like Add/Mul; a Sub/Div-shaped n-ary function needs a different adapter.
+template<typename DTable, typename T, typename F>
+auto MakeNaryCallable(F primal) -> typename DTable::template Callable<T>
+{
+    constexpr auto S = DTable::template BatchSize<T>;
+    return [fn = std::move(primal)](
+        Operon::Vector<Node> const& nodes,
+        Backend::View<T, S>         data,
+        size_t                      i,
+        Operon::Range               /*rg*/)
+    {
+        auto const  w        = static_cast<T>(nodes[i].Value);
+        auto*       dst      = Backend::Ptr(data, i);
+        auto const  children = ChildIndices(nodes, i);
+        for (auto s = 0UL; s < S; ++s) {
+            auto acc = Backend::Ptr(data, children[0])[s];
+            for (size_t c = 1; c < children.size(); ++c) {
+                acc = fn(acc, Backend::Ptr(data, children[c])[s]);
+            }
+            dst[s] = w * acc;
+        }
+    };
+}
+
+// Generate a batched CallableDiff<T> for an n-ary reduce function using
+// forward-mode AD (ceres::Jet<T,1>): re-runs the same fold with the target
+// child (index j) seeded with unit tangent and every other child at zero
+// tangent, so a single primal lambda covers every child's partial without a
+// separate derivative rule per argument position.
+template<typename DTable, typename T, typename F>
+auto MakeNaryAutoDiff(F primal) -> typename DTable::template CallableDiff<T>
+{
+    constexpr auto S = DTable::template BatchSize<T>;
+    return [fn = std::move(primal)](
+        Operon::Vector<Node> const& nodes,
+        Backend::View<T const, S>   primal,
+        Backend::View<T>            trace,
+        int                         i,
+        int                         j)
+    {
+        using Jet = ceres::Jet<T, 1>;
+        auto const  children = ChildIndices(nodes, static_cast<size_t>(i));
+        auto*       res       = Backend::Ptr(trace, j);
+        for (auto s = 0UL; s < S; ++s) {
+            auto const seed = [&](size_t child) {
+                auto const v = Backend::Ptr(primal, children[child])[s];
+                // Jet{v, 0} seeds tangent direction 0 (the only one Jet<T,1>
+                // has) to 1; Jet{v} alone leaves the tangent at 0 (matches
+                // MakeUnaryAutoDiff's convention above).
+                return static_cast<int>(children[child]) == j ? Jet{v, 0} : Jet{v};
+            };
+            auto acc = seed(0);
+            for (size_t c = 1; c < children.size(); ++c) {
+                acc = fn(acc, seed(c));
+            }
+            res[s] = acc.v[0];
+        }
+    };
+}
+
+// Register an n-ary (arity >= 2) function from a scalar binary reduce lambda
+// f(acc, x) -> acc'. Only Jet<T,1> auto-diff is supported (no explicit
+// per-argument derivative overload, unlike RegisterUnary/RegisterBinary —
+// the fold structure means a single primal lambda already determines every
+// child's partial via MakeNaryAutoDiff).
+template<typename DTable, typename T, typename F>
+void RegisterNary(DTable& dt, Operon::Hash hash, F primal)
+{
+    dt.template RegisterFunction<T>(hash,
+        MakeNaryCallable<DTable, T>(primal),
+        MakeNaryAutoDiff<DTable, T>(std::move(primal)));
+}
+
 // Register a unary function from scalar lambdas.
 // primal:  f(x)  -> y         (required; must use auto/generic argument for
 //                               auto-diff to work)
@@ -281,6 +378,30 @@ void RegisterBinaryFunction(DTable& dt, PrimitiveSet& pset,
     RegisterBinary<DTable, T>(dt, hash, std::move(primal),
                               std::move(derivA), std::move(derivB));
     pset.AddFunction(hash, info.Arity, info.Frequency);
+    Node::RegisterName(hash, info.Name, info.Desc);
+}
+
+// Register an n-ary function in the dispatch table, PrimitiveSet, and name
+// registry in a single call. info.Arity is the minimum (and default) child
+// count; maxArity widens the PrimitiveSet entry so tree generation can
+// sample any arity in [info.Arity, maxArity] for this function, the same
+// range PrimitiveSet::SampleRandomSymbol already draws from for built-in
+// n-ary ops.
+template<typename DTable, typename T, typename F>
+void RegisterNaryFunction(DTable& dt, PrimitiveSet& pset,
+                          FunctionInfo const& info, uint16_t maxArity, F primal)
+{
+    if (info.Arity < 2) {
+        throw std::invalid_argument("RegisterNaryFunction: info.Arity must be >= 2 (n-ary means 2 or more children)");
+    }
+    if (maxArity < info.Arity) {
+        throw std::invalid_argument("RegisterNaryFunction: maxArity must be >= info.Arity");
+    }
+    auto const hash = Operon::Hasher{}(info.Name);
+    detail::ValidateUserHash(hash, info.Name);
+    RegisterNary<DTable, T>(dt, hash, std::move(primal));
+    pset.AddFunction(hash, info.Arity, info.Frequency);
+    if (maxArity > info.Arity) { pset.SetMaximumArity(hash, maxArity); }
     Node::RegisterName(hash, info.Name, info.Desc);
 }
 
