@@ -69,7 +69,7 @@ public:
 
     void RemovePrimitive(Operon::Hash hash) { pset_.erase(hash); }
 
-    void SetConfig(PrimitiveSetConfig config);
+    OPERON_EXPORT void SetConfig(PrimitiveSetConfig config);
 
     [[nodiscard]] auto EnabledPrimitives() const -> std::vector<Node> {
         std::vector<Node> nodes;
