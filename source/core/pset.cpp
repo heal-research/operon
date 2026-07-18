@@ -16,9 +16,25 @@
 #include "operon/core/pset.hpp"
 #include "operon/core/contracts.hpp"
 #include "operon/core/node.hpp"
+#include "operon/core/standard_library.hpp"
 #include "operon/core/types.hpp"
 
 namespace Operon {
+    void PrimitiveSet::SetConfig(PrimitiveSetConfig config)
+    {
+        pset_.clear();
+        for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
+            auto t = static_cast<Operon::NodeType>(i);
+            if (!config.Test(i)) { continue; }
+
+            Operon::Node n(t);
+            auto const [minArity, maxArity] = StandardLibrary::ArityLimits(t);
+            n.Arity  = minArity;
+            n.Length = minArity;
+            pset_[n.HashValue] = { n, 1, minArity, maxArity };
+        }
+    }
+
     auto PrimitiveSet::AchievableLength(size_t targetLen) const -> size_t
     {
         if (targetLen <= 1) { return 1; }

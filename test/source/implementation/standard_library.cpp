@@ -5,7 +5,9 @@
 #include <catch2/catch_approx.hpp>
 
 #include "operon/core/node.hpp"
+#include "operon/core/pset.hpp"
 #include "operon/core/standard_library.hpp"
+#include "operon/core/symbol_library.hpp"
 #include "operon/hash/hash.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/parser/infix.hpp"
@@ -117,6 +119,144 @@ TEST_CASE("Unregistered Dynamic nodes fall back to the generic name/desc", "[int
         Operon::Node const registeredDyn(Operon::NodeType::Dynamic, registeredHash);
         CHECK(registeredDyn.Name() == "myop");
         CHECK(registeredDyn.Desc() == "my custom op");
+    }
+}
+
+TEST_CASE("StandardLibrary::ArityLimits matches Node(type).Arity's position-based inference", "[interpreter]")
+{
+    // PR1 gives PrimitiveSet an arity source independent of Node(t).Arity;
+    // this pins that the new source agrees with the old inference for every
+    // built-in type, so decoupling the source doesn't change observed arity.
+    for (auto i = 0UL; i < Operon::NodeTypes::Count; ++i) {
+        auto const type = static_cast<Operon::NodeType>(i);
+        auto const [minArity, maxArity] = Operon::StandardLibrary::ArityLimits(type);
+        auto const expected = Operon::Node(type).Arity;
+        CHECK(minArity == expected);
+        CHECK(maxArity == expected);
+    }
+}
+
+TEST_CASE("PrimitiveSet preset configs source arity from the registry, not Node(t)", "[interpreter]")
+{
+    Operon::PrimitiveSet pset;
+    pset.SetConfig(Operon::PrimitiveSet::Full);
+
+    auto const addHash = Operon::Node(Operon::NodeType::Add).HashValue;
+    auto const sinHash = Operon::Node(Operon::NodeType::Sin).HashValue;
+    auto const constHash = Operon::Node(Operon::NodeType::Constant).HashValue;
+    auto const varHash = Operon::Node(Operon::NodeType::Variable).HashValue;
+
+    CHECK(pset.MinMaxArity(addHash) == std::tuple<size_t, size_t>{2, 2});
+    CHECK(pset.MinMaxArity(sinHash) == std::tuple<size_t, size_t>{1, 1});
+    CHECK(pset.MinMaxArity(constHash) == std::tuple<size_t, size_t>{0, 0});
+    CHECK(pset.MinMaxArity(varHash) == std::tuple<size_t, size_t>{0, 0});
+}
+
+TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end", "[interpreter]")
+{
+    using DT = Operon::DispatchTable<Operon::Scalar>;
+    using Scalar = Operon::Scalar;
+
+    DT dt;
+    Operon::PrimitiveSet pset;
+    pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
+
+    Operon::FunctionInfo const info{
+        .Name      = "sum3",
+        .Desc      = "n-ary sum",
+        .Arity     = 3,
+        .Frequency = 1
+    };
+    auto const hash = Operon::Hasher{}(info.Name);
+    auto primal = [](auto acc, auto x) -> auto { return acc + x; };
+
+    Operon::RegisterNaryFunction<DT, Scalar>(dt, pset, info, /*maxArity=*/5, primal);
+
+    auto makeTree = [&] {
+        Operon::Node dyn(Operon::NodeType::Dynamic, hash);
+        dyn.Arity    = 3;
+        dyn.Length   = 3;
+        dyn.Optimize = false; // matches AddFunction: function nodes are never coefficient-optimized
+        return Operon::Tree({
+            Operon::Node::Constant(1.0),
+            Operon::Node::Constant(2.0),
+            Operon::Node::Constant(3.0),
+            dyn,
+        });
+    };
+
+    SECTION("PrimitiveSet arity range widens to [Arity, maxArity]") {
+        CHECK(pset.MinimumArity(hash) == 3);
+        CHECK(pset.MaximumArity(hash) == 5);
+    }
+
+    SECTION("Evaluation folds children left-to-right") {
+        auto const tree = makeTree();
+
+        std::string const x{"x"};
+        Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
+        auto coeff = tree.GetCoefficients();
+        auto r = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).Evaluate(coeff, Operon::Range(0, 1));
+
+        REQUIRE(std::ssize(r) == 1);
+        CHECK(r[0] == Catch::Approx(6.0).epsilon(1e-6)); // (1 + 2) + 3
+    }
+
+    SECTION("Auto-diff assigns unit partials to every child (fn is linear)") {
+        auto const tree = makeTree();
+
+        std::string const x{"x"};
+        Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
+        auto coeff = tree.GetCoefficients();
+        auto jac = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1));
+
+        REQUIRE(jac.rows() == 1);
+        REQUIRE(jac.cols() == 3);
+        for (auto c = 0; c < jac.cols(); ++c) {
+            CHECK(jac(0, c) == Catch::Approx(1.0).epsilon(1e-5));
+        }
+    }
+
+    SECTION("Auto-diff seeds exactly one child per column (fn is non-linear)") {
+        // Add's fold gives every child a partial of 1 regardless of seeding
+        // correctness, so it can't tell a correct single-child seed apart
+        // from the historical bug where every non-target child was also
+        // seeded to unit tangent. A product fold can: partials differ by
+        // position, so a wrong seed produces a value that doesn't match the
+        // closed-form product-rule partial for that position.
+        DT dtProd;
+        Operon::PrimitiveSet psetProd;
+        Operon::FunctionInfo const prodInfo{
+            .Name      = "prod3",
+            .Desc      = "n-ary product",
+            .Arity     = 3,
+            .Frequency = 1
+        };
+        auto const prodHash = Operon::Hasher{}(prodInfo.Name);
+        auto prodPrimal = [](auto acc, auto x) -> auto { return acc * x; };
+        Operon::RegisterNaryFunction<DT, Scalar>(dtProd, psetProd, prodInfo, /*maxArity=*/3, prodPrimal);
+
+        Operon::Node dyn(Operon::NodeType::Dynamic, prodHash);
+        dyn.Arity    = 3;
+        dyn.Length   = 3;
+        dyn.Optimize = false;
+        Operon::Tree const tree({
+            Operon::Node::Constant(2.0),
+            Operon::Node::Constant(3.0),
+            Operon::Node::Constant(4.0),
+            dyn,
+        });
+
+        std::string const x{"x"};
+        Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
+        auto coeff = tree.GetCoefficients();
+        auto jac = Operon::Interpreter<Scalar, DT>(&dtProd, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1));
+
+        REQUIRE(jac.rows() == 1);
+        REQUIRE(jac.cols() == 3);
+        CHECK(jac(0, 0) == Catch::Approx(12.0).epsilon(1e-5)); // d(c0*c1*c2)/dc0 = c1*c2 = 3*4
+        CHECK(jac(0, 1) == Catch::Approx(8.0).epsilon(1e-5));  // d/dc1 = c0*c2 = 2*4
+        CHECK(jac(0, 2) == Catch::Approx(6.0).epsilon(1e-5));  // d/dc2 = c0*c1 = 2*3
     }
 }
 

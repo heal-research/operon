@@ -69,18 +69,7 @@ public:
 
     void RemovePrimitive(Operon::Hash hash) { pset_.erase(hash); }
 
-    void SetConfig(PrimitiveSetConfig config)
-    {
-        pset_.clear();
-        for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
-            auto t = static_cast<Operon::NodeType>(i);
-            Operon::Node n(t);
-
-            if (config.Test(i)) {
-                pset_[n.HashValue] = { n, 1, n.Arity, n.Arity };
-            }
-        }
-    }
+    OPERON_EXPORT void SetConfig(PrimitiveSetConfig config);
 
     [[nodiscard]] auto EnabledPrimitives() const -> std::vector<Node> {
         std::vector<Node> nodes;
