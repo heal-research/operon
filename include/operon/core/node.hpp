@@ -56,6 +56,53 @@ enum class NodeType : uint8_t {
     Ref       // structural sharing: a backward reference to another node by index
 };
 
+// The built-in math-op subset of NodeType (Add..Square above, i.e. NodeType
+// minus the four terminal categories Dynamic/Constant/Variable/Ref), demoted
+// to a source of stable compile-time Operon::Hash constants rather than a
+// NodeType-typed value. A built-in Node's HashValue equals
+// static_cast<Hash>(its NodeType) (see Node's single-arg constructor below),
+// so these values are chosen to match NodeType's ordinals exactly — a
+// BuiltinOp::X value and the corresponding NodeType::X share the same
+// underlying number, letting call sites switch on Node::HashValue instead of
+// Node::Type without changing behavior. Carries no arity/category semantics
+// of its own; see IsNaryOp/IsBinaryOp/IsUnaryOp below for that.
+enum class BuiltinOp : Operon::Hash {
+    // n-ary symbols
+    Add = 0,
+    Mul,
+    Sub,
+    Div,
+    Fmin,
+    Fmax,
+
+    // binary symbols
+    Aq,
+    Pow,
+    Powabs,
+
+    // unary symbols
+    Abs,
+    Acos,
+    Asin,
+    Atan,
+    Cbrt,
+    Ceil,
+    Cos,
+    Cosh,
+    Exp,
+    Floor,
+    Log,
+    Logabs,
+    Log1p,
+    Sin,
+    Sinh,
+    Sqrt,
+    Sqrtabs,
+    Tan,
+    Tanh,
+    Square
+};
+
 // Arity and category (IsNary/IsBinary/IsUnary/IsNullary below, and the arity
 // inference in Node::Node) are derived from enumerator *position* in the
 // NodeType enum above, not from any per-type tag. These asserts pin the
@@ -64,6 +111,12 @@ enum class NodeType : uint8_t {
 static_assert(NodeType::Fmax < NodeType::Aq, "n-ary/binary boundary: Fmax must be the last n-ary symbol");
 static_assert(NodeType::Powabs < NodeType::Abs, "binary/unary boundary: Powabs must be the last binary symbol");
 static_assert(NodeType::Square < NodeType::Dynamic, "unary/nullary boundary: Square must be the last unary symbol");
+
+// BuiltinOp's ordinals are chosen to match NodeType's math-op subset above;
+// pin the one value shared by both enums (the last entry) so a future reorder
+// of either enum without updating the other is a compile error.
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Square) == static_cast<Operon::Hash>(NodeType::Square),
+    "BuiltinOp::Square must match NodeType::Square's ordinal");
 
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 
@@ -210,6 +263,13 @@ struct Node {
     template <NodeType... T>
     [[nodiscard]] auto Is() const -> bool { return ((Type == T) || ...); }
 
+    // BuiltinOp overload: compares HashValue instead of Type. Equivalent to
+    // the NodeType overload above for any node constructed the ordinary way
+    // (Node(NodeType) sets HashValue = static_cast<Hash>(Type)), but usable
+    // where only a hash is in scope (e.g. dispatch keyed by HashValue).
+    template <BuiltinOp... Op>
+    [[nodiscard]] auto Is() const -> bool { return ((HashValue == static_cast<Operon::Hash>(Op)) || ...); }
+
     [[nodiscard]] auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
     [[nodiscard]] auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
     [[nodiscard]] auto IsRef()      const -> bool { return Is<NodeType::Ref>(); }
@@ -242,6 +302,19 @@ struct Node {
 
     template<NodeType Type>
     static auto constexpr IsNullary = Type > NodeType::Square; // Dynamic, Constant, Variable, Ref
+
+    // BuiltinOp counterparts of IsNary/IsBinary/IsUnary above. No IsNullary
+    // counterpart: BuiltinOp only covers the math-op subset (Add..Square),
+    // never the terminal categories (Dynamic/Constant/Variable/Ref) that
+    // IsNullary<NodeType> distinguishes.
+    template<BuiltinOp Op>
+    static auto constexpr IsNaryOp = Op <= BuiltinOp::Fmax;
+
+    template<BuiltinOp Op>
+    static auto constexpr IsBinaryOp = Op > BuiltinOp::Fmax && Op <= BuiltinOp::Powabs;
+
+    template<BuiltinOp Op>
+    static auto constexpr IsUnaryOp = Op > BuiltinOp::Powabs;
 };
 } // namespace Operon
 #endif
