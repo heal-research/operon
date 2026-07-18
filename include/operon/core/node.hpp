@@ -258,7 +258,7 @@ struct Node {
     }
 
     [[nodiscard]] auto IsLeaf() const noexcept -> bool { return Arity == 0; }
-    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return Is<NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax>(); }
+    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>(); }
 
     template <NodeType... T>
     [[nodiscard]] auto Is() const -> bool { return ((Type == T) || ...); }
@@ -273,22 +273,22 @@ struct Node {
     [[nodiscard]] auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
     [[nodiscard]] auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
     [[nodiscard]] auto IsRef()      const -> bool { return Is<NodeType::Ref>(); }
-    [[nodiscard]] auto IsAddition() const -> bool { return Is<NodeType::Add>(); }
-    [[nodiscard]] auto IsSubtraction() const -> bool { return Is<NodeType::Sub>(); }
-    [[nodiscard]] auto IsMultiplication() const -> bool { return Is<NodeType::Mul>(); }
-    [[nodiscard]] auto IsDivision() const -> bool { return Is<NodeType::Div>(); }
-    [[nodiscard]] auto IsAq() const -> bool { return Is<NodeType::Aq>(); }
-    [[nodiscard]] auto IsPow() const -> bool { return Is<NodeType::Pow>(); }
-    [[nodiscard]] auto IsPowabs() const -> bool { return Is<NodeType::Powabs>(); }
-    [[nodiscard]] auto IsExp() const -> bool { return Is<NodeType::Exp>(); }
-    [[nodiscard]] auto IsLog() const -> bool { return Is<NodeType::Log>(); }
-    [[nodiscard]] auto IsSin() const -> bool { return Is<NodeType::Sin>(); }
-    [[nodiscard]] auto IsCos() const -> bool { return Is<NodeType::Cos>(); }
-    [[nodiscard]] auto IsTan() const -> bool { return Is<NodeType::Tan>(); }
-    [[nodiscard]] auto IsTanh() const -> bool { return Is<NodeType::Tanh>(); }
-    [[nodiscard]] auto IsSquareRoot() const -> bool { return Is<NodeType::Sqrt>(); }
-    [[nodiscard]] auto IsCubeRoot() const -> bool { return Is<NodeType::Cbrt>(); }
-    [[nodiscard]] auto IsSquare() const -> bool { return Is<NodeType::Square>(); }
+    [[nodiscard]] auto IsAddition() const -> bool { return Is<BuiltinOp::Add>(); }
+    [[nodiscard]] auto IsSubtraction() const -> bool { return Is<BuiltinOp::Sub>(); }
+    [[nodiscard]] auto IsMultiplication() const -> bool { return Is<BuiltinOp::Mul>(); }
+    [[nodiscard]] auto IsDivision() const -> bool { return Is<BuiltinOp::Div>(); }
+    [[nodiscard]] auto IsAq() const -> bool { return Is<BuiltinOp::Aq>(); }
+    [[nodiscard]] auto IsPow() const -> bool { return Is<BuiltinOp::Pow>(); }
+    [[nodiscard]] auto IsPowabs() const -> bool { return Is<BuiltinOp::Powabs>(); }
+    [[nodiscard]] auto IsExp() const -> bool { return Is<BuiltinOp::Exp>(); }
+    [[nodiscard]] auto IsLog() const -> bool { return Is<BuiltinOp::Log>(); }
+    [[nodiscard]] auto IsSin() const -> bool { return Is<BuiltinOp::Sin>(); }
+    [[nodiscard]] auto IsCos() const -> bool { return Is<BuiltinOp::Cos>(); }
+    [[nodiscard]] auto IsTan() const -> bool { return Is<BuiltinOp::Tan>(); }
+    [[nodiscard]] auto IsTanh() const -> bool { return Is<BuiltinOp::Tanh>(); }
+    [[nodiscard]] auto IsSquareRoot() const -> bool { return Is<BuiltinOp::Sqrt>(); }
+    [[nodiscard]] auto IsCubeRoot() const -> bool { return Is<BuiltinOp::Cbrt>(); }
+    [[nodiscard]] auto IsSquare() const -> bool { return Is<BuiltinOp::Square>(); }
     [[nodiscard]] auto IsDynamic() const -> bool { return Is<NodeType::Dynamic>(); }
 
     template<NodeType Type>
