@@ -247,6 +247,8 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[1].Type == NT::Square);
+        CHECK(tree[1].HashValue == Node(NT::Square).HashValue);
+        CHECK(tree[1].Arity == 1);
         CHECK(tree[0].IsVariable());
     }
 
@@ -255,6 +257,8 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[1].Type == NT::Sqrt);
+        CHECK(tree[1].HashValue == Node(NT::Sqrt).HashValue);
+        CHECK(tree[1].Arity == 1);
         CHECK(tree[0].IsVariable());
     }
 
@@ -279,6 +283,8 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[1].Type == NT::Abs);
+        CHECK(tree[1].HashValue == Node(NT::Abs).HashValue);
+        CHECK(tree[1].Arity == 1);
         CHECK(tree[0].IsVariable());
     }
 
@@ -287,6 +293,8 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
         CHECK(tree[1].Type == NT::Abs);
+        CHECK(tree[1].HashValue == Node(NT::Abs).HashValue);
+        CHECK(tree[1].Arity == 1);
         CHECK(tree[0].IsVariable());
     }
 
