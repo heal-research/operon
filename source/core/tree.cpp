@@ -207,6 +207,7 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
 
 auto Tree::Simplify() -> Tree& {
     using NT = NodeType;
+    using BO = BuiltinOp;
     using S  = Operon::Scalar;
 
     if (nodes_.empty()) { return *this; }
@@ -241,51 +242,51 @@ auto Tree::Simplify() -> Tree& {
                 std::optional<S> acc;
                 bool handled = true;
                 S val{};
-                switch (n.Type) {
-                case NT::Add:
+                switch (n.HashValue) {
+                case Operon::Hash(BO::Add):
                     val = S{0};
                     for (auto j : ch) { val += nodes_[j].Value; }
                     break;
-                case NT::Mul:
+                case Operon::Hash(BO::Mul):
                     val = S{1};
                     for (auto j : ch) { val *= nodes_[j].Value; }
                     break;
-                case NT::Sub:
+                case Operon::Hash(BO::Sub):
                     for (auto j : ch) { acc = acc ? *acc - nodes_[j].Value : nodes_[j].Value; }
                     val = acc.value_or(S{0});
                     break;
-                case NT::Div:
+                case Operon::Hash(BO::Div):
                     for (auto j : ch) { acc = acc ? *acc / nodes_[j].Value : nodes_[j].Value; }
                     val = acc.value_or(S{0});
                     break;
-                case NT::Fmin:
+                case Operon::Hash(BO::Fmin):
                     for (auto j : ch) { acc = acc ? std::min(*acc, nodes_[j].Value) : nodes_[j].Value; }
                     val = acc.value_or(S{0});
                     break;
-                case NT::Fmax:
+                case Operon::Hash(BO::Fmax):
                     for (auto j : ch) { acc = acc ? std::max(*acc, nodes_[j].Value) : nodes_[j].Value; }
                     val = acc.value_or(S{0});
                     break;
-                case NT::Pow:    val = std::pow(nodes_[ch[0]].Value, nodes_[ch[1]].Value);                break;
-                case NT::Powabs: val = std::pow(std::abs(nodes_[ch[0]].Value), nodes_[ch[1]].Value);     break;
-                case NT::Aq:     { S y = nodes_[ch[1]].Value; val = nodes_[ch[0]].Value / std::sqrt(S{1} + (y*y)); break; }
-                case NT::Exp:    val = std::exp(nodes_[ch[0]].Value);                                     break;
-                case NT::Log:    val = std::log(nodes_[ch[0]].Value);                                     break;
-                case NT::Log1p:  val = std::log1p(nodes_[ch[0]].Value);                                  break;
-                case NT::Logabs: val = std::log(std::abs(nodes_[ch[0]].Value));                          break;
-                case NT::Sin:    val = std::sin(nodes_[ch[0]].Value);                                     break;
-                case NT::Cos:    val = std::cos(nodes_[ch[0]].Value);                                     break;
-                case NT::Tan:    val = std::tan(nodes_[ch[0]].Value);                                     break;
-                case NT::Sinh:   val = std::sinh(nodes_[ch[0]].Value);                                    break;
-                case NT::Cosh:   val = std::cosh(nodes_[ch[0]].Value);                                    break;
-                case NT::Tanh:   val = std::tanh(nodes_[ch[0]].Value);                                    break;
-                case NT::Sqrt:   val = std::sqrt(nodes_[ch[0]].Value);                                    break;
-                case NT::Sqrtabs:val = std::sqrt(std::abs(nodes_[ch[0]].Value));                         break;
-                case NT::Cbrt:   val = std::cbrt(nodes_[ch[0]].Value);                                    break;
-                case NT::Square: val = nodes_[ch[0]].Value * nodes_[ch[0]].Value;                        break;
-                case NT::Abs:    val = std::abs(nodes_[ch[0]].Value);                                     break;
-                case NT::Floor:  val = std::floor(nodes_[ch[0]].Value);                                   break;
-                case NT::Ceil:   val = std::ceil(nodes_[ch[0]].Value);                                    break;
+                case Operon::Hash(BO::Pow):    val = std::pow(nodes_[ch[0]].Value, nodes_[ch[1]].Value);                break;
+                case Operon::Hash(BO::Powabs): val = std::pow(std::abs(nodes_[ch[0]].Value), nodes_[ch[1]].Value);     break;
+                case Operon::Hash(BO::Aq):     { S y = nodes_[ch[1]].Value; val = nodes_[ch[0]].Value / std::sqrt(S{1} + (y*y)); break; }
+                case Operon::Hash(BO::Exp):    val = std::exp(nodes_[ch[0]].Value);                                     break;
+                case Operon::Hash(BO::Log):    val = std::log(nodes_[ch[0]].Value);                                     break;
+                case Operon::Hash(BO::Log1p):  val = std::log1p(nodes_[ch[0]].Value);                                  break;
+                case Operon::Hash(BO::Logabs): val = std::log(std::abs(nodes_[ch[0]].Value));                          break;
+                case Operon::Hash(BO::Sin):    val = std::sin(nodes_[ch[0]].Value);                                     break;
+                case Operon::Hash(BO::Cos):    val = std::cos(nodes_[ch[0]].Value);                                     break;
+                case Operon::Hash(BO::Tan):    val = std::tan(nodes_[ch[0]].Value);                                     break;
+                case Operon::Hash(BO::Sinh):   val = std::sinh(nodes_[ch[0]].Value);                                    break;
+                case Operon::Hash(BO::Cosh):   val = std::cosh(nodes_[ch[0]].Value);                                    break;
+                case Operon::Hash(BO::Tanh):   val = std::tanh(nodes_[ch[0]].Value);                                    break;
+                case Operon::Hash(BO::Sqrt):   val = std::sqrt(nodes_[ch[0]].Value);                                    break;
+                case Operon::Hash(BO::Sqrtabs):val = std::sqrt(std::abs(nodes_[ch[0]].Value));                         break;
+                case Operon::Hash(BO::Cbrt):   val = std::cbrt(nodes_[ch[0]].Value);                                    break;
+                case Operon::Hash(BO::Square): val = nodes_[ch[0]].Value * nodes_[ch[0]].Value;                        break;
+                case Operon::Hash(BO::Abs):    val = std::abs(nodes_[ch[0]].Value);                                     break;
+                case Operon::Hash(BO::Floor):  val = std::floor(nodes_[ch[0]].Value);                                   break;
+                case Operon::Hash(BO::Ceil):   val = std::ceil(nodes_[ch[0]].Value);                                    break;
                 default:         handled = false;                                                          break;
                 }
                 if (handled) {
@@ -296,8 +297,8 @@ auto Tree::Simplify() -> Tree& {
             }
 
             // --- Identity and annihilator rules ---
-            switch (n.Type) {
-            case NT::Add: {
+            switch (n.HashValue) {
+            case Operon::Hash(BO::Add): {
                 auto newArity = n.Arity;
                 for (auto j : ch) {
                     if (nodes_[j].IsConstant() && nodes_[j].Value == S{0}) {
@@ -311,7 +312,7 @@ auto Tree::Simplify() -> Tree& {
                 else                   { n.Arity = newArity; }
                 break;
             }
-            case NT::Mul: {
+            case Operon::Hash(BO::Mul): {
                 bool hasZero = std::any_of(ch.begin(), ch.end(),
                     [&](std::size_t j) { return nodes_[j].IsConstant() && nodes_[j].Value == S{0}; });
                 if (hasZero) { foldToConst(i, S{0}); changed = true; break; }
@@ -328,7 +329,7 @@ auto Tree::Simplify() -> Tree& {
                 else                   { n.Arity = newArity; }
                 break;
             }
-            case NT::Sub: {
+            case Operon::Hash(BO::Sub): {
                 // Remove Const(0) subtrahends (all children except the first).
                 auto newArity = n.Arity;
                 for (std::size_t ci = 1; ci < ch.size(); ++ci) {
@@ -344,7 +345,7 @@ auto Tree::Simplify() -> Tree& {
                 else                   { n.Arity = newArity; }
                 break;
             }
-            case NT::Div: {
+            case Operon::Hash(BO::Div): {
                 // Remove Const(1) denominators (all children except the first).
                 auto newArity = n.Arity;
                 for (std::size_t ci = 1; ci < ch.size(); ++ci) {
@@ -360,7 +361,7 @@ auto Tree::Simplify() -> Tree& {
                 else                   { n.Arity = newArity; }
                 break;
             }
-            case NT::Pow: {
+            case Operon::Hash(BO::Pow): {
                 if (ch.size() != 2) { break; }
                 auto const baseIdx = ch[0];
                 auto const expIdx  = ch[1];
@@ -374,13 +375,13 @@ auto Tree::Simplify() -> Tree& {
                     } else if (nodes_[expIdx].Value == S{2}) {
                         nodes_[expIdx].IsEnabled = false;  // Pow(x,2) → Square(x)
                         n.Type = NT::Square;
-                        n.HashValue = Node(NT::Square).HashValue;
+                        n.HashValue = Operon::Hash(BO::Square);
                         n.Arity = 1;
                         changed = true;
                     } else if (nodes_[expIdx].Value == S{0.5}) {
                         nodes_[expIdx].IsEnabled = false;  // Pow(x,0.5) → Sqrt(x)
                         n.Type = NT::Sqrt;
-                        n.HashValue = Node(NT::Sqrt).HashValue;
+                        n.HashValue = Operon::Hash(BO::Sqrt);
                         n.Arity = 1;
                         changed = true;
                     }
@@ -389,7 +390,7 @@ auto Tree::Simplify() -> Tree& {
                 }
                 break;
             }
-            case NT::Powabs: {
+            case Operon::Hash(BO::Powabs): {
                 if (ch.size() != 2) { break; }
                 auto const expIdx = ch[1];
                 if (nodes_[expIdx].IsConstant() && nodes_[expIdx].Value == S{0}) {
@@ -398,23 +399,24 @@ auto Tree::Simplify() -> Tree& {
                 // Note: |x|^1 = |x| ≠ x in general, so we do NOT simplify Powabs(x,1).
                 break;
             }
-            case NT::Log:
-            case NT::Logabs: {
+            case Operon::Hash(BO::Log):
+            case Operon::Hash(BO::Logabs): {
                 // log(exp(x)) = x for all x; log|exp(x)| = x likewise.
-                if (ch.size() == 1 && nodes_[ch[0]].Type == NT::Exp) {
+                if (ch.size() == 1 && nodes_[ch[0]].Is<BO::Exp>()) {
                     n.IsEnabled = false;
                     nodes_[ch[0]].IsEnabled = false;
                     changed = true;
                 }
                 break;
             }
-            case NT::Sqrt:
-            case NT::Sqrtabs: {
+            case Operon::Hash(BO::Sqrt):
+            case Operon::Hash(BO::Sqrtabs): {
                 // sqrt(x^2) = |x|;  sqrt(|x^2|) = |x|
-                if (ch.size() == 1 && nodes_[ch[0]].Type == NT::Square) {
+                if (ch.size() == 1 && nodes_[ch[0]].Is<BO::Square>()) {
                     nodes_[ch[0]].IsEnabled = false;
                     n.Type = NT::Abs;
-                    n.HashValue = Node(NT::Abs).HashValue;
+                    n.HashValue = Operon::Hash(BO::Abs);
+                    n.Arity = 1; // Sqrt/Sqrtabs and Abs are both unary; explicit for symmetry with the Pow retargets above
                     changed = true;
                 }
                 break;
