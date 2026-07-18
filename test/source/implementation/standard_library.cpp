@@ -211,6 +211,7 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         auto jac = Operon::Interpreter<Scalar, DT>(&dt, &ds, &tree).JacFwd(coeff, Operon::Range(0, 1));
 
         REQUIRE(jac.rows() == 1);
+        REQUIRE(jac.cols() == 3);
         for (auto c = 0; c < jac.cols(); ++c) {
             CHECK(jac(0, c) == Catch::Approx(1.0).epsilon(1e-5));
         }
