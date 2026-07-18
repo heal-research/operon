@@ -56,6 +56,53 @@ enum class NodeType : uint8_t {
     Ref       // structural sharing: a backward reference to another node by index
 };
 
+// The built-in math-op subset of NodeType (Add..Square above, i.e. NodeType
+// minus the four terminal categories Dynamic/Constant/Variable/Ref), demoted
+// to a source of stable compile-time Operon::Hash constants rather than a
+// NodeType-typed value. A built-in Node's HashValue equals
+// static_cast<Hash>(its NodeType) (see Node's single-arg constructor below),
+// so these values are chosen to match NodeType's ordinals exactly — a
+// BuiltinOp::X value and the corresponding NodeType::X share the same
+// underlying number, letting call sites switch on Node::HashValue instead of
+// Node::Type without changing behavior. Carries no arity/category semantics
+// of its own; see IsNaryOp/IsBinaryOp/IsUnaryOp below for that.
+enum class BuiltinOp : Operon::Hash {
+    // n-ary symbols
+    Add = 0,
+    Mul,
+    Sub,
+    Div,
+    Fmin,
+    Fmax,
+
+    // binary symbols
+    Aq,
+    Pow,
+    Powabs,
+
+    // unary symbols
+    Abs,
+    Acos,
+    Asin,
+    Atan,
+    Cbrt,
+    Ceil,
+    Cos,
+    Cosh,
+    Exp,
+    Floor,
+    Log,
+    Logabs,
+    Log1p,
+    Sin,
+    Sinh,
+    Sqrt,
+    Sqrtabs,
+    Tan,
+    Tanh,
+    Square
+};
+
 // Arity and category (IsNary/IsBinary/IsUnary/IsNullary below, and the arity
 // inference in Node::Node) are derived from enumerator *position* in the
 // NodeType enum above, not from any per-type tag. These asserts pin the
@@ -64,6 +111,41 @@ enum class NodeType : uint8_t {
 static_assert(NodeType::Fmax < NodeType::Aq, "n-ary/binary boundary: Fmax must be the last n-ary symbol");
 static_assert(NodeType::Powabs < NodeType::Abs, "binary/unary boundary: Powabs must be the last binary symbol");
 static_assert(NodeType::Square < NodeType::Dynamic, "unary/nullary boundary: Square must be the last unary symbol");
+
+// BuiltinOp's ordinals are chosen to match NodeType's math-op subset above.
+// Pin every entry individually, not just the last one — a reorder that swaps
+// two *interior* entries (leaving the enum's size and last value unchanged)
+// would slip past a boundary-only check but still silently break the
+// HashValue equivalence for those two ops.
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Add) == static_cast<Operon::Hash>(NodeType::Add));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Mul) == static_cast<Operon::Hash>(NodeType::Mul));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sub) == static_cast<Operon::Hash>(NodeType::Sub));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Div) == static_cast<Operon::Hash>(NodeType::Div));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Fmin) == static_cast<Operon::Hash>(NodeType::Fmin));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Fmax) == static_cast<Operon::Hash>(NodeType::Fmax));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Aq) == static_cast<Operon::Hash>(NodeType::Aq));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Pow) == static_cast<Operon::Hash>(NodeType::Pow));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Powabs) == static_cast<Operon::Hash>(NodeType::Powabs));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Abs) == static_cast<Operon::Hash>(NodeType::Abs));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Acos) == static_cast<Operon::Hash>(NodeType::Acos));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Asin) == static_cast<Operon::Hash>(NodeType::Asin));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Atan) == static_cast<Operon::Hash>(NodeType::Atan));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Cbrt) == static_cast<Operon::Hash>(NodeType::Cbrt));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Ceil) == static_cast<Operon::Hash>(NodeType::Ceil));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Cos) == static_cast<Operon::Hash>(NodeType::Cos));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Cosh) == static_cast<Operon::Hash>(NodeType::Cosh));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Exp) == static_cast<Operon::Hash>(NodeType::Exp));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Floor) == static_cast<Operon::Hash>(NodeType::Floor));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Log) == static_cast<Operon::Hash>(NodeType::Log));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Logabs) == static_cast<Operon::Hash>(NodeType::Logabs));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Log1p) == static_cast<Operon::Hash>(NodeType::Log1p));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sin) == static_cast<Operon::Hash>(NodeType::Sin));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sinh) == static_cast<Operon::Hash>(NodeType::Sinh));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sqrt) == static_cast<Operon::Hash>(NodeType::Sqrt));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sqrtabs) == static_cast<Operon::Hash>(NodeType::Sqrtabs));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Tan) == static_cast<Operon::Hash>(NodeType::Tan));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Tanh) == static_cast<Operon::Hash>(NodeType::Tanh));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Square) == static_cast<Operon::Hash>(NodeType::Square));
 
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 
@@ -205,30 +287,44 @@ struct Node {
     }
 
     [[nodiscard]] auto IsLeaf() const noexcept -> bool { return Arity == 0; }
-    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return Is<NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax>(); }
+    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>(); }
 
     template <NodeType... T>
     [[nodiscard]] auto Is() const -> bool { return ((Type == T) || ...); }
 
+    // BuiltinOp overload: compares HashValue instead of Type. Equivalent to
+    // the NodeType overload above for any node constructed the ordinary way
+    // (Node(NodeType) sets HashValue = static_cast<Hash>(Type)), but usable
+    // where only a hash is in scope (e.g. dispatch keyed by HashValue). Not a
+    // strict no-op vs. the NodeType overload in one theoretical edge case: a
+    // Variable node's HashValue is an unconstrained Hasher{}(name) (unlike
+    // registered functions', which ValidateUserHash keeps out of the
+    // built-in ordinal range), so a name whose hash happens to collide into
+    // [0, NodeTypes::Count) would make this overload misclassify it as a
+    // math op. Astronomically unlikely (a ~29-in-2^64 chance) and not
+    // guarded against, same as it wasn't before this overload existed.
+    template <BuiltinOp... Op>
+    [[nodiscard]] auto Is() const -> bool { return ((HashValue == static_cast<Operon::Hash>(Op)) || ...); }
+
     [[nodiscard]] auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
     [[nodiscard]] auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
     [[nodiscard]] auto IsRef()      const -> bool { return Is<NodeType::Ref>(); }
-    [[nodiscard]] auto IsAddition() const -> bool { return Is<NodeType::Add>(); }
-    [[nodiscard]] auto IsSubtraction() const -> bool { return Is<NodeType::Sub>(); }
-    [[nodiscard]] auto IsMultiplication() const -> bool { return Is<NodeType::Mul>(); }
-    [[nodiscard]] auto IsDivision() const -> bool { return Is<NodeType::Div>(); }
-    [[nodiscard]] auto IsAq() const -> bool { return Is<NodeType::Aq>(); }
-    [[nodiscard]] auto IsPow() const -> bool { return Is<NodeType::Pow>(); }
-    [[nodiscard]] auto IsPowabs() const -> bool { return Is<NodeType::Powabs>(); }
-    [[nodiscard]] auto IsExp() const -> bool { return Is<NodeType::Exp>(); }
-    [[nodiscard]] auto IsLog() const -> bool { return Is<NodeType::Log>(); }
-    [[nodiscard]] auto IsSin() const -> bool { return Is<NodeType::Sin>(); }
-    [[nodiscard]] auto IsCos() const -> bool { return Is<NodeType::Cos>(); }
-    [[nodiscard]] auto IsTan() const -> bool { return Is<NodeType::Tan>(); }
-    [[nodiscard]] auto IsTanh() const -> bool { return Is<NodeType::Tanh>(); }
-    [[nodiscard]] auto IsSquareRoot() const -> bool { return Is<NodeType::Sqrt>(); }
-    [[nodiscard]] auto IsCubeRoot() const -> bool { return Is<NodeType::Cbrt>(); }
-    [[nodiscard]] auto IsSquare() const -> bool { return Is<NodeType::Square>(); }
+    [[nodiscard]] auto IsAddition() const -> bool { return Is<BuiltinOp::Add>(); }
+    [[nodiscard]] auto IsSubtraction() const -> bool { return Is<BuiltinOp::Sub>(); }
+    [[nodiscard]] auto IsMultiplication() const -> bool { return Is<BuiltinOp::Mul>(); }
+    [[nodiscard]] auto IsDivision() const -> bool { return Is<BuiltinOp::Div>(); }
+    [[nodiscard]] auto IsAq() const -> bool { return Is<BuiltinOp::Aq>(); }
+    [[nodiscard]] auto IsPow() const -> bool { return Is<BuiltinOp::Pow>(); }
+    [[nodiscard]] auto IsPowabs() const -> bool { return Is<BuiltinOp::Powabs>(); }
+    [[nodiscard]] auto IsExp() const -> bool { return Is<BuiltinOp::Exp>(); }
+    [[nodiscard]] auto IsLog() const -> bool { return Is<BuiltinOp::Log>(); }
+    [[nodiscard]] auto IsSin() const -> bool { return Is<BuiltinOp::Sin>(); }
+    [[nodiscard]] auto IsCos() const -> bool { return Is<BuiltinOp::Cos>(); }
+    [[nodiscard]] auto IsTan() const -> bool { return Is<BuiltinOp::Tan>(); }
+    [[nodiscard]] auto IsTanh() const -> bool { return Is<BuiltinOp::Tanh>(); }
+    [[nodiscard]] auto IsSquareRoot() const -> bool { return Is<BuiltinOp::Sqrt>(); }
+    [[nodiscard]] auto IsCubeRoot() const -> bool { return Is<BuiltinOp::Cbrt>(); }
+    [[nodiscard]] auto IsSquare() const -> bool { return Is<BuiltinOp::Square>(); }
     [[nodiscard]] auto IsDynamic() const -> bool { return Is<NodeType::Dynamic>(); }
 
     template<NodeType Type>
@@ -242,6 +338,19 @@ struct Node {
 
     template<NodeType Type>
     static auto constexpr IsNullary = Type > NodeType::Square; // Dynamic, Constant, Variable, Ref
+
+    // BuiltinOp counterparts of IsNary/IsBinary/IsUnary above. No IsNullary
+    // counterpart: BuiltinOp only covers the math-op subset (Add..Square),
+    // never the terminal categories (Dynamic/Constant/Variable/Ref) that
+    // IsNullary<NodeType> distinguishes.
+    template<BuiltinOp Op>
+    static auto constexpr IsNaryOp = Op <= BuiltinOp::Fmax;
+
+    template<BuiltinOp Op>
+    static auto constexpr IsBinaryOp = Op > BuiltinOp::Fmax && Op <= BuiltinOp::Powabs;
+
+    template<BuiltinOp Op>
+    static auto constexpr IsUnaryOp = Op > BuiltinOp::Powabs;
 };
 } // namespace Operon
 #endif
