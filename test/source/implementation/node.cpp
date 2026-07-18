@@ -99,4 +99,54 @@ TEST_CASE("IsNaryOp/IsBinaryOp/IsUnaryOp<BuiltinOp> agree with IsNary/IsBinary/I
     static_assert(Node::IsUnaryOp<BuiltinOp::Square>);
 }
 
+TEST_CASE("Node::Is*() single-op convenience methods are re-pointed correctly", "[core]")
+{
+    // Each of these now compares HashValue via Is<BuiltinOp::X>() instead of
+    // Type via Is<NodeType::X>() (node.hpp), but must still report true only
+    // for the one op it names and false for every other built-in op.
+    CHECK(Node(NodeType::Add).IsAddition());
+    CHECK_FALSE(Node(NodeType::Mul).IsAddition());
+    CHECK(Node(NodeType::Sub).IsSubtraction());
+    CHECK_FALSE(Node(NodeType::Add).IsSubtraction());
+    CHECK(Node(NodeType::Mul).IsMultiplication());
+    CHECK_FALSE(Node(NodeType::Div).IsMultiplication());
+    CHECK(Node(NodeType::Div).IsDivision());
+    CHECK_FALSE(Node(NodeType::Mul).IsDivision());
+    CHECK(Node(NodeType::Aq).IsAq());
+    CHECK_FALSE(Node(NodeType::Pow).IsAq());
+    CHECK(Node(NodeType::Pow).IsPow());
+    CHECK_FALSE(Node(NodeType::Powabs).IsPow());
+    CHECK(Node(NodeType::Powabs).IsPowabs());
+    CHECK_FALSE(Node(NodeType::Pow).IsPowabs());
+    CHECK(Node(NodeType::Exp).IsExp());
+    CHECK_FALSE(Node(NodeType::Log).IsExp());
+    CHECK(Node(NodeType::Log).IsLog());
+    CHECK_FALSE(Node(NodeType::Exp).IsLog());
+    CHECK(Node(NodeType::Sin).IsSin());
+    CHECK_FALSE(Node(NodeType::Cos).IsSin());
+    CHECK(Node(NodeType::Cos).IsCos());
+    CHECK_FALSE(Node(NodeType::Sin).IsCos());
+    CHECK(Node(NodeType::Tan).IsTan());
+    CHECK_FALSE(Node(NodeType::Tanh).IsTan());
+    CHECK(Node(NodeType::Tanh).IsTanh());
+    CHECK_FALSE(Node(NodeType::Tan).IsTanh());
+    CHECK(Node(NodeType::Sqrt).IsSquareRoot());
+    CHECK_FALSE(Node(NodeType::Cbrt).IsSquareRoot());
+    CHECK(Node(NodeType::Cbrt).IsCubeRoot());
+    CHECK_FALSE(Node(NodeType::Sqrt).IsCubeRoot());
+    CHECK(Node(NodeType::Square).IsSquare());
+    CHECK_FALSE(Node(NodeType::Pow).IsSquare());
+}
+
+TEST_CASE("Node::IsCommutative() agrees for every built-in op", "[core]")
+{
+    for (auto type : { NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax }) {
+        CHECK(Node(type).IsCommutative());
+    }
+    for (auto type : { NodeType::Sub, NodeType::Div, NodeType::Aq, NodeType::Pow, NodeType::Powabs,
+                        NodeType::Sin, NodeType::Cos, NodeType::Square }) {
+        CHECK_FALSE(Node(type).IsCommutative());
+    }
+}
+
 } // namespace Operon::Test
