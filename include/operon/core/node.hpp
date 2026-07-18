@@ -112,11 +112,40 @@ static_assert(NodeType::Fmax < NodeType::Aq, "n-ary/binary boundary: Fmax must b
 static_assert(NodeType::Powabs < NodeType::Abs, "binary/unary boundary: Powabs must be the last binary symbol");
 static_assert(NodeType::Square < NodeType::Dynamic, "unary/nullary boundary: Square must be the last unary symbol");
 
-// BuiltinOp's ordinals are chosen to match NodeType's math-op subset above;
-// pin the one value shared by both enums (the last entry) so a future reorder
-// of either enum without updating the other is a compile error.
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Square) == static_cast<Operon::Hash>(NodeType::Square),
-    "BuiltinOp::Square must match NodeType::Square's ordinal");
+// BuiltinOp's ordinals are chosen to match NodeType's math-op subset above.
+// Pin every entry individually, not just the last one — a reorder that swaps
+// two *interior* entries (leaving the enum's size and last value unchanged)
+// would slip past a boundary-only check but still silently break the
+// HashValue equivalence for those two ops.
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Add) == static_cast<Operon::Hash>(NodeType::Add));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Mul) == static_cast<Operon::Hash>(NodeType::Mul));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sub) == static_cast<Operon::Hash>(NodeType::Sub));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Div) == static_cast<Operon::Hash>(NodeType::Div));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Fmin) == static_cast<Operon::Hash>(NodeType::Fmin));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Fmax) == static_cast<Operon::Hash>(NodeType::Fmax));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Aq) == static_cast<Operon::Hash>(NodeType::Aq));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Pow) == static_cast<Operon::Hash>(NodeType::Pow));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Powabs) == static_cast<Operon::Hash>(NodeType::Powabs));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Abs) == static_cast<Operon::Hash>(NodeType::Abs));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Acos) == static_cast<Operon::Hash>(NodeType::Acos));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Asin) == static_cast<Operon::Hash>(NodeType::Asin));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Atan) == static_cast<Operon::Hash>(NodeType::Atan));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Cbrt) == static_cast<Operon::Hash>(NodeType::Cbrt));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Ceil) == static_cast<Operon::Hash>(NodeType::Ceil));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Cos) == static_cast<Operon::Hash>(NodeType::Cos));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Cosh) == static_cast<Operon::Hash>(NodeType::Cosh));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Exp) == static_cast<Operon::Hash>(NodeType::Exp));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Floor) == static_cast<Operon::Hash>(NodeType::Floor));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Log) == static_cast<Operon::Hash>(NodeType::Log));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Logabs) == static_cast<Operon::Hash>(NodeType::Logabs));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Log1p) == static_cast<Operon::Hash>(NodeType::Log1p));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sin) == static_cast<Operon::Hash>(NodeType::Sin));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sinh) == static_cast<Operon::Hash>(NodeType::Sinh));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sqrt) == static_cast<Operon::Hash>(NodeType::Sqrt));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Sqrtabs) == static_cast<Operon::Hash>(NodeType::Sqrtabs));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Tan) == static_cast<Operon::Hash>(NodeType::Tan));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Tanh) == static_cast<Operon::Hash>(NodeType::Tanh));
+static_assert(static_cast<Operon::Hash>(BuiltinOp::Square) == static_cast<Operon::Hash>(NodeType::Square));
 
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 
@@ -266,7 +295,14 @@ struct Node {
     // BuiltinOp overload: compares HashValue instead of Type. Equivalent to
     // the NodeType overload above for any node constructed the ordinary way
     // (Node(NodeType) sets HashValue = static_cast<Hash>(Type)), but usable
-    // where only a hash is in scope (e.g. dispatch keyed by HashValue).
+    // where only a hash is in scope (e.g. dispatch keyed by HashValue). Not a
+    // strict no-op vs. the NodeType overload in one theoretical edge case: a
+    // Variable node's HashValue is an unconstrained Hasher{}(name) (unlike
+    // registered functions', which ValidateUserHash keeps out of the
+    // built-in ordinal range), so a name whose hash happens to collide into
+    // [0, NodeTypes::Count) would make this overload misclassify it as a
+    // math op. Astronomically unlikely (a ~29-in-2^64 chance) and not
+    // guarded against, same as it wasn't before this overload existed.
     template <BuiltinOp... Op>
     [[nodiscard]] auto Is() const -> bool { return ((HashValue == static_cast<Operon::Hash>(Op)) || ...); }
 
