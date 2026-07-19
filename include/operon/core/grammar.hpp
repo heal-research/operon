@@ -54,10 +54,10 @@ struct GrammarSymbols {
 // enumeration engine only ever expands one level at a time, so there is no
 // need for symreg-cpp's generic grammar-string worklist machinery.
 struct Production {
-    // Operator Node appended when combining Operands. NodeTypes::NoType marks
+    // Operator Node appended when combining Operands. NoBuiltinOp marks
     // a pure coercion (e.g. Term -> RecurringFactor): the operand's tree is
     // used as-is, no new node is appended, and no complexity is added.
-    NodeType Op{NodeTypes::NoType};
+    BuiltinOp Op{NoBuiltinOp};
     // Nonterminal categories combined, in order. A self-combine (e.g.
     // {Term, Term} for Op=Mul) relies on Tree::Reduce() to flatten the
     // resulting nested Mul into one flat n-ary node, so it enumerates the
@@ -76,7 +76,7 @@ struct Production {
     // are excluded from the complexity count - see Grammar::MinComplexity).
     bool TrailingConstant{false};
 
-    [[nodiscard]] auto IsCoercion() const noexcept -> bool { return Op == NodeTypes::NoType; }
+    [[nodiscard]] auto IsCoercion() const noexcept -> bool { return Op == NoBuiltinOp; }
 };
 
 // Queryable, config/dataset-parameterized grammar for exhaustive expression

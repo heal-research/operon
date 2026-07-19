@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "../operon_test.hpp"
+
 #include <unordered_set>
 
 #include "operon/core/dataset.hpp"
@@ -62,8 +64,8 @@ TEST_CASE("ContentHash - commutative invariance", "[content_hash]")
     Node nX(NodeType::Variable); nX.HashValue = varX.Hash;
     Node nY(NodeType::Variable); nY.HashValue = varY.Hash;
 
-    Tree const treeXY = Tree({ nX, nY, Node(NodeType::Add) }).UpdateNodes();
-    Tree const treeYX = Tree({ nY, nX, Node(NodeType::Add) }).UpdateNodes();
+    Tree const treeXY = Tree({ nX, nY, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
+    Tree const treeYX = Tree({ nY, nX, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
 
     REQUIRE(ComputeContentHash(treeXY, zobrist) == ComputeContentHash(treeYX, zobrist));
 }
@@ -82,8 +84,8 @@ TEST_CASE("ContentHash - non-commutative sensitivity", "[content_hash]")
     Node nX(NodeType::Variable); nX.HashValue = varX.Hash;
     Node nY(NodeType::Variable); nY.HashValue = varY.Hash;
 
-    Tree const treeXY = Tree({ nX, nY, Node(NodeType::Sub) }).UpdateNodes();
-    Tree const treeYX = Tree({ nY, nX, Node(NodeType::Sub) }).UpdateNodes();
+    Tree const treeXY = Tree({ nX, nY, Util::MakeOp<BuiltinOp::Sub>() }).UpdateNodes();
+    Tree const treeYX = Tree({ nY, nX, Util::MakeOp<BuiltinOp::Sub>() }).UpdateNodes();
 
     REQUIRE(ComputeContentHash(treeXY, zobrist) != ComputeContentHash(treeYX, zobrist));
 }
@@ -109,9 +111,9 @@ TEST_CASE("ContentHash - position independence", "[content_hash]")
     Node nZ(NodeType::Variable); nZ.HashValue = varZ.Hash;
 
     // (x+y)*z : postfix [x, y, Add, z, Mul] - subtree root (Add) at index 2
-    Tree const treeA = Tree({ nX, nY, Node(NodeType::Add), nZ, Node(NodeType::Mul) }).UpdateNodes();
+    Tree const treeA = Tree({ nX, nY, Util::MakeOp<BuiltinOp::Add>(), nZ, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
     // z*(x+y) : postfix [z, x, y, Add, Mul] - subtree root (Add) at index 3
-    Tree const treeB = Tree({ nZ, nX, nY, Node(NodeType::Add), Node(NodeType::Mul) }).UpdateNodes();
+    Tree const treeB = Tree({ nZ, nX, nY, Util::MakeOp<BuiltinOp::Add>(), Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
 
     std::vector<Operon::Hash> scratchA(treeA.Nodes().size());
     std::vector<Operon::Hash> scratchB(treeB.Nodes().size());
@@ -201,10 +203,10 @@ TEST_CASE("ContentHash - Ref-aware (structural sharing doesn't change the hash)"
     Node nX(NodeType::Variable); nX.HashValue = varX.Hash;
 
     // x * x, no sharing: two independent Variable nodes.
-    Tree const noRef = Tree({ nX, nX, Node(NodeType::Mul) }).UpdateNodes();
+    Tree const noRef = Tree({ nX, nX, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
 
     // x * Ref(x), sharing the first x via a backward Ref.
-    Tree const withRef = Tree({ nX, Node::Ref(0), Node(NodeType::Mul) }).UpdateNodes();
+    Tree const withRef = Tree({ nX, Node::Ref(0), Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
 
     REQUIRE(ComputeContentHash(noRef, zobrist) == ComputeContentHash(withRef, zobrist));
 }

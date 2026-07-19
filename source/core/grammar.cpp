@@ -9,12 +9,12 @@
 namespace Operon {
 
 namespace {
-    // Unary NodeTypes that may wrap a SimpleExpr as a RecurringFactor, gated
+    // Unary ops that may wrap a SimpleExpr as a RecurringFactor, gated
     // by whether each is enabled in the configured PrimitiveSetConfig.
     // Mirrors symreg-cpp's grammar.cpp (LogFactor/ExpFactor/SinFactor/
     // SqrtFactor/CbrtFactor); InvFactor is intentionally not reproduced (see
     // grammar.hpp's GrammarSymbol comment).
-    constexpr std::array UnaryWraps { NodeType::Log, NodeType::Exp, NodeType::Sin, NodeType::Sqrt, NodeType::Cbrt };
+    constexpr std::array UnaryWraps { BuiltinOp::Log, BuiltinOp::Exp, BuiltinOp::Sin, BuiltinOp::Sqrt, BuiltinOp::Cbrt };
 } // namespace
 
 Grammar::Grammar(PrimitiveSetConfig enabledFunctions, std::vector<Operon::Hash> variableHashes)
@@ -44,28 +44,28 @@ void Grammar::Rebuild()
 
     auto& recurringFactor = rules_[GrammarSymbols::GetIndex(GrammarSymbol::RecurringFactor)];
     for (auto op : UnaryWraps) {
-        if (config_.Test(NodeTypes::GetIndex(op))) {
+        if (config_.Test(static_cast<std::size_t>(op))) {
             recurringFactor.push_back(Production{ .Op = op, .Operands = { GrammarSymbol::SimpleExpr } });
         }
     }
 
     rules_[GrammarSymbols::GetIndex(GrammarSymbol::Term)] = {
-        Production{ .Op = NodeTypes::NoType, .Operands = { GrammarSymbol::RecurringFactor } }, // coercion
-        Production{ .Op = NodeType::Mul, .Operands = { GrammarSymbol::Term, GrammarSymbol::Term } },
+        Production{ .Op = NoBuiltinOp, .Operands = { GrammarSymbol::RecurringFactor } }, // coercion
+        Production{ .Op = BuiltinOp::Mul, .Operands = { GrammarSymbol::Term, GrammarSymbol::Term } },
     };
 
     rules_[GrammarSymbols::GetIndex(GrammarSymbol::SimpleTerm)] = {
-        Production{ .Op = NodeType::Mul, .Operands = { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleTerm } },
+        Production{ .Op = BuiltinOp::Mul, .Operands = { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleTerm } },
     };
 
     rules_[GrammarSymbols::GetIndex(GrammarSymbol::Expression)] = {
-        Production{ .Op = NodeType::Add, .Operands = { GrammarSymbol::Term }, .WeightFirstOperand = true, .TrailingConstant = true },
-        Production{ .Op = NodeType::Add, .Operands = { GrammarSymbol::Term, GrammarSymbol::Expression }, .WeightFirstOperand = true, .TrailingConstant = false },
+        Production{ .Op = BuiltinOp::Add, .Operands = { GrammarSymbol::Term }, .WeightFirstOperand = true, .TrailingConstant = true },
+        Production{ .Op = BuiltinOp::Add, .Operands = { GrammarSymbol::Term, GrammarSymbol::Expression }, .WeightFirstOperand = true, .TrailingConstant = false },
     };
 
     rules_[GrammarSymbols::GetIndex(GrammarSymbol::SimpleExpr)] = {
-        Production{ .Op = NodeType::Add, .Operands = { GrammarSymbol::SimpleTerm }, .WeightFirstOperand = true, .TrailingConstant = true },
-        Production{ .Op = NodeType::Add, .Operands = { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleExpr }, .WeightFirstOperand = true, .TrailingConstant = false },
+        Production{ .Op = BuiltinOp::Add, .Operands = { GrammarSymbol::SimpleTerm }, .WeightFirstOperand = true, .TrailingConstant = true },
+        Production{ .Op = BuiltinOp::Add, .Operands = { GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleExpr }, .WeightFirstOperand = true, .TrailingConstant = false },
     };
 
     // Fixed-point over the production table for MinComplexity. Complexity

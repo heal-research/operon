@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "../operon_test.hpp"
+
 #include "operon/core/dataset.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
@@ -70,9 +72,9 @@ TEST_CASE("Zobrist - position sensitivity (deterministic)", "[zobrist]")
     Zobrist const cache(rng, MaxLength, {});  // no variables needed: trees use only constants
 
     // postfix: [Constant, Cos, Sin]  =>  sin(cos(c))
-    Tree const tree1 = Tree({ Node(NodeType::Constant), Node(NodeType::Cos), Node(NodeType::Sin) }).UpdateNodes();
+    Tree const tree1 = Tree({ Node(NodeType::Constant), Util::MakeOp<BuiltinOp::Cos>(), Util::MakeOp<BuiltinOp::Sin>() }).UpdateNodes();
     // postfix: [Constant, Sin, Cos]  =>  cos(sin(c))
-    Tree const tree2 = Tree({ Node(NodeType::Constant), Node(NodeType::Sin), Node(NodeType::Cos) }).UpdateNodes();
+    Tree const tree2 = Tree({ Node(NodeType::Constant), Util::MakeOp<BuiltinOp::Sin>(), Util::MakeOp<BuiltinOp::Cos>() }).UpdateNodes();
 
     REQUIRE(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
 }
@@ -92,9 +94,9 @@ TEST_CASE("Zobrist - commuted variables yield different hashes", "[zobrist]")
     Node nY(NodeType::Variable); nY.HashValue = varY.Hash; nY.IsEnabled = true;
 
     // postfix: [X, Y, Add] => Add(X, Y)
-    Tree const treeXY = Tree({ nX, nY, Node(NodeType::Add) }).UpdateNodes();
+    Tree const treeXY = Tree({ nX, nY, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
     // postfix: [Y, X, Add] => Add(Y, X)
-    Tree const treeYX = Tree({ nY, nX, Node(NodeType::Add) }).UpdateNodes();
+    Tree const treeYX = Tree({ nY, nX, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
 
     REQUIRE(cache.ComputeHash(treeXY) != cache.ComputeHash(treeYX));
 }
@@ -214,8 +216,8 @@ TEST_CASE("Zobrist - distinct built-in ops at the same position yield distinct h
     Operon::RandomGenerator rng(Seed);
     Zobrist const cache(rng, MaxLength, {});
 
-    REQUIRE(cache.ComputeHash(Node(NodeType::Add), 0) != cache.ComputeHash(Node(NodeType::Mul), 0));
-    REQUIRE(cache.ComputeHash(Node(NodeType::Sin), 0) != cache.ComputeHash(Node(NodeType::Cos), 0));
+    REQUIRE(cache.ComputeHash(Util::MakeOp<BuiltinOp::Add>(), 0) != cache.ComputeHash(Util::MakeOp<BuiltinOp::Mul>(), 0));
+    REQUIRE(cache.ComputeHash(Util::MakeOp<BuiltinOp::Sin>(), 0) != cache.ComputeHash(Util::MakeOp<BuiltinOp::Cos>(), 0));
 }
 
 TEST_CASE("Zobrist - distinct Dynamic-hash user functions yield distinct hashes", "[zobrist]")
@@ -234,13 +236,13 @@ TEST_CASE("Zobrist - distinct Dynamic-hash user functions yield distinct hashes"
     Operon::Hash const hashB = Operon::Hasher{}("userFunctionB");
     REQUIRE(hashA != hashB);
 
-    Node const nodeA(NodeType::Dynamic, hashA);
-    Node const nodeB(NodeType::Dynamic, hashB);
+    Node const nodeA(NodeType::Function, hashA);
+    Node const nodeB(NodeType::Function, hashB);
 
     REQUIRE(cache.ComputeHash(nodeA, 0) != cache.ComputeHash(nodeB, 0));
 
     // Also distinct from a built-in occupying the same tree position.
-    REQUIRE(cache.ComputeHash(nodeA, 0) != cache.ComputeHash(Node(NodeType::Add), 0));
+    REQUIRE(cache.ComputeHash(nodeA, 0) != cache.ComputeHash(Util::MakeOp<BuiltinOp::Add>(), 0));
 
     // Same Dynamic hash at two different positions must also differ - pins
     // position-sensitivity for the non-table combine path specifically,
@@ -259,8 +261,8 @@ TEST_CASE("Zobrist - different Optimize flags yield different hashes", "[zobrist
     Node c1(NodeType::Constant); c1.Value = 1.0f; c1.Optimize = true;
     Node c2(NodeType::Constant); c2.Value = 1.0f; c2.Optimize = false;
 
-    Tree const tree1 = Tree({ c1, Node(NodeType::Sin) }).UpdateNodes();
-    Tree const tree2 = Tree({ c2, Node(NodeType::Sin) }).UpdateNodes();
+    Tree const tree1 = Tree({ c1, Util::MakeOp<BuiltinOp::Sin>() }).UpdateNodes();
+    Tree const tree2 = Tree({ c2, Util::MakeOp<BuiltinOp::Sin>() }).UpdateNodes();
 
     REQUIRE(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
 }

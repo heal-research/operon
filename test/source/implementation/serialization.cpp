@@ -252,18 +252,20 @@ TEST_CASE("Checkpoint BEVE rejects wrong version", "[serialization]")
     auto beve = Operon::Serialization::ToBeve(cp);
     REQUIRE(!beve.empty());
 
-    // Magic is at some position; version=1 (LE: 01 00 00 00) follows it.
-    // Search starting after the magic bytes so we land on the version value.
+    // Magic is at some position; the current CheckpointVersion (LE) follows
+    // it. Search starting after the magic bytes so we land on the version
+    // value.
     constexpr std::array<char, 4> MagicLE{ '\x4B', '\x43', '\x50', '\x4F' };
     auto magicIt = std::search(beve.begin(), beve.end(), MagicLE.begin(), MagicLE.end());
     REQUIRE(magicIt != beve.end());
 
     // Generation=0 avoids a false match; assumes BEVE writes fields in
-    // declaration order with no other \x01\x00\x00\x00 between magic and version.
-    constexpr std::array<char, 4> VersionLE{ '\x01', '\x00', '\x00', '\x00' };
-    auto versionIt = std::search(magicIt + 4, beve.end(), VersionLE.begin(), VersionLE.end());
+    // declaration order with no other occurrence of the version bytes
+    // between magic and version.
+    constexpr auto CurrentVersion = std::to_array<char>({ '\x02', '\x00', '\x00', '\x00' }); // must track CheckpointVersion in serialization.cpp
+    auto versionIt = std::search(magicIt + 4, beve.end(), CurrentVersion.begin(), CurrentVersion.end());
     REQUIRE(versionIt != beve.end());
-    *versionIt = static_cast<char>(0x02); // bump version to 2
+    *versionIt = static_cast<char>(CurrentVersion[0] + 1); // bump to a version that doesn't match
 
     auto bad = Operon::Serialization::CheckpointFromBeve(beve);
     CHECK(!bad);

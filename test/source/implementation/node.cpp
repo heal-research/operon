@@ -8,87 +8,40 @@
 
 namespace Operon::Test {
 
-TEST_CASE("BuiltinOp::X shares NodeType::X's ordinal and a built-in Node's HashValue", "[core]")
-{
-    // Node(NodeType) sets HashValue = static_cast<Hash>(Type), so for every
-    // built-in math op, Is<NodeType::X>() and Is<BuiltinOp::X>() must agree.
-    auto check = [](NodeType type, BuiltinOp op) {
-        Node const n(type);
-        CHECK(static_cast<Operon::Hash>(type) == static_cast<Operon::Hash>(op));
-        CHECK(n.HashValue == static_cast<Operon::Hash>(op));
-    };
+namespace {
+    // Local equivalent of Util::MakeOp (operon_test.hpp) - this file is
+    // deliberately self-contained (only includes node.hpp), so it doesn't
+    // pull in the shared test harness header just for this one helper.
+    template<BuiltinOp Op>
+    auto MakeOp() -> Node {
+        constexpr uint16_t arity = Node::IsUnaryOp<Op> ? 1 : 2;
+        return Node::Function(static_cast<Operon::Hash>(Op), arity);
+    }
+} // namespace
 
-    check(NodeType::Add, BuiltinOp::Add);
-    check(NodeType::Mul, BuiltinOp::Mul);
-    check(NodeType::Sub, BuiltinOp::Sub);
-    check(NodeType::Div, BuiltinOp::Div);
-    check(NodeType::Fmin, BuiltinOp::Fmin);
-    check(NodeType::Fmax, BuiltinOp::Fmax);
-    check(NodeType::Aq, BuiltinOp::Aq);
-    check(NodeType::Pow, BuiltinOp::Pow);
-    check(NodeType::Powabs, BuiltinOp::Powabs);
-    check(NodeType::Abs, BuiltinOp::Abs);
-    check(NodeType::Acos, BuiltinOp::Acos);
-    check(NodeType::Asin, BuiltinOp::Asin);
-    check(NodeType::Atan, BuiltinOp::Atan);
-    check(NodeType::Cbrt, BuiltinOp::Cbrt);
-    check(NodeType::Ceil, BuiltinOp::Ceil);
-    check(NodeType::Cos, BuiltinOp::Cos);
-    check(NodeType::Cosh, BuiltinOp::Cosh);
-    check(NodeType::Exp, BuiltinOp::Exp);
-    check(NodeType::Floor, BuiltinOp::Floor);
-    check(NodeType::Log, BuiltinOp::Log);
-    check(NodeType::Logabs, BuiltinOp::Logabs);
-    check(NodeType::Log1p, BuiltinOp::Log1p);
-    check(NodeType::Sin, BuiltinOp::Sin);
-    check(NodeType::Sinh, BuiltinOp::Sinh);
-    check(NodeType::Sqrt, BuiltinOp::Sqrt);
-    check(NodeType::Sqrtabs, BuiltinOp::Sqrtabs);
-    check(NodeType::Tan, BuiltinOp::Tan);
-    check(NodeType::Tanh, BuiltinOp::Tanh);
-    check(NodeType::Square, BuiltinOp::Square);
+TEST_CASE("Node::Is<BuiltinOp...>() distinguishes built-in ops by HashValue", "[core]")
+{
+    CHECK(MakeOp<BuiltinOp::Add>().Is<BuiltinOp::Add>());
+    CHECK_FALSE(MakeOp<BuiltinOp::Add>().Is<BuiltinOp::Mul>());
+    CHECK(MakeOp<BuiltinOp::Sin>().Is<BuiltinOp::Sin>());
+    CHECK((MakeOp<BuiltinOp::Fmax>().Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>()));
+    CHECK_FALSE((MakeOp<BuiltinOp::Sub>().Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>()));
 }
 
-TEST_CASE("Node::Is<BuiltinOp...>() agrees with Is<NodeType...>() for built-in nodes", "[core]")
+TEST_CASE("IsNaryOp/IsBinaryOp/IsUnaryOp<BuiltinOp> classify every op consistently", "[core]")
 {
-    CHECK(Node(NodeType::Add).Is<BuiltinOp::Add>());
-    CHECK_FALSE(Node(NodeType::Add).Is<BuiltinOp::Mul>());
-    CHECK(Node(NodeType::Sin).Is<BuiltinOp::Sin>());
-    CHECK((Node(NodeType::Fmax).Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>()));
-    CHECK_FALSE((Node(NodeType::Sub).Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>()));
-}
-
-TEST_CASE("IsNaryOp/IsBinaryOp/IsUnaryOp<BuiltinOp> agree with IsNary/IsBinary/IsUnary<NodeType>", "[core]")
-{
-    auto check = [](NodeType type, bool isNary, bool isBinary, bool isUnary) {
-        CHECK(Node(type).IsLeaf() == false); // sanity: all BuiltinOp-backed types are non-leaf
-        CHECK(isNary == (type == NodeType::Add || type == NodeType::Mul || type == NodeType::Sub
-            || type == NodeType::Div || type == NodeType::Fmin || type == NodeType::Fmax));
-        CHECK(isBinary == (type == NodeType::Aq || type == NodeType::Pow || type == NodeType::Powabs));
+    auto check = [](BuiltinOp op, bool isNary, bool isBinary, bool isUnary) {
+        CHECK(!Node::Function(static_cast<Operon::Hash>(op), 1).IsLeaf()); // sanity: every BuiltinOp-backed node is non-leaf
+        CHECK(isNary == (op == BuiltinOp::Add || op == BuiltinOp::Mul || op == BuiltinOp::Sub
+            || op == BuiltinOp::Div || op == BuiltinOp::Fmin || op == BuiltinOp::Fmax));
+        CHECK(isBinary == (op == BuiltinOp::Aq || op == BuiltinOp::Pow || op == BuiltinOp::Powabs));
         CHECK(isUnary == (!isNary && !isBinary));
+        CHECK((isNary ? 1 : 0) + (isBinary ? 1 : 0) + (isUnary ? 1 : 0) == 1); // mutually exclusive, exhaustive
     };
 
-    // NodeType-keyed boundaries (existing, unchanged)
-    check(NodeType::Add, Node::IsNary<NodeType::Add>, Node::IsBinary<NodeType::Add>, Node::IsUnary<NodeType::Add>);
-    check(NodeType::Aq, Node::IsNary<NodeType::Aq>, Node::IsBinary<NodeType::Aq>, Node::IsUnary<NodeType::Aq>);
-    check(NodeType::Sin, Node::IsNary<NodeType::Sin>, Node::IsBinary<NodeType::Sin>, Node::IsUnary<NodeType::Sin>);
-
-    // BuiltinOp-keyed boundaries must classify every op identically to their
-    // NodeType counterparts.
-    CHECK(Node::IsNaryOp<BuiltinOp::Add> == Node::IsNary<NodeType::Add>);
-    CHECK(Node::IsNaryOp<BuiltinOp::Mul> == Node::IsNary<NodeType::Mul>);
-    CHECK(Node::IsNaryOp<BuiltinOp::Sub> == Node::IsNary<NodeType::Sub>);
-    CHECK(Node::IsNaryOp<BuiltinOp::Div> == Node::IsNary<NodeType::Div>);
-    CHECK(Node::IsNaryOp<BuiltinOp::Fmin> == Node::IsNary<NodeType::Fmin>);
-    CHECK(Node::IsNaryOp<BuiltinOp::Fmax> == Node::IsNary<NodeType::Fmax>);
-
-    CHECK(Node::IsBinaryOp<BuiltinOp::Aq> == Node::IsBinary<NodeType::Aq>);
-    CHECK(Node::IsBinaryOp<BuiltinOp::Pow> == Node::IsBinary<NodeType::Pow>);
-    CHECK(Node::IsBinaryOp<BuiltinOp::Powabs> == Node::IsBinary<NodeType::Powabs>);
-
-    CHECK(Node::IsUnaryOp<BuiltinOp::Abs> == Node::IsUnary<NodeType::Abs>);
-    CHECK(Node::IsUnaryOp<BuiltinOp::Sin> == Node::IsUnary<NodeType::Sin>);
-    CHECK(Node::IsUnaryOp<BuiltinOp::Square> == Node::IsUnary<NodeType::Square>);
+    check(BuiltinOp::Add, Node::IsNaryOp<BuiltinOp::Add>, Node::IsBinaryOp<BuiltinOp::Add>, Node::IsUnaryOp<BuiltinOp::Add>);
+    check(BuiltinOp::Aq, Node::IsNaryOp<BuiltinOp::Aq>, Node::IsBinaryOp<BuiltinOp::Aq>, Node::IsUnaryOp<BuiltinOp::Aq>);
+    check(BuiltinOp::Sin, Node::IsNaryOp<BuiltinOp::Sin>, Node::IsBinaryOp<BuiltinOp::Sin>, Node::IsUnaryOp<BuiltinOp::Sin>);
 
     // Boundary values specifically (most likely place for an off-by-one).
     static_assert(Node::IsNaryOp<BuiltinOp::Fmax>);
@@ -102,58 +55,60 @@ TEST_CASE("IsNaryOp/IsBinaryOp/IsUnaryOp<BuiltinOp> agree with IsNary/IsBinary/I
 
 TEST_CASE("Node::Is*() single-op convenience methods are re-pointed correctly", "[core]")
 {
-    // Each of these now compares HashValue via Is<BuiltinOp::X>() instead of
-    // Type via Is<NodeType::X>() (node.hpp), but must still report true only
-    // for the one op it names and false for every other built-in op.
-    CHECK(Node(NodeType::Add).IsAddition());
-    CHECK_FALSE(Node(NodeType::Mul).IsAddition());
-    CHECK(Node(NodeType::Sub).IsSubtraction());
-    CHECK_FALSE(Node(NodeType::Add).IsSubtraction());
-    CHECK(Node(NodeType::Mul).IsMultiplication());
-    CHECK_FALSE(Node(NodeType::Div).IsMultiplication());
-    CHECK(Node(NodeType::Div).IsDivision());
-    CHECK_FALSE(Node(NodeType::Mul).IsDivision());
-    CHECK(Node(NodeType::Aq).IsAq());
-    CHECK_FALSE(Node(NodeType::Pow).IsAq());
-    CHECK(Node(NodeType::Pow).IsPow());
-    CHECK_FALSE(Node(NodeType::Powabs).IsPow());
-    CHECK(Node(NodeType::Powabs).IsPowabs());
-    CHECK_FALSE(Node(NodeType::Pow).IsPowabs());
-    CHECK(Node(NodeType::Exp).IsExp());
-    CHECK_FALSE(Node(NodeType::Log).IsExp());
-    CHECK(Node(NodeType::Log).IsLog());
-    CHECK_FALSE(Node(NodeType::Exp).IsLog());
-    CHECK(Node(NodeType::Sin).IsSin());
-    CHECK_FALSE(Node(NodeType::Cos).IsSin());
-    CHECK(Node(NodeType::Cos).IsCos());
-    CHECK_FALSE(Node(NodeType::Sin).IsCos());
-    CHECK(Node(NodeType::Tan).IsTan());
-    CHECK_FALSE(Node(NodeType::Tanh).IsTan());
-    CHECK(Node(NodeType::Tanh).IsTanh());
-    CHECK_FALSE(Node(NodeType::Tan).IsTanh());
-    CHECK(Node(NodeType::Sqrt).IsSquareRoot());
-    CHECK_FALSE(Node(NodeType::Cbrt).IsSquareRoot());
-    CHECK(Node(NodeType::Cbrt).IsCubeRoot());
-    CHECK_FALSE(Node(NodeType::Sqrt).IsCubeRoot());
-    CHECK(Node(NodeType::Square).IsSquare());
-    CHECK_FALSE(Node(NodeType::Pow).IsSquare());
+    // Each of these compares HashValue via Is<BuiltinOp::X>() (node.hpp), so
+    // must still report true only for the one op it names and false for
+    // every other built-in op.
+    CHECK(MakeOp<BuiltinOp::Add>().IsAddition());
+    CHECK_FALSE(MakeOp<BuiltinOp::Mul>().IsAddition());
+    CHECK(MakeOp<BuiltinOp::Sub>().IsSubtraction());
+    CHECK_FALSE(MakeOp<BuiltinOp::Add>().IsSubtraction());
+    CHECK(MakeOp<BuiltinOp::Mul>().IsMultiplication());
+    CHECK_FALSE(MakeOp<BuiltinOp::Div>().IsMultiplication());
+    CHECK(MakeOp<BuiltinOp::Div>().IsDivision());
+    CHECK_FALSE(MakeOp<BuiltinOp::Mul>().IsDivision());
+    CHECK(MakeOp<BuiltinOp::Aq>().IsAq());
+    CHECK_FALSE(MakeOp<BuiltinOp::Pow>().IsAq());
+    CHECK(MakeOp<BuiltinOp::Pow>().IsPow());
+    CHECK_FALSE(MakeOp<BuiltinOp::Powabs>().IsPow());
+    CHECK(MakeOp<BuiltinOp::Powabs>().IsPowabs());
+    CHECK_FALSE(MakeOp<BuiltinOp::Pow>().IsPowabs());
+    CHECK(MakeOp<BuiltinOp::Exp>().IsExp());
+    CHECK_FALSE(MakeOp<BuiltinOp::Log>().IsExp());
+    CHECK(MakeOp<BuiltinOp::Log>().IsLog());
+    CHECK_FALSE(MakeOp<BuiltinOp::Exp>().IsLog());
+    CHECK(MakeOp<BuiltinOp::Sin>().IsSin());
+    CHECK_FALSE(MakeOp<BuiltinOp::Cos>().IsSin());
+    CHECK(MakeOp<BuiltinOp::Cos>().IsCos());
+    CHECK_FALSE(MakeOp<BuiltinOp::Sin>().IsCos());
+    CHECK(MakeOp<BuiltinOp::Tan>().IsTan());
+    CHECK_FALSE(MakeOp<BuiltinOp::Tanh>().IsTan());
+    CHECK(MakeOp<BuiltinOp::Tanh>().IsTanh());
+    CHECK_FALSE(MakeOp<BuiltinOp::Tan>().IsTanh());
+    CHECK(MakeOp<BuiltinOp::Sqrt>().IsSquareRoot());
+    CHECK_FALSE(MakeOp<BuiltinOp::Cbrt>().IsSquareRoot());
+    CHECK(MakeOp<BuiltinOp::Cbrt>().IsCubeRoot());
+    CHECK_FALSE(MakeOp<BuiltinOp::Sqrt>().IsCubeRoot());
+    CHECK(MakeOp<BuiltinOp::Square>().IsSquare());
+    CHECK_FALSE(MakeOp<BuiltinOp::Pow>().IsSquare());
 }
 
 TEST_CASE("Node::IsCommutative() agrees for every built-in op", "[core]")
 {
-    for (auto type : { NodeType::Add, NodeType::Mul, NodeType::Fmin, NodeType::Fmax }) {
-        CHECK(Node(type).IsCommutative());
+    for (auto op : { BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax }) {
+        CHECK(Node::Function(static_cast<Operon::Hash>(op), 2).IsCommutative());
     }
-    for (auto type : { NodeType::Sub, NodeType::Div, NodeType::Aq, NodeType::Pow, NodeType::Powabs,
-                        NodeType::Sin, NodeType::Cos, NodeType::Square }) {
-        CHECK_FALSE(Node(type).IsCommutative());
+    for (auto op : { BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Aq, BuiltinOp::Pow, BuiltinOp::Powabs }) {
+        CHECK_FALSE(Node::Function(static_cast<Operon::Hash>(op), 2).IsCommutative());
+    }
+    for (auto op : { BuiltinOp::Sin, BuiltinOp::Cos, BuiltinOp::Square }) {
+        CHECK_FALSE(Node::Function(static_cast<Operon::Hash>(op), 1).IsCommutative());
     }
 }
 
 TEST_CASE("Node::Function() sets Type/HashValue/Arity/Length/Optimize consistently", "[core]")
 {
     auto n = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 3);
-    CHECK(n.Type == NodeType::Dynamic);
+    CHECK(n.Type == NodeType::Function);
     CHECK(n.HashValue == static_cast<Operon::Hash>(BuiltinOp::Add));
     CHECK(n.Arity == 3);
     CHECK(n.Length == 3);

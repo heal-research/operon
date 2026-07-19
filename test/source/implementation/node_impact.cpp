@@ -3,6 +3,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "../operon_test.hpp"
+
 #include "operon/analyzers/node_impact.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/node.hpp"
@@ -36,7 +38,7 @@ TEST_CASE("NodeImpact - irrelevant subtree has ~zero impact, relevant subtree do
     // an irrelevant constant, so the root's impact should be indistinguishable
     // from the (x0 + x1) subtree's impact, while the Constant{0} leaf's own
     // impact should be ~zero (replacing "0" by its own mean, "0", is a no-op).
-    Tree const tree = Tree({ nX0, nX1, Node(NodeType::Add), Node::Constant(0.0), Node(NodeType::Add) }).UpdateNodes();
+    Tree const tree = Tree({ nX0, nX1, Util::MakeOp<BuiltinOp::Add>(), Node::Constant(0.0), Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
 
     auto const range = Operon::Range(0, ds.Rows());
     auto const impact = Operon::NodeImpact(tree, ds, target, range);
@@ -61,7 +63,7 @@ TEST_CASE("NodeImpact - range-less overload matches an explicit whole-dataset ra
 
     Node nX0(NodeType::Variable); nX0.HashValue = x0.Hash;
     Node nX1(NodeType::Variable); nX1.HashValue = x1.Hash;
-    Tree const tree = Tree({ nX0, nX1, Node(NodeType::Add) }).UpdateNodes();
+    Tree const tree = Tree({ nX0, nX1, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
 
     auto const impactExplicit = Operon::NodeImpact(tree, ds, target, Operon::Range(0, ds.Rows()));
     auto const impactDefault = Operon::NodeImpact(tree, ds, target);
@@ -91,7 +93,7 @@ TEST_CASE("NodeImpact - a non-zero-start range aligns predictions against the ma
 
     Node nX0(NodeType::Variable); nX0.HashValue = x0Var.Hash;
     Node nX1(NodeType::Variable); nX1.HashValue = x1Var.Hash;
-    Tree const tree = Tree({ nX0, nX1, Node(NodeType::Add) }).UpdateNodes();
+    Tree const tree = Tree({ nX0, nX1, Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
 
     auto const impactFull = Operon::NodeImpact(tree, ds, target, Operon::Range(0, ds.Rows()));
     auto const impactPrefixed = Operon::NodeImpact(tree, prefixed, target, Operon::Range(2, prefixed.Rows()));
@@ -116,7 +118,7 @@ TEST_CASE("NodeImpact - duplicate variable occurrences are scored independently"
 
     Node nX0a(NodeType::Variable); nX0a.HashValue = x0Var.Hash;
     Node nX0b(NodeType::Variable); nX0b.HashValue = x0Var.Hash;
-    Tree const tree = Tree({ nX0a, nX0b, Node(NodeType::Mul) }).UpdateNodes();
+    Tree const tree = Tree({ nX0a, nX0b, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
 
     auto const range = Operon::Range(0, ds.Rows());
     auto const impact = Operon::NodeImpact(tree, ds, target, range);
@@ -136,7 +138,7 @@ TEST_CASE("NodeImpact - trees with Ref nodes are unsupported", "[analyzers][node
     Node nX0(NodeType::Variable); nX0.HashValue = x0.Hash;
 
     // x0 * Ref(x0) - structural sharing via a backward Ref.
-    Tree const tree = Tree({ nX0, Node::Ref(0), Node(NodeType::Mul) }).UpdateNodes();
+    Tree const tree = Tree({ nX0, Node::Ref(0), Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
 
     auto const range = Operon::Range(0, ds.Rows());
     auto const impact = Operon::NodeImpact(tree, ds, target, range);

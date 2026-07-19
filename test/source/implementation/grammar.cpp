@@ -13,7 +13,7 @@
 namespace Operon::Test {
 
 namespace {
-    auto HasUnaryProduction(std::span<Production const> ps, NodeType op) -> bool {
+    auto HasUnaryProduction(std::span<Production const> ps, BuiltinOp op) -> bool {
         return std::ranges::any_of(ps, [&](auto const& p) { return p.Op == op; });
     }
 } // namespace
@@ -30,11 +30,11 @@ TEST_CASE("Grammar - TypeCoherent config enables Log/Exp/Sin but not Sqrt/Cbrt",
     Grammar grammar(PrimitiveSet::TypeCoherent, { 1, 2, 3 });
     auto ps = grammar.Productions(GrammarSymbol::RecurringFactor);
 
-    CHECK(HasUnaryProduction(ps, NodeType::Log));
-    CHECK(HasUnaryProduction(ps, NodeType::Exp));
-    CHECK(HasUnaryProduction(ps, NodeType::Sin));
-    CHECK_FALSE(HasUnaryProduction(ps, NodeType::Sqrt));
-    CHECK_FALSE(HasUnaryProduction(ps, NodeType::Cbrt));
+    CHECK(HasUnaryProduction(ps, BuiltinOp::Log));
+    CHECK(HasUnaryProduction(ps, BuiltinOp::Exp));
+    CHECK(HasUnaryProduction(ps, BuiltinOp::Sin));
+    CHECK_FALSE(HasUnaryProduction(ps, BuiltinOp::Sqrt));
+    CHECK_FALSE(HasUnaryProduction(ps, BuiltinOp::Cbrt));
 
     // every RecurringFactor production wraps a SimpleExpr operand
     for (auto const& p : ps) {
@@ -48,11 +48,11 @@ TEST_CASE("Grammar - Full config enables Sqrt/Cbrt too", "[grammar]")
     Grammar grammar(PrimitiveSet::Full, { 1, 2, 3 });
     auto ps = grammar.Productions(GrammarSymbol::RecurringFactor);
 
-    CHECK(HasUnaryProduction(ps, NodeType::Log));
-    CHECK(HasUnaryProduction(ps, NodeType::Exp));
-    CHECK(HasUnaryProduction(ps, NodeType::Sin));
-    CHECK(HasUnaryProduction(ps, NodeType::Sqrt));
-    CHECK(HasUnaryProduction(ps, NodeType::Cbrt));
+    CHECK(HasUnaryProduction(ps, BuiltinOp::Log));
+    CHECK(HasUnaryProduction(ps, BuiltinOp::Exp));
+    CHECK(HasUnaryProduction(ps, BuiltinOp::Sin));
+    CHECK(HasUnaryProduction(ps, BuiltinOp::Sqrt));
+    CHECK(HasUnaryProduction(ps, BuiltinOp::Cbrt));
 }
 
 TEST_CASE("Grammar - Configure is independent of Reconfigure order", "[grammar]")
@@ -61,7 +61,7 @@ TEST_CASE("Grammar - Configure is independent of Reconfigure order", "[grammar]"
     grammar.Configure(PrimitiveSet::Full);
     grammar.SetVariables({ 1, 2, 3 });
     auto ps = grammar.Productions(GrammarSymbol::RecurringFactor);
-    CHECK(HasUnaryProduction(ps, NodeType::Sqrt));
+    CHECK(HasUnaryProduction(ps, BuiltinOp::Sqrt));
     CHECK(grammar.VariableHashes().size() == 3);
 }
 
@@ -128,12 +128,12 @@ TEST_CASE("Grammar - Term and SimpleTerm production shapes", "[grammar]")
     REQUIRE(term.size() == 2);
     CHECK(term[0].IsCoercion());
     CHECK(term[0].Operands == std::vector{ GrammarSymbol::RecurringFactor });
-    CHECK(term[1].Op == NodeType::Mul);
+    CHECK(term[1].Op == BuiltinOp::Mul);
     CHECK(term[1].Operands == std::vector{ GrammarSymbol::Term, GrammarSymbol::Term });
 
     auto simpleTerm = grammar.Productions(GrammarSymbol::SimpleTerm);
     REQUIRE(simpleTerm.size() == 1);
-    CHECK(simpleTerm[0].Op == NodeType::Mul);
+    CHECK(simpleTerm[0].Op == BuiltinOp::Mul);
     CHECK(simpleTerm[0].Operands == std::vector{ GrammarSymbol::SimpleTerm, GrammarSymbol::SimpleTerm });
 }
 
@@ -143,11 +143,11 @@ TEST_CASE("Grammar - Expression and SimpleExpr production shapes", "[grammar]")
 
     auto expr = grammar.Productions(GrammarSymbol::Expression);
     REQUIRE(expr.size() == 2);
-    CHECK(expr[0].Op == NodeType::Add);
+    CHECK(expr[0].Op == BuiltinOp::Add);
     CHECK(expr[0].WeightFirstOperand);
     CHECK(expr[0].TrailingConstant);
     CHECK(expr[0].Operands == std::vector{ GrammarSymbol::Term });
-    CHECK(expr[1].Op == NodeType::Add);
+    CHECK(expr[1].Op == BuiltinOp::Add);
     CHECK(expr[1].WeightFirstOperand);
     CHECK_FALSE(expr[1].TrailingConstant);
     CHECK(expr[1].Operands == std::vector{ GrammarSymbol::Term, GrammarSymbol::Expression });

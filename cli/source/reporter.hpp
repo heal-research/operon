@@ -110,11 +110,11 @@ public:
             auto const sz = nodes.size();
             if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
                 nodes.emplace_back(Operon::Node::Constant(a));
-                nodes.emplace_back(Operon::NodeType::Mul);
+                nodes.push_back(Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2));
             }
             if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
                 nodes.emplace_back(Operon::Node::Constant(b));
-                nodes.emplace_back(Operon::NodeType::Add);
+                nodes.push_back(Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 2));
             }
             if (nodes.size() > sz) {
                 best_.Genotype.UpdateNodes();

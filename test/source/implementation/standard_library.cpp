@@ -32,23 +32,23 @@ TEST_CASE("StandardLibrary populates dispatch tables and node names consistently
     Operon::StandardLibrary::Register(dtRuntime);
 
     SECTION("Both tables contain the same set of built-in hashes") {
-        for (auto i = 0UL; i < Operon::NodeTypes::Count - 4; ++i) {
-            auto const h = Operon::Node(static_cast<Operon::NodeType>(i)).HashValue;
+        for (auto i = 0UL; i < Operon::BuiltinOpCount; ++i) {
+            auto const h = static_cast<Operon::Hash>(static_cast<Operon::BuiltinOp>(i));
             CHECK(dtDefault.Contains(h));
             CHECK(dtRuntime.Contains(h));
         }
     }
 
     SECTION("Built-in names and descriptions are available through the unified hash registry") {
-        CHECK(Operon::Node(Operon::NodeType::Add).Name() == "+");
-        CHECK(Operon::Node(Operon::NodeType::Add).Desc() == "n-ary addition f(a,b,c,...) = a + b + c + ...");
-        CHECK(Operon::Node(Operon::NodeType::Dynamic).Name() == "dyn");
+        CHECK(Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 2).Name() == "+");
+        CHECK(Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 2).Desc() == "n-ary addition f(a,b,c,...) = a + b + c + ...");
+        CHECK(Operon::Node(Operon::NodeType::Function).Name() == "dyn"); // generic fallback, no specific hash registered
         CHECK(Operon::Node(Operon::NodeType::Variable).Name() == "variable");
     }
 
     SECTION("Registered callables are the identical compiled kernels (same function pointer target)") {
-        for (auto i = 0UL; i < Operon::NodeTypes::Count - 4; ++i) {
-            auto const h = Operon::Node(static_cast<Operon::NodeType>(i)).HashValue;
+        for (auto i = 0UL; i < Operon::BuiltinOpCount; ++i) {
+            auto const h = static_cast<Operon::Hash>(static_cast<Operon::BuiltinOp>(i));
 
             auto const& fDefault = dtDefault.GetFunction<Scalar>(h);
             auto const& fRuntime = dtRuntime.GetFunction<Scalar>(h);
@@ -98,12 +98,12 @@ TEST_CASE("StandardLibrary populates dispatch tables and node names consistently
     }
 }
 
-TEST_CASE("Unregistered Dynamic nodes fall back to the generic name/desc", "[interpreter]")
+TEST_CASE("Unregistered Function nodes fall back to the generic name/desc", "[interpreter]")
 {
     Operon::StandardLibrary::RegisterNames();
 
     Operon::Hash const unregisteredHash = Operon::Hasher{}("test::unregistered_dynamic_fallback");
-    Operon::Node const dynNode(Operon::NodeType::Dynamic, unregisteredHash);
+    Operon::Node const dynNode(Operon::NodeType::Function, unregisteredHash);
 
     SECTION("Name() returns the generic \"dyn\" fallback") {
         CHECK(dynNode.Name() == "dyn");
@@ -113,26 +113,38 @@ TEST_CASE("Unregistered Dynamic nodes fall back to the generic name/desc", "[int
         CHECK(dynNode.Desc() == "user-defined function");
     }
 
-    SECTION("A registered Dynamic node still resolves to its specific name") {
+    SECTION("A registered Function node still resolves to its specific name") {
         Operon::Hash const registeredHash = Operon::Hasher{}("test::registered_dynamic_fallback");
         Operon::Node::RegisterName(registeredHash, "myop", "my custom op");
-        Operon::Node const registeredDyn(Operon::NodeType::Dynamic, registeredHash);
+        Operon::Node const registeredDyn(Operon::NodeType::Function, registeredHash);
         CHECK(registeredDyn.Name() == "myop");
         CHECK(registeredDyn.Desc() == "my custom op");
     }
 }
 
-TEST_CASE("StandardLibrary::ArityLimits matches Node(type).Arity's position-based inference", "[interpreter]")
+TEST_CASE("StandardLibrary::ArityLimits agrees with IsNaryOp/IsBinaryOp/IsUnaryOp classification", "[interpreter]")
 {
-    // PR1 gives PrimitiveSet an arity source independent of Node(t).Arity;
-    // this pins that the new source agrees with the old inference for every
-    // built-in type, so decoupling the source doesn't change observed arity.
-    for (auto i = 0UL; i < Operon::NodeTypes::Count; ++i) {
-        auto const type = static_cast<Operon::NodeType>(i);
-        auto const [minArity, maxArity] = Operon::StandardLibrary::ArityLimits(type);
-        auto const expected = Operon::Node(type).Arity;
-        CHECK(minArity == expected);
-        CHECK(maxArity == expected);
+    // Arity is registry-sourced now, not inferred from any enum position
+    // (that inference was removed along with NodeType's per-op enumerators).
+    // What should still hold: n-ary/binary ops report MinArity==MaxArity==2,
+    // unary ops report MinArity==MaxArity==1.
+    for (auto i = 0UL; i < Operon::BuiltinOpCount; ++i) {
+        auto const op = static_cast<Operon::BuiltinOp>(i);
+        auto const [minArity, maxArity] = Operon::StandardLibrary::ArityLimits(op);
+        CHECK(minArity == maxArity);
+    }
+    // Spot-check a representative op from each category directly.
+    {
+        auto const [lo, hi] = Operon::StandardLibrary::ArityLimits(Operon::BuiltinOp::Add);
+        CHECK(lo == 2); CHECK(hi == 2);
+    }
+    {
+        auto const [lo, hi] = Operon::StandardLibrary::ArityLimits(Operon::BuiltinOp::Pow);
+        CHECK(lo == 2); CHECK(hi == 2);
+    }
+    {
+        auto const [lo, hi] = Operon::StandardLibrary::ArityLimits(Operon::BuiltinOp::Sin);
+        CHECK(lo == 1); CHECK(hi == 1);
     }
 }
 
@@ -141,8 +153,8 @@ TEST_CASE("PrimitiveSet preset configs source arity from the registry, not Node(
     Operon::PrimitiveSet pset;
     pset.SetConfig(Operon::PrimitiveSet::Full);
 
-    auto const addHash = Operon::Node(Operon::NodeType::Add).HashValue;
-    auto const sinHash = Operon::Node(Operon::NodeType::Sin).HashValue;
+    auto const addHash = static_cast<Operon::Hash>(Operon::BuiltinOp::Add);
+    auto const sinHash = static_cast<Operon::Hash>(Operon::BuiltinOp::Sin);
     auto const constHash = Operon::Node(Operon::NodeType::Constant).HashValue;
     auto const varHash = Operon::Node(Operon::NodeType::Variable).HashValue;
 
@@ -173,10 +185,7 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
     Operon::RegisterNaryFunction<DT, Scalar>(dt, pset, info, /*maxArity=*/5, primal);
 
     auto makeTree = [&] {
-        Operon::Node dyn(Operon::NodeType::Dynamic, hash);
-        dyn.Arity    = 3;
-        dyn.Length   = 3;
-        dyn.Optimize = false; // matches AddFunction: function nodes are never coefficient-optimized
+        auto dyn = Operon::Node::Function(hash, 3); // sets Arity=Length=3, Optimize=false
         return Operon::Tree({
             Operon::Node::Constant(1.0),
             Operon::Node::Constant(2.0),
@@ -236,10 +245,7 @@ TEST_CASE("RegisterNaryFunction registers a variable-arity function end-to-end",
         auto prodPrimal = [](auto acc, auto x) -> auto { return acc * x; };
         Operon::RegisterNaryFunction<DT, Scalar>(dtProd, psetProd, prodInfo, /*maxArity=*/3, prodPrimal);
 
-        Operon::Node dyn(Operon::NodeType::Dynamic, prodHash);
-        dyn.Arity    = 3;
-        dyn.Length   = 3;
-        dyn.Optimize = false;
+        auto dyn = Operon::Node::Function(prodHash, 3);
         Operon::Tree const tree({
             Operon::Node::Constant(2.0),
             Operon::Node::Constant(3.0),
