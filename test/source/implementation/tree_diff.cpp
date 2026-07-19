@@ -207,8 +207,8 @@ TEST_CASE("BuildJacobianDag - Mul(c1,c2) product rule", "[tree_diff]")
     // Different constants → different derivative roots.
     CHECK(dag.Roots[0] != dag.Roots[1]);
     // Product rule emits Mul(Const(1), Ref(other)) for each column.
-    CHECK(dag.Nodes[dag.Roots[0]].Is<BuiltinOp::Mul>());
-    CHECK(dag.Nodes[dag.Roots[1]].Is<BuiltinOp::Mul>());
+    CHECK(dag.Nodes[dag.Roots[0]].IsOp<BuiltinOp::Mul>());
+    CHECK(dag.Nodes[dag.Roots[1]].IsOp<BuiltinOp::Mul>());
 }
 
 TEST_CASE("BuildJacobianDag - Sin(c) root is Mul", "[tree_diff]")
@@ -221,7 +221,7 @@ TEST_CASE("BuildJacobianDag - Sin(c) root is Mul", "[tree_diff]")
     auto dag = BuildJacobianDag(tree);
     REQUIRE(dag.Roots.size() == 1);
     REQUIRE(dag.Roots[0] != NoGrad);
-    CHECK(dag.Nodes[dag.Roots[0]].Is<BuiltinOp::Mul>());
+    CHECK(dag.Nodes[dag.Roots[0]].IsOp<BuiltinOp::Mul>());
 }
 
 TEST_CASE("BuildJacobianDag - original nodes are preserved exactly", "[tree_diff]")

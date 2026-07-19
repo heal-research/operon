@@ -285,7 +285,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     }
 
     // --- Aq, Powabs, Fmin, Fmax: not yet differentiated ---
-    if (n.IsAq() || n.IsPowabs() || n.Is<BuiltinOp::Fmin, BuiltinOp::Fmax>()) {
+    if (n.IsAq() || n.IsPowabs() || n.IsOp<BuiltinOp::Fmin, BuiltinOp::Fmax>()) {
         return Zero;
     }
 

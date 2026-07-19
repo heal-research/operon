@@ -292,44 +292,58 @@ struct Node {
     }
 
     [[nodiscard]] auto IsLeaf() const noexcept -> bool { return Arity == 0; }
-    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>(); }
+    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return IsOp<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>(); }
 
     template <NodeType... T>
     [[nodiscard]] auto Is() const -> bool { return ((Type == T) || ...); }
 
-    // BuiltinOp overload: compares HashValue instead of Type. Equivalent to
-    // the NodeType overload above for any node constructed the ordinary way
-    // (Node(NodeType) sets HashValue = static_cast<Hash>(Type)), but usable
-    // where only a hash is in scope (e.g. dispatch keyed by HashValue). Not a
-    // strict no-op vs. the NodeType overload in one theoretical edge case: a
-    // Variable node's HashValue is an unconstrained Hasher{}(name) (unlike
-    // registered functions', which ValidateUserHash keeps out of the
-    // built-in ordinal range), so a name whose hash happens to collide into
+    // BuiltinOp counterpart of Is<NodeType...>() above: compares HashValue
+    // instead of Type. Equivalent to the NodeType overload for any node
+    // constructed the ordinary way (Node(NodeType) sets
+    // HashValue = static_cast<Hash>(Type)), but usable where only a hash is
+    // in scope (e.g. dispatch keyed by HashValue). Not a strict no-op vs.
+    // the NodeType overload in one theoretical edge case: a Variable node's
+    // HashValue is an unconstrained Hasher{}(name) (unlike registered
+    // functions', which ValidateUserHash keeps out of the built-in ordinal
+    // range), so a name whose hash happens to collide into
     // [0, NodeTypes::Count) would make this overload misclassify it as a
     // math op. Astronomically unlikely (a ~29-in-2^64 chance) and not
     // guarded against, same as it wasn't before this overload existed.
+    //
+    // Named IsOp rather than a same-named Is<BuiltinOp...>() overload: a
+    // real clang-cl (MSVC ABI) mangling bug collapses two function templates
+    // overloaded solely by an enum-typed non-type template parameter pack
+    // into the identical mangled symbol whenever the packs' underlying
+    // integer values coincide (e.g. Is<NodeType::Ref>() [value 2] and
+    // Is<BuiltinOp::Sub>() [value 2] both mangled to
+    // `??$Is@$02@Node@Operon@@QEBA_NXZ`), causing a duplicate-definition
+    // link error — hit in practice by PR #140's Windows CI
+    // (`error: definition with same mangled name`). Distinct names sidestep
+    // the collision entirely; this is a compiler ABI limitation, not
+    // something fixable by choosing different enum values (any two enums
+    // with overlapping value ranges will eventually collide again).
     template <BuiltinOp... Op>
-    [[nodiscard]] auto Is() const -> bool { return ((HashValue == static_cast<Operon::Hash>(Op)) || ...); }
+    [[nodiscard]] auto IsOp() const -> bool { return ((HashValue == static_cast<Operon::Hash>(Op)) || ...); }
 
     [[nodiscard]] auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
     [[nodiscard]] auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
     [[nodiscard]] auto IsRef()      const -> bool { return Is<NodeType::Ref>(); }
-    [[nodiscard]] auto IsAddition() const -> bool { return Is<BuiltinOp::Add>(); }
-    [[nodiscard]] auto IsSubtraction() const -> bool { return Is<BuiltinOp::Sub>(); }
-    [[nodiscard]] auto IsMultiplication() const -> bool { return Is<BuiltinOp::Mul>(); }
-    [[nodiscard]] auto IsDivision() const -> bool { return Is<BuiltinOp::Div>(); }
-    [[nodiscard]] auto IsAq() const -> bool { return Is<BuiltinOp::Aq>(); }
-    [[nodiscard]] auto IsPow() const -> bool { return Is<BuiltinOp::Pow>(); }
-    [[nodiscard]] auto IsPowabs() const -> bool { return Is<BuiltinOp::Powabs>(); }
-    [[nodiscard]] auto IsExp() const -> bool { return Is<BuiltinOp::Exp>(); }
-    [[nodiscard]] auto IsLog() const -> bool { return Is<BuiltinOp::Log>(); }
-    [[nodiscard]] auto IsSin() const -> bool { return Is<BuiltinOp::Sin>(); }
-    [[nodiscard]] auto IsCos() const -> bool { return Is<BuiltinOp::Cos>(); }
-    [[nodiscard]] auto IsTan() const -> bool { return Is<BuiltinOp::Tan>(); }
-    [[nodiscard]] auto IsTanh() const -> bool { return Is<BuiltinOp::Tanh>(); }
-    [[nodiscard]] auto IsSquareRoot() const -> bool { return Is<BuiltinOp::Sqrt>(); }
-    [[nodiscard]] auto IsCubeRoot() const -> bool { return Is<BuiltinOp::Cbrt>(); }
-    [[nodiscard]] auto IsSquare() const -> bool { return Is<BuiltinOp::Square>(); }
+    [[nodiscard]] auto IsAddition() const -> bool { return IsOp<BuiltinOp::Add>(); }
+    [[nodiscard]] auto IsSubtraction() const -> bool { return IsOp<BuiltinOp::Sub>(); }
+    [[nodiscard]] auto IsMultiplication() const -> bool { return IsOp<BuiltinOp::Mul>(); }
+    [[nodiscard]] auto IsDivision() const -> bool { return IsOp<BuiltinOp::Div>(); }
+    [[nodiscard]] auto IsAq() const -> bool { return IsOp<BuiltinOp::Aq>(); }
+    [[nodiscard]] auto IsPow() const -> bool { return IsOp<BuiltinOp::Pow>(); }
+    [[nodiscard]] auto IsPowabs() const -> bool { return IsOp<BuiltinOp::Powabs>(); }
+    [[nodiscard]] auto IsExp() const -> bool { return IsOp<BuiltinOp::Exp>(); }
+    [[nodiscard]] auto IsLog() const -> bool { return IsOp<BuiltinOp::Log>(); }
+    [[nodiscard]] auto IsSin() const -> bool { return IsOp<BuiltinOp::Sin>(); }
+    [[nodiscard]] auto IsCos() const -> bool { return IsOp<BuiltinOp::Cos>(); }
+    [[nodiscard]] auto IsTan() const -> bool { return IsOp<BuiltinOp::Tan>(); }
+    [[nodiscard]] auto IsTanh() const -> bool { return IsOp<BuiltinOp::Tanh>(); }
+    [[nodiscard]] auto IsSquareRoot() const -> bool { return IsOp<BuiltinOp::Sqrt>(); }
+    [[nodiscard]] auto IsCubeRoot() const -> bool { return IsOp<BuiltinOp::Cbrt>(); }
+    [[nodiscard]] auto IsSquare() const -> bool { return IsOp<BuiltinOp::Square>(); }
     [[nodiscard]] auto IsFunction() const -> bool { return Is<NodeType::Function>(); }
 
     // BuiltinOp counterparts of the old NodeType-keyed IsNary/IsBinary/

@@ -98,7 +98,7 @@ TEST_CASE("InsertSubtreeMutation leaves trees without eligible n-ary operators u
     auto child = mut(random, tree);
 
     CHECK(child.Length() == tree.Length());
-    CHECK(child[child.Length() - 1].Is<BuiltinOp::Sin>());
+    CHECK(child[child.Length() - 1].IsOp<BuiltinOp::Sin>());
     CHECK(child[0].HashValue == variableHash);
 }
 
