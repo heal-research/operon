@@ -26,7 +26,7 @@ TEST_CASE("Parser throughput", "[performance]")
     auto ds = Util::RandomDataset(rng, nrow, ncol);
 
     Operon::PrimitiveSet pset;
-    pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log | NodeType::Variable);
+    pset.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Exp | BuiltinOp::Log | NodeType::Variable);
 
     BalancedTreeCreator const creator{&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength};
     std::uniform_int_distribution<size_t> dist(1, maxLength);

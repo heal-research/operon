@@ -29,26 +29,29 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
             fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
             fmt::format_to(std::back_inserter(current), " * ");
         }
-        if (s.Type < NodeType::Abs) // add, sub, mul, div, aq, fmax, fmin, pow
+        // BuiltinOp's ordinals preserve the same relative order the old
+        // NodeType math-op subset had, so this boundary (Add..Powabs vs.
+        // Abs onward) is still exactly `< Hash(BuiltinOp::Abs)`.
+        if (s.HashValue < Operon::Hash(BuiltinOp::Abs)) // add, sub, mul, div, aq, fmax, fmin, pow
         {
             fmt::format_to(std::back_inserter(current), "(");
             if (s.Arity == 1) {
-                if (s.Type == NodeType::Sub) {
+                if (s.Is<BuiltinOp::Sub>()) {
                     // subtraction with a single argument is a negation -x
                     fmt::format_to(std::back_inserter(current), "-");
-                } else if (s.Type == NodeType::Div) {
+                } else if (s.Is<BuiltinOp::Div>()) {
                     // division with a single argument is an inversion 1/x
                     fmt::format_to(std::back_inserter(current), "1 / ");
                 }
                 FormatNode(tree, variableNames, i-1, current, decimalPrecision);
-            } else if (s.Type == NodeType::Pow) {
+            } else if (s.Is<BuiltinOp::Pow>()) {
                 // format pow(a,b) as a^b
                 auto j = i - 1;
                 auto k = j - tree[j].Length - 1;
                 FormatNode(tree, variableNames, j, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), " ^ ");
                 FormatNode(tree, variableNames, k, current, decimalPrecision);
-            } else if (s.Type == NodeType::Powabs) {
+            } else if (s.Is<BuiltinOp::Powabs>()) {
                 // format powabs(a,b) as abs(a)^b
                 auto j = i - 1;
                 auto k = j - tree[j].Length - 1;
@@ -56,7 +59,7 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 FormatNode(tree, variableNames, j, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), ") ^ ");
                 FormatNode(tree, variableNames, k, current, decimalPrecision);
-            } else if (s.Type == NodeType::Aq) {
+            } else if (s.Is<BuiltinOp::Aq>()) {
                 // format aq(a,b) as a / (1 + b^2)
                 auto j = i - 1;
                 auto k = j - tree[j].Length - 1;
@@ -64,7 +67,7 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 fmt::format_to(std::back_inserter(current), " / (sqrt(1 + ");
                 FormatNode(tree, variableNames, k, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), " ^ 2))");
-            } else if (s.Type == NodeType::Fmin) {
+            } else if (s.Is<BuiltinOp::Fmin>()) {
                 auto j = i - 1;
                 auto k = j - tree[j].Length - 1;
                 fmt::format_to(std::back_inserter(current), "min(");
@@ -72,7 +75,7 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 fmt::format_to(std::back_inserter(current), ", ");
                 FormatNode(tree, variableNames, k, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), ")");
-            } else if (s.Type == NodeType::Fmax) {
+            } else if (s.Is<BuiltinOp::Fmax>()) {
                 auto j = i - 1;
                 auto k = j - tree[j].Length - 1;
                 fmt::format_to(std::back_inserter(current), "max(");
@@ -91,22 +94,22 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
             }
             fmt::format_to(std::back_inserter(current), ")");
         } else { // unary operators abs, asin, ... log, exp, sin, etc.
-            if (s.Type == NodeType::Square) {
+            if (s.Is<BuiltinOp::Square>()) {
                 // format square(a) as a ^ 2
                 fmt::format_to(std::back_inserter(current), "(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), " ^ 2)");
-            } else if (s.Type == NodeType::Logabs) {
+            } else if (s.Is<BuiltinOp::Logabs>()) {
                 // format logabs(a) as log(abs(a))
                 fmt::format_to(std::back_inserter(current), "log(abs(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), "))");
-            } else if (s.Type == NodeType::Log1p) {
+            } else if (s.Is<BuiltinOp::Log1p>()) {
                 // format log1p(a) as log(a+1)
                 fmt::format_to(std::back_inserter(current), "log(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), "+1)");
-            } else if (s.Type == NodeType::Sqrtabs) {
+            } else if (s.Is<BuiltinOp::Sqrtabs>()) {
                 // format sqrtabs(a) as sqrt(abs(a))
                 fmt::format_to(std::back_inserter(current), "sqrt(abs(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);

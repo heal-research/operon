@@ -133,8 +133,8 @@ public:
             EXPECT(acc.has_value()); // arity > 0 — malformed tree otherwise
             return std::move(*acc);
         };
-        // Fmin/Fmax are n-ary (NodeType::IsNary covers Add..Fmax). Fold all
-        // children — do NOT hardcode binary j/k indexing.
+        // Fmin/Fmax are n-ary (Node::IsNaryOp<BuiltinOp> covers Add..Fmax). Fold
+        // all children — do NOT hardcode binary j/k indexing.
         auto const minFold = [&](std::size_t i) {
             std::optional<Affine> acc;
             for (auto j : Tree::Indices(nodes, i)) {
@@ -164,11 +164,9 @@ public:
                 v = static_cast<Scalar>(node.Value);
             }
 
-            switch (node.Type) {
-            case NodeType::Constant:
+            if (node.Type == NodeType::Constant) {
                 primal_.push_back(pappus::ops::constant<Scalar>(ctx_, v));
-                break;
-            case NodeType::Variable: {
+            } else if (node.Type == NodeType::Variable) {
                 auto it = domains_.find(node.HashValue);
                 if (it == domains_.end()) {
                     throw std::runtime_error(fmt::format(
@@ -177,119 +175,119 @@ public:
                 }
                 auto const& [lo, hi] = it->second;
                 primal_.push_back(pappus::ops::variable<Scalar>(ctx_, lo, hi) * v);
-                break;
-            }
-            case NodeType::Ref:
+            } else if (node.Type == NodeType::Ref) {
                 EXPECT(static_cast<std::size_t>(node.RefTo) < primal_.size());
                 primal_.push_back(primal_[node.RefTo]);
-                break;
-            case NodeType::Add:
-                primal_.push_back(addFold(i) * v);
-                break;
-            case NodeType::Mul:
-                primal_.push_back(mulFold(i) * v);
-                break;
-            case NodeType::Sub:
-                primal_.push_back((node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1])
-                                                  : subFold(i)) * v);
-                break;
-            case NodeType::Div:
-                // May throw if the denominator form contains zero (affine inv
-                // is stricter than interval inv).
-                primal_.push_back((node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1])
-                                                  : divFold(i)) * v);
-                break;
-            case NodeType::Square:
-                primal_.push_back(pappus::ops::square<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Sqrt:
-                primal_.push_back(pappus::ops::sqrt<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Exp:
-                primal_.push_back(pappus::ops::exp<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Log:
-                primal_.push_back(pappus::ops::log<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Sin:
-                primal_.push_back(pappus::ops::sin<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Cos:
-                primal_.push_back(pappus::ops::cos<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Tan:
-                primal_.push_back(pappus::ops::tan<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Asin:
-                primal_.push_back(pappus::ops::asin<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Acos:
-                primal_.push_back(pappus::ops::acos<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Atan:
-                primal_.push_back(pappus::ops::atan<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Sinh:
-                primal_.push_back(pappus::ops::sinh<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Cosh:
-                primal_.push_back(pappus::ops::cosh<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Tanh:
-                primal_.push_back(pappus::ops::tanh<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Pow: {
-                auto const j = static_cast<std::size_t>(i - 1);
-                auto const k = j - (nodes[j].Length + 1);
-                primal_.push_back(pappus::ops::pow<Scalar>(ctx_, primal_[j], primal_[k]) * v);
-                break;
-            }
-            case NodeType::Aq: {
-                auto const j = static_cast<std::size_t>(i - 1);
-                auto const k = j - (nodes[j].Length + 1);
-                primal_.push_back(pappus::ops::aq<Scalar>(ctx_, primal_[j], primal_[k]) * v);
-                break;
-            }
-            case NodeType::Abs:
-                // May throw if the domain crosses zero (requires Chebyshev V-shape).
-                primal_.push_back(pappus::ops::abs<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Sqrtabs:
-                primal_.push_back(pappus::ops::sqrtabs<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Logabs:
-                primal_.push_back(pappus::ops::logabs<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Powabs: {
-                auto const j = static_cast<std::size_t>(i - 1);
-                auto const k = j - (nodes[j].Length + 1);
-                auto absBase = pappus::ops::abs<Scalar>(ctx_, primal_[j]);
-                primal_.push_back(pappus::ops::pow<Scalar>(ctx_, absBase, primal_[k]) * v);
-                break;
-            }
-            case NodeType::Fmin:
-                primal_.push_back(minFold(i) * v);
-                break;
-            case NodeType::Fmax:
-                primal_.push_back(maxFold(i) * v);
-                break;
-            case NodeType::Cbrt:
-                primal_.push_back(pappus::ops::cbrt<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Log1p:
-                // May throw if the domain includes values <= -1.
-                primal_.push_back(pappus::ops::log1p<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Floor:
-                primal_.push_back(pappus::ops::floor<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            case NodeType::Ceil:
-                primal_.push_back(pappus::ops::ceil<Scalar>(ctx_, primal_[i - 1]) * v);
-                break;
-            default:
-                throw std::runtime_error(fmt::format(
-                    "AffineEvaluator: node kind `{}` not yet mapped",
-                    node.Name()));
+            } else {
+                switch (node.HashValue) {
+                case Operon::Hash(BuiltinOp::Add):
+                    primal_.push_back(addFold(i) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Mul):
+                    primal_.push_back(mulFold(i) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Sub):
+                    primal_.push_back((node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1])
+                                                      : subFold(i)) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Div):
+                    // May throw if the denominator form contains zero (affine inv
+                    // is stricter than interval inv).
+                    primal_.push_back((node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1])
+                                                      : divFold(i)) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Square):
+                    primal_.push_back(pappus::ops::square<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Sqrt):
+                    primal_.push_back(pappus::ops::sqrt<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Exp):
+                    primal_.push_back(pappus::ops::exp<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Log):
+                    primal_.push_back(pappus::ops::log<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Sin):
+                    primal_.push_back(pappus::ops::sin<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Cos):
+                    primal_.push_back(pappus::ops::cos<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Tan):
+                    primal_.push_back(pappus::ops::tan<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Asin):
+                    primal_.push_back(pappus::ops::asin<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Acos):
+                    primal_.push_back(pappus::ops::acos<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Atan):
+                    primal_.push_back(pappus::ops::atan<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Sinh):
+                    primal_.push_back(pappus::ops::sinh<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Cosh):
+                    primal_.push_back(pappus::ops::cosh<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Tanh):
+                    primal_.push_back(pappus::ops::tanh<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Pow): {
+                    auto const j = static_cast<std::size_t>(i - 1);
+                    auto const k = j - (nodes[j].Length + 1);
+                    primal_.push_back(pappus::ops::pow<Scalar>(ctx_, primal_[j], primal_[k]) * v);
+                    break;
+                }
+                case Operon::Hash(BuiltinOp::Aq): {
+                    auto const j = static_cast<std::size_t>(i - 1);
+                    auto const k = j - (nodes[j].Length + 1);
+                    primal_.push_back(pappus::ops::aq<Scalar>(ctx_, primal_[j], primal_[k]) * v);
+                    break;
+                }
+                case Operon::Hash(BuiltinOp::Abs):
+                    // May throw if the domain crosses zero (requires Chebyshev V-shape).
+                    primal_.push_back(pappus::ops::abs<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Sqrtabs):
+                    primal_.push_back(pappus::ops::sqrtabs<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Logabs):
+                    primal_.push_back(pappus::ops::logabs<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Powabs): {
+                    auto const j = static_cast<std::size_t>(i - 1);
+                    auto const k = j - (nodes[j].Length + 1);
+                    auto absBase = pappus::ops::abs<Scalar>(ctx_, primal_[j]);
+                    primal_.push_back(pappus::ops::pow<Scalar>(ctx_, absBase, primal_[k]) * v);
+                    break;
+                }
+                case Operon::Hash(BuiltinOp::Fmin):
+                    primal_.push_back(minFold(i) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Fmax):
+                    primal_.push_back(maxFold(i) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Cbrt):
+                    primal_.push_back(pappus::ops::cbrt<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Log1p):
+                    // May throw if the domain includes values <= -1.
+                    primal_.push_back(pappus::ops::log1p<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Floor):
+                    primal_.push_back(pappus::ops::floor<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                case Operon::Hash(BuiltinOp::Ceil):
+                    primal_.push_back(pappus::ops::ceil<Scalar>(ctx_, primal_[i - 1]) * v);
+                    break;
+                default:
+                    throw std::runtime_error(fmt::format(
+                        "AffineEvaluator: node kind `{}` not yet mapped",
+                        node.Name()));
+                }
             }
         }
         return primal_.back();

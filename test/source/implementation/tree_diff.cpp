@@ -73,13 +73,13 @@ auto EvalDagJacobian(
 auto MakeSupportedPset() -> PrimitiveSet {
     PrimitiveSet ps;
     ps.SetConfig(
-        NodeType::Add | NodeType::Mul | NodeType::Sub | NodeType::Div |
-        NodeType::Exp | NodeType::Log | NodeType::Logabs | NodeType::Log1p |
-        NodeType::Sin | NodeType::Cos | NodeType::Tan  |
-        NodeType::Asin | NodeType::Acos | NodeType::Atan |
-        NodeType::Sinh | NodeType::Cosh | NodeType::Tanh |
-        NodeType::Sqrt | NodeType::Cbrt | NodeType::Square |
-        NodeType::Pow  |
+        BuiltinOp::Add | BuiltinOp::Mul | BuiltinOp::Sub | BuiltinOp::Div |
+        BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Logabs | BuiltinOp::Log1p |
+        BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Tan  |
+        BuiltinOp::Asin | BuiltinOp::Acos | BuiltinOp::Atan |
+        BuiltinOp::Sinh | BuiltinOp::Cosh | BuiltinOp::Tanh |
+        BuiltinOp::Sqrt | BuiltinOp::Cbrt | BuiltinOp::Square |
+        BuiltinOp::Pow  |
         NodeType::Constant | NodeType::Variable
     );
     return ps;
@@ -177,7 +177,7 @@ TEST_CASE("BuildJacobianDag - Add(c1,c2) both partials are 1", "[tree_diff]")
     Operon::Vector<Node> nodes;
     auto c1 = Node::Constant(2.0F); c1.Optimize = true;
     auto c2 = Node::Constant(3.0F); c2.Optimize = true;
-    Node add{NodeType::Add}; add.Arity = 2; add.Length = 2;
+    auto add = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2);
     nodes.push_back(c1); nodes.push_back(c2); nodes.push_back(add);
     Tree tree{nodes};
 
@@ -196,7 +196,7 @@ TEST_CASE("BuildJacobianDag - Mul(c1,c2) product rule", "[tree_diff]")
     Operon::Vector<Node> nodes;
     auto c1 = Node::Constant(2.0F); c1.Optimize = true;
     auto c2 = Node::Constant(3.0F); c2.Optimize = true;
-    Node mul{NodeType::Mul}; mul.Arity = 2; mul.Length = 2;
+    auto mul = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Mul), 2);
     nodes.push_back(c1); nodes.push_back(c2); nodes.push_back(mul);
     Tree tree{nodes};
 
@@ -207,8 +207,8 @@ TEST_CASE("BuildJacobianDag - Mul(c1,c2) product rule", "[tree_diff]")
     // Different constants → different derivative roots.
     CHECK(dag.Roots[0] != dag.Roots[1]);
     // Product rule emits Mul(Const(1), Ref(other)) for each column.
-    CHECK(dag.Nodes[dag.Roots[0]].Type == NodeType::Mul);
-    CHECK(dag.Nodes[dag.Roots[1]].Type == NodeType::Mul);
+    CHECK(dag.Nodes[dag.Roots[0]].Is<BuiltinOp::Mul>());
+    CHECK(dag.Nodes[dag.Roots[1]].Is<BuiltinOp::Mul>());
 }
 
 TEST_CASE("BuildJacobianDag - Sin(c) root is Mul", "[tree_diff]")
@@ -216,12 +216,12 @@ TEST_CASE("BuildJacobianDag - Sin(c) root is Mul", "[tree_diff]")
     Operon::Vector<Node> nodes;
     auto c = Node::Constant(1.0F); c.Optimize = true;
     nodes.push_back(c);
-    nodes.push_back(Node{NodeType::Sin});
+    nodes.push_back(Util::MakeOp<BuiltinOp::Sin>());
     Tree tree{nodes};
     auto dag = BuildJacobianDag(tree);
     REQUIRE(dag.Roots.size() == 1);
     REQUIRE(dag.Roots[0] != NoGrad);
-    CHECK(dag.Nodes[dag.Roots[0]].Type == NodeType::Mul);
+    CHECK(dag.Nodes[dag.Roots[0]].Is<BuiltinOp::Mul>());
 }
 
 TEST_CASE("BuildJacobianDag - original nodes are preserved exactly", "[tree_diff]")
@@ -229,7 +229,7 @@ TEST_CASE("BuildJacobianDag - original nodes are preserved exactly", "[tree_diff
     Operon::Vector<Node> nodes;
     auto c = Node::Constant(7.0F); c.Optimize = true;
     nodes.push_back(c);
-    nodes.push_back(Node{NodeType::Exp});
+    nodes.push_back(Util::MakeOp<BuiltinOp::Exp>());
     Tree tree{nodes};
     auto dag = BuildJacobianDag(tree);
     REQUIRE(dag.OriginalSize == tree.Length());
@@ -246,7 +246,7 @@ TEST_CASE("BuildJacobianDag - Add4 hash-cons collapses all partials", "[tree_dif
         auto c = Node::Constant(static_cast<float>(k + 1)); c.Optimize = true;
         nodes.push_back(c);
     }
-    Node add{NodeType::Add}; add.Arity = 4; add.Length = 4;
+    auto add = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 4);
     nodes.push_back(add);
     Tree tree{nodes};
     auto dag = BuildJacobianDag(tree);
@@ -435,7 +435,7 @@ TEST_CASE("BuildHessianDag - square(c) Hessian is 2", "[tree_diff][hessian]")
     Operon::Vector<Node> nodes;
     auto c = Node::Constant(5.0F); c.Optimize = true;
     nodes.push_back(c);
-    nodes.push_back(Node{NodeType::Square});
+    nodes.push_back(Util::MakeOp<BuiltinOp::Square>());
     Tree tree{nodes};
 
     auto dag = BuildHessianDag(tree);
@@ -464,7 +464,7 @@ TEST_CASE("BuildHessianDag - Add(c1,c2) all Hessian entries zero", "[tree_diff][
     Operon::Vector<Node> nodes;
     auto c1 = Node::Constant(2.0F); c1.Optimize = true;
     auto c2 = Node::Constant(3.0F); c2.Optimize = true;
-    Node add{NodeType::Add}; add.Arity = 2; add.Length = 2;
+    auto add = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2);
     nodes.push_back(c1); nodes.push_back(c2); nodes.push_back(add);
     Tree tree{nodes};
 
@@ -482,7 +482,7 @@ TEST_CASE("BuildHessianDag - Mul(c1,c2) mixed partial is 1", "[tree_diff][hessia
     Operon::Vector<Node> nodes;
     auto c1 = Node::Constant(2.0F); c1.Optimize = true;
     auto c2 = Node::Constant(3.0F); c2.Optimize = true;
-    Node mul{NodeType::Mul}; mul.Arity = 2; mul.Length = 2;
+    auto mul = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Mul), 2);
     nodes.push_back(c1); nodes.push_back(c2); nodes.push_back(mul);
     Tree tree{nodes};
 

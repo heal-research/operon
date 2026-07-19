@@ -13,46 +13,38 @@
 #include <glaze/glaze.hpp>
 
 // Ensure the enumerate below stays in sync with NodeType additions.
-static_assert(Operon::NodeTypes::Count == 33,
+static_assert(Operon::NodeTypes::Count == 4,
               "NodeType count changed — update glz::meta<Operon::NodeType>");
 
 // glz::meta specializations — all glaze details stay in this translation unit.
+//
+// BACKWARD-COMPATIBILITY WARNING: this enumerate shrank from 33 entries
+// (one per built-in math op, plus Dynamic/Constant/Variable/Ref) to 4
+// (Constant/Variable/Ref/Function) as part of the NodeType collapse. A
+// built-in math op is now a Function-typed Node distinguished by HashValue
+// (see BuiltinOp in node.hpp), not by a NodeType enumerator - a Function
+// node's specific op is NOT reconstructible from NodeProxy::Type alone.
+//
+// Verified against glaze 7.8.3's BEVE codec (beve/read.hpp, beve/write.hpp):
+// glaze_enum_t types are NOT written by name in BEVE (unlike JSON) - the
+// raw underlying integer ordinal is written/read directly, with no
+// validation on read that the value is a member of the enumerate list.
+// A pre-collapse BEVE Tree/Individual export's old NodeType ordinal
+// (e.g. Sin=22) would decode as `static_cast<NodeType>(22)`, a garbage
+// out-of-range value - CheckpointProxy's Magic/Version fields (bumped
+// below) guard checkpoint loads against this, but ToBeve(Tree)/
+// ToBeve(Individual) exports have no equivalent guard, before or after
+// this change. Do not attempt to load a pre-collapse .beve Tree/Individual
+// export against this code; a dedicated versioned legacy reader (translating
+// old ordinals to the new BuiltinOp/Function representation) would be
+// needed to do so safely - not implemented here.
 template <>
 struct glz::meta<Operon::NodeType> {
     static constexpr auto value = glz::enumerate(
-        "Add",      Operon::NodeType::Add,
-        "Mul",      Operon::NodeType::Mul,
-        "Sub",      Operon::NodeType::Sub,
-        "Div",      Operon::NodeType::Div,
-        "Fmin",     Operon::NodeType::Fmin,
-        "Fmax",     Operon::NodeType::Fmax,
-        "Aq",       Operon::NodeType::Aq,
-        "Pow",      Operon::NodeType::Pow,
-        "Powabs",   Operon::NodeType::Powabs,
-        "Abs",      Operon::NodeType::Abs,
-        "Acos",     Operon::NodeType::Acos,
-        "Asin",     Operon::NodeType::Asin,
-        "Atan",     Operon::NodeType::Atan,
-        "Cbrt",     Operon::NodeType::Cbrt,
-        "Ceil",     Operon::NodeType::Ceil,
-        "Cos",      Operon::NodeType::Cos,
-        "Cosh",     Operon::NodeType::Cosh,
-        "Exp",      Operon::NodeType::Exp,
-        "Floor",    Operon::NodeType::Floor,
-        "Log",      Operon::NodeType::Log,
-        "Logabs",   Operon::NodeType::Logabs,
-        "Log1p",    Operon::NodeType::Log1p,
-        "Sin",      Operon::NodeType::Sin,
-        "Sinh",     Operon::NodeType::Sinh,
-        "Sqrt",     Operon::NodeType::Sqrt,
-        "Sqrtabs",  Operon::NodeType::Sqrtabs,
-        "Tan",      Operon::NodeType::Tan,
-        "Tanh",     Operon::NodeType::Tanh,
-        "Square",   Operon::NodeType::Square,
-        "Dynamic",  Operon::NodeType::Dynamic,
         "Constant", Operon::NodeType::Constant,
         "Variable", Operon::NodeType::Variable,
-        "Ref",      Operon::NodeType::Ref
+        "Ref",      Operon::NodeType::Ref,
+        "Function", Operon::NodeType::Function
     );
 };
 
@@ -63,17 +55,25 @@ struct NodeProxy {
     Operon::NodeType Type{};
     Operon::Hash     HashValue{};
     Operon::Scalar   Value{};
+    // Explicit as of the NodeType collapse: Node's two-arg constructor no
+    // longer infers Arity from Type's position in the enum (there is no
+    // longer a position to infer from - every Function node has the same
+    // Type). Without this field every deserialized Function node would get
+    // Arity=0, silently corrupting the tree structure.
+    uint16_t         Arity{0};
     bool             IsEnabled{true};
     bool             Optimize{false};
     uint16_t         RefTo{0};
 
     static auto FromNode(Operon::Node const& n) noexcept -> NodeProxy {
-        return { n.Type, n.HashValue, n.Value, n.IsEnabled, n.Optimize, n.RefTo };
+        return { n.Type, n.HashValue, n.Value, n.Arity, n.IsEnabled, n.Optimize, n.RefTo };
     }
 
     auto ToNode() const noexcept -> Operon::Node {
         Operon::Node n(Type, HashValue);
         n.Value     = Value;
+        n.Arity     = Arity;
+        n.Length    = Arity; // leaf-level Length; Tree::UpdateNodes() (called by ProxiesToTree) recomputes the real subtree Length
         n.IsEnabled = IsEnabled;
         n.Optimize  = Optimize;
         n.RefTo     = RefTo;
@@ -94,7 +94,13 @@ struct IndividualProxy {
 
 // Bump Version whenever the on-disk layout changes in a backwards-incompatible way.
 constexpr uint32_t CheckpointMagic   = 0x4F50434BU; // "OPCK"
-constexpr uint32_t CheckpointVersion = 1U;
+// Bumped: NodeType collapse (glz::meta<NodeType> shrank from 33 to 4
+// entries, NodeProxy gained an explicit Arity field) is a breaking,
+// silently-misdecodable format change for BEVE - see the warning above
+// glz::meta<Operon::NodeType>. A version-1 checkpoint will now be cleanly
+// rejected by FromProxy's Magic/Version check below, rather than partially
+// decoding into corrupted trees.
+constexpr uint32_t CheckpointVersion = 2U;
 
 struct CheckpointProxy {
     uint32_t                                 Magic{CheckpointMagic};
@@ -145,6 +151,7 @@ struct glz::meta<NodeProxy> {
         "type",     &T::Type,
         "hash",     &T::HashValue,
         "value",    &T::Value,
+        "arity",    &T::Arity,
         "enabled",  &T::IsEnabled,
         "optimize", &T::Optimize,
         "ref_to",   &T::RefTo

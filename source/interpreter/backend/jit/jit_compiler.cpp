@@ -11,11 +11,13 @@
 // Must be included AFTER eve headers so the templates can instantiate.
 #include "operon/interpreter/backend/eve/functions.hpp"
 
+#include <fmt/format.h>
 #include <immintrin.h>
 
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -186,8 +188,8 @@ namespace {
             }
 
             Vec res;
-            switch (n.Type) {
-            case NodeType::Add: {
+            switch (n.HashValue) {
+            case Operon::Hash(Operon::BuiltinOp::Add): {
                 res = args[0];
                 for (int k = 1; std::cmp_less(k, arity); ++k) {
                     Vec const tmp = cc.new_xmm_ss();
@@ -196,7 +198,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Mul: {
+            case Operon::Hash(Operon::BuiltinOp::Mul): {
                 res = args[0];
                 for (int k = 1; std::cmp_less(k, arity); ++k) {
                     Vec const tmp = cc.new_xmm_ss();
@@ -205,7 +207,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Sub: {
+            case Operon::Hash(Operon::BuiltinOp::Sub): {
                 if (arity == 1) {
                     Vec const zero = LoadFloat(cc, 0.0F);
                     res = cc.new_xmm_ss();
@@ -221,7 +223,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Div: {
+            case Operon::Hash(Operon::BuiltinOp::Div): {
                 if (arity == 1) {
                     Vec const one = LoadFloat(cc, 1.0F);
                     res = cc.new_xmm_ss();
@@ -237,7 +239,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Fmin: {
+            case Operon::Hash(Operon::BuiltinOp::Fmin): {
                 res = args[0];
                 for (int k = 1; std::cmp_less(k, arity); ++k) {
                     Vec const tmp = cc.new_xmm_ss();
@@ -246,7 +248,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Fmax: {
+            case Operon::Hash(Operon::BuiltinOp::Fmax): {
                 res = args[0];
                 for (int k = 1; std::cmp_less(k, arity); ++k) {
                     Vec const tmp = cc.new_xmm_ss();
@@ -255,7 +257,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Aq: {
+            case Operon::Hash(Operon::BuiltinOp::Aq): {
                 Vec const b2 = cc.new_xmm_ss();
                 cc.vmulss(b2, args[1], args[1]);
                 Vec const one = LoadFloat(cc, 1.0F);
@@ -267,107 +269,105 @@ namespace {
                 cc.vdivss(res, args[0], sq);
                 break;
             }
-            case NodeType::Pow: {
+            case Operon::Hash(Operon::BuiltinOp::Pow): {
                 res = InvokePowf(cc, args[0], args[1]);
                 break;
             }
-            case NodeType::Powabs: {
+            case Operon::Hash(Operon::BuiltinOp::Powabs): {
                 Vec const absA = InvokeF1(cc, reinterpret_cast<void*>(ScalarAbs), args[0]);
                 res = InvokePowf(cc, absA, args[1]);
                 break;
             }
-            case NodeType::Abs: {
+            case Operon::Hash(Operon::BuiltinOp::Abs): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarAbs), args[0]);
                 break;
             }
-            case NodeType::Acos: {
+            case Operon::Hash(Operon::BuiltinOp::Acos): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarAcos), args[0]);
                 break;
             }
-            case NodeType::Asin: {
+            case Operon::Hash(Operon::BuiltinOp::Asin): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarAsin), args[0]);
                 break;
             }
-            case NodeType::Atan: {
+            case Operon::Hash(Operon::BuiltinOp::Atan): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarAtan), args[0]);
                 break;
             }
-            case NodeType::Cbrt: {
+            case Operon::Hash(Operon::BuiltinOp::Cbrt): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarCbrt), args[0]);
                 break;
             }
-            case NodeType::Ceil: {
+            case Operon::Hash(Operon::BuiltinOp::Ceil): {
                 res = cc.new_xmm_ss();
                 cc.vroundss(res, args[0], args[0],
                     Imm(static_cast<uint8_t>(RoundImm::kUp) | static_cast<uint8_t>(RoundImm::kSuppress)));
                 break;
             }
-            case NodeType::Cos: {
+            case Operon::Hash(Operon::BuiltinOp::Cos): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarCos), args[0]);
                 break;
             }
-            case NodeType::Cosh: {
+            case Operon::Hash(Operon::BuiltinOp::Cosh): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarCosh), args[0]);
                 break;
             }
-            case NodeType::Exp: {
+            case Operon::Hash(Operon::BuiltinOp::Exp): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarExp), args[0]);
                 break;
             }
-            case NodeType::Floor: {
+            case Operon::Hash(Operon::BuiltinOp::Floor): {
                 res = cc.new_xmm_ss();
                 cc.vroundss(res, args[0], args[0],
                     Imm(static_cast<uint8_t>(RoundImm::kDown) | static_cast<uint8_t>(RoundImm::kSuppress)));
                 break;
             }
-            case NodeType::Log: {
+            case Operon::Hash(Operon::BuiltinOp::Log): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarLog), args[0]);
                 break;
             }
-            case NodeType::Logabs: {
+            case Operon::Hash(Operon::BuiltinOp::Logabs): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarLogabs), args[0]);
                 break;
             }
-            case NodeType::Log1p: {
+            case Operon::Hash(Operon::BuiltinOp::Log1p): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarLog1p), args[0]);
                 break;
             }
-            case NodeType::Sin: {
+            case Operon::Hash(Operon::BuiltinOp::Sin): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarSin), args[0]);
                 break;
             }
-            case NodeType::Sinh: {
+            case Operon::Hash(Operon::BuiltinOp::Sinh): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarSinh), args[0]);
                 break;
             }
-            case NodeType::Sqrt: {
+            case Operon::Hash(Operon::BuiltinOp::Sqrt): {
                 res = cc.new_xmm_ss();
                 cc.vsqrtss(res, args[0], args[0]);
                 break;
             }
-            case NodeType::Sqrtabs: {
+            case Operon::Hash(Operon::BuiltinOp::Sqrtabs): {
                 Vec const absVal = InvokeF1(cc, reinterpret_cast<void*>(ScalarAbs), args[0]);
                 res = cc.new_xmm_ss();
                 cc.vsqrtss(res, absVal, absVal);
                 break;
             }
-            case NodeType::Tan: {
+            case Operon::Hash(Operon::BuiltinOp::Tan): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarTan), args[0]);
                 break;
             }
-            case NodeType::Tanh: {
+            case Operon::Hash(Operon::BuiltinOp::Tanh): {
                 res = InvokeF1(cc, reinterpret_cast<void*>(ScalarTanh), args[0]);
                 break;
             }
-            case NodeType::Square: {
+            case Operon::Hash(Operon::BuiltinOp::Square): {
                 res = cc.new_xmm_ss();
                 cc.vmulss(res, args[0], args[0]);
                 break;
             }
-            default: {
-                res = LoadFloat(cc, 0.0F);
-                break;
-            }
+            default:
+                throw std::runtime_error(fmt::format("JIT: no codegen for hash {} (not a built-in op)\n", n.HashValue));
             }
 
             nodeVecs[ii] = res;
@@ -604,8 +604,8 @@ namespace {
             }
 
             Vec res;
-            switch (n.Type) {
-            case NodeType::Add: {
+            switch (n.HashValue) {
+            case Operon::Hash(Operon::BuiltinOp::Add): {
                 res = args[0];
                 for (int k = 1; std::cmp_less(k, arity); ++k) {
                     Vec const tmp = cc.new_ymm_ps();
@@ -614,7 +614,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Mul: {
+            case Operon::Hash(Operon::BuiltinOp::Mul): {
                 res = args[0];
                 for (int k = 1; std::cmp_less(k, arity); ++k) {
                     Vec const tmp = cc.new_ymm_ps();
@@ -623,7 +623,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Sub: {
+            case Operon::Hash(Operon::BuiltinOp::Sub): {
                 if (arity == 1) {
                     Vec const zero = BroadcastFloat(cc, 0.0F);
                     res = cc.new_ymm_ps();
@@ -639,7 +639,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Div: {
+            case Operon::Hash(Operon::BuiltinOp::Div): {
                 if (arity == 1) {
                     Vec const one = BroadcastFloat(cc, 1.0F);
                     res = cc.new_ymm_ps();
@@ -655,7 +655,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Fmin: {
+            case Operon::Hash(Operon::BuiltinOp::Fmin): {
                 res = args[0];
                 for (int k = 1; std::cmp_less(k, arity); ++k) {
                     Vec const tmp = cc.new_ymm_ps();
@@ -664,7 +664,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Fmax: {
+            case Operon::Hash(Operon::BuiltinOp::Fmax): {
                 res = args[0];
                 for (int k = 1; std::cmp_less(k, arity); ++k) {
                     Vec const tmp = cc.new_ymm_ps();
@@ -673,7 +673,7 @@ namespace {
                 }
                 break;
             }
-            case NodeType::Aq: {
+            case Operon::Hash(Operon::BuiltinOp::Aq): {
                 Vec const b2 = cc.new_ymm_ps();
                 cc.vmulps(b2, args[1], args[1]);
                 Vec const one = BroadcastFloat(cc, 1.0F);
@@ -685,107 +685,105 @@ namespace {
                 cc.vdivps(res, args[0], sq);
                 break;
             }
-            case NodeType::Pow: {
+            case Operon::Hash(Operon::BuiltinOp::Pow): {
                 res = InvokePowfPs(cc, args[0], args[1]);
                 break;
             }
-            case NodeType::Powabs: {
+            case Operon::Hash(Operon::BuiltinOp::Powabs): {
                 Vec const absA = InvokeF1Ps(cc, VecFabsf, args[0]);
                 res = InvokePowfPs(cc, absA, args[1]);
                 break;
             }
-            case NodeType::Abs: {
+            case Operon::Hash(Operon::BuiltinOp::Abs): {
                 res = InvokeF1Ps(cc, VecFabsf, args[0]);
                 break;
             }
-            case NodeType::Acos: {
+            case Operon::Hash(Operon::BuiltinOp::Acos): {
                 res = InvokeF1Ps(cc, VecAcosf, args[0]);
                 break;
             }
-            case NodeType::Asin: {
+            case Operon::Hash(Operon::BuiltinOp::Asin): {
                 res = InvokeF1Ps(cc, VecAsinf, args[0]);
                 break;
             }
-            case NodeType::Atan: {
+            case Operon::Hash(Operon::BuiltinOp::Atan): {
                 res = InvokeF1Ps(cc, VecAtanf, args[0]);
                 break;
             }
-            case NodeType::Cbrt: {
+            case Operon::Hash(Operon::BuiltinOp::Cbrt): {
                 res = InvokeF1Ps(cc, VecCbrtf, args[0]);
                 break;
             }
-            case NodeType::Ceil: {
+            case Operon::Hash(Operon::BuiltinOp::Ceil): {
                 res = cc.new_ymm_ps();
                 cc.vroundps(res, args[0],
                     Imm(static_cast<uint8_t>(RoundImm::kUp) | static_cast<uint8_t>(RoundImm::kSuppress)));
                 break;
             }
-            case NodeType::Cos: {
+            case Operon::Hash(Operon::BuiltinOp::Cos): {
                 res = InvokeF1Ps(cc, VecCosf, args[0]);
                 break;
             }
-            case NodeType::Cosh: {
+            case Operon::Hash(Operon::BuiltinOp::Cosh): {
                 res = InvokeF1Ps(cc, VecCoshf, args[0]);
                 break;
             }
-            case NodeType::Exp: {
+            case Operon::Hash(Operon::BuiltinOp::Exp): {
                 res = InvokeF1Ps(cc, VecExpf, args[0]);
                 break;
             }
-            case NodeType::Floor: {
+            case Operon::Hash(Operon::BuiltinOp::Floor): {
                 res = cc.new_ymm_ps();
                 cc.vroundps(res, args[0],
                     Imm(static_cast<uint8_t>(RoundImm::kDown) | static_cast<uint8_t>(RoundImm::kSuppress)));
                 break;
             }
-            case NodeType::Log: {
+            case Operon::Hash(Operon::BuiltinOp::Log): {
                 res = InvokeF1Ps(cc, VecLogf, args[0]);
                 break;
             }
-            case NodeType::Logabs: {
+            case Operon::Hash(Operon::BuiltinOp::Logabs): {
                 res = InvokeF1Ps(cc, VecLogabsf, args[0]);
                 break;
             }
-            case NodeType::Log1p: {
+            case Operon::Hash(Operon::BuiltinOp::Log1p): {
                 res = InvokeF1Ps(cc, VecLog1pf, args[0]);
                 break;
             }
-            case NodeType::Sin: {
+            case Operon::Hash(Operon::BuiltinOp::Sin): {
                 res = InvokeF1Ps(cc, VecSinf, args[0]);
                 break;
             }
-            case NodeType::Sinh: {
+            case Operon::Hash(Operon::BuiltinOp::Sinh): {
                 res = InvokeF1Ps(cc, VecSinhf, args[0]);
                 break;
             }
-            case NodeType::Sqrt: {
+            case Operon::Hash(Operon::BuiltinOp::Sqrt): {
                 res = cc.new_ymm_ps();
                 cc.vsqrtps(res, args[0]);
                 break;
             }
-            case NodeType::Sqrtabs: {
+            case Operon::Hash(Operon::BuiltinOp::Sqrtabs): {
                 Vec const absVal = InvokeF1Ps(cc, VecFabsf, args[0]);
                 res = cc.new_ymm_ps();
                 cc.vsqrtps(res, absVal);
                 break;
             }
-            case NodeType::Tan: {
+            case Operon::Hash(Operon::BuiltinOp::Tan): {
                 res = InvokeF1Ps(cc, VecTanf, args[0]);
                 break;
             }
-            case NodeType::Tanh: {
+            case Operon::Hash(Operon::BuiltinOp::Tanh): {
                 res = InvokeF1Ps(cc, VecTanhf, args[0]);
                 break;
             }
-            case NodeType::Square: {
+            case Operon::Hash(Operon::BuiltinOp::Square): {
                 res = cc.new_ymm_ps();
                 cc.vmulps(res, args[0], args[0]);
                 break;
             }
-            default: {
-                res = BroadcastFloat(cc, 0.0F);
-                break;
-            }
+            default:
+                throw std::runtime_error(fmt::format("JIT: no codegen for hash {} (not a built-in op)\n", n.HashValue));
             }
 
             nodeVecs[ii] = res;

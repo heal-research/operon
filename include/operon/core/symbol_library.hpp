@@ -323,7 +323,7 @@ void RegisterBinary(DTable& dt, Operon::Hash hash, F primal,
 // Bundles the metadata needed to register a user-defined function symbol.
 // Hash is derived from Name (via Operon::Hasher) rather than supplied by the
 // caller, so it can't accidentally collide with the small-integer hash range
-// reserved for built-ins (see NodeType's HashValue == static_cast<Hash>(type)).
+// reserved for built-ins (see BuiltinOp's HashValue == static_cast<Hash>(op)).
 struct FunctionInfo {
     std::string Name;
     std::string Desc;
@@ -332,20 +332,20 @@ struct FunctionInfo {
 };
 
 namespace detail {
-    // [0, NodeTypes::Count) is reserved for built-in NodeType ordinals
-    // (Node(NodeType) ctor sets HashValue = static_cast<Hash>(type)); a
-    // name-derived hash landing there would silently overwrite a built-in's
-    // dispatch entry / name+desc. A real 64-bit XXHash of a non-empty name
-    // landing in that ~30-value range is not a plausible accident, but the
-    // check is nearly free and turns the impossible case into a clear error
-    // instead of silent corruption.
+    // [0, BuiltinOpCount) is reserved for built-in ops (a Function node's
+    // HashValue == static_cast<Hash>(some BuiltinOp)); a name-derived hash
+    // landing there would silently overwrite a built-in's dispatch entry /
+    // name+desc. A real 64-bit XXHash of a non-empty name landing in that
+    // ~30-value range is not a plausible accident, but the check is nearly
+    // free and turns the impossible case into a clear error instead of
+    // silent corruption.
     inline void ValidateUserHash(Operon::Hash hash, std::string_view name)
     {
         if (name.empty()) {
             throw std::invalid_argument("FunctionInfo::Name must not be empty (it seeds the function's hash)");
         }
-        if (hash < NodeTypes::Count) {
-            throw std::invalid_argument("FunctionInfo: name-derived hash falls in the range reserved for built-in NodeTypes");
+        if (hash < BuiltinOpCount) {
+            throw std::invalid_argument("FunctionInfo: name-derived hash falls in the range reserved for built-in ops");
         }
     }
 } // namespace detail

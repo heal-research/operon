@@ -72,12 +72,11 @@ auto GetConst(Nodes& dag, Memo& memo, Hashes& h, Scalar val) -> std::size_t {
 // Layout appended: [Ref(a), UnaryOp]
 // Hash-consed so that identical expressions share a single node.
 auto MakeUnary(Nodes& dag, Memo& memo, Hashes& h,
-               NodeType op, std::size_t a) -> std::size_t {
+               BuiltinOp op, std::size_t a) -> std::size_t {
     auto opHash = Mix(static_cast<uint64_t>(op), h[a]);
     if (auto it = memo.find(opHash); it != memo.end()) { return it->second; }
     AppendRef(dag, h, a);
-    Node n{op};
-    n.Length = 1; // one Ref child with Length=0
+    auto n = Node::Function(static_cast<Operon::Hash>(op), 1); // sets Arity=Length=1
     auto idx = dag.size();
     Push(dag, h, n, opHash);
     memo.insert_or_assign(opHash, idx);
@@ -91,14 +90,12 @@ auto MakeUnary(Nodes& dag, Memo& memo, Hashes& h,
 // Hash-consed; note that Mul(a,b) and Mul(b,a) get different hash keys
 // (less deduplication but no correctness issue).
 auto MakeBinary(Nodes& dag, Memo& memo, Hashes& h,
-                NodeType op, std::size_t a, std::size_t b) -> std::size_t {
+                BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t {
     auto opHash = Mix(Mix(static_cast<uint64_t>(op), h[a]), h[b]);
     if (auto it = memo.find(opHash); it != memo.end()) { return it->second; }
     AppendRef(dag, h, b); // farther child first
     AppendRef(dag, h, a); // nearer child second
-    Node n{op};
-    n.Arity  = 2;
-    n.Length = 2; // two Ref children, each Length=0
+    auto n = Node::Function(static_cast<Operon::Hash>(op), 2); // sets Arity=Length=2
     auto idx = dag.size();
     Push(dag, h, n, opHash);
     memo.insert_or_assign(opHash, idx);
@@ -111,7 +108,7 @@ auto AddTerms(Nodes& dag, Memo& memo, Hashes& h,
     if (terms.empty()) { return Zero; }
     auto result = terms[0];
     for (std::size_t k = 1; k < terms.size(); ++k) {
-        result = MakeBinary(dag, memo, h, NodeType::Add, result, terms[k]);
+        result = MakeBinary(dag, memo, h, BuiltinOp::Add, result, terms[k]);
     }
     return result;
 }
@@ -176,9 +173,9 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
                 if (l == m) { continue; }
                 prod = (prod == Zero)
                     ? children[l]
-                    : MakeBinary(dag, memo, h, NodeType::Mul, prod, children[l]);
+                    : MakeBinary(dag, memo, h, BuiltinOp::Mul, prod, children[l]);
             }
-            terms.push_back((prod == Zero) ? dm : MakeBinary(dag, memo, h, NodeType::Mul, dm, prod));
+            terms.push_back((prod == Zero) ? dm : MakeBinary(dag, memo, h, BuiltinOp::Mul, dm, prod));
         }
         return AddTerms(dag, memo, h, terms);
     }
@@ -190,7 +187,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             // Unary minus: -a. d(-a)/dc = -da
             if (dj == Zero) { return Zero; }
             auto neg1 = GetConst(dag, memo, h, Scalar{-1});
-            return MakeBinary(dag, memo, h, NodeType::Mul, neg1, dj);
+            return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dj);
         }
         if (arity == 2) {
             auto dk = Deriv(orig, dag, memo, h, children[1], targetC);
@@ -198,9 +195,9 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             if (dk == Zero) { return dj; }
             if (dj == Zero) {
                 auto neg1 = GetConst(dag, memo, h, Scalar{-1});
-                return MakeBinary(dag, memo, h, NodeType::Mul, neg1, dk);
+                return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dk);
             }
-            return MakeBinary(dag, memo, h, NodeType::Sub, dj, dk);
+            return MakeBinary(dag, memo, h, BuiltinOp::Sub, dj, dk);
         }
         // arity > 2: treat as +first - rest
         Operon::Vector<std::size_t> pos;
@@ -216,9 +213,9 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         if (q == Zero) { return p; }
         if (p == Zero) {
             auto neg1 = GetConst(dag, memo, h, Scalar{-1});
-            return MakeBinary(dag, memo, h, NodeType::Mul, neg1, q);
+            return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, q);
         }
-        return MakeBinary(dag, memo, h, NodeType::Sub, p, q);
+        return MakeBinary(dag, memo, h, BuiltinOp::Sub, p, q);
     }
 
     // --- Div ---
@@ -228,10 +225,10 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             auto dj = Deriv(orig, dag, memo, h, children[0], targetC);
             if (dj == Zero) { return Zero; }
             auto j      = children[0];
-            auto j2     = MakeBinary(dag, memo, h, NodeType::Mul, j, j);
+            auto j2     = MakeBinary(dag, memo, h, BuiltinOp::Mul, j, j);
             auto neg1   = GetConst(dag, memo, h, Scalar{-1});
-            auto negDj = MakeBinary(dag, memo, h, NodeType::Mul, neg1, dj);
-            return MakeBinary(dag, memo, h, NodeType::Div, negDj, j2);
+            auto negDj = MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dj);
+            return MakeBinary(dag, memo, h, BuiltinOp::Div, negDj, j2);
         }
         if (arity == 2) {
             // a/b: d = (da*b - a*db) / b^2
@@ -243,23 +240,23 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             // When only the numerator depends on x, simplify da/b directly.
             // Avoids (da*b)/b^2 which produces 0*Inf=NaN when b=Inf.
             if (dk == Zero) {
-                return MakeBinary(dag, memo, h, NodeType::Div, dj, k);
+                return MakeBinary(dag, memo, h, BuiltinOp::Div, dj, k);
             }
-            auto k2 = MakeBinary(dag, memo, h, NodeType::Mul, k, k);
+            auto k2 = MakeBinary(dag, memo, h, BuiltinOp::Mul, k, k);
             std::size_t num = Zero;
             if (dj != Zero) {
-                num = MakeBinary(dag, memo, h, NodeType::Mul, dj, k);
+                num = MakeBinary(dag, memo, h, BuiltinOp::Mul, dj, k);
             }
             {
-                auto term = MakeBinary(dag, memo, h, NodeType::Mul, j, dk);
+                auto term = MakeBinary(dag, memo, h, BuiltinOp::Mul, j, dk);
                 if (num == Zero) {
                     auto neg1 = GetConst(dag, memo, h, Scalar{-1});
-                    num = MakeBinary(dag, memo, h, NodeType::Mul, neg1, term);
+                    num = MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, term);
                 } else {
-                    num = MakeBinary(dag, memo, h, NodeType::Sub, num, term);
+                    num = MakeBinary(dag, memo, h, BuiltinOp::Sub, num, term);
                 }
             }
-            return MakeBinary(dag, memo, h, NodeType::Div, num, k2);
+            return MakeBinary(dag, memo, h, BuiltinOp::Div, num, k2);
         }
         return Zero; // arity > 2 not yet supported
     }
@@ -274,21 +271,21 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         Operon::Vector<std::size_t> terms;
         if (dj != Zero) {
             // d/dj: k * j^k / j = k * result / j
-            auto ki   = MakeBinary(dag, memo, h, NodeType::Mul, k, i); // k * result
-            auto term = MakeBinary(dag, memo, h, NodeType::Div, ki, j);
-            terms.push_back(MakeBinary(dag, memo, h, NodeType::Mul, dj, term));
+            auto ki   = MakeBinary(dag, memo, h, BuiltinOp::Mul, k, i); // k * result
+            auto term = MakeBinary(dag, memo, h, BuiltinOp::Div, ki, j);
+            terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, dj, term));
         }
         if (dk != Zero) {
             // d/dk: j^k * ln(j) = result * log(j)
-            auto logJ = MakeUnary(dag, memo, h, NodeType::Log, j);
-            auto t     = MakeBinary(dag, memo, h, NodeType::Mul, i, logJ);
-            terms.push_back(MakeBinary(dag, memo, h, NodeType::Mul, dk, t));
+            auto logJ = MakeUnary(dag, memo, h, BuiltinOp::Log, j);
+            auto t     = MakeBinary(dag, memo, h, BuiltinOp::Mul, i, logJ);
+            terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, dk, t));
         }
         return AddTerms(dag, memo, h, terms);
     }
 
     // --- Aq, Powabs, Fmin, Fmax: not yet differentiated ---
-    if (n.IsAq() || n.IsPowabs() || n.Is<NodeType::Fmin, NodeType::Fmax>()) {
+    if (n.IsAq() || n.IsPowabs() || n.Is<BuiltinOp::Fmin, BuiltinOp::Fmax>()) {
         return Zero;
     }
 
@@ -300,132 +297,132 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
 
         std::size_t fp = Zero; // symbolic f'(j)
 
-        switch (n.Type) {
-        case NodeType::Exp:
+        switch (n.HashValue) {
+        case Operon::Hash(BuiltinOp::Exp):
             // d exp(j)/dj = exp(j) = result
             fp = i;
             break;
 
-        case NodeType::Log:
-        case NodeType::Logabs: {
+        case Operon::Hash(BuiltinOp::Log):
+        case Operon::Hash(BuiltinOp::Logabs): {
             // d log(j)/dj = 1/j
             auto c1 = GetConst(dag, memo, h, Scalar{1});
-            fp = MakeBinary(dag, memo, h, NodeType::Div, c1, j);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, j);
             break;
         }
 
-        case NodeType::Log1p: {
+        case Operon::Hash(BuiltinOp::Log1p): {
             // d log(1+j)/dj = 1/(1+j)
             auto c1 = GetConst(dag, memo, h, Scalar{1});
-            auto onePlusJ = MakeBinary(dag, memo, h, NodeType::Add, c1, j);
-            fp = MakeBinary(dag, memo, h, NodeType::Div, c1, onePlusJ);
+            auto onePlusJ = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, j);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, onePlusJ);
             break;
         }
 
-        case NodeType::Sin:
+        case Operon::Hash(BuiltinOp::Sin):
             // d sin(j)/dj = cos(j)
-            fp = MakeUnary(dag, memo, h, NodeType::Cos, j);
+            fp = MakeUnary(dag, memo, h, BuiltinOp::Cos, j);
             break;
 
-        case NodeType::Cos: {
+        case Operon::Hash(BuiltinOp::Cos): {
             // d cos(j)/dj = -sin(j)
-            auto sinJ = MakeUnary(dag, memo, h, NodeType::Sin, j);
+            auto sinJ = MakeUnary(dag, memo, h, BuiltinOp::Sin, j);
             auto neg1  = GetConst(dag, memo, h, Scalar{-1});
-            fp = MakeBinary(dag, memo, h, NodeType::Mul, neg1, sinJ);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, sinJ);
             break;
         }
 
-        case NodeType::Tan: {
+        case Operon::Hash(BuiltinOp::Tan): {
             // d tan(j)/dj = 1 + tan^2(j) = 1 + result^2
             auto c1   = GetConst(dag, memo, h, Scalar{1});
-            auto sqI = MakeUnary(dag, memo, h, NodeType::Square, i);
-            fp = MakeBinary(dag, memo, h, NodeType::Add, c1, sqI);
+            auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, i);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, sqI);
             break;
         }
 
-        case NodeType::Acos: {
+        case Operon::Hash(BuiltinOp::Acos): {
             // d acos(j)/dj = -1/sqrt(1 - j^2)
             auto c1     = GetConst(dag, memo, h, Scalar{1});
-            auto sqJ   = MakeUnary(dag, memo, h, NodeType::Square, j);
-            auto denom  = MakeBinary(dag, memo, h, NodeType::Sub, c1, sqJ);
-            auto sqD   = MakeUnary(dag, memo, h, NodeType::Sqrt, denom);
-            auto recip  = MakeBinary(dag, memo, h, NodeType::Div, c1, sqD);
+            auto sqJ   = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
+            auto denom  = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqJ);
+            auto sqD   = MakeUnary(dag, memo, h, BuiltinOp::Sqrt, denom);
+            auto recip  = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, sqD);
             auto neg1   = GetConst(dag, memo, h, Scalar{-1});
-            fp = MakeBinary(dag, memo, h, NodeType::Mul, neg1, recip);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, recip);
             break;
         }
 
-        case NodeType::Asin: {
+        case Operon::Hash(BuiltinOp::Asin): {
             // d asin(j)/dj = 1/sqrt(1 - j^2)
             auto c1    = GetConst(dag, memo, h, Scalar{1});
-            auto sqJ  = MakeUnary(dag, memo, h, NodeType::Square, j);
-            auto denom = MakeBinary(dag, memo, h, NodeType::Sub, c1, sqJ);
-            auto sqD  = MakeUnary(dag, memo, h, NodeType::Sqrt, denom);
-            fp = MakeBinary(dag, memo, h, NodeType::Div, c1, sqD);
+            auto sqJ  = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
+            auto denom = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqJ);
+            auto sqD  = MakeUnary(dag, memo, h, BuiltinOp::Sqrt, denom);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, sqD);
             break;
         }
 
-        case NodeType::Atan: {
+        case Operon::Hash(BuiltinOp::Atan): {
             // d atan(j)/dj = 1/(1 + j^2)
             auto c1    = GetConst(dag, memo, h, Scalar{1});
-            auto sqJ  = MakeUnary(dag, memo, h, NodeType::Square, j);
-            auto denom = MakeBinary(dag, memo, h, NodeType::Add, c1, sqJ);
-            fp = MakeBinary(dag, memo, h, NodeType::Div, c1, denom);
+            auto sqJ  = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
+            auto denom = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, sqJ);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, denom);
             break;
         }
 
-        case NodeType::Sinh:
+        case Operon::Hash(BuiltinOp::Sinh):
             // d sinh(j)/dj = cosh(j)
-            fp = MakeUnary(dag, memo, h, NodeType::Cosh, j);
+            fp = MakeUnary(dag, memo, h, BuiltinOp::Cosh, j);
             break;
 
-        case NodeType::Cosh:
+        case Operon::Hash(BuiltinOp::Cosh):
             // d cosh(j)/dj = sinh(j)
-            fp = MakeUnary(dag, memo, h, NodeType::Sinh, j);
+            fp = MakeUnary(dag, memo, h, BuiltinOp::Sinh, j);
             break;
 
-        case NodeType::Tanh: {
+        case Operon::Hash(BuiltinOp::Tanh): {
             // d tanh(j)/dj = 1 - tanh^2(j) = 1 - result^2
             auto c1   = GetConst(dag, memo, h, Scalar{1});
-            auto sqI = MakeUnary(dag, memo, h, NodeType::Square, i);
-            fp = MakeBinary(dag, memo, h, NodeType::Sub, c1, sqI);
+            auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, i);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqI);
             break;
         }
 
-        case NodeType::Sqrt: {
+        case Operon::Hash(BuiltinOp::Sqrt): {
             // d sqrt(j)/dj = result / (2 * j)
             auto c2   = GetConst(dag, memo, h, Scalar{2});
-            auto twoJ = MakeBinary(dag, memo, h, NodeType::Mul, c2, j);
-            fp = MakeBinary(dag, memo, h, NodeType::Div, i, twoJ);
+            auto twoJ = MakeBinary(dag, memo, h, BuiltinOp::Mul, c2, j);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, i, twoJ);
             break;
         }
 
-        case NodeType::Cbrt: {
+        case Operon::Hash(BuiltinOp::Cbrt): {
             // d cbrt(j)/dj = result / (3 * j)
             auto c3    = GetConst(dag, memo, h, Scalar{3});
-            auto threeJ = MakeBinary(dag, memo, h, NodeType::Mul, c3, j);
-            fp = MakeBinary(dag, memo, h, NodeType::Div, i, threeJ);
+            auto threeJ = MakeBinary(dag, memo, h, BuiltinOp::Mul, c3, j);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, i, threeJ);
             break;
         }
 
-        case NodeType::Square: {
+        case Operon::Hash(BuiltinOp::Square): {
             // d j^2/dj = 2 * j
             auto c2 = GetConst(dag, memo, h, Scalar{2});
-            fp = MakeBinary(dag, memo, h, NodeType::Mul, c2, j);
+            fp = MakeBinary(dag, memo, h, BuiltinOp::Mul, c2, j);
             break;
         }
 
         // Non-smooth or not-yet-implemented: return zero gradient.
-        case NodeType::Abs:
-        case NodeType::Sqrtabs:
-        case NodeType::Floor:
-        case NodeType::Ceil:
+        case Operon::Hash(BuiltinOp::Abs):
+        case Operon::Hash(BuiltinOp::Sqrtabs):
+        case Operon::Hash(BuiltinOp::Floor):
+        case Operon::Hash(BuiltinOp::Ceil):
         default:
             return Zero;
         }
 
         if (fp == Zero) { return Zero; }
-        return MakeBinary(dag, memo, h, NodeType::Mul, fp, dj);
+        return MakeBinary(dag, memo, h, BuiltinOp::Mul, fp, dj);
     }
 
     return Zero;

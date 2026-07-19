@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "../operon_test.hpp"
+
 #include <cmath>
 
 #include "operon/algorithms/enumeration.hpp"
@@ -38,7 +40,7 @@ TEST_CASE("Complexity - counts all non-Constant nodes", "[enumeration]")
     // count Variable x, Variable y, Add, Mul (4), excluding the Constant.
     Node nx(NodeType::Variable); nx.HashValue = 1;
     Node ny(NodeType::Variable); ny.HashValue = 2;
-    Tree const tree = Tree({ nx, ny, Node(NodeType::Add), Node::Constant(2.0), Node(NodeType::Mul) }).UpdateNodes();
+    Tree const tree = Tree({ nx, ny, Util::MakeOp<BuiltinOp::Add>(), Node::Constant(2.0), Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
     CHECK(SymbolicComplexity(tree) == 4);
 }
 

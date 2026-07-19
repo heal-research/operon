@@ -154,11 +154,9 @@ public:
                 v = static_cast<Scalar>(node.Value);
             }
 
-            switch (node.Type) {
-            case NodeType::Constant:
+            if (node.Type == NodeType::Constant) {
                 primal_[i] = pappus::ops::constant<Scalar>(v);
-                break;
-            case NodeType::Variable: {
+            } else if (node.Type == NodeType::Variable) {
                 auto it = domains_.find(node.HashValue);
                 if (it == domains_.end()) {
                     throw std::runtime_error(fmt::format(
@@ -167,114 +165,114 @@ public:
                 }
                 auto const& [lo, hi] = it->second;
                 primal_[i] = pappus::ops::variable<Scalar>(lo, hi) * v;
-                break;
-            }
-            case NodeType::Ref:
+            } else if (node.Type == NodeType::Ref) {
                 EXPECT(static_cast<std::size_t>(node.RefTo) < i);
                 primal_[i] = primal_[node.RefTo];
-                break;
-            case NodeType::Add:
-                primal_[i] = addFold(i) * v;
-                break;
-            case NodeType::Mul:
-                primal_[i] = mulFold(i) * v;
-                break;
-            case NodeType::Sub:
-                primal_[i] = (node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1])
-                                              : subFold(i)) * v;
-                break;
-            case NodeType::Div:
-                primal_[i] = (node.Arity == 1 ? pappus::ops::inv<Scalar>(primal_[i - 1])
-                                              : divFold(i)) * v;
-                break;
-            case NodeType::Square:
-                primal_[i] = pappus::ops::square<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Sqrt:
-                primal_[i] = pappus::ops::sqrt<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Exp:
-                primal_[i] = pappus::ops::exp<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Log:
-                primal_[i] = pappus::ops::log<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Sin:
-                primal_[i] = pappus::ops::sin<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Cos:
-                primal_[i] = pappus::ops::cos<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Tan:
-                primal_[i] = pappus::ops::tan<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Asin:
-                primal_[i] = pappus::ops::asin<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Acos:
-                primal_[i] = pappus::ops::acos<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Atan:
-                primal_[i] = pappus::ops::atan<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Sinh:
-                primal_[i] = pappus::ops::sinh<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Cosh:
-                primal_[i] = pappus::ops::cosh<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Tanh:
-                primal_[i] = pappus::ops::tanh<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Pow: {
-                auto const j = static_cast<std::size_t>(i - 1);
-                auto const k = j - (nodes[j].Length + 1);
-                primal_[i] = pappus::ops::pow<Scalar>(primal_[j], primal_[k]) * v;
-                break;
-            }
-            case NodeType::Abs:
-                primal_[i] = pappus::ops::abs<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Sqrtabs:
-                primal_[i] = pappus::ops::sqrtabs<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Logabs:
-                primal_[i] = pappus::ops::logabs<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Powabs: {
-                auto const j = static_cast<std::size_t>(i - 1);
-                auto const k = j - (nodes[j].Length + 1);
-                primal_[i] = pappus::ops::pow<Scalar>(pappus::ops::abs<Scalar>(primal_[j]), primal_[k]) * v;
-                break;
-            }
-            case NodeType::Aq: {
-                auto const j = static_cast<std::size_t>(i - 1);
-                auto const k = j - (nodes[j].Length + 1);
-                primal_[i] = pappus::ops::aq<Scalar>(primal_[j], primal_[k]) * v;
-                break;
-            }
-            case NodeType::Fmin:
-                primal_[i] = minFold(i) * v;
-                break;
-            case NodeType::Fmax:
-                primal_[i] = maxFold(i) * v;
-                break;
-            case NodeType::Cbrt:
-                primal_[i] = pappus::ops::cbrt<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Log1p:
-                primal_[i] = pappus::ops::log1p<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Floor:
-                primal_[i] = pappus::ops::floor<Scalar>(primal_[i - 1]) * v;
-                break;
-            case NodeType::Ceil:
-                primal_[i] = pappus::ops::ceil<Scalar>(primal_[i - 1]) * v;
-                break;
-            default:
-                throw std::runtime_error(fmt::format(
-                    "IntervalEvaluator: node kind `{}` not yet mapped",
-                    node.Name()));
+            } else {
+                switch (node.HashValue) {
+                case Operon::Hash(BuiltinOp::Add):
+                    primal_[i] = addFold(i) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Mul):
+                    primal_[i] = mulFold(i) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Sub):
+                    primal_[i] = (node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1])
+                                                  : subFold(i)) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Div):
+                    primal_[i] = (node.Arity == 1 ? pappus::ops::inv<Scalar>(primal_[i - 1])
+                                                  : divFold(i)) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Square):
+                    primal_[i] = pappus::ops::square<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Sqrt):
+                    primal_[i] = pappus::ops::sqrt<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Exp):
+                    primal_[i] = pappus::ops::exp<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Log):
+                    primal_[i] = pappus::ops::log<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Sin):
+                    primal_[i] = pappus::ops::sin<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Cos):
+                    primal_[i] = pappus::ops::cos<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Tan):
+                    primal_[i] = pappus::ops::tan<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Asin):
+                    primal_[i] = pappus::ops::asin<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Acos):
+                    primal_[i] = pappus::ops::acos<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Atan):
+                    primal_[i] = pappus::ops::atan<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Sinh):
+                    primal_[i] = pappus::ops::sinh<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Cosh):
+                    primal_[i] = pappus::ops::cosh<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Tanh):
+                    primal_[i] = pappus::ops::tanh<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Pow): {
+                    auto const j = static_cast<std::size_t>(i - 1);
+                    auto const k = j - (nodes[j].Length + 1);
+                    primal_[i] = pappus::ops::pow<Scalar>(primal_[j], primal_[k]) * v;
+                    break;
+                }
+                case Operon::Hash(BuiltinOp::Abs):
+                    primal_[i] = pappus::ops::abs<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Sqrtabs):
+                    primal_[i] = pappus::ops::sqrtabs<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Logabs):
+                    primal_[i] = pappus::ops::logabs<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Powabs): {
+                    auto const j = static_cast<std::size_t>(i - 1);
+                    auto const k = j - (nodes[j].Length + 1);
+                    primal_[i] = pappus::ops::pow<Scalar>(pappus::ops::abs<Scalar>(primal_[j]), primal_[k]) * v;
+                    break;
+                }
+                case Operon::Hash(BuiltinOp::Aq): {
+                    auto const j = static_cast<std::size_t>(i - 1);
+                    auto const k = j - (nodes[j].Length + 1);
+                    primal_[i] = pappus::ops::aq<Scalar>(primal_[j], primal_[k]) * v;
+                    break;
+                }
+                case Operon::Hash(BuiltinOp::Fmin):
+                    primal_[i] = minFold(i) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Fmax):
+                    primal_[i] = maxFold(i) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Cbrt):
+                    primal_[i] = pappus::ops::cbrt<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Log1p):
+                    primal_[i] = pappus::ops::log1p<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Floor):
+                    primal_[i] = pappus::ops::floor<Scalar>(primal_[i - 1]) * v;
+                    break;
+                case Operon::Hash(BuiltinOp::Ceil):
+                    primal_[i] = pappus::ops::ceil<Scalar>(primal_[i - 1]) * v;
+                    break;
+                default:
+                    throw std::runtime_error(fmt::format(
+                        "IntervalEvaluator: node kind `{}` not yet mapped",
+                        node.Name()));
+                }
             }
         }
         return primal_.back();
