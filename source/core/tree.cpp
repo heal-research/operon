@@ -206,7 +206,6 @@ auto Tree::Hash(Operon::HashMode mode) const -> Tree const&
 }
 
 auto Tree::Simplify() -> Tree& {
-    using NT = NodeType;
     using BO = BuiltinOp;
     using S  = Operon::Scalar;
 
@@ -374,13 +373,11 @@ auto Tree::Simplify() -> Tree& {
                         changed = true;
                     } else if (nodes_[expIdx].Value == S{2}) {
                         nodes_[expIdx].IsEnabled = false;  // Pow(x,2) → Square(x)
-                        n.Type = NT::Square;
-                        n.HashValue = Operon::Hash(BO::Square);
+                        n.HashValue = Operon::Hash(BO::Square); // Type stays Function - only HashValue distinguishes ops now
                         n.Arity = 1;
                         changed = true;
                     } else if (nodes_[expIdx].Value == S{0.5}) {
                         nodes_[expIdx].IsEnabled = false;  // Pow(x,0.5) → Sqrt(x)
-                        n.Type = NT::Sqrt;
                         n.HashValue = Operon::Hash(BO::Sqrt);
                         n.Arity = 1;
                         changed = true;
@@ -402,7 +399,7 @@ auto Tree::Simplify() -> Tree& {
             case Operon::Hash(BO::Log):
             case Operon::Hash(BO::Logabs): {
                 // log(exp(x)) = x for all x; log|exp(x)| = x likewise.
-                if (ch.size() == 1 && nodes_[ch[0]].Is<BO::Exp>()) {
+                if (ch.size() == 1 && nodes_[ch[0]].IsOp<BO::Exp>()) {
                     n.IsEnabled = false;
                     nodes_[ch[0]].IsEnabled = false;
                     changed = true;
@@ -412,10 +409,9 @@ auto Tree::Simplify() -> Tree& {
             case Operon::Hash(BO::Sqrt):
             case Operon::Hash(BO::Sqrtabs): {
                 // sqrt(x^2) = |x|;  sqrt(|x^2|) = |x|
-                if (ch.size() == 1 && nodes_[ch[0]].Is<BO::Square>()) {
+                if (ch.size() == 1 && nodes_[ch[0]].IsOp<BO::Square>()) {
                     nodes_[ch[0]].IsEnabled = false;
-                    n.Type = NT::Abs;
-                    n.HashValue = Operon::Hash(BO::Abs);
+                    n.HashValue = Operon::Hash(BO::Abs); // Type stays Function
                     n.Arity = 1; // Sqrt/Sqrtabs and Abs are both unary; explicit for symmetry with the Pow retargets above
                     changed = true;
                 }

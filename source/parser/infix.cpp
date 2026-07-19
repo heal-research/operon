@@ -19,46 +19,47 @@
 
 namespace {
 
-// Build a compile-time lookup table from infix_parser::node_type to Operon::NodeType.
-// Entries without an Operon equivalent are set to the NoType sentinel.
-constexpr auto MakeNodeTypeMap()
+// Build a compile-time lookup table from infix_parser::node_type to
+// Operon::BuiltinOp. Entries without an Operon equivalent are set to the
+// NoBuiltinOp sentinel.
+constexpr auto MakeBuiltinOpMap()
 {
     constexpr auto count = static_cast<std::size_t>(infix_parser::node_type::count);
-    std::array<Operon::NodeType, count> map{};
-    map.fill(Operon::NodeTypes::NoType);
+    std::array<Operon::BuiltinOp, count> map{};
+    map.fill(Operon::NoBuiltinOp);
 
-    map[static_cast<std::size_t>(infix_parser::node_type::add)]      = Operon::NodeType::Add;
-    map[static_cast<std::size_t>(infix_parser::node_type::sub)]      = Operon::NodeType::Sub;
-    map[static_cast<std::size_t>(infix_parser::node_type::mul)]      = Operon::NodeType::Mul;
-    map[static_cast<std::size_t>(infix_parser::node_type::div)]      = Operon::NodeType::Div;
-    map[static_cast<std::size_t>(infix_parser::node_type::pow)]      = Operon::NodeType::Pow;
-    map[static_cast<std::size_t>(infix_parser::node_type::abs)]      = Operon::NodeType::Abs;
-    map[static_cast<std::size_t>(infix_parser::node_type::square)]   = Operon::NodeType::Square;
-    map[static_cast<std::size_t>(infix_parser::node_type::exp)]      = Operon::NodeType::Exp;
-    map[static_cast<std::size_t>(infix_parser::node_type::log)]      = Operon::NodeType::Log;
-    map[static_cast<std::size_t>(infix_parser::node_type::sin)]      = Operon::NodeType::Sin;
-    map[static_cast<std::size_t>(infix_parser::node_type::cos)]      = Operon::NodeType::Cos;
-    map[static_cast<std::size_t>(infix_parser::node_type::tan)]      = Operon::NodeType::Tan;
-    map[static_cast<std::size_t>(infix_parser::node_type::asin)]     = Operon::NodeType::Asin;
-    map[static_cast<std::size_t>(infix_parser::node_type::acos)]     = Operon::NodeType::Acos;
-    map[static_cast<std::size_t>(infix_parser::node_type::atan)]     = Operon::NodeType::Atan;
-    map[static_cast<std::size_t>(infix_parser::node_type::sinh)]     = Operon::NodeType::Sinh;
-    map[static_cast<std::size_t>(infix_parser::node_type::cosh)]     = Operon::NodeType::Cosh;
-    map[static_cast<std::size_t>(infix_parser::node_type::tanh)]     = Operon::NodeType::Tanh;
-    map[static_cast<std::size_t>(infix_parser::node_type::sqrt)]     = Operon::NodeType::Sqrt;
-    map[static_cast<std::size_t>(infix_parser::node_type::cbrt)]     = Operon::NodeType::Cbrt;
-    map[static_cast<std::size_t>(infix_parser::node_type::log1p)]    = Operon::NodeType::Log1p;
-    map[static_cast<std::size_t>(infix_parser::node_type::logabs)]   = Operon::NodeType::Logabs;
-    map[static_cast<std::size_t>(infix_parser::node_type::sqrtabs)]  = Operon::NodeType::Sqrtabs;
-    map[static_cast<std::size_t>(infix_parser::node_type::aq)]       = Operon::NodeType::Aq;
-    map[static_cast<std::size_t>(infix_parser::node_type::fmin)]     = Operon::NodeType::Fmin;
-    map[static_cast<std::size_t>(infix_parser::node_type::fmax)]     = Operon::NodeType::Fmax;
-    map[static_cast<std::size_t>(infix_parser::node_type::powabs)]   = Operon::NodeType::Powabs;
+    map[static_cast<std::size_t>(infix_parser::node_type::add)]      = Operon::BuiltinOp::Add;
+    map[static_cast<std::size_t>(infix_parser::node_type::sub)]      = Operon::BuiltinOp::Sub;
+    map[static_cast<std::size_t>(infix_parser::node_type::mul)]      = Operon::BuiltinOp::Mul;
+    map[static_cast<std::size_t>(infix_parser::node_type::div)]      = Operon::BuiltinOp::Div;
+    map[static_cast<std::size_t>(infix_parser::node_type::pow)]      = Operon::BuiltinOp::Pow;
+    map[static_cast<std::size_t>(infix_parser::node_type::abs)]      = Operon::BuiltinOp::Abs;
+    map[static_cast<std::size_t>(infix_parser::node_type::square)]   = Operon::BuiltinOp::Square;
+    map[static_cast<std::size_t>(infix_parser::node_type::exp)]      = Operon::BuiltinOp::Exp;
+    map[static_cast<std::size_t>(infix_parser::node_type::log)]      = Operon::BuiltinOp::Log;
+    map[static_cast<std::size_t>(infix_parser::node_type::sin)]      = Operon::BuiltinOp::Sin;
+    map[static_cast<std::size_t>(infix_parser::node_type::cos)]      = Operon::BuiltinOp::Cos;
+    map[static_cast<std::size_t>(infix_parser::node_type::tan)]      = Operon::BuiltinOp::Tan;
+    map[static_cast<std::size_t>(infix_parser::node_type::asin)]     = Operon::BuiltinOp::Asin;
+    map[static_cast<std::size_t>(infix_parser::node_type::acos)]     = Operon::BuiltinOp::Acos;
+    map[static_cast<std::size_t>(infix_parser::node_type::atan)]     = Operon::BuiltinOp::Atan;
+    map[static_cast<std::size_t>(infix_parser::node_type::sinh)]     = Operon::BuiltinOp::Sinh;
+    map[static_cast<std::size_t>(infix_parser::node_type::cosh)]     = Operon::BuiltinOp::Cosh;
+    map[static_cast<std::size_t>(infix_parser::node_type::tanh)]     = Operon::BuiltinOp::Tanh;
+    map[static_cast<std::size_t>(infix_parser::node_type::sqrt)]     = Operon::BuiltinOp::Sqrt;
+    map[static_cast<std::size_t>(infix_parser::node_type::cbrt)]     = Operon::BuiltinOp::Cbrt;
+    map[static_cast<std::size_t>(infix_parser::node_type::log1p)]    = Operon::BuiltinOp::Log1p;
+    map[static_cast<std::size_t>(infix_parser::node_type::logabs)]   = Operon::BuiltinOp::Logabs;
+    map[static_cast<std::size_t>(infix_parser::node_type::sqrtabs)]  = Operon::BuiltinOp::Sqrtabs;
+    map[static_cast<std::size_t>(infix_parser::node_type::aq)]       = Operon::BuiltinOp::Aq;
+    map[static_cast<std::size_t>(infix_parser::node_type::fmin)]     = Operon::BuiltinOp::Fmin;
+    map[static_cast<std::size_t>(infix_parser::node_type::fmax)]     = Operon::BuiltinOp::Fmax;
+    map[static_cast<std::size_t>(infix_parser::node_type::powabs)]   = Operon::BuiltinOp::Powabs;
 
     return map;
 }
 
-constexpr auto node_type_map = MakeNodeTypeMap();
+constexpr auto node_type_map = MakeBuiltinOpMap();
 
 auto ToOperonNode(infix_parser::node const& a) -> Operon::Node
 {
@@ -68,14 +69,11 @@ auto ToOperonNode(infix_parser::node const& a) -> Operon::Node
     if (a.type == infix_parser::node_type::variable) {
         return Operon::Node(Operon::NodeType::Variable, Operon::Hasher{}(a.name));
     }
-    auto const operonType = node_type_map.at(static_cast<std::size_t>(a.type));
-    if (operonType == Operon::NodeTypes::NoType) {
+    auto const op = node_type_map.at(static_cast<std::size_t>(a.type));
+    if (op == Operon::NoBuiltinOp) {
         throw std::runtime_error(fmt::format("unsupported node type: {}", static_cast<int>(a.type)));
     }
-    Operon::Node node(operonType);
-    node.Arity = a.arity;
-    node.Length = a.arity;
-    return node;
+    return Operon::Node::Function(static_cast<Operon::Hash>(op), a.arity);
 }
 
 } // anonymous namespace

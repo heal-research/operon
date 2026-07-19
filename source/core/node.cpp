@@ -43,7 +43,13 @@ namespace {
         if (d.if_contains(h, [&](auto const& kv) { result = kv.second; })) {
             return result;
         }
-        auto const fallback = node.IsDynamic() ? Node(NodeType::Dynamic).HashValue : h;
+        // Every built-in BuiltinOp hash is registered by the unconditional
+        // StandardLibrary::RegisterNames() call in Name()/Desc() below, so
+        // reaching this fallback means `node` is either a genuinely
+        // unregistered user function or a malformed hash - either way, the
+        // generic "user-defined function" entry (registered under this same
+        // sentinel by StandardLibrary, see standard_library.hpp) is correct.
+        auto const fallback = node.IsFunction() ? Node::DefaultHash(NodeType::Function) : h;
         if (d.if_contains(fallback, [&](auto const& kv) { result = kv.second; })) {
             return result;
         }
@@ -54,10 +60,10 @@ namespace {
     void Node::RegisterName(Operon::Hash hash, string name, string desc)
     {
         // Also used internally by StandardLibrary::RegisterNames() to seed
-        // built-in entries, whose hashes ARE in [0, NodeTypes::Count) by
-        // construction (Node(NodeType) ctor) - so this can't reject that
-        // range itself. User-facing callers (symbol_library.hpp) guard
-        // against landing in the reserved range before calling this.
+        // built-in entries, whose hashes ARE in [0, BuiltinOpCount) by
+        // construction (static_cast<Hash>(some BuiltinOp)) - so this can't
+        // reject that range itself. User-facing callers (symbol_library.hpp)
+        // guard against landing in the reserved range before calling this.
         Descriptions().lazy_emplace_l(
             hash,
             [&](auto& kv)         { kv.second = { std::move(name), std::move(desc) }; },

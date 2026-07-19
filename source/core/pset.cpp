@@ -23,16 +23,28 @@ namespace Operon {
     void PrimitiveSet::SetConfig(PrimitiveSetConfig config)
     {
         pset_.clear();
-        for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
-            auto t = static_cast<Operon::NodeType>(i);
-            if (!config.Test(i)) { continue; }
 
-            Operon::Node n(t);
-            auto const [minArity, maxArity] = StandardLibrary::ArityLimits(t);
-            n.Arity  = minArity;
-            n.Length = minArity;
+        for (size_t i = 0; i < Operon::BuiltinOpCount; ++i) {
+            if (!config.Test(i)) { continue; }
+            auto const op = static_cast<Operon::BuiltinOp>(i);
+            auto const [minArity, maxArity] = StandardLibrary::ArityLimits(op);
+            auto n = Operon::Node::Function(static_cast<Operon::Hash>(op), minArity);
             pset_[n.HashValue] = { n, 1, minArity, maxArity };
         }
+
+        for (auto type : { Operon::NodeType::Constant, Operon::NodeType::Variable, Operon::NodeType::Ref }) {
+            if (!config.Test(Operon::BuiltinOpCount + Operon::NodeTypes::GetIndex(type))) { continue; }
+            Operon::Node n(type);
+            pset_[n.HashValue] = { n, 1, 0, 0 }; // terminals are leaves: arity 0
+        }
+
+        // The shared "any Function present" bit (BuiltinOpCount +
+        // NodeTypes::GetIndex(NodeType::Function)) is intentionally not
+        // actionable here - unlike a BuiltinOp or Constant/Variable/Ref, it
+        // has no single real hash/arity to construct a primitive from
+        // (AddFunction handles that, for a specific user function). It only
+        // exists so Config() can report "a user function is present"
+        // symmetrically with the pre-collapse Dynamic slot.
     }
 
     auto PrimitiveSet::AchievableLength(size_t targetLen) const -> size_t

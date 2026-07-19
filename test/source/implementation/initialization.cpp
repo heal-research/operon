@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <random>
 
+#include "../operon_test.hpp"
+
 #include "operon/core/dataset.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/operators/creator.hpp"
@@ -41,31 +43,44 @@ TEST_CASE("Grammar sampling", "[operators]")
     grammar.SetConfig(~PrimitiveSetConfig{});
     Operon::RandomGenerator rd(1234);
 
-    std::vector<double> observed(NodeTypes::Count, 0);
+    // Bucket by primitive hash rather than NodeType: post-collapse, every
+    // built-in math op shares NodeType::Function, so a single "Function"
+    // bucket would conflate all 29 ops. Enumerate the actual registered
+    // primitives instead - every BuiltinOp plus the 3 non-Function
+    // terminals (Constant/Variable/Ref; Function itself has no single real
+    // hash and is never registered by SetConfig, see pset.cpp).
+    std::vector<Operon::Hash> hashes;
+    for (size_t i = 0; i < BuiltinOpCount; ++i) {
+        hashes.push_back(static_cast<Operon::Hash>(static_cast<BuiltinOp>(i)));
+    }
+    for (auto type : { NodeType::Constant, NodeType::Variable, NodeType::Ref }) {
+        hashes.push_back(Node(type).HashValue);
+    }
+
+    Operon::Map<Operon::Hash, double> observed;
+    for (auto h : hashes) { observed[h] = 0; }
     size_t const r = grammar.EnabledPrimitives().size() + 1;
 
     const size_t nTrials = 1'000'000;
     for (auto i = 0U; i < nTrials; ++i) {
         auto node = grammar.SampleRandomSymbol(rd, 0, 2);
-        ++observed[NodeTypes::GetIndex(node.Type)];
+        ++observed[node.HashValue];
     }
-    std::transform(observed.begin(), observed.end(), observed.begin(), [&](double v) -> double { return v / nTrials; });
-    std::vector<double> actual(NodeTypes::Count, 0);
-    for (size_t i = 0; i < observed.size(); ++i) {
-        auto type = static_cast<NodeType>(i);
-        auto node = Node(type);
-        actual[NodeTypes::GetIndex(type)] = static_cast<double>(grammar.Frequency(node.HashValue));
-    }
-    auto freqSum = std::reduce(actual.begin(), actual.end(), 0.0, std::plus{});
-    std::transform(actual.begin(), actual.end(), actual.begin(), [&](double v) -> double { return v / freqSum; });
+    for (auto& [h, v] : observed) { v /= static_cast<double>(nTrials); }
+
+    Operon::Map<Operon::Hash, double> actual;
+    for (auto h : hashes) { actual[h] = static_cast<double>(grammar.Frequency(h)); }
+    auto freqSum = 0.0;
+    for (auto const& [h, v] : actual) { freqSum += v; }
+    for (auto& [h, v] : actual) { v /= freqSum; }
+
     auto chi = 0.0;
-    for (auto i = 0U; i < observed.size(); ++i) {
-        Node const node(static_cast<NodeType>(i));
-        if (!grammar.IsEnabled(node.HashValue)) {
+    for (auto h : hashes) {
+        if (!grammar.IsEnabled(h)) {
             continue;
         }
-        auto x = observed[i];
-        auto y = actual[i];
+        auto x = observed[h];
+        auto y = actual[h];
         chi += (x - y) * (x - y) / y;
     }
     chi *= nTrials;
@@ -84,11 +99,11 @@ TEST_CASE("GROW creator", "[operators]") // NOLINT(readability-function-cognitiv
     size_t const n = 1000;
 
     PrimitiveSet grammar;
-    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
-    grammar.SetMaximumArity(Node(NodeType::Add), 2);
-    grammar.SetMaximumArity(Node(NodeType::Mul), 2);
-    grammar.SetMaximumArity(Node(NodeType::Sub), 2);
-    grammar.SetMaximumArity(Node(NodeType::Div), 2);
+    grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
+    grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Add>(), 2);
+    grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Mul>(), 2);
+    grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Sub>(), 2);
+    grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Div>(), 2);
 
     GrowTreeCreator gtc{&grammar, inputs, maxLength};
     Operon::RandomGenerator random(1234);
@@ -124,11 +139,11 @@ TEST_CASE("BTC creator", "[operators]")
     size_t const n = 1000;
 
     PrimitiveSet grammar;
-    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
-    grammar.SetMaximumArity(Node(NodeType::Add), 2);
-    grammar.SetMaximumArity(Node(NodeType::Mul), 2);
-    grammar.SetMaximumArity(Node(NodeType::Sub), 2);
-    grammar.SetMaximumArity(Node(NodeType::Div), 2);
+    grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
+    grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Add>(), 2);
+    grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Mul>(), 2);
+    grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Sub>(), 2);
+    grammar.SetMaximumArity(Util::MakeOp<BuiltinOp::Div>(), 2);
 
     BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::RandomGenerator random(1234);
@@ -169,7 +184,7 @@ TEST_CASE("PTC2 creator", "[operators]")
     size_t const n = 1000;
 
     PrimitiveSet grammar;
-    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
+    grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
 
     ProbabilisticTreeCreator ptc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::RandomGenerator random(1234);
@@ -209,8 +224,8 @@ TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readabili
         // Only arity-2 functions: n > 1 is achievable iff (n-1) is a multiple of 2,
         // i.e. n is odd. So snap_[i] carries the last odd value seen.
         PrimitiveSet pset;
-        pset.SetConfig(NodeType::Add | NodeType::Variable);
-        pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
+        pset.SetConfig(BuiltinOp::Add | NodeType::Variable);
+        pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 2);
         TestCreator const tc(&pset, 20);
 
         CHECK(tc.SnapDown(1) == 1);
@@ -225,9 +240,9 @@ TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readabili
     SECTION("Mixed pset (arities 1 and 2): every length is achievable") {
         // Arity-1 means we can always add exactly 1 node, so all lengths >= 1 are reachable.
         PrimitiveSet pset;
-        pset.SetConfig(NodeType::Sin | NodeType::Add | NodeType::Variable);
-        pset.SetMinMaxArity(Node(NodeType::Sin), 1, 1);
-        pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
+        pset.SetConfig(BuiltinOp::Sin | BuiltinOp::Add | NodeType::Variable);
+        pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Sin>(), 1, 1);
+        pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 2);
         TestCreator const tc(&pset, 15);
 
         for (size_t n = 1; n <= 15; ++n) {
@@ -239,8 +254,8 @@ TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readabili
         // Only arity-3 functions: n > 1 is achievable iff (n-1) is a multiple of 3.
         // Achievable: 1, 4, 7, 10, 13, ...
         PrimitiveSet pset;
-        pset.SetConfig(NodeType::Add | NodeType::Variable);
-        pset.SetMinMaxArity(Node(NodeType::Add), 3, 3);
+        pset.SetConfig(BuiltinOp::Add | NodeType::Variable);
+        pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 3, 3);
         TestCreator const tc(&pset, 20);
 
         CHECK(tc.SnapDown(1) == 1);
@@ -262,8 +277,8 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]") //
     // Requesting any even target must snap down — the returned tree must be strictly
     // within the requested bound.
     PrimitiveSet pset;
-    pset.SetConfig(NodeType::Add | NodeType::Variable);
-    pset.SetMinMaxArity(Node(NodeType::Add), 2, 2);
+    pset.SetConfig(BuiltinOp::Add | NodeType::Variable);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 2);
 
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
     auto inputs = ds.VariableHashes();

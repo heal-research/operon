@@ -238,11 +238,11 @@ TEST_CASE("JIT Ref node forward-pass correctness", "[jit][ref]")
     {
         Node v1(NodeType::Variable); v1.HashValue = v1.CalculatedHashValue = x1Hash; v1.Value = 1.0F;
         Node v2(NodeType::Variable); v2.HashValue = v2.CalculatedHashValue = x2Hash; v2.Value = 1.0F;
-        Node add(NodeType::Add);     add.Length = 2;
+        auto add = Util::MakeOp<BuiltinOp::Add>(); add.Length = 2;
         Node v3(NodeType::Variable); v3.HashValue = v3.CalculatedHashValue = x3Hash; v3.Value = 1.0F;
         Node ref = Node::Ref(2);
-        Node sub(NodeType::Sub);     sub.Length = 2;
-        Node mul(NodeType::Mul);     mul.Length = 6;
+        auto sub = Util::MakeOp<BuiltinOp::Sub>(); sub.Length = 2;
+        auto mul = Util::MakeOp<BuiltinOp::Mul>(); mul.Length = 6;
         nodes.push_back(v1);
         nodes.push_back(v2);
         nodes.push_back(add);
@@ -514,9 +514,9 @@ TEST_CASE("JitEvaluator vs interpreter on random population", "[jit][evaluator][
 
     // Full symbol set matching the failing comparison runs (plus Variable as terminal).
     PrimitiveSet pset;
-    pset.SetConfig(NodeType::Add | NodeType::Sub | NodeType::Mul | NodeType::Div |
-                   NodeType::Sin | NodeType::Cos | NodeType::Exp | NodeType::Log |
-                   NodeType::Pow | NodeType::Sqrt | NodeType::Tanh |
+    pset.SetConfig(BuiltinOp::Add | BuiltinOp::Sub | BuiltinOp::Mul | BuiltinOp::Div |
+                   BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Exp | BuiltinOp::Log |
+                   BuiltinOp::Pow | BuiltinOp::Sqrt | BuiltinOp::Tanh |
                    NodeType::Variable);
 
     // Pass all dataset variable hashes since the creator may produce any variable.
@@ -616,13 +616,13 @@ auto EvalCompiledJacobian(
 auto MakeSupportedPsetJit() -> PrimitiveSet {
     PrimitiveSet ps;
     ps.SetConfig(
-        NodeType::Add | NodeType::Mul | NodeType::Sub | NodeType::Div |
-        NodeType::Exp | NodeType::Log | NodeType::Logabs | NodeType::Log1p |
-        NodeType::Sin | NodeType::Cos | NodeType::Tan  |
-        NodeType::Asin | NodeType::Acos | NodeType::Atan |
-        NodeType::Sinh | NodeType::Cosh | NodeType::Tanh |
-        NodeType::Sqrt | NodeType::Cbrt | NodeType::Square |
-        NodeType::Pow  |
+        BuiltinOp::Add | BuiltinOp::Mul | BuiltinOp::Sub | BuiltinOp::Div |
+        BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Logabs | BuiltinOp::Log1p |
+        BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Tan  |
+        BuiltinOp::Asin | BuiltinOp::Acos | BuiltinOp::Atan |
+        BuiltinOp::Sinh | BuiltinOp::Cosh | BuiltinOp::Tanh |
+        BuiltinOp::Sqrt | BuiltinOp::Cbrt | BuiltinOp::Square |
+        BuiltinOp::Pow  |
         NodeType::Constant
     );
     return ps;

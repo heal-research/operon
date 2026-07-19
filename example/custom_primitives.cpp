@@ -62,12 +62,12 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     problem.SetInputs(inputs);
 
     // Arithmetic built-ins form the structural backbone of expressions.
-    // No transcendental functions from NodeType — those come from our
+    // No transcendental functions enabled here — those come from our
     // runtime-registered callables below.
     problem.ConfigurePrimitiveSet(
         Operon::NodeType::Constant | Operon::NodeType::Variable |
-        Operon::NodeType::Add | Operon::NodeType::Sub |
-        Operon::NodeType::Mul | Operon::NodeType::Div);
+        Operon::BuiltinOp::Add | Operon::BuiltinOp::Sub |
+        Operon::BuiltinOp::Mul | Operon::BuiltinOp::Div);
 
     // register custom primitives
     using DT = Operon::ScalarDispatch;

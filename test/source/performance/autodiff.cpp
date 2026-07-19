@@ -8,6 +8,7 @@
 #include "../operon_test.hpp"
 
 #include "operon/core/pset.hpp"
+#include "operon/core/standard_library.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operators/creator.hpp"
@@ -27,7 +28,7 @@ TEST_CASE("Autodiff performance", "[performance]")
     nb::Bench b;
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
-    Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt | Operon::NodeType::Pow | Operon::NodeType::Tanh};
+    Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::BuiltinOp::Exp | Operon::BuiltinOp::Log | Operon::BuiltinOp::Sin | Operon::BuiltinOp::Cos | Operon::BuiltinOp::Sqrt | Operon::BuiltinOp::Pow | Operon::BuiltinOp::Tanh};
     constexpr size_t maxLength = 200;
     Operon::BalancedTreeCreator const creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 
@@ -97,7 +98,7 @@ TEST_CASE("Reverse mode performance", "[performance]")
     nb::Bench b;
     b.timeUnit(std::chrono::milliseconds(1), "ms");
 
-    Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos | Operon::NodeType::Sqrt};
+    Operon::PrimitiveSet pset{Operon::PrimitiveSet::Arithmetic | Operon::BuiltinOp::Exp | Operon::BuiltinOp::Log | Operon::BuiltinOp::Sin | Operon::BuiltinOp::Cos | Operon::BuiltinOp::Sqrt};
 
     using DTable = DispatchTable<Operon::Scalar>;
     DTable const dtable;
@@ -149,12 +150,11 @@ TEST_CASE("Primitive performance", "[performance]")
 
     Operon::ScalarDispatch dt;
 
-    for (auto i = 0UL; i < NodeTypes::Count; ++i) {
-        auto t = static_cast<NodeType>(i);
-        Node n{t};
+    for (auto i = 0UL; i < BuiltinOpCount; ++i) {
+        auto op = static_cast<BuiltinOp>(i);
+        auto const minArity = StandardLibrary::ArityLimits(op).first;
+        auto n = Node::Function(static_cast<Operon::Hash>(op), minArity);
         n.Value = dist(rng);
-        if (n.IsLeaf()) { continue; }
-        if (t == NodeType::Dynamic) { continue; }
         std::vector<Tree> trees;
         trees.reserve(N);
         for (auto j = 0; j < N; ++j) {
@@ -174,12 +174,11 @@ TEST_CASE("Primitive performance", "[performance]")
         });
     }
 
-    for (auto i = 0UL; i < NodeTypes::Count; ++i) {
-        auto t = static_cast<NodeType>(i);
-        Node n{t};
+    for (auto i = 0UL; i < BuiltinOpCount; ++i) {
+        auto op = static_cast<BuiltinOp>(i);
+        auto const minArity = StandardLibrary::ArityLimits(op).first;
+        auto n = Node::Function(static_cast<Operon::Hash>(op), minArity);
         n.Value = dist(rng);
-        if (n.IsLeaf()) { continue; }
-        if (t == NodeType::Dynamic) { continue; }
         std::vector<Tree> trees;
         trees.reserve(N);
         for (auto j = 0; j < N; ++j) {
@@ -252,7 +251,7 @@ TEST_CASE("Optimizer performance", "[performance]")
 
     nb::Bench b;
     Operon::PrimitiveSet pset;
-    Operon::PrimitiveSetConfig const psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::NodeType::Exp | Operon::NodeType::Log | Operon::NodeType::Sin | Operon::NodeType::Cos;
+    Operon::PrimitiveSetConfig const psetcfg = Operon::PrimitiveSet::Arithmetic | Operon::BuiltinOp::Exp | Operon::BuiltinOp::Log | Operon::BuiltinOp::Sin | Operon::BuiltinOp::Cos;
     pset.SetConfig(psetcfg);
     constexpr size_t maxLength = 200;
     Operon::BalancedTreeCreator const creator(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);

@@ -148,9 +148,11 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
                 Operon::Vector<Node> nodes;
                 if (p.WeightFirstOperand) { nodes.push_back(Node::Constant(WeightPlaceholder)); }
                 AppendNodes(nodes, t.Nodes());
-                if (p.WeightFirstOperand) { nodes.push_back(Node(NodeType::Mul)); }
+                if (p.WeightFirstOperand) { nodes.push_back(Node::Function(static_cast<Hash>(BuiltinOp::Mul), 2)); }
                 if (p.TrailingConstant) { nodes.push_back(Node::Constant(BiasPlaceholder)); }
-                nodes.push_back(Node(p.Op));
+                // Op's direct children: the (possibly Mul-wrapped) operand, plus
+                // one more if TrailingConstant appended a Bias sibling.
+                nodes.push_back(Node::Function(static_cast<Hash>(p.Op), p.TrailingConstant ? 2 : 1));
                 TryInsert(nt, Tree(std::move(nodes)).UpdateNodes());
             }
         } else {
@@ -188,9 +190,12 @@ void EnumerationEngine::ProcessNonterminal(GrammarSymbol nt, std::size_t budget)
                         Operon::Vector<Node> nodes;
                         if (p.WeightFirstOperand) { nodes.push_back(Node::Constant(WeightPlaceholder)); }
                         AppendNodes(nodes, t0.Nodes());
-                        if (p.WeightFirstOperand) { nodes.push_back(Node(NodeType::Mul)); }
+                        if (p.WeightFirstOperand) { nodes.push_back(Node::Function(static_cast<Hash>(BuiltinOp::Mul), 2)); }
                         AppendNodes(nodes, t1.Nodes());
-                        nodes.push_back(Node(p.Op));
+                        // Op's direct children: the (possibly Mul-wrapped) first
+                        // operand, plus the second operand - always 2 today (this
+                        // branch handles exactly Operands.size()==2 productions).
+                        nodes.push_back(Node::Function(static_cast<Hash>(p.Op), static_cast<uint16_t>(p.Operands.size())));
                         TryInsert(nt, Tree(std::move(nodes)).UpdateNodes());
                     }
                 }

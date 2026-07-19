@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "../operon_test.hpp"
+
 #include "operon/core/dataset.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/variable.hpp"
@@ -22,11 +24,11 @@ TEST_CASE("InsertSubtreeMutation produces valid tree", "[operators]")
     auto const maxLength{100};
 
     PrimitiveSet grammar;
-    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Log | NodeType::Exp);
-    grammar.SetFrequency(Node(NodeType::Add).HashValue, 1);
-    grammar.SetFrequency(Node(NodeType::Mul).HashValue, 1);
-    grammar.SetFrequency(Node(NodeType::Sub).HashValue, 1);
-    grammar.SetFrequency(Node(NodeType::Div).HashValue, 1);
+    grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Add>().HashValue, 1);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Mul>().HashValue, 1);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Sub>().HashValue, 1);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Div>().HashValue, 1);
 
     BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
     UniformCoefficientInitializer cfi;
@@ -87,8 +89,7 @@ TEST_CASE("InsertSubtreeMutation leaves trees without eligible n-ary operators u
     Node variable(NodeType::Variable);
     variable.HashValue = variable.CalculatedHashValue = variableHash;
 
-    Node sin(NodeType::Sin);
-    sin.Length = 1;
+    auto sin = Util::MakeOp<BuiltinOp::Sin>();
 
     Tree const tree({ variable, sin });
 
@@ -97,7 +98,7 @@ TEST_CASE("InsertSubtreeMutation leaves trees without eligible n-ary operators u
     auto child = mut(random, tree);
 
     CHECK(child.Length() == tree.Length());
-    CHECK(child[child.Length() - 1].Type == NodeType::Sin);
+    CHECK(child[child.Length() - 1].IsOp<BuiltinOp::Sin>());
     CHECK(child[0].HashValue == variableHash);
 }
 

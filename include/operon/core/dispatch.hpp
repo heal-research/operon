@@ -57,15 +57,15 @@ auto Fill(Backend::View<T, S> view, int idx, T value) {
 template<typename T, Operon::BuiltinOp N = Operon::NoBuiltinOp, bool C = false, std::size_t S = Backend::BatchSize<T>>
 struct Func {
     auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T, S> /*primal*/, std::integral auto /*node index*/, std::integral auto... /*child indices*/) {
-        throw std::runtime_error(fmt::format("backend error: missing specialization for function: {}\n", Operon::Node{Operon::NodeType::Dynamic, static_cast<Operon::Hash>(N)}.Name()));
+        throw std::runtime_error(fmt::format("backend error: missing specialization for function with hash {}\n", static_cast<Operon::Hash>(N)));
     }
 };
 
 // detect missing specializations for function derivatives
-template<typename T, Operon::BuiltinOp N  = Operon::NoBuiltinOp, std::size_t S = Backend::BatchSize<T>>
+template<typename T, Operon::BuiltinOp N = Operon::NoBuiltinOp, std::size_t S = Backend::BatchSize<T>>
 struct Diff {
     auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/, Backend::View<T> /*trace*/, std::integral auto /*node index*/, std::integral auto /*partial index*/) {
-        throw std::runtime_error(fmt::format("backend error: missing specialization for derivative: {}\n", Operon::Node{Operon::NodeType::Dynamic, static_cast<Operon::Hash>(N)}.Name()));
+        throw std::runtime_error(fmt::format("backend error: missing specialization for derivative with hash {}\n", static_cast<Operon::Hash>(N)));
     }
 };
 
@@ -87,8 +87,8 @@ using CallableDiff = std::function<void(Operon::Vector<Node> const&, Backend::Vi
 // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments
 // 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
 //    if arity > 4, one accumulation is performed every 4 args
-template<BuiltinOp Type, typename T, std::size_t S>
-requires Node::IsNaryOp<Type>
+template<BuiltinOp Op, typename T, std::size_t S>
+requires Node::IsNaryOp<Op>
 static void NaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> data, size_t parentIndex, Operon::Range /*unused*/)
 {
     const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
@@ -96,8 +96,8 @@ static void NaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> data, 
     bool continued = false;
 
     auto const call = [&](bool continued, int result, auto... args) {
-        if (continued) { Func<T, Type, true , S>{}(nodes, data, result, args...); }
-        else           { Func<T, Type, false, S>{}(nodes, data, result, args...); }
+        if (continued) { Func<T, Op, true , S>{}(nodes, data, result, args...); }
+        else           { Func<T, Op, false, S>{}(nodes, data, result, args...); }
     };
 
     int arity = nodes[parentIndex].Arity;
@@ -135,20 +135,20 @@ static void NaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> data, 
     }
 }
 
-template<BuiltinOp Type, typename T, std::size_t S>
-requires Node::IsBinaryOp<Type>
+template<BuiltinOp Op, typename T, std::size_t S>
+requires Node::IsBinaryOp<Op>
 static void BinaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
 {
     auto j = i - 1;
     auto k = j - nodes[j].Length - 1;
-    Func<T, Type, false>{}(nodes, m, i, j, k);
+    Func<T, Op, false>{}(nodes, m, i, j, k);
 }
 
-template<BuiltinOp Type, typename T, std::size_t S>
-requires Node::IsUnaryOp<Type>
+template<BuiltinOp Op, typename T, std::size_t S>
+requires Node::IsUnaryOp<Op>
 static void UnaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
 {
-    Func<T, Type, false>{}(nodes, m, i, i-1);
+    Func<T, Op, false>{}(nodes, m, i, i-1);
 }
 
 struct Noop {
@@ -156,29 +156,29 @@ struct Noop {
     void operator()(Args&&... /*unused*/) {}
 };
 
-template<BuiltinOp Type, typename T, std::size_t S>
+template<BuiltinOp Op, typename T, std::size_t S>
 static void DiffOp(Operon::Vector<Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T, S> trace, int i, int j) {
-    Diff<T, Type, S>{}(nodes, primal, trace, i, j);
+    Diff<T, Op, S>{}(nodes, primal, trace, i, j);
 }
 
-template<BuiltinOp Type, typename T, std::size_t S>
+template<BuiltinOp Op, typename T, std::size_t S>
 static constexpr auto MakeFunctionCall() -> Dispatch::Callable<T, S>
 {
-    if constexpr (Node::IsNaryOp<Type>) {
-        return Callable<T, S>{NaryOp<Type, T, S>};
-    } else if constexpr (Node::IsBinaryOp<Type>) {
-        return Callable<T, S>{BinaryOp<Type, T, S>};
-    } else if constexpr (Node::IsUnaryOp<Type>) {
-        return Callable<T, S>{UnaryOp<Type, T, S>};
+    if constexpr (Node::IsNaryOp<Op>) {
+        return Callable<T, S>{NaryOp<Op, T, S>};
+    } else if constexpr (Node::IsBinaryOp<Op>) {
+        return Callable<T, S>{BinaryOp<Op, T, S>};
+    } else if constexpr (Node::IsUnaryOp<Op>) {
+        return Callable<T, S>{UnaryOp<Op, T, S>};
     }
 }
 
-template<BuiltinOp Type, typename T, std::size_t S>
+template<BuiltinOp Op, typename T, std::size_t S>
 static constexpr auto MakeDiffCall() -> Dispatch::CallableDiff<T, S>
 {
     // this constexpr if here returns NOOP in case of non-arithmetic types (duals)
     if constexpr (std::is_arithmetic_v<T>) {
-        return CallableDiff<T, S>{DiffOp<Type, T, S>};
+        return CallableDiff<T, S>{DiffOp<Op, T, S>};
     } else {
         return Dispatch::Noop{};
     }
@@ -260,29 +260,6 @@ public:
     using CallableDiff = Dispatch::CallableDiff<T, BatchSize<T>>;
 
 private:
-    template<BuiltinOp Type, typename T>
-    requires Operon::Concepts::Arithmetic<T>
-    static constexpr auto MakeFunction() {
-        return Dispatch::MakeFunctionCall<Type, T, BatchSize<T>>();
-    }
-
-    template<BuiltinOp Type, typename T>
-    requires Operon::Concepts::Arithmetic<T>
-    static constexpr auto MakeDerivative() {
-        return Dispatch::MakeDiffCall<Type, T, BatchSize<T>>();
-    }
-
-    template<BuiltinOp Type>
-    static constexpr auto MakeTuple()
-    {
-        return []<auto... Idx>(std::index_sequence<Idx...>){
-            return std::make_tuple(
-                std::make_tuple(MakeFunction<Type, std::tuple_element_t<Idx, TypeHolder>>()...),
-                std::make_tuple(MakeDerivative<Type, std::tuple_element_t<Idx, TypeHolder>>()...)
-            );
-        }(std::make_index_sequence<N>{});
-    }
-
     using TFun = decltype([]<auto... Idx>(std::index_sequence<Idx...>){
                     return std::make_tuple(Callable<std::tuple_element_t<Idx, TypeHolder>>{}...);
                  }(std::make_index_sequence<N>{}));

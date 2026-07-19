@@ -4,6 +4,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+
+#include "../operon_test.hpp"
+
 #include <numbers>
 #include <numeric>
 
@@ -130,7 +133,7 @@ TEST_CASE("RegisterFunction - user-defined symbol", "[interpreter]") // NOLINT(r
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
-        Operon::Node dynNode(Operon::NodeType::Dynamic, myHash);
+        Operon::Node dynNode(Operon::NodeType::Function, myHash);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
@@ -168,7 +171,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]") // NOLINT(re
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
-        Operon::Node dynNode(Operon::NodeType::Dynamic, h);
+        Operon::Node dynNode(Operon::NodeType::Function, h);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
@@ -187,7 +190,7 @@ TEST_CASE("RegisterUnary - scalar lambda adapter", "[interpreter]") // NOLINT(re
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
-        Operon::Node dynNode(Operon::NodeType::Dynamic, h);
+        Operon::Node dynNode(Operon::NodeType::Function, h);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
         dynNode.Value  = 3.0F; // non-unit weight
@@ -234,7 +237,7 @@ TEST_CASE("RegisterBinary - scalar lambda adapter", "[interpreter]")
         Operon::Node varY(Operon::NodeType::Variable);
         varY.HashValue = ds.GetVariable("y").value().Hash;
 
-        Operon::Node dynNode(Operon::NodeType::Dynamic, h);
+        Operon::Node dynNode(Operon::NodeType::Function, h);
         dynNode.Arity  = 2;
         dynNode.Length = 2;
 
@@ -325,7 +328,7 @@ TEST_CASE("Auto-diff fallback via Jet<T,1>", "[interpreter]") // NOLINT(readabil
     auto makeTree = [&](Operon::Hash h) -> Operon::Tree {
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
-        Operon::Node dynNode(Operon::NodeType::Dynamic, h);
+        Operon::Node dynNode(Operon::NodeType::Function, h);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
         return Operon::Tree({ varNode, dynNode });
@@ -391,7 +394,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
     Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
 
     SECTION("Name and Desc are registered on the node") {
-        Operon::Node const dynNode(Operon::NodeType::Dynamic, hash);
+        Operon::Node const dynNode(Operon::NodeType::Function, hash);
         CHECK(dynNode.Name() == "cube");
         CHECK(dynNode.Desc() == "cube function f(x) = x^3");
     }
@@ -406,7 +409,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
-        Operon::Node dynNode(Operon::NodeType::Dynamic, hash);
+        Operon::Node dynNode(Operon::NodeType::Function, hash);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 
@@ -424,7 +427,7 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         Operon::Node varNode(Operon::NodeType::Variable);
         varNode.HashValue = ds.GetVariable(x).value().Hash;
 
-        Operon::Node dynNode(Operon::NodeType::Dynamic, hash);
+        Operon::Node dynNode(Operon::NodeType::Function, hash);
         dynNode.Arity  = 1;
         dynNode.Length = 1;
 

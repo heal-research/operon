@@ -60,8 +60,7 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
     }
 
     SECTION("N-ary fmax") {
-        Operon::Node node(Operon::NodeType::Fmax);
-        node.Arity = 3;
+        auto node = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Fmax), 3);
         auto a = Operon::Node::Constant(2);
         auto b = Operon::Node::Constant(3);
         auto c = Operon::Node::Constant(4);
@@ -71,8 +70,7 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
     }
 
     SECTION("Unary sub (negation)") {
-        auto node = Operon::Node(Operon::NodeType::Sub);
-        node.Arity = 1;
+        auto node = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Sub), 1);
         auto tree = Operon::Tree({Operon::Node::Constant(2), node});
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(estimatedValues[0] == -2);

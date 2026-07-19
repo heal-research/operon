@@ -48,7 +48,7 @@ TEST_CASE("Intersection performance", "[performance]") // NOLINT(readability-fun
     std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
 
     PrimitiveSet grammar;
-    grammar.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log);
+    grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Exp | BuiltinOp::Log);
 
     std::vector<Tree> trees(n);
     BalancedTreeCreator btc(&grammar, ds.VariableHashes(), /* bias= */ 0.0, maxLength);

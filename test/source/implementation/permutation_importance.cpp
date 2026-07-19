@@ -3,6 +3,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "../operon_test.hpp"
+
 #include "operon/analyzers/gradient_importance.hpp"
 #include "operon/analyzers/permutation_importance.hpp"
 #include "operon/core/dataset.hpp"
@@ -124,7 +126,7 @@ TEST_CASE("PermutationImportance - duplicate variable occurrences collapse to on
 
     Node nX0a(NodeType::Variable); nX0a.HashValue = x0Var.Hash;
     Node nX0b(NodeType::Variable); nX0b.HashValue = x0Var.Hash;
-    Tree const tree = Tree({ nX0a, nX0b, Node(NodeType::Mul) }).UpdateNodes();
+    Tree const tree = Tree({ nX0a, nX0b, Util::MakeOp<BuiltinOp::Mul>() }).UpdateNodes();
 
     auto const range = Operon::Range(0, ds.Rows());
     Operon::RandomGenerator rng(1234);
@@ -147,7 +149,7 @@ TEST_CASE("GradientImportance - relevant variable outranks unused one", "[analyz
     // y_hat = x0 + 0*x1 - x1 appears in the tree (so it gets scored) but
     // contributes nothing, unlike the shuffle-based test above where an unused
     // variable would simply be absent from the result.
-    Tree const tree = Tree({ nX0, nX1, nConstZero, Node(NodeType::Mul), Node(NodeType::Add) }).UpdateNodes();
+    Tree const tree = Tree({ nX0, nX1, nConstZero, Util::MakeOp<BuiltinOp::Mul>(), Util::MakeOp<BuiltinOp::Add>() }).UpdateNodes();
 
     auto const range = Operon::Range(0, ds.Rows());
     auto const importance = Operon::GradientImportance(tree, ds, range);

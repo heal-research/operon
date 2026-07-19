@@ -34,9 +34,9 @@ class PrimitiveSet {
     }
 
 public:
-    static constexpr PrimitiveSetConfig Arithmetic = NodeType::Constant | NodeType::Variable | NodeType::Add | NodeType::Sub | NodeType::Mul | NodeType::Div;
-    static constexpr PrimitiveSetConfig TypeCoherent = Arithmetic | NodeType::Pow | NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Square;
-    static constexpr PrimitiveSetConfig Full = TypeCoherent | NodeType::Aq | NodeType::Tan | NodeType::Tanh | NodeType::Sqrt | NodeType::Cbrt;
+    static constexpr PrimitiveSetConfig Arithmetic = NodeType::Constant | NodeType::Variable | BuiltinOp::Add | BuiltinOp::Sub | BuiltinOp::Mul | BuiltinOp::Div;
+    static constexpr PrimitiveSetConfig TypeCoherent = Arithmetic | BuiltinOp::Pow | BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Square;
+    static constexpr PrimitiveSetConfig Full = TypeCoherent | BuiltinOp::Aq | BuiltinOp::Tan | BuiltinOp::Tanh | BuiltinOp::Sqrt | BuiltinOp::Cbrt;
 
 
     PrimitiveSet() = default;
@@ -58,11 +58,7 @@ public:
     // arity must match what the registered callable in the DispatchTable expects.
     auto AddFunction(Operon::Hash hash, uint16_t arity, size_t frequency = 1) -> bool
     {
-        Node node(NodeType::Dynamic, hash);
-        node.Arity    = arity;
-        node.Length   = arity;
-        node.Optimize = false; // function nodes are never coefficient-optimized
-        return AddPrimitive(node, frequency, arity, arity);
+        return AddPrimitive(Node::Function(hash, arity), frequency, arity, arity);
     }
 
     void RemovePrimitive(Operon::Node node) { pset_.erase(node.HashValue); }
@@ -88,7 +84,7 @@ public:
         for (auto [k, v] : pset_) {
             auto const& [node, freq, min_arity, max_arity] = v;
             if (node.IsEnabled && freq > 0) {
-                conf.Set(static_cast<std::size_t>(node.Type));
+                conf.Set(ConfigIndex(node.Type, node.HashValue));
             }
         }
         return conf;
