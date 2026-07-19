@@ -272,6 +272,21 @@ struct Node {
     // FunctionInfo in scope with the arity known, so a mandatory hash-map
     // probe here would add cost to code that's currently a couple of integer
     // assignments.
+    //
+    // Scope note: only the core interpreter's numeric dispatch chain
+    // (DispatchTable/StandardLibrary, retargeted onto BuiltinOp/hash in this
+    // PR) treats a Function-tagged built-in exactly like the equivalent
+    // Node(NodeType::X). Several other subsystems still switch on node.Type
+    // rather than HashValue and have no `case NodeType::Dynamic` for a
+    // built-in op: interval_evaluator.hpp, affine_evaluator.hpp,
+    // tree_diff.cpp's symbolic differentiation, and jit_compiler.cpp all
+    // fall through to their generic "unhandled type" default (error, zero
+    // gradient, or a zero-valued codegen stub respectively) for such a node
+    // — same as they already do for any genuine Dynamic/user-defined
+    // function today, since none of them are BuiltinOp-hash-aware yet. Do
+    // not use this factory to build a tree destined for those paths until
+    // their own retarget PRs land; it's currently safe only for the
+    // interpreter's Evaluate() path and this PR's own tests.
     static auto Function(Operon::Hash hash, uint16_t arity) noexcept
     {
         Node node(NodeType::Dynamic, hash);
