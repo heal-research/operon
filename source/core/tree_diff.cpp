@@ -8,6 +8,7 @@
 #include <limits>
 
 #include "operon/core/contracts.hpp"
+#include "operon/core/hash_registry.hpp"
 #include "operon/core/subtree.hpp"
 
 namespace Operon {
@@ -111,6 +112,146 @@ auto AddTerms(Nodes& dag, Memo& memo, Hashes& h,
         result = MakeBinary(dag, memo, h, BuiltinOp::Add, result, terms[k]);
     }
     return result;
+}
+
+// Registry of symbolic derivative rules for unary functions, keyed by
+// Node::HashValue. A global, function-local-static singleton (mirroring
+// Node::RegisterName/Descriptions() in node.cpp) so BuildJacobianDag/
+// BuildHessianDag's public signature doesn't need a registry parameter
+// threaded through every call site. Populated once with the built-in rules
+// (RegisterBuiltinSymbolicDerivs, below) plus whatever user-defined rules
+// Operon::RegisterUnarySymbolicDeriv() adds. All writes happen at setup
+// time, before any parallel evaluation starts reading via Deriv() from
+// worker threads — the same read-only-after-setup contract DispatchTable's
+// own (non-locking) Operon::Map already relies on, so no sharded-lock map
+// type is needed here.
+using SymbolicDerivRegistry = HashRegistry<UnarySymbolicDerivRule>;
+
+auto SymbolicDerivRules() -> SymbolicDerivRegistry&
+{
+    static SymbolicDerivRegistry registry;
+    return registry;
+}
+
+// Register the built-in unary derivative rules exactly once. Lives here
+// (rather than in StandardLibrary, which has no visibility into this TU's
+// private hash-consing helpers MakeUnary/MakeBinary/GetConst) mirroring
+// StandardLibrary::RegisterNames()'s lazy-static-lambda-once pattern.
+// Every rule below is lifted verbatim out of Deriv()'s old unary switch;
+// Abs/Sqrtabs/Floor/Ceil are intentionally left unregistered (non-smooth or
+// not-yet-implemented), degrading to Zero exactly like today's `default:`.
+void RegisterBuiltinSymbolicDerivs()
+{
+    static auto const registered = [] {
+        auto& reg = SymbolicDerivRules();
+
+        reg.Register(Operon::Hash(BuiltinOp::Exp),
+            [](Nodes& /*dag*/, Memo& /*memo*/, Hashes& /*h*/, std::size_t i, std::size_t /*j*/) -> std::size_t {
+                return i; // d exp(j)/dj = exp(j) = result
+            });
+
+        UnarySymbolicDerivRule logRule =
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                auto c1 = GetConst(dag, memo, h, Scalar{1});
+                return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, j);
+            };
+        reg.Register(Operon::Hash(BuiltinOp::Log), logRule);
+        reg.Register(Operon::Hash(BuiltinOp::Logabs), logRule);
+
+        reg.Register(Operon::Hash(BuiltinOp::Log1p),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                auto c1 = GetConst(dag, memo, h, Scalar{1});
+                auto onePlusJ = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, j);
+                return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, onePlusJ);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Sin),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                return MakeUnary(dag, memo, h, BuiltinOp::Cos, j);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Cos),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                auto sinJ = MakeUnary(dag, memo, h, BuiltinOp::Sin, j);
+                auto neg1 = GetConst(dag, memo, h, Scalar{-1});
+                return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, sinJ);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Tan),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t i, std::size_t /*j*/) -> std::size_t {
+                auto c1  = GetConst(dag, memo, h, Scalar{1});
+                auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, i);
+                return MakeBinary(dag, memo, h, BuiltinOp::Add, c1, sqI);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Acos),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                auto c1    = GetConst(dag, memo, h, Scalar{1});
+                auto sqJ   = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
+                auto denom = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqJ);
+                auto sqD   = MakeUnary(dag, memo, h, BuiltinOp::Sqrt, denom);
+                auto recip = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, sqD);
+                auto neg1  = GetConst(dag, memo, h, Scalar{-1});
+                return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, recip);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Asin),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                auto c1    = GetConst(dag, memo, h, Scalar{1});
+                auto sqJ   = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
+                auto denom = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqJ);
+                auto sqD   = MakeUnary(dag, memo, h, BuiltinOp::Sqrt, denom);
+                return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, sqD);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Atan),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                auto c1    = GetConst(dag, memo, h, Scalar{1});
+                auto sqJ   = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
+                auto denom = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, sqJ);
+                return MakeBinary(dag, memo, h, BuiltinOp::Div, c1, denom);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Sinh),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                return MakeUnary(dag, memo, h, BuiltinOp::Cosh, j);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Cosh),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                return MakeUnary(dag, memo, h, BuiltinOp::Sinh, j);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Tanh),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t i, std::size_t /*j*/) -> std::size_t {
+                auto c1  = GetConst(dag, memo, h, Scalar{1});
+                auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, i);
+                return MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqI);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Sqrt),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t i, std::size_t j) -> std::size_t {
+                auto c2   = GetConst(dag, memo, h, Scalar{2});
+                auto twoJ = MakeBinary(dag, memo, h, BuiltinOp::Mul, c2, j);
+                return MakeBinary(dag, memo, h, BuiltinOp::Div, i, twoJ);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Cbrt),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t i, std::size_t j) -> std::size_t {
+                auto c3     = GetConst(dag, memo, h, Scalar{3});
+                auto threeJ = MakeBinary(dag, memo, h, BuiltinOp::Mul, c3, j);
+                return MakeBinary(dag, memo, h, BuiltinOp::Div, i, threeJ);
+            });
+
+        reg.Register(Operon::Hash(BuiltinOp::Square),
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
+                auto c2 = GetConst(dag, memo, h, Scalar{2});
+                return MakeBinary(dag, memo, h, BuiltinOp::Mul, c2, j);
+            });
+
+        return true;
+    }();
+    static_cast<void>(registered);
 }
 
 // Forward declaration for mutual recursion.
@@ -295,131 +436,14 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         auto dj = Deriv(orig, dag, memo, h, j, targetC);
         if (dj == Zero) { return Zero; }
 
-        std::size_t fp = Zero; // symbolic f'(j)
-
-        switch (n.HashValue) {
-        case Operon::Hash(BuiltinOp::Exp):
-            // d exp(j)/dj = exp(j) = result
-            fp = i;
-            break;
-
-        case Operon::Hash(BuiltinOp::Log):
-        case Operon::Hash(BuiltinOp::Logabs): {
-            // d log(j)/dj = 1/j
-            auto c1 = GetConst(dag, memo, h, Scalar{1});
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, j);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Log1p): {
-            // d log(1+j)/dj = 1/(1+j)
-            auto c1 = GetConst(dag, memo, h, Scalar{1});
-            auto onePlusJ = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, j);
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, onePlusJ);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Sin):
-            // d sin(j)/dj = cos(j)
-            fp = MakeUnary(dag, memo, h, BuiltinOp::Cos, j);
-            break;
-
-        case Operon::Hash(BuiltinOp::Cos): {
-            // d cos(j)/dj = -sin(j)
-            auto sinJ = MakeUnary(dag, memo, h, BuiltinOp::Sin, j);
-            auto neg1  = GetConst(dag, memo, h, Scalar{-1});
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, sinJ);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Tan): {
-            // d tan(j)/dj = 1 + tan^2(j) = 1 + result^2
-            auto c1   = GetConst(dag, memo, h, Scalar{1});
-            auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, i);
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, sqI);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Acos): {
-            // d acos(j)/dj = -1/sqrt(1 - j^2)
-            auto c1     = GetConst(dag, memo, h, Scalar{1});
-            auto sqJ   = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
-            auto denom  = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqJ);
-            auto sqD   = MakeUnary(dag, memo, h, BuiltinOp::Sqrt, denom);
-            auto recip  = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, sqD);
-            auto neg1   = GetConst(dag, memo, h, Scalar{-1});
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, recip);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Asin): {
-            // d asin(j)/dj = 1/sqrt(1 - j^2)
-            auto c1    = GetConst(dag, memo, h, Scalar{1});
-            auto sqJ  = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
-            auto denom = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqJ);
-            auto sqD  = MakeUnary(dag, memo, h, BuiltinOp::Sqrt, denom);
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, sqD);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Atan): {
-            // d atan(j)/dj = 1/(1 + j^2)
-            auto c1    = GetConst(dag, memo, h, Scalar{1});
-            auto sqJ  = MakeUnary(dag, memo, h, BuiltinOp::Square, j);
-            auto denom = MakeBinary(dag, memo, h, BuiltinOp::Add, c1, sqJ);
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, c1, denom);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Sinh):
-            // d sinh(j)/dj = cosh(j)
-            fp = MakeUnary(dag, memo, h, BuiltinOp::Cosh, j);
-            break;
-
-        case Operon::Hash(BuiltinOp::Cosh):
-            // d cosh(j)/dj = sinh(j)
-            fp = MakeUnary(dag, memo, h, BuiltinOp::Sinh, j);
-            break;
-
-        case Operon::Hash(BuiltinOp::Tanh): {
-            // d tanh(j)/dj = 1 - tanh^2(j) = 1 - result^2
-            auto c1   = GetConst(dag, memo, h, Scalar{1});
-            auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, i);
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqI);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Sqrt): {
-            // d sqrt(j)/dj = result / (2 * j)
-            auto c2   = GetConst(dag, memo, h, Scalar{2});
-            auto twoJ = MakeBinary(dag, memo, h, BuiltinOp::Mul, c2, j);
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, i, twoJ);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Cbrt): {
-            // d cbrt(j)/dj = result / (3 * j)
-            auto c3    = GetConst(dag, memo, h, Scalar{3});
-            auto threeJ = MakeBinary(dag, memo, h, BuiltinOp::Mul, c3, j);
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Div, i, threeJ);
-            break;
-        }
-
-        case Operon::Hash(BuiltinOp::Square): {
-            // d j^2/dj = 2 * j
-            auto c2 = GetConst(dag, memo, h, Scalar{2});
-            fp = MakeBinary(dag, memo, h, BuiltinOp::Mul, c2, j);
-            break;
-        }
-
-        // Non-smooth or not-yet-implemented: return zero gradient.
-        case Operon::Hash(BuiltinOp::Abs):
-        case Operon::Hash(BuiltinOp::Sqrtabs):
-        case Operon::Hash(BuiltinOp::Floor):
-        case Operon::Hash(BuiltinOp::Ceil):
-        default:
-            return Zero;
-        }
+        // Registry lookup replaces the old hardcoded switch (see
+        // RegisterBuiltinSymbolicDerivs above for the ~15 built-in rules,
+        // migrated verbatim). A miss — including Abs/Sqrtabs/Floor/Ceil,
+        // deliberately left unregistered — degrades to Zero exactly like
+        // today's `default: return Zero;` did.
+        auto const* rule = SymbolicDerivRules().TryGet(n.HashValue);
+        if (rule == nullptr) { return Zero; }
+        auto fp = (*rule)(dag, memo, h, i, j); // symbolic f'(j)
 
         if (fp == Zero) { return Zero; }
         return MakeBinary(dag, memo, h, BuiltinOp::Mul, fp, dj);
@@ -438,6 +462,8 @@ auto DifferentiateFirstOrder(
     Operon::Vector<std::size_t>& roots, std::size_t reserveFactor
 ) -> Operon::Vector<std::size_t>
 {
+    RegisterBuiltinSymbolicDerivs();
+
     auto const& orig = tree.Nodes();
     auto const n     = orig.size();
 
@@ -465,6 +491,17 @@ auto DifferentiateFirstOrder(
 }
 
 } // anonymous namespace
+
+void RegisterUnarySymbolicDeriv(Operon::Hash hash, UnarySymbolicDerivRule rule)
+{
+    SymbolicDerivRules().Register(hash, std::move(rule));
+}
+
+auto HasUnarySymbolicDeriv(Operon::Hash hash) -> bool
+{
+    RegisterBuiltinSymbolicDerivs();
+    return SymbolicDerivRules().Contains(hash);
+}
 
 auto BuildJacobianDag(Tree const& tree) -> JacobianDag {
     JacobianDag dag;
