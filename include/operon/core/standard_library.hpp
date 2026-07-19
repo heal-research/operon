@@ -122,17 +122,17 @@ private:
     template<typename... Ts, std::size_t... I>
     static void RegisterAll(DispatchTable<Ts...>& dt, std::index_sequence<I...> /*unused*/)
     {
-        (RegisterOne<static_cast<NodeType>(I)>(dt), ...);
+        (RegisterOne<static_cast<BuiltinOp>(I)>(dt), ...);
     }
 
-    template<NodeType Type, typename... Ts>
+    template<BuiltinOp Type, typename... Ts>
     static void RegisterOne(DispatchTable<Ts...>& dt)
     {
-        auto const hash = Node(Type).HashValue;
+        auto const hash = static_cast<Operon::Hash>(Type);
         (RegisterForType<Type, Ts>(dt, hash), ...);
     }
 
-    template<NodeType Type, typename T, typename... Ts>
+    template<BuiltinOp Type, typename T, typename... Ts>
     requires Operon::Concepts::Arithmetic<T>
     static void RegisterForType(DispatchTable<Ts...>& dt, Operon::Hash hash)
     {
@@ -143,7 +143,7 @@ private:
             Dispatch::MakeDiffCall<Type, T, S>());
     }
 
-    template<NodeType Type, typename T, typename... Ts>
+    template<BuiltinOp Type, typename T, typename... Ts>
     requires (!Operon::Concepts::Arithmetic<T>)
     static void RegisterForType(DispatchTable<Ts...>& /*dt*/, Operon::Hash /*hash*/)
     {
