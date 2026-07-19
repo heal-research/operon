@@ -111,11 +111,11 @@ TEST_CASE("Autodiff forward vs reverse consistency", "[autodiff]")
     constexpr auto epsilon{1e-4F};
 
     // unary
-    pset.SetConfig(NodeType::Exp | NodeType::Log | NodeType::Sin | NodeType::Cos | NodeType::Sqrt | NodeType::Tanh | NodeType::Constant);
+    pset.SetConfig(BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Sqrt | BuiltinOp::Tanh | NodeType::Constant);
     auto trees = generateTrees(pset, n / 2, 2);
 
     // binary
-    pset.SetConfig(NodeType::Div | NodeType::Aq | NodeType::Pow | NodeType::Constant);
+    pset.SetConfig(BuiltinOp::Div | BuiltinOp::Aq | BuiltinOp::Pow | NodeType::Constant);
     auto tmp = generateTrees(pset, n / 2, 3);
     std::ranges::copy(tmp, std::back_inserter(trees));
 
@@ -199,8 +199,7 @@ TEST_CASE("Autodiff variable-wise derivative", "[autodiff]")
         v.HashValue = v.CalculatedHashValue = xHash;
         v.Value = 1.0F;
         Operon::Node ref = Operon::Node::Ref(0);
-        Operon::Node mul(Operon::NodeType::Mul);
-        mul.Length = 2;
+        auto mul = Util::MakeOp<Operon::BuiltinOp::Mul>();
         nodes.push_back(v);
         nodes.push_back(ref);
         nodes.push_back(mul);

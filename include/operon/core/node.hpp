@@ -14,58 +14,22 @@
 
 namespace Operon {
 enum class NodeType : uint8_t {
-    // n-ary symbols
-    Add      = 0,
-    Mul,
-    Sub,
-    Div,
-    Fmin,
-    Fmax,
-
-    // binary symbols
-    Aq,
-    Pow,
-    Powabs,
-
-    // unary symbols
-    Abs,
-    Acos,
-    Asin,
-    Atan,
-    Cbrt,
-    Ceil,
-    Cos,
-    Cosh,
-    Exp,
-    Floor,
-    Log,
-    Logabs,
-    Log1p,
-    Sin,
-    Sinh,
-    Sqrt,
-    Sqrtabs,
-    Tan,
-    Tanh,
-    Square,
-
-    // nullary symbols (dynamic can be anything)
-    Dynamic,
     Constant,
     Variable,
-    Ref       // structural sharing: a backward reference to another node by index
+    Ref,      // structural sharing: a backward reference to another node by index
+    Function  // any named operation (built-in math op or user-registered), identified by HashValue
 };
 
-// The built-in math-op subset of NodeType (Add..Square above, i.e. NodeType
-// minus the four terminal categories Dynamic/Constant/Variable/Ref), demoted
-// to a source of stable compile-time Operon::Hash constants rather than a
-// NodeType-typed value. A built-in Node's HashValue equals
-// static_cast<Hash>(its NodeType) (see Node's single-arg constructor below),
-// so these values are chosen to match NodeType's ordinals exactly — a
-// BuiltinOp::X value and the corresponding NodeType::X share the same
-// underlying number, letting call sites switch on Node::HashValue instead of
-// Node::Type without changing behavior. Carries no arity/category semantics
-// of its own; see IsNaryOp/IsBinaryOp/IsUnaryOp below for that.
+// Stable compile-time Operon::Hash constants for every built-in math op.
+// A `Function`-typed Node representing a built-in op has HashValue equal to
+// static_cast<Hash>(the matching BuiltinOp) — small sequential integers,
+// chosen deliberately (not derived from anything else) so call sites can
+// `switch (n.HashValue) { case Hash(BuiltinOp::Add): ... }` with ordinary
+// compile-time case labels instead of a runtime map lookup. Carries no
+// arity/category semantics of its own; see IsNaryOp/IsBinaryOp/IsUnaryOp
+// below for that. Node::Function(hash, arity) is how a Node gets one of
+// these values as its HashValue — there is no longer a NodeType enumerator
+// per op, so nothing derives a BuiltinOp value from a Node's Type.
 enum class BuiltinOp : Operon::Hash {
     // n-ary symbols
     Add = 0,
@@ -103,69 +67,24 @@ enum class BuiltinOp : Operon::Hash {
     Square
 };
 
-// Arity and category (IsNary/IsBinary/IsUnary/IsNullary below, and the arity
-// inference in Node::Node) are derived from enumerator *position* in the
-// NodeType enum above, not from any per-type tag. These asserts pin the
-// ordering invariants that inference relies on, so a future reorder of the
-// enum is a compile error rather than a silent arity miscompute.
-static_assert(NodeType::Fmax < NodeType::Aq, "n-ary/binary boundary: Fmax must be the last n-ary symbol");
-static_assert(NodeType::Powabs < NodeType::Abs, "binary/unary boundary: Powabs must be the last binary symbol");
-static_assert(NodeType::Square < NodeType::Dynamic, "unary/nullary boundary: Square must be the last unary symbol");
-
-// BuiltinOp's ordinals are chosen to match NodeType's math-op subset above.
-// Pin every entry individually, not just the last one — a reorder that swaps
-// two *interior* entries (leaving the enum's size and last value unchanged)
-// would slip past a boundary-only check but still silently break the
-// HashValue equivalence for those two ops.
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Add) == static_cast<Operon::Hash>(NodeType::Add));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Mul) == static_cast<Operon::Hash>(NodeType::Mul));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Sub) == static_cast<Operon::Hash>(NodeType::Sub));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Div) == static_cast<Operon::Hash>(NodeType::Div));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Fmin) == static_cast<Operon::Hash>(NodeType::Fmin));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Fmax) == static_cast<Operon::Hash>(NodeType::Fmax));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Aq) == static_cast<Operon::Hash>(NodeType::Aq));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Pow) == static_cast<Operon::Hash>(NodeType::Pow));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Powabs) == static_cast<Operon::Hash>(NodeType::Powabs));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Abs) == static_cast<Operon::Hash>(NodeType::Abs));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Acos) == static_cast<Operon::Hash>(NodeType::Acos));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Asin) == static_cast<Operon::Hash>(NodeType::Asin));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Atan) == static_cast<Operon::Hash>(NodeType::Atan));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Cbrt) == static_cast<Operon::Hash>(NodeType::Cbrt));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Ceil) == static_cast<Operon::Hash>(NodeType::Ceil));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Cos) == static_cast<Operon::Hash>(NodeType::Cos));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Cosh) == static_cast<Operon::Hash>(NodeType::Cosh));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Exp) == static_cast<Operon::Hash>(NodeType::Exp));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Floor) == static_cast<Operon::Hash>(NodeType::Floor));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Log) == static_cast<Operon::Hash>(NodeType::Log));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Logabs) == static_cast<Operon::Hash>(NodeType::Logabs));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Log1p) == static_cast<Operon::Hash>(NodeType::Log1p));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Sin) == static_cast<Operon::Hash>(NodeType::Sin));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Sinh) == static_cast<Operon::Hash>(NodeType::Sinh));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Sqrt) == static_cast<Operon::Hash>(NodeType::Sqrt));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Sqrtabs) == static_cast<Operon::Hash>(NodeType::Sqrtabs));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Tan) == static_cast<Operon::Hash>(NodeType::Tan));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Tanh) == static_cast<Operon::Hash>(NodeType::Tanh));
-static_assert(static_cast<Operon::Hash>(BuiltinOp::Square) == static_cast<Operon::Hash>(NodeType::Square));
-
 // One past BuiltinOp's last value — the built-in hash range is
-// [0, BuiltinOpCount). Not used anywhere yet in this PR (the actual
-// reserved-hash-range check, symbol_library.hpp's ValidateUserHash, still
-// guards [0, NodeTypes::Count) unchanged); it exists for the later PR that
-// redesigns PrimitiveSetConfig around BuiltinOp instead of NodeType.
+// [0, BuiltinOpCount). Anything reserving "the range built-in ops occupy"
+// (see symbol_library.hpp's ValidateUserHash) should use this, not
+// NodeTypes::Count — the two are unrelated now that NodeType no longer has
+// one enumerator per math op.
 static auto constexpr BuiltinOpCount = static_cast<Operon::Hash>(BuiltinOp::Square) + 1;
 
 // Sentinel "not a real op" value (mirrors NodeTypes::NoType), distinguishable
-// from every genuine BuiltinOp value. Used below as the sentinel default for
-// Func<T,...>/Diff<T,...>'s primary ("missing this specialization")
-// templates, mirroring NodeTypes::NoType's role for the NodeType-keyed
-// versions.
+// from every genuine BuiltinOp value — used as a default template argument
+// where "no specific op" needs a nameable type, e.g. Dispatch::Func/Diff's
+// primary (unspecialized, "missing this specialization") templates.
 static auto constexpr NoBuiltinOp = static_cast<BuiltinOp>(~Operon::Hash{0});
 
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 
 struct NodeTypes {
     // total number of distinct node types
-    static auto constexpr Count = static_cast<std::size_t>(NodeType::Ref) + 1UL;
+    static auto constexpr Count = static_cast<std::size_t>(NodeType::Function) + 1UL;
 
     // returns the index of the given type in the NodeType enum
     static constexpr auto GetIndex(NodeType type) -> size_t
@@ -176,30 +95,60 @@ struct NodeTypes {
     static auto constexpr NoType{static_cast<NodeType>(0xFFU)};
 };
 
-// A bitset over all node types, used to represent primitive set configurations.
-using PrimitiveSetConfig = Bitset<NodeTypes::Count>;
+// A bitset over "which built-in ops / terminal categories are enabled",
+// used by PrimitiveSet::SetConfig. [0, BuiltinOpCount) map to BuiltinOp
+// ordinals directly; the next NodeTypes::Count (4) slots map to
+// Constant/Variable/Ref and a shared "any Function present" slot — the
+// latter mirrors the pre-collapse Dynamic slot, since individual
+// user-registered functions (whose HashValue lands outside
+// [0, BuiltinOpCount)) were never individually representable in this
+// bitset either; only PrimitiveSet's own per-hash Enable/Disable does that.
+// Same total bit count as the pre-collapse 33-value NodeType bitset
+// (BuiltinOpCount=29 + NodeTypes::Count=4), just re-derived from two
+// smaller enums instead of one that no longer exists.
+using PrimitiveSetConfig = Bitset<BuiltinOpCount + NodeTypes::Count>;
 
-// Build a PrimitiveSetConfig from two individual NodeType values.
-constexpr auto operator|(NodeType lhs, NodeType rhs) -> PrimitiveSetConfig
+constexpr auto ToConfig(BuiltinOp op) -> PrimitiveSetConfig
 {
     PrimitiveSetConfig c{};
-    c.Set(NodeTypes::GetIndex(lhs));
-    c.Set(NodeTypes::GetIndex(rhs));
+    c.Set(static_cast<std::size_t>(op));
     return c;
 }
 
-// Extend a PrimitiveSetConfig with one more NodeType.
-constexpr auto operator|(PrimitiveSetConfig lhs, NodeType rhs) -> PrimitiveSetConfig
+constexpr auto ToConfig(NodeType type) -> PrimitiveSetConfig
 {
-    lhs.Set(NodeTypes::GetIndex(rhs));
-    return lhs;
+    PrimitiveSetConfig c{};
+    c.Set(BuiltinOpCount + NodeTypes::GetIndex(type));
+    return c;
 }
 
-constexpr auto operator|=(PrimitiveSetConfig& lhs, NodeType rhs) -> PrimitiveSetConfig&
+// The PrimitiveSetConfig bit index for a given (Type, HashValue) pair, e.g.
+// from an existing Node: a built-in op (Type == Function, HashValue in
+// [0, BuiltinOpCount)) maps to that BuiltinOp's own index; any other
+// Function node (a user-registered function) maps to the shared "any
+// Function present" slot (see the PrimitiveSetConfig comment above);
+// Constant/Variable/Ref map to their own slot.
+constexpr auto ConfigIndex(NodeType type, Operon::Hash hash) -> std::size_t
 {
-    lhs.Set(NodeTypes::GetIndex(rhs));
-    return lhs;
+    if (type == NodeType::Function && hash < BuiltinOpCount) {
+        return hash;
+    }
+    return BuiltinOpCount + NodeTypes::GetIndex(type);
 }
+
+// Combine a BuiltinOp/NodeType (any order/mix) into a PrimitiveSetConfig —
+// e.g. `NodeType::Constant | NodeType::Variable | BuiltinOp::Add | BuiltinOp::Sub`.
+constexpr auto operator|(BuiltinOp lhs, BuiltinOp rhs) -> PrimitiveSetConfig { return ToConfig(lhs) | ToConfig(rhs); }
+constexpr auto operator|(NodeType lhs, NodeType rhs) -> PrimitiveSetConfig { return ToConfig(lhs) | ToConfig(rhs); }
+constexpr auto operator|(NodeType lhs, BuiltinOp rhs) -> PrimitiveSetConfig { return ToConfig(lhs) | ToConfig(rhs); }
+constexpr auto operator|(BuiltinOp lhs, NodeType rhs) -> PrimitiveSetConfig { return ToConfig(lhs) | ToConfig(rhs); }
+
+// Extend a PrimitiveSetConfig with one more BuiltinOp/NodeType.
+constexpr auto operator|(PrimitiveSetConfig lhs, BuiltinOp rhs) -> PrimitiveSetConfig { return lhs | ToConfig(rhs); }
+constexpr auto operator|(PrimitiveSetConfig lhs, NodeType rhs) -> PrimitiveSetConfig { return lhs | ToConfig(rhs); }
+
+constexpr auto operator|=(PrimitiveSetConfig& lhs, BuiltinOp rhs) -> PrimitiveSetConfig& { lhs = lhs | rhs; return lhs; }
+constexpr auto operator|=(PrimitiveSetConfig& lhs, NodeType rhs) -> PrimitiveSetConfig& { lhs = lhs | rhs; return lhs; }
 
 struct Node {
     Operon::Hash HashValue; // needs to be unique for each node type
@@ -217,8 +166,34 @@ struct Node {
 
     Node() = default;
 
+    // Fixed sentinel hashes for the terminal categories' default (no
+    // explicit hash given) construction. Deliberately arbitrary constants
+    // far outside BuiltinOpCount's occupied range, rather than
+    // static_cast<Hash>(type) (what pre-collapse code did): basing a
+    // terminal's default hash on its own small NodeType ordinal would make
+    // "terminal hashes never collide with a built-in op's HashValue"
+    // depend on remembering to keep NodeType's terminal enumerators
+    // numbered after every BuiltinOp value — true by construction once,
+    // silently breakable by a later edit to either enum. These values have
+    // no such dependency: they're simply nowhere near [0, BuiltinOpCount).
+    // Function has no meaningful default — every real Function node is
+    // built via Node::Function(hash, arity) with a caller-supplied hash —
+    // but it still gets a distinct, non-colliding sentinel so the plain
+    // Node(NodeType::Function) path is inert rather than dangerous if
+    // something calls it by mistake.
+    static auto constexpr DefaultHash(NodeType type) noexcept -> Operon::Hash
+    {
+        switch (type) {
+        case NodeType::Constant: return Operon::Hash{0x00000000434F4E53ULL}; // "CONS"
+        case NodeType::Variable: return Operon::Hash{0x0000000056415249ULL}; // "VARI"
+        case NodeType::Ref:      return Operon::Hash{0x0000000000524546ULL}; // "REF"
+        case NodeType::Function: return Operon::Hash{0x0000000046554E43ULL}; // "FUNC"
+        }
+        return Operon::Hash{0};
+    }
+
     explicit Node(NodeType type) noexcept
-        : Node(type, static_cast<Operon::Hash>(type))
+        : Node(type, DefaultHash(type))
     {
     }
 
@@ -233,14 +208,6 @@ struct Node {
         , Type(type)
         , RefTo(0)
     {
-        if (Type < NodeType::Abs) // Add, Mul, Sub, Div, Fmin, Fmax, Aq, Pow, Powabs
-        {
-            Arity = 2;
-        } else if (Type < NodeType::Dynamic) // Abs through Square (unary)
-        {
-            Arity = 1;
-        }
-        Length = Arity;
         IsEnabled = true;
         Optimize = IsLeaf() && !IsRef();
         Value = 1.;
@@ -262,42 +229,24 @@ struct Node {
 
     // The generalized "any named operation" factory: a built-in math op
     // (hash = static_cast<Hash>(some BuiltinOp)) or a user-registered
-    // function (hash = a name-derived hash outside symbol_library.hpp's
-    // ValidateUserHash-reserved [0, NodeTypes::Count) range) are both
-    // represented as a Dynamic-tagged Node here — this PR doesn't touch
-    // NodeType's cardinality, so there's no dedicated Function category
-    // yet; that's introduced by the later PR that actually collapses the
-    // enum. Arity is caller-supplied rather than looked up from a registry:
-    // Node construction is the hottest path in the library (tree creators,
-    // crossover, mutation, Simplify's constant-folding), and every call site
-    // that constructs one of these nodes already has a PrimitiveSet/
-    // FunctionInfo in scope with the arity known, so a mandatory hash-map
-    // probe here would add cost to code that's currently a couple of integer
-    // assignments.
-    //
-    // Scope note: only the core interpreter's numeric dispatch chain
-    // (DispatchTable/StandardLibrary, retargeted onto BuiltinOp/hash in this
-    // PR) treats a Function-tagged built-in exactly like the equivalent
-    // Node(NodeType::X). Several other subsystems still switch on node.Type
-    // rather than HashValue and have no `case NodeType::Dynamic` for a
-    // built-in op: interval_evaluator.hpp and affine_evaluator.hpp both
-    // throw on their generic "unhandled type" default; tree_diff.cpp's
-    // symbolic differentiation returns a zero gradient; jit_compiler.cpp
-    // codegens a zero-valued stub — same as they already do for any genuine
-    // Dynamic/user-defined function today, since none of them are
-    // BuiltinOp-hash-aware yet. Do not use this factory to build a tree
-    // destined for those paths until their own retarget PRs land; it's
-    // currently safe only for the interpreter's Evaluate() path and this
-    // PR's own tests.
+    // function (hash = a name-derived hash outside BuiltinOpCount's range,
+    // see symbol_library.hpp's ValidateUserHash) are both just Function
+    // nodes now, distinguished only by HashValue. Arity is caller-supplied
+    // rather than looked up from a registry: Node construction is the
+    // hottest path in the library (tree creators, crossover, mutation,
+    // Simplify's constant-folding), and every call site already has a
+    // PrimitiveSet/FunctionInfo in scope with the arity known, so a
+    // mandatory hash-map probe here would add cost to code that's
+    // currently a couple of integer assignments.
     static auto Function(Operon::Hash hash, uint16_t arity) noexcept
     {
-        Node node(NodeType::Dynamic, hash);
+        Node node(NodeType::Function, hash);
         node.Arity  = arity;
         node.Length = arity;
-        // The two-arg ctor computes Optimize from Arity=0 (leaf) before this
-        // factory overrides Arity to the real value above - recompute
-        // explicitly rather than leave a stale true. These nodes (arity >=
-        // 1, always) are never coefficient-optimized regardless.
+        // The two-arg ctor computes Optimize from Arity=0 (leaf) before
+        // this factory overrides Arity to the real value above - recompute
+        // explicitly rather than leave a stale true. Function nodes (arity
+        // >= 1, always) are never coefficient-optimized regardless.
         node.Optimize = false;
         return node;
     }
@@ -343,62 +292,66 @@ struct Node {
     }
 
     [[nodiscard]] auto IsLeaf() const noexcept -> bool { return Arity == 0; }
-    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>(); }
+    [[nodiscard]] auto IsCommutative() const noexcept -> bool { return IsOp<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>(); }
 
     template <NodeType... T>
     [[nodiscard]] auto Is() const -> bool { return ((Type == T) || ...); }
 
-    // BuiltinOp overload: compares HashValue instead of Type. Equivalent to
-    // the NodeType overload above for any node constructed the ordinary way
-    // (Node(NodeType) sets HashValue = static_cast<Hash>(Type)), but usable
-    // where only a hash is in scope (e.g. dispatch keyed by HashValue). Not a
-    // strict no-op vs. the NodeType overload in one theoretical edge case: a
-    // Variable node's HashValue is an unconstrained Hasher{}(name) (unlike
-    // registered functions', which ValidateUserHash keeps out of the
-    // built-in ordinal range), so a name whose hash happens to collide into
+    // BuiltinOp counterpart of Is<NodeType...>() above: compares HashValue
+    // instead of Type. Equivalent to the NodeType overload for any node
+    // constructed the ordinary way (Node(NodeType) sets
+    // HashValue = static_cast<Hash>(Type)), but usable where only a hash is
+    // in scope (e.g. dispatch keyed by HashValue). Not a strict no-op vs.
+    // the NodeType overload in one theoretical edge case: a Variable node's
+    // HashValue is an unconstrained Hasher{}(name) (unlike registered
+    // functions', which ValidateUserHash keeps out of the built-in ordinal
+    // range), so a name whose hash happens to collide into
     // [0, NodeTypes::Count) would make this overload misclassify it as a
     // math op. Astronomically unlikely (a ~29-in-2^64 chance) and not
     // guarded against, same as it wasn't before this overload existed.
+    //
+    // Named IsOp rather than a same-named Is<BuiltinOp...>() overload: a
+    // real clang-cl (MSVC ABI) mangling bug collapses two function templates
+    // overloaded solely by an enum-typed non-type template parameter pack
+    // into the identical mangled symbol whenever the packs' underlying
+    // integer values coincide (e.g. Is<NodeType::Ref>() [value 2] and
+    // Is<BuiltinOp::Sub>() [value 2] both mangled to
+    // `??$Is@$02@Node@Operon@@QEBA_NXZ`), causing a duplicate-definition
+    // link error — hit in practice by PR #140's Windows CI
+    // (`error: definition with same mangled name`). Distinct names sidestep
+    // the collision entirely; this is a compiler ABI limitation, not
+    // something fixable by choosing different enum values (any two enums
+    // with overlapping value ranges will eventually collide again).
     template <BuiltinOp... Op>
-    [[nodiscard]] auto Is() const -> bool { return ((HashValue == static_cast<Operon::Hash>(Op)) || ...); }
+    [[nodiscard]] auto IsOp() const -> bool { return ((HashValue == static_cast<Operon::Hash>(Op)) || ...); }
 
     [[nodiscard]] auto IsConstant() const -> bool { return Is<NodeType::Constant>(); }
     [[nodiscard]] auto IsVariable() const -> bool { return Is<NodeType::Variable>(); }
     [[nodiscard]] auto IsRef()      const -> bool { return Is<NodeType::Ref>(); }
-    [[nodiscard]] auto IsAddition() const -> bool { return Is<BuiltinOp::Add>(); }
-    [[nodiscard]] auto IsSubtraction() const -> bool { return Is<BuiltinOp::Sub>(); }
-    [[nodiscard]] auto IsMultiplication() const -> bool { return Is<BuiltinOp::Mul>(); }
-    [[nodiscard]] auto IsDivision() const -> bool { return Is<BuiltinOp::Div>(); }
-    [[nodiscard]] auto IsAq() const -> bool { return Is<BuiltinOp::Aq>(); }
-    [[nodiscard]] auto IsPow() const -> bool { return Is<BuiltinOp::Pow>(); }
-    [[nodiscard]] auto IsPowabs() const -> bool { return Is<BuiltinOp::Powabs>(); }
-    [[nodiscard]] auto IsExp() const -> bool { return Is<BuiltinOp::Exp>(); }
-    [[nodiscard]] auto IsLog() const -> bool { return Is<BuiltinOp::Log>(); }
-    [[nodiscard]] auto IsSin() const -> bool { return Is<BuiltinOp::Sin>(); }
-    [[nodiscard]] auto IsCos() const -> bool { return Is<BuiltinOp::Cos>(); }
-    [[nodiscard]] auto IsTan() const -> bool { return Is<BuiltinOp::Tan>(); }
-    [[nodiscard]] auto IsTanh() const -> bool { return Is<BuiltinOp::Tanh>(); }
-    [[nodiscard]] auto IsSquareRoot() const -> bool { return Is<BuiltinOp::Sqrt>(); }
-    [[nodiscard]] auto IsCubeRoot() const -> bool { return Is<BuiltinOp::Cbrt>(); }
-    [[nodiscard]] auto IsSquare() const -> bool { return Is<BuiltinOp::Square>(); }
-    [[nodiscard]] auto IsDynamic() const -> bool { return Is<NodeType::Dynamic>(); }
+    [[nodiscard]] auto IsAddition() const -> bool { return IsOp<BuiltinOp::Add>(); }
+    [[nodiscard]] auto IsSubtraction() const -> bool { return IsOp<BuiltinOp::Sub>(); }
+    [[nodiscard]] auto IsMultiplication() const -> bool { return IsOp<BuiltinOp::Mul>(); }
+    [[nodiscard]] auto IsDivision() const -> bool { return IsOp<BuiltinOp::Div>(); }
+    [[nodiscard]] auto IsAq() const -> bool { return IsOp<BuiltinOp::Aq>(); }
+    [[nodiscard]] auto IsPow() const -> bool { return IsOp<BuiltinOp::Pow>(); }
+    [[nodiscard]] auto IsPowabs() const -> bool { return IsOp<BuiltinOp::Powabs>(); }
+    [[nodiscard]] auto IsExp() const -> bool { return IsOp<BuiltinOp::Exp>(); }
+    [[nodiscard]] auto IsLog() const -> bool { return IsOp<BuiltinOp::Log>(); }
+    [[nodiscard]] auto IsSin() const -> bool { return IsOp<BuiltinOp::Sin>(); }
+    [[nodiscard]] auto IsCos() const -> bool { return IsOp<BuiltinOp::Cos>(); }
+    [[nodiscard]] auto IsTan() const -> bool { return IsOp<BuiltinOp::Tan>(); }
+    [[nodiscard]] auto IsTanh() const -> bool { return IsOp<BuiltinOp::Tanh>(); }
+    [[nodiscard]] auto IsSquareRoot() const -> bool { return IsOp<BuiltinOp::Sqrt>(); }
+    [[nodiscard]] auto IsCubeRoot() const -> bool { return IsOp<BuiltinOp::Cbrt>(); }
+    [[nodiscard]] auto IsSquare() const -> bool { return IsOp<BuiltinOp::Square>(); }
+    [[nodiscard]] auto IsFunction() const -> bool { return Is<NodeType::Function>(); }
 
-    template<NodeType Type>
-    static auto constexpr IsNary = Type < NodeType::Aq;
-
-    template<NodeType Type>
-    static auto constexpr IsBinary = Type > NodeType::Fmax && Type < NodeType::Abs;
-
-    template<NodeType Type>
-    static auto constexpr IsUnary = Type > NodeType::Powabs && Type < NodeType::Dynamic;
-
-    template<NodeType Type>
-    static auto constexpr IsNullary = Type > NodeType::Square; // Dynamic, Constant, Variable, Ref
-
-    // BuiltinOp counterparts of IsNary/IsBinary/IsUnary above. No IsNullary
-    // counterpart: BuiltinOp only covers the math-op subset (Add..Square),
-    // never the terminal categories (Dynamic/Constant/Variable/Ref) that
-    // IsNullary<NodeType> distinguishes.
+    // BuiltinOp counterparts of the old NodeType-keyed IsNary/IsBinary/
+    // IsUnary/IsNullary, which no longer type-check (NodeType has no
+    // per-op enumerators left to compare against). No IsNullary
+    // counterpart: BuiltinOp only covers the math-op subset, never the
+    // terminal categories (Constant/Variable/Ref) that IsNullary used to
+    // distinguish — use `!Is<NodeType::Function>()` for that instead.
     template<BuiltinOp Op>
     static auto constexpr IsNaryOp = Op <= BuiltinOp::Fmax;
 

@@ -89,8 +89,8 @@ TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-funct
 
     auto test = [&](tf::Executor& executor, nb::Bench& b, PrimitiveSetConfig cfg, const std::string& name) -> void {
         pset.SetConfig(cfg);
-        for (auto t : {NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul}) {
-            pset.SetMinMaxArity(Node(t).HashValue, 2, 2);
+        for (auto t : {BuiltinOp::Add, BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Mul}) {
+            pset.SetMinMaxArity(static_cast<Operon::Hash>(t), 2, 2);
         }
         std::ranges::generate(trees, [&]() -> Tree { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
 
@@ -115,7 +115,7 @@ TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-funct
         b.title("arithmetic + exp").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
         for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
-            test(executor, b, PrimitiveSet::Arithmetic | NodeType::Exp, fmt::format("N = {}", i));
+            test(executor, b, PrimitiveSet::Arithmetic | BuiltinOp::Exp, fmt::format("N = {}", i));
         }
     }
 
@@ -123,7 +123,7 @@ TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-funct
         b.title("arithmetic + log").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
         for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
-            test(executor, b, PrimitiveSet::Arithmetic | NodeType::Log, fmt::format("N = {}", i));
+            test(executor, b, PrimitiveSet::Arithmetic | BuiltinOp::Log, fmt::format("N = {}", i));
         }
     }
 
@@ -132,7 +132,7 @@ TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-funct
         b2.title("arithmetic + sin").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
         for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
-            test(executor, b2, PrimitiveSet::Arithmetic | NodeType::Sin, fmt::format("N = {}", i));
+            test(executor, b2, PrimitiveSet::Arithmetic | BuiltinOp::Sin, fmt::format("N = {}", i));
         }
     }
 
@@ -140,7 +140,7 @@ TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-funct
         b.title("arithmetic + cos").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
         for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
-            test(executor, b, PrimitiveSet::Arithmetic | NodeType::Cos, fmt::format("N = {}", i));
+            test(executor, b, PrimitiveSet::Arithmetic | BuiltinOp::Cos, fmt::format("N = {}", i));
         }
     }
 
@@ -148,7 +148,7 @@ TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-funct
         b.title("arithmetic + tan").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
         for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
-            test(executor, b, PrimitiveSet::Arithmetic | NodeType::Tan, fmt::format("N = {}", i));
+            test(executor, b, PrimitiveSet::Arithmetic | BuiltinOp::Tan, fmt::format("N = {}", i));
         }
     }
 
@@ -156,7 +156,7 @@ TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-funct
         b.title("arithmetic + sqrt").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
         for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
-            test(executor, b, PrimitiveSet::Arithmetic | NodeType::Sqrt, fmt::format("N = {}", i));
+            test(executor, b, PrimitiveSet::Arithmetic | BuiltinOp::Sqrt, fmt::format("N = {}", i));
         }
     }
 
@@ -164,7 +164,7 @@ TEST_CASE("Evaluation performance", "[performance]") // NOLINT(readability-funct
         b.title("arithmetic + cbrt").relative(true).performanceCounters(true).minEpochIterations(minEpochIterations);
         for (size_t i = 1; i <= maxConcurrency; ++i) {
             tf::Executor executor(i);
-            test(executor, b, PrimitiveSet::Arithmetic | NodeType::Cbrt, fmt::format("N = {}", i));
+            test(executor, b, PrimitiveSet::Arithmetic | BuiltinOp::Cbrt, fmt::format("N = {}", i));
         }
     }
 }
@@ -307,8 +307,8 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
 
     auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
         problem.GetPrimitiveSet().SetConfig(cfg);
-        for (auto t : {NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul}) {
-            problem.GetPrimitiveSet().SetMinMaxArity(Node(t).HashValue, 2, 2);
+        for (auto t : {BuiltinOp::Add, BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Mul}) {
+            problem.GetPrimitiveSet().SetMinMaxArity(static_cast<Operon::Hash>(t), 2, 2);
         }
 
         std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
@@ -417,8 +417,8 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
     };
 
     SECTION("arithmetic")       { bench_pset(PrimitiveSet::Arithmetic, "arithmetic"); }
-    SECTION("arithmetic + sin") { bench_pset(PrimitiveSet::Arithmetic | NodeType::Sin, "arithmetic+sin"); }
-    SECTION("arithmetic + exp") { bench_pset(PrimitiveSet::Arithmetic | NodeType::Exp, "arithmetic+exp"); }
+    SECTION("arithmetic + sin") { bench_pset(PrimitiveSet::Arithmetic | BuiltinOp::Sin, "arithmetic+sin"); }
+    SECTION("arithmetic + exp") { bench_pset(PrimitiveSet::Arithmetic | BuiltinOp::Exp, "arithmetic+exp"); }
 }
 
 TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
@@ -451,8 +451,8 @@ TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
 
     auto bench_pset = [&](PrimitiveSetConfig cfg, std::string const& title) {
         problem.GetPrimitiveSet().SetConfig(cfg | NodeType::Constant);
-        for (auto t : {NodeType::Add, NodeType::Sub, NodeType::Div, NodeType::Mul}) {
-            problem.GetPrimitiveSet().SetMinMaxArity(Node(t).HashValue, 2, 2);
+        for (auto t : {BuiltinOp::Add, BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Mul}) {
+            problem.GetPrimitiveSet().SetMinMaxArity(static_cast<Operon::Hash>(t), 2, 2);
         }
 
         std::uniform_int_distribution<size_t> sizeDistribution(5, maxLength);
@@ -510,7 +510,7 @@ TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
     };
 
     SECTION("arithmetic") { bench_pset(PrimitiveSet::Arithmetic, "arithmetic"); }
-    SECTION("arithmetic + sin") { bench_pset(PrimitiveSet::Arithmetic | NodeType::Sin, "arithmetic+sin"); }
+    SECTION("arithmetic + sin") { bench_pset(PrimitiveSet::Arithmetic | BuiltinOp::Sin, "arithmetic+sin"); }
 }
 #endif // HAVE_ASMJIT
 

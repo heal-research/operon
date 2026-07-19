@@ -22,43 +22,44 @@
 #include "operon/core/version.hpp"
 #include "operon/core/types.hpp"
 
+using Operon::BuiltinOp;
 using Operon::NodeType;
 
 namespace Operon {
 
-static const Operon::Map<std::string, NodeType> Primitives {
-    { "add",      NodeType::Add },
-    { "mul",      NodeType::Mul },
-    { "sub",      NodeType::Sub },
-    { "div",      NodeType::Div },
-    { "fmin",     NodeType::Fmin },
-    { "fmax",     NodeType::Fmax },
-    { "aq",       NodeType::Aq },
-    { "pow",      NodeType::Pow },
-    { "powabs",   NodeType::Powabs },
-    { "abs",      NodeType::Abs },
-    { "acos",     NodeType::Acos },
-    { "asin",     NodeType::Asin },
-    { "atan",     NodeType::Atan },
-    { "cbrt",     NodeType::Cbrt },
-    { "ceil",     NodeType::Ceil },
-    { "cos",      NodeType::Cos },
-    { "cosh",     NodeType::Cosh },
-    { "exp",      NodeType::Exp },
-    { "floor",    NodeType::Floor },
-    { "log",      NodeType::Log },
-    { "logabs",   NodeType::Logabs },
-    { "log1p",    NodeType::Log1p },
-    { "sin",      NodeType::Sin },
-    { "sinh",     NodeType::Sinh },
-    { "sqrt",     NodeType::Sqrt },
-    { "sqrtabs",  NodeType::Sqrtabs },
-    { "tan",      NodeType::Tan },
-    { "tanh",     NodeType::Tanh },
-    { "square",   NodeType::Square },
-    { "dyn",      NodeType::Dynamic },
-    { "constant", NodeType::Constant },
-    { "variable", NodeType::Variable }
+static const Operon::Map<std::string, PrimitiveSetConfig> Primitives {
+    { "add",      ToConfig(BuiltinOp::Add) },
+    { "mul",      ToConfig(BuiltinOp::Mul) },
+    { "sub",      ToConfig(BuiltinOp::Sub) },
+    { "div",      ToConfig(BuiltinOp::Div) },
+    { "fmin",     ToConfig(BuiltinOp::Fmin) },
+    { "fmax",     ToConfig(BuiltinOp::Fmax) },
+    { "aq",       ToConfig(BuiltinOp::Aq) },
+    { "pow",      ToConfig(BuiltinOp::Pow) },
+    { "powabs",   ToConfig(BuiltinOp::Powabs) },
+    { "abs",      ToConfig(BuiltinOp::Abs) },
+    { "acos",     ToConfig(BuiltinOp::Acos) },
+    { "asin",     ToConfig(BuiltinOp::Asin) },
+    { "atan",     ToConfig(BuiltinOp::Atan) },
+    { "cbrt",     ToConfig(BuiltinOp::Cbrt) },
+    { "ceil",     ToConfig(BuiltinOp::Ceil) },
+    { "cos",      ToConfig(BuiltinOp::Cos) },
+    { "cosh",     ToConfig(BuiltinOp::Cosh) },
+    { "exp",      ToConfig(BuiltinOp::Exp) },
+    { "floor",    ToConfig(BuiltinOp::Floor) },
+    { "log",      ToConfig(BuiltinOp::Log) },
+    { "logabs",   ToConfig(BuiltinOp::Logabs) },
+    { "log1p",    ToConfig(BuiltinOp::Log1p) },
+    { "sin",      ToConfig(BuiltinOp::Sin) },
+    { "sinh",     ToConfig(BuiltinOp::Sinh) },
+    { "sqrt",     ToConfig(BuiltinOp::Sqrt) },
+    { "sqrtabs",  ToConfig(BuiltinOp::Sqrtabs) },
+    { "tan",      ToConfig(BuiltinOp::Tan) },
+    { "tanh",     ToConfig(BuiltinOp::Tanh) },
+    { "square",   ToConfig(BuiltinOp::Square) },
+    { "dyn",      ToConfig(NodeType::Function) },
+    { "constant", ToConfig(NodeType::Constant) },
+    { "variable", ToConfig(NodeType::Variable) }
 };
 
 auto Split(const std::string& s, char delimiter) -> std::vector<std::string>
@@ -120,13 +121,20 @@ auto PrintPrimitives(PrimitiveSetConfig config) -> void
     tmpSet.SetConfig(config);
     fmt::print("Built-in primitives:\n");
     fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", "Symbol", "Description", "Enabled", "Frequency");
-    for (size_t i = 0; i < Operon::NodeTypes::Count; ++i) {
-        auto type = static_cast<NodeType>(i);
-        auto hash = Node(type).HashValue;
+
+    auto printRow = [&](Node const& node) {
+        auto hash = node.HashValue;
         auto enabled = tmpSet.Contains(hash) && tmpSet.IsEnabled(hash);
         auto freq = enabled ? tmpSet.Frequency(hash) : 0U;
-        Node const node(type);
         fmt::print("{:<8}\t{:<50}\t{:>7}\t\t{:>9}\n", node.Name(), node.Desc(), enabled, freq != 0U ? std::to_string(freq) : "-");
+    };
+
+    for (size_t i = 0; i < Operon::BuiltinOpCount; ++i) {
+        auto op = static_cast<BuiltinOp>(i);
+        printRow(Node::Function(static_cast<Operon::Hash>(op), 0)); // arity irrelevant for Name()/Desc()
+    }
+    for (auto type : { NodeType::Constant, NodeType::Variable, NodeType::Ref, NodeType::Function }) {
+        printRow(Node(type));
     }
 }
 

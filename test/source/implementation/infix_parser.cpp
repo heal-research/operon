@@ -26,7 +26,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     Operon::Dataset ds = Operon::Test::Util::RandomDataset(rng, nrow, ncol);
 
     Operon::PrimitiveSet pset;
-    pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Aq | NodeType::Exp | NodeType::Log | NodeType::Variable);
+    pset.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Aq | BuiltinOp::Exp | BuiltinOp::Log | NodeType::Variable);
     Operon::BalancedTreeCreator const btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, nNodes);
 
     Operon::Vector<Operon::Tree> trees;
@@ -84,8 +84,8 @@ TEST_CASE("Parse specific expressions", "[parser]")
         Node c1(NodeType::Constant); c1.Value = 2;
         Node c2(NodeType::Constant); c2.Value = 3;
         Node c3(NodeType::Constant); c3.Value = 5;
-        Node const sub(NodeType::Sub);
-        Node const mul(NodeType::Mul);
+        auto const sub = Util::MakeOp<BuiltinOp::Sub>();
+        auto const mul = Util::MakeOp<BuiltinOp::Mul>();
         Operon::Vector<Node> const nodes{c1, c2, c3, sub, mul}; // 5 - 3 * 2
         Tree t(nodes);
         t.UpdateNodes();
@@ -124,7 +124,7 @@ TEST_CASE("Formatter output", "[parser]")
         Operon::RandomGenerator rng(1234);
         Operon::Dataset const ds("./data/Poly-10.csv", true);
         Operon::PrimitiveSet pset;
-        pset.SetConfig(PrimitiveSet::Arithmetic | NodeType::Exp | NodeType::Log);
+        pset.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Exp | BuiltinOp::Log);
         constexpr size_t maxLength = 20;
         Operon::BalancedTreeCreator const btc(&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength);
 

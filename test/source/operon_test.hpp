@@ -19,6 +19,17 @@
 #include "operon/interpreter/dual.hpp"
 
 namespace Operon::Test::Util {
+    // Test convenience: construct a Function node for a built-in op with a
+    // sensible default arity (1 for unary ops, 2 for binary/n-ary ops),
+    // mirroring the pre-collapse Node(NodeType) constructor's automatic
+    // arity inference. Call sites that need a different arity still set
+    // .Arity explicitly afterward, same as before the collapse.
+    template<BuiltinOp Op>
+    auto MakeOp() -> Node {
+        constexpr uint16_t arity = Node::IsUnaryOp<Op> ? 1 : 2;
+        return Node::Function(static_cast<Operon::Hash>(Op), arity);
+    }
+
     inline auto RandomDataset(Operon::RandomGenerator& rng, int rows, int cols) -> Operon::Dataset {
         std::uniform_real_distribution<Operon::Scalar> dist(-1.F, +1.F);
         std::vector<std::string> names(cols);
@@ -47,31 +58,28 @@ namespace Operon::Test::Util {
             for (auto i = 0UL; i < nodes.size(); ++i) {
                 auto const& n = nodes[i];
                 auto const v = n.Optimize ? coeff[idx++] : T{n.Value};
-                switch(n.Type) {
-                    case NodeType::Constant: {
-                        buffer.col(i).segment(row, rem).setConstant(v);
-                        break;
-                    }
-                    case NodeType::Variable: {
-                        auto const* ptr = dataset.GetValues(n.HashValue).subspan(row, rem).data();
-                        buffer.col(i).segment(row, rem) = v * Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(ptr, rem, 1).template cast<T>();
-                        break;
-                    }
-                    case NodeType::Add: {
+                if (n.Type == NodeType::Constant) {
+                    buffer.col(i).segment(row, rem).setConstant(v);
+                } else if (n.Type == NodeType::Variable) {
+                    auto const* ptr = dataset.GetValues(n.HashValue).subspan(row, rem).data();
+                    buffer.col(i).segment(row, rem) = v * Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const>(ptr, rem, 1).template cast<T>();
+                } else
+                switch(n.HashValue) {
+                    case Operon::Hash(BuiltinOp::Add): {
                         buffer.col(i).setConstant(T{0});
                         for (auto j : Tree::Indices(nodes, i)) {
                             buffer.col(i) += buffer.col(j);
                         }
                         break;
                     }
-                    case NodeType::Mul: {
+                    case Operon::Hash(BuiltinOp::Mul): {
                         buffer.col(i).setConstant(T{1});
                         for (auto j : Tree::Indices(nodes, i)) {
                             buffer.col(i) *= buffer.col(j);
                         }
                         break;
                     }
-                    case NodeType::Sub: {
+                    case Operon::Hash(BuiltinOp::Sub): {
                         if (n.Arity == 1) {
                             buffer.col(i) = -buffer.col(i-1);
                         } else {
@@ -83,7 +91,7 @@ namespace Operon::Test::Util {
                         }
                         break;
                     }
-                    case NodeType::Div: {
+                    case Operon::Hash(BuiltinOp::Div): {
                         if (n.Arity == 1) {
                             buffer.col(i) = buffer.col(i-1).inverse();
                         } else {
@@ -95,7 +103,7 @@ namespace Operon::Test::Util {
                         }
                         break;
                     }
-                    case NodeType::Fmin: {
+                    case Operon::Hash(BuiltinOp::Fmin): {
                         buffer.col(i) = buffer.col(i-1);
                         for (auto j : Tree::Indices(nodes, i)) {
                             if (j == i-1) { continue; }
@@ -103,7 +111,7 @@ namespace Operon::Test::Util {
                         }
                         break;
                     }
-                    case NodeType::Fmax: {
+                    case Operon::Hash(BuiltinOp::Fmax): {
                         buffer.col(i) = buffer.col(i-1);
                         for (auto j : Tree::Indices(nodes, i)) {
                             if (j == i-1) { continue; }
@@ -111,101 +119,101 @@ namespace Operon::Test::Util {
                         }
                         break;
                     }
-                    case NodeType::Aq: {
+                    case Operon::Hash(BuiltinOp::Aq): {
                         auto j = i-1;
                         auto k = j - (nodes[j].Length + 1);
                         buffer.col(i) = buffer.col(j) / (T{1} + buffer.col(k).square()).sqrt();
                         break;
                     }
-                    case NodeType::Pow: {
+                    case Operon::Hash(BuiltinOp::Pow): {
                         auto j = i-1;
                         auto k = j - (nodes[j].Length + 1);
                         buffer.col(i) = buffer.col(j).pow(buffer.col(k));
                         break;
                     }
-                    case NodeType::Powabs: {
+                    case Operon::Hash(BuiltinOp::Powabs): {
                         auto j = i-1;
                         auto k = j - (nodes[j].Length + 1);
                         buffer.col(i) = buffer.col(j).abs().pow(buffer.col(k));
                         break;
                     }
-                    case NodeType::Abs: {
+                    case Operon::Hash(BuiltinOp::Abs): {
                         buffer.col(i) = buffer.col(i-1).abs();
                         break;
                     }
-                    case NodeType::Acos: {
+                    case Operon::Hash(BuiltinOp::Acos): {
                         buffer.col(i) = buffer.col(i-1).acos();
                         break;
                     }
-                    case NodeType::Asin: {
+                    case Operon::Hash(BuiltinOp::Asin): {
                         buffer.col(i) = buffer.col(i-1).asin();
                         break;
                     }
-                    case NodeType::Atan: {
+                    case Operon::Hash(BuiltinOp::Atan): {
                         buffer.col(i) = buffer.col(i-1).atan();
                         break;
                     }
-                    case NodeType::Cbrt: {
+                    case Operon::Hash(BuiltinOp::Cbrt): {
                         buffer.col(i) = buffer.col(i-1).unaryExpr([](auto x) { return ceres::cbrt(x); });
                         break;
                     }
-                    case NodeType::Ceil: {
+                    case Operon::Hash(BuiltinOp::Ceil): {
                         buffer.col(i) = buffer.col(i-1).ceil();
                         break;
                     }
-                    case NodeType::Cos: {
+                    case Operon::Hash(BuiltinOp::Cos): {
                         buffer.col(i) = buffer.col(i-1).cos();
                         break;
                     }
-                    case NodeType::Cosh: {
+                    case Operon::Hash(BuiltinOp::Cosh): {
                         buffer.col(i) = buffer.col(i-1).cosh();
                         break;
                     }
-                    case NodeType::Exp: {
+                    case Operon::Hash(BuiltinOp::Exp): {
                         buffer.col(i) = buffer.col(i-1).exp();
                         break;
                     }
-                    case NodeType::Floor: {
+                    case Operon::Hash(BuiltinOp::Floor): {
                         buffer.col(i) = buffer.col(i-1).floor();
                         break;
                     }
-                    case NodeType::Log: {
+                    case Operon::Hash(BuiltinOp::Log): {
                         buffer.col(i) = buffer.col(i-1).log();
                         break;
                     }
-                    case NodeType::Logabs: {
+                    case Operon::Hash(BuiltinOp::Logabs): {
                         buffer.col(i) = buffer.col(i-1).abs().log();
                         break;
                     }
-                    case NodeType::Log1p: {
+                    case Operon::Hash(BuiltinOp::Log1p): {
                         buffer.col(i) = buffer.col(i-1).log1p();
                         break;
                     }
-                    case NodeType::Sin: {
+                    case Operon::Hash(BuiltinOp::Sin): {
                         buffer.col(i) = buffer.col(i-1).sin();
                         break;
                     }
-                    case NodeType::Sinh: {
+                    case Operon::Hash(BuiltinOp::Sinh): {
                         buffer.col(i) = buffer.col(i-1).sinh();
                         break;
                     }
-                    case NodeType::Sqrt: {
+                    case Operon::Hash(BuiltinOp::Sqrt): {
                         buffer.col(i) = buffer.col(i-1).sqrt();
                         break;
                     }
-                    case NodeType::Sqrtabs: {
+                    case Operon::Hash(BuiltinOp::Sqrtabs): {
                         buffer.col(i) = buffer.col(i-1).abs().sqrt();
                         break;
                     }
-                    case NodeType::Square: {
+                    case Operon::Hash(BuiltinOp::Square): {
                         buffer.col(i) = buffer.col(i-1).square();
                         break;
                     }
-                    case NodeType::Tan: {
+                    case Operon::Hash(BuiltinOp::Tan): {
                         buffer.col(i) = buffer.col(i-1).tan();
                         break;
                     }
-                    case NodeType::Tanh: {
+                    case Operon::Hash(BuiltinOp::Tanh): {
                         buffer.col(i) = buffer.col(i-1).tanh();
                         break;
                     }
