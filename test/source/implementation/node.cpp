@@ -165,17 +165,24 @@ TEST_CASE("Node::Function() dispatches through the BuiltinOp-retargeted registry
 {
     // Regression guard for the dispatch-chain retarget (functions.hpp/
     // derivatives.hpp/dispatch.hpp/standard_library.hpp now templated on
-    // BuiltinOp instead of NodeType): every built-in op must still resolve
-    // to a registered callable by hash, independent of a Node's Type.
+    // BuiltinOp instead of NodeType): every one of the 29 built-in ops must
+    // still resolve to both a registered Callable and CallableDiff by hash,
+    // independent of a Node's Type. Covers all of BuiltinOp, not just a
+    // sample, and checks derivatives too (Diff<>/DiffOp/MakeDiffCall are
+    // retargeted by this PR just as much as Func<>/MakeFunctionCall are).
     DispatchTable<Operon::Scalar> dt;
     for (auto op : { BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div,
                       BuiltinOp::Fmin, BuiltinOp::Fmax, BuiltinOp::Aq, BuiltinOp::Pow,
-                      BuiltinOp::Powabs, BuiltinOp::Abs, BuiltinOp::Sin, BuiltinOp::Cos,
-                      BuiltinOp::Tan, BuiltinOp::Exp, BuiltinOp::Log, BuiltinOp::Sqrt,
-                      BuiltinOp::Cbrt, BuiltinOp::Square }) {
+                      BuiltinOp::Powabs, BuiltinOp::Abs, BuiltinOp::Acos, BuiltinOp::Asin,
+                      BuiltinOp::Atan, BuiltinOp::Cbrt, BuiltinOp::Ceil, BuiltinOp::Cos,
+                      BuiltinOp::Cosh, BuiltinOp::Exp, BuiltinOp::Floor, BuiltinOp::Log,
+                      BuiltinOp::Logabs, BuiltinOp::Log1p, BuiltinOp::Sin, BuiltinOp::Sinh,
+                      BuiltinOp::Sqrt, BuiltinOp::Sqrtabs, BuiltinOp::Tan, BuiltinOp::Tanh,
+                      BuiltinOp::Square }) {
         auto const hash = static_cast<Operon::Hash>(op);
         CHECK(dt.Contains(hash));
         CHECK(dt.TryGetFunction<Operon::Scalar>(hash).has_value());
+        CHECK(dt.TryGetDerivative<Operon::Scalar>(hash).has_value());
     }
 }
 
