@@ -19,13 +19,13 @@ namespace {
     }
 } // namespace
 
-TEST_CASE("Node::Is<BuiltinOp...>() distinguishes built-in ops by HashValue", "[core]")
+TEST_CASE("Node::IsOp<BuiltinOp...>() distinguishes built-in ops by HashValue", "[core]")
 {
-    CHECK(MakeOp<BuiltinOp::Add>().Is<BuiltinOp::Add>());
-    CHECK_FALSE(MakeOp<BuiltinOp::Add>().Is<BuiltinOp::Mul>());
-    CHECK(MakeOp<BuiltinOp::Sin>().Is<BuiltinOp::Sin>());
-    CHECK((MakeOp<BuiltinOp::Fmax>().Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>()));
-    CHECK_FALSE((MakeOp<BuiltinOp::Sub>().Is<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>()));
+    CHECK(MakeOp<BuiltinOp::Add>().IsOp<BuiltinOp::Add>());
+    CHECK_FALSE(MakeOp<BuiltinOp::Add>().IsOp<BuiltinOp::Mul>());
+    CHECK(MakeOp<BuiltinOp::Sin>().IsOp<BuiltinOp::Sin>());
+    CHECK((MakeOp<BuiltinOp::Fmax>().IsOp<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>()));
+    CHECK_FALSE((MakeOp<BuiltinOp::Sub>().IsOp<BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Fmin, BuiltinOp::Fmax>()));
 }
 
 TEST_CASE("IsNaryOp/IsBinaryOp/IsUnaryOp<BuiltinOp> classify every op consistently", "[core]")
@@ -55,7 +55,7 @@ TEST_CASE("IsNaryOp/IsBinaryOp/IsUnaryOp<BuiltinOp> classify every op consistent
 
 TEST_CASE("Node::Is*() single-op convenience methods are re-pointed correctly", "[core]")
 {
-    // Each of these compares HashValue via Is<BuiltinOp::X>() (node.hpp), so
+    // Each of these compares HashValue via IsOp<BuiltinOp::X>() (node.hpp), so
     // must still report true only for the one op it names and false for
     // every other built-in op.
     CHECK(MakeOp<BuiltinOp::Add>().IsAddition());

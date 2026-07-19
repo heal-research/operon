@@ -399,7 +399,7 @@ auto Tree::Simplify() -> Tree& {
             case Operon::Hash(BO::Log):
             case Operon::Hash(BO::Logabs): {
                 // log(exp(x)) = x for all x; log|exp(x)| = x likewise.
-                if (ch.size() == 1 && nodes_[ch[0]].Is<BO::Exp>()) {
+                if (ch.size() == 1 && nodes_[ch[0]].IsOp<BO::Exp>()) {
                     n.IsEnabled = false;
                     nodes_[ch[0]].IsEnabled = false;
                     changed = true;
@@ -409,7 +409,7 @@ auto Tree::Simplify() -> Tree& {
             case Operon::Hash(BO::Sqrt):
             case Operon::Hash(BO::Sqrtabs): {
                 // sqrt(x^2) = |x|;  sqrt(|x^2|) = |x|
-                if (ch.size() == 1 && nodes_[ch[0]].Is<BO::Square>()) {
+                if (ch.size() == 1 && nodes_[ch[0]].IsOp<BO::Square>()) {
                     nodes_[ch[0]].IsEnabled = false;
                     n.HashValue = Operon::Hash(BO::Abs); // Type stays Function
                     n.Arity = 1; // Sqrt/Sqrtabs and Abs are both unary; explicit for symmetry with the Pow retargets above

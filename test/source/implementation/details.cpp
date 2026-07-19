@@ -247,7 +247,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         Operon::Vector<Node> ns{ Const(2), Var(), Util::MakeOp<BuiltinOp::Pow>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
-        CHECK(tree[1].Is<BuiltinOp::Square>());
+        CHECK(tree[1].IsOp<BuiltinOp::Square>());
         CHECK(tree[1].HashValue == Util::MakeOp<BuiltinOp::Square>().HashValue);
         CHECK(tree[1].Arity == 1);
         CHECK(tree[0].IsVariable());
@@ -257,7 +257,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         Operon::Vector<Node> ns{ Const(0.5), Var(), Util::MakeOp<BuiltinOp::Pow>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
-        CHECK(tree[1].Is<BuiltinOp::Sqrt>());
+        CHECK(tree[1].IsOp<BuiltinOp::Sqrt>());
         CHECK(tree[1].HashValue == Util::MakeOp<BuiltinOp::Sqrt>().HashValue);
         CHECK(tree[1].Arity == 1);
         CHECK(tree[0].IsVariable());
@@ -283,7 +283,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         Operon::Vector<Node> ns{ Var(), Util::MakeOp<BuiltinOp::Square>(), Util::MakeOp<BuiltinOp::Sqrt>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
-        CHECK(tree[1].Is<BuiltinOp::Abs>());
+        CHECK(tree[1].IsOp<BuiltinOp::Abs>());
         CHECK(tree[1].HashValue == Util::MakeOp<BuiltinOp::Abs>().HashValue);
         CHECK(tree[1].Arity == 1);
         CHECK(tree[0].IsVariable());
@@ -293,7 +293,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         Operon::Vector<Node> ns{ Var(), Util::MakeOp<BuiltinOp::Square>(), Util::MakeOp<BuiltinOp::Sqrtabs>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
         REQUIRE(tree.Length() == 2);
-        CHECK(tree[1].Is<BuiltinOp::Abs>());
+        CHECK(tree[1].IsOp<BuiltinOp::Abs>());
         CHECK(tree[1].HashValue == Util::MakeOp<BuiltinOp::Abs>().HashValue);
         CHECK(tree[1].Arity == 1);
         CHECK(tree[0].IsVariable());
@@ -317,7 +317,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[0].IsVariable());
         REQUIRE(tree[1].IsConstant());
         CHECK(tree[1].Value == Catch::Approx(5.0));
-        CHECK(tree[2].Is<BuiltinOp::Add>());
+        CHECK(tree[2].IsOp<BuiltinOp::Add>());
     }
 }
 
