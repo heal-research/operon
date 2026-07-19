@@ -148,15 +148,17 @@ static_assert(static_cast<Operon::Hash>(BuiltinOp::Tanh) == static_cast<Operon::
 static_assert(static_cast<Operon::Hash>(BuiltinOp::Square) == static_cast<Operon::Hash>(NodeType::Square));
 
 // One past BuiltinOp's last value — the built-in hash range is
-// [0, BuiltinOpCount). Used below only as the sentinel default for
-// Func<T,...>/Diff<T,...>'s primary ("missing this specialization")
-// templates, mirroring NodeTypes::NoType's role for the NodeType-keyed
-// versions. Not yet used to reserve a hash range anywhere else — that's
-// symbol_library.hpp's ValidateUserHash, unchanged by this PR.
+// [0, BuiltinOpCount). Not used anywhere yet in this PR (the actual
+// reserved-hash-range check, symbol_library.hpp's ValidateUserHash, still
+// guards [0, NodeTypes::Count) unchanged); it exists for the later PR that
+// redesigns PrimitiveSetConfig around BuiltinOp instead of NodeType.
 static auto constexpr BuiltinOpCount = static_cast<Operon::Hash>(BuiltinOp::Square) + 1;
 
 // Sentinel "not a real op" value (mirrors NodeTypes::NoType), distinguishable
-// from every genuine BuiltinOp value.
+// from every genuine BuiltinOp value. Used below as the sentinel default for
+// Func<T,...>/Diff<T,...>'s primary ("missing this specialization")
+// templates, mirroring NodeTypes::NoType's role for the NodeType-keyed
+// versions.
 static auto constexpr NoBuiltinOp = static_cast<BuiltinOp>(~Operon::Hash{0});
 
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
@@ -260,13 +262,13 @@ struct Node {
 
     // The generalized "any named operation" factory: a built-in math op
     // (hash = static_cast<Hash>(some BuiltinOp)) or a user-registered
-    // function (hash = a name-derived hash outside BuiltinOpCount's range,
-    // see symbol_library.hpp's ValidateUserHash) are both represented as a
-    // Dynamic-tagged Node here — this PR doesn't touch NodeType's
-    // cardinality, so there's no dedicated Function category yet; that's
-    // introduced by the later PR that actually collapses the enum. Arity is
-    // caller-supplied rather than looked up from a registry: Node
-    // construction is the hottest path in the library (tree creators,
+    // function (hash = a name-derived hash outside symbol_library.hpp's
+    // ValidateUserHash-reserved [0, NodeTypes::Count) range) are both
+    // represented as a Dynamic-tagged Node here — this PR doesn't touch
+    // NodeType's cardinality, so there's no dedicated Function category
+    // yet; that's introduced by the later PR that actually collapses the
+    // enum. Arity is caller-supplied rather than looked up from a registry:
+    // Node construction is the hottest path in the library (tree creators,
     // crossover, mutation, Simplify's constant-folding), and every call site
     // that constructs one of these nodes already has a PrimitiveSet/
     // FunctionInfo in scope with the arity known, so a mandatory hash-map
@@ -278,15 +280,15 @@ struct Node {
     // PR) treats a Function-tagged built-in exactly like the equivalent
     // Node(NodeType::X). Several other subsystems still switch on node.Type
     // rather than HashValue and have no `case NodeType::Dynamic` for a
-    // built-in op: interval_evaluator.hpp, affine_evaluator.hpp,
-    // tree_diff.cpp's symbolic differentiation, and jit_compiler.cpp all
-    // fall through to their generic "unhandled type" default (error, zero
-    // gradient, or a zero-valued codegen stub respectively) for such a node
-    // — same as they already do for any genuine Dynamic/user-defined
-    // function today, since none of them are BuiltinOp-hash-aware yet. Do
-    // not use this factory to build a tree destined for those paths until
-    // their own retarget PRs land; it's currently safe only for the
-    // interpreter's Evaluate() path and this PR's own tests.
+    // built-in op: interval_evaluator.hpp and affine_evaluator.hpp both
+    // throw on their generic "unhandled type" default; tree_diff.cpp's
+    // symbolic differentiation returns a zero gradient; jit_compiler.cpp
+    // codegens a zero-valued stub — same as they already do for any genuine
+    // Dynamic/user-defined function today, since none of them are
+    // BuiltinOp-hash-aware yet. Do not use this factory to build a tree
+    // destined for those paths until their own retarget PRs land; it's
+    // currently safe only for the interpreter's Evaluate() path and this
+    // PR's own tests.
     static auto Function(Operon::Hash hash, uint16_t arity) noexcept
     {
         Node node(NodeType::Dynamic, hash);
