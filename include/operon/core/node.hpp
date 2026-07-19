@@ -147,6 +147,18 @@ static_assert(static_cast<Operon::Hash>(BuiltinOp::Tan) == static_cast<Operon::H
 static_assert(static_cast<Operon::Hash>(BuiltinOp::Tanh) == static_cast<Operon::Hash>(NodeType::Tanh));
 static_assert(static_cast<Operon::Hash>(BuiltinOp::Square) == static_cast<Operon::Hash>(NodeType::Square));
 
+// One past BuiltinOp's last value — the built-in hash range is
+// [0, BuiltinOpCount). Used below only as the sentinel default for
+// Func<T,...>/Diff<T,...>'s primary ("missing this specialization")
+// templates, mirroring NodeTypes::NoType's role for the NodeType-keyed
+// versions. Not yet used to reserve a hash range anywhere else — that's
+// symbol_library.hpp's ValidateUserHash, unchanged by this PR.
+static auto constexpr BuiltinOpCount = static_cast<Operon::Hash>(BuiltinOp::Square) + 1;
+
+// Sentinel "not a real op" value (mirrors NodeTypes::NoType), distinguishable
+// from every genuine BuiltinOp value.
+static auto constexpr NoBuiltinOp = static_cast<BuiltinOp>(~Operon::Hash{0});
+
 using UnderlyingNodeType = std::underlying_type_t<NodeType>;
 
 struct NodeTypes {
@@ -243,6 +255,33 @@ struct Node {
     {
         Node node(NodeType::Ref);
         node.RefTo    = target;
+        return node;
+    }
+
+    // The generalized "any named operation" factory: a built-in math op
+    // (hash = static_cast<Hash>(some BuiltinOp)) or a user-registered
+    // function (hash = a name-derived hash outside BuiltinOpCount's range,
+    // see symbol_library.hpp's ValidateUserHash) are both represented as a
+    // Dynamic-tagged Node here — this PR doesn't touch NodeType's
+    // cardinality, so there's no dedicated Function category yet; that's
+    // introduced by the later PR that actually collapses the enum. Arity is
+    // caller-supplied rather than looked up from a registry: Node
+    // construction is the hottest path in the library (tree creators,
+    // crossover, mutation, Simplify's constant-folding), and every call site
+    // that constructs one of these nodes already has a PrimitiveSet/
+    // FunctionInfo in scope with the arity known, so a mandatory hash-map
+    // probe here would add cost to code that's currently a couple of integer
+    // assignments.
+    static auto Function(Operon::Hash hash, uint16_t arity) noexcept
+    {
+        Node node(NodeType::Dynamic, hash);
+        node.Arity  = arity;
+        node.Length = arity;
+        // The two-arg ctor computes Optimize from Arity=0 (leaf) before this
+        // factory overrides Arity to the real value above - recompute
+        // explicitly rather than leave a stale true. These nodes (arity >=
+        // 1, always) are never coefficient-optimized regardless.
+        node.Optimize = false;
         return node;
     }
 

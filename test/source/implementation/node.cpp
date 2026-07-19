@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "operon/core/dispatch.hpp"
 #include "operon/core/node.hpp"
 
 namespace Operon::Test {
@@ -146,6 +147,35 @@ TEST_CASE("Node::IsCommutative() agrees for every built-in op", "[core]")
     for (auto type : { NodeType::Sub, NodeType::Div, NodeType::Aq, NodeType::Pow, NodeType::Powabs,
                         NodeType::Sin, NodeType::Cos, NodeType::Square }) {
         CHECK_FALSE(Node(type).IsCommutative());
+    }
+}
+
+TEST_CASE("Node::Function() sets Type/HashValue/Arity/Length/Optimize consistently", "[core]")
+{
+    auto n = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 3);
+    CHECK(n.Type == NodeType::Dynamic);
+    CHECK(n.HashValue == static_cast<Operon::Hash>(BuiltinOp::Add));
+    CHECK(n.Arity == 3);
+    CHECK(n.Length == 3);
+    CHECK_FALSE(n.IsLeaf());
+    CHECK_FALSE(n.Optimize);
+}
+
+TEST_CASE("Node::Function() dispatches through the BuiltinOp-retargeted registry", "[core]")
+{
+    // Regression guard for the dispatch-chain retarget (functions.hpp/
+    // derivatives.hpp/dispatch.hpp/standard_library.hpp now templated on
+    // BuiltinOp instead of NodeType): every built-in op must still resolve
+    // to a registered callable by hash, independent of a Node's Type.
+    DispatchTable<Operon::Scalar> dt;
+    for (auto op : { BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div,
+                      BuiltinOp::Fmin, BuiltinOp::Fmax, BuiltinOp::Aq, BuiltinOp::Pow,
+                      BuiltinOp::Powabs, BuiltinOp::Abs, BuiltinOp::Sin, BuiltinOp::Cos,
+                      BuiltinOp::Tan, BuiltinOp::Exp, BuiltinOp::Log, BuiltinOp::Sqrt,
+                      BuiltinOp::Cbrt, BuiltinOp::Square }) {
+        auto const hash = static_cast<Operon::Hash>(op);
+        CHECK(dt.Contains(hash));
+        CHECK(dt.TryGetFunction<Operon::Scalar>(hash).has_value());
     }
 }
 

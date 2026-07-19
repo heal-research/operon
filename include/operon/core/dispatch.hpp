@@ -54,18 +54,18 @@ auto Fill(Backend::View<T, S> view, int idx, T value) {
 } // namespace Backend
 
 // detect missing specializations for functions
-template<typename T, Operon::NodeType N = Operon::NodeTypes::NoType, bool C = false, std::size_t S = Backend::BatchSize<T>>
+template<typename T, Operon::BuiltinOp N = Operon::NoBuiltinOp, bool C = false, std::size_t S = Backend::BatchSize<T>>
 struct Func {
     auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T, S> /*primal*/, std::integral auto /*node index*/, std::integral auto... /*child indices*/) {
-        throw std::runtime_error(fmt::format("backend error: missing specialization for function: {}\n", Operon::Node{N}.Name()));
+        throw std::runtime_error(fmt::format("backend error: missing specialization for function: {}\n", Operon::Node{Operon::NodeType::Dynamic, static_cast<Operon::Hash>(N)}.Name()));
     }
 };
 
 // detect missing specializations for function derivatives
-template<typename T, Operon::NodeType N  = Operon::NodeTypes::NoType, std::size_t S = Backend::BatchSize<T>>
+template<typename T, Operon::BuiltinOp N  = Operon::NoBuiltinOp, std::size_t S = Backend::BatchSize<T>>
 struct Diff {
     auto operator()(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> /*primal*/, Backend::View<T> /*trace*/, std::integral auto /*node index*/, std::integral auto /*partial index*/) {
-        throw std::runtime_error(fmt::format("backend error: missing specialization for derivative: {}\n", Operon::Node{N}.Name()));
+        throw std::runtime_error(fmt::format("backend error: missing specialization for derivative: {}\n", Operon::Node{Operon::NodeType::Dynamic, static_cast<Operon::Hash>(N)}.Name()));
     }
 };
 
@@ -87,11 +87,10 @@ using CallableDiff = std::function<void(Operon::Vector<Node> const&, Backend::Vi
 // 1) improved performance: the naive method accumulates into the result for each argument, leading to unnecessary assignments
 // 2) minimizing the number of intermediate steps which might improve floating point accuracy of some operations
 //    if arity > 4, one accumulation is performed every 4 args
-template<NodeType Type, typename T, std::size_t S>
-requires Node::IsNary<Type>
+template<BuiltinOp Type, typename T, std::size_t S>
+requires Node::IsNaryOp<Type>
 static void NaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> data, size_t parentIndex, Operon::Range /*unused*/)
 {
-    static_assert(Type < NodeType::Aq);
     const auto nextArg = [&](size_t i) { return i - (nodes[i].Length + 1); };
     auto arg1 = parentIndex - 1;
     bool continued = false;
@@ -136,8 +135,8 @@ static void NaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> data, 
     }
 }
 
-template<NodeType Type, typename T, std::size_t S>
-requires Node::IsBinary<Type>
+template<BuiltinOp Type, typename T, std::size_t S>
+requires Node::IsBinaryOp<Type>
 static void BinaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
 {
     auto j = i - 1;
@@ -145,8 +144,8 @@ static void BinaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, s
     Func<T, Type, false>{}(nodes, m, i, j, k);
 }
 
-template<NodeType Type, typename T, std::size_t S>
-requires Node::IsUnary<Type>
+template<BuiltinOp Type, typename T, std::size_t S>
+requires Node::IsUnaryOp<Type>
 static void UnaryOp(Operon::Vector<Node> const& nodes, Backend::View<T, S> m, size_t i, Operon::Range /*unused*/)
 {
     Func<T, Type, false>{}(nodes, m, i, i-1);
@@ -157,24 +156,24 @@ struct Noop {
     void operator()(Args&&... /*unused*/) {}
 };
 
-template<NodeType Type, typename T, std::size_t S>
+template<BuiltinOp Type, typename T, std::size_t S>
 static void DiffOp(Operon::Vector<Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T, S> trace, int i, int j) {
     Diff<T, Type, S>{}(nodes, primal, trace, i, j);
 }
 
-template<NodeType Type, typename T, std::size_t S>
+template<BuiltinOp Type, typename T, std::size_t S>
 static constexpr auto MakeFunctionCall() -> Dispatch::Callable<T, S>
 {
-    if constexpr (Node::IsNary<Type>) {
+    if constexpr (Node::IsNaryOp<Type>) {
         return Callable<T, S>{NaryOp<Type, T, S>};
-    } else if constexpr (Node::IsBinary<Type>) {
+    } else if constexpr (Node::IsBinaryOp<Type>) {
         return Callable<T, S>{BinaryOp<Type, T, S>};
-    } else if constexpr (Node::IsUnary<Type>) {
+    } else if constexpr (Node::IsUnaryOp<Type>) {
         return Callable<T, S>{UnaryOp<Type, T, S>};
     }
 }
 
-template<NodeType Type, typename T, std::size_t S>
+template<BuiltinOp Type, typename T, std::size_t S>
 static constexpr auto MakeDiffCall() -> Dispatch::CallableDiff<T, S>
 {
     // this constexpr if here returns NOOP in case of non-arithmetic types (duals)
@@ -261,19 +260,19 @@ public:
     using CallableDiff = Dispatch::CallableDiff<T, BatchSize<T>>;
 
 private:
-    template<NodeType Type, typename T>
+    template<BuiltinOp Type, typename T>
     requires Operon::Concepts::Arithmetic<T>
     static constexpr auto MakeFunction() {
         return Dispatch::MakeFunctionCall<Type, T, BatchSize<T>>();
     }
 
-    template<NodeType Type, typename T>
+    template<BuiltinOp Type, typename T>
     requires Operon::Concepts::Arithmetic<T>
     static constexpr auto MakeDerivative() {
         return Dispatch::MakeDiffCall<Type, T, BatchSize<T>>();
     }
 
-    template<NodeType Type>
+    template<BuiltinOp Type>
     static constexpr auto MakeTuple()
     {
         return []<auto... Idx>(std::index_sequence<Idx...>){
