@@ -437,7 +437,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         if (dj == Zero) { return Zero; }
 
         // Registry lookup replaces the old hardcoded switch (see
-        // RegisterBuiltinSymbolicDerivs above for the ~15 built-in rules,
+        // RegisterBuiltinSymbolicDerivs above for the 16 built-in rules,
         // migrated verbatim). A miss — including Abs/Sqrtabs/Floor/Ceil,
         // deliberately left unregistered — degrades to Zero exactly like
         // today's `default: return Zero;` did.
@@ -494,6 +494,7 @@ auto DifferentiateFirstOrder(
 
 void RegisterUnarySymbolicDeriv(Operon::Hash hash, UnarySymbolicDerivRule rule)
 {
+    RegisterBuiltinSymbolicDerivs();
     SymbolicDerivRules().Register(hash, std::move(rule));
 }
 

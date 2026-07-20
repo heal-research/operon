@@ -36,10 +36,9 @@ namespace Operon::JIT {
 //
 // AVX2-only, no scalar/SSE counterpart: operon's own build unconditionally
 // requires AVX2 hardware (-march=x86-64-v3 on Linux, /arch:AVX2 on the
-// Windows preset), so the scalar JIT path this file used to also carry is
+// Windows preset), so the scalar JIT path this file used to also carry was
 // dead code on every officially-built platform — deleted rather than
-// ported to a registry (see docs; this repo's local planning notes have the
-// full investigation).
+// ported to a registry.
 using JitUnaryCodegenFn  = std::function<asmjit::x86::Vec(asmjit::x86::Compiler&, asmjit::x86::Vec const&)>;
 using JitBinaryCodegenFn = std::function<asmjit::x86::Vec(asmjit::x86::Compiler&, asmjit::x86::Vec const&, asmjit::x86::Vec const&)>;
 
@@ -148,14 +147,12 @@ class OPERON_EXPORT TreeCompiler {
 public:
     explicit TreeCompiler(JitRuntimePool const* pool) : pool_(pool) {}
 
-    // AVX2-only: no scalar/SSE fallback path (deleted along with
-    // EmitNodesScalar — dead code given operon's own build-wide AVX2
-    // requirement, see hash_registry.hpp-adjacent design notes). Returns
-    // nullptr if AVX2 unavailable, an op has no registered codegen, or
-    // compile fails for any other reason — all three degrade the same way,
-    // to interpreter fallback at the JitEvaluator layer.
-    //
-    // AVX2 vectorized path (8 rows/iter). Returns nullptr if AVX2 unavailable or compile fails.
+    // AVX2 vectorized path (8 rows/iter). No scalar/SSE fallback path
+    // (deleted along with EmitNodesScalar — dead code given operon's own
+    // build-wide AVX2 requirement). Returns nullptr if AVX2 unavailable, an
+    // op has no registered codegen, or compile fails for any other reason —
+    // all three degrade the same way, to interpreter fallback at the
+    // JitEvaluator layer.
     auto CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<CompileMeta>;
 
     // Compiles all ∂f/∂c_k. Returns nullptr if AVX2 unavailable, no roots, or compile fails.

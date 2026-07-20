@@ -185,9 +185,9 @@ namespace {
             Vec res;
             // Add/Mul/Sub/Div/Fmin/Fmax stay hardcoded: each is an n-ary
             // reduction over however many args were popped above, not a
-            // single-hash unary/binary registry entry (same scope boundary
-            // as PR 8/PR 9). Every other op — unary and binary alike — goes
-            // through the registry, built-in or user-defined.
+            // single-hash unary/binary registry entry. Every other op —
+            // unary and binary alike — goes through the registry, built-in
+            // or user-defined.
             switch (n.HashValue) {
             case Operon::Hash(Operon::BuiltinOp::Add): {
                 res = args[0];
@@ -258,13 +258,26 @@ namespace {
                 break;
             }
             default:
-                if (auto const* unary = JitUnaryCodegenRules().TryGet(n.HashValue)) {
-                    res = (*unary)(cc, args[0]);
-                } else if (auto const* binary = JitBinaryCodegenRules().TryGet(n.HashValue)) {
-                    res = (*binary)(cc, args[0], args[1]);
-                } else {
-                    throw std::runtime_error(fmt::format("JIT: no codegen for hash {} (not a built-in op)\n", n.HashValue));
+                // Gated on the node's actual arity (exactly 1 for unary,
+                // exactly 2 for binary): a hash mistakenly registered under
+                // the wrong registry must fall through to the throw below,
+                // not read a nonexistent operand (arity 1 registered as
+                // binary), silently ignore one (arity 2 registered as
+                // unary), or — for arity 0 / arity >= 3 registered as
+                // binary — read unrelated stack entries or drop operands
+                // beyond the first two.
+                if (arity == 1) {
+                    if (auto const* unary = JitUnaryCodegenRules().TryGet(n.HashValue)) {
+                        res = (*unary)(cc, args[0]);
+                        break;
+                    }
+                } else if (arity == 2) {
+                    if (auto const* binary = JitBinaryCodegenRules().TryGet(n.HashValue)) {
+                        res = (*binary)(cc, args[0], args[1]);
+                        break;
+                    }
                 }
+                throw std::runtime_error(fmt::format("JIT: no codegen for hash {} (not a built-in op)\n", n.HashValue));
             }
 
             nodeVecs[ii] = res;
@@ -274,13 +287,28 @@ namespace {
 
 } // anonymous namespace
 
+namespace {
+void RegisterBuiltinJitCodegens();
+} // anonymous namespace
+
+// Both entry points below must trigger built-in registration before writing
+// — the same reasoning as RegisterIntervalBuiltins()/RegisterAffineBuiltins()
+// (interval_evaluator.hpp / affine_evaluator.hpp): otherwise a user hash
+// colliding with a built-in is accepted here and only discovered later, as a
+// throw from inside RegisterBuiltinJitCodegens() the first time CompileAVX2()
+// or CompileJacobian() runs — and because that throw fires from within a
+// function-local `static` initializer that never completes, every
+// subsequent compile call re-attempts and re-throws, permanently and
+// silently routing every tree to the interpreter with no diagnostic.
 void RegisterUnaryJitCodegen(Operon::Hash hash, JitUnaryCodegenFn fn)
 {
+    RegisterBuiltinJitCodegens();
     JitUnaryCodegenRules().Register(hash, std::move(fn));
 }
 
 void RegisterBinaryJitCodegen(Operon::Hash hash, JitBinaryCodegenFn fn)
 {
+    RegisterBuiltinJitCodegens();
     JitBinaryCodegenRules().Register(hash, std::move(fn));
 }
 
