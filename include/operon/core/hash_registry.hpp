@@ -5,6 +5,7 @@
 #define OPERON_HASH_REGISTRY_HPP
 
 #include <stdexcept>
+#include <utility>
 
 #include "types.hpp"
 
