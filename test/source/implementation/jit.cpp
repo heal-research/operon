@@ -125,11 +125,20 @@ TEST_CASE("JIT AVX2 correctness", "[jit][avx2]")
     SECTION("Abs")         { check("abs(X1 - X2)"); }
     SECTION("Sin")         { check("sin(X1)"); }
     SECTION("Cos")         { check("cos(X1)"); }
+    SECTION("Tan")         { check("tan(X1)"); }
+    SECTION("Asin")        { check("asin(X1)"); }
+    SECTION("Acos")        { check("acos(X1)"); }
+    SECTION("Atan")        { check("atan(X1)"); }
+    SECTION("Sinh")        { check("sinh(X1)"); }
+    SECTION("Cosh")        { check("cosh(X1)"); }
+    SECTION("Cbrt")        { check("cbrt(X1)"); }
+    SECTION("Log1p")       { check("log1p(abs(X1))"); }
     SECTION("Exp")         { check("exp(X1)"); }
     SECTION("Log")         { check("log(X1)"); }
     SECTION("Logabs")      { check("log(abs(X1))"); }
     SECTION("Tanh")        { check("tanh(X1)"); }
     SECTION("Aq")          { check("X1 / sqrt(1 + X2 * X2)"); }
+    SECTION("Powabs")      { check("powabs(X1, 2)"); }
     SECTION("Composite")   { check("sin(X1) * cos(X2) + exp(0 - X3 * X3)"); }
     SECTION("Pow")         { check("X1 ^ X2"); }
     // Rows=201: 25 full AVX2 iterations (200 rows) + 1 scalar tail row
@@ -140,6 +149,38 @@ TEST_CASE("JIT AVX2 correctness", "[jit][avx2]")
         check("sin(X1) * cos(X2) + exp(X3) * tanh(X4) + log(abs(X5)) * sin(X6)");
         check("(sin(X1) + cos(X2)) * (exp(X3) + tanh(X4)) + (log(abs(X5)) * sin(X6) + cos(X7))");
     }
+}
+
+// Floor/Ceil have no infix syntax (infix-parser's node_type enum has no
+// floor/ceil variant, a pre-existing gap unrelated to the JIT registry), so
+// unlike the other unary ops above they can't go through check()'s
+// InfixParser::Parse path — built directly instead.
+TEST_CASE("JIT AVX2 correctness: floor/ceil", "[jit][avx2]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range{0, 201};
+
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) { SKIP("AVX2 not available"); }
+
+    auto x1Hash = ds.GetVariable("X1").value().Hash;
+
+    auto checkOp = [&](Operon::BuiltinOp op) {
+        Node v1(NodeType::Variable); v1.HashValue = v1.CalculatedHashValue = x1Hash; v1.Value = 1.0F;
+        auto tree = Tree({v1, Node::Function(static_cast<Operon::Hash>(op), 1)}).UpdateNodes();
+        auto ref  = EvalRef(tree, ds, range);
+        auto avx2 = EvalJIT_AVX2(compiler, tree, ds, range);
+
+        REQUIRE(ref.size() == avx2.size());
+        for (std::size_t i = 0; i < ref.size(); ++i) {
+            INFO("row " << i << ": ref=" << ref[i] << " avx2=" << avx2[i]);
+            CHECK(avx2[i] == Catch::Approx(ref[i]).epsilon(Tol));
+        }
+    };
+
+    SECTION("Floor") { checkOp(Operon::BuiltinOp::Floor); }
+    SECTION("Ceil")  { checkOp(Operon::BuiltinOp::Ceil); }
 }
 
 // Smoke test for Ref node handling in the JIT compiler. The explicit register
