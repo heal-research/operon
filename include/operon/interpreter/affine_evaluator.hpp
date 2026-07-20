@@ -5,6 +5,7 @@
 #define OPERON_AFFINE_EVALUATOR_HPP
 
 #include <fmt/format.h>
+#include <functional>
 #include <gsl/pointers>
 #include <optional>
 #include <stdexcept>
@@ -12,6 +13,7 @@
 #include <vector>
 
 #include "operon/core/contracts.hpp"
+#include "operon/core/hash_registry.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
@@ -34,6 +36,119 @@
 #endif
 
 namespace Operon {
+
+// Registered affine callbacks for unary/binary built-in or user-defined
+// functions, keyed by Node::HashValue. See interval_evaluator.hpp's matching
+// comment for the full rationale (global inline Meyer singletons, no
+// registry parameter threaded through the constructor/Evaluate(), plain
+// non-locking HashRegistry since all writes finish before Evaluate() is
+// first called from a GP worker thread). Only real difference from
+// IntervalUnaryFn/IntervalBinaryFn: every call here takes the shared
+// affine_context first — the context-threaded finalize overload of
+// PAPPUS_DEFINE_UNARY_OP is the only one either evaluator ever calls (the
+// bare affine_form<T>-only overload, without a context, is never used here).
+using AffineUnaryFn  = std::function<pappus::affine_form<Operon::Scalar>(
+    pappus::ops::affine_context<Operon::Scalar> const&, pappus::affine_form<Operon::Scalar> const&)>;
+using AffineBinaryFn = std::function<pappus::affine_form<Operon::Scalar>(
+    pappus::ops::affine_context<Operon::Scalar> const&,
+    pappus::affine_form<Operon::Scalar> const&, pappus::affine_form<Operon::Scalar> const&)>;
+
+using AffineUnaryRegistry  = HashRegistry<AffineUnaryFn>;
+using AffineBinaryRegistry = HashRegistry<AffineBinaryFn>;
+
+// Direct registry access — see interval_evaluator.hpp's matching comment.
+// Prefer RegisterUnaryAffine/RegisterBinaryAffine over calling .Register()
+// on the registry returned here directly.
+inline auto AffineUnaryRules() -> AffineUnaryRegistry&
+{
+    static AffineUnaryRegistry registry;
+    return registry;
+}
+
+inline auto AffineBinaryRules() -> AffineBinaryRegistry&
+{
+    static AffineBinaryRegistry registry;
+    return registry;
+}
+
+// Registers the built-in unary/binary affine rules exactly once, mirroring
+// interval_evaluator.hpp's RegisterIntervalBuiltins(). Every rule is lifted
+// verbatim out of AffineEvaluator's old switch statement, each calling
+// `pappus::ops::xxx` fully qualified (see interval_evaluator.hpp for the ADL
+// rationale). A free function (not an AffineEvaluator member) so both
+// AffineEvaluator::Evaluate() and the public Register{Unary,Binary}Affine()
+// entry points below can call it — the latter must trigger it before
+// writing, for the same reason RegisterIntervalBuiltins() does: a user hash
+// colliding with a built-in should throw immediately at the user's own call
+// site, not later inside Evaluate().
+inline void RegisterAffineBuiltins()
+{
+    using Scalar = Operon::Scalar;
+    using Affine = pappus::affine_form<Scalar>;
+    using Context = pappus::ops::affine_context<Scalar>;
+    static auto const registered = [] {
+        auto& unary  = AffineUnaryRules();
+        auto& binary = AffineBinaryRules();
+
+        unary.Register(Operon::Hash(BuiltinOp::Square), [](Context const& ctx, Affine const& v) { return pappus::ops::square<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Sqrt), [](Context const& ctx, Affine const& v) { return pappus::ops::sqrt<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Exp), [](Context const& ctx, Affine const& v) { return pappus::ops::exp<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Log), [](Context const& ctx, Affine const& v) { return pappus::ops::log<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Sin), [](Context const& ctx, Affine const& v) { return pappus::ops::sin<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Cos), [](Context const& ctx, Affine const& v) { return pappus::ops::cos<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Tan), [](Context const& ctx, Affine const& v) { return pappus::ops::tan<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Asin), [](Context const& ctx, Affine const& v) { return pappus::ops::asin<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Acos), [](Context const& ctx, Affine const& v) { return pappus::ops::acos<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Atan), [](Context const& ctx, Affine const& v) { return pappus::ops::atan<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Sinh), [](Context const& ctx, Affine const& v) { return pappus::ops::sinh<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Cosh), [](Context const& ctx, Affine const& v) { return pappus::ops::cosh<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Tanh), [](Context const& ctx, Affine const& v) { return pappus::ops::tanh<Scalar>(ctx, v); });
+        // May throw if the domain crosses zero (requires Chebyshev V-shape).
+        unary.Register(Operon::Hash(BuiltinOp::Abs), [](Context const& ctx, Affine const& v) { return pappus::ops::abs<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Sqrtabs), [](Context const& ctx, Affine const& v) { return pappus::ops::sqrtabs<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Logabs), [](Context const& ctx, Affine const& v) { return pappus::ops::logabs<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Cbrt), [](Context const& ctx, Affine const& v) { return pappus::ops::cbrt<Scalar>(ctx, v); });
+        // May throw if the domain includes values <= -1.
+        unary.Register(Operon::Hash(BuiltinOp::Log1p), [](Context const& ctx, Affine const& v) { return pappus::ops::log1p<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Floor), [](Context const& ctx, Affine const& v) { return pappus::ops::floor<Scalar>(ctx, v); });
+        unary.Register(Operon::Hash(BuiltinOp::Ceil), [](Context const& ctx, Affine const& v) { return pappus::ops::ceil<Scalar>(ctx, v); });
+
+        binary.Register(Operon::Hash(BuiltinOp::Pow), [](Context const& ctx, Affine const& a, Affine const& b) {
+            return pappus::ops::pow<Scalar>(ctx, a, b);
+        });
+        binary.Register(Operon::Hash(BuiltinOp::Aq), [](Context const& ctx, Affine const& a, Affine const& b) {
+            return pappus::ops::aq<Scalar>(ctx, a, b);
+        });
+        binary.Register(Operon::Hash(BuiltinOp::Powabs), [](Context const& ctx, Affine const& a, Affine const& b) {
+            auto absBase = pappus::ops::abs<Scalar>(ctx, a);
+            return pappus::ops::pow<Scalar>(ctx, absBase, b);
+        });
+
+        return true;
+    }();
+    static_cast<void>(registered);
+}
+
+// Register an affine callback for a unary function (built-in or
+// user-defined), keyed by the same hash the function's Node::HashValue
+// carries. A miss at evaluation time means the tree cannot be bounded at
+// all — AffineEvaluator::Evaluate() still throws on a miss, unchanged from
+// today. Throws if `hash` is already registered (write-once) — including
+// when `hash` collides with a built-in, since RegisterAffineBuiltins() above
+// always runs first.
+inline void RegisterUnaryAffine(Operon::Hash hash, AffineUnaryFn fn)
+{
+    RegisterAffineBuiltins();
+    AffineUnaryRules().Register(hash, std::move(fn));
+}
+
+// Register an affine callback for a binary function. See
+// RegisterUnaryAffine for the miss-behavior and built-in-collision notes.
+inline void RegisterBinaryAffine(Operon::Hash hash, AffineBinaryFn fn)
+{
+    RegisterAffineBuiltins();
+    AffineBinaryRules().Register(hash, std::move(fn));
+}
 
 // Forward affine-arithmetic bounds for an Operon tree over a single input
 // domain. Mirrors `IntervalEvaluator` but every `affine_form` shares one
@@ -90,6 +205,8 @@ public:
         // sound (conservative) bounds. Resetting the counter would reuse
         // indices, causing pappus to merge terms from independent evaluations
         // and produce falsely-narrow enclosures.
+
+        RegisterAffineBuiltins();
 
         auto const& nodes = tree_->Nodes();
         auto const n = nodes.size();
@@ -179,6 +296,9 @@ public:
                 EXPECT(static_cast<std::size_t>(node.RefTo) < primal_.size());
                 primal_.push_back(primal_[node.RefTo]);
             } else {
+                // Add/Mul/Sub/Div/Fmin/Fmax stay hardcoded: verified n-ary
+                // folds, same scope boundary as IntervalEvaluator. Every
+                // other op goes through the registry.
                 switch (node.HashValue) {
                 case Operon::Hash(BuiltinOp::Add):
                     primal_.push_back(addFold(i) * v);
@@ -196,94 +316,31 @@ public:
                     primal_.push_back((node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1])
                                                       : divFold(i)) * v);
                     break;
-                case Operon::Hash(BuiltinOp::Square):
-                    primal_.push_back(pappus::ops::square<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Sqrt):
-                    primal_.push_back(pappus::ops::sqrt<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Exp):
-                    primal_.push_back(pappus::ops::exp<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Log):
-                    primal_.push_back(pappus::ops::log<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Sin):
-                    primal_.push_back(pappus::ops::sin<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Cos):
-                    primal_.push_back(pappus::ops::cos<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Tan):
-                    primal_.push_back(pappus::ops::tan<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Asin):
-                    primal_.push_back(pappus::ops::asin<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Acos):
-                    primal_.push_back(pappus::ops::acos<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Atan):
-                    primal_.push_back(pappus::ops::atan<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Sinh):
-                    primal_.push_back(pappus::ops::sinh<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Cosh):
-                    primal_.push_back(pappus::ops::cosh<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Tanh):
-                    primal_.push_back(pappus::ops::tanh<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Pow): {
-                    auto const j = static_cast<std::size_t>(i - 1);
-                    auto const k = j - (nodes[j].Length + 1);
-                    primal_.push_back(pappus::ops::pow<Scalar>(ctx_, primal_[j], primal_[k]) * v);
-                    break;
-                }
-                case Operon::Hash(BuiltinOp::Aq): {
-                    auto const j = static_cast<std::size_t>(i - 1);
-                    auto const k = j - (nodes[j].Length + 1);
-                    primal_.push_back(pappus::ops::aq<Scalar>(ctx_, primal_[j], primal_[k]) * v);
-                    break;
-                }
-                case Operon::Hash(BuiltinOp::Abs):
-                    // May throw if the domain crosses zero (requires Chebyshev V-shape).
-                    primal_.push_back(pappus::ops::abs<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Sqrtabs):
-                    primal_.push_back(pappus::ops::sqrtabs<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Logabs):
-                    primal_.push_back(pappus::ops::logabs<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Powabs): {
-                    auto const j = static_cast<std::size_t>(i - 1);
-                    auto const k = j - (nodes[j].Length + 1);
-                    auto absBase = pappus::ops::abs<Scalar>(ctx_, primal_[j]);
-                    primal_.push_back(pappus::ops::pow<Scalar>(ctx_, absBase, primal_[k]) * v);
-                    break;
-                }
                 case Operon::Hash(BuiltinOp::Fmin):
                     primal_.push_back(minFold(i) * v);
                     break;
                 case Operon::Hash(BuiltinOp::Fmax):
                     primal_.push_back(maxFold(i) * v);
                     break;
-                case Operon::Hash(BuiltinOp::Cbrt):
-                    primal_.push_back(pappus::ops::cbrt<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Log1p):
-                    // May throw if the domain includes values <= -1.
-                    primal_.push_back(pappus::ops::log1p<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Floor):
-                    primal_.push_back(pappus::ops::floor<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
-                case Operon::Hash(BuiltinOp::Ceil):
-                    primal_.push_back(pappus::ops::ceil<Scalar>(ctx_, primal_[i - 1]) * v);
-                    break;
                 default:
+                    // Gated on the node's actual arity (exactly 1 for unary,
+                    // exactly 2 for binary) — see interval_evaluator.hpp's
+                    // matching comment for the full rationale, including why
+                    // arity 0 / arity >= 3 must also fall through to the
+                    // throw rather than only guarding against 1-vs-2.
+                    if (node.Arity == 1) {
+                        if (auto const* unary = AffineUnaryRules().TryGet(node.HashValue)) {
+                            primal_.push_back((*unary)(ctx_, primal_[i - 1]) * v);
+                            break;
+                        }
+                    } else if (node.Arity == 2) {
+                        if (auto const* binary = AffineBinaryRules().TryGet(node.HashValue)) {
+                            auto const j = static_cast<std::size_t>(i - 1);
+                            auto const k = j - (nodes[j].Length + 1);
+                            primal_.push_back((*binary)(ctx_, primal_[j], primal_[k]) * v);
+                            break;
+                        }
+                    }
                     throw std::runtime_error(fmt::format(
                         "AffineEvaluator: node kind `{}` not yet mapped",
                         node.Name()));

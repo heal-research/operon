@@ -5,12 +5,14 @@
 #define OPERON_INTERVAL_EVALUATOR_HPP
 
 #include <fmt/format.h>
+#include <functional>
 #include <gsl/pointers>
 #include <stdexcept>
 #include <utility>
 #include <vector>
 
 #include "operon/core/contracts.hpp"
+#include "operon/core/hash_registry.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
@@ -36,6 +38,127 @@
 #endif
 
 namespace Operon {
+
+// Registered interval callbacks for unary/binary built-in or user-defined
+// functions, keyed by Node::HashValue. Global function-local-static
+// singletons (`inline` for one-definition-rule safety, since
+// IntervalEvaluator is a header-only class with no .cpp) mirroring the
+// pattern used by tree_diff.cpp's SymbolicDerivRegistry: no registry
+// parameter needs to thread through IntervalEvaluator's constructor or
+// Evaluate(). All writes (built-in registration below, plus any user calls
+// to RegisterUnaryInterval/RegisterBinaryInterval) happen before Evaluate()
+// is first called from a GP worker thread, so the plain (non-locking)
+// Operon::Map HashRegistry already uses is sufficient — no sharded-lock map
+// type needed, same read-only-after-setup contract DispatchTable relies on.
+//
+// Only two argument shapes are needed (not three, despite pappus's
+// PAPPUS_DEFINE_UNARY_OP macro generating three overloads per op): interval
+// calls never take a context, unlike affine's context-threaded finalize
+// overload (see affine_evaluator.hpp).
+using IntervalUnaryFn  = std::function<pappus::interval<Operon::Scalar>(pappus::interval<Operon::Scalar> const&)>;
+using IntervalBinaryFn = std::function<pappus::interval<Operon::Scalar>(pappus::interval<Operon::Scalar> const&, pappus::interval<Operon::Scalar> const&)>;
+
+using IntervalUnaryRegistry  = HashRegistry<IntervalUnaryFn>;
+using IntervalBinaryRegistry = HashRegistry<IntervalBinaryFn>;
+
+// Direct registry access — needed by RegisterUnaryInterval/RegisterBinaryInterval
+// below (same TU) and by tests that assert on registration state. Prefer
+// RegisterUnaryInterval/RegisterBinaryInterval for registering a rule: calling
+// .Register() on the registry returned here directly skips the built-in
+// lazy-init those functions trigger first, reopening the ordering hazard they
+// exist to close (a user hash colliding with a built-in would be silently
+// accepted instead of throwing immediately).
+inline auto IntervalUnaryRules() -> IntervalUnaryRegistry&
+{
+    static IntervalUnaryRegistry registry;
+    return registry;
+}
+
+inline auto IntervalBinaryRules() -> IntervalBinaryRegistry&
+{
+    static IntervalBinaryRegistry registry;
+    return registry;
+}
+
+// Registers the built-in unary/binary interval rules exactly once, mirroring
+// StandardLibrary::RegisterNames()'s lazy-static-lambda-once pattern. Every
+// rule is lifted verbatim out of IntervalEvaluator's old switch statement;
+// each lambda calls `pappus::ops::xxx` fully qualified rather than relying on
+// ADL, sidestepping the pappus::ops sibling-namespace ADL gap entirely (that
+// gap only bites a generic lambda expecting implicit lookup — these are
+// written inside operon's own code and can just spell out the qualified
+// name, same as the switch bodies already did). A free function (not an
+// IntervalEvaluator member) so both IntervalEvaluator::Evaluate() and the
+// public Register{Unary,Binary}Interval() entry points below can call it —
+// the latter must trigger it before writing, so that a user hash colliding
+// with a built-in throws immediately at the user's own call site instead of
+// being accepted now and only discovered (as a confusing, differently-hashed
+// throw) the first time Evaluate() runs.
+inline void RegisterIntervalBuiltins()
+{
+    using Scalar = Operon::Scalar;
+    using Interval = pappus::interval<Scalar>;
+    static auto const registered = [] {
+        auto& unary  = IntervalUnaryRules();
+        auto& binary = IntervalBinaryRules();
+
+        unary.Register(Operon::Hash(BuiltinOp::Square),  [](Interval const& v) { return pappus::ops::square<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Sqrt),    [](Interval const& v) { return pappus::ops::sqrt<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Exp),     [](Interval const& v) { return pappus::ops::exp<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Log),     [](Interval const& v) { return pappus::ops::log<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Sin),     [](Interval const& v) { return pappus::ops::sin<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Cos),     [](Interval const& v) { return pappus::ops::cos<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Tan),     [](Interval const& v) { return pappus::ops::tan<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Asin),    [](Interval const& v) { return pappus::ops::asin<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Acos),    [](Interval const& v) { return pappus::ops::acos<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Atan),    [](Interval const& v) { return pappus::ops::atan<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Sinh),    [](Interval const& v) { return pappus::ops::sinh<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Cosh),    [](Interval const& v) { return pappus::ops::cosh<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Tanh),    [](Interval const& v) { return pappus::ops::tanh<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Abs),     [](Interval const& v) { return pappus::ops::abs<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Sqrtabs), [](Interval const& v) { return pappus::ops::sqrtabs<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Logabs),  [](Interval const& v) { return pappus::ops::logabs<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Cbrt),    [](Interval const& v) { return pappus::ops::cbrt<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Log1p),   [](Interval const& v) { return pappus::ops::log1p<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Floor),   [](Interval const& v) { return pappus::ops::floor<Scalar>(v); });
+        unary.Register(Operon::Hash(BuiltinOp::Ceil),    [](Interval const& v) { return pappus::ops::ceil<Scalar>(v); });
+
+        binary.Register(Operon::Hash(BuiltinOp::Pow), [](Interval const& a, Interval const& b) {
+            return pappus::ops::pow<Scalar>(a, b);
+        });
+        binary.Register(Operon::Hash(BuiltinOp::Aq), [](Interval const& a, Interval const& b) {
+            return pappus::ops::aq<Scalar>(a, b);
+        });
+        binary.Register(Operon::Hash(BuiltinOp::Powabs), [](Interval const& a, Interval const& b) {
+            return pappus::ops::pow<Scalar>(pappus::ops::abs<Scalar>(a), b);
+        });
+
+        return true;
+    }();
+    static_cast<void>(registered);
+}
+
+// Register an interval callback for a unary function (built-in or
+// user-defined), keyed by the same hash the function's Node::HashValue
+// carries. A miss at evaluation time is not "not differentiable" the way a
+// missing tree_diff rule is — it means the tree cannot be bounded at all,
+// and IntervalEvaluator::Evaluate() still throws on a miss, unchanged from
+// today. Throws if `hash` is already registered (write-once) — including
+// when `hash` collides with a built-in, since RegisterIntervalBuiltins()
+// above always runs first.
+inline void RegisterUnaryInterval(Operon::Hash hash, IntervalUnaryFn fn)
+{
+    RegisterIntervalBuiltins();
+    IntervalUnaryRules().Register(hash, std::move(fn));
+}
+
+// Register an interval callback for a binary function. See
+// RegisterUnaryInterval for the miss-behavior and built-in-collision notes.
+inline void RegisterBinaryInterval(Operon::Hash hash, IntervalBinaryFn fn)
+{
+    RegisterIntervalBuiltins();
+    IntervalBinaryRules().Register(hash, std::move(fn));
+}
 
 // Forward rigorous bounds for an Operon tree over a single input domain.
 //
@@ -77,6 +200,8 @@ public:
     // `Node::Optimize == true`, consumed in node order.
     [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Interval
     {
+        RegisterIntervalBuiltins();
+
         auto const& nodes = tree_->Nodes();
         auto const n = nodes.size();
         if (n == 0) { throw std::runtime_error("IntervalEvaluator: empty tree"); }
@@ -169,6 +294,11 @@ public:
                 EXPECT(static_cast<std::size_t>(node.RefTo) < i);
                 primal_[i] = primal_[node.RefTo];
             } else {
+                // Add/Mul/Sub/Div/Fmin/Fmax stay hardcoded: each is a verified
+                // n-ary fold over an arbitrary number of children, not a
+                // single-hash unary/binary registry entry. Every other op —
+                // unary and binary alike — goes through the registry,
+                // built-in or user-defined.
                 switch (node.HashValue) {
                 case Operon::Hash(BuiltinOp::Add):
                     primal_[i] = addFold(i) * v;
@@ -184,91 +314,35 @@ public:
                     primal_[i] = (node.Arity == 1 ? pappus::ops::inv<Scalar>(primal_[i - 1])
                                                   : divFold(i)) * v;
                     break;
-                case Operon::Hash(BuiltinOp::Square):
-                    primal_[i] = pappus::ops::square<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Sqrt):
-                    primal_[i] = pappus::ops::sqrt<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Exp):
-                    primal_[i] = pappus::ops::exp<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Log):
-                    primal_[i] = pappus::ops::log<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Sin):
-                    primal_[i] = pappus::ops::sin<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Cos):
-                    primal_[i] = pappus::ops::cos<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Tan):
-                    primal_[i] = pappus::ops::tan<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Asin):
-                    primal_[i] = pappus::ops::asin<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Acos):
-                    primal_[i] = pappus::ops::acos<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Atan):
-                    primal_[i] = pappus::ops::atan<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Sinh):
-                    primal_[i] = pappus::ops::sinh<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Cosh):
-                    primal_[i] = pappus::ops::cosh<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Tanh):
-                    primal_[i] = pappus::ops::tanh<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Pow): {
-                    auto const j = static_cast<std::size_t>(i - 1);
-                    auto const k = j - (nodes[j].Length + 1);
-                    primal_[i] = pappus::ops::pow<Scalar>(primal_[j], primal_[k]) * v;
-                    break;
-                }
-                case Operon::Hash(BuiltinOp::Abs):
-                    primal_[i] = pappus::ops::abs<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Sqrtabs):
-                    primal_[i] = pappus::ops::sqrtabs<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Logabs):
-                    primal_[i] = pappus::ops::logabs<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Powabs): {
-                    auto const j = static_cast<std::size_t>(i - 1);
-                    auto const k = j - (nodes[j].Length + 1);
-                    primal_[i] = pappus::ops::pow<Scalar>(pappus::ops::abs<Scalar>(primal_[j]), primal_[k]) * v;
-                    break;
-                }
-                case Operon::Hash(BuiltinOp::Aq): {
-                    auto const j = static_cast<std::size_t>(i - 1);
-                    auto const k = j - (nodes[j].Length + 1);
-                    primal_[i] = pappus::ops::aq<Scalar>(primal_[j], primal_[k]) * v;
-                    break;
-                }
                 case Operon::Hash(BuiltinOp::Fmin):
                     primal_[i] = minFold(i) * v;
                     break;
                 case Operon::Hash(BuiltinOp::Fmax):
                     primal_[i] = maxFold(i) * v;
                     break;
-                case Operon::Hash(BuiltinOp::Cbrt):
-                    primal_[i] = pappus::ops::cbrt<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Log1p):
-                    primal_[i] = pappus::ops::log1p<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Floor):
-                    primal_[i] = pappus::ops::floor<Scalar>(primal_[i - 1]) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Ceil):
-                    primal_[i] = pappus::ops::ceil<Scalar>(primal_[i - 1]) * v;
-                    break;
                 default:
+                    // Gated on the node's actual arity (exactly 1 for unary,
+                    // exactly 2 for binary) so a hash mistakenly registered
+                    // under the wrong registry falls through to the "not yet
+                    // mapped" throw below, rather than reading a nonexistent
+                    // operand (arity 1 through the binary path), silently
+                    // ignoring one (arity 2 through the unary path), or —
+                    // for arity 0 or arity >= 3 registered as binary —
+                    // reading unrelated primal_ entries or dropping operands
+                    // beyond the first two.
+                    if (node.Arity == 1) {
+                        if (auto const* unary = IntervalUnaryRules().TryGet(node.HashValue)) {
+                            primal_[i] = (*unary)(primal_[i - 1]) * v;
+                            break;
+                        }
+                    } else if (node.Arity == 2) {
+                        if (auto const* binary = IntervalBinaryRules().TryGet(node.HashValue)) {
+                            auto const j = static_cast<std::size_t>(i - 1);
+                            auto const k = j - (nodes[j].Length + 1);
+                            primal_[i] = (*binary)(primal_[j], primal_[k]) * v;
+                            break;
+                        }
+                    }
                     throw std::runtime_error(fmt::format(
                         "IntervalEvaluator: node kind `{}` not yet mapped",
                         node.Name()));

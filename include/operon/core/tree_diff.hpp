@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include <cstddef>
+#include <functional>
+
 #include "contracts.hpp"
 #include "node.hpp"
 #include "tree.hpp"
@@ -11,6 +14,35 @@
 #include "operon/operon_export.hpp"
 
 namespace Operon {
+
+// A symbolic derivative rule for a unary built-in or user-defined function:
+// given the dag under construction (`dag`/`memo`/`h`, threaded the same way
+// Deriv()'s own helpers in tree_diff.cpp thread them, for hash-consing),
+// this node's own dag index `i`, and its argument's dag index `j`, returns
+// the dag index of f'(j) — or Operon::Vector<Node>::size_type(-1)
+// (tree_diff.cpp's `Zero` sentinel) if no derivative is computable. Several
+// rules need `i` (e.g. Exp: f'(j) = exp(j) = the node's own result, at `i`),
+// not just `j`, hence both are threaded through.
+using UnarySymbolicDerivRule = std::function<std::size_t(
+    Operon::Vector<Node>& dag,
+    Operon::Map<Operon::Hash, std::size_t>& memo,
+    Operon::Vector<Operon::Hash>& h,
+    std::size_t i,
+    std::size_t j)>;
+
+// Register a symbolic derivative rule for a unary function (built-in or
+// user-defined), keyed by the same hash the function's Node::HashValue
+// carries. Looked up by BuildJacobianDag/BuildHessianDag's internal Deriv()
+// for every unary node; a miss degrades to "not differentiable" (Zero),
+// identical to today's behavior for an unregistered op. Throws if `hash` is
+// already registered (write-once, see HashRegistry::Register).
+OPERON_EXPORT void RegisterUnarySymbolicDeriv(Operon::Hash hash, UnarySymbolicDerivRule rule);
+
+// Query whether a symbolic derivative rule is registered for `hash` (built-in
+// or user-defined). Mainly useful for coverage checks (e.g. asserting every
+// BuiltinOp is either registered here or deliberately excluded as a
+// structural/non-smooth case handled directly in Deriv()).
+OPERON_EXPORT auto HasUnarySymbolicDeriv(Operon::Hash hash) -> bool;
 
 // A flat postfix array containing the original tree (indices 0..OriginalSize-1)
 // plus appended symbolic derivative subtrees. Shared subexpressions between

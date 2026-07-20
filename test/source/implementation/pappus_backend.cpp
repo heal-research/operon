@@ -178,6 +178,117 @@ TEST_CASE("Interval backend: unary transcendentals", "[pappus][interval]")
     }
 }
 
+// Distinguishing-value coverage for the trig/hyperbolic registry entries not
+// exercised elsewhere in this file: a hash-preserving swap between any two of
+// these (e.g. Sin's lambda registered under Cos's slot) would not be caught
+// by registry_coverage.cpp's presence-only check, but is caught here since
+// each op's true range over its chosen monotonic domain is distinct.
+TEST_CASE("Interval backend: trig and hyperbolic transcendentals", "[pappus][interval]")
+{
+    constexpr Operon::Hash X1{1};
+
+    auto make = [&](IE::Domain dom, Operon::BuiltinOp op) -> IE::Interval {
+        auto tree = Operon::Tree({Var(X1), Operon::Node::Function(static_cast<Operon::Hash>(op), 1)}).UpdateNodes();
+        auto dm = Domains();
+        dm[X1] = {S{dom.first}, S{dom.second}};
+        IE eval(&tree, std::move(dm));
+        return eval.Evaluate(tree.GetCoefficients());
+    };
+
+    constexpr double Pi = 3.14159265358979323846;
+
+    SECTION("sin([0, pi/6]) -> [0, 0.5]") {
+        auto r = make({0, Pi / 6.0}, Operon::BuiltinOp::Sin);
+        REQUIRE(Contains(r, 0.0, 0.5, 1e-3));
+    }
+    SECTION("cos([0, pi/3]) -> [0.5, 1]") {
+        auto r = make({0, Pi / 3.0}, Operon::BuiltinOp::Cos);
+        REQUIRE(Contains(r, 0.5, 1.0, 1e-3));
+    }
+    SECTION("tan([0, pi/4]) -> [0, 1]") {
+        auto r = make({0, Pi / 4.0}, Operon::BuiltinOp::Tan);
+        REQUIRE(Contains(r, 0.0, 1.0, 1e-3));
+    }
+    SECTION("asin([0, 0.5]) -> [0, pi/6]") {
+        auto r = make({0, 0.5}, Operon::BuiltinOp::Asin);
+        REQUIRE(Contains(r, 0.0, Pi / 6.0, 1e-3));
+    }
+    SECTION("acos([0, 0.5]) -> [pi/3, pi/2]") {
+        auto r = make({0, 0.5}, Operon::BuiltinOp::Acos);
+        REQUIRE(Contains(r, Pi / 3.0, Pi / 2.0, 1e-3));
+    }
+    SECTION("atan([0, 1]) -> [0, pi/4]") {
+        auto r = make({0, 1}, Operon::BuiltinOp::Atan);
+        REQUIRE(Contains(r, 0.0, Pi / 4.0, 1e-3));
+    }
+    SECTION("sinh([0, 1]) -> [0, sinh(1)]") {
+        auto r = make({0, 1}, Operon::BuiltinOp::Sinh);
+        REQUIRE(Contains(r, 0.0, std::sinh(1.0), 1e-3));
+    }
+    SECTION("cosh([0, 1]) -> [1, cosh(1)]") {
+        auto r = make({0, 1}, Operon::BuiltinOp::Cosh);
+        REQUIRE(Contains(r, 1.0, std::cosh(1.0), 1e-3));
+    }
+    SECTION("tanh([0, 1]) -> [0, tanh(1)]") {
+        auto r = make({0, 1}, Operon::BuiltinOp::Tanh);
+        REQUIRE(Contains(r, 0.0, std::tanh(1.0), 1e-3));
+    }
+}
+
+// Affine analog of the interval test above, same distinguishing-domain
+// rationale.
+TEST_CASE("Affine backend: trig and hyperbolic transcendentals", "[pappus][affine]")
+{
+    constexpr Operon::Hash X1{1};
+
+    auto make = [&](IE::Domain dom, Operon::BuiltinOp op) -> AE::Affine {
+        auto tree = Operon::Tree({Var(X1), Operon::Node::Function(static_cast<Operon::Hash>(op), 1)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{dom.first}, S{dom.second}};
+        AE eval(&tree, std::move(d));
+        return eval.Evaluate(tree.GetCoefficients());
+    };
+
+    constexpr double Pi = 3.14159265358979323846;
+
+    SECTION("sin([0, pi/6]) -> contains [0, 0.5]") {
+        auto r = make({0, Pi / 6.0}, Operon::BuiltinOp::Sin);
+        REQUIRE(Contains(r, 0.0, 0.5, 1e-2));
+    }
+    SECTION("cos([0, pi/3]) -> contains [0.5, 1]") {
+        auto r = make({0, Pi / 3.0}, Operon::BuiltinOp::Cos);
+        REQUIRE(Contains(r, 0.5, 1.0, 1e-2));
+    }
+    SECTION("tan([0, pi/4]) -> contains [0, 1]") {
+        auto r = make({0, Pi / 4.0}, Operon::BuiltinOp::Tan);
+        REQUIRE(Contains(r, 0.0, 1.0, 1e-2));
+    }
+    SECTION("asin([0, 0.5]) -> contains [0, pi/6]") {
+        auto r = make({0, 0.5}, Operon::BuiltinOp::Asin);
+        REQUIRE(Contains(r, 0.0, Pi / 6.0, 1e-2));
+    }
+    SECTION("acos([0, 0.5]) -> contains [pi/3, pi/2]") {
+        auto r = make({0, 0.5}, Operon::BuiltinOp::Acos);
+        REQUIRE(Contains(r, Pi / 3.0, Pi / 2.0, 1e-2));
+    }
+    SECTION("atan([0, 1]) -> contains [0, pi/4]") {
+        auto r = make({0, 1}, Operon::BuiltinOp::Atan);
+        REQUIRE(Contains(r, 0.0, Pi / 4.0, 1e-2));
+    }
+    SECTION("sinh([0, 1]) -> contains [0, sinh(1)]") {
+        auto r = make({0, 1}, Operon::BuiltinOp::Sinh);
+        REQUIRE(Contains(r, 0.0, std::sinh(1.0), 1e-2));
+    }
+    SECTION("cosh([0, 1]) -> contains [1, cosh(1)]") {
+        auto r = make({0, 1}, Operon::BuiltinOp::Cosh);
+        REQUIRE(Contains(r, 1.0, std::cosh(1.0), 1e-2));
+    }
+    SECTION("tanh([0, 1]) -> contains [0, tanh(1)]") {
+        auto r = make({0, 1}, Operon::BuiltinOp::Tanh);
+        REQUIRE(Contains(r, 0.0, std::tanh(1.0), 1e-2));
+    }
+}
+
 TEST_CASE("Interval backend: nested tree", "[pappus][interval]")
 {
     constexpr Operon::Hash X1{1}, X2{2}, X3{3};
