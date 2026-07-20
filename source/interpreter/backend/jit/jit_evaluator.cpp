@@ -63,9 +63,12 @@ auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMet
     if (visits < minVisits_) { ++misses_; return nullptr; }
 
     // Compile outside the map lock so cc.finalize() runs in parallel.
+    // AVX2-only: no scalar/SSE fallback attempt (see jit_compiler.hpp) — a
+    // CompileAVX2 failure here (hardware, an unmapped op, or any other
+    // asmjit failure) falls straight through to interpreter evaluation via
+    // the nullptr compiled result below.
     auto compiled = compiler_.CompileAVX2(tree);
-    if (!compiled) { ++avx2Fails_; compiled = compiler_.Compile(tree); }
-    if (!compiled) { ++compileFails_; }
+    if (!compiled) { ++avx2Fails_; ++compileFails_; }
 
     zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) -> void {
         if (!e.meta) {

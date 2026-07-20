@@ -10,15 +10,61 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
+#include "operon/core/hash_registry.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/tree_diff.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon::JIT {
+
+// Registered AVX2 codegen callbacks for unary/binary built-in or user-defined
+// functions, keyed by Node::HashValue. Each callback emits asmjit
+// instructions for one op's result into a fresh Vec (a ymm_ps register),
+// given already-emitted operand Vec(s) — the same "emit into a stack slot"
+// shape EmitNodesAvx2's old switch cases had, just as standalone callables.
+// Scoped to asmjit's x86::Compiler virtual-register API only (never raw
+// x86::Assembler), matching the codegen this file already emits everywhere
+// else — a structural safety measure, not just a style choice: Compiler's
+// virtual-register allocator (as opposed to Assembler's fixed physical
+// registers) is what makes composing independently-written callbacks safe
+// without them fighting over concrete registers.
+//
+// AVX2-only, no scalar/SSE counterpart: operon's own build unconditionally
+// requires AVX2 hardware (-march=x86-64-v3 on Linux, /arch:AVX2 on the
+// Windows preset), so the scalar JIT path this file used to also carry was
+// dead code on every officially-built platform — deleted rather than
+// ported to a registry.
+using JitUnaryCodegenFn  = std::function<asmjit::x86::Vec(asmjit::x86::Compiler&, asmjit::x86::Vec const&)>;
+using JitBinaryCodegenFn = std::function<asmjit::x86::Vec(asmjit::x86::Compiler&, asmjit::x86::Vec const&, asmjit::x86::Vec const&)>;
+
+using JitUnaryCodegenRegistry  = HashRegistry<JitUnaryCodegenFn>;
+using JitBinaryCodegenRegistry = HashRegistry<JitBinaryCodegenFn>;
+
+// Register an AVX2 codegen callback for a unary function (built-in or
+// user-defined), keyed by the same hash the function's Node::HashValue
+// carries. A miss at compile time means that tree isn't JIT-compilable —
+// CompileAVX2/CompileJacobian fall back to returning nullptr (the existing
+// JitEvaluator caller already treats a nullptr compile result as "use the
+// interpreter for this tree"), not a thrown exception reaching the caller.
+// Throws if `hash` is already registered (write-once).
+OPERON_EXPORT void RegisterUnaryJitCodegen(Operon::Hash hash, JitUnaryCodegenFn fn);
+
+// Register an AVX2 codegen callback for a binary function. See
+// RegisterUnaryJitCodegen for the miss-behavior note.
+OPERON_EXPORT void RegisterBinaryJitCodegen(Operon::Hash hash, JitBinaryCodegenFn fn);
+
+// Query whether an AVX2 codegen callback is registered for `hash` (built-in
+// or user-defined), forcing built-in registration first. Mainly useful for
+// coverage checks (e.g. asserting every BuiltinOp is either registered here
+// or deliberately excluded as a structural n-ary case handled directly in
+// EmitNodesAvx2).
+OPERON_EXPORT auto HasUnaryJitCodegen(Operon::Hash hash) -> bool;
+OPERON_EXPORT auto HasBinaryJitCodegen(Operon::Hash hash) -> bool;
 
 // Compiled forward-pass signature.
 //   out:    float[nRows]
@@ -101,10 +147,12 @@ class OPERON_EXPORT TreeCompiler {
 public:
     explicit TreeCompiler(JitRuntimePool const* pool) : pool_(pool) {}
 
-    // Scalar path. Returns nullptr on failure.
-    auto Compile(Operon::Tree const& tree) -> std::unique_ptr<CompileMeta>;
-
-    // AVX2 vectorized path (8 rows/iter). Returns nullptr if AVX2 unavailable or compile fails.
+    // AVX2 vectorized path (8 rows/iter). No scalar/SSE fallback path
+    // (deleted along with EmitNodesScalar — dead code given operon's own
+    // build-wide AVX2 requirement). Returns nullptr if AVX2 unavailable, an
+    // op has no registered codegen, or compile fails for any other reason —
+    // all three degrade the same way, to interpreter fallback at the
+    // JitEvaluator layer.
     auto CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<CompileMeta>;
 
     // Compiles all ∂f/∂c_k. Returns nullptr if AVX2 unavailable, no roots, or compile fails.
