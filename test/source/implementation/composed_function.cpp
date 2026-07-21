@@ -485,4 +485,31 @@ TEST_CASE("Composed function: CompileAVX2/CompileJacobian degrade to nullptr, do
 }
 #endif
 
+TEST_CASE("Composed function: interval/affine mini-evaluators throw (not crash) on an unmapped op", "[composed-function]")
+{
+    // Regression test found by code review: the default case in both
+    // mini-evaluators originally dereferenced TryGet()'s result
+    // unconditionally, unlike IntervalEvaluator/AffineEvaluator (which
+    // check-then-throw). Every real built-in currently has interval/affine
+    // coverage (only Add/Mul/Sub/Div/Fmin/Fmax are structural, not
+    // registry-based), so ParseFunctionBody can't produce a body that hits
+    // this path -- construct one directly with a fabricated hash, mirroring
+    // registry_coverage.cpp's own "unmapped op throws" pattern.
+    constexpr Operon::Hash unmappedHash{0x5555555555555555ULL};
+    Operon::Node vx(Operon::NodeType::Variable);
+    vx.HashValue = vx.CalculatedHashValue = Operon::ParamHash(0);
+    vx.Value = 1.0F;
+    auto unmappedNode = Operon::Node::Function(unmappedHash, 1);
+    Operon::Vector<Operon::Node> nodes{vx, unmappedNode};
+    Operon::Tree body{nodes};
+
+    auto intervalFn = Operon::MakeComposedIntervalUnaryFn(body);
+    CHECK_THROWS_AS(intervalFn(pappus::interval<Operon::Scalar>{0.0F, 1.0F}), std::runtime_error);
+
+    auto affineFn = Operon::MakeComposedAffineUnaryFn(body);
+    pappus::ops::affine_context<Operon::Scalar> ctx;
+    auto arg = pappus::ops::variable<Operon::Scalar>(ctx, 0.0F, 1.0F);
+    CHECK_THROWS_AS(affineFn(ctx, arg), std::runtime_error);
+}
+
 } // namespace Operon::Test

@@ -668,16 +668,29 @@ inline auto MakeComposedIntervalUnaryFn(Tree const& body) -> IntervalUnaryFn
                 case Operon::Hash(Operon::BuiltinOp::Fmin): primal[i] = minFold(i) * v; break;
                 case Operon::Hash(Operon::BuiltinOp::Fmax): primal[i] = maxFold(i) * v; break;
                 default:
+                    // Mirrors IntervalEvaluator::Evaluate()'s own miss
+                    // behavior exactly (interval_evaluator.hpp: "still
+                    // throws on a miss, unchanged from today") — today this
+                    // is unreachable whenever the caller has already run
+                    // ValidateSymbolicDiffCoverage (strictly narrower than
+                    // interval coverage), but that ordering isn't enforced
+                    // by the type system, so guard it explicitly rather
+                    // than assume the caller got the sequencing right.
                     if (node.Arity == 1) {
-                        auto const* unary = IntervalUnaryRules().TryGet(node.HashValue);
-                        primal[i] = (*unary)(primal[i - 1]) * v;
-                    } else {
+                        if (auto const* unary = IntervalUnaryRules().TryGet(node.HashValue)) {
+                            primal[i] = (*unary)(primal[i - 1]) * v;
+                            break;
+                        }
+                    } else if (node.Arity == 2) {
                         auto const j = i - 1;
                         auto const k = j - (bodyNodes[j].Length + 1);
-                        auto const* binary = IntervalBinaryRules().TryGet(node.HashValue);
-                        primal[i] = (*binary)(primal[j], primal[k]) * v;
+                        if (auto const* binary = IntervalBinaryRules().TryGet(node.HashValue)) {
+                            primal[i] = (*binary)(primal[j], primal[k]) * v;
+                            break;
+                        }
                     }
-                    break;
+                    throw std::runtime_error(fmt::format(
+                        "composed-function interval evaluation: node kind `{}` not yet mapped", node.Name()));
                 }
             }
         }
@@ -776,16 +789,22 @@ inline auto MakeComposedAffineUnaryFn(Tree const& body) -> AffineUnaryFn
                 case Operon::Hash(Operon::BuiltinOp::Fmin): primal.push_back(minFold(i) * v); break;
                 case Operon::Hash(Operon::BuiltinOp::Fmax): primal.push_back(maxFold(i) * v); break;
                 default:
+                    // See the matching comment in MakeComposedIntervalUnaryFn.
                     if (node.Arity == 1) {
-                        auto const* unary = AffineUnaryRules().TryGet(node.HashValue);
-                        primal.push_back((*unary)(ctx, primal[i - 1]) * v);
-                    } else {
+                        if (auto const* unary = AffineUnaryRules().TryGet(node.HashValue)) {
+                            primal.push_back((*unary)(ctx, primal[i - 1]) * v);
+                            break;
+                        }
+                    } else if (node.Arity == 2) {
                         auto const j = i - 1;
                         auto const k = j - (bodyNodes[j].Length + 1);
-                        auto const* binary = AffineBinaryRules().TryGet(node.HashValue);
-                        primal.push_back((*binary)(ctx, primal[j], primal[k]) * v);
+                        if (auto const* binary = AffineBinaryRules().TryGet(node.HashValue)) {
+                            primal.push_back((*binary)(ctx, primal[j], primal[k]) * v);
+                            break;
+                        }
                     }
-                    break;
+                    throw std::runtime_error(fmt::format(
+                        "composed-function affine evaluation: node kind `{}` not yet mapped", node.Name()));
                 }
             }
         }
