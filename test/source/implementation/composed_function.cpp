@@ -20,7 +20,9 @@
 #include "operon/core/tree.hpp"
 #include "operon/core/tree_diff.hpp"
 #include "operon/hash/hash.hpp"
+#include "operon/interpreter/affine_evaluator.hpp"
 #include "operon/interpreter/interpreter.hpp"
+#include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/parser/infix.hpp"
 
 namespace Operon::Test {
@@ -309,6 +311,67 @@ TEST_CASE("Composed function: unary symbolic-diff rule (JIT/BuildJacobianDag pat
         auto jac = EvalJacColumn(dag, 0, coeff, ds, range, dtable);
         auto const expected = std::cos(1.3);
         CHECK(static_cast<double>(jac[0]) == Catch::Approx(expected).margin(1e-4));
+    }
+}
+
+TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-function]")
+{
+    auto const xHash = Operon::Hasher{}("x");
+
+    SECTION("Interval: logistic(x) encloses within (0,1) for a wide domain") {
+        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
+        auto composedNode = MakeComposedNode("logisticInterval", 1);
+        Operon::RegisterUnaryInterval(composedNode.HashValue, Operon::MakeComposedIntervalUnaryFn(body));
+
+        Operon::Node vx(Operon::NodeType::Variable);
+        vx.HashValue = vx.CalculatedHashValue = xHash;
+        vx.Value = 1.0F;
+        vx.Optimize = false;
+        Operon::Vector<Operon::Node> nodes{vx, composedNode};
+        Operon::Tree tree{nodes};
+
+        Operon::IntervalEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::IntervalEvaluator eval(&tree, domains);
+        auto result = eval.Evaluate({});
+        CHECK(result.inf() >= -1e-3);
+        CHECK(result.sup() <= 1.0 + 1e-3);
+        // Must be a real (non-degenerate) enclosure, not [0,0] from a bug
+        // that dropped the argument entirely.
+        CHECK(result.sup() > result.inf());
+    }
+
+    SECTION("Affine: identity(x) - x encloses to exactly 0 via structural sharing (correlation preserved)") {
+        // The exact motivating case for the "reuse the caller's already-
+        // computed form" fix (Fix 1): a nested-pass approach that rebinds
+        // the param as a *fresh* affine variable would lose the shared
+        // noise symbol and wrongly enclose this as [-w,+w] instead of 0.
+        // Structural sharing (Ref, not two independent Variable nodes —
+        // two separate Variable occurrences of the same hash each get
+        // their OWN fresh noise symbol in AffineEvaluator and would NOT
+        // correlate regardless of what the composed function does) is
+        // required to actually exercise this: node0 is the one real "x"
+        // leaf; node1 is a Ref to it, feeding identity() the *same*
+        // affine_form object (same symbols) that node0 itself carries.
+        auto body = InfixParser::ParseFunctionBody("x", std::vector<std::string>{"x"});
+        auto composedNode = MakeComposedNode("identityAffine", 1);
+        Operon::RegisterUnaryAffine(composedNode.HashValue, Operon::MakeComposedAffineUnaryFn(body));
+
+        Operon::Node vx(Operon::NodeType::Variable);
+        vx.HashValue = vx.CalculatedHashValue = xHash;
+        vx.Value = 1.0F;
+        vx.Optimize = false;
+        auto ref = Operon::Node::Ref(0);
+        auto subNode = Operon::Node::Function(Operon::Hash(Operon::BuiltinOp::Sub), 2);
+        // identity(x) - x: [x(real), Ref(0), identity(Ref(0)), Sub]
+        Operon::Vector<Operon::Node> nodes{vx, ref, composedNode, subNode};
+        Operon::Tree tree{nodes};
+
+        Operon::AffineEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::AffineEvaluator eval(&tree, domains);
+        auto result = eval.Evaluate({});
+        auto const iv = result.to_interval();
+        CHECK(iv.inf() == Catch::Approx(0.0).margin(1e-4));
+        CHECK(iv.sup() == Catch::Approx(0.0).margin(1e-4));
     }
 }
 
