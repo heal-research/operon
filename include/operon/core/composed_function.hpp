@@ -8,10 +8,13 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <fmt/format.h>
+#include <stdexcept>
 
 #include "dispatch.hpp"
 #include "node.hpp"
 #include "tree.hpp"
+#include "tree_diff.hpp"
 
 // Derives DispatchTable Callable<T>/CallableDiff<T> entries for a composed
 // function (see operon-planning/designs/composed-functions.md) from its
@@ -69,6 +72,49 @@ namespace detail {
         return childIdx;
     }
 } // namespace detail
+
+// A v1 composed-function body only ever references built-ins (see
+// ParseFunctionBody), but not every built-in has symbolic-diff coverage —
+// tree_diff.cpp explicitly leaves Aq/Powabs/Fmin/Fmax and Abs/Sqrtabs/
+// Floor/Ceil undifferentiated (silently degrading to a Zero gradient
+// through the JIT path). Registering a composed function whose body uses
+// one of these would silently produce a model whose coefficients under
+// that composed function never move when fit via the JIT path — exactly
+// the "silent wrong gradient" failure class this design has avoided
+// everywhere else. Policy (design-doc decided): reject at registration.
+inline auto HasSymbolicDerivCoverage(Operon::Node const& n) -> bool
+{
+    if (n.IsLeaf()) { return true; } // param/constant leaves: trivial, always covered
+    // Mirrors Deriv()'s own hash-based dispatch order exactly (tree_diff.cpp)
+    // — arity must NOT be checked first: Sub/Div both have real arity==1
+    // rules (unary minus, reciprocal) special-cased by hash before Deriv()
+    // ever reaches its generic "arity==1, consult the unary registry"
+    // fallback, so checking arity==1 up front would wrongly flag them as
+    // uncovered.
+    if (n.IsAddition() || n.IsMultiplication()) { return true; } // n-ary, always covered
+    if (n.IsSubtraction()) { return true; } // arity 1 (unary minus), 2, and >2 all handled
+    if (n.IsDivision()) { return n.Arity <= 2; } // arity>2 not yet supported, per Deriv()'s own comment
+    if (n.IsPow()) { return true; } // binary-only from infix grammar
+    if (n.IsAq() || n.IsPowabs() || n.IsOp<Operon::BuiltinOp::Fmin, Operon::BuiltinOp::Fmax>()) { return false; }
+    if (n.Arity == 1) { return Operon::HasUnarySymbolicDeriv(n.HashValue); }
+    return false; // matches Deriv()'s final fallthrough `return Zero;`
+}
+
+// Throws std::invalid_argument naming the first offending node's hash if
+// `body` references any built-in lacking symbolic-diff coverage. Call this
+// at composed-function registration time, before deriving/registering the
+// backend hooks — never silently degrade.
+inline void ValidateSymbolicDiffCoverage(Tree const& body)
+{
+    for (auto const& n : body.Nodes()) {
+        if (!HasSymbolicDerivCoverage(n)) {
+            throw std::invalid_argument(fmt::format(
+                "composed function body references a built-in (hash {}) with no symbolic-diff rule — "
+                "its JIT-path gradient would silently be zero",
+                n.HashValue));
+        }
+    }
+}
 
 template<typename DTable, typename T>
 auto MakeComposedCallable(DTable const& dt, Tree const& body, std::size_t arity) -> typename DTable::template Callable<T>

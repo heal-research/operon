@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-// Exercises MakeComposedCallable/MakeComposedCallableDiff (composed-function
-// derivation, step 2 of operon-planning/designs/composed-functions.md)
-// directly against DispatchTable::RegisterFunction — the higher-level
-// RegisterComposedFunction orchestration (arity/diff-coverage validation,
-// wiring into the other 3 backends) is a later step and not exercised here.
+// Exercises MakeComposedCallable/MakeComposedCallableDiff/
+// ValidateSymbolicDiffCoverage (composed-function derivation, steps 2+3 of
+// operon-planning/designs/composed-functions.md) directly against
+// DispatchTable::RegisterFunction — the higher-level RegisterComposedFunction
+// orchestration (wiring all pieces + the other 3 backends together) is a
+// later step and not exercised here.
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -196,6 +197,34 @@ TEST_CASE("Composed function: CallableDiff derivation", "[composed-function]")
             CHECK(static_cast<double>(rev[i]) == Catch::Approx(0.0).margin(1e-4));
             CHECK(static_cast<double>(fwd[i]) == Catch::Approx(0.0).margin(1e-4));
         }
+    }
+}
+
+TEST_CASE("Composed function: symbolic-diff coverage validation", "[composed-function]")
+{
+    SECTION("Body using only fully-covered built-ins passes") {
+        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
+        CHECK_NOTHROW(Operon::ValidateSymbolicDiffCoverage(body));
+    }
+
+    SECTION("Unary non-diff built-in (abs) is rejected") {
+        auto body = InfixParser::ParseFunctionBody("abs(x)", std::vector<std::string>{"x"});
+        CHECK_THROWS_AS(Operon::ValidateSymbolicDiffCoverage(body), std::invalid_argument);
+    }
+
+    SECTION("Binary non-diff built-in (fmin, spelled 'min' in the parser vocabulary) is rejected") {
+        auto body = InfixParser::ParseFunctionBody("min(x, y)", std::vector<std::string>{"x", "y"});
+        CHECK_THROWS_AS(Operon::ValidateSymbolicDiffCoverage(body), std::invalid_argument);
+    }
+
+    SECTION("Binary non-diff built-in (aq) is rejected") {
+        auto body = InfixParser::ParseFunctionBody("aq(x, y)", std::vector<std::string>{"x", "y"});
+        CHECK_THROWS_AS(Operon::ValidateSymbolicDiffCoverage(body), std::invalid_argument);
+    }
+
+    SECTION("Hardcoded arity>=2 ops (add/mul/sub/div/pow) are accepted") {
+        auto body = InfixParser::ParseFunctionBody("(x + y) * (x - y) / x ^ 2", std::vector<std::string>{"x", "y"});
+        CHECK_NOTHROW(Operon::ValidateSymbolicDiffCoverage(body));
     }
 }
 
