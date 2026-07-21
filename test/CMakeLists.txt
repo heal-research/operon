@@ -65,6 +65,7 @@ add_executable(operon_test
     source/implementation/pappus_nsgp.cpp
     source/implementation/registry_coverage.cpp
     source/implementation/user_defined_registries.cpp
+    source/implementation/composed_function.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
 if(vdt_FOUND)
