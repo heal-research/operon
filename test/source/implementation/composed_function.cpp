@@ -614,4 +614,105 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
     }
 }
 
+TEST_CASE("Composed function: RegisterComposedFunction orchestrator (end-to-end)", "[composed-function]")
+{
+    // Exercises the single high-level entry point that ties every
+    // individually-tested piece above together — the pieces themselves
+    // are already covered; this is about the wiring, not re-testing the
+    // math each one does.
+    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
+                       std::vector<std::vector<Operon::Scalar>>{{1.3F, -0.6F, 2.0F}, {0.4F, 1.1F, -0.9F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::PrimitiveSet pset;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    auto const xHash = ds.GetVariable("x")->Hash;
+    auto const yHash = ds.GetVariable("y")->Hash;
+
+    SECTION("Unary: logistic(x), all backends wired from one call") {
+        Operon::FunctionInfo info{.Name = "logistic", .Desc = "1/(1+exp(-x))", .Arity = 1, .Frequency = 1};
+        Operon::RegisterComposedFunction<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(
+            dtable, pset, info, std::vector<std::string>{"x"}, "1 / (1 + exp(-x))");
+        auto const hash = Operon::Hasher{}("logistic");
+
+        // Numeric eval + name registration.
+        auto composedNode = Operon::Node::Function(hash, 1);
+        Operon::Node vx(Operon::NodeType::Variable);
+        vx.HashValue = vx.CalculatedHashValue = xHash;
+        vx.Value = 1.0F;
+        vx.Optimize = false;
+        Operon::Tree tree{Operon::Vector<Operon::Node>{vx, composedNode}};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
+        auto val = interp.Evaluate(tree.GetCoefficients(), range);
+        auto const xs = ds.GetValues("x");
+        for (std::size_t i = 0; i < range.Size(); ++i) {
+            auto const expected = 1.0 / (1.0 + std::exp(-static_cast<double>(xs[i])));
+            CHECK(static_cast<double>(val[i]) == Catch::Approx(expected).margin(1e-5));
+        }
+        CHECK(composedNode.Name() == "logistic");
+
+        // Symbolic diff (JIT/BuildJacobianDag path).
+        auto c = Operon::Node::Constant(1.3);
+        Operon::Tree jacTree{Operon::Vector<Operon::Node>{c, composedNode}};
+        auto dag = Operon::BuildJacobianDag(jacTree);
+        REQUIRE(dag.Roots.size() == 1);
+        REQUIRE(dag.Roots[0] != kNoGrad);
+        auto jac = EvalJacColumn(dag, 0, jacTree.GetCoefficients(), ds, range, dtable);
+        auto const lg = 1.0 / (1.0 + std::exp(-1.3));
+        CHECK(static_cast<double>(jac[0]) == Catch::Approx(lg * (1.0 - lg)).margin(1e-4));
+
+        // Interval bound.
+        Operon::IntervalEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::IntervalEvaluator ieval(&tree, domains);
+        auto result = ieval.Evaluate({});
+        CHECK(result.inf() >= -1e-3);
+        CHECK(result.sup() <= 1.0 + 1e-3);
+
+        // Registered into the PrimitiveSet with the right arity.
+        CHECK(pset.Contains(hash));
+    }
+
+    SECTION("Binary: subExp(a, b) = a - exp(b), all backends wired from one call") {
+        Operon::FunctionInfo info{.Name = "subExp", .Desc = "a - exp(b)", .Arity = 2, .Frequency = 1};
+        Operon::RegisterComposedFunction<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(
+            dtable, pset, info, std::vector<std::string>{"a", "b"}, "a - exp(b)");
+        auto const hash = Operon::Hasher{}("subExp");
+
+        auto composedNode = Operon::Node::Function(hash, 2);
+        Operon::Node vx(Operon::NodeType::Variable);
+        vx.HashValue = vx.CalculatedHashValue = xHash;
+        vx.Value = 1.0F;
+        vx.Optimize = false;
+        Operon::Node vy(Operon::NodeType::Variable);
+        vy.HashValue = vy.CalculatedHashValue = yHash;
+        vy.Value = 1.0F;
+        vy.Optimize = false;
+        Operon::Tree tree{Operon::Vector<Operon::Node>{vx, vy, composedNode}};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
+        auto val = interp.Evaluate(tree.GetCoefficients(), range);
+        auto const xs = ds.GetValues("x");
+        auto const ys = ds.GetValues("y");
+        for (std::size_t i = 0; i < range.Size(); ++i) {
+            auto const expected = static_cast<double>(xs[i]) - std::exp(static_cast<double>(ys[i]));
+            CHECK(static_cast<double>(val[i]) == Catch::Approx(expected).margin(1e-4));
+        }
+        CHECK(pset.Contains(hash));
+    }
+
+    SECTION("Reject: body uses a non-symbolically-differentiable built-in") {
+        Operon::FunctionInfo info{.Name = "badFn", .Desc = "", .Arity = 1, .Frequency = 1};
+        CHECK_THROWS_AS(
+            (Operon::RegisterComposedFunction<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(
+                dtable, pset, info, std::vector<std::string>{"x"}, "abs(x)")),
+            std::invalid_argument);
+    }
+
+    SECTION("Reject: FunctionInfo::Arity mismatched with params.size()") {
+        Operon::FunctionInfo info{.Name = "mismatchedFn", .Desc = "", .Arity = 2, .Frequency = 1};
+        CHECK_THROWS_AS(
+            (Operon::RegisterComposedFunction<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(
+                dtable, pset, info, std::vector<std::string>{"x"}, "sin(x)")),
+            std::invalid_argument);
+    }
+}
+
 } // namespace Operon::Test

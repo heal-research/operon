@@ -12,16 +12,22 @@
 #include <fmt/format.h>
 #include <limits>
 #include <optional>
+#include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "dispatch.hpp"
 #include "node.hpp"
+#include "pset.hpp"
+#include "symbol_library.hpp"
 #include "tree.hpp"
 #include "tree_diff.hpp"
+#include "operon/hash/hash.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
 #include "operon/interpreter/interval_evaluator.hpp"
+#include "operon/parser/infix.hpp"
 
 // Derives DispatchTable Callable<T>/CallableDiff<T> entries for a composed
 // function (see operon-planning/designs/composed-functions.md) from its
@@ -1043,6 +1049,71 @@ inline auto MakeComposedAffineBinaryFn(Tree const& body) -> AffineBinaryFn
         }
         return primal.back();
     };
+}
+
+// Ties ParseFunctionBody + every backend derivation above (numeric eval,
+// CPU gradient, symbolic diff, interval, affine) into one call — the
+// orchestrating entry point the individual builder functions were
+// deliberately built to feed into, deferred until now because there was
+// nothing to orchestrate until arity-1 *and* arity-2 support existed for
+// every backend. JIT codegen (asmjit machine code) is not one of the
+// backends registered here — not built for composed functions at all
+// (a tree containing one simply never gets JIT-compiled, verified to
+// degrade gracefully rather than crash — see the composed_function.cpp
+// test suite's `[jit]`-tagged case).
+//
+// Arity is `params.size()` (<= kMaxComposedFunctionArity), not a value the
+// caller supplies independently — `info.Arity` is validated to match
+// rather than trusted as a separate source of truth, since (unlike a
+// hand-written scalar-lambda registration, where arity isn't otherwise
+// derivable) it's always redundant with `params.size()` here.
+template<typename DTable, typename T>
+void RegisterComposedFunction(
+    DTable& dt, PrimitiveSet& pset,
+    FunctionInfo const& info,
+    std::span<std::string const> params,
+    std::string_view bodyInfix)
+{
+    if (params.size() > kMaxComposedFunctionArity) {
+        throw std::invalid_argument(fmt::format(
+            "RegisterComposedFunction: {} parameters exceeds the v1 cap of {}",
+            params.size(), kMaxComposedFunctionArity));
+    }
+    if (info.Arity != params.size()) {
+        throw std::invalid_argument(fmt::format(
+            "RegisterComposedFunction: FunctionInfo::Arity ({}) does not match params.size() ({})",
+            info.Arity, params.size()));
+    }
+
+    std::vector<std::string> const paramVec(params.begin(), params.end());
+    auto body = InfixParser::ParseFunctionBody(bodyInfix, paramVec);
+    ValidateSymbolicDiffCoverage(body);
+
+    auto const hash = Operon::Hasher{}(info.Name);
+    detail::ValidateUserHash(hash, info.Name);
+
+    auto const arity = params.size();
+    dt.template RegisterFunction<T>(hash,
+        MakeComposedCallable<DTable, T>(dt, body, arity),
+        MakeComposedCallableDiff<DTable, T>(dt, body, arity));
+
+    // arity == 0 needs none of these: a zero-parameter composed function
+    // is a constant expression over built-ins, contributing no free
+    // coefficient of its own — Deriv() already treats any childless
+    // Function node this way with no special-casing needed, and there is
+    // no argument to bound for interval/affine either.
+    if (arity == 1) {
+        RegisterUnarySymbolicDeriv(hash, MakeComposedUnarySymbolicDerivRule(body));
+        RegisterUnaryInterval(hash, MakeComposedIntervalUnaryFn(body));
+        RegisterUnaryAffine(hash, MakeComposedAffineUnaryFn(body));
+    } else if (arity == 2) {
+        RegisterBinarySymbolicDeriv(hash, MakeComposedBinarySymbolicDerivRule(body));
+        RegisterBinaryInterval(hash, MakeComposedIntervalBinaryFn(body));
+        RegisterBinaryAffine(hash, MakeComposedAffineBinaryFn(body));
+    }
+
+    pset.AddFunction(hash, static_cast<uint16_t>(arity), info.Frequency);
+    Node::RegisterName(hash, info.Name, info.Desc);
 }
 
 } // namespace Operon
