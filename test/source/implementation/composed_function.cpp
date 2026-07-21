@@ -253,6 +253,35 @@ TEST_CASE("Composed function: symbolic-diff coverage validation", "[composed-fun
     }
 }
 
+TEST_CASE("Composed function: structural invariants (no Ref, arity <= 2)", "[composed-function]")
+{
+    SECTION("A normal ParseFunctionBody output passes") {
+        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
+        CHECK_NOTHROW(Operon::ValidateBodyStructuralInvariants(body));
+    }
+
+    SECTION("A body containing a Ref node is rejected") {
+        // Fabricate a Ref where ParseFunctionBody would never emit one, to
+        // exercise the guard directly rather than relying on ever finding a
+        // real code path that produces one.
+        auto body = InfixParser::ParseFunctionBody("x + x", std::vector<std::string>{"x"});
+        auto nodes = body.Nodes();
+        nodes.back() = Operon::Node::Ref(0);
+        Operon::Tree refBody{nodes};
+        CHECK_THROWS_AS(Operon::ValidateBodyStructuralInvariants(refBody), std::invalid_argument);
+    }
+
+    SECTION("A body containing an arity>2 Function node is rejected") {
+        // Same fabrication approach: v1's grammar never emits arity>2, so
+        // force it to exercise the guard.
+        auto body = InfixParser::ParseFunctionBody("x + x", std::vector<std::string>{"x"});
+        auto nodes = body.Nodes();
+        nodes.back().Arity = 3;
+        Operon::Tree arity3Body{nodes};
+        CHECK_THROWS_AS(Operon::ValidateBodyStructuralInvariants(arity3Body), std::invalid_argument);
+    }
+}
+
 TEST_CASE("Composed function: unary symbolic-diff rule (JIT/BuildJacobianDag path)", "[composed-function]")
 {
     // Differentiate w.r.t. a tunable *Constant* argument, not a Variable's

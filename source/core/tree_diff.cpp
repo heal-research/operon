@@ -24,7 +24,13 @@ using Memo   = Operon::Map<Operon::Hash, std::size_t>;
 
 constexpr std::size_t Zero = std::numeric_limits<std::size_t>::max();
 
-// Mix two 64-bit hashes (Boost-style but with a larger multiplier).
+// Mix two 64-bit hashes (Boost-style but with a larger multiplier). Note:
+// Mix(0, 0) == 0 is a fixed point of this formula (composed_function.hpp's
+// DiffMix salts against exactly this, since it mixes directly against raw
+// original-tree indices where h[0] == 0 is normal). It's out of reach here
+// only because Deriv() below always combines *derivative*-dag hashes (never
+// a raw original-tree index of 0) through this function — an invariant of
+// how Deriv() is written, not something this function itself enforces.
 auto Mix(uint64_t a, uint64_t b) -> uint64_t {
     return a ^ (b * 0x9e3779b97f4a7c15ULL + (a << 6U) + (a >> 2U));
 }

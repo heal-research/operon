@@ -15,6 +15,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,28 @@ namespace detail {
             }
         }
         return ops;
+    }
+
+    // Looks up `hash` in `ops` (as built by ResolveOps above, which walks the
+    // exact same body this is later consulted against — a miss here should
+    // be unreachable in practice, since ResolveOps would already have thrown
+    // a descriptive error from DispatchTable::GetFunction/GetDerivative at
+    // construction time if `dt` were missing that built-in). Throws
+    // std::invalid_argument rather than letting a plain `.at()` surface
+    // std::out_of_range, for consistency with every other rejection path in
+    // this file (ValidateUserHash, ValidateSymbolicDiffCoverage, the
+    // preflight duplicate check, RegisterBinarySymbolicDeriv's hardcoded-hash
+    // guard all throw std::invalid_argument with a descriptive message).
+    template<typename Fn>
+    auto GetOp(Operon::Map<Operon::Hash, Fn> const& ops, Operon::Hash hash) -> Fn const&
+    {
+        auto it = ops.find(hash);
+        if (it == ops.end()) {
+            throw std::invalid_argument(fmt::format(
+                "composed function body references built-in (hash {}) not resolved by ResolveOps — "
+                "should be unreachable (ResolveOps walks the same body)", hash));
+        }
+        return it->second;
     }
 
     // Binds the composed function's formal-parameter index to the outer
@@ -125,6 +148,36 @@ inline void ValidateSymbolicDiffCoverage(Tree const& body)
                 "composed function body references a built-in (hash {}) with no symbolic-diff rule — "
                 "its JIT-path gradient would silently be zero",
                 n.HashValue));
+        }
+    }
+}
+
+// Guards two structural invariants that every Diff*/MakeComposedCallableDiff
+// helper below relies on but doesn't itself re-check per node (that would
+// cost per-evaluation, not just per-registration): v1's grammar
+// (ParseFunctionBody, reduce=false) only ever emits Function nodes of arity
+// <= kMaxComposedFunctionArity, and never emits a Ref (no aliased/shared
+// subexpressions within a body). Both are unreachable through the public API
+// today, but silently wrong if violated: DiffCopyBody/DiffParam's Sub/Div
+// arity==2 fallthrough would misread an arity>2 node's children, and
+// MakeComposedCallableDiff's reverse-trace `*=` accumulation is only correct
+// for a tree where every node has exactly one parent — a Ref would give a
+// node two parents and the second visit's `*=` would multiply into (rather
+// than add to) the first's contribution, silently discarding it. Call this
+// once at registration time, right after ValidateSymbolicDiffCoverage, so a
+// future parser change that starts emitting either shape fails loudly here
+// instead of producing a silently wrong derivative later.
+inline void ValidateBodyStructuralInvariants(Tree const& body)
+{
+    for (auto const& n : body.Nodes()) {
+        if (n.IsRef()) {
+            throw std::invalid_argument(
+                "composed function body must not contain Ref nodes (v1 grammar invariant violated)");
+        }
+        if (!n.IsLeaf() && n.Arity > kMaxComposedFunctionArity) {
+            throw std::invalid_argument(fmt::format(
+                "composed function body contains a node of arity {} (hash {}) — only arity <= {} is supported",
+                n.Arity, n.HashValue, kMaxComposedFunctionArity));
         }
     }
 }
@@ -355,6 +408,11 @@ namespace detail {
             return DiffMakeBinary(dag, memo, h, Operon::BuiltinOp::Div, num, denom);
         }
         if (n.IsPow()) {
+            // bodyToLive[k] below is the live dag index DiffCopyBody copied
+            // this Pow node's own primal into — mirrors Deriv()'s hardcoded
+            // Pow case in tree_diff.cpp, which uses `i` (the outer Pow
+            // node's own dag index) the same way, for the same k*ln(j)/j and
+            // ln(j) terms.
             auto j  = bodyToLive[children[0]];
             auto k2 = bodyToLive[children[1]];
             auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
@@ -488,7 +546,7 @@ auto MakeComposedCallable(DTable const& dt, Tree const& body, std::size_t arity)
             }
             // Function node: every name in a v1 body is a built-in, already
             // resolved into `ops` above.
-            std::invoke(ops.at(n.HashValue), bodyNodes, view, static_cast<std::size_t>(k), rg);
+            std::invoke(detail::GetOp(ops, n.HashValue), bodyNodes, view, static_cast<std::size_t>(k), rg);
         }
 
         auto* dst = Backend::Ptr<T, S>(outerData, static_cast<std::int64_t>(i));
@@ -555,7 +613,7 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
                 auto const w = static_cast<T>(n.Value);
                 for (std::size_t s = 0; s < S; ++s) { dst[s] = w * src[s]; }
             } else {
-                std::invoke(fns.at(n.HashValue), bodyNodes, primalView, static_cast<std::size_t>(k), Operon::Range{0, S});
+                std::invoke(detail::GetOp(fns, n.HashValue), bodyNodes, primalView, static_cast<std::size_t>(k), Operon::Range{0, S});
             }
         }
 
@@ -584,7 +642,7 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
 
             auto const w = static_cast<T>(n.Value);
             for (auto c : Tree::Indices(bodyNodes, static_cast<std::size_t>(k))) {
-                std::invoke(dfs.at(n.HashValue), bodyNodes, primalView, traceView, static_cast<int>(k), static_cast<int>(c));
+                std::invoke(detail::GetOp(dfs, n.HashValue), bodyNodes, primalView, traceView, static_cast<int>(k), static_cast<int>(c));
             }
             for (auto c : Tree::Indices(bodyNodes, static_cast<std::size_t>(k))) {
                 auto* dst = Backend::Ptr<T, S>(traceView, static_cast<std::int64_t>(c));
@@ -611,66 +669,137 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
     };
 }
 
-// Builds an IntervalUnaryFn for an *arity-1* composed function, pluggable
-// directly into RegisterUnaryInterval — walks the body's own node array
-// once per call (not a nested IntervalEvaluator pass), substituting the
-// single param leaf with the literal caller-supplied argument interval and
-// dispatching internal nodes through the existing IntervalUnaryRules/
-// IntervalBinaryRules registries plus the hardcoded Add/Mul/Sub/Div/Fmin/Fmax
-// n-ary folds — mirrors IntervalEvaluator::Evaluate()'s own per-node
-// dispatch exactly (see interval_evaluator.hpp), just body-scoped.
-inline auto MakeComposedIntervalUnaryFn(Tree const& body) -> IntervalUnaryFn
-{
-    auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](pappus::interval<Operon::Scalar> const& arg) -> pappus::interval<Operon::Scalar> {
+namespace detail {
+    // Shared "kind" policy for the interval/affine mini-evaluators below.
+    // MakeComposed{Interval,Affine}{Unary,Binary}Fn were four ~150-line,
+    // near-verbatim copies of the same per-node dispatch (the same
+    // add/mul/sub/div/min/max folds, the same 6-case switch over the
+    // structural Add/Mul/Sub/Div/Fmin/Fmax hashes plus a registry-consulting
+    // default) differing only in: the leaf value type (interval vs affine
+    // form), whether ops need a threaded affine context, and which
+    // registry/builtin-registration function to consult. Collapsing that
+    // into one generic EvaluateComposedBody<Policy> plus a per-kind Policy
+    // struct means a fix or a new structural op only needs to change one
+    // place, not four.
+    //
+    // IntervalPolicy's Ctx is a dummy empty tag: interval ops take no
+    // context, but a single shared EvaluateComposedBody needs one uniform
+    // `Ctx const&` parameter across both kinds, so Interval's Ctx-taking
+    // methods simply ignore it.
+    struct NoAffineContext { };
+
+    struct IntervalPolicy {
         using Scalar = Operon::Scalar;
-        using Interval = pappus::interval<Scalar>;
-        RegisterIntervalBuiltins();
+        using Value  = pappus::interval<Scalar>;
+        using Ctx    = NoAffineContext;
+        static constexpr std::string_view Kind = "interval";
+
+        static void RegisterBuiltins() { Operon::RegisterIntervalBuiltins(); }
+        static auto UnaryRules() -> Operon::IntervalUnaryRegistry const& { return Operon::IntervalUnaryRules(); }
+        static auto BinaryRules() -> Operon::IntervalBinaryRegistry const& { return Operon::IntervalBinaryRules(); }
+
+        static auto MakeConst(Ctx const& /*ctx*/, Scalar v) -> Value { return pappus::ops::constant<Scalar>(v); }
+        static auto Add(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::add<Scalar>(a, b); }
+        static auto Mul(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::mul<Scalar>(a, b); }
+        static auto Sub(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::sub<Scalar>(a, b); }
+        static auto Div(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::div<Scalar>(a, b); }
+        static auto Min(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::min<Scalar>(a, b); }
+        static auto Max(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(a, b); }
+        static auto Neg(Ctx const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
+        static auto Inv(Ctx const& /*ctx*/, Value const& a) -> Value { return pappus::ops::inv<Scalar>(a); }
+        static auto CallUnary(Ctx const& /*ctx*/, IntervalUnaryFn const& fn, Value const& a) -> Value { return fn(a); }
+        static auto CallBinary(Ctx const& /*ctx*/, IntervalBinaryFn const& fn, Value const& a, Value const& b) -> Value { return fn(a, b); }
+    };
+
+    struct AffinePolicy {
+        using Scalar = Operon::Scalar;
+        using Value  = pappus::affine_form<Scalar>;
+        using Ctx    = pappus::ops::affine_context<Scalar>;
+        static constexpr std::string_view Kind = "affine";
+
+        static void RegisterBuiltins() { Operon::RegisterAffineBuiltins(); }
+        static auto UnaryRules() -> Operon::AffineUnaryRegistry const& { return Operon::AffineUnaryRules(); }
+        static auto BinaryRules() -> Operon::AffineBinaryRegistry const& { return Operon::AffineBinaryRules(); }
+
+        // pappus::ops::constant(context, value) needs a *non-const*
+        // pappus::ops::affine_context<T>& (it allocates no new symbol for a
+        // plain scalar, but is still declared non-const) — every caller here
+        // only ever has a const Ctx. affine_form's own constructor taking
+        // the *inner* pappus::affine_context (ctx.state) by const reference
+        // is the equivalent leaf-construction path that actually accepts a
+        // const context — used directly here instead.
+        static auto MakeConst(Ctx const& ctx, Scalar v) -> Value { return Value{ctx.state, v}; }
+        static auto Add(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::add<Scalar>(ctx, a, b); }
+        static auto Mul(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::mul<Scalar>(ctx, a, b); }
+        static auto Sub(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::sub<Scalar>(ctx, a, b); }
+        static auto Div(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::div<Scalar>(ctx, a, b); }
+        static auto Min(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::min<Scalar>(ctx, a, b); }
+        static auto Max(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(ctx, a, b); }
+        static auto Neg(Ctx const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
+        static auto Inv(Ctx const& ctx, Value const& a) -> Value { return pappus::ops::inv<Scalar>(ctx, a); }
+        static auto CallUnary(Ctx const& ctx, AffineUnaryFn const& fn, Value const& a) -> Value { return fn(ctx, a); }
+        static auto CallBinary(Ctx const& ctx, AffineBinaryFn const& fn, Value const& a, Value const& b) -> Value { return fn(ctx, a, b); }
+    };
+
+    // The per-node dispatch core shared by all four mini-evaluators: walks
+    // `bodyNodes` once, substituting each param leaf with the caller-
+    // supplied `args[paramIdx]` (unary callers only ever populate args[0];
+    // the arity-1 body only ever contains ParamHash(0) leaves, so args[1]
+    // is never dereferenced), and dispatching internal nodes through the
+    // hardcoded Add/Mul/Sub/Div/Fmin/Fmax n-ary folds or, on a miss,
+    // Policy::UnaryRules()/BinaryRules() — mirrors IntervalEvaluator::
+    // Evaluate()'s/AffineEvaluator::Evaluate()'s own per-node dispatch
+    // exactly (see interval_evaluator.hpp/affine_evaluator.hpp), just
+    // body-scoped instead of a nested full-evaluator pass.
+    template<typename Policy>
+    auto EvaluateComposedBody(Operon::Vector<Node> const& bodyNodes, typename Policy::Ctx const& ctx,
+        std::array<typename Policy::Value const*, kMaxComposedFunctionArity> const& args) -> typename Policy::Value
+    {
+        using Value = typename Policy::Value;
+        using Scalar = typename Policy::Scalar;
+        Policy::RegisterBuiltins();
 
         auto const n = bodyNodes.size();
-        std::vector<Interval> primal(n);
+        std::vector<Value> primal;
+        primal.reserve(n);
 
         auto const addFold = [&](std::size_t i) {
-            auto acc = Interval{Scalar{0}};
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = pappus::ops::add<Scalar>(acc, primal[j]); }
+            auto acc = Policy::MakeConst(ctx, Scalar{0});
+            for (auto j : Tree::Indices(bodyNodes, i)) { acc = Policy::Add(ctx, acc, primal[j]); }
             return acc;
         };
         auto const mulFold = [&](std::size_t i) {
-            auto acc = Interval{Scalar{1}};
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = pappus::ops::mul<Scalar>(acc, primal[j]); }
+            auto acc = Policy::MakeConst(ctx, Scalar{1});
+            for (auto j : Tree::Indices(bodyNodes, i)) { acc = Policy::Mul(ctx, acc, primal[j]); }
             return acc;
         };
         auto const subFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{0}};
+            std::optional<Value> acc;
             for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (first) { acc = primal[j]; first = false; } else { acc = pappus::ops::sub<Scalar>(acc, primal[j]); }
+                if (!acc) { acc = primal[j]; } else { acc = Policy::Sub(ctx, *acc, primal[j]); }
             }
-            return acc;
+            return std::move(*acc);
         };
         auto const divFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{1}};
+            std::optional<Value> acc;
             for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (first) { acc = primal[j]; first = false; } else { acc = pappus::ops::div<Scalar>(acc, primal[j]); }
+                if (!acc) { acc = primal[j]; } else { acc = Policy::Div(ctx, *acc, primal[j]); }
             }
-            return acc;
+            return std::move(*acc);
         };
         auto const minFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{0}};
+            std::optional<Value> acc;
             for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (first) { acc = primal[j]; first = false; } else { acc = pappus::ops::min<Scalar>(acc, primal[j]); }
+                if (!acc) { acc = primal[j]; } else { acc = Policy::Min(ctx, *acc, primal[j]); }
             }
-            return acc;
+            return std::move(*acc);
         };
         auto const maxFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{0}};
+            std::optional<Value> acc;
             for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (first) { acc = primal[j]; first = false; } else { acc = pappus::ops::max<Scalar>(acc, primal[j]); }
+                if (!acc) { acc = primal[j]; } else { acc = Policy::Max(ctx, *acc, primal[j]); }
             }
-            return acc;
+            return std::move(*acc);
         };
 
         for (std::size_t i = 0; i < n; ++i) {
@@ -681,346 +810,11 @@ inline auto MakeComposedIntervalUnaryFn(Tree const& body) -> IntervalUnaryFn
             auto const v = static_cast<Scalar>(node.Value);
 
             if (node.Type == Operon::NodeType::Constant) {
-                primal[i] = pappus::ops::constant<Scalar>(v);
+                primal.push_back(Policy::MakeConst(ctx, v));
             } else if (node.IsVariable()) {
-                // Single param leaf (arity-1 scope): the literal caller-
-                // supplied interval, not a fresh domain lookup — same object
-                // reuse principle as the affine-correlation fix (Fix 1).
-                primal[i] = arg * v;
-            } else if (node.IsRef()) {
-                primal[i] = primal[node.RefTo];
-            } else {
-                switch (node.HashValue) {
-                case Operon::Hash(Operon::BuiltinOp::Add): primal[i] = addFold(i) * v; break;
-                case Operon::Hash(Operon::BuiltinOp::Mul): primal[i] = mulFold(i) * v; break;
-                case Operon::Hash(Operon::BuiltinOp::Sub):
-                    primal[i] = (node.Arity == 1 ? pappus::ops::neg<Scalar>(primal[i - 1]) : subFold(i)) * v;
-                    break;
-                case Operon::Hash(Operon::BuiltinOp::Div):
-                    primal[i] = (node.Arity == 1 ? pappus::ops::inv<Scalar>(primal[i - 1]) : divFold(i)) * v;
-                    break;
-                case Operon::Hash(Operon::BuiltinOp::Fmin): primal[i] = minFold(i) * v; break;
-                case Operon::Hash(Operon::BuiltinOp::Fmax): primal[i] = maxFold(i) * v; break;
-                default:
-                    // Mirrors IntervalEvaluator::Evaluate()'s own miss
-                    // behavior exactly (interval_evaluator.hpp: "still
-                    // throws on a miss, unchanged from today") — today this
-                    // is unreachable whenever the caller has already run
-                    // ValidateSymbolicDiffCoverage (strictly narrower than
-                    // interval coverage), but that ordering isn't enforced
-                    // by the type system, so guard it explicitly rather
-                    // than assume the caller got the sequencing right.
-                    if (node.Arity == 1) {
-                        if (auto const* unary = IntervalUnaryRules().TryGet(node.HashValue)) {
-                            primal[i] = (*unary)(primal[i - 1]) * v;
-                            break;
-                        }
-                    } else if (node.Arity == 2) {
-                        auto const j = i - 1;
-                        auto const k = j - (bodyNodes[j].Length + 1);
-                        if (auto const* binary = IntervalBinaryRules().TryGet(node.HashValue)) {
-                            primal[i] = (*binary)(primal[j], primal[k]) * v;
-                            break;
-                        }
-                    }
-                    throw std::runtime_error(fmt::format(
-                        "composed-function interval evaluation: node kind `{}` not yet mapped", node.Name()));
-                }
-            }
-        }
-        return primal.back();
-    };
-}
-
-// Binary counterpart, pluggable into RegisterBinaryInterval. Mirrors
-// MakeComposedIntervalUnaryFn exactly except for param-leaf binding: `argJ`
-// (near outer operand) binds to param[1], `argK` (far outer operand) binds
-// to param[0] — same reversal BindArgIndices/MakeComposedBinarySymbolicDerivRule
-// already established (Tree::Indices enumerates nearest-first, the reverse
-// of textual/formal-parameter order).
-inline auto MakeComposedIntervalBinaryFn(Tree const& body) -> IntervalBinaryFn
-{
-    auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](pappus::interval<Operon::Scalar> const& argJ, pappus::interval<Operon::Scalar> const& argK)
-               -> pappus::interval<Operon::Scalar> {
-        using Scalar = Operon::Scalar;
-        using Interval = pappus::interval<Scalar>;
-        RegisterIntervalBuiltins();
-        std::array<Interval, kMaxComposedFunctionArity> const args{argK, argJ}; // args[paramIdx]
-
-        auto const n = bodyNodes.size();
-        std::vector<Interval> primal(n);
-
-        auto const addFold = [&](std::size_t i) {
-            auto acc = Interval{Scalar{0}};
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = pappus::ops::add<Scalar>(acc, primal[j]); }
-            return acc;
-        };
-        auto const mulFold = [&](std::size_t i) {
-            auto acc = Interval{Scalar{1}};
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = pappus::ops::mul<Scalar>(acc, primal[j]); }
-            return acc;
-        };
-        auto const subFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{0}};
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (first) { acc = primal[j]; first = false; } else { acc = pappus::ops::sub<Scalar>(acc, primal[j]); }
-            }
-            return acc;
-        };
-        auto const divFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{1}};
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (first) { acc = primal[j]; first = false; } else { acc = pappus::ops::div<Scalar>(acc, primal[j]); }
-            }
-            return acc;
-        };
-        auto const minFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{0}};
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (first) { acc = primal[j]; first = false; } else { acc = pappus::ops::min<Scalar>(acc, primal[j]); }
-            }
-            return acc;
-        };
-        auto const maxFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{0}};
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (first) { acc = primal[j]; first = false; } else { acc = pappus::ops::max<Scalar>(acc, primal[j]); }
-            }
-            return acc;
-        };
-
-        for (std::size_t i = 0; i < n; ++i) {
-            auto const& node = bodyNodes[i];
-            auto const v = static_cast<Scalar>(node.Value);
-
-            if (node.Type == Operon::NodeType::Constant) {
-                primal[i] = pappus::ops::constant<Scalar>(v);
-            } else if (node.IsVariable()) {
-                auto const pIdx = static_cast<std::size_t>(node.HashValue - Operon::BuiltinOpCount);
-                primal[i] = args[pIdx] * v;
-            } else if (node.IsRef()) {
-                primal[i] = primal[node.RefTo];
-            } else {
-                switch (node.HashValue) {
-                case Operon::Hash(Operon::BuiltinOp::Add): primal[i] = addFold(i) * v; break;
-                case Operon::Hash(Operon::BuiltinOp::Mul): primal[i] = mulFold(i) * v; break;
-                case Operon::Hash(Operon::BuiltinOp::Sub):
-                    primal[i] = (node.Arity == 1 ? pappus::ops::neg<Scalar>(primal[i - 1]) : subFold(i)) * v;
-                    break;
-                case Operon::Hash(Operon::BuiltinOp::Div):
-                    primal[i] = (node.Arity == 1 ? pappus::ops::inv<Scalar>(primal[i - 1]) : divFold(i)) * v;
-                    break;
-                case Operon::Hash(Operon::BuiltinOp::Fmin): primal[i] = minFold(i) * v; break;
-                case Operon::Hash(Operon::BuiltinOp::Fmax): primal[i] = maxFold(i) * v; break;
-                default:
-                    if (node.Arity == 1) {
-                        if (auto const* unary = IntervalUnaryRules().TryGet(node.HashValue)) {
-                            primal[i] = (*unary)(primal[i - 1]) * v;
-                            break;
-                        }
-                    } else if (node.Arity == 2) {
-                        auto const j = i - 1;
-                        auto const k = j - (bodyNodes[j].Length + 1);
-                        if (auto const* binary = IntervalBinaryRules().TryGet(node.HashValue)) {
-                            primal[i] = (*binary)(primal[j], primal[k]) * v;
-                            break;
-                        }
-                    }
-                    throw std::runtime_error(fmt::format(
-                        "composed-function interval evaluation: node kind `{}` not yet mapped", node.Name()));
-                }
-            }
-        }
-        return primal.back();
-    };
-}
-
-// Builds an AffineUnaryFn for an *arity-1* composed function, pluggable
-// directly into RegisterUnaryAffine. Mirrors MakeComposedIntervalUnaryFn
-// exactly, except every op threads the *caller-supplied* affine context
-// (`ctx`, the same one the outer AffineEvaluator instance owns) rather than
-// constructing a fresh one — this is exactly the affine-correlation fix
-// (Fix 1) from the design: reusing the same context means the same param
-// occurrence's affine noise symbols are shared correctly, so e.g. `x - f(x)`
-// for `f(x)=x` encloses to exactly `0`, not `[-w,+w]`.
-inline auto MakeComposedAffineUnaryFn(Tree const& body) -> AffineUnaryFn
-{
-    auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](pappus::ops::affine_context<Operon::Scalar> const& ctx, pappus::affine_form<Operon::Scalar> const& arg) -> pappus::affine_form<Operon::Scalar> {
-        using Scalar = Operon::Scalar;
-        using Affine = pappus::affine_form<Scalar>;
-        RegisterAffineBuiltins();
-
-        // pappus::ops::constant(context, value) needs a *non-const*
-        // pappus::ops::affine_context<T>& (it allocates no new symbol for a
-        // plain scalar, but is still declared non-const) — AffineUnaryFn's
-        // fixed signature only ever hands us a const one. affine_form's own
-        // constructor taking the *inner* pappus::affine_context (ctx.state)
-        // by const reference is the equivalent leaf-construction path that
-        // actually accepts a const context — used directly here instead.
-        auto const makeConst = [&ctx](Scalar v) { return Affine{ctx.state, v}; };
-
-        auto const n = bodyNodes.size();
-        std::vector<Affine> primal;
-        primal.reserve(n);
-
-        auto const addFold = [&](std::size_t i) {
-            auto acc = makeConst(Scalar{0});
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = pappus::ops::add<Scalar>(ctx, acc, primal[j]); }
-            return acc;
-        };
-        auto const mulFold = [&](std::size_t i) {
-            auto acc = makeConst(Scalar{1});
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = pappus::ops::mul<Scalar>(ctx, acc, primal[j]); }
-            return acc;
-        };
-        auto const subFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = pappus::ops::sub<Scalar>(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        auto const divFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = pappus::ops::div<Scalar>(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        auto const minFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = pappus::ops::min<Scalar>(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        auto const maxFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = pappus::ops::max<Scalar>(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-
-        for (std::size_t i = 0; i < n; ++i) {
-            auto const& node = bodyNodes[i];
-            auto const v = static_cast<Scalar>(node.Value);
-
-            if (node.Type == Operon::NodeType::Constant) {
-                primal.push_back(makeConst(v));
-            } else if (node.IsVariable()) {
-                primal.push_back(arg * v);
-            } else if (node.IsRef()) {
-                primal.push_back(primal[node.RefTo]);
-            } else {
-                switch (node.HashValue) {
-                case Operon::Hash(Operon::BuiltinOp::Add): primal.push_back(addFold(i) * v); break;
-                case Operon::Hash(Operon::BuiltinOp::Mul): primal.push_back(mulFold(i) * v); break;
-                case Operon::Hash(Operon::BuiltinOp::Sub):
-                    primal.push_back((node.Arity == 1 ? pappus::ops::neg<Scalar>(primal[i - 1]) : subFold(i)) * v);
-                    break;
-                case Operon::Hash(Operon::BuiltinOp::Div):
-                    primal.push_back((node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx, primal[i - 1]) : divFold(i)) * v);
-                    break;
-                case Operon::Hash(Operon::BuiltinOp::Fmin): primal.push_back(minFold(i) * v); break;
-                case Operon::Hash(Operon::BuiltinOp::Fmax): primal.push_back(maxFold(i) * v); break;
-                default:
-                    // See the matching comment in MakeComposedIntervalUnaryFn.
-                    if (node.Arity == 1) {
-                        if (auto const* unary = AffineUnaryRules().TryGet(node.HashValue)) {
-                            primal.push_back((*unary)(ctx, primal[i - 1]) * v);
-                            break;
-                        }
-                    } else if (node.Arity == 2) {
-                        auto const j = i - 1;
-                        auto const k = j - (bodyNodes[j].Length + 1);
-                        if (auto const* binary = AffineBinaryRules().TryGet(node.HashValue)) {
-                            primal.push_back((*binary)(ctx, primal[j], primal[k]) * v);
-                            break;
-                        }
-                    }
-                    throw std::runtime_error(fmt::format(
-                        "composed-function affine evaluation: node kind `{}` not yet mapped", node.Name()));
-                }
-            }
-        }
-        return primal.back();
-    };
-}
-
-// Binary counterpart, pluggable into RegisterBinaryAffine. Mirrors
-// MakeComposedAffineUnaryFn exactly except for param-leaf binding — same
-// argJ(near)->param[1], argK(far)->param[0] reversal as
-// MakeComposedIntervalBinaryFn.
-inline auto MakeComposedAffineBinaryFn(Tree const& body) -> AffineBinaryFn
-{
-    auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](pappus::ops::affine_context<Operon::Scalar> const& ctx,
-               pappus::affine_form<Operon::Scalar> const& argJ,
-               pappus::affine_form<Operon::Scalar> const& argK) -> pappus::affine_form<Operon::Scalar> {
-        using Scalar = Operon::Scalar;
-        using Affine = pappus::affine_form<Scalar>;
-        RegisterAffineBuiltins();
-
-        auto const makeConst = [&ctx](Scalar v) { return Affine{ctx.state, v}; };
-        std::array<Affine const*, kMaxComposedFunctionArity> const args{&argK, &argJ}; // args[paramIdx]
-
-        auto const n = bodyNodes.size();
-        std::vector<Affine> primal;
-        primal.reserve(n);
-
-        auto const addFold = [&](std::size_t i) {
-            auto acc = makeConst(Scalar{0});
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = pappus::ops::add<Scalar>(ctx, acc, primal[j]); }
-            return acc;
-        };
-        auto const mulFold = [&](std::size_t i) {
-            auto acc = makeConst(Scalar{1});
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = pappus::ops::mul<Scalar>(ctx, acc, primal[j]); }
-            return acc;
-        };
-        auto const subFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = pappus::ops::sub<Scalar>(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        auto const divFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = pappus::ops::div<Scalar>(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        auto const minFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = pappus::ops::min<Scalar>(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        auto const maxFold = [&](std::size_t i) {
-            std::optional<Affine> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = pappus::ops::max<Scalar>(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-
-        for (std::size_t i = 0; i < n; ++i) {
-            auto const& node = bodyNodes[i];
-            auto const v = static_cast<Scalar>(node.Value);
-
-            if (node.Type == Operon::NodeType::Constant) {
-                primal.push_back(makeConst(v));
-            } else if (node.IsVariable()) {
+                // Literal caller-supplied argument, not a fresh domain
+                // lookup — same object-reuse principle as the affine-
+                // correlation fix (Fix 1).
                 auto const pIdx = static_cast<std::size_t>(node.HashValue - Operon::BuiltinOpCount);
                 primal.push_back(*args[pIdx] * v);
             } else if (node.IsRef()) {
@@ -1030,33 +824,105 @@ inline auto MakeComposedAffineBinaryFn(Tree const& body) -> AffineBinaryFn
                 case Operon::Hash(Operon::BuiltinOp::Add): primal.push_back(addFold(i) * v); break;
                 case Operon::Hash(Operon::BuiltinOp::Mul): primal.push_back(mulFold(i) * v); break;
                 case Operon::Hash(Operon::BuiltinOp::Sub):
-                    primal.push_back((node.Arity == 1 ? pappus::ops::neg<Scalar>(primal[i - 1]) : subFold(i)) * v);
+                    primal.push_back((node.Arity == 1 ? Policy::Neg(ctx, primal[i - 1]) : subFold(i)) * v);
                     break;
                 case Operon::Hash(Operon::BuiltinOp::Div):
-                    primal.push_back((node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx, primal[i - 1]) : divFold(i)) * v);
+                    primal.push_back((node.Arity == 1 ? Policy::Inv(ctx, primal[i - 1]) : divFold(i)) * v);
                     break;
                 case Operon::Hash(Operon::BuiltinOp::Fmin): primal.push_back(minFold(i) * v); break;
                 case Operon::Hash(Operon::BuiltinOp::Fmax): primal.push_back(maxFold(i) * v); break;
                 default:
+                    // Mirrors the base evaluator's own miss behavior exactly
+                    // (still throws on a miss, unchanged from today) — today
+                    // this is unreachable whenever the caller has already
+                    // run ValidateSymbolicDiffCoverage (strictly narrower
+                    // than interval/affine coverage), but that ordering
+                    // isn't enforced by the type system, so guard it
+                    // explicitly rather than assume the caller got the
+                    // sequencing right.
                     if (node.Arity == 1) {
-                        if (auto const* unary = AffineUnaryRules().TryGet(node.HashValue)) {
-                            primal.push_back((*unary)(ctx, primal[i - 1]) * v);
+                        if (auto const* unary = Policy::UnaryRules().TryGet(node.HashValue)) {
+                            primal.push_back(Policy::CallUnary(ctx, *unary, primal[i - 1]) * v);
                             break;
                         }
                     } else if (node.Arity == 2) {
                         auto const j = i - 1;
                         auto const k = j - (bodyNodes[j].Length + 1);
-                        if (auto const* binary = AffineBinaryRules().TryGet(node.HashValue)) {
-                            primal.push_back((*binary)(ctx, primal[j], primal[k]) * v);
+                        if (auto const* binary = Policy::BinaryRules().TryGet(node.HashValue)) {
+                            primal.push_back(Policy::CallBinary(ctx, *binary, primal[j], primal[k]) * v);
                             break;
                         }
                     }
                     throw std::runtime_error(fmt::format(
-                        "composed-function affine evaluation: node kind `{}` not yet mapped", node.Name()));
+                        "composed-function {} evaluation: node kind `{}` not yet mapped", Policy::Kind, node.Name()));
                 }
             }
         }
         return primal.back();
+    }
+} // namespace detail
+
+// Builds an IntervalUnaryFn for an *arity-1* composed function, pluggable
+// directly into RegisterUnaryInterval — see detail::EvaluateComposedBody
+// for the shared per-node dispatch.
+inline auto MakeComposedIntervalUnaryFn(Tree const& body) -> IntervalUnaryFn
+{
+    auto const& bodyNodes = body.Nodes();
+    return [bodyNodes](pappus::interval<Operon::Scalar> const& arg) -> pappus::interval<Operon::Scalar> {
+        using Value = pappus::interval<Operon::Scalar>;
+        std::array<Value const*, kMaxComposedFunctionArity> const args{&arg, nullptr};
+        return detail::EvaluateComposedBody<detail::IntervalPolicy>(bodyNodes, detail::NoAffineContext{}, args);
+    };
+}
+
+// Binary counterpart, pluggable into RegisterBinaryInterval. `argJ` (near
+// outer operand) binds to param[1], `argK` (far outer operand) binds to
+// param[0] — same reversal BindArgIndices/MakeComposedBinarySymbolicDerivRule
+// already established (Tree::Indices enumerates nearest-first, the reverse
+// of textual/formal-parameter order).
+inline auto MakeComposedIntervalBinaryFn(Tree const& body) -> IntervalBinaryFn
+{
+    auto const& bodyNodes = body.Nodes();
+    return [bodyNodes](pappus::interval<Operon::Scalar> const& argJ, pappus::interval<Operon::Scalar> const& argK)
+               -> pappus::interval<Operon::Scalar> {
+        using Value = pappus::interval<Operon::Scalar>;
+        std::array<Value const*, kMaxComposedFunctionArity> const args{&argK, &argJ}; // args[paramIdx]
+        return detail::EvaluateComposedBody<detail::IntervalPolicy>(bodyNodes, detail::NoAffineContext{}, args);
+    };
+}
+
+// Builds an AffineUnaryFn for an *arity-1* composed function, pluggable
+// directly into RegisterUnaryAffine. Every op threads the *caller-supplied*
+// affine context (`ctx`, the same one the outer AffineEvaluator instance
+// owns) rather than constructing a fresh one — this is exactly the
+// affine-correlation fix (Fix 1) from the design: reusing the same context
+// means the same param occurrence's affine noise symbols are shared
+// correctly, so e.g. `x - f(x)` for `f(x)=x` encloses to exactly `0`, not
+// `[-w,+w]`. See detail::EvaluateComposedBody for the shared per-node
+// dispatch.
+inline auto MakeComposedAffineUnaryFn(Tree const& body) -> AffineUnaryFn
+{
+    auto const& bodyNodes = body.Nodes();
+    return [bodyNodes](pappus::ops::affine_context<Operon::Scalar> const& ctx, pappus::affine_form<Operon::Scalar> const& arg)
+               -> pappus::affine_form<Operon::Scalar> {
+        using Value = pappus::affine_form<Operon::Scalar>;
+        std::array<Value const*, kMaxComposedFunctionArity> const args{&arg, nullptr};
+        return detail::EvaluateComposedBody<detail::AffinePolicy>(bodyNodes, ctx, args);
+    };
+}
+
+// Binary counterpart, pluggable into RegisterBinaryAffine — same
+// argJ(near)->param[1], argK(far)->param[0] reversal as
+// MakeComposedIntervalBinaryFn.
+inline auto MakeComposedAffineBinaryFn(Tree const& body) -> AffineBinaryFn
+{
+    auto const& bodyNodes = body.Nodes();
+    return [bodyNodes](pappus::ops::affine_context<Operon::Scalar> const& ctx,
+               pappus::affine_form<Operon::Scalar> const& argJ,
+               pappus::affine_form<Operon::Scalar> const& argK) -> pappus::affine_form<Operon::Scalar> {
+        using Value = pappus::affine_form<Operon::Scalar>;
+        std::array<Value const*, kMaxComposedFunctionArity> const args{&argK, &argJ}; // args[paramIdx]
+        return detail::EvaluateComposedBody<detail::AffinePolicy>(bodyNodes, ctx, args);
     };
 }
 
@@ -1076,6 +942,18 @@ inline auto MakeComposedAffineBinaryFn(Tree const& body) -> AffineBinaryFn
 // rather than trusted as a separate source of truth, since (unlike a
 // hand-written scalar-lambda registration, where arity isn't otherwise
 // derivable) it's always redundant with `params.size()` here.
+//
+// Note on process-wide scope: the preflight duplicate check below (and
+// every backend registry it checks) is a single set of registries shared
+// by the whole process, not scoped to a dataset/GP-run/DispatchTable
+// instance — registering a name here conflicts with *any* other
+// composed/hand-written registration under that name anywhere in the same
+// process, including ones from an unrelated module or test file loaded
+// into the same binary (this is exactly what the preflight check caught
+// during development: a test's "recip" collided with an unrelated,
+// pre-existing hand-written "recip" registration and had to be renamed).
+// Pick names accordingly when composing functions across independently
+// authored code that may end up linked together.
 template<typename DTable, typename T>
 void RegisterComposedFunction(
     DTable& dt, PrimitiveSet& pset,
@@ -1120,6 +998,7 @@ void RegisterComposedFunction(
     std::vector<std::string> const paramVec(params.begin(), params.end());
     auto body = InfixParser::ParseFunctionBody(bodyInfix, paramVec);
     ValidateSymbolicDiffCoverage(body);
+    ValidateBodyStructuralInvariants(body);
 
     auto const arity = params.size();
     dt.template RegisterFunction<T>(hash,
