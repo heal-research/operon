@@ -4,8 +4,11 @@
 
 #include "operon/core/tree_diff.hpp"
 
+#include <algorithm>
+#include <array>
 #include <bit>
 #include <limits>
+#include <stdexcept>
 
 #include "operon/core/contracts.hpp"
 #include "operon/core/hash_registry.hpp"
@@ -552,6 +555,29 @@ auto GetUnarySymbolicDeriv(Operon::Hash hash) -> UnarySymbolicDerivRule const*
 
 void RegisterBinarySymbolicDeriv(Operon::Hash hash, BinarySymbolicDerivRule rule)
 {
+    // Unlike RegisterUnarySymbolicDeriv (which forces built-in
+    // registration first so a colliding write throws immediately), the
+    // binary registry has no built-in entries to collide with — every
+    // binary built-in is hardcoded directly in Deriv() (Add/Mul/Sub/Div/
+    // Pow) or on its explicit "not yet differentiated" exclusion list
+    // (Aq/Powabs/Fmin/Fmax), and Deriv() checks those by hash *before*
+    // ever consulting this registry. A hash matching one of them would
+    // still silently *accept* the write here, but the rule would then
+    // never fire — Deriv() never reaches the registry consult for that
+    // hash. Reject it explicitly instead of letting it silently no-op.
+    static constexpr std::array<Operon::Hash, 9> handledElsewhere {
+        Operon::Hash(BuiltinOp::Add), Operon::Hash(BuiltinOp::Mul),
+        Operon::Hash(BuiltinOp::Sub), Operon::Hash(BuiltinOp::Div),
+        Operon::Hash(BuiltinOp::Pow), Operon::Hash(BuiltinOp::Aq),
+        Operon::Hash(BuiltinOp::Powabs), Operon::Hash(BuiltinOp::Fmin),
+        Operon::Hash(BuiltinOp::Fmax),
+    };
+    if (std::ranges::find(handledElsewhere, hash) != handledElsewhere.end()) {
+        throw std::invalid_argument(
+            "RegisterBinarySymbolicDeriv: hash matches a built-in op Deriv() already handles "
+            "directly (Add/Mul/Sub/Div/Pow/Aq/Powabs/Fmin/Fmax) — a rule registered here would "
+            "never be consulted");
+    }
     BinaryDerivRules().Register(hash, std::move(rule));
 }
 

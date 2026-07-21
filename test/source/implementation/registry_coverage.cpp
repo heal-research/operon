@@ -168,6 +168,26 @@ TEST_CASE("RegisterUnarySymbolicDeriv: colliding with a built-in hash always thr
         std::invalid_argument);
 }
 
+// --- BinarySymbolicDerivRule-specific: unlike the unary registry (which has
+// real built-in entries to collide with), the binary registry starts empty
+// -- every binary built-in is hardcoded in Deriv() or on its exclusion list,
+// checked *before* the registry is ever consulted. A hash matching one of
+// those would otherwise be silently accepted here but the rule would never
+// fire (Deriv() never reaches the registry consult for that hash) -- reject
+// it explicitly rather than let it silently no-op.
+TEST_CASE("RegisterBinarySymbolicDeriv: colliding with a hardcoded/excluded built-in hash always throws", "[registry][toctou]")
+{
+    auto const noop = [](Operon::Vector<Operon::Node>&, Operon::Map<Operon::Hash, std::size_t>&,
+                          Operon::Vector<Operon::Hash>&, std::size_t, std::size_t, std::size_t)
+        -> std::pair<std::size_t, std::size_t> { return {0, 0}; };
+
+    for (auto op : {BuiltinOp::Add, BuiltinOp::Mul, BuiltinOp::Sub, BuiltinOp::Div, BuiltinOp::Pow,
+                    BuiltinOp::Aq, BuiltinOp::Powabs, BuiltinOp::Fmin, BuiltinOp::Fmax}) {
+        INFO("op: " << OpName(op));
+        CHECK_THROWS_AS(Operon::RegisterBinarySymbolicDeriv(Operon::Hash(op), noop), std::invalid_argument);
+    }
+}
+
 TEST_CASE("RegisterUnaryInterval/RegisterUnaryAffine: colliding with a built-in hash always throws", "[registry][toctou]")
 {
     auto const logHash = Operon::Hash(BuiltinOp::Log);
