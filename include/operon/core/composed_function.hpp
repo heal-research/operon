@@ -152,22 +152,27 @@ inline void ValidateSymbolicDiffCoverage(Tree const& body)
     }
 }
 
-// Guards two structural invariants that every Diff*/MakeComposedCallableDiff
+// Guards three structural invariants that every Diff*/MakeComposedCallableDiff
 // helper below relies on but doesn't itself re-check per node (that would
 // cost per-evaluation, not just per-registration): v1's grammar
 // (ParseFunctionBody, reduce=false) only ever emits Function nodes of arity
-// <= kMaxComposedFunctionArity, and never emits a Ref (no aliased/shared
-// subexpressions within a body). Both are unreachable through the public API
-// today, but silently wrong if violated: DiffCopyBody/DiffParam's Sub/Div
-// arity==2 fallthrough would misread an arity>2 node's children, and
-// MakeComposedCallableDiff's reverse-trace `*=` accumulation is only correct
-// for a tree where every node has exactly one parent — a Ref would give a
-// node two parents and the second visit's `*=` would multiply into (rather
-// than add to) the first's contribution, silently discarding it. Call this
-// once at registration time, right after ValidateSymbolicDiffCoverage, so a
-// future parser change that starts emitting either shape fails loudly here
-// instead of producing a silently wrong derivative later.
-inline void ValidateBodyStructuralInvariants(Tree const& body)
+// <= kMaxComposedFunctionArity, never emits a Ref (no aliased/shared
+// subexpressions within a body), and every Variable leaf's hash is exactly
+// ParamHash(pIdx) for some pIdx < arity. All three are unreachable through
+// the public API today, but silently wrong if violated: DiffCopyBody/
+// DiffParam's Sub/Div arity==2 fallthrough would misread an arity>2 node's
+// children, MakeComposedCallableDiff's reverse-trace `*=` accumulation is
+// only correct for a tree where every node has exactly one parent (a Ref
+// would give a node two parents and the second visit's `*=` would multiply
+// into, rather than add to, the first's contribution, silently discarding
+// it), and every `args[pIdx]`/`childIdx[pIdx]` indexing site in this file
+// would read out of bounds or bind the wrong argument for a Variable leaf
+// whose hash doesn't land in the expected ParamHash band. Call this once at
+// registration time, right after ValidateSymbolicDiffCoverage, so a future
+// parser change that starts emitting any of these three shapes fails loudly
+// here instead of producing a silently wrong derivative (or an out-of-bounds
+// read) later.
+inline void ValidateBodyStructuralInvariants(Tree const& body, std::size_t arity)
 {
     for (auto const& n : body.Nodes()) {
         if (n.IsRef()) {
@@ -178,6 +183,16 @@ inline void ValidateBodyStructuralInvariants(Tree const& body)
             throw std::invalid_argument(fmt::format(
                 "composed function body contains a node of arity {} (hash {}) — only arity <= {} is supported",
                 n.Arity, n.HashValue, kMaxComposedFunctionArity));
+        }
+        if (n.IsVariable()) {
+            bool const isValidParamHash = n.HashValue >= Operon::BuiltinOpCount
+                && (n.HashValue - Operon::BuiltinOpCount) < arity;
+            if (!isValidParamHash) {
+                throw std::invalid_argument(fmt::format(
+                    "composed function body contains a Variable leaf (hash {}) that isn't a valid "
+                    "parameter reference for an arity-{} function",
+                    n.HashValue, arity));
+            }
         }
     }
 }
@@ -998,7 +1013,7 @@ void RegisterComposedFunction(
     std::vector<std::string> const paramVec(params.begin(), params.end());
     auto body = InfixParser::ParseFunctionBody(bodyInfix, paramVec);
     ValidateSymbolicDiffCoverage(body);
-    ValidateBodyStructuralInvariants(body);
+    ValidateBodyStructuralInvariants(body, params.size());
 
     auto const arity = params.size();
     dt.template RegisterFunction<T>(hash,

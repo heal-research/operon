@@ -253,11 +253,11 @@ TEST_CASE("Composed function: symbolic-diff coverage validation", "[composed-fun
     }
 }
 
-TEST_CASE("Composed function: structural invariants (no Ref, arity <= 2)", "[composed-function]")
+TEST_CASE("Composed function: structural invariants (no Ref, arity <= 2, valid ParamHash)", "[composed-function]")
 {
     SECTION("A normal ParseFunctionBody output passes") {
         auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
-        CHECK_NOTHROW(Operon::ValidateBodyStructuralInvariants(body));
+        CHECK_NOTHROW(Operon::ValidateBodyStructuralInvariants(body, 1));
     }
 
     SECTION("A body containing a Ref node is rejected") {
@@ -268,7 +268,7 @@ TEST_CASE("Composed function: structural invariants (no Ref, arity <= 2)", "[com
         auto nodes = body.Nodes();
         nodes.back() = Operon::Node::Ref(0);
         Operon::Tree refBody{nodes};
-        CHECK_THROWS_AS(Operon::ValidateBodyStructuralInvariants(refBody), std::invalid_argument);
+        CHECK_THROWS_AS(Operon::ValidateBodyStructuralInvariants(refBody, 1), std::invalid_argument);
     }
 
     SECTION("A body containing an arity>2 Function node is rejected") {
@@ -278,7 +278,16 @@ TEST_CASE("Composed function: structural invariants (no Ref, arity <= 2)", "[com
         auto nodes = body.Nodes();
         nodes.back().Arity = 3;
         Operon::Tree arity3Body{nodes};
-        CHECK_THROWS_AS(Operon::ValidateBodyStructuralInvariants(arity3Body), std::invalid_argument);
+        CHECK_THROWS_AS(Operon::ValidateBodyStructuralInvariants(arity3Body, 1), std::invalid_argument);
+    }
+
+    SECTION("A Variable leaf whose hash is out of the declared-arity ParamHash band is rejected") {
+        // A single-param body's only Variable leaf is ParamHash(0); passing
+        // arity=0 here means "no declared parameters," so that same leaf is
+        // now out of band — exercises the pIdx < arity check directly
+        // without needing to fabricate a bogus hash by hand.
+        auto body = InfixParser::ParseFunctionBody("x", std::vector<std::string>{"x"});
+        CHECK_THROWS_AS(Operon::ValidateBodyStructuralInvariants(body, 0), std::invalid_argument);
     }
 }
 
