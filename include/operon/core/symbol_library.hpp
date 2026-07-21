@@ -347,6 +347,9 @@ namespace detail {
         if (hash < BuiltinOpCount) {
             throw std::invalid_argument("FunctionInfo: name-derived hash falls in the range reserved for built-in ops");
         }
+        if (hash < BuiltinOpCount + kMaxComposedFunctionArity) {
+            throw std::invalid_argument("FunctionInfo: name-derived hash falls in the range reserved for composed-function parameters");
+        }
     }
 } // namespace detail
 

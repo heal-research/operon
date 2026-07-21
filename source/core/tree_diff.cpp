@@ -4,8 +4,11 @@
 
 #include "operon/core/tree_diff.hpp"
 
+#include <algorithm>
+#include <array>
 #include <bit>
 #include <limits>
+#include <stdexcept>
 
 #include "operon/core/contracts.hpp"
 #include "operon/core/hash_registry.hpp"
@@ -21,7 +24,13 @@ using Memo   = Operon::Map<Operon::Hash, std::size_t>;
 
 constexpr std::size_t Zero = std::numeric_limits<std::size_t>::max();
 
-// Mix two 64-bit hashes (Boost-style but with a larger multiplier).
+// Mix two 64-bit hashes (Boost-style but with a larger multiplier). Note:
+// Mix(0, 0) == 0 is a fixed point of this formula (composed_function.hpp's
+// DiffMix salts against exactly this, since it mixes directly against raw
+// original-tree indices where h[0] == 0 is normal). It's out of reach here
+// only because Deriv() below always combines *derivative*-dag hashes (never
+// a raw original-tree index of 0) through this function — an invariant of
+// how Deriv() is written, not something this function itself enforces.
 auto Mix(uint64_t a, uint64_t b) -> uint64_t {
     return a ^ (b * 0x9e3779b97f4a7c15ULL + (a << 6U) + (a >> 2U));
 }
@@ -130,6 +139,20 @@ using SymbolicDerivRegistry = HashRegistry<UnarySymbolicDerivRule>;
 auto SymbolicDerivRules() -> SymbolicDerivRegistry&
 {
     static SymbolicDerivRegistry registry;
+    return registry;
+}
+
+// Binary counterpart. No built-ins registered here (unlike
+// SymbolicDerivRules()) — every binary built-in is either hardcoded
+// directly in Deriv() (Add/Mul/Sub/Div/Pow) or deliberately excluded
+// (Aq/Powabs/Fmin/Fmax, "not yet differentiated") — so this registry
+// exists purely for user-defined/composed binary functions, starting
+// empty, no lazy-init-builtins step needed.
+using BinarySymbolicDerivRegistry = HashRegistry<BinarySymbolicDerivRule>;
+
+auto BinaryDerivRules() -> BinarySymbolicDerivRegistry&
+{
+    static BinarySymbolicDerivRegistry registry;
     return registry;
 }
 
@@ -430,6 +453,32 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         return Zero;
     }
 
+    // --- arity-2 user-defined/composed functions ---
+    // Registry lookup for any binary Function node not already handled
+    // above (Add/Mul/Sub/Div/Pow are hardcoded; Aq/Powabs/Fmin/Fmax are
+    // explicitly excluded) — same chain-rule-sum pattern Pow's hardcoded
+    // case already uses. A miss degrades to Zero, matching the unary
+    // registry's own miss convention.
+    if (arity == 2) {
+        auto const* rule = BinaryDerivRules().TryGet(n.HashValue);
+        if (rule != nullptr) {
+            auto j  = children[0]; // nearer
+            auto k  = children[1]; // farther
+            auto dj = Deriv(orig, dag, memo, h, j, targetC);
+            auto dk = Deriv(orig, dag, memo, h, k, targetC);
+            if (dj == Zero && dk == Zero) { return Zero; }
+            auto [fpj, fpk] = (*rule)(dag, memo, h, i, j, k);
+            Operon::Vector<std::size_t> terms;
+            if (dj != Zero && fpj != Zero) {
+                terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, fpj, dj));
+            }
+            if (dk != Zero && fpk != Zero) {
+                terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, fpk, dk));
+            }
+            return AddTerms(dag, memo, h, terms);
+        }
+    }
+
     // --- unary nodes ---
     if (arity == 1) {
         auto j  = children[0];
@@ -502,6 +551,50 @@ auto HasUnarySymbolicDeriv(Operon::Hash hash) -> bool
 {
     RegisterBuiltinSymbolicDerivs();
     return SymbolicDerivRules().Contains(hash);
+}
+
+auto GetUnarySymbolicDeriv(Operon::Hash hash) -> UnarySymbolicDerivRule const*
+{
+    RegisterBuiltinSymbolicDerivs();
+    return SymbolicDerivRules().TryGet(hash);
+}
+
+void RegisterBinarySymbolicDeriv(Operon::Hash hash, BinarySymbolicDerivRule rule)
+{
+    // Unlike RegisterUnarySymbolicDeriv (which forces built-in
+    // registration first so a colliding write throws immediately), the
+    // binary registry has no built-in entries to collide with — every
+    // binary built-in is hardcoded directly in Deriv() (Add/Mul/Sub/Div/
+    // Pow) or on its explicit "not yet differentiated" exclusion list
+    // (Aq/Powabs/Fmin/Fmax), and Deriv() checks those by hash *before*
+    // ever consulting this registry. A hash matching one of them would
+    // still silently *accept* the write here, but the rule would then
+    // never fire — Deriv() never reaches the registry consult for that
+    // hash. Reject it explicitly instead of letting it silently no-op.
+    static constexpr std::array<Operon::Hash, 9> handledElsewhere {
+        Operon::Hash(BuiltinOp::Add), Operon::Hash(BuiltinOp::Mul),
+        Operon::Hash(BuiltinOp::Sub), Operon::Hash(BuiltinOp::Div),
+        Operon::Hash(BuiltinOp::Pow), Operon::Hash(BuiltinOp::Aq),
+        Operon::Hash(BuiltinOp::Powabs), Operon::Hash(BuiltinOp::Fmin),
+        Operon::Hash(BuiltinOp::Fmax),
+    };
+    if (std::ranges::find(handledElsewhere, hash) != handledElsewhere.end()) {
+        throw std::invalid_argument(
+            "RegisterBinarySymbolicDeriv: hash matches a built-in op Deriv() already handles "
+            "directly (Add/Mul/Sub/Div/Pow/Aq/Powabs/Fmin/Fmax) — a rule registered here would "
+            "never be consulted");
+    }
+    BinaryDerivRules().Register(hash, std::move(rule));
+}
+
+auto HasBinarySymbolicDeriv(Operon::Hash hash) -> bool
+{
+    return BinaryDerivRules().Contains(hash);
+}
+
+auto GetBinarySymbolicDeriv(Operon::Hash hash) -> BinarySymbolicDerivRule const*
+{
+    return BinaryDerivRules().TryGet(hash);
 }
 
 auto BuildJacobianDag(Tree const& tree) -> JacobianDag {
