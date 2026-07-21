@@ -748,4 +748,64 @@ TEST_CASE("Composed function: RegisterComposedFunction orchestrator (end-to-end)
     }
 }
 
+// --- Usage example -----------------------------------------------------
+//
+// test/source/implementation/user_defined_registries.cpp registers the
+// same recip(x) = 1/x primitive by hand-writing 5 separate callbacks (one
+// each for numeric eval, symbolic diff, interval, affine, and JIT codegen)
+// and checking each path independently — this is the amount of protocol
+// knowledge an external caller needs when a new primitive's math isn't
+// expressible in terms of already-registered ones.
+//
+// When it *is* — as here, 1/x is just built-in Div applied to a constant
+// and a parameter — RegisterComposedFunction derives every one of those
+// backends (except JIT codegen, not built for composed functions at all;
+// see the [jit]-tagged test above) from the infix string alone. This test
+// is the direct composed-function counterpart of that hand-written
+// example, checking the same properties the same way.
+TEST_CASE("Usage example: recip(x) = 1/x via RegisterComposedFunction", "[composed-function]")
+{
+    Operon::Dataset ds(std::vector<std::string>{"x"}, std::vector<std::vector<Operon::Scalar>>{{1.3F, -0.6F, 2.0F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::PrimitiveSet pset;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    auto const xHash = ds.GetVariable("x")->Hash;
+
+    Operon::FunctionInfo info{.Name = "recipComposed", .Desc = "1/x", .Arity = 1, .Frequency = 1};
+    Operon::RegisterComposedFunction<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(
+        dtable, pset, info, std::vector<std::string>{"x"}, "1 / x");
+    auto const hash = Operon::Hasher{}("recipComposed");
+
+    Operon::Node vx(Operon::NodeType::Variable);
+    vx.HashValue = vx.CalculatedHashValue = xHash;
+    vx.Value = 1.0F;
+    vx.Optimize = false;
+    auto composedNode = Operon::Node::Function(hash, 1);
+    Operon::Tree tree{Operon::Vector<Operon::Node>{vx, composedNode}};
+
+    // Numeric eval.
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
+    auto val = interp.Evaluate(tree.GetCoefficients(), range);
+    auto const xs = ds.GetValues("x");
+    for (std::size_t i = 0; i < range.Size(); ++i) {
+        CHECK(static_cast<double>(val[i]) == Catch::Approx(1.0 / static_cast<double>(xs[i])).margin(1e-4));
+    }
+
+    // Symbolic diff: d/dc(1/c) = -1/c^2.
+    auto c = Operon::Node::Constant(1.3);
+    Operon::Tree jacTree{Operon::Vector<Operon::Node>{c, composedNode}};
+    auto dag = Operon::BuildJacobianDag(jacTree);
+    REQUIRE(dag.Roots.size() == 1);
+    REQUIRE(dag.Roots[0] != kNoGrad);
+    auto jac = EvalJacColumn(dag, 0, jacTree.GetCoefficients(), ds, range, dtable);
+    CHECK(static_cast<double>(jac[0]) == Catch::Approx(-1.0 / (1.3 * 1.3)).margin(1e-4));
+
+    // Interval bound: 1/x for x in [1,2] is [0.5, 1].
+    Operon::IntervalEvaluator::DomainMap domains{{xHash, {1.0F, 2.0F}}};
+    Operon::IntervalEvaluator ieval(&tree, domains);
+    auto result = ieval.Evaluate({});
+    CHECK(result.inf() == Catch::Approx(0.5).margin(1e-3));
+    CHECK(result.sup() == Catch::Approx(1.0).margin(1e-3));
+}
+
 } // namespace Operon::Test
