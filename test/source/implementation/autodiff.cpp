@@ -273,4 +273,64 @@ TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
     CHECK(ok);
 }
 
+// Regression coverage for the double-weighted-derivative bug (found
+// 2026-07-21 while designing the composed-functions feature — see
+// foolnotion/operon-planning's bugs/double-weighted-derivative.md).
+// Every node's forward pass multiplies by its own weight `w`
+// (Backend::Mul/Exp/etc: `res = weight * f(args)`), so a derivative
+// callback that shortcuts through the node's own already-weighted
+// primal[i] (rather than the unweighted children) silently double-counts
+// (or otherwise miscounts) `w` once ReverseTraceGeneric applies it a
+// second time during the backward sweep. Every existing test elsewhere in
+// this file uses unit-weight (Value=1) internal nodes, where this is
+// numerically invisible — these cases force a non-unit weight (3.7) on
+// the outermost op specifically to exercise it.
+//
+// Expected values are independently computed (not hand-derived) via JAX
+// (`jax.grad` on `w * f(x[, y])`, float64, at x=1.3, y=0.4, w=3.7) rather
+// than by hand, since manual algebra on a couple of these (Aq's far-child
+// branch in particular, off by a full w^3 before the fix) turned out to
+// be error-prone even for the person fixing the bug.
+TEST_CASE("Autodiff: non-unit outer weight (double-weighted-derivative regression)", "[autodiff]")
+{
+    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
+                       std::vector<std::vector<Operon::Scalar>>{{1.3F}, {0.4F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    auto const xHash = ds.GetVariable("x")->Hash;
+    auto const yHash = ds.GetVariable("y")->Hash;
+
+    // expectedY may be omitted (defaults to 0) for unary expressions.
+    auto checkWeighted = [&](std::string const& expr, Operon::Scalar expectedX, Operon::Scalar expectedY = Operon::Scalar{0}) {
+        auto tree = Operon::InfixParser::Parse(expr, ds, /*reduce=*/false);
+        tree.Nodes().back().Value = 3.7F; // non-unit weight on the outermost op
+        auto coeff = tree.GetCoefficients();
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+
+        auto revX = interpreter.JacRevVariable(coeff, range, xHash);
+        auto fwdX = interpreter.JacFwdVariable(coeff, range, xHash);
+        CHECK(revX[0] == Catch::Approx(expectedX).margin(1e-4));
+        CHECK(fwdX[0] == Catch::Approx(expectedX).margin(1e-4));
+
+        if (expectedY != Operon::Scalar{0}) {
+            auto revY = interpreter.JacRevVariable(coeff, range, yHash);
+            auto fwdY = interpreter.JacFwdVariable(coeff, range, yHash);
+            CHECK(revY[0] == Catch::Approx(expectedY).margin(1e-4));
+            CHECK(fwdY[0] == Catch::Approx(expectedY).margin(1e-4));
+        }
+    };
+
+    SECTION("exp(x)")           { checkWeighted("exp(x)", 13.576398F); }
+    SECTION("sqrt(x)")          { checkWeighted("sqrt(x)", 1.622557F); }
+    SECTION("sqrtabs(x)")       { checkWeighted("sqrtabs(x)", 1.622557F); }
+    SECTION("cbrt(x)")          { checkWeighted("cbrt(x)", 1.035424F); }
+    SECTION("tan(x)")           { checkWeighted("tan(x)", 51.708026F); }
+    SECTION("tanh(x)")          { checkWeighted("tanh(x)", 0.952503F); }
+    SECTION("x * y")            { checkWeighted("x * y", 1.480000F, 4.810000F); }
+    SECTION("x / y")            { checkWeighted("x / y", 9.250000F, -30.062500F); }
+    SECTION("x ^ y")            { checkWeighted("x ^ y", 1.264433F, 1.078161F); }
+    SECTION("powabs(x, y)")     { checkWeighted("powabs(x, y)", 1.264433F, 1.078161F); }
+    SECTION("aq(x, y)")         { checkWeighted("aq(x, y)", 3.435364F, -1.539991F); }
+}
+
 } // namespace Operon::Test

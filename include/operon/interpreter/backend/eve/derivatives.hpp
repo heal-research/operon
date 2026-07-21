@@ -31,17 +31,26 @@ namespace detail {
         std::ranges::fill_n(Ptr(trace, j), S, T{1});
     }
 
+    // Every node's forward pass multiplies by its own weight, so primal[i]
+    // already has `w` baked in — reading it as a shortcut for the
+    // *unweighted* value double-counts `w`, since ReverseTraceGeneric
+    // separately multiplies by `w` once more during the backward sweep.
+    // Dividing by `w` here keeps the shortcut while returning the correct
+    // unweighted local derivative. Confirmed via reproduction against an
+    // independent JAX-computed ground truth (see foolnotion/operon-planning's
+    // double-weighted-derivative bug writeup).
     template<typename T, std::size_t S>
-    auto Mul(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Mul(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         using W = eve::wide<T>;
         auto constexpr L = W::size();
+        auto const w = static_cast<T>(nodes[i].Value);
 
         auto* res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
 
         for(auto s = 0UL; s < S; s += L) {
-            eve::store(W{pi+s} / W{pj+s}, res+s);
+            eve::store(W{pi+s} / (w * W{pj+s}), res+s);
         }
     }
 
@@ -64,18 +73,20 @@ namespace detail {
                 eve::store(-eve::rec(eve::sqr(W{pj+s})), res+s);
             }
         } else {
+            auto const w = static_cast<T>(nodes[i].Value);
             auto v = j == i-1 ? T{1} : T{-1};
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(v * W{pi+s} / W{pj+s}, res+s);
+                eve::store(v * W{pi+s} / (w * W{pj+s}), res+s);
             }
         }
     }
 
     template<typename T, std::size_t S>
-    auto Aq(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Aq(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
+        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
         auto const k = i-1;
         auto const* pi = Ptr(primal, i);
@@ -84,14 +95,15 @@ namespace detail {
 
         if (j == i-1) {
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} / W{pj+s}, res+s);
+                eve::store(W{pi+s} / (w * W{pj+s}), res+s);
             }
         } else {
+            auto const w3 = w * w * w;
             for (auto s = 0UL; s < S; s += L) {
                 W a{pi+s};
                 W b{pj+s};
                 W c{pk+s};
-                W r = -b * a * a * a / (c * c);
+                W r = -b * a * a * a / (w3 * c * c);
                 eve::store(r, res+s);
             }
         }
@@ -102,6 +114,7 @@ namespace detail {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
+        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
@@ -109,13 +122,13 @@ namespace detail {
             auto const k = j - (nodes[j].Length + 1);
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * W{pk+s} / W{pj+s}, res+s);
+                eve::store(W{pi+s} * W{pk+s} / (w * W{pj+s}), res+s);
             }
         } else {
             auto const k = i-1;
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * eve::log(W{pk+s}), res+s);
+                eve::store(W{pi+s} * eve::log(W{pk+s}) / w, res+s);
             }
         }
     }
@@ -125,6 +138,7 @@ namespace detail {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
+        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
@@ -132,13 +146,13 @@ namespace detail {
             auto const k = j - (nodes[j].Length + 1);
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * W{pk+s} * eve::sign(W{pj+s}) / eve::abs(W{pj+s}), res+s);
+                eve::store(W{pi+s} * W{pk+s} * eve::sign(W{pj+s}) / (w * eve::abs(W{pj+s})), res+s);
             }
         } else {
             auto const k = i-1;
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * eve::log(eve::abs(W{pk+s})), res+s);
+                eve::store(W{pi+s} * eve::log(eve::abs(W{pk+s})) / w, res+s);
             }
         }
     }
@@ -198,8 +212,15 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
-    auto Exp(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-        std::ranges::copy_n(Ptr(primal, i), S, Ptr(trace, j));
+    auto Exp(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+        using W = eve::wide<T>;
+        static constexpr auto L = W::size();
+        auto const w = static_cast<T>(nodes[i].Value);
+        auto const* pi = Ptr(primal, i);
+        auto* res = Ptr(trace, j);
+        for (auto s = 0UL; s < S; s += L) {
+            eve::store(W{pi+s} / w, res+s);
+        }
     }
 
     template<typename T, std::size_t S>
@@ -347,39 +368,43 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
-    auto Sqrt(std::vector<Operon::Node> const&  /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Sqrt(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
+        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(eve::rec(T{2} * W{pi+s}), res+s);
+            eve::store(w * eve::rec(T{2} * W{pi+s}), res+s);
         }
     }
 
     template<typename T, std::size_t S>
-    auto Sqrtabs(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Sqrtabs(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
+        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(eve::sign(W{pj+s}) / (T{2} * W{pi+s}), res+s);
+            eve::store(w * eve::sign(W{pj+s}) / (T{2} * W{pi+s}), res+s);
         }
     }
 
     template<typename T, std::size_t S>
-    auto Cbrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Cbrt(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
+        auto const w = static_cast<T>(nodes[i].Value);
+        auto const w2 = w * w;
         auto* res = Ptr(trace, j);
         auto const* pi = Ptr(primal, i);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(eve::rec(T{3} * eve::sqr(W{pi+s})), res+s);
+            eve::store(w2 * eve::rec(T{3} * eve::sqr(W{pi+s})), res+s);
         }
     }
 }  // namespace Operon::Backend
