@@ -197,6 +197,25 @@ TEST_CASE("ParseFunctionBody", "[parser]")
             }
         }
     }
+
+    // Pinning current behavior, not a designed-for feature: duplicate names
+    // collapse to the same hash, so the second occurrence's slot never gets
+    // matched by any body identifier and trips the unused-parameter check —
+    // duplicates are rejected, just via that check's message rather than a
+    // dedicated "duplicate parameter name" one.
+    SECTION("Duplicate parameter names throw (via unused-parameter check)") {
+        std::vector<std::string> const params{"x", "x"};
+        CHECK_THROWS_AS(InfixParser::ParseFunctionBody("sin(x)", params), std::invalid_argument);
+    }
+
+    SECTION("Zero-parameter body (built-ins/constants only) is accepted") {
+        std::vector<std::string> const params{};
+        auto tree = InfixParser::ParseFunctionBody("sin(1.0) + exp(2.0)", params);
+        CHECK(tree.Length() > 0);
+        for (auto const& n : tree.Nodes()) {
+            CHECK_FALSE(n.IsVariable());
+        }
+    }
 }
 
 } // namespace Operon::Test
