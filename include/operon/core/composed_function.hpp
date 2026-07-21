@@ -401,7 +401,7 @@ namespace detail {
 inline auto MakeComposedUnarySymbolicDerivRule(Tree const& body) -> UnarySymbolicDerivRule
 {
     auto const& bodyNodes = body.Nodes();
-    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, detail::DiffHashes& h, std::size_t i, std::size_t j) -> std::size_t {
+    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, detail::DiffHashes& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
         std::array<std::int64_t, kMaxComposedFunctionArity> liveChildIdx{};
         liveChildIdx[0] = static_cast<std::int64_t>(j);
         std::vector<std::size_t> bodyToLive(bodyNodes.size());
@@ -449,7 +449,7 @@ auto MakeComposedCallable(DTable const& dt, Tree const& body, std::size_t arity)
     auto ops = detail::ResolveOps<Callable>(dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetFunction<T>(h); });
     auto const& bodyNodes = body.Nodes();
 
-    return [bodyNodes, ops = std::move(ops), arity, S](
+    return [bodyNodes, ops = std::move(ops), arity](
                Operon::Vector<Node> const& outerNodes,
                Backend::View<T, S> outerData,
                std::size_t i,
@@ -509,12 +509,21 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
     auto dfs = detail::ResolveOps<CallableDiff>(dt, body, [](DTable const& t, Operon::Hash h) { return t.template GetDerivative<T>(h); });
     auto const& bodyNodes = body.Nodes();
 
-    return [bodyNodes, fns = std::move(fns), dfs = std::move(dfs), arity, S](
+    return [bodyNodes, fns = std::move(fns), dfs = std::move(dfs), arity](
                Operon::Vector<Node> const& outerNodes,
                Backend::View<T const, S> outerPrimal,
                Backend::View<T, S> outerTrace,
                int i,
                int j) {
+        // Redeclared rather than captured: DTable/T are the enclosing
+        // function template's own type parameters, visible here with no
+        // capture needed (only values need capturing, not types) — this
+        // sidesteps a real Clang/GCC disagreement over whether this
+        // specific constexpr capture is "needed" (one requires it, the
+        // other errors on its presence as unused; the clang build under
+        // test even crashed outright on one capture-syntax variant tried
+        // while chasing this) by not capturing it at all.
+        constexpr auto S = DTable::template BatchSize<T>;
         auto const nNodes = static_cast<std::int64_t>(bodyNodes.size());
         auto const childIdx = detail::BindArgIndices(outerNodes, static_cast<std::size_t>(i), arity);
 
