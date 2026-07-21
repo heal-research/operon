@@ -138,8 +138,26 @@ namespace detail {
     using DiffMemo   = Operon::Map<Operon::Hash, std::size_t>;
     inline constexpr std::size_t DiffZero = std::numeric_limits<std::size_t>::max();
 
+    // Salted relative to tree_diff.cpp's own Mix(): that version is safe
+    // within tree_diff.cpp itself because Deriv() only ever combines
+    // *derivative* dag indices this way (fresh nodes, whose own hashes are
+    // already mixed), never a raw original-tree index directly — but
+    // DiffCopyBody (below) *does* mix directly against tree_diff.cpp's
+    // `h[i] = i` identity hashes for the original tree's prefix (needed to
+    // reconstruct the composed body's primal value inline). `h[0] == 0`
+    // there is completely normal, but combined with `BuiltinOp::Add == 0`
+    // it makes the unsalted Mix(0,0) == 0 a real fixed point: found by
+    // direct reproduction, not by inspection — `exp(x+x+x)` composed and
+    // differentiated came out as `3*exp(2x)` instead of `3*exp(3x)`,
+    // because Mix(Add, h[0]=0) collapsed to exactly 0 and stayed 0 through
+    // a second Add combining with it, causing DiffMakeBinary's memo to
+    // spuriously treat `Add(innerSum, x)` as identical to `Add(x, x)`. The
+    // salt breaks that fixed point without needing bit-for-bit agreement
+    // with tree_diff.cpp's own Mix (the two memo maps are never compared
+    // against each other, so nothing requires the formulas to match).
     inline auto DiffMix(std::uint64_t a, std::uint64_t b) -> std::uint64_t
     {
+        a += 0x9e3779b97f4a7c15ULL;
         return a ^ (b * 0x9e3779b97f4a7c15ULL + (a << 6U) + (a >> 2U));
     }
 

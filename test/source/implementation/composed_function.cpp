@@ -11,6 +11,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
+#include <fmt/format.h>
 
 #include "../operon_test.hpp"
 #include "operon/core/composed_function.hpp"
@@ -373,6 +374,74 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
         CHECK(iv.inf() == Catch::Approx(0.0).margin(1e-4));
         CHECK(iv.sup() == Catch::Approx(0.0).margin(1e-4));
     }
+}
+
+TEST_CASE("Composed function: chained-Add symbolic diff (hash-consing regression)", "[composed-function]")
+{
+    // Regression test for a real hash-consing collision found via code
+    // review (2026-07-21): tree_diff.cpp assigns h[i]=i for the original
+    // tree's own nodes (h[0]=0 is normal there), and BuiltinOp::Add==0 too
+    // — DiffMix(Add, h[0]=0) collapsed to exactly 0 and stayed 0 through a
+    // second Add combining with it, making DiffMakeBinary's memo spuriously
+    // treat Add(innerSum, x) as identical to Add(x, x). Fixed by salting
+    // DiffMix so (0,0) is no longer a fixed point. Without the fix, this
+    // computed 3*exp(2x) instead of 3*exp(3x).
+    Operon::Dataset ds(std::vector<std::string>{"x"}, std::vector<std::vector<Operon::Scalar>>{{1.3F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+
+    auto body = InfixParser::ParseFunctionBody("exp(x + x + x)", std::vector<std::string>{"x"});
+    auto composedNode = MakeComposedNode("chainedAddExp", 1);
+    dtable.RegisterFunction<Operon::Scalar>(
+        composedNode.HashValue,
+        MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1));
+    Operon::RegisterUnarySymbolicDeriv(composedNode.HashValue, Operon::MakeComposedUnarySymbolicDerivRule(body));
+
+    auto c = Operon::Node::Constant(1.3);
+    Operon::Vector<Operon::Node> nodes{c, composedNode};
+    Operon::Tree tree{nodes};
+
+    auto coeff = tree.GetCoefficients();
+    auto dag = Operon::BuildJacobianDag(tree);
+    REQUIRE(dag.Roots.size() == 1);
+    REQUIRE(dag.Roots[0] != kNoGrad);
+
+    auto jac = EvalJacColumn(dag, 0, coeff, ds, range, dtable);
+    auto const expected = 3.0 * std::exp(3.0 * 1.3); // d/dc exp(3c) = 3*exp(3c)
+    CHECK(static_cast<double>(jac[0]) == Catch::Approx(expected).margin(1e-3));
+}
+
+TEST_CASE("Composed function: chained-Sub symbolic diff (x - x - x)", "[composed-function]")
+{
+    // d/dc [c - c - c] = -1 (nested binary Sub: (c-c)-c, so d/dc = 1-1-1 = -1).
+    Operon::Dataset ds(std::vector<std::string>{"x"}, std::vector<std::vector<Operon::Scalar>>{{1.3F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+
+    auto body = InfixParser::ParseFunctionBody("x - x - x", std::vector<std::string>{"x"});
+    auto composedNode = MakeComposedNode("chainedSub", 1);
+    dtable.RegisterFunction<Operon::Scalar>(
+        composedNode.HashValue,
+        MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1));
+    Operon::RegisterUnarySymbolicDeriv(composedNode.HashValue, Operon::MakeComposedUnarySymbolicDerivRule(body));
+
+    auto c = Operon::Node::Constant(1.3);
+    Operon::Vector<Operon::Node> nodes{c, composedNode};
+    Operon::Tree tree{nodes};
+
+    // Sanity: numeric value should also be c - c - c = -c.
+    auto coeffEval = tree.GetCoefficients();
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
+    auto val = interp.Evaluate(coeffEval, range);
+    CHECK(static_cast<double>(val[0]) == Catch::Approx(-1.3).margin(1e-4));
+
+    auto coeff = tree.GetCoefficients();
+    auto dag = Operon::BuildJacobianDag(tree);
+    REQUIRE(dag.Roots.size() == 1);
+    REQUIRE(dag.Roots[0] != kNoGrad);
+
+    auto jac = EvalJacColumn(dag, 0, coeff, ds, range, dtable);
+    CHECK(static_cast<double>(jac[0]) == Catch::Approx(-1.0).margin(1e-3));
 }
 
 } // namespace Operon::Test
