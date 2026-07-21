@@ -112,4 +112,52 @@ auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, bool red
     return tree;
 }
 
+auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::string const> params) -> Tree
+{
+    if (params.size() > Operon::kMaxComposedFunctionArity) {
+        throw std::invalid_argument(fmt::format(
+            "composed function has {} parameters, exceeding the v1 cap of {}",
+            params.size(), Operon::kMaxComposedFunctionArity));
+    }
+
+    // No dataset in scope for a function body — Parse still resolves bare
+    // identifiers to hashed Variable nodes and built-in calls normally; the
+    // param-remap/undeclared-identifier pass below mirrors the dataset
+    // overload's post-hoc validation pass above, just against `params`
+    // instead of a Dataset.
+    auto tree = Parse(infix, /*reduce=*/false);
+
+    Operon::Vector<Operon::Hash> paramHashes(params.size());
+    std::ranges::transform(params, paramHashes.begin(), [](auto const& name) { return Operon::Hasher{}(name); });
+    std::vector<bool> used(params.size(), false);
+
+    for (auto& node : tree.Nodes()) {
+        if (node.Type == Operon::NodeType::Constant) {
+            // Body-internal constants are never coefficient-optimized —
+            // they'd otherwise desync the outer tree's coefficient stream.
+            // A user wanting a tunable body constant exposes it as an
+            // extra formal parameter instead.
+            node.Optimize = false;
+            continue;
+        }
+        if (!node.IsVariable()) { continue; }
+        auto it = std::ranges::find(paramHashes, node.HashValue);
+        if (it == paramHashes.end()) {
+            throw std::invalid_argument(fmt::format("undeclared identifier in function body (hash {})", node.HashValue));
+        }
+        auto const idx = static_cast<std::size_t>(std::distance(paramHashes.begin(), it));
+        node.HashValue = node.CalculatedHashValue = Operon::ParamHash(idx);
+        used[idx] = true;
+    }
+
+    for (std::size_t i = 0; i < params.size(); ++i) {
+        if (!used[i]) {
+            throw std::invalid_argument(fmt::format("unused parameter '{}' in composed function body", params[i]));
+        }
+    }
+
+    tree.UpdateNodes();
+    return tree;
+}
+
 } // namespace Operon

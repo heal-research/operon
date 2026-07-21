@@ -74,6 +74,20 @@ enum class BuiltinOp : Operon::Hash {
 // one enumerator per math op.
 static auto constexpr BuiltinOpCount = static_cast<Operon::Hash>(BuiltinOp::Square) + 1;
 
+// Composed functions (see InfixParser::ParseFunctionBody) are capped at
+// arity <= kMaxComposedFunctionArity in v1 — a registration-time cap only,
+// not assumed by consult-time machinery (see composed-functions design doc).
+// Formal-parameter leaves get their own reserved hash band, immediately
+// past the built-in range and disjoint from ordinary name-derived function
+// hashes (see symbol_library.hpp's ValidateUserHash, which rejects a user
+// hash landing here too) — so a param leaf can never collide with a
+// dataset-bound Variable or a user-registered Function.
+static auto constexpr kMaxComposedFunctionArity = 2UL;
+constexpr auto ParamHash(std::size_t index) -> Operon::Hash
+{
+    return BuiltinOpCount + index;
+}
+
 // Sentinel "not a real op" value (mirrors NodeTypes::NoType), distinguishable
 // from every genuine BuiltinOp value — used as a default template argument
 // where "no specific op" needs a nameable type, e.g. Dispatch::Func/Diff's

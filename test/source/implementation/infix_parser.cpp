@@ -146,4 +146,57 @@ TEST_CASE("Formatter output", "[parser]")
     }
 }
 
+TEST_CASE("ParseFunctionBody", "[parser]")
+{
+    SECTION("Unary body: param resolves, arity accepted") {
+        std::vector<std::string> const params{"x"};
+        auto tree = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", params);
+        CHECK(tree.Length() > 0);
+        for (auto const& n : tree.Nodes()) {
+            if (n.IsVariable()) {
+                CHECK(n.HashValue == Operon::ParamHash(0));
+            }
+        }
+    }
+
+    SECTION("Binary body: both params resolve to distinct reserved hashes") {
+        std::vector<std::string> const params{"a", "b"};
+        auto tree = InfixParser::ParseFunctionBody("a * exp(-b)", params);
+        bool sawA = false;
+        bool sawB = false;
+        for (auto const& n : tree.Nodes()) {
+            if (!n.IsVariable()) { continue; }
+            sawA |= n.HashValue == Operon::ParamHash(0);
+            sawB |= n.HashValue == Operon::ParamHash(1);
+        }
+        CHECK(sawA);
+        CHECK(sawB);
+    }
+
+    SECTION("Undeclared identifier throws") {
+        std::vector<std::string> const params{"x"};
+        CHECK_THROWS_AS(InfixParser::ParseFunctionBody("x + y", params), std::invalid_argument);
+    }
+
+    SECTION("Unused parameter throws") {
+        std::vector<std::string> const params{"x", "y"};
+        CHECK_THROWS_AS(InfixParser::ParseFunctionBody("sin(x)", params), std::invalid_argument);
+    }
+
+    SECTION("Arity above the v1 cap throws") {
+        std::vector<std::string> const params{"a", "b", "c"};
+        CHECK_THROWS_AS(InfixParser::ParseFunctionBody("a + b + c", params), std::invalid_argument);
+    }
+
+    SECTION("Body-internal constants are forced Optimize=false") {
+        std::vector<std::string> const params{"x"};
+        auto tree = InfixParser::ParseFunctionBody("2.5 * x", params);
+        for (auto const& n : tree.Nodes()) {
+            if (n.Type == Operon::NodeType::Constant) {
+                CHECK_FALSE(n.Optimize);
+            }
+        }
+    }
+}
+
 } // namespace Operon::Test
