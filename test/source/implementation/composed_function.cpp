@@ -26,6 +26,10 @@
 #include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/parser/infix.hpp"
 
+#ifdef HAVE_ASMJIT
+#include "operon/interpreter/backend/jit/jit_compiler.hpp"
+#endif
+
 namespace Operon::Test {
 
 namespace {
@@ -443,5 +447,42 @@ TEST_CASE("Composed function: chained-Sub symbolic diff (x - x - x)", "[composed
     auto jac = EvalJacColumn(dag, 0, coeff, ds, range, dtable);
     CHECK(static_cast<double>(jac[0]) == Catch::Approx(-1.0).margin(1e-3));
 }
+
+#ifdef HAVE_ASMJIT
+TEST_CASE("Composed function: CompileAVX2/CompileJacobian degrade to nullptr, don't crash", "[composed-function][jit]")
+{
+    // Composed functions have no JIT *codegen* registration (a genuinely
+    // separate registry, RegisterUnaryJitCodegen -- distinct from
+    // BuildJacobianDag, which the JIT evaluator's *gradient* compilation
+    // consumes and which composed functions do support via
+    // MakeComposedUnarySymbolicDerivRule). Not built in v1 -- this asserts
+    // the existing, already-correct miss convention (#141: unmapped op ->
+    // nullptr, caller falls back to the interpreter) actually holds for a
+    // tree containing one, rather than assuming it.
+    Operon::JIT::JitRuntimePool compilerPool;
+    Operon::JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) { return; }
+
+    auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    auto composedNode = MakeComposedNode("jitProbeComposed", 1);
+    dtable.RegisterFunction<Operon::Scalar>(
+        composedNode.HashValue,
+        MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1));
+    Operon::RegisterUnarySymbolicDeriv(composedNode.HashValue, Operon::MakeComposedUnarySymbolicDerivRule(body));
+
+    Operon::Node vx(Operon::NodeType::Variable);
+    vx.HashValue = vx.CalculatedHashValue = Operon::Hasher{}("x");
+    vx.Value = 1.0F;
+    vx.Optimize = false;
+    Operon::Vector<Operon::Node> nodes{vx, composedNode};
+    Operon::Tree tree{nodes};
+
+    CHECK(compiler.CompileAVX2(tree) == nullptr);
+
+    auto dag = Operon::BuildJacobianDag(tree);
+    CHECK(compiler.CompileJacobian(dag) == nullptr);
+}
+#endif
 
 } // namespace Operon::Test
