@@ -504,6 +504,12 @@ auto HasUnarySymbolicDeriv(Operon::Hash hash) -> bool
     return SymbolicDerivRules().Contains(hash);
 }
 
+auto GetUnarySymbolicDeriv(Operon::Hash hash) -> UnarySymbolicDerivRule const*
+{
+    RegisterBuiltinSymbolicDerivs();
+    return SymbolicDerivRules().TryGet(hash);
+}
+
 auto BuildJacobianDag(Tree const& tree) -> JacobianDag {
     JacobianDag dag;
     Memo memo;

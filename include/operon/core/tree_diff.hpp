@@ -44,6 +44,14 @@ OPERON_EXPORT void RegisterUnarySymbolicDeriv(Operon::Hash hash, UnarySymbolicDe
 // structural/non-smooth case handled directly in Deriv()).
 OPERON_EXPORT auto HasUnarySymbolicDeriv(Operon::Hash hash) -> bool;
 
+// Fetch a registered rule for direct invocation (nullptr on a miss). For an
+// external caller building its own small derivative dag against the same
+// hash-consing convention Deriv() uses (e.g. a composed function's own
+// registration-time param-differentiation walk — see
+// operon-planning/designs/composed-functions.md) — not used by Deriv()
+// itself, which consults the registry directly.
+OPERON_EXPORT auto GetUnarySymbolicDeriv(Operon::Hash hash) -> UnarySymbolicDerivRule const*;
+
 // A flat postfix array containing the original tree (indices 0..OriginalSize-1)
 // plus appended symbolic derivative subtrees. Shared subexpressions between
 // derivative columns are referenced via NodeType::Ref back-pointers.

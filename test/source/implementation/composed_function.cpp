@@ -18,6 +18,7 @@
 #include "operon/core/dispatch.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
+#include "operon/core/tree_diff.hpp"
 #include "operon/hash/hash.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/parser/infix.hpp"
@@ -29,6 +30,23 @@ namespace {
     {
         auto const hash = Operon::Hasher{}(name);
         return Operon::Node::Function(hash, arity);
+    }
+
+    // Local copy of tree_diff.cpp's own test-file helper (EvalDagJacobian in
+    // test/source/implementation/tree_diff.cpp) — evaluates one Jacobian
+    // column via the interpreter over the sub-tree ending at its root.
+    constexpr std::size_t kNoGrad = std::numeric_limits<std::size_t>::max();
+
+    auto EvalJacColumn(Operon::JacobianDag const& dag, std::size_t k,
+        Operon::Span<Operon::Scalar const> coeff, Operon::Dataset const& ds, Operon::Range range,
+        Operon::DispatchTable<Operon::Scalar> const& dtable) -> Operon::Vector<Operon::Scalar>
+    {
+        auto const r = dag.Roots[k];
+        if (r == kNoGrad) { return Operon::Vector<Operon::Scalar>(range.Size(), Operon::Scalar{0}); }
+        Operon::Vector<Operon::Node> subnodes(dag.Nodes.cbegin(), dag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(r) + 1);
+        Operon::Tree t{std::move(subnodes)};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &t};
+        return interp.Evaluate(coeff, range);
     }
 } // namespace
 
@@ -225,6 +243,72 @@ TEST_CASE("Composed function: symbolic-diff coverage validation", "[composed-fun
     SECTION("Hardcoded arity>=2 ops (add/mul/sub/div/pow) are accepted") {
         auto body = InfixParser::ParseFunctionBody("(x + y) * (x - y) / x ^ 2", std::vector<std::string>{"x", "y"});
         CHECK_NOTHROW(Operon::ValidateSymbolicDiffCoverage(body));
+    }
+}
+
+TEST_CASE("Composed function: unary symbolic-diff rule (JIT/BuildJacobianDag path)", "[composed-function]")
+{
+    // Differentiate w.r.t. a tunable *Constant* argument, not a Variable's
+    // own weight — BuildJacobianDag's leaf rule for a Variable is
+    // d(w*X)/dw = X (an extra factor unrelated to what's being tested
+    // here), whereas a Constant's derivative w.r.t. itself is exactly 1
+    // (GetConst's own leaf case), keeping the expected value exactly the
+    // composed rule's raw output with no extra scaling to account for.
+    //
+    // Also deliberately does NOT give the composed node itself a non-unit
+    // weight: confirmed by inspection (only GetVar's leaf case reads
+    // Node::Value anywhere in tree_diff.cpp) that Deriv() ignores every
+    // Function node's own weight entirely, for every built-in, not just
+    // composed ones — real GP-evolved trees never coefficient-optimize a
+    // Function node's weight (Node::Function always sets Optimize=false),
+    // so this isn't a gap composed functions need to special-case.
+    Operon::Dataset ds(std::vector<std::string>{"x"}, std::vector<std::vector<Operon::Scalar>>{{1.3F, -0.6F, 2.0F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+
+    SECTION("d/dc logistic(c) = logistic(c) * (1 - logistic(c))") {
+        auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
+        auto composedNode = MakeComposedNode("logisticJit", 1);
+        dtable.RegisterFunction<Operon::Scalar>(
+            composedNode.HashValue,
+            MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1));
+        Operon::RegisterUnarySymbolicDeriv(composedNode.HashValue, Operon::MakeComposedUnarySymbolicDerivRule(body));
+
+        auto c = Operon::Node::Constant(1.3);
+        Operon::Vector<Operon::Node> nodes{c, composedNode};
+        Operon::Tree tree{nodes};
+
+        auto coeff = tree.GetCoefficients();
+        auto dag = Operon::BuildJacobianDag(tree);
+        REQUIRE(dag.Roots.size() == 1);
+        REQUIRE(dag.Roots[0] != kNoGrad);
+
+        auto jac = EvalJacColumn(dag, 0, coeff, ds, range, dtable);
+        auto const lg = 1.0 / (1.0 + std::exp(-1.3));
+        auto const expected = lg * (1.0 - lg);
+        CHECK(static_cast<double>(jac[0]) == Catch::Approx(expected).margin(1e-4));
+    }
+
+    SECTION("d/dc sin_composed(c) = cos(c)") {
+        auto body = InfixParser::ParseFunctionBody("sin(x)", std::vector<std::string>{"x"});
+        auto composedNode = MakeComposedNode("sinJit", 1);
+        dtable.RegisterFunction<Operon::Scalar>(
+            composedNode.HashValue,
+            MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 1));
+        Operon::RegisterUnarySymbolicDeriv(composedNode.HashValue, Operon::MakeComposedUnarySymbolicDerivRule(body));
+
+        auto c = Operon::Node::Constant(1.3);
+        Operon::Vector<Operon::Node> nodes{c, composedNode};
+        Operon::Tree tree{nodes};
+
+        auto coeff = tree.GetCoefficients();
+        auto dag = Operon::BuildJacobianDag(tree);
+        REQUIRE(dag.Roots.size() == 1);
+        REQUIRE(dag.Roots[0] != kNoGrad);
+
+        auto jac = EvalJacColumn(dag, 0, coeff, ds, range, dtable);
+        auto const expected = std::cos(1.3);
+        CHECK(static_cast<double>(jac[0]) == Catch::Approx(expected).margin(1e-4));
     }
 }
 
