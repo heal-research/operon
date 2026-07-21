@@ -1094,23 +1094,50 @@ void RegisterComposedFunction(
             info.Arity, params.size()));
     }
 
+    auto const hash = Operon::Hasher{}(info.Name);
+    detail::ValidateUserHash(hash, info.Name);
+
+    // Preflight: reject a hash that's already registered *anywhere* before
+    // writing anything, rather than partway through registration.
+    // DispatchTable::RegisterFunction silently overwrites (no write-once
+    // guard), but the symbolic-diff/interval/affine registries all throw
+    // on a duplicate (HashRegistry's write-once contract) — without this
+    // check, calling RegisterComposedFunction twice under the same name
+    // would overwrite the numeric Callable/CallableDiff with the new
+    // body, then throw registering the *next* backend, leaving numeric
+    // eval and symbolic-diff/interval/affine reading two different bodies
+    // for the same hash — a silent-wrong-answer state observable by any
+    // later, unrelated evaluation. Found by review, not anticipated when
+    // this function was first written.
+    if (dt.Contains(hash) || pset.Contains(hash)
+        || HasUnarySymbolicDeriv(hash) || HasBinarySymbolicDeriv(hash)
+        || IntervalUnaryRules().Contains(hash) || IntervalBinaryRules().Contains(hash)
+        || AffineUnaryRules().Contains(hash) || AffineBinaryRules().Contains(hash)) {
+        throw std::invalid_argument(fmt::format(
+            "RegisterComposedFunction: '{}' is already registered", info.Name));
+    }
+
     std::vector<std::string> const paramVec(params.begin(), params.end());
     auto body = InfixParser::ParseFunctionBody(bodyInfix, paramVec);
     ValidateSymbolicDiffCoverage(body);
-
-    auto const hash = Operon::Hasher{}(info.Name);
-    detail::ValidateUserHash(hash, info.Name);
 
     auto const arity = params.size();
     dt.template RegisterFunction<T>(hash,
         MakeComposedCallable<DTable, T>(dt, body, arity),
         MakeComposedCallableDiff<DTable, T>(dt, body, arity));
 
-    // arity == 0 needs none of these: a zero-parameter composed function
-    // is a constant expression over built-ins, contributing no free
-    // coefficient of its own — Deriv() already treats any childless
-    // Function node this way with no special-casing needed, and there is
-    // no argument to bound for interval/affine either.
+    // arity == 0: no symbolic-diff registration needed (Deriv() already
+    // treats any childless Function node as contributing Zero, no
+    // special-casing required) -- but this is *not* true for interval/
+    // affine: IntervalEvaluator/AffineEvaluator only consult a registry
+    // for Arity == 1 or Arity == 2, so an arity-0 composed function falls
+    // through to their "not yet mapped" throw if ever evaluated under
+    // either. A real, currently-unclosed gap (no zero-argument interval/
+    // affine callable mechanism exists to register into), not something
+    // arity-0 simply doesn't need -- flagged by review, left open rather
+    // than silently mischaracterized as complete. Numeric evaluation and
+    // symbolic diff both work correctly for arity 0; interval/affine
+    // bounding of a tree containing one does not.
     if (arity == 1) {
         RegisterUnarySymbolicDeriv(hash, MakeComposedUnarySymbolicDerivRule(body));
         RegisterUnaryInterval(hash, MakeComposedIntervalUnaryFn(body));

@@ -713,6 +713,39 @@ TEST_CASE("Composed function: RegisterComposedFunction orchestrator (end-to-end)
                 dtable, pset, info, std::vector<std::string>{"x"}, "sin(x)")),
             std::invalid_argument);
     }
+
+    SECTION("Reject: re-registering the same name doesn't leave inconsistent state") {
+        // Regression test found by review: without a preflight duplicate
+        // check, a second registration under the same name would silently
+        // overwrite the numeric Callable/CallableDiff with the new body,
+        // then throw registering the next backend (symbolic-diff registry
+        // is write-once) -- leaving numeric eval reading the new body while
+        // symbolic-diff/interval/affine still read the old one.
+        Operon::FunctionInfo info{.Name = "dupFn", .Desc = "", .Arity = 1, .Frequency = 1};
+        Operon::RegisterComposedFunction<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(
+            dtable, pset, info, std::vector<std::string>{"x"}, "sin(x)");
+        auto const hash = Operon::Hasher{}("dupFn");
+
+        CHECK_THROWS_AS(
+            (Operon::RegisterComposedFunction<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(
+                dtable, pset, info, std::vector<std::string>{"x"}, "cos(x)")),
+            std::invalid_argument);
+
+        // The second call must have failed *before* touching anything --
+        // numeric eval still reflects the first ("sin(x)") registration.
+        auto composedNode = Operon::Node::Function(hash, 1);
+        Operon::Node vx(Operon::NodeType::Variable);
+        vx.HashValue = vx.CalculatedHashValue = xHash;
+        vx.Value = 1.0F;
+        vx.Optimize = false;
+        Operon::Tree tree{Operon::Vector<Operon::Node>{vx, composedNode}};
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
+        auto val = interp.Evaluate(tree.GetCoefficients(), range);
+        auto const xs = ds.GetValues("x");
+        for (std::size_t i = 0; i < range.Size(); ++i) {
+            CHECK(static_cast<double>(val[i]) == Catch::Approx(std::sin(static_cast<double>(xs[i]))).margin(1e-5));
+        }
+    }
 }
 
 } // namespace Operon::Test
