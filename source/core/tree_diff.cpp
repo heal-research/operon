@@ -133,6 +133,20 @@ auto SymbolicDerivRules() -> SymbolicDerivRegistry&
     return registry;
 }
 
+// Binary counterpart. No built-ins registered here (unlike
+// SymbolicDerivRules()) — every binary built-in is either hardcoded
+// directly in Deriv() (Add/Mul/Sub/Div/Pow) or deliberately excluded
+// (Aq/Powabs/Fmin/Fmax, "not yet differentiated") — so this registry
+// exists purely for user-defined/composed binary functions, starting
+// empty, no lazy-init-builtins step needed.
+using BinarySymbolicDerivRegistry = HashRegistry<BinarySymbolicDerivRule>;
+
+auto BinaryDerivRules() -> BinarySymbolicDerivRegistry&
+{
+    static BinarySymbolicDerivRegistry registry;
+    return registry;
+}
+
 // Register the built-in unary derivative rules exactly once. Lives here
 // (rather than in StandardLibrary, which has no visibility into this TU's
 // private hash-consing helpers MakeUnary/MakeBinary/GetConst) mirroring
@@ -430,6 +444,32 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         return Zero;
     }
 
+    // --- arity-2 user-defined/composed functions ---
+    // Registry lookup for any binary Function node not already handled
+    // above (Add/Mul/Sub/Div/Pow are hardcoded; Aq/Powabs/Fmin/Fmax are
+    // explicitly excluded) — same chain-rule-sum pattern Pow's hardcoded
+    // case already uses. A miss degrades to Zero, matching the unary
+    // registry's own miss convention.
+    if (arity == 2) {
+        auto const* rule = BinaryDerivRules().TryGet(n.HashValue);
+        if (rule != nullptr) {
+            auto j  = children[0]; // nearer
+            auto k  = children[1]; // farther
+            auto dj = Deriv(orig, dag, memo, h, j, targetC);
+            auto dk = Deriv(orig, dag, memo, h, k, targetC);
+            if (dj == Zero && dk == Zero) { return Zero; }
+            auto [fpj, fpk] = (*rule)(dag, memo, h, i, j, k);
+            Operon::Vector<std::size_t> terms;
+            if (dj != Zero && fpj != Zero) {
+                terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, fpj, dj));
+            }
+            if (dk != Zero && fpk != Zero) {
+                terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, fpk, dk));
+            }
+            return AddTerms(dag, memo, h, terms);
+        }
+    }
+
     // --- unary nodes ---
     if (arity == 1) {
         auto j  = children[0];
@@ -508,6 +548,21 @@ auto GetUnarySymbolicDeriv(Operon::Hash hash) -> UnarySymbolicDerivRule const*
 {
     RegisterBuiltinSymbolicDerivs();
     return SymbolicDerivRules().TryGet(hash);
+}
+
+void RegisterBinarySymbolicDeriv(Operon::Hash hash, BinarySymbolicDerivRule rule)
+{
+    BinaryDerivRules().Register(hash, std::move(rule));
+}
+
+auto HasBinarySymbolicDeriv(Operon::Hash hash) -> bool
+{
+    return BinaryDerivRules().Contains(hash);
+}
+
+auto GetBinarySymbolicDeriv(Operon::Hash hash) -> BinarySymbolicDerivRule const*
+{
+    return BinaryDerivRules().TryGet(hash);
 }
 
 auto BuildJacobianDag(Tree const& tree) -> JacobianDag {

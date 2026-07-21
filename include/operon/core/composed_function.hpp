@@ -13,6 +13,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "dispatch.hpp"
@@ -391,14 +392,6 @@ namespace detail {
 // the simpler "just recompute" approach costs nothing measurable and avoids
 // the added complexity of template-dag index-substitution.
 //
-// v1 scope: arity-2 composed-function symbolic-diff support (a new
-// BinarySymbolicDerivRule registry + wiring into Deriv()'s arity==2
-// fallthrough) is NOT implemented yet — deliberately deferred, see
-// operon-planning/designs/composed-functions.md. A binary composed function
-// works fully for numeric eval and the CPU CallableDiff path; only the
-// JIT/BuildJacobianDag path is affected, and ValidateSymbolicDiffCoverage
-// does not currently reject binary composed functions on this basis (that
-// gap is separate from "body references a non-diff built-in").
 inline auto MakeComposedUnarySymbolicDerivRule(Tree const& body) -> UnarySymbolicDerivRule
 {
     auto const& bodyNodes = body.Nodes();
@@ -408,6 +401,36 @@ inline auto MakeComposedUnarySymbolicDerivRule(Tree const& body) -> UnarySymboli
         std::vector<std::size_t> bodyToLive(bodyNodes.size());
         detail::DiffCopyBody(dag, memo, h, bodyNodes, liveChildIdx, bodyToLive);
         return detail::DiffParam(dag, memo, h, bodyNodes, bodyToLive, bodyNodes.size() - 1, 0);
+    };
+}
+
+// Binary counterpart, pluggable into Operon::RegisterBinarySymbolicDeriv
+// (a new registry, wired into tree_diff.cpp's Deriv() arity==2 fallthrough
+// right after the Aq/Powabs/Fmin/Fmax exclusion block — Deriv() itself
+// otherwise unmodified). Same "recompute fresh on every invocation, no
+// template-dag grafting" simplification as the unary rule.
+//
+// j = near child (i-1), k = far child — Deriv()'s own convention, same as
+// Pow's hardcoded case. This is the *reverse* of textual/formal-parameter
+// order: param[0] (textually first) binds to the far child, param[1] binds
+// to the near child — same reversal BindArgIndices applies for the numeric
+// Callable derivation, confirmed empirically there (Tree::Indices
+// enumerates nearest-first). Getting this backwards here would silently
+// swap ∂f/∂param0 and ∂f/∂param1.
+inline auto MakeComposedBinarySymbolicDerivRule(Tree const& body) -> BinarySymbolicDerivRule
+{
+    auto const& bodyNodes = body.Nodes();
+    return [bodyNodes](detail::DiffNodes& dag, detail::DiffMemo& memo, detail::DiffHashes& h,
+               std::size_t /*i*/, std::size_t j, std::size_t k) -> std::pair<std::size_t, std::size_t> {
+        std::array<std::int64_t, kMaxComposedFunctionArity> liveChildIdx{};
+        liveChildIdx[0] = static_cast<std::int64_t>(k); // param[0] = far child
+        liveChildIdx[1] = static_cast<std::int64_t>(j); // param[1] = near child
+        std::vector<std::size_t> bodyToLive(bodyNodes.size());
+        detail::DiffCopyBody(dag, memo, h, bodyNodes, liveChildIdx, bodyToLive);
+        auto const root = bodyNodes.size() - 1;
+        auto fpk = detail::DiffParam(dag, memo, h, bodyNodes, bodyToLive, root, 0); // ∂body/∂param[0] = ∂f/∂k
+        auto fpj = detail::DiffParam(dag, memo, h, bodyNodes, bodyToLive, root, 1); // ∂body/∂param[1] = ∂f/∂j
+        return {fpj, fpk};
     };
 }
 

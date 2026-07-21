@@ -512,4 +512,46 @@ TEST_CASE("Composed function: interval/affine mini-evaluators throw (not crash) 
     CHECK_THROWS_AS(affineFn(ctx, arg), std::runtime_error);
 }
 
+TEST_CASE("Composed function: binary symbolic-diff rule (JIT/BuildJacobianDag path, arity-2)", "[composed-function]")
+{
+    // Order-sensitive body (a - exp(b), not symmetric in a/b) to catch a
+    // param-binding swap: d/da = 1, d/db = -exp(b). Differentiates w.r.t.
+    // two Constant arguments (self-derivative exactly 1, same reasoning as
+    // the arity-1 JIT tests) rather than Variable weights.
+    Operon::Dataset ds(std::vector<std::string>{"x"}, std::vector<std::vector<Operon::Scalar>>{{1.3F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+
+    auto body = InfixParser::ParseFunctionBody("a - exp(b)", std::vector<std::string>{"a", "b"});
+    auto composedNode = MakeComposedNode("subExpBinary", 2);
+    dtable.RegisterFunction<Operon::Scalar>(
+        composedNode.HashValue,
+        MakeComposedCallable<Operon::DispatchTable<Operon::Scalar>, Operon::Scalar>(dtable, body, 2));
+    Operon::RegisterBinarySymbolicDeriv(composedNode.HashValue, Operon::MakeComposedBinarySymbolicDerivRule(body));
+
+    auto ca = Operon::Node::Constant(2.1); // binds to param 'a' (far child, first textual arg)
+    auto cb = Operon::Node::Constant(0.7); // binds to param 'b' (near child, second textual arg)
+    Operon::Vector<Operon::Node> nodes{ca, cb, composedNode};
+    Operon::Tree tree{nodes};
+
+    // Sanity: numeric value should be a - exp(b).
+    auto coeffEval = tree.GetCoefficients();
+    Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interp{&dtable, &ds, &tree};
+    auto val = interp.Evaluate(coeffEval, range);
+    CHECK(static_cast<double>(val[0]) == Catch::Approx(2.1 - std::exp(0.7)).margin(1e-4));
+
+    auto coeff = tree.GetCoefficients();
+    auto dag = Operon::BuildJacobianDag(tree);
+    REQUIRE(dag.Roots.size() == 2);
+    REQUIRE(dag.Roots[0] != kNoGrad);
+    REQUIRE(dag.Roots[1] != kNoGrad);
+
+    // GetCoefficients() walks nodes in order, so root[0] is d/d(ca)=d/da,
+    // root[1] is d/d(cb)=d/db.
+    auto jacA = EvalJacColumn(dag, 0, coeff, ds, range, dtable);
+    auto jacB = EvalJacColumn(dag, 1, coeff, ds, range, dtable);
+    CHECK(static_cast<double>(jacA[0]) == Catch::Approx(1.0).margin(1e-3));
+    CHECK(static_cast<double>(jacB[0]) == Catch::Approx(-std::exp(0.7)).margin(1e-3));
+}
+
 } // namespace Operon::Test

@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <utility>
 
 #include "contracts.hpp"
 #include "node.hpp"
@@ -51,6 +52,39 @@ OPERON_EXPORT auto HasUnarySymbolicDeriv(Operon::Hash hash) -> bool;
 // operon-planning/designs/composed-functions.md) — not used by Deriv()
 // itself, which consults the registry directly.
 OPERON_EXPORT auto GetUnarySymbolicDeriv(Operon::Hash hash) -> UnarySymbolicDerivRule const*;
+
+// A symbolic derivative rule for a binary built-in or user-defined
+// function: given the dag under construction, this node's own dag index
+// `i`, its nearer child's dag index `j`, and its farther child's dag index
+// `k` (same near/far convention as Pow's own hardcoded case in Deriv() —
+// `j` is the operand at `i-1`), returns {f'_j, f'_k} — the dag index of
+// ∂f/∂j and of ∂f/∂k, each independently possibly `Zero` if that partial
+// isn't computable. Mirrors UnarySymbolicDerivRule exactly, just for two
+// operands instead of one.
+using BinarySymbolicDerivRule = std::function<std::pair<std::size_t, std::size_t>(
+    Operon::Vector<Node>& dag,
+    Operon::Map<Operon::Hash, std::size_t>& memo,
+    Operon::Vector<Operon::Hash>& h,
+    std::size_t i,
+    std::size_t j,
+    std::size_t k)>;
+
+// Register a symbolic derivative rule for a binary function (built-in or
+// user-defined). Looked up by BuildJacobianDag/BuildHessianDag's internal
+// Deriv() for every arity-2 node not already hardcoded (Add/Mul/Sub/Div/
+// Pow/Aq/Powabs/Fmin/Fmax) — a miss degrades to "not differentiable"
+// (Zero), the same convention RegisterUnarySymbolicDeriv already
+// established. Throws if `hash` is already registered (write-once, see
+// HashRegistry::Register).
+OPERON_EXPORT void RegisterBinarySymbolicDeriv(Operon::Hash hash, BinarySymbolicDerivRule rule);
+
+// Query whether a symbolic derivative rule is registered for `hash`. See
+// HasUnarySymbolicDeriv for the coverage-check use case.
+OPERON_EXPORT auto HasBinarySymbolicDeriv(Operon::Hash hash) -> bool;
+
+// Fetch a registered rule for direct invocation (nullptr on a miss). See
+// GetUnarySymbolicDeriv for the external-caller use case.
+OPERON_EXPORT auto GetBinarySymbolicDeriv(Operon::Hash hash) -> BinarySymbolicDerivRule const*;
 
 // A flat postfix array containing the original tree (indices 0..OriginalSize-1)
 // plus appended symbolic derivative subtrees. Shared subexpressions between
