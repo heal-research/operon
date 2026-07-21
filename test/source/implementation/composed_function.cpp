@@ -554,4 +554,64 @@ TEST_CASE("Composed function: binary symbolic-diff rule (JIT/BuildJacobianDag pa
     CHECK(static_cast<double>(jacB[0]) == Catch::Approx(-std::exp(0.7)).margin(1e-3));
 }
 
+TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, step 8)", "[composed-function]")
+{
+    auto const xHash = Operon::Hasher{}("x");
+    auto const yHash = Operon::Hasher{}("y");
+
+    SECTION("Interval: a - b, order-sensitive, matches Tree::Indices/param binding") {
+        auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"});
+        auto composedNode = MakeComposedNode("subIntervalBinary", 2);
+        Operon::RegisterBinaryInterval(composedNode.HashValue, Operon::MakeComposedIntervalBinaryFn(body));
+
+        Operon::Node vx(Operon::NodeType::Variable);
+        vx.HashValue = vx.CalculatedHashValue = xHash;
+        vx.Value = 1.0F;
+        vx.Optimize = false;
+        Operon::Node vy(Operon::NodeType::Variable);
+        vy.HashValue = vy.CalculatedHashValue = yHash;
+        vy.Value = 1.0F;
+        vy.Optimize = false;
+        // Postfix: first-arg subtree, second-arg subtree, then the call —
+        // subIntervalBinary(x, y), matching the numeric/symbolic-diff
+        // binary tests' node ordering.
+        Operon::Vector<Operon::Node> nodes{vx, vy, composedNode};
+        Operon::Tree tree{nodes};
+
+        Operon::IntervalEvaluator::DomainMap domains{{xHash, {0.0F, 5.0F}}, {yHash, {0.0F, 2.0F}}};
+        Operon::IntervalEvaluator eval(&tree, domains);
+        auto result = eval.Evaluate({});
+        // a - b for a in [0,5], b in [0,2]: [0-2, 5-0] = [-2, 5].
+        CHECK(result.inf() == Catch::Approx(-2.0).margin(1e-3));
+        CHECK(result.sup() == Catch::Approx(5.0).margin(1e-3));
+    }
+
+    SECTION("Affine: same(x, x) = a - b encloses to exactly 0 via structural sharing (correlation preserved)") {
+        // Both call-site arguments are the *same* shared value (via Ref),
+        // matching the arity-1 correlation test's shape but for two
+        // independently-bound param slots that happen to receive the same
+        // underlying affine form.
+        auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"});
+        auto composedNode = MakeComposedNode("sameAffineBinary", 2);
+        Operon::RegisterBinaryAffine(composedNode.HashValue, Operon::MakeComposedAffineBinaryFn(body));
+
+        Operon::Node vx(Operon::NodeType::Variable);
+        vx.HashValue = vx.CalculatedHashValue = xHash;
+        vx.Value = 1.0F;
+        vx.Optimize = false;
+        auto refFar = Operon::Node::Ref(0);
+        auto refNear = Operon::Node::Ref(0);
+        // same(x, x): [x(real), Ref(0)(far/param a), Ref(0)(near/param b), call]
+        Operon::Vector<Operon::Node> nodes{vx, refFar, refNear, composedNode};
+        Operon::Tree tree{nodes};
+
+        Operon::AffineEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::AffineEvaluator eval(&tree, domains);
+        auto result = eval.Evaluate({});
+        auto const iv = result.to_interval();
+        CHECK(iv.inf() == Catch::Approx(0.0).margin(1e-4));
+        CHECK(iv.sup() == Catch::Approx(0.0).margin(1e-4));
+    }
+}
+
 } // namespace Operon::Test
