@@ -97,10 +97,10 @@ TEST_CASE("Cross-registry coverage: interval/affine registries", "[registry][cov
         auto const hash = static_cast<Operon::Hash>(op);
         bool const expectAbsent = std::ranges::find(deliberatelyAbsent, op) != deliberatelyAbsent.end();
 
-        bool const inInterval = Operon::IntervalUnaryRules().Contains(hash)
-            || Operon::IntervalBinaryRules().Contains(hash);
-        bool const inAffine = Operon::AffineUnaryRules().Contains(hash)
-            || Operon::AffineBinaryRules().Contains(hash);
+        bool const inInterval = Operon::HasUnaryInterval(hash)
+            || Operon::HasBinaryInterval(hash);
+        bool const inAffine = Operon::HasUnaryAffine(hash)
+            || Operon::HasBinaryAffine(hash);
 
         INFO("op: " << OpName(op));
         CHECK(inInterval == !expectAbsent);
