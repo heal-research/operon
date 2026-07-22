@@ -80,16 +80,6 @@ TEST_CASE("Cross-registry coverage: symbolic-diff registry", "[registry][coverag
 
 TEST_CASE("Cross-registry coverage: interval/affine registries", "[registry][coverage]")
 {
-    // Force built-in registration (each evaluator populates its registries
-    // lazily on first Evaluate() call). Optimize=false so Evaluate({}) needs
-    // no coefficient span (Node::Constant() defaults Optimize=true as a leaf).
-    auto constNode = Node::Constant(1.0F);
-    constNode.Optimize = false;
-    Operon::Tree dummy{{constNode}};
-    Operon::IntervalEvaluator::DomainMap noDomains;
-    static_cast<void>(IntervalEvaluator{&dummy, noDomains}.Evaluate({}));
-    static_cast<void>(AffineEvaluator{&dummy, noDomains}.Evaluate({}));
-
     auto const& deliberatelyAbsent = NaryFolds();
 
     for (std::size_t i = 0; i < Operon::BuiltinOpCount; ++i) {
@@ -97,10 +87,10 @@ TEST_CASE("Cross-registry coverage: interval/affine registries", "[registry][cov
         auto const hash = static_cast<Operon::Hash>(op);
         bool const expectAbsent = std::ranges::find(deliberatelyAbsent, op) != deliberatelyAbsent.end();
 
-        bool const inInterval = Operon::IntervalUnaryRules().Contains(hash)
-            || Operon::IntervalBinaryRules().Contains(hash);
-        bool const inAffine = Operon::AffineUnaryRules().Contains(hash)
-            || Operon::AffineBinaryRules().Contains(hash);
+        bool const inInterval = Operon::HasUnaryInterval(hash)
+            || Operon::HasBinaryInterval(hash);
+        bool const inAffine = Operon::HasUnaryAffine(hash)
+            || Operon::HasBinaryAffine(hash);
 
         INFO("op: " << OpName(op));
         CHECK(inInterval == !expectAbsent);

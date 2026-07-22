@@ -1001,8 +1001,8 @@ void RegisterComposedFunction(
     // this function was first written.
     if (dt.Contains(hash) || pset.Contains(hash)
         || HasUnarySymbolicDeriv(hash) || HasBinarySymbolicDeriv(hash)
-        || IntervalUnaryRules().Contains(hash) || IntervalBinaryRules().Contains(hash)
-        || AffineUnaryRules().Contains(hash) || AffineBinaryRules().Contains(hash)) {
+        || HasUnaryInterval(hash) || HasBinaryInterval(hash)
+        || HasUnaryAffine(hash) || HasBinaryAffine(hash)) {
         throw std::invalid_argument(fmt::format(
             "RegisterComposedFunction: '{}' is already registered", info.Name));
     }

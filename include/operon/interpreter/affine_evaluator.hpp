@@ -17,6 +17,7 @@
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operon_export.hpp"
 
 // See interval_evaluator.hpp for the rationale behind these pragmas.
 #if defined(__clang__)
@@ -38,15 +39,16 @@
 namespace Operon {
 
 // Registered affine callbacks for unary/binary built-in or user-defined
-// functions, keyed by Node::HashValue. See interval_evaluator.hpp's matching
-// comment for the full rationale (global inline Meyer singletons, no
-// registry parameter threaded through the constructor/Evaluate(), plain
-// non-locking HashRegistry since all writes finish before Evaluate() is
-// first called from a GP worker thread). Only real difference from
-// IntervalUnaryFn/IntervalBinaryFn: every call here takes the shared
-// affine_context first — the context-threaded finalize overload of
-// PAPPUS_DEFINE_UNARY_OP is the only one either evaluator ever calls (the
-// bare affine_form<T>-only overload, without a context, is never used here).
+// functions, keyed by Node::HashValue. Exported `.cpp`-backed singletons
+// (see affine_evaluator.cpp) — see interval_evaluator.hpp's matching comment
+// for the full rationale (no registry parameter threaded through the
+// constructor/Evaluate(), plain non-locking HashRegistry since all writes
+// finish before Evaluate() is first called from a GP worker thread). Only
+// real difference from IntervalUnaryFn/IntervalBinaryFn: every call here
+// takes the shared affine_context first — the context-threaded finalize
+// overload of PAPPUS_DEFINE_UNARY_OP is the only one either evaluator ever
+// calls (the bare affine_form<T>-only overload, without a context, is never
+// used here).
 using AffineUnaryFn  = std::function<pappus::affine_form<Operon::Scalar>(
     pappus::ops::affine_context<Operon::Scalar> const&, pappus::affine_form<Operon::Scalar> const&)>;
 using AffineBinaryFn = std::function<pappus::affine_form<Operon::Scalar>(
@@ -59,75 +61,18 @@ using AffineBinaryRegistry = HashRegistry<AffineBinaryFn>;
 // Direct registry access — see interval_evaluator.hpp's matching comment.
 // Prefer RegisterUnaryAffine/RegisterBinaryAffine over calling .Register()
 // on the registry returned here directly.
-inline auto AffineUnaryRules() -> AffineUnaryRegistry&
-{
-    static AffineUnaryRegistry registry;
-    return registry;
-}
-
-inline auto AffineBinaryRules() -> AffineBinaryRegistry&
-{
-    static AffineBinaryRegistry registry;
-    return registry;
-}
+OPERON_EXPORT auto AffineUnaryRules() -> AffineUnaryRegistry&;
+OPERON_EXPORT auto AffineBinaryRules() -> AffineBinaryRegistry&;
 
 // Registers the built-in unary/binary affine rules exactly once, mirroring
-// interval_evaluator.hpp's RegisterIntervalBuiltins(). Every rule is lifted
-// verbatim out of AffineEvaluator's old switch statement, each calling
-// `pappus::ops::xxx` fully qualified (see interval_evaluator.hpp for the ADL
-// rationale). A free function (not an AffineEvaluator member) so both
-// AffineEvaluator::Evaluate() and the public Register{Unary,Binary}Affine()
-// entry points below can call it — the latter must trigger it before
-// writing, for the same reason RegisterIntervalBuiltins() does: a user hash
-// colliding with a built-in should throw immediately at the user's own call
-// site, not later inside Evaluate().
-inline void RegisterAffineBuiltins()
-{
-    using Scalar = Operon::Scalar;
-    using Affine = pappus::affine_form<Scalar>;
-    using Context = pappus::ops::affine_context<Scalar>;
-    static auto const registered = [] {
-        auto& unary  = AffineUnaryRules();
-        auto& binary = AffineBinaryRules();
-
-        unary.Register(Operon::Hash(BuiltinOp::Square), [](Context const& ctx, Affine const& v) { return pappus::ops::square<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Sqrt), [](Context const& ctx, Affine const& v) { return pappus::ops::sqrt<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Exp), [](Context const& ctx, Affine const& v) { return pappus::ops::exp<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Log), [](Context const& ctx, Affine const& v) { return pappus::ops::log<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Sin), [](Context const& ctx, Affine const& v) { return pappus::ops::sin<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Cos), [](Context const& ctx, Affine const& v) { return pappus::ops::cos<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Tan), [](Context const& ctx, Affine const& v) { return pappus::ops::tan<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Asin), [](Context const& ctx, Affine const& v) { return pappus::ops::asin<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Acos), [](Context const& ctx, Affine const& v) { return pappus::ops::acos<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Atan), [](Context const& ctx, Affine const& v) { return pappus::ops::atan<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Sinh), [](Context const& ctx, Affine const& v) { return pappus::ops::sinh<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Cosh), [](Context const& ctx, Affine const& v) { return pappus::ops::cosh<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Tanh), [](Context const& ctx, Affine const& v) { return pappus::ops::tanh<Scalar>(ctx, v); });
-        // May throw if the domain crosses zero (requires Chebyshev V-shape).
-        unary.Register(Operon::Hash(BuiltinOp::Abs), [](Context const& ctx, Affine const& v) { return pappus::ops::abs<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Sqrtabs), [](Context const& ctx, Affine const& v) { return pappus::ops::sqrtabs<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Logabs), [](Context const& ctx, Affine const& v) { return pappus::ops::logabs<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Cbrt), [](Context const& ctx, Affine const& v) { return pappus::ops::cbrt<Scalar>(ctx, v); });
-        // May throw if the domain includes values <= -1.
-        unary.Register(Operon::Hash(BuiltinOp::Log1p), [](Context const& ctx, Affine const& v) { return pappus::ops::log1p<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Floor), [](Context const& ctx, Affine const& v) { return pappus::ops::floor<Scalar>(ctx, v); });
-        unary.Register(Operon::Hash(BuiltinOp::Ceil), [](Context const& ctx, Affine const& v) { return pappus::ops::ceil<Scalar>(ctx, v); });
-
-        binary.Register(Operon::Hash(BuiltinOp::Pow), [](Context const& ctx, Affine const& a, Affine const& b) {
-            return pappus::ops::pow<Scalar>(ctx, a, b);
-        });
-        binary.Register(Operon::Hash(BuiltinOp::Aq), [](Context const& ctx, Affine const& a, Affine const& b) {
-            return pappus::ops::aq<Scalar>(ctx, a, b);
-        });
-        binary.Register(Operon::Hash(BuiltinOp::Powabs), [](Context const& ctx, Affine const& a, Affine const& b) {
-            auto absBase = pappus::ops::abs<Scalar>(ctx, a);
-            return pappus::ops::pow<Scalar>(ctx, absBase, b);
-        });
-
-        return true;
-    }();
-    static_cast<void>(registered);
-}
+// interval_evaluator.hpp's RegisterIntervalBuiltins(). A free function (not
+// an AffineEvaluator member) so both AffineEvaluator::Evaluate() and the
+// public Register{Unary,Binary}Affine() entry points below can call it — the
+// latter must trigger it before writing, for the same reason
+// RegisterIntervalBuiltins() does: a user hash colliding with a built-in
+// should throw immediately at the user's own call site, not later inside
+// Evaluate().
+OPERON_EXPORT void RegisterAffineBuiltins();
 
 // Register an affine callback for a unary function (built-in or
 // user-defined), keyed by the same hash the function's Node::HashValue
@@ -136,19 +81,17 @@ inline void RegisterAffineBuiltins()
 // today. Throws if `hash` is already registered (write-once) — including
 // when `hash` collides with a built-in, since RegisterAffineBuiltins() above
 // always runs first.
-inline void RegisterUnaryAffine(Operon::Hash hash, AffineUnaryFn fn)
-{
-    RegisterAffineBuiltins();
-    AffineUnaryRules().Register(hash, std::move(fn));
-}
+OPERON_EXPORT void RegisterUnaryAffine(Operon::Hash hash, AffineUnaryFn fn);
 
 // Register an affine callback for a binary function. See
 // RegisterUnaryAffine for the miss-behavior and built-in-collision notes.
-inline void RegisterBinaryAffine(Operon::Hash hash, AffineBinaryFn fn)
-{
-    RegisterAffineBuiltins();
-    AffineBinaryRules().Register(hash, std::move(fn));
-}
+OPERON_EXPORT void RegisterBinaryAffine(Operon::Hash hash, AffineBinaryFn fn);
+
+// Query whether an affine callback is registered for `hash` (built-in or
+// user-defined), forcing built-in registration first. See
+// HasUnaryInterval/HasBinaryInterval for the coverage-check use case.
+OPERON_EXPORT auto HasUnaryAffine(Operon::Hash hash) -> bool;
+OPERON_EXPORT auto HasBinaryAffine(Operon::Hash hash) -> bool;
 
 // Forward affine-arithmetic bounds for an Operon tree over a single input
 // domain. Mirrors `IntervalEvaluator` but every `affine_form` shares one
