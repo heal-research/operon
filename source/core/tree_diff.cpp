@@ -160,9 +160,8 @@ auto BinaryDerivRules() -> BinarySymbolicDerivRegistry&
 // (rather than in StandardLibrary, which has no visibility into this TU's
 // private hash-consing helpers MakeUnary/MakeBinary/GetConst) mirroring
 // StandardLibrary::RegisterNames()'s lazy-static-lambda-once pattern.
-// Every rule below is lifted verbatim out of Deriv()'s old unary switch;
 // Abs/Sqrtabs/Floor/Ceil are intentionally left unregistered (non-smooth or
-// not-yet-implemented), degrading to Zero exactly like today's `default:`.
+// not yet implemented); an unregistered op yields Zero.
 void RegisterBuiltinSymbolicDerivs()
 {
     static auto const registered = [] {
@@ -379,24 +378,16 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
 
     // --- Sub ---
     if (n.IsSubtraction()) {
-        auto dj = Deriv(orig, dag, memo, h, children[0], targetC);
         if (arity == 1) {
             // Unary minus: -a. d(-a)/dc = -da
+            auto dj = Deriv(orig, dag, memo, h, children[0], targetC);
             if (dj == Zero) { return Zero; }
             auto neg1 = GetConst(dag, memo, h, Scalar{-1});
             return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dj));
         }
-        if (arity == 2) {
-            auto dk = Deriv(orig, dag, memo, h, children[1], targetC);
-            if (dj == Zero && dk == Zero) { return Zero; }
-            if (dk == Zero) { return applyWeight(dj); }
-            if (dj == Zero) {
-                auto neg1 = GetConst(dag, memo, h, Scalar{-1});
-                return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dk));
-            }
-            return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Sub, dj, dk));
-        }
-        // arity > 2: treat as +first - rest
+        // arity >= 2: treat as +first - rest (this covers plain binary
+        // subtraction too: with only two children, "the rest" is just the
+        // second child).
         Operon::Vector<std::size_t> pos;
         Operon::Vector<std::size_t> neg;
         for (std::size_t m = 0; m < arity; ++m) {
@@ -520,11 +511,10 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         auto dj = Deriv(orig, dag, memo, h, j, targetC);
         if (dj == Zero) { return Zero; }
 
-        // Registry lookup replaces the old hardcoded switch (see
-        // RegisterBuiltinSymbolicDerivs above for the 16 built-in rules,
-        // migrated verbatim). A miss — including Abs/Sqrtabs/Floor/Ceil,
-        // deliberately left unregistered — degrades to Zero exactly like
-        // today's `default: return Zero;` did.
+        // Look up this operation's derivative rule (see
+        // RegisterBuiltinSymbolicDerivs above for the 16 built-in rules). A
+        // miss — including Abs/Sqrtabs/Floor/Ceil, which are deliberately
+        // left unregistered — yields Zero.
         auto const* rule = SymbolicDerivRules().TryGet(n.HashValue);
         if (rule == nullptr) { return Zero; }
         auto fp = (*rule)(dag, memo, h, i, j); // symbolic f'(j)

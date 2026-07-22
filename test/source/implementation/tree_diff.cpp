@@ -112,11 +112,9 @@ auto GenerateTrees(
     return trees;
 }
 
-// Same as GenerateTrees, but also assigns a random non-unit weight to every
-// Function node (BalancedTreeCreator/Node's ctor otherwise always leaves
-// Function nodes at Value=1.0 — the case GenerateTrees exercises, and the
-// case tree_diff.cpp's Deriv() historically got wrong: see
-// foolnotion/operon-planning's symbolic-diff-weight-omission bug writeup).
+// Same as GenerateTrees, but assigns a random non-unit weight to every
+// Function node. GenerateTrees leaves them at 1.0, so this exercises the
+// weight factor in each node's derivative.
 auto GenerateWeightedTrees(
     RandomGenerator& rng,
     PrimitiveSet& pset,

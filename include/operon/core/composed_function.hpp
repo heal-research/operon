@@ -634,13 +634,9 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
         }
 
         // Reverse pass: seed the body root's trace to 1, walk backward,
-        // consulting each constituent op's own already-registered
-        // CallableDiff for the *unweighted* local derivative (matching the
-        // confirmed-correct Log/Sin convention, never the buggy
-        // Mul/Exp-style shortcut through a node's own weighted primal — see
-        // the double-weighted-derivative bug writeup), then applying that
-        // node's own weight once while propagating, exactly mirroring
-        // Interpreter::ReverseTraceGeneric.
+        // consulting each constituent op's own CallableDiff for the
+        // unweighted local derivative, then applying that node's own weight
+        // once while propagating — mirroring Interpreter::ReverseTraceGeneric.
         Backend::Buffer<T, S> traceBuf(S, nNodes);
         Backend::View<T, S> traceView{traceBuf};
         std::fill_n(traceBuf.data(), static_cast<std::size_t>(S * nNodes), T{0});
