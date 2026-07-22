@@ -21,9 +21,12 @@ namespace Operon {
 // Deriv()'s own helpers in tree_diff.cpp thread them, for hash-consing),
 // this node's own dag index `i`, and its argument's dag index `j`, returns
 // the dag index of f'(j) — or Operon::Vector<Node>::size_type(-1)
-// (tree_diff.cpp's `Zero` sentinel) if no derivative is computable. Several
-// rules need `i` (e.g. Exp: f'(j) = exp(j) = the node's own result, at `i`),
-// not just `j`, hence both are threaded through.
+// (tree_diff.cpp's `Zero` sentinel) if no derivative is computable. `i` is
+// threaded through for rules that might need it, but no built-in rule
+// currently does — every one of them builds f'(j) purely from `j` (e.g.
+// Exp registers a fresh MakeUnary(Exp, j), not a reuse of `i`), matching
+// the outer applyWeight() step in Deriv() that supplies this node's own
+// weight exactly once regardless of which rule fired.
 using UnarySymbolicDerivRule = std::function<std::size_t(
     Operon::Vector<Node>& dag,
     Operon::Map<Operon::Hash, std::size_t>& memo,

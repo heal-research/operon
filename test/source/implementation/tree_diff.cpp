@@ -112,6 +112,29 @@ auto GenerateTrees(
     return trees;
 }
 
+// Same as GenerateTrees, but assigns a random non-unit weight to every
+// Function node. GenerateTrees leaves them at 1.0, so this exercises the
+// weight factor in each node's derivative.
+auto GenerateWeightedTrees(
+    RandomGenerator& rng,
+    PrimitiveSet& pset,
+    Dataset const& ds,
+    int n,
+    std::size_t maxLen
+) -> std::vector<Tree>
+{
+    std::uniform_real_distribution<Operon::Scalar> weightDist(0.5F, 2.F);
+    auto trees = GenerateTrees(rng, pset, ds, n, maxLen);
+    for (auto& tree : trees) {
+        for (auto& nd : tree.Nodes()) {
+            if (!nd.IsLeaf() && !nd.IsRef()) {
+                nd.Value = weightDist(rng) * (std::bernoulli_distribution{0.5}(rng) ? Operon::Scalar{1} : Operon::Scalar{-1});
+            }
+        }
+    }
+    return trees;
+}
+
 } // namespace
 
 // ============================================================
@@ -211,6 +234,44 @@ TEST_CASE("BuildJacobianDag - Mul(c1,c2) product rule", "[tree_diff]")
     CHECK(dag.Nodes[dag.Roots[1]].IsOp<BuiltinOp::Mul>());
 }
 
+TEST_CASE("BuildJacobianDag - zero-weight Function node yields exact zero gradient", "[tree_diff]")
+{
+    // d(0 * f(c))/dc must be exactly 0, not NaN. Exp/Sqrt/Cbrt/Tan/Tanh/Pow's
+    // symbolic rules recompute their local derivative fresh from the child
+    // (e.g. Sqrt emits 1/(2*sqrt(j))), which can itself evaluate to Inf at
+    // c == 0 (sqrt(0) == 0). applyWeight's w == 0 short-circuit must catch
+    // this before Mul(Const(0), Inf) can propagate as NaN (IEEE-754: 0*Inf
+    // is NaN, not 0).
+    for (auto op : {BuiltinOp::Exp, BuiltinOp::Sqrt, BuiltinOp::Cbrt, BuiltinOp::Tan, BuiltinOp::Tanh}) {
+        Operon::Vector<Node> nodes;
+        auto c = Node::Constant(2.0F); c.Optimize = true;
+        auto fn = Node::Function(static_cast<Operon::Hash>(op), 1);
+        fn.Value = 0.0F;
+        nodes.push_back(c); nodes.push_back(fn);
+        Tree tree{nodes};
+
+        auto dag = BuildJacobianDag(tree);
+        REQUIRE(dag.Roots.size() == 1);
+        CHECK(dag.Roots[0] == NoGrad); // exactly zero, not a NaN-producing expression
+    }
+
+    // Pow(base, exponent) is a hardcoded binary case with the same w == 0 risk.
+    {
+        Operon::Vector<Node> nodes;
+        auto base = Node::Constant(2.0F); base.Optimize = true;
+        auto exp  = Node::Constant(3.0F); exp.Optimize = true;
+        auto pow  = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Pow), 2);
+        pow.Value = 0.0F;
+        nodes.push_back(exp); nodes.push_back(base); nodes.push_back(pow);
+        Tree tree{nodes};
+
+        auto dag = BuildJacobianDag(tree);
+        REQUIRE(dag.Roots.size() == 2);
+        CHECK(dag.Roots[0] == NoGrad);
+        CHECK(dag.Roots[1] == NoGrad);
+    }
+}
+
 TEST_CASE("BuildJacobianDag - Sin(c) root is Mul", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
@@ -286,6 +347,59 @@ TEST_CASE("BuildJacobianDag correctness vs JacRev - random trees", "[tree_diff]"
     for (auto const& tree : trees) {
         auto const coeff = tree.GetCoefficients();
         if (coeff.empty()) { continue; } // tree has no constants
+
+        Interp const interp{&dtable, &ds, &tree};
+        auto const jrev = interp.JacRev(coeff, range);
+
+        auto const dag  = BuildJacobianDag(tree);
+        auto const jdag = EvalDagJacobian(dag, coeff, ds, range, dtable);
+
+        auto const nk = jrev.cols();
+        totalCols += static_cast<std::size_t>(nk);
+
+        for (Eigen::Index k = 0; k < nk; ++k) {
+            auto const colRev = jrev.col(k);
+            auto const colDag = jdag.col(k);
+            bool const revFin = std::isfinite(colRev.sum());
+            bool const dagFin = std::isfinite(colDag.sum());
+            if (revFin && !dagFin) {
+                ++finiteMismatch;
+            } else if (revFin && dagFin && !colRev.isApprox(colDag, eps)) {
+                ++finiteDiverge;
+            }
+        }
+    }
+
+    INFO("finite mismatch: " << finiteMismatch << " / " << totalCols);
+    INFO("finite diverge:  " << finiteDiverge  << " / " << totalCols);
+    CHECK(finiteMismatch == 0);
+    CHECK(static_cast<double>(finiteDiverge) / static_cast<double>(std::max(totalCols, std::size_t{1})) < maxDivergeRate);
+}
+
+TEST_CASE("BuildJacobianDag correctness vs JacRev - weighted Function nodes", "[tree_diff]")
+{
+    constexpr auto nRows  = 100;
+    constexpr auto nCols  = 5;
+    constexpr auto nTrees = 1000;
+    constexpr auto maxLen = 30;
+    constexpr auto eps    = 1e-3F; // relaxed for potential numerical differences
+    constexpr auto maxDivergeRate = 0.02; // allow 2% divergence due to numerics
+
+    Operon::RandomGenerator rng(43UL);
+    auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
+    DTable dtable;
+    Range const range{0, ds.Rows<std::size_t>()};
+
+    auto pset = MakeSupportedPset();
+    auto const trees = GenerateWeightedTrees(rng, pset, ds, nTrees, maxLen);
+
+    std::size_t finiteMismatch = 0;
+    std::size_t finiteDiverge  = 0;
+    std::size_t totalCols      = 0;
+
+    for (auto const& tree : trees) {
+        auto const coeff = tree.GetCoefficients();
+        if (coeff.empty()) { continue; }
 
         Interp const interp{&dtable, &ds, &tree};
         auto const jrev = interp.JacRev(coeff, range);
@@ -837,6 +951,77 @@ TEST_CASE("BuildHessianDag correctness vs finite differences - random trees", "[
 
     auto rate = static_cast<double>(failedEntries) / static_cast<double>(std::max(totalEntries, std::size_t{1}));
     fmt::print("FD Hessian: {} / {} entries failed ({:.2f}%)\n", failedEntries, totalEntries, rate * 100.0);
+    CHECK(rate < maxFailRate);
+}
+
+TEST_CASE("BuildHessianDag correctness vs finite differences - weighted Function nodes", "[tree_diff][hessian]")
+{
+    constexpr auto nRows  = 50;
+    constexpr auto nCols  = 5;
+    constexpr auto nTrees = 500;
+    constexpr auto maxLen = 20;
+    constexpr auto fdEps  = 1e-3F;
+    constexpr auto tol    = 5e-2F;
+    constexpr auto maxFailRate = 0.15;
+
+    Operon::RandomGenerator rng(100UL);
+    auto ds = Operon::Test::Util::RandomDataset(rng, nRows, nCols);
+    DTable dtable;
+    Range const range{0, ds.Rows<std::size_t>()};
+
+    auto pset = MakeSupportedPset();
+    auto const trees = GenerateWeightedTrees(rng, pset, ds, nTrees, maxLen);
+
+    std::size_t totalEntries = 0;
+    std::size_t failedEntries = 0;
+
+    for (auto const& tree : trees) {
+        auto coeff = tree.GetCoefficients();
+        auto const p = coeff.size();
+        if (p == 0) { continue; }
+
+        auto const dag = BuildHessianDag(tree);
+        Interp const interp{&dtable, &ds, &tree};
+
+        for (std::size_t i = 0; i < p; ++i) {
+            for (std::size_t j = i; j < p; ++j) {
+                auto dagCol = EvalDagColumn(
+                    dag.Nodes, dag.HessianRoots[dag.UpperIdx(i, j)],
+                    coeff, ds, range, dtable);
+
+                // Finite difference: perturb coeff[j], measure change in J column i
+                auto coeffPlus = coeff;
+                auto coeffMinus = coeff;
+                coeffPlus[j] += fdEps;
+                coeffMinus[j] -= fdEps;
+
+                // Create temporary trees with perturbed coefficients
+                auto treePlus = tree;
+                auto treeMinus = tree;
+                treePlus.SetCoefficients({coeffPlus.data(), coeffPlus.size()});
+                treeMinus.SetCoefficients({coeffMinus.data(), coeffMinus.size()});
+
+                auto jacPlus = Interp{&dtable, &ds, &treePlus}.JacRev(coeffPlus, range);
+                auto jacMinus = Interp{&dtable, &ds, &treeMinus}.JacRev(coeffMinus, range);
+
+                auto fdCol = (jacPlus.col(static_cast<Eigen::Index>(i))
+                            - jacMinus.col(static_cast<Eigen::Index>(i)))
+                           / (2.0F * fdEps);
+
+                ++totalEntries;
+                for (int r = 0; r < static_cast<int>(range.Size()); ++r) {
+                    if (!std::isfinite(fdCol(r)) || !std::isfinite(dagCol(r))) { continue; }
+                    if (std::abs(dagCol(r) - fdCol(r)) > tol * (1.0F + std::abs(fdCol(r)))) {
+                        ++failedEntries;
+                        break; // one failure per (i,j) entry is enough
+                    }
+                }
+            }
+        }
+    }
+
+    auto rate = static_cast<double>(failedEntries) / static_cast<double>(std::max(totalEntries, std::size_t{1}));
+    fmt::print("FD Hessian (weighted): {} / {} entries failed ({:.2f}%)\n", failedEntries, totalEntries, rate * 100.0);
     CHECK(rate < maxFailRate);
 }
 

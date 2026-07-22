@@ -424,10 +424,11 @@ namespace detail {
         }
         if (n.IsPow()) {
             // bodyToLive[k] below is the live dag index DiffCopyBody copied
-            // this Pow node's own primal into — mirrors Deriv()'s hardcoded
-            // Pow case in tree_diff.cpp, which uses `i` (the outer Pow
-            // node's own dag index) the same way, for the same k*ln(j)/j and
-            // ln(j) terms.
+            // this Pow node's own primal into — already an unweighted fresh
+            // node (DiffMakeBinary(Pow, ...) from DiffCopyBody), semantically
+            // equivalent to Deriv()'s own hardcoded Pow case in tree_diff.cpp,
+            // which recomputes an unweighted Pow(j, k) fresh from children for
+            // the same k*ln(j)/j and ln(j) terms.
             auto j  = bodyToLive[children[0]];
             auto k2 = bodyToLive[children[1]];
             auto dj = DiffParam(dag, memo, h, bodyNodes, bodyToLive, children[0], targetParam);
@@ -633,13 +634,9 @@ auto MakeComposedCallableDiff(DTable const& dt, Tree const& body, std::size_t ar
         }
 
         // Reverse pass: seed the body root's trace to 1, walk backward,
-        // consulting each constituent op's own already-registered
-        // CallableDiff for the *unweighted* local derivative (matching the
-        // confirmed-correct Log/Sin convention, never the buggy
-        // Mul/Exp-style shortcut through a node's own weighted primal — see
-        // the double-weighted-derivative bug writeup), then applying that
-        // node's own weight once while propagating, exactly mirroring
-        // Interpreter::ReverseTraceGeneric.
+        // consulting each constituent op's own CallableDiff for the
+        // unweighted local derivative, then applying that node's own weight
+        // once while propagating — mirroring Interpreter::ReverseTraceGeneric.
         Backend::Buffer<T, S> traceBuf(S, nNodes);
         Backend::View<T, S> traceView{traceBuf};
         std::fill_n(traceBuf.data(), static_cast<std::size_t>(S * nNodes), T{0});
