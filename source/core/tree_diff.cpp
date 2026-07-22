@@ -622,6 +622,21 @@ auto GetBinarySymbolicDeriv(Operon::Hash hash) -> BinarySymbolicDerivRule const*
     return BinaryDerivRules().TryGet(hash);
 }
 
+auto GetSymbolicDerivConst(Nodes& dag, Memo& memo, Hashes& h, Scalar val) -> std::size_t
+{
+    return GetConst(dag, memo, h, val);
+}
+
+auto MakeSymbolicDerivUnary(Nodes& dag, Memo& memo, Hashes& h, BuiltinOp op, std::size_t a) -> std::size_t
+{
+    return MakeUnary(dag, memo, h, op, a);
+}
+
+auto MakeSymbolicDerivBinary(Nodes& dag, Memo& memo, Hashes& h, BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t
+{
+    return MakeBinary(dag, memo, h, op, a, b);
+}
+
 auto BuildJacobianDag(Tree const& tree) -> JacobianDag {
     JacobianDag dag;
     Memo memo;
