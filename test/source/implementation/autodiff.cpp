@@ -333,4 +333,50 @@ TEST_CASE("Autodiff: non-unit outer weight (double-weighted-derivative regressio
     SECTION("aq(x, y)")         { checkWeighted("aq(x, y)", 3.435364F, -1.539991F); }
 }
 
+// A zero outer weight means the model evaluates to 0*f(x[,y]) — the
+// gradient w.r.t. any input must be exactly 0, not NaN. The fixed
+// backends shortcut through this node's own already-weighted primal[i]
+// (which is itself exactly 0 at w=0) and divide by w to recover the
+// unweighted local derivative; without an explicit w==0 guard, that
+// division is 0/0 = NaN, and ReverseTraceGeneric's later `* w` cannot
+// recover from that (0 * NaN = NaN in IEEE-754, not 0).
+TEST_CASE("Autodiff: zero outer weight yields exact zero gradient, not NaN", "[autodiff]")
+{
+    Operon::Dataset ds(std::vector<std::string>{"x", "y"},
+                       std::vector<std::vector<Operon::Scalar>>{{1.3F}, {0.4F}});
+    Operon::DispatchTable<Operon::Scalar> dtable;
+    Operon::Range const range{0, ds.Rows<std::size_t>()};
+    auto const xHash = ds.GetVariable("x")->Hash;
+    auto const yHash = ds.GetVariable("y")->Hash;
+
+    auto checkZeroWeighted = [&](std::string const& expr, bool hasY = false) {
+        auto tree = Operon::InfixParser::Parse(expr, ds, /*reduce=*/false);
+        tree.Nodes().back().Value = 0.0F; // zero weight on the outermost op
+        auto coeff = tree.GetCoefficients();
+        Operon::Interpreter<Operon::Scalar, Operon::DispatchTable<Operon::Scalar>> const interpreter{&dtable, &ds, &tree};
+
+        auto revX = interpreter.JacRevVariable(coeff, range, xHash);
+        auto fwdX = interpreter.JacFwdVariable(coeff, range, xHash);
+        CHECK(revX[0] == Catch::Approx(0.0F).margin(1e-6));
+        CHECK(fwdX[0] == Catch::Approx(0.0F).margin(1e-6));
+
+        if (hasY) {
+            auto revY = interpreter.JacRevVariable(coeff, range, yHash);
+            auto fwdY = interpreter.JacFwdVariable(coeff, range, yHash);
+            CHECK(revY[0] == Catch::Approx(0.0F).margin(1e-6));
+            CHECK(fwdY[0] == Catch::Approx(0.0F).margin(1e-6));
+        }
+    };
+
+    SECTION("exp(x)")           { checkZeroWeighted("exp(x)"); }
+    SECTION("sqrt(x)")          { checkZeroWeighted("sqrt(x)"); }
+    SECTION("sqrtabs(x)")       { checkZeroWeighted("sqrtabs(x)"); }
+    SECTION("cbrt(x)")          { checkZeroWeighted("cbrt(x)"); }
+    SECTION("x * y")            { checkZeroWeighted("x * y", /*hasY=*/true); }
+    SECTION("x / y")            { checkZeroWeighted("x / y", /*hasY=*/true); }
+    SECTION("x ^ y")            { checkZeroWeighted("x ^ y", /*hasY=*/true); }
+    SECTION("powabs(x, y)")     { checkZeroWeighted("powabs(x, y)", /*hasY=*/true); }
+    SECTION("aq(x, y)")         { checkZeroWeighted("aq(x, y)", /*hasY=*/true); }
+}
+
 } // namespace Operon::Test

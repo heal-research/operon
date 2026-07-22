@@ -51,6 +51,12 @@ namespace detail {
     auto Mul(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto const w = static_cast<T>(nodes[i].Value);
         auto *res = Ptr(trace, j);
+        // At w == 0, primal[i] == 0 too, making the shortcut below 0/0 = NaN,
+        // even though the true (unweighted) local derivative is well-defined
+        // and finite. ReverseTraceGeneric multiplies this by w == 0 regardless,
+        // so any finite placeholder yields the correct final zero — 0*NaN
+        // would not.
+        if (w == T{0}) { std::ranges::fill_n(res, S, T{0}); return; }
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
         std::transform(pi, pi+S, pj, res, [w](auto x, auto y) { return x / (w * y); });
@@ -73,6 +79,7 @@ namespace detail {
             std::transform(pj, pj+S, res, [](auto x) { return -T{1} / (x * x); });
         } else {
             auto const w = static_cast<T>(n.Value);
+            if (w == T{0}) { std::ranges::fill_n(res, S, T{0}); return; } // see Mul's w==0 comment
             auto v = j == i-1 ? T{1} : T{-1};
             std::transform(pi, pi+S, pj, res, [v, w](auto x, auto y) { return v * x / (w * y); });
         }
@@ -82,6 +89,7 @@ namespace detail {
     auto Aq(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto const w = static_cast<T>(nodes[i].Value);
         auto *res = Ptr(trace, j);
+        if (w == T{0}) { std::ranges::fill_n(res, S, T{0}); return; } // see Mul's w==0 comment
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
 
@@ -103,6 +111,7 @@ namespace detail {
     auto Pow(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
+        if (w == T{0}) { std::ranges::fill_n(res, S, T{0}); return; } // see Mul's w==0 comment
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
 
@@ -123,6 +132,7 @@ namespace detail {
     auto Powabs(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
+        if (w == T{0}) { std::ranges::fill_n(res, S, T{0}); return; } // see Mul's w==0 comment
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
 
@@ -183,12 +193,22 @@ namespace detail {
         std::fill_n(Ptr(trace, j), S, T{0});
     }
 
+    // Recomputed fresh from the child's own primal, using the exact same
+    // (possibly approximate) math the forward pass used for this op in
+    // functions.hpp, rather than reading this node's already-weighted
+    // primal[i] and dividing by its own weight — avoids the w==0
+    // singularity entirely, unlike the primal[i]-shortcut ops above
+    // (Mul/Div/Aq/Pow/Powabs) which need cross-child information the
+    // single available primal[j] can't reconstruct.
     template<typename T, std::size_t S>
-    auto Exp(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-        auto const w = static_cast<T>(nodes[i].Value);
-        auto const* pi = Ptr(primal, i);
+    auto Exp(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
-        std::transform(pi, pi+S, res, [w](auto x) { return x / w; });
+        auto const* pj = Ptr(primal, j);
+        if constexpr (std::is_same_v<T, float>) {
+            std::transform(pj, pj+S, res, [](auto x) { return Mad::exp_impl<MadPrecision::Exp>(x); });
+        } else {
+            std::transform(pj, pj+S, res, [](auto x) { return std::exp(x); });
+        }
     }
 
     template<typename T, std::size_t S>
@@ -282,29 +302,32 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
-    auto Sqrt(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-        auto const w = static_cast<T>(nodes[i].Value);
+    auto Sqrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
-        auto const* pi = Ptr(primal, i);
-        std::transform(pi, pi+S, res, [w](auto x){ return w / (T{2} * x); });
-    }
-
-    template<typename T, std::size_t S>
-    auto Sqrtabs(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-        auto const w = static_cast<T>(nodes[i].Value);
-        auto* res = Ptr(trace, j);
-        auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
-        std::transform(pi, pi+S, pj, res, [w](auto x, auto y){ return w * detail::Sgn(y) / (T{2} * x); });
+        if constexpr (std::is_same_v<T, float>) {
+            std::transform(pj, pj+S, res, [](auto x){ return T{1} / (T{2} * Mad::sqrt_impl<MadPrecision::Sqrt>(x)); });
+        } else {
+            std::transform(pj, pj+S, res, [](auto x){ return T{1} / (T{2} * std::sqrt(x)); });
+        }
     }
 
     template<typename T, std::size_t S>
-    auto Cbrt(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-        auto const w = static_cast<T>(nodes[i].Value);
-        auto const w2 = w * w;
+    auto Sqrtabs(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
-        auto const* pi = Ptr(primal, i);
-        std::transform(pi, pi+S, res, [w2](auto x){ return w2 / (T{3} * x*x); });
+        auto const* pj = Ptr(primal, j);
+        if constexpr (std::is_same_v<T, float>) {
+            std::transform(pj, pj+S, res, [](auto x){ return detail::Sgn(x) / (T{2} * Mad::sqrt_impl<MadPrecision::Sqrt>(std::abs(x))); });
+        } else {
+            std::transform(pj, pj+S, res, [](auto x){ return detail::Sgn(x) / (T{2} * std::sqrt(std::abs(x))); });
+        }
+    }
+
+    template<typename T, std::size_t S>
+    auto Cbrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+        auto* res = Ptr(trace, j);
+        auto const* pj = Ptr(primal, j);
+        std::transform(pj, pj+S, res, [](auto x){ auto const c = std::cbrt(x); return T{1} / (T{3} * c * c); });
     }
 }  // namespace Operon::Backend
 
