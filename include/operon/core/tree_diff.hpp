@@ -97,6 +97,12 @@ OPERON_EXPORT auto GetBinarySymbolicDeriv(Operon::Hash hash) -> BinarySymbolicDe
 // subexpression-sharing logic — call them instead of appending nodes by
 // hand.
 //
+// Note: composed_function.hpp's detail::Diff{Mix,GetConst,MakeUnary,
+// MakeBinary} is a separate, intentionally-diverging port of this same
+// protocol (salted hashing, to avoid a Mix(0,0)==0 fixed point that this
+// unsalted version doesn't need to guard against for its own callers) —
+// not a redundant copy to migrate onto these functions.
+//
 // Get or create a constant node holding `val`. Two calls with the same
 // value return the same dag index.
 OPERON_EXPORT auto GetSymbolicDerivConst(Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
@@ -109,7 +115,9 @@ OPERON_EXPORT auto MakeSymbolicDerivUnary(Operon::Vector<Node>& dag, Operon::Map
 
 // Build `op(a, b)`, where `a` is the nearer child and `b` is the farther
 // child (same convention as Deriv()'s own hardcoded Pow case, and as the
-// `j`/`k` parameters BinarySymbolicDerivRule receives).
+// `j`/`k` parameters BinarySymbolicDerivRule receives). Note that Mul(a,b)
+// and Mul(b,a) get different hash keys (less deduplication but no
+// correctness issue) — relevant when writing a non-commutative binary rule.
 OPERON_EXPORT auto MakeSymbolicDerivBinary(Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
     Operon::Vector<Operon::Hash>& h, BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t;
 
