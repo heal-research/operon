@@ -254,7 +254,11 @@ namespace detail {
     auto Tan(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x) { auto const t = std::tan(x); return T{1} + t * t; });
+        if constexpr (std::is_same_v<T, float>) {
+            std::transform(pj, pj+S, res, [](auto x) { auto const t = Mad::tan_impl<MadPrecision::Tan>(x); return T{1} + t * t; });
+        } else {
+            std::transform(pj, pj+S, res, [](auto x) { auto const t = std::tan(x); return T{1} + t * t; });
+        }
     }
 
     template<typename T, std::size_t S>
@@ -277,7 +281,11 @@ namespace detail {
     auto Tanh(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
-        std::transform(pj, pj+S, res, [](auto x) { auto const t = std::tanh(x); return T{1} - t * t; });
+        if constexpr (std::is_same_v<T, float>) {
+            std::transform(pj, pj+S, res, [](auto x) { auto const t = Mad::tanh_impl<MadPrecision::Tanh>(x); return T{1} - t * t; });
+        } else {
+            std::transform(pj, pj+S, res, [](auto x) { auto const t = std::tanh(x); return T{1} - t * t; });
+        }
     }
 
     template<typename T, std::size_t S>
