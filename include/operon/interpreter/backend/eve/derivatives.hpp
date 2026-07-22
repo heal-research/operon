@@ -31,17 +31,26 @@ namespace detail {
         std::ranges::fill_n(Ptr(trace, j), S, T{1});
     }
 
+    // Every node's forward pass multiplies its result by the node's own
+    // weight w, so primal[i] equals w * f(children), not f(children) alone.
+    // This function must return the derivative of f(children) alone,
+    // without w — something else multiplies by w again later. Dividing
+    // primal[i] by w here gives that unweighted derivative.
     template<typename T, std::size_t S>
-    auto Mul(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Mul(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         using W = eve::wide<T>;
         auto constexpr L = W::size();
-
+        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
+        // If w is 0, primal[i] is 0 too, so the shortcut below computes 0/0,
+        // which is not a number. The correct derivative here is exactly 0.
+        // Returning 0 directly avoids the 0/0 case.
+        if (w == T{0}) { std::fill_n(res, S, T{0}); return; }
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
 
         for(auto s = 0UL; s < S; s += L) {
-            eve::store(W{pi+s} / W{pj+s}, res+s);
+            eve::store(W{pi+s} / (w * W{pj+s}), res+s);
         }
     }
 
@@ -64,19 +73,23 @@ namespace detail {
                 eve::store(-eve::rec(eve::sqr(W{pj+s})), res+s);
             }
         } else {
+            auto const w = static_cast<T>(nodes[i].Value);
+            if (w == T{0}) { std::fill_n(res, S, T{0}); return; } // see Mul's w==0 comment
             auto v = j == i-1 ? T{1} : T{-1};
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(v * W{pi+s} / W{pj+s}, res+s);
+                eve::store(v * W{pi+s} / (w * W{pj+s}), res+s);
             }
         }
     }
 
     template<typename T, std::size_t S>
-    auto Aq(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Aq(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
+        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
+        if (w == T{0}) { std::fill_n(res, S, T{0}); return; } // see Mul's w==0 comment
         auto const k = i-1;
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
@@ -84,14 +97,15 @@ namespace detail {
 
         if (j == i-1) {
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} / W{pj+s}, res+s);
+                eve::store(W{pi+s} / (w * W{pj+s}), res+s);
             }
         } else {
+            auto const w3 = w * w * w;
             for (auto s = 0UL; s < S; s += L) {
                 W a{pi+s};
                 W b{pj+s};
                 W c{pk+s};
-                W r = -b * a * a * a / (c * c);
+                W r = -b * a * a * a / (w3 * c * c);
                 eve::store(r, res+s);
             }
         }
@@ -102,20 +116,22 @@ namespace detail {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
+        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
+        if (w == T{0}) { std::fill_n(res, S, T{0}); return; } // see Mul's w==0 comment
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
         if (j == i-1) {
             auto const k = j - (nodes[j].Length + 1);
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * W{pk+s} / W{pj+s}, res+s);
+                eve::store(W{pi+s} * W{pk+s} / (w * W{pj+s}), res+s);
             }
         } else {
             auto const k = i-1;
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * eve::log(W{pk+s}), res+s);
+                eve::store(W{pi+s} * eve::log(W{pk+s}) / w, res+s);
             }
         }
     }
@@ -125,20 +141,22 @@ namespace detail {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
+        auto const w = static_cast<T>(nodes[i].Value);
         auto* res = Ptr(trace, j);
+        if (w == T{0}) { std::fill_n(res, S, T{0}); return; } // see Mul's w==0 comment
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
         if (j == i-1) {
             auto const k = j - (nodes[j].Length + 1);
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * W{pk+s} * eve::sign(W{pj+s}) / eve::abs(W{pj+s}), res+s);
+                eve::store(W{pi+s} * W{pk+s} * eve::sign(W{pj+s}) / (w * eve::abs(W{pj+s})), res+s);
             }
         } else {
             auto const k = i-1;
             auto const* pk = Ptr(primal, k);
             for (auto s = 0UL; s < S; s += L) {
-                eve::store(W{pi+s} * eve::log(eve::abs(W{pk+s})), res+s);
+                eve::store(W{pi+s} * eve::log(eve::abs(W{pk+s})) / w, res+s);
             }
         }
     }
@@ -197,9 +215,21 @@ namespace detail {
         std::fill_n(Ptr(trace, j), S, T{0});
     }
 
+    // Computes the derivative directly from the child's value, using the
+    // same FastExp approximation the forward pass uses. Mul/Div/Aq/Pow/
+    // Powabs above can't do this: their derivative also needs a sibling
+    // child's value, so they divide this node's own weighted result by its
+    // weight instead, which fails when the weight is 0. This function never
+    // divides by the weight, so it has no such problem.
     template<typename T, std::size_t S>
-    auto Exp(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-        std::ranges::copy_n(Ptr(primal, i), S, Ptr(trace, j));
+    auto Exp(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+        using W = eve::wide<T>;
+        static constexpr auto L = W::size();
+        auto* res = Ptr(trace, j);
+        auto const* pj = Ptr(primal, j);
+        for (auto s = 0UL; s < S; s += L) {
+            eve::store(detail::FastExp(W{pj+s}), res+s);
+        }
     }
 
     template<typename T, std::size_t S>
@@ -347,39 +377,38 @@ namespace detail {
     }
 
     template<typename T, std::size_t S>
-    auto Sqrt(std::vector<Operon::Node> const&  /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Sqrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
         auto* res = Ptr(trace, j);
-        auto const* pi = Ptr(primal, i);
-        for (auto s = 0UL; s < S; s += L) {
-            eve::store(eve::rec(T{2} * W{pi+s}), res+s);
-        }
-    }
-
-    template<typename T, std::size_t S>
-    auto Sqrtabs(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
-        using W = eve::wide<T>;
-        static constexpr auto L = W::size();
-
-        auto* res = Ptr(trace, j);
-        auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(eve::sign(W{pj+s}) / (T{2} * W{pi+s}), res+s);
+            eve::store(eve::rec(T{2} * eve::sqrt(W{pj+s})), res+s);
         }
     }
 
     template<typename T, std::size_t S>
-    auto Cbrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
+    auto Sqrtabs(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         using W = eve::wide<T>;
         static constexpr auto L = W::size();
 
         auto* res = Ptr(trace, j);
-        auto const* pi = Ptr(primal, i);
+        auto const* pj = Ptr(primal, j);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(eve::rec(T{3} * eve::sqr(W{pi+s})), res+s);
+            eve::store(eve::sign(W{pj+s}) / (T{2} * eve::sqrt(eve::abs(W{pj+s}))), res+s);
+        }
+    }
+
+    template<typename T, std::size_t S>
+    auto Cbrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
+        using W = eve::wide<T>;
+        static constexpr auto L = W::size();
+
+        auto* res = Ptr(trace, j);
+        auto const* pj = Ptr(primal, j);
+        for (auto s = 0UL; s < S; s += L) {
+            eve::store(eve::rec(T{3} * eve::sqr(eve::cbrt(W{pj+s}))), res+s);
         }
     }
 }  // namespace Operon::Backend
