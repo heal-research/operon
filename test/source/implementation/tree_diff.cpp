@@ -239,11 +239,11 @@ TEST_CASE("BuildJacobianDag - Mul(c1,c2) product rule", "[tree_diff]")
 TEST_CASE("BuildJacobianDag - zero-weight Function node yields exact zero gradient", "[tree_diff]")
 {
     // d(0 * f(c))/dc must be exactly 0, not NaN. Exp/Sqrt/Cbrt/Tan/Tanh/Pow's
-    // symbolic rules shortcut through this node's own already-weighted dag
-    // value via Unweight() (dividing by the node's own weight to recover the
-    // unweighted local derivative) -- at weight == 0 that division is 0/0,
-    // which applyWeight's w == 0 short-circuit must catch before it can
-    // propagate as NaN (0 * NaN = NaN in IEEE-754, not 0).
+    // symbolic rules recompute their local derivative fresh from the child
+    // (e.g. Sqrt emits 1/(2*sqrt(j))), which can itself evaluate to Inf at
+    // c == 0 (sqrt(0) == 0). applyWeight's w == 0 short-circuit must catch
+    // this before Mul(Const(0), Inf) can propagate as NaN (IEEE-754: 0*Inf
+    // is NaN, not 0).
     for (auto op : {BuiltinOp::Exp, BuiltinOp::Sqrt, BuiltinOp::Cbrt, BuiltinOp::Tan, BuiltinOp::Tanh}) {
         Operon::Vector<Node> nodes;
         auto c = Node::Constant(2.0F); c.Optimize = true;
@@ -257,7 +257,7 @@ TEST_CASE("BuildJacobianDag - zero-weight Function node yields exact zero gradie
         CHECK(dag.Roots[0] == NoGrad); // exactly zero, not a NaN-producing expression
     }
 
-    // Pow(base, exponent) is a hardcoded binary case, also Unweight()-shortcut.
+    // Pow(base, exponent) is a hardcoded binary case with the same w == 0 risk.
     {
         Operon::Vector<Node> nodes;
         auto base = Node::Constant(2.0F); base.Optimize = true;

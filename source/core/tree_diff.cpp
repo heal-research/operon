@@ -335,10 +335,10 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     auto const w = n.Value;
     auto applyWeight = [&](std::size_t x) -> std::size_t {
         // w == 0 short-circuits to Zero rather than emitting Mul(0, x): d(0*f)/dc
-        // is exactly 0 regardless of x. Every rule below builds its local
-        // derivative purely from children (never dividing by this node's own
-        // weight), so x is always finite here — this is defense-in-depth, not
-        // a fix for a reachable NaN.
+        // is exactly 0 regardless of x, but x can still evaluate to Inf at a
+        // domain singularity (e.g. Sqrt/Log at j == 0), and Mul(Const(0), Inf)
+        // is NaN under IEEE-754, not 0 — this check is load-bearing, not mere
+        // defense-in-depth.
         if (x == Zero || w == Scalar{0}) { return Zero; }
         if (w == Scalar{1}) { return x; }
         auto c = GetConst(dag, memo, h, w);
@@ -465,8 +465,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         auto dj = Deriv(orig, dag, memo, h, j, targetC);
         auto dk = Deriv(orig, dag, memo, h, k, targetC);
         if (dj == Zero && dk == Zero) { return Zero; }
-        // Fresh, unweighted j^k — recomputed from children rather than
-        // unweighting i, since Deriv() already has both j and k in scope here.
+        // Fresh, unweighted j^k, recomputed from children.
         auto powJK = MakeBinary(dag, memo, h, BuiltinOp::Pow, j, k);
         Operon::Vector<std::size_t> terms;
         if (dj != Zero) {
