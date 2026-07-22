@@ -11,3 +11,15 @@ CMakeLists.txt.user
 CMakeUserPresets.json
 project-include-after.cmake
 .direnv
+
+# Local scratch/analysis scripts and outputs — not part of the library,
+# kept out of git so a dirty tree here doesn't force `nix develop` to
+# re-evaluate/re-copy the flake's source on every invocation.
+docs/research/
+scratch/
+tools/__pycache__/
+tools/results/
+tools/*.py
+tools/*.sh
+tools/*.yaml
+tools/*.txt
