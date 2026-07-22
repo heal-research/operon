@@ -343,7 +343,12 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     // mirroring that same uniform step instead of leaving it to each rule.
     auto const w = n.Value;
     auto applyWeight = [&](std::size_t x) -> std::size_t {
-        if (x == Zero || w == Scalar{1}) { return x; }
+        // w == 0 short-circuits to Zero rather than emitting Mul(0, x): d(0*f)/dc
+        // is exactly 0 regardless of x, and x may itself be a rule that divides by
+        // w (see Unweight below) and would otherwise evaluate to 0/0 = NaN, which
+        // Mul(0, NaN) would then propagate as NaN instead of the correct 0.
+        if (x == Zero || w == Scalar{0}) { return Zero; }
+        if (w == Scalar{1}) { return x; }
         auto c = GetConst(dag, memo, h, w);
         return MakeBinary(dag, memo, h, BuiltinOp::Mul, c, x);
     };

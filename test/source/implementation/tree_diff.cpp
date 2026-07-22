@@ -236,6 +236,44 @@ TEST_CASE("BuildJacobianDag - Mul(c1,c2) product rule", "[tree_diff]")
     CHECK(dag.Nodes[dag.Roots[1]].IsOp<BuiltinOp::Mul>());
 }
 
+TEST_CASE("BuildJacobianDag - zero-weight Function node yields exact zero gradient", "[tree_diff]")
+{
+    // d(0 * f(c))/dc must be exactly 0, not NaN. Exp/Sqrt/Cbrt/Tan/Tanh/Pow's
+    // symbolic rules shortcut through this node's own already-weighted dag
+    // value via Unweight() (dividing by the node's own weight to recover the
+    // unweighted local derivative) -- at weight == 0 that division is 0/0,
+    // which applyWeight's w == 0 short-circuit must catch before it can
+    // propagate as NaN (0 * NaN = NaN in IEEE-754, not 0).
+    for (auto op : {BuiltinOp::Exp, BuiltinOp::Sqrt, BuiltinOp::Cbrt, BuiltinOp::Tan, BuiltinOp::Tanh}) {
+        Operon::Vector<Node> nodes;
+        auto c = Node::Constant(2.0F); c.Optimize = true;
+        auto fn = Node::Function(static_cast<Operon::Hash>(op), 1);
+        fn.Value = 0.0F;
+        nodes.push_back(c); nodes.push_back(fn);
+        Tree tree{nodes};
+
+        auto dag = BuildJacobianDag(tree);
+        REQUIRE(dag.Roots.size() == 1);
+        CHECK(dag.Roots[0] == NoGrad); // exactly zero, not a NaN-producing expression
+    }
+
+    // Pow(base, exponent) is a hardcoded binary case, also Unweight()-shortcut.
+    {
+        Operon::Vector<Node> nodes;
+        auto base = Node::Constant(2.0F); base.Optimize = true;
+        auto exp  = Node::Constant(3.0F); exp.Optimize = true;
+        auto pow  = Node::Function(static_cast<Operon::Hash>(BuiltinOp::Pow), 2);
+        pow.Value = 0.0F;
+        nodes.push_back(exp); nodes.push_back(base); nodes.push_back(pow);
+        Tree tree{nodes};
+
+        auto dag = BuildJacobianDag(tree);
+        REQUIRE(dag.Roots.size() == 2);
+        CHECK(dag.Roots[0] == NoGrad);
+        CHECK(dag.Roots[1] == NoGrad);
+    }
+}
+
 TEST_CASE("BuildJacobianDag - Sin(c) root is Mul", "[tree_diff]")
 {
     Operon::Vector<Node> nodes;
