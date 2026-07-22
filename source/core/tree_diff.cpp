@@ -123,6 +123,22 @@ auto AddTerms(Nodes& dag, Memo& memo, Hashes& h,
     return result;
 }
 
+// Some rules below shortcut through node `i`'s own dag value (e.g. Sqrt's
+// derivative reuses `i` = sqrt(j) instead of recomputing it) instead of
+// building the local derivative purely from `j`. Since forward evaluation
+// bakes this node's own weight into `i` (dag[i] = w * op(j)), that shortcut
+// carries `w` along for free — harmless when Deriv() itself never applied
+// `w` (the historical bug), but double-counts it now that Deriv() applies
+// `w` once, uniformly, at every branch's return (see Deriv()'s applyWeight).
+// This unwinds the baked-in weight before such a rule reuses `i`, mirroring
+// the identical fix already applied to CallableDiff's numeric derivatives
+// (dividing the weighted primal shortcut by `w`).
+auto Unweight(Nodes& dag, Memo& memo, Hashes& h, std::size_t i) -> std::size_t {
+    auto const w = dag[i].Value;
+    if (w == Scalar{1}) { return i; }
+    return MakeBinary(dag, memo, h, BuiltinOp::Div, i, GetConst(dag, memo, h, w));
+}
+
 // Registry of symbolic derivative rules for unary functions, keyed by
 // Node::HashValue. A global, function-local-static singleton (mirroring
 // Node::RegisterName/Descriptions() in node.cpp) so BuildJacobianDag/
@@ -169,8 +185,8 @@ void RegisterBuiltinSymbolicDerivs()
         auto& reg = SymbolicDerivRules();
 
         reg.Register(Operon::Hash(BuiltinOp::Exp),
-            [](Nodes& /*dag*/, Memo& /*memo*/, Hashes& /*h*/, std::size_t i, std::size_t /*j*/) -> std::size_t {
-                return i; // d exp(j)/dj = exp(j) = result
+            [](Nodes& dag, Memo& memo, Hashes& h, std::size_t i, std::size_t /*j*/) -> std::size_t {
+                return Unweight(dag, memo, h, i); // d exp(j)/dj = exp(j) = result (unweighted)
             });
 
         UnarySymbolicDerivRule logRule =
@@ -203,7 +219,8 @@ void RegisterBuiltinSymbolicDerivs()
         reg.Register(Operon::Hash(BuiltinOp::Tan),
             [](Nodes& dag, Memo& memo, Hashes& h, std::size_t i, std::size_t /*j*/) -> std::size_t {
                 auto c1  = GetConst(dag, memo, h, Scalar{1});
-                auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, i);
+                auto iu  = Unweight(dag, memo, h, i);
+                auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, iu);
                 return MakeBinary(dag, memo, h, BuiltinOp::Add, c1, sqI);
             });
 
@@ -248,7 +265,8 @@ void RegisterBuiltinSymbolicDerivs()
         reg.Register(Operon::Hash(BuiltinOp::Tanh),
             [](Nodes& dag, Memo& memo, Hashes& h, std::size_t i, std::size_t /*j*/) -> std::size_t {
                 auto c1  = GetConst(dag, memo, h, Scalar{1});
-                auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, i);
+                auto iu  = Unweight(dag, memo, h, i);
+                auto sqI = MakeUnary(dag, memo, h, BuiltinOp::Square, iu);
                 return MakeBinary(dag, memo, h, BuiltinOp::Sub, c1, sqI);
             });
 
@@ -256,14 +274,16 @@ void RegisterBuiltinSymbolicDerivs()
             [](Nodes& dag, Memo& memo, Hashes& h, std::size_t i, std::size_t j) -> std::size_t {
                 auto c2   = GetConst(dag, memo, h, Scalar{2});
                 auto twoJ = MakeBinary(dag, memo, h, BuiltinOp::Mul, c2, j);
-                return MakeBinary(dag, memo, h, BuiltinOp::Div, i, twoJ);
+                auto iu   = Unweight(dag, memo, h, i);
+                return MakeBinary(dag, memo, h, BuiltinOp::Div, iu, twoJ);
             });
 
         reg.Register(Operon::Hash(BuiltinOp::Cbrt),
             [](Nodes& dag, Memo& memo, Hashes& h, std::size_t i, std::size_t j) -> std::size_t {
                 auto c3     = GetConst(dag, memo, h, Scalar{3});
                 auto threeJ = MakeBinary(dag, memo, h, BuiltinOp::Mul, c3, j);
-                return MakeBinary(dag, memo, h, BuiltinOp::Div, i, threeJ);
+                auto iu     = Unweight(dag, memo, h, i);
+                return MakeBinary(dag, memo, h, BuiltinOp::Div, iu, threeJ);
             });
 
         reg.Register(Operon::Hash(BuiltinOp::Square),
@@ -312,6 +332,22 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         return Deriv(orig, dag, memo, h, orig[i].RefTo, targetC);
     }
 
+    // Every Function node's forward evaluation multiplies its op result by
+    // its own weight (Backend::Add/Mul/.../Pow all take a `weight` factor;
+    // see functions.hpp), and the numeric reverse-mode sweep
+    // (ReverseTraceGeneric) applies this same node's weight exactly once,
+    // uniformly across every op type, when propagating into any child. The
+    // per-op rules below (hardcoded Add/Mul/Sub/Div/Pow and the unary/binary
+    // registries) all compute the *unweighted* local derivative — this
+    // wrapper applies the node's own weight once at each branch's return,
+    // mirroring that same uniform step instead of leaving it to each rule.
+    auto const w = n.Value;
+    auto applyWeight = [&](std::size_t x) -> std::size_t {
+        if (x == Zero || w == Scalar{1}) { return x; }
+        auto c = GetConst(dag, memo, h, w);
+        return MakeBinary(dag, memo, h, BuiltinOp::Mul, c, x);
+    };
+
     auto const children = ChildIndices(orig, i);
     auto const arity    = static_cast<std::size_t>(n.Arity);
 
@@ -322,7 +358,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             auto dc = Deriv(orig, dag, memo, h, c, targetC);
             if (dc != Zero) { terms.push_back(dc); }
         }
-        return AddTerms(dag, memo, h, terms);
+        return applyWeight(AddTerms(dag, memo, h, terms));
     }
 
     // --- n-ary Mul: product rule ---
@@ -341,7 +377,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             }
             terms.push_back((prod == Zero) ? dm : MakeBinary(dag, memo, h, BuiltinOp::Mul, dm, prod));
         }
-        return AddTerms(dag, memo, h, terms);
+        return applyWeight(AddTerms(dag, memo, h, terms));
     }
 
     // --- Sub ---
@@ -351,17 +387,17 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             // Unary minus: -a. d(-a)/dc = -da
             if (dj == Zero) { return Zero; }
             auto neg1 = GetConst(dag, memo, h, Scalar{-1});
-            return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dj);
+            return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dj));
         }
         if (arity == 2) {
             auto dk = Deriv(orig, dag, memo, h, children[1], targetC);
             if (dj == Zero && dk == Zero) { return Zero; }
-            if (dk == Zero) { return dj; }
+            if (dk == Zero) { return applyWeight(dj); }
             if (dj == Zero) {
                 auto neg1 = GetConst(dag, memo, h, Scalar{-1});
-                return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dk);
+                return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dk));
             }
-            return MakeBinary(dag, memo, h, BuiltinOp::Sub, dj, dk);
+            return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Sub, dj, dk));
         }
         // arity > 2: treat as +first - rest
         Operon::Vector<std::size_t> pos;
@@ -374,12 +410,12 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         auto p = AddTerms(dag, memo, h, pos);
         auto q = AddTerms(dag, memo, h, neg);
         if (p == Zero && q == Zero) { return Zero; }
-        if (q == Zero) { return p; }
+        if (q == Zero) { return applyWeight(p); }
         if (p == Zero) {
             auto neg1 = GetConst(dag, memo, h, Scalar{-1});
-            return MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, q);
+            return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, q));
         }
-        return MakeBinary(dag, memo, h, BuiltinOp::Sub, p, q);
+        return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Sub, p, q));
     }
 
     // --- Div ---
@@ -392,7 +428,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             auto j2     = MakeBinary(dag, memo, h, BuiltinOp::Mul, j, j);
             auto neg1   = GetConst(dag, memo, h, Scalar{-1});
             auto negDj = MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dj);
-            return MakeBinary(dag, memo, h, BuiltinOp::Div, negDj, j2);
+            return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Div, negDj, j2));
         }
         if (arity == 2) {
             // a/b: d = (da*b - a*db) / b^2
@@ -404,7 +440,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             // When only the numerator depends on x, simplify da/b directly.
             // Avoids (da*b)/b^2 which produces 0*Inf=NaN when b=Inf.
             if (dk == Zero) {
-                return MakeBinary(dag, memo, h, BuiltinOp::Div, dj, k);
+                return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Div, dj, k));
             }
             auto k2 = MakeBinary(dag, memo, h, BuiltinOp::Mul, k, k);
             std::size_t num = Zero;
@@ -420,7 +456,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
                     num = MakeBinary(dag, memo, h, BuiltinOp::Sub, num, term);
                 }
             }
-            return MakeBinary(dag, memo, h, BuiltinOp::Div, num, k2);
+            return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Div, num, k2));
         }
         return Zero; // arity > 2 not yet supported
     }
@@ -432,20 +468,23 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         auto dj = Deriv(orig, dag, memo, h, j, targetC);
         auto dk = Deriv(orig, dag, memo, h, k, targetC);
         if (dj == Zero && dk == Zero) { return Zero; }
+        // i = w * j^k; unweight it once so both terms below use the plain
+        // j^k, letting applyWeight (below) supply w exactly once overall.
+        auto iu = Unweight(dag, memo, h, i);
         Operon::Vector<std::size_t> terms;
         if (dj != Zero) {
             // d/dj: k * j^k / j = k * result / j
-            auto ki   = MakeBinary(dag, memo, h, BuiltinOp::Mul, k, i); // k * result
+            auto ki   = MakeBinary(dag, memo, h, BuiltinOp::Mul, k, iu); // k * result
             auto term = MakeBinary(dag, memo, h, BuiltinOp::Div, ki, j);
             terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, dj, term));
         }
         if (dk != Zero) {
             // d/dk: j^k * ln(j) = result * log(j)
             auto logJ = MakeUnary(dag, memo, h, BuiltinOp::Log, j);
-            auto t     = MakeBinary(dag, memo, h, BuiltinOp::Mul, i, logJ);
+            auto t     = MakeBinary(dag, memo, h, BuiltinOp::Mul, iu, logJ);
             terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, dk, t));
         }
-        return AddTerms(dag, memo, h, terms);
+        return applyWeight(AddTerms(dag, memo, h, terms));
     }
 
     // --- Aq, Powabs, Fmin, Fmax: not yet differentiated ---
@@ -475,7 +514,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             if (dk != Zero && fpk != Zero) {
                 terms.push_back(MakeBinary(dag, memo, h, BuiltinOp::Mul, fpk, dk));
             }
-            return AddTerms(dag, memo, h, terms);
+            return applyWeight(AddTerms(dag, memo, h, terms));
         }
     }
 
@@ -495,7 +534,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         auto fp = (*rule)(dag, memo, h, i, j); // symbolic f'(j)
 
         if (fp == Zero) { return Zero; }
-        return MakeBinary(dag, memo, h, BuiltinOp::Mul, fp, dj);
+        return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, fp, dj));
     }
 
     return Zero;
