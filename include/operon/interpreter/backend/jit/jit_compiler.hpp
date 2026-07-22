@@ -143,6 +143,15 @@ struct JitRuntimePool {
 
 // Stateless JIT code generator. All runtime state lives in the JitRuntimePool
 // provided at construction; TreeCompiler can be destroyed before the pool.
+//
+// Every transcendental op it compiles (Exp/Log/Pow/etc., see the
+// JitUnaryCodegenFn/JitBinaryCodegenFn registrations in jit_compiler.cpp)
+// calls the Eve backend's approximate math functions directly, regardless
+// of which MATH_BACKEND the rest of the library was built with. A tree
+// compiled here always computes Eve-equivalent results, even when
+// MATH_BACKEND is Stl, MadEve, or Eigen — comparing its output against a
+// reference Interpreter built with a different MATH_BACKEND will show
+// small, expected numeric differences, not a JIT bug.
 class OPERON_EXPORT TreeCompiler {
 public:
     explicit TreeCompiler(JitRuntimePool const* pool) : pool_(pool) {}
