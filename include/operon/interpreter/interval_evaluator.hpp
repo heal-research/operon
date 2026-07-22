@@ -16,6 +16,7 @@
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operon_export.hpp"
 
 // pappus headers unconditionally redefine EXPECT/ENSURE (operon defines them
 // as ASSERT wrappers) and rely on a deprecated implicit copy ctor for
@@ -40,16 +41,16 @@
 namespace Operon {
 
 // Registered interval callbacks for unary/binary built-in or user-defined
-// functions, keyed by Node::HashValue. Global function-local-static
-// singletons (`inline` for one-definition-rule safety, since
-// IntervalEvaluator is a header-only class with no .cpp) mirroring the
-// pattern used by tree_diff.cpp's SymbolicDerivRegistry: no registry
-// parameter needs to thread through IntervalEvaluator's constructor or
-// Evaluate(). All writes (built-in registration below, plus any user calls
-// to RegisterUnaryInterval/RegisterBinaryInterval) happen before Evaluate()
-// is first called from a GP worker thread, so the plain (non-locking)
-// Operon::Map HashRegistry already uses is sufficient — no sharded-lock map
-// type needed, same read-only-after-setup contract DispatchTable relies on.
+// functions, keyed by Node::HashValue. Exported `.cpp`-backed singletons
+// (see interval_evaluator.cpp), matching the ownership model tree_diff.cpp's
+// SymbolicDerivRegistry and jit_compiler.cpp's JitCodegenRegistry already
+// use — no registry parameter needs to thread through IntervalEvaluator's
+// constructor or Evaluate(). All writes (built-in registration below, plus
+// any user calls to RegisterUnaryInterval/RegisterBinaryInterval) happen
+// before Evaluate() is first called from a GP worker thread, so the plain
+// (non-locking) Operon::Map HashRegistry already uses is sufficient — no
+// sharded-lock map type needed, same read-only-after-setup contract
+// DispatchTable relies on.
 //
 // Only two argument shapes are needed (not three, despite pappus's
 // PAPPUS_DEFINE_UNARY_OP macro generating three overloads per op): interval
@@ -61,82 +62,25 @@ using IntervalBinaryFn = std::function<pappus::interval<Operon::Scalar>(pappus::
 using IntervalUnaryRegistry  = HashRegistry<IntervalUnaryFn>;
 using IntervalBinaryRegistry = HashRegistry<IntervalBinaryFn>;
 
-// Direct registry access — needed by RegisterUnaryInterval/RegisterBinaryInterval
-// below (same TU) and by tests that assert on registration state. Prefer
-// RegisterUnaryInterval/RegisterBinaryInterval for registering a rule: calling
-// .Register() on the registry returned here directly skips the built-in
-// lazy-init those functions trigger first, reopening the ordering hazard they
-// exist to close (a user hash colliding with a built-in would be silently
-// accepted instead of throwing immediately).
-inline auto IntervalUnaryRules() -> IntervalUnaryRegistry&
-{
-    static IntervalUnaryRegistry registry;
-    return registry;
-}
-
-inline auto IntervalBinaryRules() -> IntervalBinaryRegistry&
-{
-    static IntervalBinaryRegistry registry;
-    return registry;
-}
+// Direct registry access — needed by tests that assert on registration
+// state. Prefer RegisterUnaryInterval/RegisterBinaryInterval for registering
+// a rule: calling .Register() on the registry returned here directly skips
+// the built-in lazy-init those functions trigger first, reopening the
+// ordering hazard they exist to close (a user hash colliding with a built-in
+// would be silently accepted instead of throwing immediately).
+OPERON_EXPORT auto IntervalUnaryRules() -> IntervalUnaryRegistry&;
+OPERON_EXPORT auto IntervalBinaryRules() -> IntervalBinaryRegistry&;
 
 // Registers the built-in unary/binary interval rules exactly once, mirroring
-// StandardLibrary::RegisterNames()'s lazy-static-lambda-once pattern. Every
-// rule is lifted verbatim out of IntervalEvaluator's old switch statement;
-// each lambda calls `pappus::ops::xxx` fully qualified rather than relying on
-// ADL, sidestepping the pappus::ops sibling-namespace ADL gap entirely (that
-// gap only bites a generic lambda expecting implicit lookup — these are
-// written inside operon's own code and can just spell out the qualified
-// name, same as the switch bodies already did). A free function (not an
-// IntervalEvaluator member) so both IntervalEvaluator::Evaluate() and the
-// public Register{Unary,Binary}Interval() entry points below can call it —
-// the latter must trigger it before writing, so that a user hash colliding
-// with a built-in throws immediately at the user's own call site instead of
-// being accepted now and only discovered (as a confusing, differently-hashed
-// throw) the first time Evaluate() runs.
-inline void RegisterIntervalBuiltins()
-{
-    using Scalar = Operon::Scalar;
-    using Interval = pappus::interval<Scalar>;
-    static auto const registered = [] {
-        auto& unary  = IntervalUnaryRules();
-        auto& binary = IntervalBinaryRules();
-
-        unary.Register(Operon::Hash(BuiltinOp::Square),  [](Interval const& v) { return pappus::ops::square<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Sqrt),    [](Interval const& v) { return pappus::ops::sqrt<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Exp),     [](Interval const& v) { return pappus::ops::exp<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Log),     [](Interval const& v) { return pappus::ops::log<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Sin),     [](Interval const& v) { return pappus::ops::sin<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Cos),     [](Interval const& v) { return pappus::ops::cos<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Tan),     [](Interval const& v) { return pappus::ops::tan<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Asin),    [](Interval const& v) { return pappus::ops::asin<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Acos),    [](Interval const& v) { return pappus::ops::acos<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Atan),    [](Interval const& v) { return pappus::ops::atan<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Sinh),    [](Interval const& v) { return pappus::ops::sinh<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Cosh),    [](Interval const& v) { return pappus::ops::cosh<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Tanh),    [](Interval const& v) { return pappus::ops::tanh<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Abs),     [](Interval const& v) { return pappus::ops::abs<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Sqrtabs), [](Interval const& v) { return pappus::ops::sqrtabs<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Logabs),  [](Interval const& v) { return pappus::ops::logabs<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Cbrt),    [](Interval const& v) { return pappus::ops::cbrt<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Log1p),   [](Interval const& v) { return pappus::ops::log1p<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Floor),   [](Interval const& v) { return pappus::ops::floor<Scalar>(v); });
-        unary.Register(Operon::Hash(BuiltinOp::Ceil),    [](Interval const& v) { return pappus::ops::ceil<Scalar>(v); });
-
-        binary.Register(Operon::Hash(BuiltinOp::Pow), [](Interval const& a, Interval const& b) {
-            return pappus::ops::pow<Scalar>(a, b);
-        });
-        binary.Register(Operon::Hash(BuiltinOp::Aq), [](Interval const& a, Interval const& b) {
-            return pappus::ops::aq<Scalar>(a, b);
-        });
-        binary.Register(Operon::Hash(BuiltinOp::Powabs), [](Interval const& a, Interval const& b) {
-            return pappus::ops::pow<Scalar>(pappus::ops::abs<Scalar>(a), b);
-        });
-
-        return true;
-    }();
-    static_cast<void>(registered);
-}
+// StandardLibrary::RegisterNames()'s lazy-static-lambda-once pattern. A free
+// function (not an IntervalEvaluator member) so both
+// IntervalEvaluator::Evaluate() and the public Register{Unary,Binary}Interval()
+// entry points below can call it — the latter must trigger it before
+// writing, so that a user hash colliding with a built-in throws immediately
+// at the user's own call site instead of being accepted now and only
+// discovered (as a confusing, differently-hashed throw) the first time
+// Evaluate() runs.
+OPERON_EXPORT void RegisterIntervalBuiltins();
 
 // Register an interval callback for a unary function (built-in or
 // user-defined), keyed by the same hash the function's Node::HashValue
@@ -146,19 +90,19 @@ inline void RegisterIntervalBuiltins()
 // today. Throws if `hash` is already registered (write-once) — including
 // when `hash` collides with a built-in, since RegisterIntervalBuiltins()
 // above always runs first.
-inline void RegisterUnaryInterval(Operon::Hash hash, IntervalUnaryFn fn)
-{
-    RegisterIntervalBuiltins();
-    IntervalUnaryRules().Register(hash, std::move(fn));
-}
+OPERON_EXPORT void RegisterUnaryInterval(Operon::Hash hash, IntervalUnaryFn fn);
 
 // Register an interval callback for a binary function. See
 // RegisterUnaryInterval for the miss-behavior and built-in-collision notes.
-inline void RegisterBinaryInterval(Operon::Hash hash, IntervalBinaryFn fn)
-{
-    RegisterIntervalBuiltins();
-    IntervalBinaryRules().Register(hash, std::move(fn));
-}
+OPERON_EXPORT void RegisterBinaryInterval(Operon::Hash hash, IntervalBinaryFn fn);
+
+// Query whether an interval callback is registered for `hash` (built-in or
+// user-defined), forcing built-in registration first. Mainly useful for
+// coverage checks (e.g. asserting every BuiltinOp is either registered here
+// or deliberately excluded as a structural n-ary case handled directly in
+// IntervalEvaluator::Evaluate()). Mirrors HasUnaryJitCodegen/HasBinaryJitCodegen.
+OPERON_EXPORT auto HasUnaryInterval(Operon::Hash hash) -> bool;
+OPERON_EXPORT auto HasBinaryInterval(Operon::Hash hash) -> bool;
 
 // Forward rigorous bounds for an Operon tree over a single input domain.
 //
