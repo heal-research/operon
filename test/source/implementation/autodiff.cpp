@@ -273,24 +273,18 @@ TEST_CASE("Autodiff poly-10 expression", "[autodiff]")
     CHECK(ok);
 }
 
-// Regression coverage for the double-weighted-derivative bug (found
-// 2026-07-21 while designing the composed-functions feature — see
-// foolnotion/operon-planning's bugs/double-weighted-derivative.md).
-// Every node's forward pass multiplies by its own weight `w`
-// (Backend::Mul/Exp/etc: `res = weight * f(args)`), so a derivative
-// callback that shortcuts through the node's own already-weighted
-// primal[i] (rather than the unweighted children) silently double-counts
-// (or otherwise miscounts) `w` once ReverseTraceGeneric applies it a
-// second time during the backward sweep. Every existing test elsewhere in
-// this file uses unit-weight (Value=1) internal nodes, where this is
-// numerically invisible — these cases force a non-unit weight (3.7) on
-// the outermost op specifically to exercise it.
+// Every node's forward pass multiplies its result by the node's own
+// weight w. A derivative callback that reads the node's own weighted
+// result as a shortcut, instead of computing from the unweighted
+// children, can get the weight wrong — it might count it twice, or not
+// enough. These tests use a non-unit weight (3.7) on the outermost
+// operation to catch that; a unit weight (the default elsewhere in this
+// file) can't tell a correct weight calculation from a wrong one.
 //
-// Expected values are independently computed (not hand-derived) via JAX
-// (`jax.grad` on `w * f(x[, y])`, float64, at x=1.3, y=0.4, w=3.7) rather
-// than by hand, since manual algebra on a couple of these (Aq's far-child
-// branch in particular, off by a full w^3 before the fix) turned out to
-// be error-prone even for the person fixing the bug.
+// Expected values come from an independent tool (JAX's automatic
+// differentiation, computed offline), not from hand-derived algebra —
+// some of these formulas are intricate enough that manual algebra is
+// itself error-prone.
 TEST_CASE("Autodiff: non-unit outer weight (double-weighted-derivative regression)", "[autodiff]")
 {
     Operon::Dataset ds(std::vector<std::string>{"x", "y"},

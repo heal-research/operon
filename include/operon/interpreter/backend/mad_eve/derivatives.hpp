@@ -37,25 +37,18 @@ namespace detail {
         std::ranges::fill_n(Ptr(trace, j), S, T{1});
     }
 
-    // Every node's forward pass multiplies by its own weight (Backend::Mul
-    // etc: `res = weight * f(args)`), so primal[i] already has `w` baked in.
-    // Reading primal[i] as a shortcut for the *unweighted* value (as the
-    // rest of this function otherwise would) double-counts `w`, since
-    // ReverseTraceGeneric separately multiplies the returned local
-    // derivative by `w` once more during the backward sweep — dividing it
-    // back out here keeps the shortcut while still returning the correct
-    // unweighted local derivative. Confirmed via reproduction (see
-    // foolnotion/operon-planning's double-weighted-derivative bug writeup)
-    // against an independent JAX-computed ground truth.
+    // Every node's forward pass multiplies its result by the node's own
+    // weight w, so primal[i] equals w * f(children), not f(children) alone.
+    // This function must return the derivative of f(children) alone,
+    // without w — something else multiplies by w again later. Dividing
+    // primal[i] by w here gives that unweighted derivative.
     template<typename T, std::size_t S>
     auto Mul(std::vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto i, std::integral auto j) {
         auto const w = static_cast<T>(nodes[i].Value);
         auto *res = Ptr(trace, j);
-        // At w == 0, primal[i] == 0 too, making the shortcut below 0/0 = NaN,
-        // even though the true (unweighted) local derivative is well-defined
-        // and finite. ReverseTraceGeneric multiplies this by w == 0 regardless,
-        // so any finite placeholder yields the correct final zero — 0*NaN
-        // would not.
+        // If w is 0, primal[i] is 0 too, so the shortcut below computes 0/0,
+        // which is not a number. The correct derivative here is exactly 0.
+        // Returning 0 directly avoids the 0/0 case.
         if (w == T{0}) { std::ranges::fill_n(res, S, T{0}); return; }
         auto const* pi = Ptr(primal, i);
         auto const* pj = Ptr(primal, j);
@@ -193,13 +186,14 @@ namespace detail {
         std::fill_n(Ptr(trace, j), S, T{0});
     }
 
-    // Recomputed fresh from the child's own primal, using the exact same
-    // (possibly approximate) math the forward pass used for this op in
-    // functions.hpp, rather than reading this node's already-weighted
-    // primal[i] and dividing by its own weight — avoids the w==0
-    // singularity entirely, unlike the primal[i]-shortcut ops above
-    // (Mul/Div/Aq/Pow/Powabs) which need cross-child information the
-    // single available primal[j] can't reconstruct.
+    // Computes the derivative directly from the child's value, using the
+    // same math the forward pass uses for this operation (an approximation
+    // for float, exact for double — matching functions.hpp below).
+    // Mul/Div/Aq/Pow/Powabs above can't do this: their derivative also
+    // needs a sibling child's value, so they divide this node's own
+    // weighted result by its weight instead, which fails when the weight
+    // is 0. This function never divides by the weight, so it has no such
+    // problem.
     template<typename T, std::size_t S>
     auto Exp(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
@@ -246,10 +240,8 @@ namespace detail {
         std::transform(pj, pj+S, res, [](auto x){ return -std::sin(x); });
     }
 
-    // Recomputes tan(x) from the child's own primal `pj` (the argument),
-    // rather than reading this node's own weighted primal[i] (=w*tan(x)) as
-    // if it were tan(x) directly — matching the already-correct eve/eigen
-    // backends' implementation of this op.
+    // Computes tan(x) from the child's value pj. primal[i] holds w*tan(x),
+    // not tan(x) alone, so it can't be used directly here.
     template<typename T, std::size_t S>
     auto Tan(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
@@ -275,8 +267,7 @@ namespace detail {
         std::transform(pj, pj+S, res, [](auto x) { return std::sinh(x); });
     }
 
-    // Same fix as Tan above: recompute tanh(x) from the child's own primal
-    // `pj`, matching the already-correct eve/eigen backends.
+    // Like Tan above: computes tanh(x) from the child's value pj.
     template<typename T, std::size_t S>
     auto Tanh(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);
@@ -331,6 +322,9 @@ namespace detail {
         }
     }
 
+    // Uses std::cbrt for both float and double: unlike Exp/Sqrt/Sqrtabs
+    // above, the forward pass has no faster approximation for this
+    // operation (see functions.hpp), so there's no separate math to match.
     template<typename T, std::size_t S>
     auto Cbrt(std::vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T> trace, std::integral auto /*i*/, std::integral auto j) {
         auto* res = Ptr(trace, j);

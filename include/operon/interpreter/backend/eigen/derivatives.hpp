@@ -32,22 +32,17 @@ namespace detail {
         Col(trace, j).setConstant(T{1});
     }
 
-    // Every node's forward pass multiplies by its own weight, so primal[i]
-    // already has `w` baked in — reading it as a shortcut for the
-    // *unweighted* value double-counts `w`, since ReverseTraceGeneric
-    // separately multiplies by `w` once more during the backward sweep.
-    // Dividing by `w` here keeps the shortcut while returning the correct
-    // unweighted local derivative. Confirmed via reproduction against an
-    // independent JAX-computed ground truth (see foolnotion/operon-planning's
-    // double-weighted-derivative bug writeup).
+    // Every node's forward pass multiplies its result by the node's own
+    // weight w, so primal[i] equals w * f(children), not f(children) alone.
+    // This function must return the derivative of f(children) alone,
+    // without w — something else multiplies by w again later. Dividing
+    // primal[i] by w here gives that unweighted derivative.
     template<typename T, std::size_t S>
     auto Mul(Operon::Vector<Operon::Node> const& nodes, Backend::View<T const, S> primal, Backend::View<T, S> trace, std::integral auto i, std::integral auto j) {
         auto const w = static_cast<T>(nodes[i].Value);
-        // At w == 0, primal[i] == 0 too, making the shortcut below 0/0 = NaN,
-        // even though the true (unweighted) local derivative is well-defined
-        // and finite. ReverseTraceGeneric multiplies this by w == 0 regardless,
-        // so any finite placeholder yields the correct final zero — 0*NaN
-        // would not.
+        // If w is 0, primal[i] is 0 too, so the shortcut below computes 0/0,
+        // which is not a number. The correct derivative here is exactly 0.
+        // Returning 0 directly avoids the 0/0 case.
         if (w == T{0}) { Col(trace, j).setZero(); return; }
         Col(trace, j) = Col(primal, i) / (w * Col(primal, j));
     }
@@ -142,12 +137,12 @@ namespace detail {
         Col(trace, j).setZero();
     }
 
-    // Recomputed fresh from the child's own primal (matching the forward
-    // pass's own .exp() call in functions.hpp) rather than reading this
-    // node's already-weighted primal[i] and dividing by its own weight —
-    // avoids the w==0 singularity entirely, unlike the primal[i]-shortcut
-    // ops above (Mul/Div/Aq/Pow/Powabs) which need cross-child information
-    // the single available primal[j] can't reconstruct.
+    // Computes the derivative directly from the child's value, using
+    // .exp() — the same function the forward pass uses. Mul/Div/Aq/Pow/
+    // Powabs above can't do this: their derivative also needs a sibling
+    // child's value, so they divide this node's own weighted result by its
+    // weight instead, which fails when the weight is 0. This function never
+    // divides by the weight, so it has no such problem.
     template<typename T, std::size_t S>
     auto Exp(Operon::Vector<Operon::Node> const& /*nodes*/, Backend::View<T const, S> primal, Backend::View<T, S> trace, std::integral auto /*i*/, std::integral auto j) {
         Col(trace, j) = Col(primal, j).exp();
