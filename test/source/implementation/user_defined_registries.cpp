@@ -28,57 +28,6 @@
 
 namespace Operon::Test {
 
-namespace {
-
-// Hash-consing convention private to tree_diff.cpp (MakeUnary/MakeBinary/
-// GetConst are anonymous-namespace, not exported) hand-rolled here using
-// only the public Node factories — this is exactly the amount of protocol
-// knowledge an external caller needs: children are appended as Ref nodes
-// (never inlined subtrees, so Node::Function(hash, arity)'s arity == the
-// node's Length with no further bookkeeping), a binary op's farther child
-// is appended before its nearer child, and any literal constant must have
-// Optimize forced to false (a leaf's default ctor sets Optimize=true,
-// which would make the derivative-DAG's own synthetic constant look like a
-// tunable coefficient to anything counting them). The parallel hash vector
-// `h` is read only by Deriv()'s own memo lookups within the same call
-// (verified: `grep h\[ source/core/tree_diff.cpp` shows exactly three
-// reads, all feeding Mix() for a memo key) — never compared against
-// anything outside this one Deriv() invocation — so any distinct
-// placeholder value here (dag.size() at push time) is safe; it costs
-// missed CSE opportunities, not correctness.
-struct HandRolledDagBuilder {
-    Operon::Vector<Node>& dag;
-    Operon::Vector<Operon::Hash>& h;
-
-    auto PushRef(std::size_t target) -> std::size_t {
-        dag.push_back(Node::Ref(static_cast<uint16_t>(target)));
-        h.push_back(static_cast<Operon::Hash>(dag.size()));
-        return dag.size() - 1;
-    }
-    auto PushConst(Scalar v) -> std::size_t {
-        auto n = Node::Constant(v);
-        n.Optimize = false;
-        dag.push_back(n);
-        h.push_back(static_cast<Operon::Hash>(dag.size()));
-        return dag.size() - 1;
-    }
-    auto PushUnary(BuiltinOp op, std::size_t a) -> std::size_t {
-        PushRef(a);
-        dag.push_back(Node::Function(static_cast<Operon::Hash>(op), 1));
-        h.push_back(static_cast<Operon::Hash>(dag.size()));
-        return dag.size() - 1;
-    }
-    auto PushBinary(BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t {
-        PushRef(b); // farther child first — matches MakeBinary's documented layout
-        PushRef(a); // nearer child second
-        dag.push_back(Node::Function(static_cast<Operon::Hash>(op), 2));
-        h.push_back(static_cast<Operon::Hash>(dag.size()));
-        return dag.size() - 1;
-    }
-};
-
-} // namespace
-
 TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][user-defined]")
 {
     auto const hash = Operon::Hasher{}("recip");
@@ -103,16 +52,17 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     auto result = interp.Evaluate(tree.GetCoefficients(), Range{ 0, 1 });
     CHECK(result[0] == Catch::Approx(0.5).epsilon(1e-5)); // 1/2
 
-    // 2. Symbolic differentiation — RegisterUnarySymbolicDeriv, the
-    // registry this PR adds. d(1/x)/dx = -1/x^2, built by hand per the
-    // HandRolledDagBuilder rationale above (no private helper needed).
+    // 2. Symbolic differentiation — RegisterUnarySymbolicDeriv. d(1/x)/dx =
+    // -1/x^2, built using the public DAG-builder facade (GetSymbolicDerivConst/
+    // MakeSymbolicDerivUnary/MakeSymbolicDerivBinary) so this rule gets the
+    // same node-sharing behavior every built-in rule gets, without needing
+    // to know tree_diff.cpp's internal node-append protocol.
     RegisterUnarySymbolicDeriv(hash,
-        [](Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& /*memo*/,
+        [](Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
            Operon::Vector<Operon::Hash>& h, std::size_t /*i*/, std::size_t j) -> std::size_t {
-            HandRolledDagBuilder b{ dag, h };
-            auto negOne = b.PushConst(Scalar{ -1 });
-            auto sq     = b.PushUnary(BuiltinOp::Square, j);
-            return b.PushBinary(BuiltinOp::Div, negOne, sq); // -1 / x^2, non-commutative — exercises binary child ordering
+            auto negOne = GetSymbolicDerivConst(dag, memo, h, Scalar{ -1 });
+            auto sq     = MakeSymbolicDerivUnary(dag, memo, h, BuiltinOp::Square, j);
+            return MakeSymbolicDerivBinary(dag, memo, h, BuiltinOp::Div, negOne, sq); // -1 / x^2, non-commutative — exercises binary child ordering
         });
     REQUIRE(HasUnarySymbolicDeriv(hash));
 
