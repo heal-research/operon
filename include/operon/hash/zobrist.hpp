@@ -30,7 +30,6 @@ struct CacheEntry : Data... {};
 // Fitness value produced by the evaluator after local search.
 struct FitnessData {
     Vector<Scalar>  Value;
-    std::size_t     Visits{1};
 };
 
 using FitnessEntry = CacheEntry<FitnessData>;
