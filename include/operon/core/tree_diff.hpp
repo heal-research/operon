@@ -89,6 +89,38 @@ OPERON_EXPORT auto HasBinarySymbolicDeriv(Operon::Hash hash) -> bool;
 // GetUnarySymbolicDeriv for the external-caller use case.
 OPERON_EXPORT auto GetBinarySymbolicDeriv(Operon::Hash hash) -> BinarySymbolicDerivRule const*;
 
+// A UnarySymbolicDerivRule/BinarySymbolicDerivRule body needs to append new
+// nodes to the derivative dag under construction (`dag`/`memo`/`h`, the
+// same three arguments the rule itself receives), sharing identical
+// subexpressions across derivative columns the same way every built-in
+// rule does. These three functions are that same node-building,
+// subexpression-sharing logic — call them instead of appending nodes by
+// hand.
+//
+// Note: composed_function.hpp's detail::Diff{Mix,GetConst,MakeUnary,
+// MakeBinary} is a separate, intentionally-diverging port of this same
+// protocol (salted hashing, to avoid a Mix(0,0)==0 fixed point that this
+// unsalted version doesn't need to guard against for its own callers) —
+// not a redundant copy to migrate onto these functions.
+//
+// Get or create a constant node holding `val`. Two calls with the same
+// value return the same dag index.
+OPERON_EXPORT auto GetSymbolicDerivConst(Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
+    Operon::Vector<Operon::Hash>& h, Scalar val) -> std::size_t;
+
+// Build `op(a)`, where `a` is an existing dag index. Two calls building the
+// same expression return the same dag index.
+OPERON_EXPORT auto MakeSymbolicDerivUnary(Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
+    Operon::Vector<Operon::Hash>& h, BuiltinOp op, std::size_t a) -> std::size_t;
+
+// Build `op(a, b)`, where `a` is the nearer child and `b` is the farther
+// child (same convention as Deriv()'s own hardcoded Pow case, and as the
+// `j`/`k` parameters BinarySymbolicDerivRule receives). Note that Mul(a,b)
+// and Mul(b,a) get different hash keys (less deduplication but no
+// correctness issue) — relevant when writing a non-commutative binary rule.
+OPERON_EXPORT auto MakeSymbolicDerivBinary(Operon::Vector<Node>& dag, Operon::Map<Operon::Hash, std::size_t>& memo,
+    Operon::Vector<Operon::Hash>& h, BuiltinOp op, std::size_t a, std::size_t b) -> std::size_t;
+
 // A flat postfix array containing the original tree (indices 0..OriginalSize-1)
 // plus appended symbolic derivative subtrees. Shared subexpressions between
 // derivative columns are referenced via NodeType::Ref back-pointers.
