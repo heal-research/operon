@@ -38,8 +38,12 @@ auto Zobrist::TryGet(Operon::Hash hash, Value& val) const -> bool
 
 auto Zobrist::Insert(Operon::Hash hash, Value const& val) -> void
 {
+    // Insert is only ever called after a TryGet miss on this same hash, so
+    // the "already exists" branch only fires on a genuine race (another
+    // thread inserted the same newly-seen hash first) - keep that entry's
+    // value (first writer wins), nothing else to do.
     tt_->Cache.LazyEmplace(hash,
-        [](FitnessEntry& e) -> void { ++e.Visits; },
+        [](FitnessEntry&) -> void { },
         [&](FitnessEntry& e) -> void { e.Value = val; }
     );
 }

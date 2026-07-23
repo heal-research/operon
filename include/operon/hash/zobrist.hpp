@@ -30,7 +30,6 @@ struct CacheEntry : Data... {};
 // Fitness value produced by the evaluator after local search.
 struct FitnessData {
     Vector<Scalar>  Value;
-    std::size_t     Visits{1};
 };
 
 using FitnessEntry = CacheEntry<FitnessData>;
@@ -161,7 +160,9 @@ public:
     // Returns true and fills `val` if the hash is found; thread-safe.
     [[nodiscard]] auto TryGet(Hash hash, Value& val) const -> bool;
 
-    // Inserts or increments the visit counter; thread-safe.
+    // Inserts a newly-computed value for `hash`; thread-safe. A concurrent
+    // race inserting the same hash first is not an error - the existing
+    // entry's value is kept (first writer wins).
     auto Insert(Hash hash, Value const& val) -> void;
 
     // Clears the transposition table and resets the hit counter.

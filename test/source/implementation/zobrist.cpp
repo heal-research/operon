@@ -188,7 +188,7 @@ TEST_CASE("Zobrist - Lookups counts every TryGet call regardless of outcome", "[
     REQUIRE(cache.Hits() >= 2);
 }
 
-TEST_CASE("Zobrist - duplicate inserts increment count, not entries", "[zobrist]")
+TEST_CASE("Zobrist - duplicate inserts collapse to one entry", "[zobrist]")
 {
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
