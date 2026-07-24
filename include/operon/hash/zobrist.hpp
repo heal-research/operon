@@ -30,6 +30,7 @@ struct CacheEntry : Data... {};
 // Fitness value produced by the evaluator after local search.
 struct FitnessData {
     Vector<Scalar>  Value;
+    std::uint32_t   InsertGeneration{0};
 };
 
 using FitnessEntry = CacheEntry<FitnessData>;
@@ -59,6 +60,11 @@ public:
             [&](auto& kv)         { std::forward<OnExisting>(onExisting)(kv.second); },
             [&](auto const& ctor) { Entry e{}; std::forward<OnNew>(onNew)(e); ctor(h, std::move(e)); }
         );
+    }
+
+    template<typename Pred>
+    auto EraseIf(Hash h, Pred&& pred) -> std::size_t {
+        return map_.erase_if(h, [&](auto const& kv) { return pred(kv.second); });
     }
 
     [[nodiscard]] auto Size() const -> std::size_t { return map_.size(); }
@@ -108,11 +114,22 @@ class OPERON_EXPORT Zobrist {
     mutable std::atomic<std::size_t> hits_{0};
     mutable std::atomic<std::size_t> lookups_{0};
 
+    // Generation clock ticked by the GA loop (see gp.cpp/nsga2.cpp) once per
+    // generation. Used only to lazily expire stale entries in TryGet - see
+    // maxAge_ below. Not related to hits_/lookups_.
+    mutable std::atomic<std::uint32_t> clock_{0};
+
+    // 0 disables age-based expiry (default, today's unbounded behavior).
+    // Otherwise, an entry older than maxAge_ generations is treated as a
+    // miss by TryGet and removed - see TryGet's implementation for why this
+    // is a pragmatic freshness/evolvability mitigation, not a memory bound.
+    std::size_t maxAge_{0};
+
 public:
     // variableHashes must include every variable hash that can appear in a tree.
     // Each variable gets its own row of independent random values so that
     // permuting variables at different positions always yields a different hash.
-    Zobrist(RandomGenerator& rng, int maxLength, Span<Hash const> variableHashes);
+    Zobrist(RandomGenerator& rng, int maxLength, Span<Hash const> variableHashes, std::size_t maxAge = 0);
     virtual ~Zobrist();
     Zobrist(Zobrist const&)            = delete;
     Zobrist(Zobrist&&)                 = delete;
@@ -169,6 +186,10 @@ public:
     // NOT safe to call concurrently with TryGet or Insert — call only after
     // the algorithm has fully stopped (e.g. after GeneticAlgorithm::Run returns).
     auto Clear() -> void;
+
+    // Advances the generation clock used by TryGet's age-based expiry.
+    // Thread-safe; called once per generation from the GA loop.
+    auto SetGeneration(std::size_t generation) -> void;
 
     [[nodiscard]] auto Hits() const -> std::size_t { return hits_.load(std::memory_order_relaxed); }
     // Total TryGet() calls regardless of outcome - the denominator Hits()

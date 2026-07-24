@@ -38,7 +38,7 @@ class OPERON_EXPORT JitZobrist final : public Operon::Zobrist {
     mutable Operon::ZobristCache<JitEntry> cache_;     // destroyed first
 public:
     JitZobrist(Operon::RandomGenerator& rng, int maxLength,
-               Operon::Span<Operon::Hash const> variableHashes);
+               Operon::Span<Operon::Hash const> variableHashes, std::size_t maxAge = 0);
     ~JitZobrist() override = default;
 
     [[nodiscard]] auto JitCache() const -> Operon::ZobristCache<JitEntry>& { return cache_; }

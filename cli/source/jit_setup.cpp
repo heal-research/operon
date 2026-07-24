@@ -21,7 +21,8 @@ auto MakeJitObjects(
     [[maybe_unused]] int                           jitMaxLength,
     [[maybe_unused]] std::size_t                   jitMinVisits,
     [[maybe_unused]] int                           maxLength,
-    [[maybe_unused]] std::size_t                   seed
+    [[maybe_unused]] std::size_t                   seed,
+    [[maybe_unused]] std::size_t                   cacheMaxAge
 ) -> JitObjects {
 #if !defined(HAVE_ASMJIT)
     fmt::print(stderr, "error: --jit requires a build with JIT support (HAVE_ASMJIT)\n");
@@ -30,7 +31,7 @@ auto MakeJitObjects(
     auto [metric, supportsLinearScale] = Operon::ParseErrorMetric(objective);
     auto j = Operon::JIT::MakeJitObjects(
         jitMode, problem, dtable, *metric, linearScaling && supportsLinearScale,
-        maxLength, jitMaxLength, jitMinVisits, seed);
+        maxLength, jitMaxLength, jitMinVisits, seed, cacheMaxAge);
     return JitObjects{
         .Evaluator      = std::move(j.Evaluator),
         .OptimizerJacEval = std::move(j.OptimizerJacEval),

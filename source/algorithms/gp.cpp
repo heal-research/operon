@@ -115,7 +115,15 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
             // (reinserter.hpp) - it protects the top EliteCount() parents
             // before reinsert() runs, so no offspring slot needs to be
             // reserved for a hand-picked elite here anymore.
-            auto prepareGenerator = subflow.emplace([&]() -> void { generator->Prepare(parents); }).name("prepare generator");
+            auto prepareGenerator = subflow.emplace([&]() -> void {
+                                        generator->Prepare(parents);
+                                        // Stamp the cache clock with the generation offspring will
+                                        // belong to *before* they're evaluated - Generation() itself
+                                        // isn't incremented until after reinsert() below, so without
+                                        // this the cache would stamp entries with the prior
+                                        // generation's number (see incrementGeneration).
+                                        if (auto* cache = config.Cache) { cache->SetGeneration(Generation() + 1); }
+                                    }).name("prepare generator");
             auto generateOffspring = subflow.for_each_index(size_t { 0 }, offspring.size(), size_t { 1 }, [&](size_t i) -> void {
                                                 slots[executor.this_worker_id()].resize(trainSize);
                                                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
