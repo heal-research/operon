@@ -340,6 +340,67 @@ TEST_CASE("Zobrist - a stale-triggered miss actually removes the entry", "[zobri
     REQUIRE(cache.Size() == 0);
 }
 
+TEST_CASE("Zobrist - an entry inserted after the clock is set to a high starting value (warm resume) is not immediately stale", "[zobrist]")
+{
+    // Regression test: on --resume, GeneticAlgorithmBase::Generation() is
+    // restored from the checkpoint, but a freshly constructed Zobrist always
+    // starts at clock_ == 0. CLI resume code must call SetGeneration() with
+    // the checkpoint's generation *before* re-evaluating/re-caching the
+    // resumed population, or those entries get stamped generation 0 and read
+    // as ancient the moment the GA loop advances the clock past the
+    // checkpoint's generation.
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    constexpr std::size_t maxAge = 5;
+    Zobrist cache(rng, MaxLength, inputs, maxAge);
+
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    auto tree = creator(rng, 10, 1, MaxLength);
+    auto hash = cache.ComputeHash(tree);
+
+    constexpr std::size_t resumedGeneration = 500;
+    cache.SetGeneration(resumedGeneration); // as the fixed resume path does, before re-evaluation
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    cache.Insert(hash, val);
+
+    // The GA loop's own SetGeneration(Generation() + 1) call follows next.
+    cache.SetGeneration(resumedGeneration + 1);
+
+    Operon::Vector<Operon::Scalar> retrieved;
+    REQUIRE(cache.TryGet(hash, retrieved));
+}
+
+TEST_CASE("Zobrist - Clear resets the generation clock", "[zobrist]")
+{
+    // Regression test: without resetting clock_, a Clear() between separate
+    // runs (e.g. sequential invocations sharing one Zobrist instance) leaves
+    // a stale-relative-to-nothing clock value; the next run's entries get
+    // stamped against generation 0 while the clock remains at the old run's
+    // high value, immediately reading as ancient.
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    constexpr std::size_t maxAge = 5;
+    Zobrist cache(rng, MaxLength, inputs, maxAge);
+
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    auto tree = creator(rng, 10, 1, MaxLength);
+    auto hash = cache.ComputeHash(tree);
+
+    cache.SetGeneration(500);
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    cache.Insert(hash, val);
+
+    cache.Clear();
+    REQUIRE(cache.Size() == 0);
+
+    // A new "run" starts its own generation count from 0.
+    cache.SetGeneration(0);
+    cache.Insert(hash, val);
+
+    Operon::Vector<Operon::Scalar> retrieved;
+    REQUIRE(cache.TryGet(hash, retrieved));
+}
+
 TEST_CASE("Zobrist - EraseIf generation guard preserves a value refreshed between observation and erase", "[zobrist]")
 {
     // Deterministic, single-threaded repro of the exact race TryGet's
@@ -433,8 +494,16 @@ TEST_CASE("Zobrist - concurrent readers racing an expiry-erase-then-reinsert nev
     reader1.join();
     reader2.join();
 
-    // The hash must still resolve to *some* value afterward - a fresh
-    // Insert() right after an expiry-erase must never be permanently lost.
+    // Whatever entry survived the race (if any) may legitimately be stale
+    // relative to wherever the clock landed - Insert() only stamps a fresh
+    // InsertGeneration when the entry didn't already exist (see the
+    // "first writer wins" comment on Insert()), so a leftover stale survivor
+    // would make a plain Insert()-then-TryGet flaky here, not indicative of
+    // a real bug. Clear() first (deterministically resets both the map and
+    // the clock) so the final check only asserts what it's meant to: a
+    // fresh Insert() after the race is never lost.
+    cache.Clear();
+    cache.SetGeneration(0);
     cache.Insert(hash, fresh);
     Operon::Vector<Operon::Scalar> final;
     REQUIRE(cache.TryGet(hash, final));

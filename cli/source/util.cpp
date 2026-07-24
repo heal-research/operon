@@ -222,6 +222,14 @@ auto ResumeFromCheckpoint(GeneticAlgorithmBase& algo, RandomGenerator& rng,
     }
     rng.set_state(cp->RngState);
     algo.Generation() = cp->Generation;
+    // The cache's own generation clock always starts at 0 for a freshly
+    // constructed Zobrist, regardless of the checkpoint's generation - align
+    // it here so the resumed population's re-evaluation (which runs before
+    // the GA loop's own SetGeneration(Generation() + 1) call) is stamped
+    // with the resumed generation instead of 0, which would otherwise make
+    // every entry read as ancient (and get evicted) the moment the loop
+    // advances the clock past the checkpoint's generation.
+    if (auto* cache = config.Cache) { cache->SetGeneration(cp->Generation); }
     auto parents = algo.Parents();
     for (std::size_t i = 0; i < cp->Population.size(); ++i) {
         parents[i] = std::move(cp->Population[i]);

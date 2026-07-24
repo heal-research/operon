@@ -80,6 +80,10 @@ auto Zobrist::Clear() -> void
     tt_->Cache.Clear();
     hits_.store(0, std::memory_order_relaxed);
     lookups_.store(0, std::memory_order_relaxed);
+    // Otherwise a subsequent run's entries get stamped against a clock left
+    // over from before this Clear(), immediately reading as stale (or, on
+    // wraparound if the new run's generation is smaller, falsely fresh).
+    clock_.store(0, std::memory_order_relaxed);
 }
 
 auto Zobrist::SetGeneration(std::size_t generation) -> void
