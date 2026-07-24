@@ -892,6 +892,23 @@ TEST_CASE("Interval backend: pow/powabs child ordering", "[pappus][interval]")
     }
 }
 
+TEST_CASE("Interval backend: pow with negative-base domain and constant even exponent", "[pappus][interval]")
+{
+    // A degenerate exponent interval must dispatch to pow(interval, Scalar),
+    // not the general interval^interval overload, which restricts the base
+    // to non-negative even for a literal even-integer exponent.
+    constexpr Operon::Hash X1{1};
+    Operon::Vector<Operon::Node> ns{Const(2.0), Var(X1), Util::MakeOp<Operon::BuiltinOp::Pow>()};
+    auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{-3}, S{-1}};  // always-negative base
+    IE eval(&tree, std::move(d));
+    auto const r = eval.Evaluate(tree.GetCoefficients());
+    // pow([-3,-1], 2) = [1, 9], not empty
+    REQUIRE(r.inf() <= 1.0 + 1e-3);
+    REQUIRE(r.sup() + 1e-2 >= 9.0);
+}
+
 TEST_CASE("Affine backend: pow/powabs child ordering", "[pappus][affine]")
 {
     constexpr Operon::Hash X1{1};

@@ -150,18 +150,6 @@ TEST_CASE("Feynman benchmark suite - TightenRange/TightenRangeBisected soundness
         auto const tightened = TightenRange(tree, domains, coeff);
         auto const bisected  = TightenRangeBisected(tree, domains, coeff, 3);
 
-        if (naive.is_empty()) {
-            // A pre-existing IntervalEvaluator limitation, not a
-            // TightenRange bug: Pow always dispatches through the general
-            // interval^interval overload, which domain-restricts the base
-            // to non-negative even when the exponent is a constant integer
-            // (e.g. squaring an always-negative subtraction like
-            // (omega^2 - omega_0^2)^2, mathematically fine, but rejected
-            // here). Affects Jackson 2.11 and I.32.17 in this suite.
-            fmt::print("{:<40} naive interval empty (Pow domain limitation, not a TightenRange bug)\n", p.name);
-            continue;
-        }
-
         auto const naiveWidth = naive.diameter();
         if (std::isfinite(naiveWidth) && naiveWidth > 0) {
             auto const tightPct = 100.0 * (1.0 - static_cast<double>(tightened.diameter()) / static_cast<double>(naiveWidth));
