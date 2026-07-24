@@ -53,6 +53,60 @@ TEST_CASE("TightenRange - falls back to naive when a variable's gradient is unsu
     REQUIRE(tightened.sup() == Catch::Approx(naive.sup()).margin(1e-4));
 }
 
+TEST_CASE("TightenRange - falls back to naive for n-ary Div (arity > 2, unsupported by Deriv)", "[range_tightening]")
+{
+    // Deriv() only handles Div at arity 1 or 2, returning NoGrad for
+    // arity >= 3 - the structural pre-check must catch this the same way
+    // it catches Abs, or TightenRange silently understates the gradient.
+    constexpr Operon::Hash X1{1};
+    auto divNode = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Div), 3);
+    // Children are consumed nearest-first, so the numerator (X1) must be
+    // pushed last (nearest the op) for this to mean X1 / 2 / 2.
+    auto tree = Operon::Tree({Const(2), Const(2), Var(X1), divNode}).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{0}, S{1}};
+    auto const coeff = tree.GetCoefficients();
+
+    auto const naive     = IE(&tree, IE::DomainMap{d}).Evaluate(coeff);
+    auto const tightened = TightenRange(tree, d, coeff);
+
+    REQUIRE(naive.inf() == Catch::Approx(0.0).margin(1e-4));
+    REQUIRE(naive.sup() == Catch::Approx(0.25).margin(1e-4));
+    REQUIRE(tightened.inf() == Catch::Approx(naive.inf()).margin(1e-4));
+    REQUIRE(tightened.sup() == Catch::Approx(naive.sup()).margin(1e-4));
+}
+
+TEST_CASE("TightenRangeBisected - stays sound when an undifferentiated op is behind the recursion", "[range_tightening]")
+{
+    // TightenRangeBisected's variable-selection step calls
+    // BuildVariableGradientDag directly (not through TightenRange's own
+    // pre-check), so it can see an understated-but-nonzero gradient root
+    // for X * abs(X). Soundness must still hold because every actual
+    // enclosure returned at each recursion level goes through
+    // TightenRange, which does bail to naive on Abs.
+    constexpr Operon::Hash X1{1};
+    auto x1 = Var(X1);
+    auto x2 = Var(X1);
+    auto absNode = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Abs), 1);
+    auto mulNode = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2);
+    auto tree = Operon::Tree({x1, x2, absNode, mulNode}).UpdateNodes(); // X * abs(X)
+    auto d = Domains();
+    d[X1] = {S{-1}, S{1}};
+    auto const coeff = tree.GetCoefficients();
+
+    auto const naive     = IE(&tree, IE::DomainMap{d}).Evaluate(coeff);
+    auto const tightened = TightenRange(tree, d, coeff);
+    auto const bisected  = TightenRangeBisected(tree, d, coeff, 3);
+
+    // True range of x*|x| over [-1,1] is [-1,1].
+    REQUIRE(tightened.inf() == Catch::Approx(naive.inf()).margin(1e-4));
+    REQUIRE(tightened.sup() == Catch::Approx(naive.sup()).margin(1e-4));
+    REQUIRE(bisected.inf() <= -1.0 + 1e-3);
+    REQUIRE(bisected.sup() >= 1.0 - 1e-3);
+    REQUIRE(bisected.inf() >= naive.inf() - 1e-4);
+    REQUIRE(bisected.sup() <= naive.sup() + 1e-4);
+}
+
 TEST_CASE("TightenRange - falls back to naive when only ONE occurrence of a variable is undifferentiated", "[range_tightening]")
 {
     constexpr Operon::Hash X1{1};
