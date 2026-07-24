@@ -157,4 +157,31 @@ struct HessianDag {
 
 OPERON_EXPORT auto BuildHessianDag(Tree const& tree) -> HessianDag;
 
+// A flat postfix array containing the original tree plus symbolic partial
+// derivatives w.r.t. each distinct input Variable's *value* (grouped by
+// Node::HashValue, the variable's identity), as opposed to JacobianDag's
+// per-instance derivatives w.r.t. each optimizable coefficient *weight*.
+// Every occurrence of a given variable within the tree contributes to (and
+// is summed into) a single root for that variable. Shared subexpressions
+// across gradient columns are deduplicated via hash-consing; shared nodes
+// are referenced with NodeType::Ref. The tree does not need to have been
+// hashed before calling BuildVariableGradientDag.
+struct VariableGradientDag {
+    Operon::Vector<Node> Nodes;             // original nodes [0..OriginalSize-1] + derivative nodes
+    std::size_t OriginalSize{};             // number of nodes in the source tree
+    Operon::Vector<Operon::Hash> Variables; // Variables[k] = the variable's identity hash for Roots[k]
+    Operon::Vector<std::size_t> Roots;      // Roots[k] = dag index of dF/d(Variables[k]); SIZE_MAX means zero
+};
+
+// Build a DAG containing the original tree plus one symbolic partial
+// derivative per distinct input Variable appearing in the tree (grouped by
+// Node::HashValue, not by tree position) - i.e. the gradient of the tree's
+// output w.r.t. each of its input variables' *values*. Every occurrence of
+// a given variable contributes to (and is summed into) that variable's
+// single root, unlike BuildJacobianDag, which produces one column per node
+// *instance* and differentiates w.r.t. a Variable node's optimizable
+// *weight* rather than its value. The tree does not need to have been
+// hashed before calling this.
+OPERON_EXPORT auto BuildVariableGradientDag(Tree const& tree) -> VariableGradientDag;
+
 } // namespace Operon
