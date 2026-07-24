@@ -23,7 +23,7 @@ auto TightenRange(
 {
     auto const naive = IntervalEvaluator(&tree, domains).Evaluate(coeff);
 
-    auto const gdag = BuildVariableGradientDag(tree);
+    auto const gdag = BuildVariableGradientDag(tree, coeff);
     if (gdag.Variables.empty()) { return naive; } // no input variables: naive is already exact
 
     // F(m): evaluate the ORIGINAL tree at the domain box's midpoint, reusing
@@ -42,11 +42,30 @@ auto TightenRange(
     auto meanValue = fm;
     for (std::size_t k = 0; k < gdag.Variables.size(); ++k) {
         auto const root = gdag.Roots[k];
-        if (root == NoGrad) { continue; } // zero partial: no contribution
+        // NoGrad is Deriv()'s "zero" sentinel, but it's overloaded: it means
+        // *either* a genuinely zero partial *or* "couldn't differentiate"
+        // (an unregistered/excluded op such as Abs/Sqrtabs/Floor/Ceil, or
+        // any binary/user op without a symbolic-diff rule, anywhere along
+        // this variable's path). BuildJacobianDag can afford to conflate
+        // these (a missing coefficient gradient just degrades optimization
+        // quality), but treating "unknown" as "zero" here would silently
+        // drop this variable's entire contribution from the mean-value
+        // term while still intersecting the result with naive - that can
+        // produce a bound *tighter than reality* (e.g. abs(x) on [-1,1]:
+        // Abs has no symbolic-diff rule, so the gradient looks like zero,
+        // giving mean-value = {F(0)} = {0} and excluding the true [0,1]).
+        // Bail out to the naive-only enclosure instead of guessing.
+        if (root == NoGrad) { return naive; }
 
         auto const hash = gdag.Variables[k];
         auto const dit  = domains.find(hash);
-        if (dit == domains.end()) { continue; } // variable not bound: can't form (x_k - m_k)
+        // Every variable in gdag.Variables was already evaluated (with a
+        // bound domain) by the naive IntervalEvaluator call above - it
+        // walks every original node unconditionally, so a truly unbound
+        // variable would have already thrown there. Bail the same way as
+        // the NoGrad case above if this invariant is ever violated, rather
+        // than silently treating the missing term as zero.
+        if (dit == domains.end()) { return naive; }
         auto const& [lo, hi] = dit->second;
         auto const m = Interval{lo, hi}.mid();
 

@@ -301,6 +301,19 @@ struct DerivTarget {
     Kind kind;
     std::size_t index{};    // valid when kind == Coefficient
     Operon::Hash hash{};    // valid when kind == VariableValue
+    // VariableValue mode only: node i's *actual* weight, matching whatever
+    // coeff span the caller intends to evaluate the resulting dag with
+    // (orig[i].Optimize ? coeff[its own slot] : orig[i].Value) - empty means
+    // "use orig[i].Value directly" (the caller has no live coeff, or every
+    // node's weight is fixed). This exists because, unlike every other leaf
+    // case in Deriv() (which only ever emit a placeholder - 1, or an
+    // unweighted Variable - resolved later at evaluation time), the
+    // VariableValue leaf needs the numeric weight *now*, at dag-build time.
+    // Without this, an Optimize==true variable node's weight would be
+    // permanently baked from orig[i].Value even when the caller later
+    // evaluates the dag against a different (e.g. freshly locally-searched)
+    // coeff span - silently stale, not just imprecise.
+    Operon::Span<Operon::Scalar const> effectiveValues{};
 };
 
 // Forward declaration for mutual recursion.
@@ -346,7 +359,12 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         // variable (matched by identity hash, not by node index) -
         // deliberately NOT GetVar() (which would return the unweighted
         // variable itself, i.e. d(w*x)/dw's answer, not d(w*x)/dx's).
-        if (n.HashValue == target.hash) { return GetConst(dag, memo, h, n.Value); }
+        // Use the caller's live coeff-derived weight when supplied, since
+        // orig[i].Value can be stale relative to it (see DerivTarget).
+        if (n.HashValue == target.hash) {
+            auto const w = target.effectiveValues.empty() ? n.Value : target.effectiveValues[i];
+            return GetConst(dag, memo, h, w);
+        }
         return Zero;
     }
     if (n.IsRef()) {
@@ -608,7 +626,8 @@ auto DifferentiateFirstOrder(
 // variable across different branches are summed automatically.
 auto DifferentiateVariableGradient(
     Tree const& tree, Nodes& dag, Memo& memo, Hashes& h,
-    Operon::Vector<Operon::Hash>& variables, Operon::Vector<std::size_t>& roots
+    Operon::Vector<Operon::Hash>& variables, Operon::Vector<std::size_t>& roots,
+    Operon::Span<Operon::Scalar const> coeff
 ) -> void
 {
     RegisterBuiltinSymbolicDerivs();
@@ -634,9 +653,34 @@ auto DifferentiateVariableGradient(
         }
     }
 
+    // If the caller supplied a live coeff span, precompute each node's
+    // *actual* weight the same way IntervalEvaluator/Interpreter do
+    // (Optimize==true consumes the next coeff slot, in node order) so a
+    // Variable leaf's own weight - baked as a numeric Constant by Deriv()'s
+    // VariableValue case - matches what evaluating the resulting dag with
+    // this same coeff will actually use, not whatever orig[i].Value happens
+    // to hold right now.
+    Operon::Vector<Operon::Scalar> effectiveValues;
+    if (!coeff.empty()) {
+        effectiveValues.resize(n);
+        std::size_t ci = 0;
+        for (std::size_t i = 0; i < n; ++i) {
+            if (orig[i].Optimize) {
+                EXPECT(ci < coeff.size());
+                effectiveValues[i] = coeff[ci++];
+            } else {
+                effectiveValues[i] = orig[i].Value;
+            }
+        }
+    }
+
     roots.resize(variables.size(), Zero);
     for (std::size_t vi = 0; vi < variables.size(); ++vi) {
-        DerivTarget const target{.kind = DerivTarget::Kind::VariableValue, .hash = variables[vi]};
+        DerivTarget const target{
+            .kind = DerivTarget::Kind::VariableValue,
+            .hash = variables[vi],
+            .effectiveValues = effectiveValues,
+        };
         roots[vi] = Deriv(orig, dag, memo, h, n - 1, target);
     }
 }
@@ -754,11 +798,11 @@ auto BuildHessianDag(Tree const& tree) -> HessianDag {
     return result;
 }
 
-auto BuildVariableGradientDag(Tree const& tree) -> VariableGradientDag {
+auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar const> coeff) -> VariableGradientDag {
     VariableGradientDag dag;
     Memo memo;
     Hashes h;
-    DifferentiateVariableGradient(tree, dag.Nodes, memo, h, dag.Variables, dag.Roots);
+    DifferentiateVariableGradient(tree, dag.Nodes, memo, h, dag.Variables, dag.Roots, coeff);
     dag.OriginalSize = tree.Nodes().size();
     return dag;
 }

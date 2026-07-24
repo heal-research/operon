@@ -35,6 +35,58 @@ namespace {
     auto Domains() -> IE::DomainMap { return IE::DomainMap{}; }
 } // namespace
 
+TEST_CASE("TightenRange - falls back to naive when a variable's gradient is unsupported (Abs)", "[range_tightening]")
+{
+    // Regression test: Abs is interval-evaluable (naive works fine) but has
+    // no registered symbolic-diff rule, so BuildVariableGradientDag's
+    // "zero" sentinel is ambiguous here - it could mean a genuinely zero
+    // partial, or "couldn't differentiate." Treating it as zero would give
+    // mean-value = {F(0)} = {0} for abs(x) on [-1,1], and naive & {0} would
+    // wrongly collapse the true [0,1] range down to a point. TightenRange
+    // must detect this and return the naive enclosure untouched instead.
+    constexpr Operon::Hash X1{1};
+    auto absNode = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Abs), 1);
+    auto tree = Operon::Tree({Var(X1), absNode}).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{-1}, S{1}};
+    auto const coeff = tree.GetCoefficients();
+
+    auto const naive     = IE(&tree, IE::DomainMap{d}).Evaluate(coeff);
+    auto const tightened = TightenRange(tree, d, coeff);
+
+    REQUIRE(naive.inf() == Catch::Approx(0.0).margin(1e-4));
+    REQUIRE(naive.sup() == Catch::Approx(1.0).margin(1e-4));
+    REQUIRE(tightened.inf() == Catch::Approx(naive.inf()).margin(1e-4));
+    REQUIRE(tightened.sup() == Catch::Approx(naive.sup()).margin(1e-4));
+}
+
+TEST_CASE("TightenRange - uses the live coeff span for an optimizable variable weight, not stale Node::Value", "[range_tightening]")
+{
+    // Regression test: a Variable node whose own weight is itself
+    // optimizable (Node::Optimize == true) has its *current* Node::Value
+    // baked into the gradient dag unless BuildVariableGradientDag is told
+    // about the live coeff span. Node::Value = 1 here, but coeff = {2} -
+    // if the stale weight were used, the mean-value term would be built
+    // from gradient 1 instead of 2, silently mis-tightening.
+    constexpr Operon::Hash X1{1};
+    auto v = Var(X1, 1.0);
+    v.Optimize = true;
+    auto tree = Operon::Tree({v}).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{0}, S{1}};
+    std::vector<Operon::Scalar> const coeff{2.0F};
+
+    auto const naive     = IE(&tree, IE::DomainMap{d}).Evaluate(coeff);
+    auto const tightened = TightenRange(tree, d, coeff);
+
+    // f(x) = 2x over [0,1]: exact range [0, 2], no dependency problem at
+    // all - naive and tightened must both be exact, using the live coeff.
+    REQUIRE(naive.inf() == Catch::Approx(0.0).margin(1e-4));
+    REQUIRE(naive.sup() == Catch::Approx(2.0).margin(1e-4));
+    REQUIRE(tightened.inf() == Catch::Approx(0.0).margin(1e-4));
+    REQUIRE(tightened.sup() == Catch::Approx(2.0).margin(1e-4));
+}
+
 TEST_CASE("TightenRange - constant tree matches naive exactly (no variables)", "[range_tightening]")
 {
     auto tree = Operon::Tree({Const(2.5)}).UpdateNodes();
