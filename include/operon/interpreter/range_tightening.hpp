@@ -29,6 +29,19 @@ OPERON_EXPORT auto TightenRange(
     Operon::Span<Operon::Scalar const> coeff
 ) -> IntervalEvaluator::Interval;
 
+// Prototype: recursively bisects the domain on the variable whose gradient
+// interval straddles zero the most (sign-ambiguous, where TightenRange is
+// loosest), taking the union of both sub-box results, intersected with the
+// whole-box TightenRange result. Never less sound, and never worse than
+// TightenRange alone; stops when maxDepth is reached or no variable's
+// gradient is sign-ambiguous.
+OPERON_EXPORT auto TightenRangeBisected(
+    Tree const& tree,
+    IntervalEvaluator::DomainMap domains,
+    Operon::Span<Operon::Scalar const> coeff,
+    int maxDepth = 4
+) -> IntervalEvaluator::Interval;
+
 } // namespace Operon
 
 #endif
