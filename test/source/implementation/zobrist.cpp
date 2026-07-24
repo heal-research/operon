@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <thread>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include "../operon_test.hpp"
@@ -265,6 +267,177 @@ TEST_CASE("Zobrist - different Optimize flags yield different hashes", "[zobrist
     Tree const tree2 = Tree({ c2, Util::MakeOp<BuiltinOp::Sin>() }).UpdateNodes();
 
     REQUIRE(cache.ComputeHash(tree1) != cache.ComputeHash(tree2));
+}
+
+TEST_CASE("Zobrist - maxAge disabled (default) never expires entries", "[zobrist]")
+{
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    Zobrist cache(rng, MaxLength, inputs); // maxAge defaults to 0 = disabled
+
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    auto tree = creator(rng, 10, 1, MaxLength);
+    auto hash = cache.ComputeHash(tree);
+
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    cache.Insert(hash, val);
+
+    // advance the clock far beyond any plausible age and confirm the entry
+    // is still considered fresh, since maxAge == 0 disables expiry entirely.
+    cache.SetGeneration(1'000'000);
+
+    Operon::Vector<Operon::Scalar> retrieved;
+    REQUIRE(cache.TryGet(hash, retrieved));
+    REQUIRE(cache.Size() == 1);
+}
+
+TEST_CASE("Zobrist - entry older than maxAge is treated as a miss", "[zobrist]")
+{
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    constexpr std::size_t maxAge = 5;
+    Zobrist cache(rng, MaxLength, inputs, maxAge);
+
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    auto tree = creator(rng, 10, 1, MaxLength);
+    auto hash = cache.ComputeHash(tree);
+
+    cache.SetGeneration(0);
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    cache.Insert(hash, val); // stamped with generation 0
+
+    cache.SetGeneration(maxAge + 1); // strictly older than maxAge
+
+    Operon::Vector<Operon::Scalar> retrieved;
+    REQUIRE_FALSE(cache.TryGet(hash, retrieved));
+}
+
+TEST_CASE("Zobrist - a stale-triggered miss actually removes the entry", "[zobrist]")
+{
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    constexpr std::size_t maxAge = 5;
+    Zobrist cache(rng, MaxLength, inputs, maxAge);
+
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    auto tree = creator(rng, 10, 1, MaxLength);
+    auto hash = cache.ComputeHash(tree);
+
+    cache.SetGeneration(0);
+    Operon::Vector<Operon::Scalar> const val = { Operon::Scalar{0.1} };
+    cache.Insert(hash, val);
+    REQUIRE(cache.Size() == 1);
+
+    cache.SetGeneration(maxAge + 1);
+
+    Operon::Vector<Operon::Scalar> retrieved;
+    REQUIRE_FALSE(cache.TryGet(hash, retrieved)); // triggers the expiry-erase
+    REQUIRE(cache.Size() == 0);
+
+    // A subsequent lookup is a plain miss against an empty cache, not a
+    // repeated expiry - Lookups() should reflect two calls, no more erasing.
+    REQUIRE_FALSE(cache.TryGet(hash, retrieved));
+    REQUIRE(cache.Size() == 0);
+}
+
+TEST_CASE("Zobrist - EraseIf generation guard preserves a value refreshed between observation and erase", "[zobrist]")
+{
+    // Deterministic, single-threaded repro of the exact race TryGet's
+    // conditional EraseIf guards against: thread A observes a stale entry
+    // and records its InsertGeneration, but before A's erase runs, another
+    // thread erases that same entry and a third thread recreates it fresh
+    // (new InsertGeneration). A's erase, guarded by the generation it
+    // originally observed, must not remove the fresh entry that replaced it.
+    ZobristCache<FitnessEntry> cache;
+    Operon::Hash const hash = Operon::Hasher{}("erase-guard-repro");
+
+    cache.LazyEmplace(hash,
+        [](FitnessEntry&) {},
+        [](FitnessEntry& e) { e.Value = { Operon::Scalar{0.1} }; e.InsertGeneration = 5; });
+
+    // Thread A "observes" the entry while it's still stale at generation 5.
+    constexpr std::uint32_t observedGen = 5;
+
+    // Before A's erase runs: another thread erases the entry, then a third
+    // thread inserts a fresh one for the same hash at a later generation.
+    cache.EraseIf(hash, [](FitnessEntry const&) { return true; });
+    cache.LazyEmplace(hash,
+        [](FitnessEntry&) {},
+        [](FitnessEntry& e) { e.Value = { Operon::Scalar{0.9} }; e.InsertGeneration = 6; });
+
+    // A's delayed erase, guarded by the generation it originally observed -
+    // this must be a no-op now that the entry has moved on to generation 6.
+    cache.EraseIf(hash, [&](FitnessEntry const& e) { return e.InsertGeneration == observedGen; });
+
+    REQUIRE(cache.Size() == 1);
+    bool found = false;
+    cache.IfContains(hash, [&](FitnessEntry const& e) {
+        found = true;
+        REQUIRE(e.InsertGeneration == 6);
+        REQUIRE(e.Value[0] == Operon::Scalar{0.9});
+    });
+    REQUIRE(found);
+}
+
+TEST_CASE("Zobrist - concurrent readers racing an expiry-erase-then-reinsert never lose a fresh value", "[zobrist]")
+{
+    // Two reader threads (not one) are needed to exercise the guard's actual
+    // race under real scheduling: with a single reader, that reader is the
+    // only thread that can ever erase an entry, so "another thread erased it
+    // first, then it got recreated fresh before my erase ran" can never
+    // happen - see the deterministic "EraseIf generation guard..." test
+    // above for a targeted, guaranteed repro of that exact interleaving.
+    // This test additionally stresses it under real thread scheduling.
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    constexpr std::size_t maxAge = 1;
+    Zobrist cache(rng, MaxLength, inputs, maxAge);
+
+    BalancedTreeCreator const creator{&pset, inputs, /* bias= */ 0.0, MaxLength};
+    auto tree = creator(rng, 10, 1, MaxLength);
+    auto hash = cache.ComputeHash(tree);
+
+    cache.SetGeneration(0);
+    Operon::Vector<Operon::Scalar> const initial = { Operon::Scalar{0.1} };
+    cache.Insert(hash, initial);
+
+    std::atomic<bool> stop{false};
+    Operon::Vector<Operon::Scalar> const fresh = { Operon::Scalar{0.9} };
+
+    // Advance generations and keep re-inserting a fresh value for the same
+    // hash, racing against two reader threads that will observe stale
+    // entries and attempt to erase them - with two readers, one can erase
+    // an entry the other already observed as stale, before the other's own
+    // erase runs.
+    std::thread writer([&]() {
+        for (std::size_t g = 1; g < 2000; ++g) {
+            cache.SetGeneration(g);
+            cache.Insert(hash, fresh); // no-op if entry already fresh (LazyEmplace keeps existing)
+            if (stop.load(std::memory_order_relaxed)) { break; }
+        }
+    });
+
+    auto readerLoop = [&]() {
+        Operon::Vector<Operon::Scalar> tmp;
+        for (int i = 0; i < 2000; ++i) {
+            std::ignore = cache.TryGet(hash, tmp); // may observe stale + erase; must not crash
+        }
+    };
+    std::thread reader1(readerLoop);
+    std::thread reader2([&]() {
+        readerLoop();
+        stop.store(true, std::memory_order_relaxed);
+    });
+
+    writer.join();
+    reader1.join();
+    reader2.join();
+
+    // The hash must still resolve to *some* value afterward - a fresh
+    // Insert() right after an expiry-erase must never be permanently lost.
+    cache.Insert(hash, fresh);
+    Operon::Vector<Operon::Scalar> final;
+    REQUIRE(cache.TryGet(hash, final));
 }
 
 } // namespace Operon::Test

@@ -189,6 +189,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("threads", "Number of threads to use for parallelism", cxxopts::value<size_t>()->default_value("0"))
         ("timelimit", "Time limit after which the algorithm will terminate", cxxopts::value<size_t>()->default_value(std::to_string(std::numeric_limits<size_t>::max())))
         ("transposition-cache", "Cache fitness values keyed by Zobrist hash of tree structure; most effective with coefficient optimization enabled", cxxopts::value<bool>()->default_value("false"))
+        ("cache-max-age", "Expire transposition cache entries older than this many generations (0 = never expire); only effective with --transposition-cache", cxxopts::value<size_t>()->default_value("0"))
         ("pareto-front", "Write rank-0 Pareto front to this JSON file after the run (only effective with Pareto-based algorithms, e.g. operon_nsgp)", cxxopts::value<std::string>())
         ("model-selection", "Pareto front model selection: obj0 (lowest first objective), mdl, bic, aic", cxxopts::value<std::string>()->default_value("obj0"))
         ("mdl-likelihood", "Likelihood for MDL/BIC/AIC model selection: gaussian or poisson", cxxopts::value<std::string>()->default_value("gaussian"))

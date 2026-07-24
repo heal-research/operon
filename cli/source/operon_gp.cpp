@@ -174,7 +174,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         if (jitMode.empty()) {
             if (result["transposition-cache"].as<bool>()) {
                 Operon::RandomGenerator cacheRng(config.Seed);
-                zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
+                zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
                 config.Cache = zobrist.get();
             }
             evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
