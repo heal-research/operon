@@ -40,7 +40,8 @@ auto MakeJitObjects(
     int                         jitMaxLength,
     std::size_t                 jitMinVisits,
     int                         maxLength,
-    std::size_t                 seed
+    std::size_t                 seed,
+    std::size_t                 cacheMaxAge = 0
 ) -> JitObjects;
 
 } // namespace Operon::CLI

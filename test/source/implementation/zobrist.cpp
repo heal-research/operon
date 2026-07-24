@@ -342,13 +342,21 @@ TEST_CASE("Zobrist - a stale-triggered miss actually removes the entry", "[zobri
 
 TEST_CASE("Zobrist - an entry inserted after the clock is set to a high starting value (warm resume) is not immediately stale", "[zobrist]")
 {
-    // Regression test: on --resume, GeneticAlgorithmBase::Generation() is
+    // This verifies the Zobrist-level contract that CLI warm-resume relies
+    // on (SetGeneration() before re-caching avoids the immediate-eviction
+    // bug described below) - it does NOT regression-test the CLI wiring
+    // itself. That fix lives in cli/source/util.cpp's ResumeFromCheckpoint
+    // (calls cache->SetGeneration(cp->Generation) right after restoring
+    // algo.Generation(), before the resumed population is re-evaluated);
+    // cli/source/util.cpp isn't linked into this test binary (see
+    // test/CMakeLists.txt), so that call site has no automated regression
+    // coverage - only this narrower API-level guarantee does.
+    //
+    // Background: on --resume, GeneticAlgorithmBase::Generation() is
     // restored from the checkpoint, but a freshly constructed Zobrist always
-    // starts at clock_ == 0. CLI resume code must call SetGeneration() with
-    // the checkpoint's generation *before* re-evaluating/re-caching the
-    // resumed population, or those entries get stamped generation 0 and read
-    // as ancient the moment the GA loop advances the clock past the
-    // checkpoint's generation.
+    // starts at clock_ == 0. Without the fix above, resumed entries get
+    // stamped generation 0 and read as ancient the moment the GA loop
+    // advances the clock past the checkpoint's generation.
     auto [ds, inputs, pset] = MakeSetup();
     Operon::RandomGenerator rng(Seed);
     constexpr std::size_t maxAge = 5;
@@ -393,8 +401,11 @@ TEST_CASE("Zobrist - Clear resets the generation clock", "[zobrist]")
     cache.Clear();
     REQUIRE(cache.Size() == 0);
 
-    // A new "run" starts its own generation count from 0.
-    cache.SetGeneration(0);
+    // A new "run" starts its own generation count from 0. Deliberately do
+    // NOT call SetGeneration(0) here - the whole point is to check that
+    // Clear() itself already reset the clock; if it didn't, this Insert
+    // would be stamped 0 while clock_ is still 500, and TryGet below would
+    // immediately (falsely) evict it as 500 generations stale.
     cache.Insert(hash, val);
 
     Operon::Vector<Operon::Scalar> retrieved;

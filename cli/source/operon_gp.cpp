@@ -185,7 +185,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                 result["objective"].as<std::string>(), scale,
                 result["jit-max-length"].as<int>(),
                 result["jit-min-visits"].as<std::size_t>(),
-                static_cast<int>(maxLength), config.Seed);
+                static_cast<int>(maxLength), config.Seed,
+                result["cache-max-age"].as<std::size_t>());
             if (jobj.Error) { return EXIT_FAILURE; }
             evaluator     = std::move(jobj.Evaluator);
             jacEvalStorage = std::move(jobj.OptimizerJacEval);

@@ -19,12 +19,13 @@ auto MakeJitObjects(
     int                           maxLength,
     int                           jitMaxLength,
     std::size_t                   jitMinVisits,
-    std::size_t                   seed
+    std::size_t                   seed,
+    std::size_t                   cacheMaxAge
 ) -> JitObjects {
     JitObjects out;
 
     Operon::RandomGenerator cacheRng(seed);
-    auto jz   = std::make_unique<JitZobrist>(cacheRng, maxLength, problem.GetInputs());
+    auto jz   = std::make_unique<JitZobrist>(cacheRng, maxLength, problem.GetInputs(), cacheMaxAge);
     auto* jzp = jz.get();
     out.Zobrist = std::move(jz);
 

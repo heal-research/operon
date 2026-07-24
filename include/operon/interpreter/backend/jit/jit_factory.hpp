@@ -45,7 +45,8 @@ OPERON_EXPORT auto MakeJitObjects(
     int                       maxLength,
     int                       jitMaxLength,
     std::size_t               jitMinVisits,
-    std::size_t               seed
+    std::size_t               seed,
+    std::size_t               cacheMaxAge = 0
 ) -> JitObjects;
 
 } // namespace Operon::JIT

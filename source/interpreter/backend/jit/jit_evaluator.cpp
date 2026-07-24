@@ -18,8 +18,8 @@
 namespace Operon::JIT {
 
 JitZobrist::JitZobrist(Operon::RandomGenerator& rng, int maxLength,
-                       Operon::Span<Operon::Hash const> variableHashes)
-    : Zobrist(rng, maxLength, variableHashes)
+                       Operon::Span<Operon::Hash const> variableHashes, std::size_t maxAge)
+    : Zobrist(rng, maxLength, variableHashes, maxAge)
 {}
 
 
