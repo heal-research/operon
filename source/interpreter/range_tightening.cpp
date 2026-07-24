@@ -28,6 +28,17 @@ namespace {
         if (n.Arity == 2) { return HasBinarySymbolicDeriv(n.HashValue); }
         return true;
     }
+
+    auto EvaluateGradientColumn(
+        VariableGradientDag const& gdag, std::size_t root,
+        IntervalEvaluator::DomainMap const& domains, Operon::Span<Operon::Scalar const> coeff
+    ) -> Interval
+    {
+        Operon::Vector<Node> subnodes(
+            gdag.Nodes.cbegin(), gdag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(root) + 1);
+        Tree const gradTree{std::move(subnodes)};
+        return IntervalEvaluator(&gradTree, domains).Evaluate(coeff);
+    }
 } // namespace
 
 auto TightenRange(
@@ -70,11 +81,7 @@ auto TightenRange(
         auto const& [lo, hi] = dit->second;
         auto const m = Interval{lo, hi}.mid();
 
-        Operon::Vector<Node> subnodes(
-            gdag.Nodes.cbegin(), gdag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(root) + 1);
-        Tree const gradTree{std::move(subnodes)};
-
-        auto const gradInterval = IntervalEvaluator(&gradTree, domains).Evaluate(coeff);
+        auto const gradInterval = EvaluateGradientColumn(gdag, root, domains, coeff);
         auto const xkMinusM = pappus::ops::sub<Scalar>(
             pappus::ops::variable<Scalar>(lo, hi), pappus::ops::constant<Scalar>(m));
         meanValue = pappus::ops::add<Scalar>(meanValue, pappus::ops::mul<Scalar>(gradInterval, xkMinusM));
@@ -82,6 +89,53 @@ auto TightenRange(
 
     if (meanValue.is_empty()) { return naive; }
     return naive & meanValue;
+}
+
+auto TightenRangeBisected(
+    Tree const& tree,
+    IntervalEvaluator::DomainMap domains,
+    Operon::Span<Operon::Scalar const> coeff,
+    int maxDepth
+) -> Interval
+{
+    auto const result = TightenRange(tree, domains, coeff);
+    if (maxDepth <= 0 || result.is_empty()) { return result; }
+
+    auto const gdag = BuildVariableGradientDag(tree, coeff);
+    if (gdag.Variables.empty()) { return result; }
+
+    // Pick the variable whose gradient interval straddles zero with the
+    // largest diameter: it's both sign-ambiguous (mean-value form is
+    // loosest there) and contributes the most to that ambiguity.
+    Operon::Hash splitVar{};
+    Scalar bestDiameter{0};
+    bool found = false;
+    for (std::size_t k = 0; k < gdag.Variables.size(); ++k) {
+        auto const root = gdag.Roots[k];
+        if (root == NoGrad) { continue; }
+        auto const gradInterval = EvaluateGradientColumn(gdag, root, domains, coeff);
+        if (!gradInterval.contains(Scalar{0})) { continue; }
+        auto const d = gradInterval.diameter();
+        if (d > bestDiameter) { bestDiameter = d; splitVar = gdag.Variables[k]; found = true; }
+    }
+    if (!found) { return result; } // every gradient is sign-definite already
+
+    auto const dit = domains.find(splitVar);
+    if (dit == domains.end()) { return result; }
+    auto const [lo, hi] = dit->second;
+    auto const mid = Interval{lo, hi}.mid();
+
+    auto leftDomains = domains;
+    leftDomains[splitVar] = {lo, mid};
+    auto rightDomains = domains;
+    rightDomains[splitVar] = {mid, hi};
+
+    auto const left  = TightenRangeBisected(tree, leftDomains, coeff, maxDepth - 1);
+    auto const right = TightenRangeBisected(tree, rightDomains, coeff, maxDepth - 1);
+    auto const unioned = left | right;
+
+    if (unioned.is_empty()) { return result; }
+    return result & unioned;
 }
 
 } // namespace Operon
