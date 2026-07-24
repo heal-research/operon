@@ -47,6 +47,9 @@ void RegisterIntervalBuiltins()
         unary.Register(Operon::Hash(BuiltinOp::Ceil),    [](Interval const& v) { return pappus::ops::ceil<Scalar>(v); });
 
         binary.Register(Operon::Hash(BuiltinOp::Pow), [](Interval const& a, Interval const& b) {
+            // degenerate exponent: dispatch through pow(interval, Scalar), which
+            // detects an integer exponent and avoids restricting the base to >= 0
+            if (b.inf() == b.sup()) { return pappus::ops::pow<Scalar>(a, b.inf()); }
             return pappus::ops::pow<Scalar>(a, b);
         });
         binary.Register(Operon::Hash(BuiltinOp::Aq), [](Interval const& a, Interval const& b) {
