@@ -583,8 +583,6 @@ TEST_CASE("BuildVariableGradientDag - single variable leaf: d(w*x)/dx = w", "[tr
     REQUIRE(dag.Roots.size() == 1);
     REQUIRE(dag.Roots[0] != NoGrad);
 
-    // d(w * X)/dX = w: the derivative node is the node's own weight as a
-    // constant, NOT another Variable node (that would be d(w*X)/dw's answer).
     auto& dn = dag.Nodes[dag.Roots[0]];
     CHECK(dn.IsConstant());
     CHECK(dn.Value == Catch::Approx(2.5F));
@@ -592,15 +590,6 @@ TEST_CASE("BuildVariableGradientDag - single variable leaf: d(w*x)/dx = w", "[tr
 
 TEST_CASE("BuildVariableGradientDag - Add(x,x): two occurrences of the same variable sum into one root", "[tree_diff]")
 {
-    // Both occurrences' partials are nonzero here, so the root is an actual
-    // Add(Const(1.5), Const(1.5)) sub-expression, not folded into a single
-    // Constant node - evaluate it (as EvalDagVariableGradient/EvalDagJacobian
-    // do) rather than reading dn.Value directly. Evaluating requires a
-    // dataset column matching the tree's actual Variable HashValue: the
-    // interpreter evaluates every node in the dag's original-tree prefix
-    // (not just ones reachable from the derivative root), so x1/x2's
-    // HashValue must resolve to a real dataset column even though the
-    // derivative expression itself never references them via Ref.
     std::vector<std::string> const names{"X1"};
     auto const xHash = Hasher{}(names[0]);
 
@@ -658,38 +647,48 @@ TEST_CASE("BuildVariableGradientDag - non-variable-only tree (Add of two constan
     CHECK(dag.Roots.empty());
 }
 
+TEST_CASE("BuildVariableGradientDag - a variable behind an undifferentiated op yields NoGrad, not a wrong nonzero value", "[tree_diff]")
+{
+    SECTION("abs(X) alone: the only occurrence is undifferentiated") {
+        Operon::Vector<Node> nodes;
+        nodes.push_back(Node{NodeType::Variable});
+        nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Abs), 1));
+        Tree tree{nodes};
+
+        auto dag = BuildVariableGradientDag(tree);
+        REQUIRE(dag.Variables.size() == 1);
+        REQUIRE(dag.Roots.size() == 1);
+        CHECK(dag.Roots[0] == NoGrad);
+    }
+
+    SECTION("Add(X, abs(X)): one differentiated occurrence, one not") {
+        Operon::Vector<Node> nodes;
+        nodes.push_back(Node{NodeType::Variable});
+        nodes.push_back(Node{NodeType::Variable});
+        nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Abs), 1));
+        nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
+        Tree tree{nodes};
+
+        auto dag = BuildVariableGradientDag(tree);
+        REQUIRE(dag.Variables.size() == 1); // both leaves share the default hash: one variable
+        REQUIRE(dag.Roots.size() == 1);
+        CHECK(dag.Roots[0] != NoGrad); // incomplete, not absent - the actual hazard, not a bug here
+    }
+}
+
 TEST_CASE("BuildVariableGradientDag correctness vs finite differences - random trees", "[tree_diff]")
 {
-    // Row-wise comparison (skip individual non-finite rows, tolerate a
-    // divergence rate), mirroring "BuildHessianDag correctness vs finite
-    // differences - random trees" above rather than EvalDagJacobian's
-    // whole-column-sum check: JacRev and BuildJacobianDag evaluate the SAME
-    // sub-expressions through the SAME backend, so a domain singularity
-    // trips both at the same rows. Here, the FD estimate perturbs the
-    // dataset and re-evaluates the ORIGINAL tree, while the symbolic
-    // gradient evaluates a DIFFERENT derivative sub-expression (e.g. a
-    // quotient rule's b^2 denominator) - singularities don't necessarily
-    // line up row-for-row, so a whole-column finiteness check conflates
-    // "genuinely differs" with "hit an unrelated domain edge on some row."
+    // Row-wise comparison, mirroring BuildHessianDag's own FD test.
     constexpr auto nRows  = 100;
     constexpr auto nCols  = 5;
     constexpr auto nTrees = 500;
     constexpr auto maxLen = 30;
-    // A coarser 1e-2 step measured ~25% divergence here, entirely FD
-    // truncation error (confirmed by cross-checking against automatic
-    // differentiation, not a BuildVariableGradientDag bug) - maxLen=30
-    // trees can compose enough nonlinearity (nested trig/exp/pow) that a
-    // central difference's O(h^2 * f''') error term is non-negligible at
-    // 1e-2. Matches the Hessian FD test's own choice of step below.
     constexpr auto fdStep = 1e-3F;
     constexpr auto tol    = 5e-2F;
-    constexpr auto maxFailRate = 0.15; // same tolerance as the Hessian FD test
+    constexpr auto maxFailRate = 0.15;
 
     Operon::RandomGenerator rng(45UL);
 
-    // Build the dataset by hand (rather than Util::RandomDataset) so
-    // individual variable columns can be perturbed for central finite
-    // differences without touching the others.
     std::vector<std::string> names(nCols);
     for (int i = 0; i < nCols; ++i) { names[static_cast<std::size_t>(i)] = fmt::format("X{}", i + 1); }
     std::uniform_real_distribution<Operon::Scalar> valDist(-1.F, +1.F);

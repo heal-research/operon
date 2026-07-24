@@ -288,31 +288,15 @@ void RegisterBuiltinSymbolicDerivs()
     static_cast<void>(registered);
 }
 
-// What Deriv() differentiates w.r.t.: either a single node index (an
-// optimizable coefficient's own weight - BuildJacobianDag/BuildHessianDag's
-// use case) or a Variable's identity hash (every occurrence of that
-// variable across the whole tree - BuildVariableGradientDag's use case).
-// Only the leaf cases below inspect `Kind`; every structural
-// (Add/Mul/Sub/Div/Pow/registry) case threads `target` through unchanged,
-// so both differentiation modes share the exact same chain-rule/product-
-// rule/sum logic.
+// Only the leaf cases inspect Kind; every structural case threads target
+// through unchanged, shared between both differentiation modes.
 struct DerivTarget {
     enum class Kind : std::uint8_t { Coefficient, VariableValue };
     Kind kind;
     std::size_t index{};    // valid when kind == Coefficient
     Operon::Hash hash{};    // valid when kind == VariableValue
-    // VariableValue mode only: node i's *actual* weight, matching whatever
-    // coeff span the caller intends to evaluate the resulting dag with
-    // (orig[i].Optimize ? coeff[its own slot] : orig[i].Value) - empty means
-    // "use orig[i].Value directly" (the caller has no live coeff, or every
-    // node's weight is fixed). This exists because, unlike every other leaf
-    // case in Deriv() (which only ever emit a placeholder - 1, or an
-    // unweighted Variable - resolved later at evaluation time), the
-    // VariableValue leaf needs the numeric weight *now*, at dag-build time.
-    // Without this, an Optimize==true variable node's weight would be
-    // permanently baked from orig[i].Value even when the caller later
-    // evaluates the dag against a different (e.g. freshly locally-searched)
-    // coeff span - silently stale, not just imprecise.
+    // VariableValue mode: node i's live weight (coeff-derived if Optimize),
+    // empty means use orig[i].Value directly.
     Operon::Span<Operon::Scalar const> effectiveValues{};
 };
 
@@ -341,9 +325,6 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
 
     // --- leaves ---
     if (n.IsConstant()) {
-        // A plain Constant never depends on a Variable's value, regardless
-        // of mode; only the Coefficient case (differentiating w.r.t. this
-        // very node's own weight) can be nonzero.
         if (target.kind == DerivTarget::Kind::Coefficient && i == target.index) {
             return GetConst(dag, memo, h, Scalar{1});
         }
@@ -351,16 +332,11 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     }
     if (n.IsVariable()) {
         if (target.kind == DerivTarget::Kind::Coefficient) {
-            // d(w * X_i)/dw = X_i when differentiating w.r.t. this node's own weight.
+            // d(w * X_i)/dw = X_i
             if (n.Optimize && i == target.index) { return GetVar(dag, memo, h, orig[i], i); }
             return Zero;
         }
-        // VariableValue mode: d(w * X)/dX = w for every occurrence of this
-        // variable (matched by identity hash, not by node index) -
-        // deliberately NOT GetVar() (which would return the unweighted
-        // variable itself, i.e. d(w*x)/dw's answer, not d(w*x)/dx's).
-        // Use the caller's live coeff-derived weight when supplied, since
-        // orig[i].Value can be stale relative to it (see DerivTarget).
+        // d(w * X)/dX = w; not GetVar (that's d(w*x)/dw's answer)
         if (n.HashValue == target.hash) {
             auto const w = target.effectiveValues.empty() ? n.Value : target.effectiveValues[i];
             return GetConst(dag, memo, h, w);
@@ -615,15 +591,9 @@ auto DifferentiateFirstOrder(
     return constants;
 }
 
-// Analogous first-pass logic for BuildVariableGradientDag: copy original
-// nodes into `dag`, build identity hashes, collect the distinct Variable
-// identity hashes appearing in the tree (in first-occurrence order), and
-// differentiate the tree root w.r.t. each one. Unlike
-// DifferentiateFirstOrder's per-node-instance constants, every occurrence of
-// a given variable is handled within a single Deriv() call per distinct
-// hash - the existing Add/Mul/Sub/Div/Pow/registry cases already sum
-// multiple non-Zero child derivatives, so repeated occurrences of the same
-// variable across different branches are summed automatically.
+// DifferentiateFirstOrder's analog for BuildVariableGradientDag: collects
+// distinct Variable hashes (not per-instance) and differentiates once per
+// distinct hash.
 auto DifferentiateVariableGradient(
     Tree const& tree, Nodes& dag, Memo& memo, Hashes& h,
     Operon::Vector<Operon::Hash>& variables, Operon::Vector<std::size_t>& roots,
@@ -653,13 +623,8 @@ auto DifferentiateVariableGradient(
         }
     }
 
-    // If the caller supplied a live coeff span, precompute each node's
-    // *actual* weight the same way IntervalEvaluator/Interpreter do
-    // (Optimize==true consumes the next coeff slot, in node order) so a
-    // Variable leaf's own weight - baked as a numeric Constant by Deriv()'s
-    // VariableValue case - matches what evaluating the resulting dag with
-    // this same coeff will actually use, not whatever orig[i].Value happens
-    // to hold right now.
+    // Precompute each node's live weight from coeff, matching how
+    // IntervalEvaluator/Interpreter consume it (Optimize==true nodes in order).
     Operon::Vector<Operon::Scalar> effectiveValues;
     if (!coeff.empty()) {
         effectiveValues.resize(n);
