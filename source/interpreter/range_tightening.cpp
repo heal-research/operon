@@ -17,16 +17,21 @@ namespace {
     // Mirrors Deriv()'s dispatch in tree_diff.cpp; must stay in sync with it.
     auto IsSymbolicallyDifferentiable(Node const& n) -> bool
     {
-        if (n.IsAddition() || n.IsMultiplication() || n.IsSubtraction()
-            || n.IsDivision() || n.IsPow()) {
-            return true;
-        }
+        // Add/Mul/Sub handle arbitrary arity in Deriv(); Div only arity 1-2
+        // (Deriv() explicitly returns Zero for arity > 2); Pow is hardcoded
+        // for exactly arity 2 (indexes children[1] unconditionally).
+        if (n.IsAddition() || n.IsMultiplication() || n.IsSubtraction()) { return true; }
+        if (n.IsDivision()) { return n.Arity <= 2; }
+        if (n.IsPow()) { return n.Arity == 2; }
         if (n.IsAq() || n.IsPowabs() || n.IsOp<BuiltinOp::Fmin, BuiltinOp::Fmax>()) {
             return false;
         }
         if (n.Arity == 1) { return HasUnarySymbolicDeriv(n.HashValue); }
         if (n.Arity == 2) { return HasBinarySymbolicDeriv(n.HashValue); }
-        return true;
+        // Deriv() itself falls through to Zero here (no hardcoded or
+        // registered rule can apply to arity >= 3 beyond Add/Mul/Sub/Div
+        // above) - sound-by-default, matching that.
+        return false;
     }
 
     auto EvaluateGradientColumn(
