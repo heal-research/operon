@@ -29,6 +29,7 @@
 #include "operon/core/dataset.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/tree_diff.hpp"
+#include "operon/hash/zobrist.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/interpreter/range_tightening.hpp"
@@ -260,6 +261,38 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     fmt::print("Avg TightenRange time:          {:.3f} us  ({:.1f}x naive)\n", tightAvgUs, tightAvgUs / std::max(naiveAvgUs, 1e-9));
     fmt::print("Avg TightenRangeBisected time:  {:.3f} us  ({:.1f}x naive)\n", bisectedAvgUs, bisectedAvgUs / std::max(naiveAvgUs, 1e-9));
     fmt::print("Soundness violations:     {}  (must be 0)\n", stats.soundnessViolations);
+
+    // === RangeCache benchmark ===
+    // Real usage pattern: the same (tree, coeff) pair recurs across
+    // multiple TightenRangeBisected calls - e.g. an elite individual
+    // surviving unchanged across generations, or a Pareto front that's
+    // re-evaluated at every reporting step while mostly unchanged. Model
+    // that here by running the same population through the cache twice:
+    // the first pass is necessarily cold (every entry a miss), the second
+    // is fully warm (every individual's tree+coeff+domain is now cached).
+    Operon::Zobrist zobrist(rng, static_cast<int>(MaxLength), inputs);
+    Operon::RangeCache cache(zobrist);
+
+    auto const runPass = [&]() -> double {
+        auto const start = std::chrono::steady_clock::now();
+        for (auto const& ind : gp.Individuals()) {
+            Operon::TightenRangeBisected(ind.Genotype, domains, ind.Genotype.GetCoefficients(), 4, &cache);
+        }
+        auto const end = std::chrono::steady_clock::now();
+        return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+    };
+
+    auto const coldUs = runPass();
+    auto const cacheSizeAfterCold = cache.Size();
+    auto const warmUs = runPass();
+
+    fmt::print("\n=== RangeCache benchmark (same population, cold vs. warm pass) ===\n");
+    fmt::print("Population size:              {}\n", stats.total);
+    fmt::print("Unique (tree,coeff) entries:  {}\n", cacheSizeAfterCold);
+    fmt::print("Cold pass (every entry a miss): {:.1f} us total ({:.3f} us/tree)\n",
+        coldUs, coldUs / static_cast<double>(std::max(stats.total, std::size_t{1})));
+    fmt::print("Warm pass (every entry cached): {:.1f} us total ({:.3f} us/tree)  ({:.1f}x speedup)\n",
+        warmUs, warmUs / static_cast<double>(std::max(stats.total, std::size_t{1})), coldUs / std::max(warmUs, 1e-9));
 
     return stats.soundnessViolations == 0 ? 0 : 1;
 }
