@@ -157,42 +157,21 @@ struct HessianDag {
 
 OPERON_EXPORT auto BuildHessianDag(Tree const& tree) -> HessianDag;
 
-// A flat postfix array containing the original tree plus symbolic partial
-// derivatives w.r.t. each distinct input Variable's *value* (grouped by
-// Node::HashValue, the variable's identity), as opposed to JacobianDag's
-// per-instance derivatives w.r.t. each optimizable coefficient *weight*.
-// Every occurrence of a given variable within the tree contributes to (and
-// is summed into) a single root for that variable. Shared subexpressions
-// across gradient columns are deduplicated via hash-consing; shared nodes
-// are referenced with NodeType::Ref. The tree does not need to have been
-// hashed before calling BuildVariableGradientDag.
+// Like JacobianDag, but roots are the gradient w.r.t. each distinct input
+// Variable's value (grouped by Node::HashValue), not per-instance w.r.t.
+// each optimizable coefficient weight. All occurrences of one variable sum
+// into a single root.
 struct VariableGradientDag {
-    Operon::Vector<Node> Nodes;             // original nodes [0..OriginalSize-1] + derivative nodes
-    std::size_t OriginalSize{};             // number of nodes in the source tree
-    Operon::Vector<Operon::Hash> Variables; // Variables[k] = the variable's identity hash for Roots[k]
-    Operon::Vector<std::size_t> Roots;      // Roots[k] = dag index of dF/d(Variables[k]); SIZE_MAX means zero
+    Operon::Vector<Node> Nodes;
+    std::size_t OriginalSize{};
+    Operon::Vector<Operon::Hash> Variables; // Variables[k] pairs with Roots[k]
+    Operon::Vector<std::size_t> Roots;      // SIZE_MAX means zero
 };
 
-// Build a DAG containing the original tree plus one symbolic partial
-// derivative per distinct input Variable appearing in the tree (grouped by
-// Node::HashValue, not by tree position) - i.e. the gradient of the tree's
-// output w.r.t. each of its input variables' *values*. Every occurrence of
-// a given variable contributes to (and is summed into) that variable's
-// single root, unlike BuildJacobianDag, which produces one column per node
-// *instance* and differentiates w.r.t. a Variable node's optimizable
-// *weight* rather than its value. The tree does not need to have been
-// hashed before calling this.
-//
-// `coeff` is optional (empty by default) and follows the same convention as
-// Interpreter::Evaluate/IntervalEvaluator::Evaluate: one entry per node with
-// Node::Optimize == true, consumed in node order. Unlike every other
-// leaf case Deriv() handles, a Variable's own weight - needed verbatim as a
-// numeric constant for this differentiation mode, not resolved later at
-// evaluation time - is baked into the dag at build time; if left empty,
-// each Optimize==true Variable node's *current* Node::Value is used, which
-// can silently diverge from whatever coeff the caller later evaluates the
-// resulting dag with. Pass the same coeff you intend to evaluate with
-// whenever any variable's own weight is itself optimizable.
+// Gradient of tree's output w.r.t. each distinct input variable's value.
+// `coeff` (optional) supplies live weights for Optimize==true Variable
+// nodes, since — unlike every other Deriv() leaf case — this one bakes a
+// numeric weight into the dag at build time rather than resolving it later.
 OPERON_EXPORT auto BuildVariableGradientDag(
     Tree const& tree, Operon::Span<Operon::Scalar const> coeff = {}
 ) -> VariableGradientDag;

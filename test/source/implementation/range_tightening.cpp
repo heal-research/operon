@@ -37,13 +37,6 @@ namespace {
 
 TEST_CASE("TightenRange - falls back to naive when a variable's gradient is unsupported (Abs)", "[range_tightening]")
 {
-    // Regression test: Abs is interval-evaluable (naive works fine) but has
-    // no registered symbolic-diff rule, so BuildVariableGradientDag's
-    // "zero" sentinel is ambiguous here - it could mean a genuinely zero
-    // partial, or "couldn't differentiate." Treating it as zero would give
-    // mean-value = {F(0)} = {0} for abs(x) on [-1,1], and naive & {0} would
-    // wrongly collapse the true [0,1] range down to a point. TightenRange
-    // must detect this and return the naive enclosure untouched instead.
     constexpr Operon::Hash X1{1};
     auto absNode = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Abs), 1);
     auto tree = Operon::Tree({Var(X1), absNode}).UpdateNodes();
@@ -60,14 +53,26 @@ TEST_CASE("TightenRange - falls back to naive when a variable's gradient is unsu
     REQUIRE(tightened.sup() == Catch::Approx(naive.sup()).margin(1e-4));
 }
 
+TEST_CASE("TightenRange - falls back to naive when only ONE occurrence of a variable is undifferentiated", "[range_tightening]")
+{
+    constexpr Operon::Hash X1{1};
+    auto tree = Operon::Tree({
+        Var(X1), Var(X1), Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Abs), 1),
+        Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 2),
+    }).UpdateNodes(); // X + abs(X)
+    auto d = Domains();
+    d[X1] = {S{-1}, S{1}};
+    auto const coeff = tree.GetCoefficients();
+
+    auto const naive     = IE(&tree, IE::DomainMap{d}).Evaluate(coeff);
+    auto const tightened = TightenRange(tree, d, coeff);
+
+    REQUIRE(tightened.inf() <= naive.inf() + 1e-4);
+    REQUIRE(tightened.sup() >= naive.sup() - 1e-4);
+}
+
 TEST_CASE("TightenRange - uses the live coeff span for an optimizable variable weight, not stale Node::Value", "[range_tightening]")
 {
-    // Regression test: a Variable node whose own weight is itself
-    // optimizable (Node::Optimize == true) has its *current* Node::Value
-    // baked into the gradient dag unless BuildVariableGradientDag is told
-    // about the live coeff span. Node::Value = 1 here, but coeff = {2} -
-    // if the stale weight were used, the mean-value term would be built
-    // from gradient 1 instead of 2, silently mis-tightening.
     constexpr Operon::Hash X1{1};
     auto v = Var(X1, 1.0);
     v.Optimize = true;
@@ -79,8 +84,6 @@ TEST_CASE("TightenRange - uses the live coeff span for an optimizable variable w
     auto const naive     = IE(&tree, IE::DomainMap{d}).Evaluate(coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
-    // f(x) = 2x over [0,1]: exact range [0, 2], no dependency problem at
-    // all - naive and tightened must both be exact, using the live coeff.
     REQUIRE(naive.inf() == Catch::Approx(0.0).margin(1e-4));
     REQUIRE(naive.sup() == Catch::Approx(2.0).margin(1e-4));
     REQUIRE(tightened.inf() == Catch::Approx(0.0).margin(1e-4));
@@ -110,8 +113,6 @@ TEST_CASE("TightenRange - single linear variable matches naive exactly (no depen
     auto const naive     = IE(&tree, IE::DomainMap{d}).Evaluate(coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
-    // A linear function has no dependency problem at all - mean-value form
-    // is exact, so the intersection with naive changes nothing here.
     REQUIRE(tightened.inf() == Catch::Approx(naive.inf()).margin(1e-4));
     REQUIRE(tightened.sup() == Catch::Approx(naive.sup()).margin(1e-4));
     REQUIRE(tightened.inf() == Catch::Approx(2.0).margin(1e-4));
@@ -120,15 +121,8 @@ TEST_CASE("TightenRange - single linear variable matches naive exactly (no depen
 
 TEST_CASE("TightenRange - classic dependency-problem example x - x*x is tighter than naive", "[range_tightening]")
 {
-    // f(x) = x - x^2 over [0,1]: true range is [0, 0.25] (max at x=0.5).
-    // Naive interval evaluation treats the two occurrences of x as
-    // independent, giving x - x*x = [0,1] - [0,1] = [-1,1] - much looser
-    // than reality. Mean-value form (gradient = 1 - 2x, evaluated over the
-    // interval) gives a materially tighter (though not exact) enclosure.
-    // Postfix layout for "a - b" is [b-subtree, a, Sub] (farther/subtracted
-    // child first, nearer child second - see pappus_backend.cpp's own
-    // "X1 - X2" case for the same convention). Here a = x (third occurrence),
-    // b = x*x (first two occurrences).
+    // f(x) = x - x^2 over [0,1]: true range [0, 0.25]. Postfix "a - b" is
+    // [b-subtree, a, Sub]; here a = x, b = x*x.
     constexpr Operon::Hash X1{1};
     auto tree = Operon::Tree({
         Var(X1), Var(X1), Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2),
@@ -142,12 +136,9 @@ TEST_CASE("TightenRange - classic dependency-problem example x - x*x is tighter 
     auto const naive     = IE(&tree, IE::DomainMap{d}).Evaluate(coeff);
     auto const tightened = TightenRange(tree, d, coeff);
 
-    // Naive is the textbook loose [-1, 1] enclosure.
     REQUIRE(naive.inf() == Catch::Approx(-1.0).margin(1e-4));
     REQUIRE(naive.sup() == Catch::Approx(1.0).margin(1e-4));
 
-    // Tightened must be a genuine improvement (strictly narrower), and it
-    // must still soundly contain the true range [0, 0.25].
     REQUIRE(tightened.inf() > naive.inf());
     REQUIRE(tightened.sup() < naive.sup());
     REQUIRE(tightened.inf() <= 0.0 + 1e-4);
@@ -176,11 +167,6 @@ TEST_CASE("TightenRange - result is always a subset of the naive enclosure", "[r
 
 TEST_CASE("TightenRange - soundness against random point samples on random trees", "[range_tightening]")
 {
-    // The one property that must never break: every actual point evaluation
-    // within the domain box is contained in TightenRange's result. Structural
-    // tests above show it's a real improvement over naive on a known case;
-    // this test instead sweeps random trees + random domains + random points
-    // and checks the soundness invariant holds broadly, not just tightness.
     constexpr auto nTrees  = 300;
     constexpr auto nPoints = 20;
     constexpr auto maxLen  = 20;
