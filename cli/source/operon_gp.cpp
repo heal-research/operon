@@ -174,7 +174,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         if (jitMode.empty()) {
             if (result["transposition-cache"].as<bool>()) {
                 Operon::RandomGenerator cacheRng(config.Seed);
-                zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs());
+                zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
                 config.Cache = zobrist.get();
             }
             evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
@@ -185,7 +185,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                 result["objective"].as<std::string>(), scale,
                 result["jit-max-length"].as<int>(),
                 result["jit-min-visits"].as<std::size_t>(),
-                static_cast<int>(maxLength), config.Seed);
+                static_cast<int>(maxLength), config.Seed,
+                result["cache-max-age"].as<std::size_t>());
             if (jobj.Error) { return EXIT_FAILURE; }
             evaluator     = std::move(jobj.Evaluator);
             jacEvalStorage = std::move(jobj.OptimizerJacEval);
