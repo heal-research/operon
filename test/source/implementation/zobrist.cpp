@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <atomic>
 #include <thread>
 
 #include <catch2/catch_test_macros.hpp>

@@ -5,6 +5,7 @@
 #include "operon/hash/zobrist.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 namespace Operon {
@@ -88,6 +89,10 @@ auto Zobrist::Clear() -> void
 
 auto Zobrist::SetGeneration(std::size_t generation) -> void
 {
+    // A run with more than 2^32-1 generations is not realistic, but a
+    // silent truncation here would otherwise be a very hard-to-diagnose
+    // wraparound bug in the age-based expiry.
+    ENSURE(generation <= std::numeric_limits<std::uint32_t>::max());
     clock_.store(static_cast<std::uint32_t>(generation), std::memory_order_relaxed);
 }
 
