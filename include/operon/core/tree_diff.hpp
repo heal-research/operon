@@ -182,6 +182,19 @@ struct VariableGradientDag {
 // *instance* and differentiates w.r.t. a Variable node's optimizable
 // *weight* rather than its value. The tree does not need to have been
 // hashed before calling this.
-OPERON_EXPORT auto BuildVariableGradientDag(Tree const& tree) -> VariableGradientDag;
+//
+// `coeff` is optional (empty by default) and follows the same convention as
+// Interpreter::Evaluate/IntervalEvaluator::Evaluate: one entry per node with
+// Node::Optimize == true, consumed in node order. Unlike every other
+// leaf case Deriv() handles, a Variable's own weight - needed verbatim as a
+// numeric constant for this differentiation mode, not resolved later at
+// evaluation time - is baked into the dag at build time; if left empty,
+// each Optimize==true Variable node's *current* Node::Value is used, which
+// can silently diverge from whatever coeff the caller later evaluates the
+// resulting dag with. Pass the same coeff you intend to evaluate with
+// whenever any variable's own weight is itself optimizable.
+OPERON_EXPORT auto BuildVariableGradientDag(
+    Tree const& tree, Operon::Span<Operon::Scalar const> coeff = {}
+) -> VariableGradientDag;
 
 } // namespace Operon

@@ -28,14 +28,18 @@ namespace Operon {
 // IntervalEvaluator::Evaluate/Interpreter::Evaluate: one entry per node
 // with Node::Optimize == true, consumed in node order.
 //
-// Domain-error policy: if evaluating the mean-value term hits a domain
-// edge (e.g. a gradient column evaluates to IntervalEvaluator::Interval's
-// empty()), the mean-value term is discarded and the naive enclosure is
-// returned alone, rather than intersecting-to-empty and reporting an
-// unsound/overly aggressive empty result. If the naive enclosure itself is
-// empty, it stays empty (intersection with anything is still empty) — the
-// function is genuinely undefined somewhere in the box, independent of
-// this refinement.
+// Domain-error / unsupported-derivative policy: the naive-only enclosure is
+// returned alone (never intersected) whenever the mean-value term can't be
+// soundly computed - either a gradient column evaluates to
+// IntervalEvaluator::Interval's empty() (a domain edge), or a variable's
+// gradient couldn't be symbolically derived at all (BuildVariableGradientDag
+// returns its "zero" sentinel both for a genuinely zero partial and for
+// "unregistered/excluded op along this path" - e.g. Abs has no symbolic
+// derivative rule - and these can't be told apart from the dag alone, so
+// treating the ambiguous case as zero risks an unsound, too-tight bound).
+// If the naive enclosure itself is empty, it stays empty (intersection with
+// anything is still empty) — the function is genuinely undefined somewhere
+// in the box, independent of this refinement.
 OPERON_EXPORT auto TightenRange(
     Tree const& tree,
     IntervalEvaluator::DomainMap const& domains,
