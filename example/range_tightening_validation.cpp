@@ -70,8 +70,10 @@ struct Stats {
     std::size_t counted{}; // contributes to totalWidthReductionPct
     std::size_t soundnessViolations{};
     double totalWidthReductionPct{};
+    double totalBisectedReductionPct{};
     double naiveNanosTotal{};
     double tightenedNanosTotal{};
+    double bisectedNanosTotal{};
 };
 
 } // namespace
@@ -187,29 +189,34 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         auto const t1 = std::chrono::steady_clock::now();
         auto const tightened = Operon::TightenRange(tree, domains, coeff);
         auto const t2 = std::chrono::steady_clock::now();
+        auto const bisected = Operon::TightenRangeBisected(tree, domains, coeff, 4);
+        auto const t3 = std::chrono::steady_clock::now();
 
         if (debugPrinted < 3) {
             auto gdag = Operon::BuildVariableGradientDag(tree, coeff);
-            fmt::print("[sample] len={:3d} vars={} naive=[{:.4f},{:.4f}] tightened=[{:.4f},{:.4f}]\n",
+            fmt::print("[sample] len={:3d} vars={} naive=[{:.4f},{:.4f}] tightened=[{:.4f},{:.4f}] bisected=[{:.4f},{:.4f}]\n",
                 tree.Length(), gdag.Variables.size(), naive.inf(), naive.sup(),
-                tightened.inf(), tightened.sup());
+                tightened.inf(), tightened.sup(), bisected.inf(), bisected.sup());
             ++debugPrinted;
         }
 
         ++stats.total;
         stats.naiveNanosTotal += static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count());
         stats.tightenedNanosTotal += static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count());
+        stats.bisectedNanosTotal += static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(t3 - t2).count());
 
         if (naive.is_empty()) { ++stats.empty; continue; }
 
-        auto const naiveWidth = naive.diameter();
-        auto const tightWidth = tightened.diameter();
+        auto const naiveWidth    = naive.diameter();
+        auto const tightWidth    = tightened.diameter();
+        auto const bisectedWidth = bisected.diameter();
         if (!std::isfinite(naiveWidth) || naiveWidth <= 0) { ++stats.unbounded; }
         else {
             ++stats.counted;
             auto const reduction = 100.0 * (1.0 - static_cast<double>(tightWidth) / static_cast<double>(naiveWidth));
             if (reduction < 1e-6) { ++stats.fellBackToNaive; }
             stats.totalWidthReductionPct += reduction;
+            stats.totalBisectedReductionPct += 100.0 * (1.0 - static_cast<double>(bisectedWidth) / static_cast<double>(naiveWidth));
         }
 
         // Dense random sampling within the domain box as an approximate
@@ -228,15 +235,17 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
         for (auto v : values) {
             if (!std::isfinite(v)) { continue; }
-            if (v < tightened.inf() - 1e-3F || v > tightened.sup() + 1e-3F) {
+            if (v < bisected.inf() - 1e-3F || v > bisected.sup() + 1e-3F) {
                 ++stats.soundnessViolations;
             }
         }
     }
 
     auto const avgReduction = stats.totalWidthReductionPct / static_cast<double>(std::max(stats.counted, std::size_t{1}));
+    auto const avgBisectedReduction = stats.totalBisectedReductionPct / static_cast<double>(std::max(stats.counted, std::size_t{1}));
     auto const naiveAvgUs = stats.naiveNanosTotal / static_cast<double>(std::max(stats.total, std::size_t{1})) / 1000.0;
     auto const tightAvgUs = stats.tightenedNanosTotal / static_cast<double>(std::max(stats.total, std::size_t{1})) / 1000.0;
+    auto const bisectedAvgUs = stats.bisectedNanosTotal / static_cast<double>(std::max(stats.total, std::size_t{1})) / 1000.0;
 
     fmt::print("=== TightenRange empirical validation (Poly-10, real evolved trees) ===\n");
     fmt::print("Trees evaluated:          {}\n", stats.total);
@@ -245,9 +254,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     fmt::print("Counted (finite, nonzero naive width): {}\n", stats.counted);
     fmt::print("  of which fell back to naive (no improvement): {} ({:.1f}%)\n",
         stats.fellBackToNaive, 100.0 * static_cast<double>(stats.fellBackToNaive) / static_cast<double>(std::max(stats.counted, std::size_t{1})));
-    fmt::print("Average enclosure width reduction (counted trees): {:.2f}%\n", avgReduction);
-    fmt::print("Avg naive eval time:      {:.3f} us\n", naiveAvgUs);
-    fmt::print("Avg TightenRange time:    {:.3f} us  ({:.1f}x naive)\n", tightAvgUs, tightAvgUs / std::max(naiveAvgUs, 1e-9));
+    fmt::print("Average enclosure width reduction, TightenRange:         {:.2f}%\n", avgReduction);
+    fmt::print("Average enclosure width reduction, TightenRangeBisected: {:.2f}%\n", avgBisectedReduction);
+    fmt::print("Avg naive eval time:            {:.3f} us\n", naiveAvgUs);
+    fmt::print("Avg TightenRange time:          {:.3f} us  ({:.1f}x naive)\n", tightAvgUs, tightAvgUs / std::max(naiveAvgUs, 1e-9));
+    fmt::print("Avg TightenRangeBisected time:  {:.3f} us  ({:.1f}x naive)\n", bisectedAvgUs, bisectedAvgUs / std::max(naiveAvgUs, 1e-9));
     fmt::print("Soundness violations:     {}  (must be 0)\n", stats.soundnessViolations);
 
     return stats.soundnessViolations == 0 ? 0 : 1;
