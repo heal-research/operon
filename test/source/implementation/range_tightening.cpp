@@ -12,6 +12,7 @@
 #include "operon/core/node.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/tree.hpp"
+#include "operon/hash/zobrist.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/interpreter/range_tightening.hpp"
@@ -420,6 +421,99 @@ TEST_CASE("TightenRange - soundness against random point samples on random trees
     INFO("soundness violations: " << violated << " / " << checked);
     CHECK(violated == 0);
     CHECK(checked > 0); // sanity: the sweep actually exercised something
+}
+
+TEST_CASE("RangeCache - hit reproduces the same result as an uncached call", "[range_tightening]")
+{
+    constexpr Operon::Hash X1{1};
+    auto tree = Operon::Tree({
+        Var(X1), Var(X1), Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2),
+        Var(X1),
+        Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Sub), 2),
+    }).UpdateNodes(); // X - X*X
+    auto d = Domains();
+    d[X1] = {S{0}, S{1}};
+    auto const coeff = tree.GetCoefficients();
+
+    Operon::RandomGenerator rng(1234);
+    std::array<Operon::Hash, 1> const varHashes{X1};
+    Operon::Zobrist zobrist(rng, static_cast<int>(tree.Length()), varHashes);
+    Operon::RangeCache cache(zobrist);
+
+    auto const uncached = TightenRange(tree, d, coeff);
+    REQUIRE(cache.Size() == 0);
+
+    auto const firstCall = TightenRange(tree, d, coeff, &cache);
+    REQUIRE(cache.Size() == 1); // populated on miss
+
+    auto const secondCall = TightenRange(tree, d, coeff, &cache);
+    REQUIRE(cache.Size() == 1); // hit, no new entry
+
+    CHECK(firstCall.inf() == Catch::Approx(uncached.inf()).margin(1e-6));
+    CHECK(firstCall.sup() == Catch::Approx(uncached.sup()).margin(1e-6));
+    CHECK(secondCall.inf() == Catch::Approx(uncached.inf()).margin(1e-6));
+    CHECK(secondCall.sup() == Catch::Approx(uncached.sup()).margin(1e-6));
+}
+
+TEST_CASE("RangeCache - a coefficient change invalidates the cache entry (never returns a stale bound)", "[range_tightening]")
+{
+    // The whole point of keying on coeff (not just structural hash, unlike
+    // the fitness cache) is that TightenRange's soundness depends on the
+    // actual weight values - a coefficient-independent cache would let a
+    // locally-searched individual's changed weights silently reuse a bound
+    // computed for different weights.
+    constexpr Operon::Hash X1{1};
+    auto v = Var(X1, 1.0);
+    v.Optimize = true;
+    auto tree = Operon::Tree({v}).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{0}, S{1}};
+
+    Operon::RandomGenerator rng(1234);
+    std::array<Operon::Hash, 1> const varHashes{X1};
+    Operon::Zobrist zobrist(rng, static_cast<int>(tree.Length()), varHashes);
+    Operon::RangeCache cache(zobrist);
+
+    std::vector<Operon::Scalar> const coeffA{1.0F};
+    std::vector<Operon::Scalar> const coeffB{2.0F};
+
+    auto const resultA = TightenRange(tree, d, coeffA, &cache);
+    REQUIRE(cache.Size() == 1);
+    auto const resultB = TightenRange(tree, d, coeffB, &cache);
+    REQUIRE(cache.Size() == 2); // different coeff: a genuinely new entry, not a stale hit
+
+    CHECK(resultA.sup() == Catch::Approx(1.0).margin(1e-4));  // f(x)=1*x over [0,1]
+    CHECK(resultB.sup() == Catch::Approx(2.0).margin(1e-4));  // f(x)=2*x over [0,1]
+}
+
+TEST_CASE("RangeCache - TightenRangeBisected result does not collide with TightenRange's own cache entry", "[range_tightening]")
+{
+    constexpr Operon::Hash X1{1};
+    auto tree = Operon::Tree({
+        Var(X1), Var(X1), Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2),
+        Var(X1),
+        Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Sub), 2),
+    }).UpdateNodes(); // X - X*X
+    auto d = Domains();
+    d[X1] = {S{0}, S{1}};
+    auto const coeff = tree.GetCoefficients();
+
+    Operon::RandomGenerator rng(1234);
+    std::array<Operon::Hash, 1> const varHashes{X1};
+    Operon::Zobrist zobrist(rng, static_cast<int>(tree.Length()), varHashes);
+    Operon::RangeCache cache(zobrist);
+
+    auto const flat     = TightenRange(tree, d, coeff, &cache);
+    auto const bisected = TightenRangeBisected(tree, d, coeff, 4, &cache);
+
+    // Bisection is a genuine improvement here (same as the uncached test
+    // above) - if the two results collided in the cache, they'd be equal.
+    CHECK(bisected.sup() < flat.sup());
+
+    // Second bisected call must hit the cache and reproduce the same result.
+    auto const bisectedAgain = TightenRangeBisected(tree, d, coeff, 4, &cache);
+    CHECK(bisectedAgain.inf() == Catch::Approx(bisected.inf()).margin(1e-6));
+    CHECK(bisectedAgain.sup() == Catch::Approx(bisected.sup()).margin(1e-6));
 }
 
 } // namespace Operon::Test
