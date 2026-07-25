@@ -39,6 +39,11 @@ struct OPERON_EXPORT ErrorMetric {
     auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const -> double;
     auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const -> double;
 
+    // Metric over the finite subset of (x, y) pairs, plus the count of
+    // skipped (non-finite) pairs. Only NMSE and MSE; throws otherwise.
+    auto FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const -> std::pair<double, std::size_t>;
+    auto FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> std::pair<double, std::size_t>;
+
     private:
     ErrorType type_;
 };
@@ -223,11 +228,13 @@ public:
     using TDispatch    = DTable;
     using TInterpreter = Operon::Interpreter<Operon::Scalar, DTable>;
 
-    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true)
+    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true, bool skipNonFinite = false, double nonFinitePenaltyWeight = 0.0)
         : EvaluatorBase(problem)
         , dtable_(dtable)
         , error_(error)
         , scaling_(linearScaling)
+        , skipNonFinite_(skipNonFinite)
+        , nonFinitePenaltyWeight_(nonFinitePenaltyWeight)
     {
     }
 
@@ -240,6 +247,11 @@ private:
     gsl::not_null<DTable const*> dtable_;
     ErrorMetric error_;
     bool scaling_{false};
+    // Opt-in. When true: non-finite rows excluded via ErrorMetric::FiniteSubset
+    // (NMSE/MSE only), fit += nonFinitePenaltyWeight_ * nonfinite fraction.
+    // Default (false): non-finite metric result clamps fit to ErrMax.
+    bool skipNonFinite_{false};
+    double nonFinitePenaltyWeight_{0.0};
 };
 
 class OPERON_EXPORT MultiEvaluator : public EvaluatorBase {

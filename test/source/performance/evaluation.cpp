@@ -241,6 +241,204 @@ TEST_CASE("Evaluator performance", "[performance]")
     test("mse", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*linearScaling=*/false));
 }
 
+TEST_CASE("skipNonFinite_ evaluator performance", "[performance]")
+{
+    // Stage 4 benchmark checkpoint: compares default vs skipNonFinite_ mode
+    // end-to-end (tree interpretation + metric), on (a) all-finite data and
+    // (b) data with a fraction of X1 set to NaN, swept across dataset sizes.
+    const size_t n = 100;
+    const size_t maxLength = 30;
+    const size_t maxDepth = 100;
+    constexpr size_t ncol = 5;
+
+    Operon::RandomGenerator rd(4321);
+
+    auto makeDataset = [&](size_t nrow, double nonFiniteFraction) -> Operon::Dataset {
+        std::uniform_real_distribution<Operon::Scalar> dist(-1.F, +1.F);
+        std::vector<std::string> names(ncol);
+        for (auto i = 0UL; i < ncol - 1; ++i) { names[i] = fmt::format("X{}", i + 1); }
+        names.back() = "Y";
+        std::vector<std::vector<Operon::Scalar>> data(ncol, std::vector<Operon::Scalar>(nrow));
+        for (auto& col : data) {
+            for (auto& v : col) { v = dist(rd); }
+        }
+        auto nBad = static_cast<size_t>(nonFiniteFraction * static_cast<double>(nrow));
+        for (auto i = 0UL; i < nBad; ++i) {
+            data[0][i] = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+        }
+        return Operon::Dataset(names, data);
+    };
+
+    nb::Bench b;
+    b.relative(true).performanceCounters(true).epochs(10).epochIterations(100);
+
+    for (auto nrow : { 1000UL, 20000UL, 500000UL }) {
+        for (auto [label, nonFiniteFraction] : { std::pair{"all-finite", 0.0}, std::pair{"10pct-nonfinite", 0.10} }) {
+            auto ds = makeDataset(nrow, nonFiniteFraction);
+            auto variables = ds.GetVariables();
+            auto target = variables.back().Name;
+            auto inputs = ds.VariableHashes();
+            std::erase(inputs, ds.GetVariable(target).value().Hash);
+            Range range = {0, ds.Rows<std::size_t>()};
+
+            Operon::Problem problem{&ds};
+            problem.SetTrainingRange(range);
+            problem.SetTestRange(range);
+            problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
+            problem.SetTarget(target);
+
+            std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+            auto creator = BalancedTreeCreator{&problem.GetPrimitiveSet(), inputs, /* bias= */ 0.0, maxLength};
+
+            Operon::Vector<Tree> trees(n);
+            std::ranges::generate(trees, [&]() -> Tree { return creator(rd, sizeDistribution(rd), 0, maxDepth); });
+
+            Operon::Vector<Individual> individuals(n);
+            for (size_t i = 0; i < individuals.size(); ++i) {
+                individuals[i].Genotype = trees[i];
+            }
+
+            auto totalNodes = TotalNodes(trees);
+
+            b.context("nrow", std::to_string(nrow));
+            b.context("data", label);
+
+            auto test = [&](std::string const& name, EvaluatorBase&& evaluator) -> void { // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
+                evaluator.SetBudget(std::numeric_limits<size_t>::max());
+                tf::Executor executor(std::thread::hardware_concurrency());
+                tf::Taskflow taskflow;
+
+                Operon::Vector<Operon::Vector<Operon::Scalar>> slots(executor.num_workers());
+                double sum{0};
+                taskflow.transform_reduce(individuals.begin(), individuals.end(), sum, std::plus<>{}, [&](Operon::Individual& ind) -> Operon::Scalar {
+                    auto id = executor.this_worker_id();
+                    if (slots[id].size() < range.Size()) {
+                        slots[id].resize(range.Size());
+                    }
+                    return evaluator(rd, ind, slots[id]).front();
+                });
+
+                b.batch(static_cast<double>(totalNodes * range.Size())).run(name, [&]() -> double {
+                    sum = 0;
+                    executor.run(taskflow).wait();
+                    return sum;
+                });
+            };
+
+            using DTable = ScalarDispatch;
+            DTable dtable;
+
+            test("mse (default)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*linearScaling=*/false));
+            test("mse (skipNonFinite)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*linearScaling=*/false, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0));
+            test("nmse (default)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}, /*linearScaling=*/false));
+            test("nmse (skipNonFinite)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}, /*linearScaling=*/false, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0));
+        }
+    }
+    auto constexpr csvTemplate = R"DELIM("name";"nrow";"data";"batch";"elapsed";"instructions";"branches";"branch misses"
+{{#result}}"{{name}}";"{{context(nrow)}}";"{{context(data)}}";{{batch}};{{median(elapsed)}};{{median(instructions)}};{{median(branchinstructions)}};{{median(branchmisses)}}
+{{/result}})DELIM";
+    b.render(csvTemplate, std::cout);
+}
+
+namespace {
+    struct PerfIsolatedFixture {
+        Operon::Dataset ds;
+        Operon::Vector<Individual> individuals;
+        Range range;
+        std::string target;
+        std::vector<Operon::Hash> inputs;
+    };
+
+    auto MakePerfIsolatedFixture(size_t nrow, double nonFiniteFraction) -> PerfIsolatedFixture
+    {
+        constexpr size_t ncol = 5;
+        constexpr size_t n = 100;
+        constexpr size_t maxLength = 30;
+        constexpr size_t maxDepth = 100;
+
+        Operon::RandomGenerator rd(4321);
+        std::uniform_real_distribution<Operon::Scalar> dist(-1.F, +1.F);
+        std::vector<std::string> names(ncol);
+        for (auto i = 0UL; i < ncol - 1; ++i) { names[i] = fmt::format("X{}", i + 1); }
+        names.back() = "Y";
+        std::vector<std::vector<Operon::Scalar>> data(ncol, std::vector<Operon::Scalar>(nrow));
+        for (auto& col : data) {
+            for (auto& v : col) { v = dist(rd); }
+        }
+        auto nBad = static_cast<size_t>(nonFiniteFraction * static_cast<double>(nrow));
+        for (auto i = 0UL; i < nBad; ++i) {
+            data[0][i] = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+        }
+        Operon::Dataset ds(names, data);
+        auto variables = ds.GetVariables();
+        auto target = variables.back().Name;
+        auto inputs = ds.VariableHashes();
+        std::erase(inputs, ds.GetVariable(target).value().Hash);
+        Range range = {0, ds.Rows<std::size_t>()};
+
+        Operon::PrimitiveSet pset;
+        pset.SetConfig(Operon::PrimitiveSet::Arithmetic);
+        std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+        auto creator = BalancedTreeCreator{&pset, inputs, /* bias= */ 0.0, maxLength};
+
+        Operon::Vector<Individual> individuals(n);
+        for (auto& ind : individuals) {
+            ind.Genotype = creator(rd, sizeDistribution(rd), 0, maxDepth);
+        }
+        return PerfIsolatedFixture{std::move(ds), std::move(individuals), range, target, inputs};
+    }
+
+    template<typename DTable>
+    void RunPerfIsolated(EvaluatorBase const& evaluator, Operon::Vector<Individual>& individuals, Range range, int reps)
+    {
+        Operon::RandomGenerator rd(1);
+        std::vector<Operon::Scalar> buf(range.Size());
+        double sum = 0;
+        for (int r = 0; r < reps; ++r) {
+            for (auto& ind : individuals) {
+                sum += evaluator(rd, ind, buf).front();
+            }
+        }
+        // prevent the loop from being optimized away
+        volatile double sink = sum;
+        (void)sink;
+    }
+
+    template<typename DTable>
+    void RunPerfIsolatedCase(Operon::ErrorMetric metric, bool skipNonFinite)
+    {
+        auto fx = MakePerfIsolatedFixture(500000, 0.10);
+        Operon::Problem problem{&fx.ds};
+        problem.SetTrainingRange(fx.range);
+        problem.SetTestRange(fx.range);
+        problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
+        problem.SetTarget(fx.target);
+        DTable dtable;
+        Operon::Evaluator<DTable> ev(&problem, &dtable, metric, /*linearScaling=*/false, skipNonFinite, /*nonFinitePenaltyWeight=*/1.0);
+        RunPerfIsolated<DTable>(ev, fx.individuals, fx.range, 20);
+    }
+} // namespace
+
+TEST_CASE("perf-isolated: mse default", "[performance][perf-isolated]")
+{
+    RunPerfIsolatedCase<ScalarDispatch>(Operon::MSE{}, false);
+}
+
+TEST_CASE("perf-isolated: mse skipNonFinite", "[performance][perf-isolated]")
+{
+    RunPerfIsolatedCase<ScalarDispatch>(Operon::MSE{}, true);
+}
+
+TEST_CASE("perf-isolated: nmse default", "[performance][perf-isolated]")
+{
+    RunPerfIsolatedCase<ScalarDispatch>(Operon::NMSE{}, false);
+}
+
+TEST_CASE("perf-isolated: nmse skipNonFinite", "[performance][perf-isolated]")
+{
+    RunPerfIsolatedCase<ScalarDispatch>(Operon::NMSE{}, true);
+}
+
 TEST_CASE("Parallel interpreter", "[performance]")
 {
     const size_t n = 1000;
