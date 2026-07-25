@@ -206,6 +206,48 @@ TEST_CASE("Error metrics finite subset", "[metrics]")
         CHECK(std::abs(nmse - ref) < eps);
     }
 
+    SECTION("sse skips non-finite rows") {
+        auto [sse, skipped] = SumOfSquaredErrorsFinite(cbegin(x), cend(x), cbegin(y));
+        auto ref = SumOfSquaredErrors(cbegin(xf), cend(xf), cbegin(yf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(sse - ref) < eps);
+    }
+
+    SECTION("weighted sse skips non-finite rows") {
+        auto [sse, skipped] = SumOfSquaredErrorsFinite(cbegin(x), cend(x), cbegin(y), cbegin(w));
+        auto ref = SumOfSquaredErrors(cbegin(xf), cend(xf), cbegin(yf), cbegin(wf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(sse - ref) < eps);
+    }
+
+    SECTION("rmse skips non-finite rows") {
+        auto [rmse, skipped] = RootMeanSquaredErrorFinite(cbegin(x), cend(x), cbegin(y));
+        auto ref = RootMeanSquaredError(cbegin(xf), cend(xf), cbegin(yf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(rmse - ref) < eps);
+    }
+
+    SECTION("weighted rmse skips non-finite rows") {
+        auto [rmse, skipped] = RootMeanSquaredErrorFinite(cbegin(x), cend(x), cbegin(y), cbegin(w));
+        auto ref = RootMeanSquaredError(cbegin(xf), cend(xf), cbegin(yf), cbegin(wf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(rmse - ref) < eps);
+    }
+
+    SECTION("mae skips non-finite rows") {
+        auto [mae, skipped] = MeanAbsoluteErrorFinite(cbegin(x), cend(x), cbegin(y));
+        auto ref = MeanAbsoluteError(cbegin(xf), cend(xf), cbegin(yf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(mae - ref) < eps);
+    }
+
+    SECTION("weighted mae skips non-finite rows") {
+        auto [mae, skipped] = MeanAbsoluteErrorFinite(cbegin(x), cend(x), cbegin(y), cbegin(w));
+        auto ref = MeanAbsoluteError(cbegin(xf), cend(xf), cbegin(yf), cbegin(wf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(mae - ref) < eps);
+    }
+
     SECTION("all-finite input matches the plain metric exactly") {
         auto [mse, skipped] = MeanSquaredErrorFinite(cbegin(xf), cend(xf), cbegin(yf));
         auto ref = MeanSquaredError(cbegin(xf), cend(xf), cbegin(yf));
