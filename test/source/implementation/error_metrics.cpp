@@ -145,4 +145,73 @@ TEST_CASE("Error metrics edge cases", "[metrics]")
     }
 }
 
+TEST_CASE("Error metrics finite subset", "[metrics]")
+{
+    auto constexpr eps{1e-6};
+    auto const n{100UL};
+
+    using std::cbegin;
+    using std::cend;
+
+    Operon::RandomGenerator rng{7}; // NOLINT
+    std::uniform_real_distribution<double> ureal(0, 1);
+
+    std::vector<double> x(n);
+    std::vector<double> y(n);
+    std::vector<double> w(n);
+    for (auto i = 0UL; i < n; ++i) {
+        x[i] = ureal(rng);
+        y[i] = ureal(rng);
+        w[i] = 0.1 + ureal(rng);
+    }
+    // inject a few non-finite predictions
+    x[0] = std::numeric_limits<double>::quiet_NaN();
+    x[n / 2] = std::numeric_limits<double>::infinity();
+    x[n - 1] = -std::numeric_limits<double>::infinity();
+
+    std::vector<double> xf, yf, wf;
+    for (auto i = 0UL; i < n; ++i) {
+        if (std::isfinite(x[i])) {
+            xf.push_back(x[i]);
+            yf.push_back(y[i]);
+            wf.push_back(w[i]);
+        }
+    }
+
+    SECTION("mse skips non-finite rows") {
+        auto [mse, skipped] = MeanSquaredErrorFinite(cbegin(x), cend(x), cbegin(y));
+        auto ref = MeanSquaredError(cbegin(xf), cend(xf), cbegin(yf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(mse - ref) < eps);
+    }
+
+    SECTION("weighted mse skips non-finite rows") {
+        auto [mse, skipped] = MeanSquaredErrorFinite(cbegin(x), cend(x), cbegin(y), cbegin(w));
+        auto ref = MeanSquaredError(cbegin(xf), cend(xf), cbegin(yf), cbegin(wf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(mse - ref) < eps);
+    }
+
+    SECTION("nmse skips non-finite rows") {
+        auto [nmse, skipped] = NormalizedMeanSquaredErrorFinite(cbegin(x), cend(x), cbegin(y));
+        auto ref = NormalizedMeanSquaredError(cbegin(xf), cend(xf), cbegin(yf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(nmse - ref) < eps);
+    }
+
+    SECTION("weighted nmse skips non-finite rows") {
+        auto [nmse, skipped] = NormalizedMeanSquaredErrorFinite(cbegin(x), cend(x), cbegin(y), cbegin(w));
+        auto ref = NormalizedMeanSquaredError(cbegin(xf), cend(xf), cbegin(yf), cbegin(wf));
+        CHECK(skipped == 3UL);
+        CHECK(std::abs(nmse - ref) < eps);
+    }
+
+    SECTION("all-finite input matches the plain metric exactly") {
+        auto [mse, skipped] = MeanSquaredErrorFinite(cbegin(xf), cend(xf), cbegin(yf));
+        auto ref = MeanSquaredError(cbegin(xf), cend(xf), cbegin(yf));
+        CHECK(skipped == 0UL);
+        CHECK(std::abs(mse - ref) < eps);
+    }
+}
+
 } // namespace Operon::Test

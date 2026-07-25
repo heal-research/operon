@@ -56,4 +56,20 @@ namespace Operon {
         default: throw std::runtime_error("unknown error metric");
         }
     }
+
+    auto ErrorMetric::FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const -> std::pair<double, std::size_t> {
+        switch (type_) {
+        case ErrorType::MSE: return MeanSquaredErrorFinite(x, y);
+        case ErrorType::NMSE: return NormalizedMeanSquaredErrorFinite(x, y);
+        default: throw std::runtime_error("ErrorMetric::FiniteSubset: only MSE and NMSE support skipping non-finite rows");
+        }
+    }
+
+    auto ErrorMetric::FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> std::pair<double, std::size_t> {
+        switch (type_) {
+        case ErrorType::MSE: return MeanSquaredErrorFinite(x, y, w);
+        case ErrorType::NMSE: return NormalizedMeanSquaredErrorFinite(x, y, w);
+        default: throw std::runtime_error("ErrorMetric::FiniteSubset: only MSE and NMSE support skipping non-finite rows");
+        }
+    }
 }  // namespace Operon

@@ -28,6 +28,63 @@ namespace {
         auto b = stats.mean_y - (a * stats.mean_x); // offset
         return {a, b};
     }
+
+    // Finite-aware variant: computes scale/offset from the finite subset
+    // only, returning the count of skipped (non-finite) pairs. A NaN/Inf row
+    // no longer disables scaling for every finite row via NaN-poisoned stats.
+    // NaN/Inf rows preserve their non-finiteness through `a*x + b`
+    // (NaN->NaN; Inf->+/-Inf when a != 0; Inf->NaN when a == 0 since
+    // 0*Inf==NaN before adding b), so the downstream FiniteSubset metric
+    // still detects and skips them after the in-place transform regardless
+    // of which non-finite value the scaling produces -- both NaN and Inf
+    // are excluded by the shared finiteness mask. (The symmetric "could a
+    // *previously finite* row become non-finite after scaling?" overflow
+    // case is a pre-existing risk of any linear scaling, not introduced
+    // or worsened by finite-aware scaling.) See `NormalizedMeanSquaredErrorFinite`
+    // / `MeanSquaredErrorFinite` for the mask this composes through.
+    template<typename T>
+    auto FitLeastSquaresFiniteImpl(Operon::Span<T const> estimated, Operon::Span<T const> target,
+                                   Operon::Span<T const> weights = {}) -> std::tuple<double, double, std::size_t>
+    requires std::is_arithmetic_v<T>
+    {
+        auto [stats, skipped] = weights.empty()
+            ? vstat::bivariate::accumulate_finite<T>(estimated.data(), estimated.data() + estimated.size(), target.data())
+            : vstat::bivariate::accumulate_finite<T>(estimated.data(), estimated.data() + estimated.size(), target.data(), weights.data());
+        auto a = stats.covariance / stats.variance_x; // scale
+        if (!std::isfinite(a)) {
+            a = 1;
+        }
+        auto b = stats.mean_y - (a * stats.mean_x); // offset
+        return {a, b, skipped};
+    }
+
+    // Outlined skip-mode body. Keeping this out of `Evaluate`'s inline path
+    // keeps the default (skipNonFinite_ == false) hot path small enough that
+    // the compiler still inlines `Evaluate` into its caller -- the inlining
+    // heuristic that regressed when the skip branching was first added was
+    // the dominant source of the ~7-9% end-to-end overhead measured in the
+    // performance handoff. `noinline` is harmless to the opt-in user since
+    // they have already accepted a modest per-call cost.
+    template<typename T>
+    [[gnu::noinline]] auto
+    SkipNonFiniteScore(ErrorMetric const& error, Operon::Span<T> estimated, Operon::Span<T const> target,
+                       Operon::Span<T const> weights, bool scaling, double penaltyWeight) -> Operon::Scalar
+    {
+        if (scaling) {
+            auto [a, b, s] = weights.empty()
+                ? FitLeastSquaresFiniteImpl<T>(estimated, target)
+                : FitLeastSquaresFiniteImpl<T>(estimated, target, weights);
+            (void)s;
+            std::ranges::transform(estimated, estimated.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+        }
+        auto [value, nonFiniteCount] = weights.empty()
+            ? error.FiniteSubset(estimated, target)
+            : error.FiniteSubset(estimated, target, weights);
+        auto const fraction = nonFiniteCount != 0
+            ? static_cast<double>(nonFiniteCount) / static_cast<double>(estimated.size())
+            : 0.0;
+        return static_cast<Operon::Scalar>(value + penaltyWeight * fraction);
+    }
 } // namespace
 
     auto FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept -> std::pair<double, double> {
@@ -77,11 +134,19 @@ namespace {
         auto estimatedValues = buf.subspan(0, trainingRange.Size());
         auto coeff = tree.GetCoefficients();
         interpreter.Evaluate(coeff, trainingRange, estimatedValues);
-        if (scaling_) {
-            auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues, weights);
-            std::ranges::transform(estimatedValues, estimatedValues.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+
+        Operon::Scalar fit{};
+        if (skipNonFinite_) [[unlikely]] {
+            fit = SkipNonFiniteScore<Operon::Scalar>(error_, estimatedValues, targetValues, weights, scaling_, nonFinitePenaltyWeight_);
+        } else {
+            if (scaling_) {
+                auto [a, b] = weights.empty()
+                    ? FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues)
+                    : FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues, weights);
+                std::ranges::transform(estimatedValues, estimatedValues.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+            }
+            fit = static_cast<Operon::Scalar>(weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));
         }
-        auto fit = static_cast<Operon::Scalar>(weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));
 
         if (!std::isfinite(fit)) {
             fit = EvaluatorBase::ErrMax;
