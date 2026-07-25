@@ -635,6 +635,20 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         CHECK_THAT(static_cast<double>(nonFiniteCount) / nTotal,
                    Catch::Matchers::WithinRel(expectedFraction, 0.10));
     }
+
+    SECTION("SSE/RMSE/MAE also support skipNonFinite_") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        for (auto metric : std::initializer_list<ErrorMetric>{SSE{}, RMSE{}, MAE{}}) {
+            Evaluator<DTable> skipMode{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+            auto r = skipMode(fix.rng, ind)[0];
+            CHECK(std::isfinite(r));
+            CHECK(r < EvaluatorBase::ErrMax);
+        }
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

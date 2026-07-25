@@ -40,7 +40,7 @@ struct OPERON_EXPORT ErrorMetric {
     auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const -> double;
 
     // Metric over the finite subset of (x, y) pairs, plus the count of
-    // skipped (non-finite) pairs. Only NMSE and MSE; throws otherwise.
+    // skipped (non-finite) pairs. SSE, MSE, NMSE, RMSE and MAE; throws otherwise.
     auto FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const -> std::pair<double, std::size_t>;
     auto FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> std::pair<double, std::size_t>;
 
@@ -248,7 +248,7 @@ private:
     ErrorMetric error_;
     bool scaling_{false};
     // Opt-in. When true: non-finite rows excluded via ErrorMetric::FiniteSubset
-    // (NMSE/MSE only), fit += nonFinitePenaltyWeight_ * nonfinite fraction.
+    // (SSE/MSE/NMSE/RMSE/MAE), fit += nonFinitePenaltyWeight_ * nonfinite fraction.
     // Default (false): non-finite metric result clamps fit to ErrMax.
     bool skipNonFinite_{false};
     double nonFinitePenaltyWeight_{0.0};
