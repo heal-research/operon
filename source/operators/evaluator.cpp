@@ -83,7 +83,17 @@ namespace {
         auto const fraction = nonFiniteCount != 0
             ? static_cast<double>(nonFiniteCount) / static_cast<double>(estimated.size())
             : 0.0;
-        return static_cast<Operon::Scalar>(value + penaltyWeight * fraction);
+        // NMSE already normalizes by target variance; SSE/MSE/RMSE/MAE are
+        // unit-dependent on the target, so scale the penalty by the
+        // target's own variance too -- keeps a single penaltyWeight
+        // meaningful across metrics and datasets instead of requiring a
+        // metric/dataset-specific constant.
+        auto const scale = error.Type() == ErrorType::NMSE
+            ? 1.0
+            : (weights.empty()
+                ? vstat::univariate::accumulate<T>(target.begin(), target.end()).variance
+                : vstat::univariate::accumulate<T>(target.begin(), target.end(), weights.begin()).variance);
+        return static_cast<Operon::Scalar>(value + penaltyWeight * scale * fraction);
     }
 } // namespace
 
