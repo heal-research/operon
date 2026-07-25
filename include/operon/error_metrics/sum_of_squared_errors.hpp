@@ -52,9 +52,9 @@ inline auto SumOfSquaredErrors(Operon::Span<T const> x, Operon::Span<T const> y,
 // Skips non-finite (x, y) pairs instead of letting them poison the whole
 // result. Returns the SSE over the finite subset, plus the count of skipped
 // (non-finite) pairs. Uses the projection overloads of
-// `univariate::accumulate_finite` (default `stats::variance` keeps `.sum`
-// live, mirroring the non-finite `SumOfSquaredErrors`), so the per-chunk
-// is_finite mask is shared between sanitizing and skipping.
+// `univariate::accumulate` under `nan_policy::omit` (`stats::variance`
+// keeps `.sum` live, mirroring the non-finite `SumOfSquaredErrors`), so the
+// per-chunk is_finite mask is shared between sanitizing and skipping.
 template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
     requires Concepts::Arithmetic<typename std::iterator_traits<InputIt1>::value_type>
           && std::same_as<typename std::iterator_traits<InputIt1>::value_type,
@@ -63,7 +63,7 @@ inline auto SumOfSquaredErrorsFinite(InputIt1 begin1, InputIt1 end1, InputIt2 be
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
     auto sqres = [](auto a, auto b){ auto e = a-b; return e*e; };
-    auto [st, skipped] = vstat::univariate::accumulate_finite<V1>(begin1, end1, begin2, sqres);
+    auto [st, skipped] = vstat::univariate::accumulate<V1, vstat::stats::variance, vstat::nan_policy::omit>(begin1, end1, begin2, sqres);
     return {st.sum, skipped};
 }
 
@@ -75,7 +75,7 @@ inline auto SumOfSquaredErrorsFinite(InputIt1 begin1, InputIt1 end1, InputIt2 be
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
     auto sqres = [](auto a, auto b){ auto e = a-b; return e*e; };
-    auto [st, skipped] = vstat::univariate::accumulate_finite<V1>(begin1, end1, begin2, begin3, sqres);
+    auto [st, skipped] = vstat::univariate::accumulate<V1, vstat::stats::variance, vstat::nan_policy::omit>(begin1, end1, begin2, begin3, sqres);
     return {st.sum, skipped};
 }
 

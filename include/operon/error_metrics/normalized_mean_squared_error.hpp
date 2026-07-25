@@ -8,7 +8,6 @@
 #include <iterator>
 #include <vstat/vstat.hpp>
 #include "operon/core/concepts.hpp"
-#include "mean_squared_error.hpp"
 
 namespace Operon {
 
@@ -19,11 +18,7 @@ template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
 inline auto NormalizedMeanSquaredError(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    auto varY = vstat::univariate::accumulate<V1>(begin2, begin2 + std::distance(begin1, end1)).variance;
-    if (varY > 0) {
-        return MeanSquaredError(begin1, end1, begin2) / varY;
-    }
-    return 0.0;
+    return vstat::metrics::normalized_mean_squared_error<V1>(begin1, end1, begin2);
 }
 
 template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, std::contiguous_iterator InputIt3>
@@ -33,11 +28,7 @@ template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, s
 inline auto NormalizedMeanSquaredError(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 begin3) noexcept -> double
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    auto varY = vstat::univariate::accumulate<V1>(begin2, begin2 + std::distance(begin1, end1), begin3).variance;
-    if (varY > 0) {
-        return MeanSquaredError(begin1, end1, begin2, begin3) / varY;
-    }
-    return 0.0;
+    return vstat::metrics::normalized_mean_squared_error<V1>(begin1, end1, begin2, begin3);
 }
 
 template<Concepts::Arithmetic T>
@@ -68,7 +59,7 @@ template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2>
 inline auto NormalizedMeanSquaredErrorFinite(InputIt1 begin1, InputIt1 end1, InputIt2 begin2) noexcept -> std::pair<double, std::size_t>
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    return vstat::metrics::normalized_mean_squared_error_finite<V1>(begin1, end1, begin2);
+    return vstat::metrics::normalized_mean_squared_error<V1, vstat::nan_policy::omit>(begin1, end1, begin2);
 }
 
 template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, std::contiguous_iterator InputIt3>
@@ -78,7 +69,7 @@ template<std::contiguous_iterator InputIt1, std::contiguous_iterator InputIt2, s
 inline auto NormalizedMeanSquaredErrorFinite(InputIt1 begin1, InputIt1 end1, InputIt2 begin2, InputIt3 begin3) noexcept -> std::pair<double, std::size_t>
 {
     using V1 = typename std::iterator_traits<InputIt1>::value_type;
-    return vstat::metrics::normalized_mean_squared_error_finite<V1>(begin1, end1, begin2, begin3);
+    return vstat::metrics::normalized_mean_squared_error<V1, vstat::nan_policy::omit>(begin1, end1, begin2, begin3);
 }
 
 template<Concepts::Arithmetic T>
