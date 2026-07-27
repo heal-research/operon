@@ -8,6 +8,7 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <memory>
+#include <unordered_map>
 #include <taskflow/algorithm/reduce.hpp>
 #include <taskflow/taskflow.hpp>
 #include <thread>
@@ -165,21 +166,19 @@ auto main(int argc, char** argv) -> int
         problem.SetInputs(inputs);
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
-        std::unique_ptr<Operon::CreatorBase> creator;
-        creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs(), maxLength);
+        auto [creator, creatorMaxLength, creatorMinDepth, creatorMaxDepth] = ParseCreator(
+            result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs(),
+            maxLength, result["creator-mindepth"].as<std::size_t>(), result["creator-maxdepth"].as<std::size_t>());
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(creator.get());
-
-        auto const initialMinDepth = result["creator-mindepth"].as<std::size_t>();
-        auto const initialMaxDepth = result["creator-maxdepth"].as<std::size_t>();
-        auto const initialMaxLength = result["creator-maxlength"].as<std::size_t>();
-        treeInitializer.ParameterizeDistribution(amin + 1, initialMaxLength);
-        treeInitializer.SetMinDepth(initialMinDepth);
-        treeInitializer.SetMaxDepth(initialMaxDepth); // NOLINT
+        treeInitializer.ParameterizeDistribution(amin + 1, creatorMaxLength);
+        treeInitializer.SetMinDepth(creatorMinDepth);
+        treeInitializer.SetMaxDepth(creatorMaxDepth); // NOLINT
 
         std::unique_ptr<Operon::CoefficientInitializerBase> coeffInitializer;
         std::unique_ptr<Operon::MutatorBase> onePoint;
+        std::unique_ptr<Operon::MutatorBase> multiPoint;
         if (symbolic) {
             using Dist = std::uniform_int_distribution<int>;
             coeffInitializer = std::make_unique<Operon::CoefficientInitializer<Dist>>();
@@ -187,12 +186,16 @@ auto main(int argc, char** argv) -> int
             dynamic_cast<Operon::CoefficientInitializer<Dist>*>(coeffInitializer.get())->ParameterizeDistribution(-range, +range);
             onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
             dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(-range, +range);
+            multiPoint = std::make_unique<Operon::MultiPointMutation<Dist>>();
+            dynamic_cast<Operon::MultiPointMutation<Dist>*>(multiPoint.get())->ParameterizeDistribution(-range, +range);
         } else {
             using Dist = std::normal_distribution<Operon::Scalar>;
             coeffInitializer = std::make_unique<Operon::CoefficientInitializer<Dist>>();
             dynamic_cast<Operon::NormalCoefficientInitializer*>(coeffInitializer.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
             onePoint = std::make_unique<Operon::OnePointMutation<Dist>>();
             dynamic_cast<Operon::OnePointMutation<Dist>*>(onePoint.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
+            multiPoint = std::make_unique<Operon::MultiPointMutation<Dist>>();
+            dynamic_cast<Operon::MultiPointMutation<Dist>*>(multiPoint.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
         }
 
         Operon::SubtreeCrossover crossover { crossoverInternalProbability, maxDepth, maxLength };
@@ -203,17 +206,24 @@ auto main(int argc, char** argv) -> int
         Operon::ReplaceSubtreeMutation replaceSubtree { creator.get(), coeffInitializer.get(), maxDepth, maxLength };
         Operon::InsertSubtreeMutation insertSubtree { creator.get(), coeffInitializer.get(), maxDepth, maxLength };
         Operon::RemoveSubtreeMutation removeSubtree { problem.GetPrimitiveSet() };
+        Operon::ShuffleSubtreesMutation shuffleSubtrees;
         Operon::DiscretePointMutation discretePoint;
         for (auto v : Operon::Math::Constants) {
             discretePoint.Add(static_cast<Operon::Scalar>(v), 1);
         }
-        mutator.Add(onePoint.get(), 1.0);
-        mutator.Add(&changeVar, 1.0);
-        mutator.Add(&changeFunc, 1.0);
-        mutator.Add(&replaceSubtree, 1.0);
-        mutator.Add(&insertSubtree, 1.0);
-        mutator.Add(&removeSubtree, 1.0);
-        mutator.Add(&discretePoint, 1.0);
+
+        std::unordered_map<std::string, Operon::MutatorBase*> const availableMutators{
+            {"onepoint", onePoint.get()},
+            {"multipoint", multiPoint.get()},
+            {"changevar", &changeVar},
+            {"changefunc", &changeFunc},
+            {"replacesubtree", &replaceSubtree},
+            {"insertsubtree", &insertSubtree},
+            {"removesubtree", &removeSubtree},
+            {"discretepoint", &discretePoint},
+            {"shuffle", &shuffleSubtrees},
+        };
+        Operon::ParseMutators(result["mutators"].as<std::string>(), availableMutators, mutator);
 
         Operon::ScalarDispatch dtable;
         // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};

@@ -8,6 +8,7 @@
 #include <cstddef>                            // for size_t
 #include <memory>                              // for unique_ptr, make_unique
 #include <string>                              // for operator==, string
+#include <unordered_map>                       // for unordered_map
 #include <utility>                             // for addressof
 #include <vector>                              // for vector
 #include "operon/core/dispatch.hpp"            // for DispatchTable
@@ -18,6 +19,7 @@
 #include "util.hpp"                            // for Split
 namespace Operon { struct EvaluatorBase; }
 namespace Operon { class KeepBestReinserter; }
+namespace Operon { struct MultiMutation; }
 namespace Operon { class OffspringGeneratorBase; }
 namespace Operon { class PrimitiveSet; }
 namespace Operon { class Problem; }
@@ -37,7 +39,32 @@ auto ParseReinserter(std::string const& str, ComparisonCallback&& comp, size_t e
 
 auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::unique_ptr<SelectorBase>;
 
-auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<Operon::Hash> const& inputs, size_t maxLength) -> std::unique_ptr<CreatorBase>;
+// Result of parsing a --creator spec ("name:bias:mindepth:maxdepth:maxlength",
+// all but name optional). mindepth/maxdepth/maxlength are Config::UniformTree
+// Initializer settings, not CreatorBase constructor args (only bias and
+// maxlength are) - bundled here since the CLI's --creator string is the one
+// place a user names all of them together; the caller applies minDepth/
+// maxDepth/maxLength to its own treeInitializer and (for maxLength) to the
+// creator's own construction.
+struct CreatorConfig {
+    std::unique_ptr<CreatorBase> creator;
+    size_t maxLength;
+    size_t minDepth;
+    size_t maxDepth;
+};
+
+// defaultMaxLength/defaultMinDepth/defaultMaxDepth are used for any of
+// bias/mindepth/maxdepth/maxlength the spec string leaves unspecified.
+auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<Operon::Hash> const& inputs,
+    size_t defaultMaxLength, size_t defaultMinDepth, size_t defaultMaxDepth) -> CreatorConfig;
+
+// Parses a comma-separated "name:weight" list (weight optional, default 1.0)
+// and adds each named operator to `mutator` with its weight. `available` maps
+// mutator names to the already-constructed operator instances a caller has
+// on hand (construction is context-specific - some operators need the
+// creator, coefficient initializer, or primitive set - so this only handles
+// the shared "which of my already-built operators, at what weight" parsing).
+auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available, MultiMutation& mutator) -> void;
 
 auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale = true) -> std::unique_ptr<EvaluatorBase>;
 
