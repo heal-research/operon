@@ -120,7 +120,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> onePoint;
     Operon::ChangeFunctionMutation changeFunc { pset };
     Operon::ChangeVariableMutation changeVar  { problem.GetInputs() };
-    Operon::RemoveSubtreeMutation  removeSub  { pset };
+    Operon::RemoveChildMutation    removeSub  { pset };
     Operon::InsertSubtreeMutation  insertSub  { &creator, &coeffInit, MaxDepth, MaxLength };
 
     Operon::MultiMutation mutator;
