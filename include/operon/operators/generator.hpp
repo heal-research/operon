@@ -193,16 +193,23 @@ public:
     void Prepare(const Operon::Span<const Individual> pop) const override
     {
         OffspringGeneratorBase::Prepare(pop);
-        lastEvaluations_ = this->Evaluator()->TotalEvaluations();
+        lastEvaluations_ = this->Evaluator()->CallCount;
     }
 
+    // Counts real offspring-candidate attempts (one CallCount increment per
+    // individual scored, regardless of local search), not local search's own
+    // internal residual/Jacobian evaluations - TotalEvaluations() (used here
+    // previously) counts the latter, wildly overstating selection pressure
+    // whenever local search runs (each attempt can cost dozens of internal
+    // LM evaluations, all counted as if they were separate failed
+    // candidates).
     auto SelectionPressure() const -> double
     {
         auto n = this->FemaleSelector()->Population().size();
         if (n == 0U) {
             return 0;
         }
-        auto e = this->Evaluator()->TotalEvaluations() - lastEvaluations_;
+        auto e = this->Evaluator()->CallCount - lastEvaluations_;
         return static_cast<double>(e) / static_cast<double>(n);
     }
 
