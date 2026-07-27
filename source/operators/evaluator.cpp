@@ -125,6 +125,7 @@ namespace {
     AggregateEvaluator::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
         using vstat::univariate::accumulate;
+        ++CallCount;
         auto f = (*evaluator_)(rng, ind, buf);
         switch(aggtype_) {
             case AggregateType::Min: {
