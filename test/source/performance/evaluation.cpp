@@ -28,6 +28,7 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
+#include "operon/optimizer/optimizer.hpp"
 #ifdef HAVE_ASMJIT
 #include "operon/hash/zobrist.hpp"
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"

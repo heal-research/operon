@@ -26,6 +26,8 @@
 
 namespace Operon {
 
+class CoefficientOptimizer; // operators/local_search.hpp
+
 enum class ErrorType : int { SSE, MSE, NMSE, RMSE, MAE, R2, C2 };
 
 struct OPERON_EXPORT ErrorMetric {
@@ -189,6 +191,27 @@ private:
     gsl::not_null<Problem const*> problem_;
     size_t budget_ = DefaultEvaluationBudget;
 };
+
+// Optionally applies local search (coefficient optimization) to `ind`'s
+// genotype with probability `pLocal`. If local search ran, the optimized
+// coefficients are kept only with probability `pLamarck` (a Lamarckian
+// trial) and reverted to their pre-optimization values otherwise. Does not
+// evaluate `ind`'s fitness - split out from ScoreIndividual so a caller that
+// needs to run local search over a whole population before any of it is
+// scored (e.g. so Prepare() on an evaluator that snapshots the population,
+// such as DiversityEvaluator, sees post-optimization genotypes) can do so
+// without duplicating this logic.
+OPERON_EXPORT auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck) -> void;
+
+// Optionally applies local search (coefficient optimization) to `ind`'s
+// genotype with probability `pLocal`, then scores it via `evaluator`. Non-
+// finite fitness values are clamped to EvaluatorBase::ErrMax either way.
+//
+// Shared by offspring generation (OffspringGeneratorBase::Generate) and
+// initial-population scoring (GeneticProgrammingAlgorithm::Run,
+// NSGA2::Run) so both receive identical local-search treatment - passing
+// pLocal=0 (or a null coeffOptimizer) degenerates to a plain evaluate.
+OPERON_EXPORT auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) -> void;
 
 class OPERON_EXPORT UserDefinedEvaluator : public EvaluatorBase {
 public:
