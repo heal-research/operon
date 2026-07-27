@@ -127,14 +127,22 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
         Operon::LMCostFunction cf{gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter}, target, range, weights};
         ceres::TinySolver<decltype(cf)> solver;
-        solver.options.max_num_iterations = static_cast<int>(iterations+1);
 
         auto x0 = tree.GetCoefficients();
         FitDiagnostics diag;
         diag.InitialParameters = x0;
         auto m0 = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size());
         if (!x0.empty()) {
-            typename decltype(solver)::Parameters p = m0.cast<typename decltype(cf)::Scalar>();
+            // max_num_accepted_steps counts accepted LM steps only, matching
+            // Eigen::LevenbergMarquardt's iterations() semantics (see the
+            // Eigen-backend LevenbergMarquardtOptimizer below) - unlike this
+            // class's own max_num_iterations, which (unmodified) bounds total
+            // attempts, accepted or rejected. max_num_iterations is still set,
+            // as a MINPACK-convention-scaled safety net on rejected-retry
+            // attempts, mirroring maxfev's role for the Eigen backend.
+            solver.options.max_num_accepted_steps = static_cast<int>(iterations);
+            solver.options.max_num_iterations = static_cast<int>(iterations) * (static_cast<int>(x0.size()) + 1);
+            typename decltype(solver)::ParameterVector p = m0.cast<typename decltype(cf)::Scalar>();
             solver.Solve(cf, &p);
             m0 = p.template cast<Operon::Scalar>();
         }
