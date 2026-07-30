@@ -81,6 +81,9 @@ namespace {
         auto [value, nonFiniteCount] = weights.empty()
             ? error.FiniteSubset(estimated, target)
             : error.FiniteSubset(estimated, target, weights);
+        if (nonFiniteCount == estimated.size()) {
+            return EvaluatorBase::ErrMax;
+        }
         auto const fraction = nonFiniteCount != 0
             ? static_cast<double>(nonFiniteCount) / static_cast<double>(estimated.size())
             : 0.0;
@@ -94,9 +97,21 @@ namespace {
         //   SSE is a *sum*, not an average, of squared errors, so a
         //   per-point variance-scale term alone would be ~N times too small
         //   -> variance * (finite point count)
-        auto const variance = weights.empty()
-            ? vstat::univariate::accumulate<T>(target.begin(), target.end()).variance
-            : vstat::univariate::accumulate<T>(target.begin(), target.end(), weights.begin()).variance;
+        double sumWeights = 0.0;
+        double mean = 0.0;
+        double m2 = 0.0;
+        for (auto i = std::size_t{0}; i < target.size(); ++i) {
+            auto const y = static_cast<double>(target[i]);
+            auto const w = weights.empty() ? 1.0 : static_cast<double>(weights[i]);
+            if (!std::isfinite(y) || !std::isfinite(w) || w == 0.0) { continue; }
+            auto const nextSumWeights = sumWeights + w;
+            auto const delta = y - mean;
+            auto const r = delta * w / nextSumWeights;
+            mean += r;
+            m2 += sumWeights * delta * r;
+            sumWeights = nextSumWeights;
+        }
+        auto const variance = sumWeights > 0.0 ? m2 / sumWeights : 0.0;
         double scale{};
         switch (error.Type()) {
         case ErrorType::NMSE: scale = 1.0; break;

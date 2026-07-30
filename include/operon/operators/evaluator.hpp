@@ -6,7 +6,9 @@
 #define OPERON_EVALUATOR_HPP
 
 #include <atomic>
+#include <cmath>
 #include <functional>
+#include <stdexcept>
 #include <utility>
 
 #include "operon/collections/projection.hpp"
@@ -238,6 +240,12 @@ public:
         , skipNonFinite_(skipNonFinite)
         , nonFinitePenaltyWeight_(nonFinitePenaltyWeight)
     {
+        if (skipNonFinite_ && (error_.Type() == ErrorType::R2 || error_.Type() == ErrorType::C2)) {
+            throw std::invalid_argument("--skip-nonfinite is only supported for sse, mse, nmse, rmse, and mae");
+        }
+        if (!std::isfinite(nonFinitePenaltyWeight_) || nonFinitePenaltyWeight_ < 0.0) {
+            throw std::invalid_argument("non-finite penalty weight must be finite and non-negative");
+        }
     }
 
     auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
