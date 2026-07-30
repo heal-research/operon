@@ -559,7 +559,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto r1 = baseline(fix.rng, ind)[0];
         auto r2 = skipMode(fix.rng, ind)[0];
         CHECK(std::isfinite(r1));
-        CHECK_THAT(static_cast<double>(r2), Catch::Matchers::WithinRel(static_cast<double>(r1), 1e-5));
+        CHECK_THAT(static_cast<double>(r2), Catch::Matchers::WithinAbs(static_cast<double>(r1), 1e-9));
     }
 
     SECTION("partial non-finite tree: default clamps to ErrMax, skip mode gives a graded score") {
@@ -731,6 +731,30 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
             CHECK(std::isfinite(r));
             CHECK(r < EvaluatorBase::ErrMax);
         }
+    }
+
+    SECTION("all non-finite predictions are clamped instead of scoring as perfect SSE") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1 - X1 - 1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        auto r = skipMode(fix.rng, ind)[0];
+        CHECK(r == EvaluatorBase::ErrMax);
+    }
+
+    SECTION("non-finite target values do not poison skip-mode penalty variance") {
+        EvaluatorFixture fix;
+        fix.data(0, EvaluatorFixture::Ncol - 1) = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        auto r = skipMode(fix.rng, ind)[0];
+        CHECK(std::isfinite(r));
+        CHECK(r < EvaluatorBase::ErrMax);
     }
 }
 

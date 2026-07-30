@@ -6,6 +6,8 @@
 #include <chrono> // for steady_clock
 #include <cstddef> // for size_t
 #include <functional> // for std::function
+#include <optional> // for std::optional
+#include <random> // for bernoulli_distribution
 #include <thread> // for std::thread
 #include <utility> // for std::move
 #include <vector> // for std::vector
@@ -69,6 +71,29 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     auto parents = Parents();
     auto offspring = Offspring();
     std::vector<Operon::RandomGenerator> savedRngs; // used only on warm resume
+    std::vector<std::optional<std::vector<Operon::Scalar>>> originalCoeffs(parents.size());
+
+    auto optimizeInitialIndividual = [&](size_t i) -> std::optional<std::vector<Operon::Scalar>> {
+        auto const* optimizer = generator->Optimizer();
+        if (optimizer == nullptr || !std::bernoulli_distribution{config.LocalSearchProbability}(rngs[i])) {
+            return std::nullopt;
+        }
+
+        auto coeff = parents[i].Genotype.GetCoefficients();
+        auto t0 = std::chrono::steady_clock::now();
+        auto [optimizedTree, outcome] = (*optimizer)(rngs[i], std::move(parents[i].Genotype));
+        auto t1 = std::chrono::steady_clock::now();
+        auto const& diag = Diagnostics(outcome);
+        evaluator->ResidualEvaluations += diag.FunctionEvaluations;
+        evaluator->JacobianEvaluations += diag.JacobianEvaluations;
+        evaluator->CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        parents[i].Genotype = std::move(optimizedTree);
+
+        if (std::bernoulli_distribution{config.LamarckianProbability}(rngs[i])) {
+            return std::nullopt;
+        }
+        return coeff;
+    };
 
     auto timer = executor.make_observer<PhaseTimer>();
 
@@ -105,8 +130,19 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                        (*coeffInit)(rngs[i], parents[i].Genotype);
                                    })
                                 .name("initialize population");
-                init.precede(prepareEval);
+                auto localSearch = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
+                                       originalCoeffs[i] = optimizeInitialIndividual(i);
+                                   })
+                                .name("local search on initial population");
+                auto restoreCoeffs = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
+                                        if (originalCoeffs[i]) { parents[i].Genotype.SetCoefficients(*originalCoeffs[i]); }
+                                    })
+                                .name("restore non-lamarckian coefficients");
+                init.precede(localSearch);
+                localSearch.precede(prepareEval);
                 prepareEval.precede(eval);
+                eval.precede(restoreCoeffs);
+                restoreCoeffs.precede(reportProgress);
             }
         }, // init
         stop, // loop condition
