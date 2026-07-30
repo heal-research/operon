@@ -8,8 +8,10 @@
 #include <atomic>
 #include <cmath>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include "operon/collections/projection.hpp"
 #include "operon/core/concepts.hpp"
@@ -27,6 +29,8 @@
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 
 namespace Operon {
+
+class CoefficientOptimizer; // operators/local_search.hpp
 
 enum class ErrorType : int { SSE, MSE, NMSE, RMSE, MAE, R2, C2 };
 
@@ -199,6 +203,27 @@ private:
     size_t budget_ = DefaultEvaluationBudget;
 };
 
+// Optionally applies local search (coefficient optimization) to `ind`'s
+// genotype with probability `pLocal`. If local search ran and the update is
+// non-Lamarckian, returns the original coefficients so the caller can evaluate
+// the optimized genotype first, then restore inherited coefficients. Does not
+// evaluate `ind`'s fitness - split out from ScoreIndividual so a caller that
+// needs to run local search over a whole population before any of it is
+// scored (e.g. so Prepare() on an evaluator that snapshots the population,
+// such as DiversityEvaluator, sees post-optimization genotypes) can do so
+// without duplicating this logic.
+OPERON_EXPORT auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck) -> std::optional<std::vector<Operon::Scalar>>;
+
+// Optionally applies local search (coefficient optimization) to `ind`'s
+// genotype with probability `pLocal`, then scores it via `evaluator`. Non-
+// finite fitness values are clamped to EvaluatorBase::ErrMax either way.
+//
+// Shared by offspring generation (OffspringGeneratorBase::Generate) and
+// initial-population scoring (GeneticProgrammingAlgorithm::Run,
+// NSGA2::Run) so both receive identical local-search treatment - passing
+// pLocal=0 (or a null coeffOptimizer) degenerates to a plain evaluate.
+OPERON_EXPORT auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) -> void;
+
 class OPERON_EXPORT UserDefinedEvaluator : public EvaluatorBase {
 public:
     UserDefinedEvaluator(gsl::not_null<Problem const*> problem, std::function<typename EvaluatorBase::ReturnType(Operon::RandomGenerator&, Operon::Individual const&)> func)
@@ -299,6 +324,16 @@ public:
     auto
     Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
     {
+        // CallCount tracks "this evaluator instance scored one individual" at
+        // every composition depth, not just the leaf Evaluator<DTable> - a
+        // caller (e.g. OffspringSelectionGenerator::SelectionPressure) reading
+        // CallCount to count real evaluation attempts must see the same
+        // increment-per-call semantics regardless of how many inner
+        // evaluators this composite wraps. Stats() below separately sums the
+        // inner evaluators' own counters too - that is a distinct "total
+        // sub-evaluator work done" profiling figure, not a substitute for this.
+        ++CallCount;
+
         EvaluatorBase::ReturnType fit;
         fit.reserve(ind.Size());
 
@@ -313,20 +348,18 @@ public:
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> final {
         auto resEval{0UL};
         auto jacEval{0UL};
-        auto callCnt{0UL};
         auto cfTime{0UL};
 
         for (auto const& ev: evaluators_) {
             auto [re, je, cc, ct] = ev->Stats();
             resEval += re;
             jacEval += je;
-            callCnt += cc;
             cfTime  += ct;
         }
 
         return std::tuple{resEval + ResidualEvaluations.load(),
             jacEval + JacobianEvaluations.load(),
-            callCnt + CallCount.load(),
+            CallCount.load(),
             cfTime + CostFunctionTime.load()};
     }
 

@@ -42,7 +42,7 @@ namespace {
             ("scale", "Linear scaling slope:intercept", cxxopts::value<std::string>())
             ("optimizer", "Optimizer for model coefficients (lm, lbfgs, sgd)", cxxopts::value<std::string>()->default_value("lm"))
             ("likelihood", "Optimizer loss function (gaussian, poisson)", cxxopts::value<std::string>()->default_value("gaussian"))
-            ("iterations", "Optimizer iterations", cxxopts::value<int>()->default_value("50"))
+            ("iterations", "Optimizer iterations (0 disables refitting; reported stats are the model's own coefficients as given)", cxxopts::value<int>()->default_value("0"))
             ("debug", "Show some debugging information", cxxopts::value<bool>()->default_value("false"))
             ("format", "Format string (see https://fmt.dev/latest/syntax.html)", cxxopts::value<std::string>()->default_value(":>#8.4g"))
             ("help", "Print help");
@@ -78,7 +78,10 @@ namespace {
         std::unique_ptr<Operon::OptimizerBase> opt;
 
         if (optimizer == "lm") {
-            opt = std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch>>(dtable, problem);
+            // Eigen backend, matching operon_gp/operon_nsgp/operon_enum
+            // (all hardcode OptimizerType::Eigen) - not the class template's
+            // own default (Tiny), so "lm" means the same thing everywhere.
+            opt = std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch, Operon::OptimizerType::Eigen>>(dtable, problem);
         } else if (optimizer == "lbfgs") {
             if (likelihood == "gaussian") {
                 opt = std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
@@ -113,14 +116,38 @@ namespace {
         Operon::Dataset& ds,
         Operon::Range range,
         Operon::ScalarDispatch const& dtable,
-        Operon::Span<Operon::Scalar> est,
         std::string const& format,
         Operon::Tree& model
     ) -> void
     {
         auto tgt = ds.GetValues(result["target"].as<std::string>()).subspan(range.Start(), range.Size());
-        auto [a, b] = FitScale(result, Operon::Span<Operon::Scalar const>{est}, tgt);
 
+        Operon::Problem problem{&ds};
+        problem.SetTrainingRange(range);
+        problem.SetTestRange(range);
+        problem.SetTarget(result["target"].as<std::string>());
+        Operon::RandomGenerator rng{0};
+
+        // Optionally refit model's coefficients (--iterations > 0) before
+        // evaluating it - the caller decides whether "parse and evaluate"
+        // means "as literally given" (default, --iterations 0) or "best fit
+        // achievable from these starting coefficients" (--iterations N).
+        // Optimize() itself doesn't mutate model (it takes Tree const&); the
+        // optimized coefficients only take effect once applied back via
+        // SetCoefficients, which is what makes this refit actually visible in
+        // the stats below, unlike before.
+        auto opt = ParseOptimizer(&dtable, &problem, result["optimizer"].as<std::string>(), result["likelihood"].as<std::string>());
+        opt->SetIterations(result["iterations"].as<int>());
+        auto summary = Operon::FitOutcome{tl::unexpected(Operon::FitFailure{})};
+        if (opt->Iterations() > 0) {
+            summary = opt->Optimize(rng, model);
+            if (summary.has_value()) { model.SetCoefficients(summary->FinalParameters); }
+        }
+
+        using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
+        auto est = Interpreter::Evaluate(model, ds, range);
+
+        auto [a, b] = FitScale(result, Operon::Span<Operon::Scalar const>{est}, tgt);
         std::ranges::transform(est, est.begin(), [&](auto v) -> auto { return (v * a) + b; });
         auto r2   = -Operon::R2{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto rs   = -Operon::C2{}(Operon::Span<Operon::Scalar>{est}, tgt);
@@ -129,18 +156,10 @@ namespace {
         auto rmse =  Operon::RMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto nmse =  Operon::NMSE{}(Operon::Span<Operon::Scalar>{est}, tgt);
 
-        Operon::Problem problem{&ds};
-        problem.SetTrainingRange(range);
-        problem.SetTestRange(range);
-        Operon::RandomGenerator rng{0};
         Operon::Individual ind;
         ind.Genotype = model;
-
         Operon::MinimumDescriptionLengthEvaluator<Operon::ScalarDispatch, Operon::GaussianLikelihood<Operon::Scalar>> const mdlEval{&problem, &dtable};
         auto mdl = mdlEval(rng, ind).front();
-        auto opt = ParseOptimizer(&dtable, &problem, result["optimizer"].as<std::string>(), result["likelihood"].as<std::string>());
-        opt->SetIterations(result["iterations"].as<int>());
-        auto summary = opt->Optimize(rng, model);
 
         std::vector<std::tuple<std::string, double, std::string>> const stats{
             {"slope", a, format},
@@ -191,13 +210,12 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         fmt::print("Data range: {}:{}\n", range.Start(), range.End());
         fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
     }
-    using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
-    auto est = Interpreter::Evaluate(model, ds, range);
-
     std::string const format = result["format"].as<std::string>();
     if (result["target"].count() > 0) {
-        PrintTargetAnalysis(result, ds, range, dtable, Operon::Span<Operon::Scalar>{est}, format, model);
+        PrintTargetAnalysis(result, ds, range, dtable, format, model);
     } else {
+        using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
+        auto est = Interpreter::Evaluate(model, ds, range);
         std::string out{};
         for (auto v : est) {
             fmt::format_to(std::back_inserter(out), fmt::runtime(fmt::format("{{{}}}\n", format)), v);

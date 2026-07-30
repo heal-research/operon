@@ -454,7 +454,7 @@ TEST_CASE("ProbeRegistry factory receives its params", "[probes]")
     CHECK(probe != nullptr);
 }
 
-TEST_CASE("RegisterBuiltinProbes registers exactly the three concrete probes", "[probes]")
+TEST_CASE("RegisterBuiltinProbes registers exactly the four concrete probes", "[probes]")
 {
     Operon::ProbeRegistry registry;
     Operon::RegisterBuiltinProbes(registry);
@@ -462,6 +462,7 @@ TEST_CASE("RegisterBuiltinProbes registers exactly the three concrete probes", "
     CHECK(registry.Contains("population_trace"));
     CHECK(registry.Contains("cache_hit_rate"));
     CHECK(registry.Contains("structural_diversity"));
+    CHECK(registry.Contains("fitness_stats"));
     CHECK_FALSE(registry.Contains("not_a_real_probe"));
 }
 

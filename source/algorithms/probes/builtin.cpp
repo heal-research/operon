@@ -9,6 +9,7 @@
 
 #include "operon/algorithms/probes/cache_hit_rate.hpp"
 #include "operon/algorithms/probes/diversity.hpp"
+#include "operon/algorithms/probes/fitness_stats.hpp"
 #include "operon/algorithms/probes/population_trace.hpp"
 #include "operon/core/constants.hpp"
 
@@ -28,6 +29,10 @@ auto RegisterBuiltinProbes(ProbeRegistry& registry) -> void
 
     registry.Register("cache_hit_rate", [](ProbeParams const& /*params*/) -> std::unique_ptr<GenerationProbe> {
         return std::make_unique<CacheHitRateProbe>();
+    });
+
+    registry.Register("fitness_stats", [](ProbeParams const& /*params*/) -> std::unique_ptr<GenerationProbe> {
+        return std::make_unique<FitnessStatsProbe>();
     });
 
     registry.Register("structural_diversity", [](ProbeParams const& params) -> std::unique_ptr<GenerationProbe> {
