@@ -7,7 +7,9 @@
 
 #include <atomic>
 #include <functional>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "operon/collections/projection.hpp"
 #include "operon/core/concepts.hpp"
@@ -25,6 +27,8 @@
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 
 namespace Operon {
+
+class CoefficientOptimizer; // operators/local_search.hpp
 
 enum class ErrorType : int { SSE, MSE, NMSE, RMSE, MAE, R2, C2 };
 
@@ -189,6 +193,27 @@ private:
     gsl::not_null<Problem const*> problem_;
     size_t budget_ = DefaultEvaluationBudget;
 };
+
+// Optionally applies local search (coefficient optimization) to `ind`'s
+// genotype with probability `pLocal`. If local search ran and the update is
+// non-Lamarckian, returns the original coefficients so the caller can evaluate
+// the optimized genotype first, then restore inherited coefficients. Does not
+// evaluate `ind`'s fitness - split out from ScoreIndividual so a caller that
+// needs to run local search over a whole population before any of it is
+// scored (e.g. so Prepare() on an evaluator that snapshots the population,
+// such as DiversityEvaluator, sees post-optimization genotypes) can do so
+// without duplicating this logic.
+OPERON_EXPORT auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck) -> std::optional<std::vector<Operon::Scalar>>;
+
+// Optionally applies local search (coefficient optimization) to `ind`'s
+// genotype with probability `pLocal`, then scores it via `evaluator`. Non-
+// finite fitness values are clamped to EvaluatorBase::ErrMax either way.
+//
+// Shared by offspring generation (OffspringGeneratorBase::Generate) and
+// initial-population scoring (GeneticProgrammingAlgorithm::Run,
+// NSGA2::Run) so both receive identical local-search treatment - passing
+// pLocal=0 (or a null coeffOptimizer) degenerates to a plain evaluate.
+OPERON_EXPORT auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) -> void;
 
 class OPERON_EXPORT UserDefinedEvaluator : public EvaluatorBase {
 public:

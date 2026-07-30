@@ -11,8 +11,10 @@
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/local_search.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
+#include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
 
@@ -72,6 +74,68 @@ struct EvaluatorFixture {
         return ind;
     }
 };
+
+class FixedCoefficientOptimizer final : public OptimizerBase {
+public:
+    explicit FixedCoefficientOptimizer(gsl::not_null<Problem const*> problem)
+        : OptimizerBase(problem)
+    {
+    }
+
+    [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*rng*/, Tree const& tree) const -> FitOutcome override
+    {
+        FitResult result;
+        result.InitialParameters = tree.GetCoefficients();
+        result.FinalParameters.assign(result.InitialParameters.size(), static_cast<Operon::Scalar>(1));
+        result.InitialCost = static_cast<Operon::Scalar>(1);
+        result.FinalCost = static_cast<Operon::Scalar>(0);
+        result.FunctionEvaluations = 1;
+        return result;
+    }
+
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> /*x*/, Operon::Span<Operon::Scalar const> /*y*/, Operon::Span<Operon::Scalar const> /*w*/) const -> Operon::Scalar override
+    {
+        return Operon::Scalar{};
+    }
+
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> /*pred*/, Operon::Span<Operon::Scalar const> /*jac*/, Operon::Span<Operon::Scalar const> /*sigma*/) const -> Eigen::Matrix<Operon::Scalar, -1, -1> override
+    {
+        return {};
+    }
+};
+
+TEST_CASE("ScoreIndividual evaluates optimized coefficients before non-Lamarckian restore", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    Evaluator<EvaluatorFixture::DTable> evaluator{&fix.problem, &fix.dtable, MSE{}, /*linearScaling=*/false};
+    FixedCoefficientOptimizer optimizer{&fix.problem};
+    CoefficientOptimizer coeffOptimizer{&optimizer};
+    Operon::Vector<Operon::Scalar> buf(fix.problem.TrainingRange().Size());
+
+    SECTION("non-Lamarckian local search restores genotype but keeps optimized fitness") {
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        Operon::RandomGenerator rng{1};
+
+        ScoreIndividual(rng, ind, evaluator, &coeffOptimizer, /*pLocal=*/1.0, /*pLamarck=*/0.0, Operon::Span<Operon::Scalar>{buf});
+
+        CHECK_THAT(static_cast<double>(ind.Fitness.front()), Catch::Matchers::WithinAbs(0.0, 1e-6));
+        for (auto c : ind.Genotype.GetCoefficients()) {
+            CHECK_THAT(static_cast<double>(c), Catch::Matchers::WithinRel(0.1, 1e-5));
+        }
+    }
+
+    SECTION("Lamarckian local search keeps optimized genotype") {
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        Operon::RandomGenerator rng{1};
+
+        ScoreIndividual(rng, ind, evaluator, &coeffOptimizer, /*pLocal=*/1.0, /*pLamarck=*/1.0, Operon::Span<Operon::Scalar>{buf});
+
+        CHECK_THAT(static_cast<double>(ind.Fitness.front()), Catch::Matchers::WithinAbs(0.0, 1e-6));
+        for (auto c : ind.Genotype.GetCoefficients()) {
+            CHECK_THAT(static_cast<double>(c), Catch::Matchers::WithinRel(1.0, 1e-5));
+        }
+    }
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Poisson likelihood static methods

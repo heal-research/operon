@@ -5,10 +5,14 @@
 #include "operon/core/distance.hpp"
 #include "operon/core/dispatch.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/local_search.hpp"
+#include "operon/optimizer/optimizer.hpp"
 #include "operon/random/random.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <operon/operon_export.hpp>
+#include <random>
 #include <type_traits>
 
 namespace Operon {
@@ -178,5 +182,35 @@ namespace {
         auto aik = n/2 * (std::log(Operon::Math::Tau) + std::log(mse) + 1);
         if (!std::isfinite(aik)) { aik = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(aik) };
+    }
+
+    auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck) -> std::optional<std::vector<Operon::Scalar>>
+    {
+        using BernoulliTrial = std::bernoulli_distribution;
+
+        if (coeffOptimizer == nullptr || pLocal <= 0 || !BernoulliTrial{pLocal}(random)) { return std::nullopt; }
+
+        auto c = ind.Genotype.GetCoefficients(); // save original coefficients
+        auto t0 = std::chrono::steady_clock::now();
+        auto [optimizedTree, outcome] = (*coeffOptimizer)(random, std::move(ind.Genotype));
+        auto t1 = std::chrono::steady_clock::now();
+        auto const& diag = Diagnostics(outcome);
+        evaluator.ResidualEvaluations += diag.FunctionEvaluations;
+        evaluator.JacobianEvaluations += diag.JacobianEvaluations;
+        evaluator.CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        ind.Genotype = std::move(optimizedTree);
+
+        return BernoulliTrial{pLamarck}(random) ? std::nullopt : std::make_optional(std::move(c));
+    }
+
+    auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) -> void
+    {
+        auto originalCoeffs = LocalSearch(random, ind, evaluator, coeffOptimizer, pLocal, pLamarck);
+        ind.Fitness = evaluator(random, ind, buf);
+        if (originalCoeffs) { ind.Genotype.SetCoefficients(*originalCoeffs); }
+
+        for (auto& v : ind.Fitness) {
+            if (!std::isfinite(v)) { v = EvaluatorBase::ErrMax; }
+        }
     }
 } // namespace Operon
