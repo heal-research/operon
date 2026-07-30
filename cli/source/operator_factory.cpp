@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operator_factory.hpp"
+#include <cmath>                           // for isfinite
 #include <stdexcept>                       // for runtime_error
 #include <fmt/format.h>                        // for format
 #include <scn/scan.h>
@@ -141,9 +142,17 @@ auto ParseMutators(std::string const& str, std::unordered_map<std::string, Mutat
     if (mutator.Count() == 0) { throw std::invalid_argument(GetErrorString("mutators", str)); }
 }
 
-auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale) -> std::unique_ptr<EvaluatorBase>
+auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale, bool skipNonFinite, double nonFinitePenaltyWeight) -> std::unique_ptr<EvaluatorBase>
 {
     using T = ScalarDispatch;
+
+    if (skipNonFinite && (str == "r2" || str == "c2")) {
+        throw std::runtime_error(fmt::format("--skip-nonfinite is not supported with objective '{}': R2/C2 have no finite-subset semantics\n", str));
+    }
+
+    if (skipNonFinite && !(std::isfinite(nonFinitePenaltyWeight) && nonFinitePenaltyWeight >= 0.0)) {
+        throw std::runtime_error(fmt::format("--nonfinite-penalty-weight must be a finite, non-negative value (got {})\n", nonFinitePenaltyWeight));
+    }
 
     std::unique_ptr<EvaluatorBase> evaluator;
     if (str == "r2") {
@@ -151,13 +160,13 @@ auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dt
     } else if (str == "c2") {
         evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::C2{}, scale);
     } else if (str == "nmse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::NMSE{}, scale);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::NMSE{}, scale, skipNonFinite, nonFinitePenaltyWeight);
     } else if (str == "mse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::MSE{}, scale);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::MSE{}, scale, skipNonFinite, nonFinitePenaltyWeight);
     } else if (str == "rmse") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::RMSE{}, scale);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::RMSE{}, scale, skipNonFinite, nonFinitePenaltyWeight);
     } else if (str == "mae") {
-        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::MAE{}, scale);
+        evaluator = std::make_unique<Operon::Evaluator<T>>(&problem, &dtable, Operon::MAE{}, scale, skipNonFinite, nonFinitePenaltyWeight);
     } else if (str == "mdl_gauss") {
         evaluator = std::make_unique<Operon::MinimumDescriptionLengthEvaluator<T, GaussianLikelihood<Operon::Scalar>>>(&problem, &dtable);
     } else if (str == "mdl_poisson") {
