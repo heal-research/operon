@@ -334,6 +334,11 @@ auto Tree::Simplify() -> Tree& {
                 break;
             }
             case Operon::Hash(BO::Sub): {
+                // Arity 1 is negation (-x), not identity - nothing to fold here
+                // (the loop below never runs at arity 1, which would otherwise
+                // leave newArity==1 and incorrectly disable the node as if its
+                // one child were the whole value).
+                if (n.Arity < 2) { break; }
                 // Remove Const(0) subtrahends (all children except the first).
                 auto newArity = n.Arity;
                 for (std::size_t ci = 1; ci < ch.size(); ++ci) {
@@ -350,6 +355,8 @@ auto Tree::Simplify() -> Tree& {
                 break;
             }
             case Operon::Hash(BO::Div): {
+                // Arity 1 is inversion (1/x), not identity - same reasoning as Sub above.
+                if (n.Arity < 2) { break; }
                 // Remove Const(1) denominators (all children except the first).
                 auto newArity = n.Arity;
                 for (std::size_t ci = 1; ci < ch.size(); ++ci) {
