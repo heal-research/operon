@@ -669,6 +669,56 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
                    Catch::Matchers::WithinRel(expectedFraction, 0.10));
     }
 
+    SECTION("RMSE/MAE penalty is scaled by target stddev, not variance (regression: both are linear-error-unit metrics, variance is a squared-error-unit scale)") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        auto targetValues = fix.problem.TargetValues(fix.problem.TrainingRange());
+        auto const targetStdDev = std::sqrt(vstat::univariate::accumulate<Operon::Scalar>(targetValues.begin(), targetValues.end()).variance);
+        auto const nTotal = static_cast<double>(fix.problem.TrainingRange().Size());
+
+        for (auto metric : std::initializer_list<ErrorMetric>{RMSE{}, MAE{}}) {
+            Evaluator<DTable> loPen{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+            Evaluator<DTable> hiPen{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+            auto rLo = loPen(fix.rng, ind)[0];
+            auto rHi = hiPen(fix.rng, ind)[0];
+            CHECK(std::isfinite(rLo));
+            CHECK(std::isfinite(rHi));
+
+            auto const fraction = static_cast<double>(rHi - rLo) / (0.5 * targetStdDev); // weightHi - weightLo
+            auto const nonFiniteCount = static_cast<std::size_t>(std::round(fraction * nTotal));
+            auto constexpr expectedFraction = 0.5; // log(X1): NaN iff X1<=0, X1~U(-1,+1)
+            CHECK_THAT(static_cast<double>(nonFiniteCount) / nTotal,
+                       Catch::Matchers::WithinRel(expectedFraction, 0.10));
+        }
+    }
+
+    SECTION("SSE penalty is scaled by variance * finite-point-count, not variance alone (regression: SSE is a sum, not an average, of squared errors)") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> loPen{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        auto rLo = loPen(fix.rng, ind)[0];
+        auto rHi = hiPen(fix.rng, ind)[0];
+        CHECK(std::isfinite(rLo));
+        CHECK(std::isfinite(rHi));
+
+        auto targetValues = fix.problem.TargetValues(fix.problem.TrainingRange());
+        auto const targetVariance = vstat::univariate::accumulate<Operon::Scalar>(targetValues.begin(), targetValues.end()).variance;
+        auto const nTotal = fix.problem.TrainingRange().Size();
+        // log(X1) is NaN for X1<=0, X1~U(-1,+1): ~half the points are non-finite.
+        // penalty = penaltyWeight * (variance * finiteCount) * nonFiniteFraction
+        auto constexpr expectedNonFiniteFraction = 0.5;
+        auto const expectedFiniteCount = static_cast<double>(nTotal) * (1.0 - expectedNonFiniteFraction);
+        auto const expectedDelta = 0.5 * targetVariance * expectedFiniteCount * expectedNonFiniteFraction; // weightHi - weightLo
+        CHECK_THAT(static_cast<double>(rHi - rLo), Catch::Matchers::WithinRel(expectedDelta, 0.15));
+    }
+
     SECTION("SSE/RMSE/MAE also support skipNonFinite_") {
         EvaluatorFixture fix;
         auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());

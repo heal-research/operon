@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include "operator_factory.hpp"
+#include <cmath>                           // for isfinite
 #include <stdexcept>                       // for runtime_error
 #include <fmt/format.h>                        // for format
 #include <scn/scan.h>
@@ -101,6 +102,10 @@ auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dt
 
     if (skipNonFinite && (str == "r2" || str == "c2")) {
         throw std::runtime_error(fmt::format("--skip-nonfinite is not supported with objective '{}': R2/C2 have no finite-subset semantics\n", str));
+    }
+
+    if (skipNonFinite && !(std::isfinite(nonFinitePenaltyWeight) && nonFinitePenaltyWeight >= 0.0)) {
+        throw std::runtime_error(fmt::format("--nonfinite-penalty-weight must be a finite, non-negative value (got {})\n", nonFinitePenaltyWeight));
     }
 
     std::unique_ptr<EvaluatorBase> evaluator;
