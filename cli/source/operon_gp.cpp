@@ -152,7 +152,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
         Operon::ReplaceSubtreeMutation replaceSubtree { creator.get(), coeffInitializer.get(), maxDepth, maxLength };
         Operon::InsertSubtreeMutation insertSubtree { creator.get(), coeffInitializer.get(), maxDepth, maxLength };
-        Operon::RemoveSubtreeMutation removeSubtree { problem.GetPrimitiveSet() };
+        Operon::RemoveChildMutation removeChild { problem.GetPrimitiveSet() };
+        Operon::RemoveSubtreeMutation removeSubtree { creator.get(), coeffInitializer.get(), maxDepth };
         Operon::ShuffleSubtreesMutation shuffleSubtrees;
         Operon::DiscretePointMutation discretePoint;
         for (auto v : Operon::Math::Constants) {
@@ -166,6 +167,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             {"changefunc", &changeFunc},
             {"replacesubtree", &replaceSubtree},
             {"insertsubtree", &insertSubtree},
+            {"removechild", &removeChild},
             {"removesubtree", &removeSubtree},
             {"discretepoint", &discretePoint},
             {"shuffle", &shuffleSubtrees},
