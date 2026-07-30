@@ -183,11 +183,11 @@ namespace {
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(aik) };
     }
 
-    auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck) -> void
+    auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck) -> std::optional<std::vector<Operon::Scalar>>
     {
         using BernoulliTrial = std::bernoulli_distribution;
 
-        if (coeffOptimizer == nullptr || pLocal <= 0 || !BernoulliTrial{pLocal}(random)) { return; }
+        if (coeffOptimizer == nullptr || pLocal <= 0 || !BernoulliTrial{pLocal}(random)) { return std::nullopt; }
 
         auto c = ind.Genotype.GetCoefficients(); // save original coefficients
         auto t0 = std::chrono::steady_clock::now();
@@ -199,15 +199,14 @@ namespace {
         evaluator.CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         ind.Genotype = std::move(optimizedTree);
 
-        if (!BernoulliTrial{pLamarck}(random)) {
-            ind.Genotype.SetCoefficients(c); // restore original coefficients
-        }
+        return BernoulliTrial{pLamarck}(random) ? std::nullopt : std::make_optional(std::move(c));
     }
 
     auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) -> void
     {
-        LocalSearch(random, ind, evaluator, coeffOptimizer, pLocal, pLamarck);
+        auto originalCoeffs = LocalSearch(random, ind, evaluator, coeffOptimizer, pLocal, pLamarck);
         ind.Fitness = evaluator(random, ind, buf);
+        if (originalCoeffs) { ind.Genotype.SetCoefficients(*originalCoeffs); }
 
         for (auto& v : ind.Fitness) {
             if (!std::isfinite(v)) { v = EvaluatorBase::ErrMax; }
