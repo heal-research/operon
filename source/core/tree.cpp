@@ -251,10 +251,15 @@ auto Tree::Simplify() -> Tree& {
                     for (auto j : ch) { val *= nodes_[j].Value; }
                     break;
                 case Operon::Hash(BO::Sub):
+                    // arity 1 is negation (-x, see InfixFormatter::FormatNode), not identity -
+                    // the n-ary accumulator below is only correct for arity >= 2.
+                    if (ch.size() == 1) { val = -nodes_[ch[0]].Value; break; }
                     for (auto j : ch) { acc = acc ? *acc - nodes_[j].Value : nodes_[j].Value; }
                     val = acc.value_or(S{0});
                     break;
                 case Operon::Hash(BO::Div):
+                    // arity 1 is inversion (1/x, see InfixFormatter::FormatNode), not identity.
+                    if (ch.size() == 1) { val = S{1} / nodes_[ch[0]].Value; break; }
                     for (auto j : ch) { acc = acc ? *acc / nodes_[j].Value : nodes_[j].Value; }
                     val = acc.value_or(S{0});
                     break;
