@@ -269,6 +269,16 @@ public:
     auto
     Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
     {
+        // CallCount tracks "this evaluator instance scored one individual" at
+        // every composition depth, not just the leaf Evaluator<DTable> - a
+        // caller (e.g. OffspringSelectionGenerator::SelectionPressure) reading
+        // CallCount to count real evaluation attempts must see the same
+        // increment-per-call semantics regardless of how many inner
+        // evaluators this composite wraps. Stats() below separately sums the
+        // inner evaluators' own counters too - that is a distinct "total
+        // sub-evaluator work done" profiling figure, not a substitute for this.
+        ++CallCount;
+
         EvaluatorBase::ReturnType fit;
         fit.reserve(ind.Size());
 
@@ -283,20 +293,18 @@ public:
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> final {
         auto resEval{0UL};
         auto jacEval{0UL};
-        auto callCnt{0UL};
         auto cfTime{0UL};
 
         for (auto const& ev: evaluators_) {
             auto [re, je, cc, ct] = ev->Stats();
             resEval += re;
             jacEval += je;
-            callCnt += cc;
             cfTime  += ct;
         }
 
         return std::tuple{resEval + ResidualEvaluations.load(),
             jacEval + JacobianEvaluations.load(),
-            callCnt + CallCount.load(),
+            CallCount.load(),
             cfTime + CostFunctionTime.load()};
     }
 
