@@ -32,14 +32,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:/vcpkg/downloads
-          key: operon-vcpkg-downloads-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          key: operon-vcpkg-downloads-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**', 'vcpkg-overlays/**') }}
           restore-keys: operon-vcpkg-downloads-windows-
 
       - name: Cache vcpkg installed packages
         uses: actions/cache@v4
         with:
           path: C:/vcpkg/installed
-          key: operon-vcpkg-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          key: operon-vcpkg-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**', 'vcpkg-overlays/**') }}
           restore-keys: operon-vcpkg-windows-
 
       - name: Configure
