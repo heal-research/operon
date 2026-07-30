@@ -127,14 +127,22 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
         Operon::LMCostFunction cf{gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter}, target, range, weights};
         ceres::TinySolver<decltype(cf)> solver;
-        solver.options.max_num_iterations = static_cast<int>(iterations+1);
 
         auto x0 = tree.GetCoefficients();
         FitDiagnostics diag;
         diag.InitialParameters = x0;
         auto m0 = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size());
         if (!x0.empty()) {
-            typename decltype(solver)::Parameters p = m0.cast<typename decltype(cf)::Scalar>();
+            // max_num_accepted_steps counts accepted LM steps only, matching
+            // Eigen::LevenbergMarquardt's iterations() semantics (see the
+            // Eigen-backend LevenbergMarquardtOptimizer below) - unlike this
+            // class's own max_num_iterations, which (unmodified) bounds total
+            // attempts, accepted or rejected. max_num_iterations is still set,
+            // as a MINPACK-convention-scaled safety net on rejected-retry
+            // attempts, mirroring maxfev's role for the Eigen backend.
+            solver.options.max_num_accepted_steps = static_cast<int>(iterations);
+            solver.options.max_num_iterations = static_cast<int>(iterations) * (static_cast<int>(x0.size()) + 1);
+            typename decltype(solver)::ParameterVector p = m0.cast<typename decltype(cf)::Scalar>();
             solver.Solve(cf, &p);
             m0 = p.template cast<Operon::Scalar>();
         }
@@ -183,12 +191,23 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
         Operon::LMCostFunction<Operon::Scalar> cf{&interpreter, target, range, weights};
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-        lm.setMaxfev(static_cast<int>(iterations+2));
 
         auto x0 = tree.GetCoefficients();
         FitDiagnostics diag;
         diag.InitialParameters = x0;
         if (!x0.empty()) {
+            // `iterations` counts accepted LM steps (lm.iterations()), matching the
+            // Tiny/ceres variant's max_num_iterations - it is not itself a function-
+            // evaluation budget. maxfev is still needed as a bound on rejected
+            // trust-region retries within/across those steps (Eigen's own default,
+            // 400 regardless of iterations, is enough per individual to exhaust the
+            // CLI's overall --evaluations budget across a full GP run), scaled by
+            // parameter count using MINPACK's own convention (100*(n+1) for its
+            // "no fixed iteration count" default) so the ceiling grows with problem
+            // size instead of being a fixed constant.
+            auto const maxfev = static_cast<Eigen::Index>(iterations) * (static_cast<Eigen::Index>(x0.size()) + 1);
+            lm.setMaxfev(std::max<Eigen::Index>(maxfev, 1));
+
             Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
             Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
 
@@ -198,7 +217,8 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
             if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
                 do {
                     status = lm.minimizeOneStep(m);
-                } while (status == Eigen::LevenbergMarquardtSpace::Running);
+                } while (status == Eigen::LevenbergMarquardtSpace::Running
+                          && lm.iterations() < static_cast<Eigen::Index>(iterations));
             }
             m0 = m;
         }
@@ -461,15 +481,17 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
                 gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
                 target, range, weights};
             Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-            lm.setMaxfev(static_cast<int>(iters + 2));
             if (!x0.empty()) {
+                lm.setMaxfev(std::max<Eigen::Index>(
+                    static_cast<Eigen::Index>(iters) * (static_cast<Eigen::Index>(x0.size()) + 1), 1));
                 Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
                 Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
                 Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
                 diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
                 if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
                     do { status = lm.minimizeOneStep(m); }
-                    while (status == Eigen::LevenbergMarquardtSpace::Running);
+                    while (status == Eigen::LevenbergMarquardtSpace::Running
+                            && lm.iterations() < static_cast<Eigen::Index>(iters));
                 }
                 m0 = m;
             }
@@ -519,7 +541,8 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
             weights};
 
         Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-        lm.setMaxfev(static_cast<int>(iters + 2));
+        lm.setMaxfev(std::max<Eigen::Index>(
+            static_cast<Eigen::Index>(iters) * (static_cast<Eigen::Index>(x0.size()) + 1), 1));
 
         Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
         Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
@@ -528,7 +551,8 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
         diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
         if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
             do { status = lm.minimizeOneStep(m); }
-            while (status == Eigen::LevenbergMarquardtSpace::Running);
+            while (status == Eigen::LevenbergMarquardtSpace::Running
+                    && lm.iterations() < static_cast<Eigen::Index>(iters));
         }
         m0 = m;
 
