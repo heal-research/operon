@@ -6,6 +6,7 @@
 #include <chrono> // for steady_clock
 #include <cstddef> // for size_t
 #include <functional> // for std::function
+#include <optional> // for std::optional
 #include <thread> // for std::thread
 #include <utility> // for std::move
 #include <vector> // for std::vector
@@ -70,6 +71,7 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     auto parents = Parents();
     auto offspring = Offspring();
     std::vector<Operon::RandomGenerator> savedRngs; // used only on warm resume
+    std::vector<std::optional<std::vector<Operon::Scalar>>> originalCoeffs(parents.size());
 
     // Declared here (Run()'s own scope), not inside the "init" task's
     // callable below: a subflow's tasks run after that callable returns, so
@@ -99,8 +101,6 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                    ScoreIndividual(rngs[i], parents[i], *evaluator, generator->Optimizer(), /*pLocal=*/0.0, config.LamarckianProbability, Operon::Span<Operon::Scalar>(slots[id]));
                                })
                             .name("evaluate population");
-            eval.precede(reportProgress);
-
             if (warmResume) {
                 // Re-evaluate to catch evaluator/objective config mismatches, but snapshot and restore
                 // the worker RNG states so that subsequent generations remain deterministic.
@@ -121,12 +121,18 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                 // Prepare() (e.g. DiversityEvaluator) sees post-optimization
                 // genotypes rather than the raw initial ones.
                 auto localSearch = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                       LocalSearch(rngs[i], parents[i], *evaluator, generator->Optimizer(), config.LocalSearchProbability, config.LamarckianProbability);
-                                   })
+                                       originalCoeffs[i] = LocalSearch(rngs[i], parents[i], *evaluator, generator->Optimizer(), config.LocalSearchProbability, config.LamarckianProbability);
+                                    })
                                 .name("local search on initial population");
+                auto restoreCoeffs = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
+                                        if (originalCoeffs[i]) { parents[i].Genotype.SetCoefficients(*originalCoeffs[i]); }
+                                    })
+                                .name("restore non-lamarckian coefficients");
                 init.precede(localSearch);
                 localSearch.precede(prepareEval);
                 prepareEval.precede(eval);
+                eval.precede(restoreCoeffs);
+                restoreCoeffs.precede(reportProgress);
             }
         }, // init
         stop, // loop condition
