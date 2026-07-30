@@ -303,7 +303,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     body.precede(back);
     back.precede(cond);
 
-    executor.run(taskflow).wait();
+    executor.run(taskflow).get(); // .wait() would silently drop an exception thrown by any task
     Timings() = timer->Timings();
     executor.remove_observer(std::move(timer));
 }
