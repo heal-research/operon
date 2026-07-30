@@ -10,6 +10,7 @@
 #include "operon/operators/creator.hpp"    // for CreatorBase, BalancedTreeC...
 #include "operon/operators/evaluator.hpp"  // for Evaluator, EvaluatorBase
 #include "operon/operators/generator.hpp"  // for OffspringGeneratorBase
+#include "operon/operators/mutation.hpp"   // for MultiMutation, MutatorBase
 #include "operon/operators/reinserter.hpp"  // for OffspringGeneratorBase
 #include "operon/operators/selector.hpp"
 #include "operon/operators/local_search.hpp"
@@ -71,29 +72,74 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
     return selector;
 }
 
-auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<Operon::Hash> const& inputs, size_t maxLength) -> std::unique_ptr<CreatorBase>
+auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<Operon::Hash> const& inputs,
+    size_t defaultMaxLength, size_t defaultMinDepth, size_t defaultMaxDepth) -> CreatorConfig
 {
-    std::unique_ptr<CreatorBase> creator;
-
     auto tok = Split(str, ':');
+    if (tok.empty()) { throw std::invalid_argument(GetErrorString("creator", str)); }
+    auto const& name = tok[0]; // NOLINT(readability-identifier-length) - previously compared `str` itself here, which could never match once any param token was appended
 
-    double bias{0}; // irregularity bias (used by btc and ptc20)
-    if(tok.size() > 1) {
+    double bias{0}; // irregularity bias (used by btc and ptc2)
+    size_t maxLength = defaultMaxLength;
+    size_t minDepth = defaultMinDepth;
+    size_t maxDepth = defaultMaxDepth;
+
+    if (tok.size() > 1 && !tok[1].empty()) {
         auto res = scn::scan<double>(tok[1], "{}");
         ENSURE(res);
         bias = res->value();
     }
+    if (tok.size() > 2 && !tok[2].empty()) {
+        auto res = scn::scan<size_t>(tok[2], "{}");
+        ENSURE(res);
+        minDepth = res->value();
+    }
+    if (tok.size() > 3 && !tok[3].empty()) {
+        auto res = scn::scan<size_t>(tok[3], "{}");
+        ENSURE(res);
+        maxDepth = res->value();
+    }
+    if (tok.size() > 4 && !tok[4].empty()) {
+        auto res = scn::scan<size_t>(tok[4], "{}");
+        ENSURE(res);
+        maxLength = res->value();
+    }
 
-    if (str == "btc") {
+    std::unique_ptr<CreatorBase> creator;
+    if (name == "btc") {
         creator = std::make_unique<BalancedTreeCreator>(&pset, inputs, bias, maxLength);
-    } else if (str == "ptc2") {
+    } else if (name == "ptc2") {
         creator = std::make_unique<ProbabilisticTreeCreator>(&pset, inputs, bias, maxLength);
-    } else if (str == "grow") {
+    } else if (name == "grow") {
         creator = std::make_unique<GrowTreeCreator>(&pset, inputs, maxLength);
     } else {
         throw std::invalid_argument(GetErrorString("creator", str));
     }
-    return creator;
+    return CreatorConfig{std::move(creator), maxLength, minDepth, maxDepth};
+}
+
+auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available, MultiMutation& mutator) -> void
+{
+    for (auto const& spec : Split(str, ',')) {
+        auto tok = Split(spec, ':');
+        if (tok.empty() || tok[0].empty()) { throw std::invalid_argument(GetErrorString("mutators", str)); }
+        auto const& name = tok[0];
+
+        double weight{1.0};
+        if (tok.size() > 1 && !tok[1].empty()) {
+            auto res = scn::scan<double>(tok[1], "{}");
+            ENSURE(res);
+            weight = res->value();
+        }
+        if (!(weight > 0)) { throw std::invalid_argument(GetErrorString("mutators", str)); }
+
+        auto it = available.find(name);
+        if (it == available.end()) {
+            throw std::invalid_argument(GetErrorString("mutators", name));
+        }
+        mutator.Add(it->second, weight);
+    }
+    if (mutator.Count() == 0) { throw std::invalid_argument(GetErrorString("mutators", str)); }
 }
 
 auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale, bool skipNonFinite, double nonFinitePenaltyWeight) -> std::unique_ptr<EvaluatorBase>

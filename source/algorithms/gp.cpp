@@ -7,7 +7,6 @@
 #include <cstddef> // for size_t
 #include <functional> // for std::function
 #include <optional> // for std::optional
-#include <random> // for bernoulli_distribution
 #include <thread> // for std::thread
 #include <utility> // for std::move
 #include <vector> // for std::vector
@@ -21,6 +20,7 @@
 #include "operon/algorithms/phase_timer.hpp"
 #include "operon/core/contracts.hpp" // for ENSURE
 #include "operon/core/types.hpp"
+#include "operon/operators/evaluator.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/reinserter.hpp"
 
@@ -73,27 +73,11 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
     std::vector<Operon::RandomGenerator> savedRngs; // used only on warm resume
     std::vector<std::optional<std::vector<Operon::Scalar>>> originalCoeffs(parents.size());
 
-    auto optimizeInitialIndividual = [&](size_t i) -> std::optional<std::vector<Operon::Scalar>> {
-        auto const* optimizer = generator->Optimizer();
-        if (optimizer == nullptr || !std::bernoulli_distribution{config.LocalSearchProbability}(rngs[i])) {
-            return std::nullopt;
-        }
-
-        auto coeff = parents[i].Genotype.GetCoefficients();
-        auto t0 = std::chrono::steady_clock::now();
-        auto [optimizedTree, outcome] = (*optimizer)(rngs[i], std::move(parents[i].Genotype));
-        auto t1 = std::chrono::steady_clock::now();
-        auto const& diag = Diagnostics(outcome);
-        evaluator->ResidualEvaluations += diag.FunctionEvaluations;
-        evaluator->JacobianEvaluations += diag.JacobianEvaluations;
-        evaluator->CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-        parents[i].Genotype = std::move(optimizedTree);
-
-        if (std::bernoulli_distribution{config.LamarckianProbability}(rngs[i])) {
-            return std::nullopt;
-        }
-        return coeff;
-    };
+    // Declared here (Run()'s own scope), not inside the "init" task's
+    // callable below: a subflow's tasks run after that callable returns, so
+    // a variable local to it and captured by reference would be dangling by
+    // the time a worker thread actually reads it.
+    bool const warmResume = IsFitted() && warmStart;
 
     auto timer = executor.make_observer<PhaseTimer>();
 
@@ -107,15 +91,17 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                              if (report && std::invoke(report)) { RequestStop(); }
                                          }).name("report progress");
 
+            // Local search (if any) always runs before prepareEval below, either
+            // here (cold start) or not at all (warm resume, pLocal=0), so this
+            // loop itself never applies local search - passing pLocal=0 makes it
+            // a plain evaluate.
             auto eval = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
                                    auto id = executor.this_worker_id();
                                    if (slots[id].size() < trainSize) { slots[id].resize(trainSize); }
-                                   parents[i].Fitness = (*evaluator)(rngs[i], parents[i], slots[id]);
+                                   ScoreIndividual(rngs[i], parents[i], *evaluator, generator->Optimizer(), /*pLocal=*/0.0, config.LamarckianProbability, Operon::Span<Operon::Scalar>(slots[id]));
                                })
                             .name("evaluate population");
-            eval.precede(reportProgress);
-
-            if (IsFitted() && warmStart) {
+            if (warmResume) {
                 // Re-evaluate to catch evaluator/objective config mismatches, but snapshot and restore
                 // the worker RNG states so that subsequent generations remain deterministic.
                 auto saveRngs    = subflow.emplace([&]() { savedRngs = rngs; }).name("save rng states");
@@ -130,9 +116,13 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                        (*coeffInit)(rngs[i], parents[i].Genotype);
                                    })
                                 .name("initialize population");
+                // Local search runs before prepareEval (not after, alongside
+                // eval) so that an evaluator snapshotting the population in
+                // Prepare() (e.g. DiversityEvaluator) sees post-optimization
+                // genotypes rather than the raw initial ones.
                 auto localSearch = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                       originalCoeffs[i] = optimizeInitialIndividual(i);
-                                   })
+                                       originalCoeffs[i] = LocalSearch(rngs[i], parents[i], *evaluator, generator->Optimizer(), config.LocalSearchProbability, config.LamarckianProbability);
+                                    })
                                 .name("local search on initial population");
                 auto restoreCoeffs = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
                                         if (originalCoeffs[i]) { parents[i].Genotype.SetCoefficients(*originalCoeffs[i]); }

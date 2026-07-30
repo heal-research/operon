@@ -1196,7 +1196,7 @@ TEST_CASE("JitLMCostFunction TinySolver convergence", "[jit][lm]")
     ceres::TinySolver<JitLMCostFunction<>> solver;
     solver.options.max_num_iterations = 100;
 
-    typename decltype(solver)::Parameters p = m0.cast<Operon::Scalar>();
+    typename decltype(solver)::ParameterVector p = m0.cast<Operon::Scalar>();
     solver.Solve(cf, &p);
     m0 = p.template cast<Operon::Scalar>();
 

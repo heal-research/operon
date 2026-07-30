@@ -103,7 +103,7 @@ TEST_CASE("NSGA2 Pareto front: interval bounds are valid", "[pappus][nsgp]")
 
     Operon::ChangeVariableMutation    changeVar{inputs};
     Operon::ChangeFunctionMutation    changeFunc{pset};
-    Operon::RemoveSubtreeMutation     removeSubtree{pset};
+    Operon::RemoveChildMutation       removeSubtree{pset};
     Operon::InsertSubtreeMutation     insertSubtree{&creator, &coeffInit, MaxDepth, MaxLength};
     Operon::ReplaceSubtreeMutation    replaceSubtree{&creator, &coeffInit, MaxDepth, MaxLength};
     Operon::OnePointMutation<std::normal_distribution<Operon::Scalar>> onePoint;
