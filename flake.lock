@@ -570,11 +570,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1780595758,
-        "narHash": "sha256-EYATco7ZfRCMk53FTydO+6qwTe8CiIctF8wSw+IUbUo=",
+        "lastModified": 1784990564,
+        "narHash": "sha256-J8TXV7HyWy3oeAeYk61NsUP2NM/dRi9iuTzvFKOvV8w=",
         "owner": "heal-research",
         "repo": "vstat",
-        "rev": "dd174d0dcc4a9fe7d15e8667a2ccb69b3870ded7",
+        "rev": "495dca7736cef3db37cf6a8efced065c4befdab1",
         "type": "github"
       },
       "original": {

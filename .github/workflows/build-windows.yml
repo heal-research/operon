@@ -21,21 +21,25 @@ jobs:
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Update vcpkg
-        run: git -C C:/vcpkg fetch origin && git -C C:/vcpkg reset --hard origin/master
+      - name: Update and bootstrap vcpkg
+        run: |
+          git -C C:/vcpkg fetch origin
+          git -C C:/vcpkg reset --hard origin/master
+          C:/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          C:/vcpkg/vcpkg.exe version
 
       - name: Cache vcpkg downloads
         uses: actions/cache@v4
         with:
           path: C:/vcpkg/downloads
-          key: operon-vcpkg-downloads-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          key: operon-vcpkg-downloads-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**', 'vcpkg-overlays/**') }}
           restore-keys: operon-vcpkg-downloads-windows-
 
       - name: Cache vcpkg installed packages
         uses: actions/cache@v4
         with:
           path: C:/vcpkg/installed
-          key: operon-vcpkg-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**') }}
+          key: operon-vcpkg-windows-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'triplets/**', 'vcpkg-overlays/**') }}
           restore-keys: operon-vcpkg-windows-
 
       - name: Configure

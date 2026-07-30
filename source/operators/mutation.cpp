@@ -115,7 +115,7 @@ auto ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tr
     return Tree(mutated).UpdateNodes();
 }
 
-auto RemoveSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
+auto RemoveChildMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
     auto& nodes = tree.Nodes();
 
@@ -183,6 +183,35 @@ auto InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
     std::copy(nodes.begin(), nodes.begin() + static_cast<Signed>(i - nodes[i].Length), std::back_inserter(mutated));
     std::copy(subtree.Nodes().begin(), subtree.Nodes().end(), std::back_inserter(mutated));
     std::copy(nodes.begin() + static_cast<Signed>(i - nodes[i].Length), nodes.end(), std::back_inserter(mutated));
+
+    return Tree(mutated).UpdateNodes();
+}
+
+auto RemoveSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
+{
+    auto& nodes = tree.Nodes();
+
+    auto i = std::uniform_int_distribution<size_t>(0, nodes.size() - 1)(random);
+
+    auto oldLen = nodes[i].Length + 1U;
+    auto oldLevel = nodes[i].Level;
+
+    using Signed = std::make_signed_t<size_t>;
+    auto maxDepth = std::max(tree.Depth(), maxDepth_) - oldLevel + 1;
+
+    // Always replace with the smallest possible subtree, a single terminal -
+    // matching HeuristicLab's RemoveBranchManipulation, which replaces a
+    // random branch with the grammar-minimal alternative at that position
+    // (unlike ReplaceSubtreeMutation's uniformly-random target length).
+    auto subtree = (*creator_)(random, size_t { 1 }, 1, maxDepth);
+    (*coefficientInitializer_)(random, subtree);
+
+    Operon::Vector<Node> mutated;
+    mutated.reserve(nodes.size() - oldLen + 1);
+
+    std::copy(nodes.begin(), nodes.begin() + static_cast<Signed>(i - nodes[i].Length), std::back_inserter(mutated));
+    std::copy(subtree.Nodes().begin(), subtree.Nodes().end(), std::back_inserter(mutated));
+    std::copy(nodes.begin() + static_cast<Signed>(i + 1), nodes.end(), std::back_inserter(mutated));
 
     return Tree(mutated).UpdateNodes();
 }

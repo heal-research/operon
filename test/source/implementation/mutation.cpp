@@ -46,6 +46,68 @@ TEST_CASE("InsertSubtreeMutation produces valid tree", "[operators]")
     CHECK(child.Length() <= 2 * targetLen);
 }
 
+TEST_CASE("RemoveSubtreeMutation replaces a random subtree with the grammar-minimal terminal", "[operators]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", true);
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
+    auto const maxDepth{1000};
+    auto const maxLength{100};
+
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Add>().HashValue, 1);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Mul>().HashValue, 1);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Sub>().HashValue, 1);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Div>().HashValue, 1);
+
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    UniformCoefficientInitializer cfi;
+
+    Operon::RandomGenerator random(1234);
+    auto const targetLen = size_t{30};
+    auto tree = btc(random, targetLen, 1, maxDepth);
+    auto const originalLength = tree.Length();
+
+    RemoveSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*>{&btc}, gsl::not_null<Operon::CoefficientInitializerBase const*>{&cfi}, maxDepth);
+
+    // Every replacement subtree is a single terminal (the smallest possible),
+    // so the result can only shrink or stay the same length - never grow -
+    // regardless of which node happens to be picked.
+    for (auto i = 0; i < 25; ++i) {
+        auto child = mut(random, tree);
+        CHECK(child.Length() > 0);
+        CHECK(child.Length() <= originalLength);
+    }
+}
+
+TEST_CASE("RemoveSubtreeMutation on a single-node tree does not crash", "[operators]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", true);
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
+    auto const maxDepth{1000};
+    auto const maxLength{100};
+
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Add>().HashValue, 1);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Mul>().HashValue, 1);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Sub>().HashValue, 1);
+    grammar.SetFrequency(Util::MakeOp<BuiltinOp::Div>().HashValue, 1);
+
+    BalancedTreeCreator btc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    UniformCoefficientInitializer cfi;
+
+    Operon::RandomGenerator random(4321);
+    auto tree = btc(random, /*targetLen=*/1, 1, maxDepth);
+    REQUIRE(tree.Length() == 1);
+
+    RemoveSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*>{&btc}, gsl::not_null<Operon::CoefficientInitializerBase const*>{&cfi}, maxDepth);
+    auto child = mut(random, tree);
+    CHECK(child.Length() == 1);
+}
+
 TEST_CASE("Mutation tree stays within bounds", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", true);

@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <fmt/core.h>
 #include <memory>
+#include <unordered_map>
 #include <taskflow/algorithm/reduce.hpp>
 #include <taskflow/taskflow.hpp>
 #include <thread>
@@ -36,7 +37,7 @@
 
 namespace {
 auto MakeCoeffAndMutation(bool symbolic)
-    -> std::pair<std::unique_ptr<Operon::CoefficientInitializerBase>, std::unique_ptr<Operon::MutatorBase>>
+    -> std::tuple<std::unique_ptr<Operon::CoefficientInitializerBase>, std::unique_ptr<Operon::MutatorBase>, std::unique_ptr<Operon::MutatorBase>>
 {
     if (symbolic) {
         using Dist = std::uniform_int_distribution<int>;
@@ -45,14 +46,18 @@ auto MakeCoeffAndMutation(bool symbolic)
         dynamic_cast<Operon::CoefficientInitializer<Dist>*>(ci.get())->ParameterizeDistribution(-range, +range);
         auto op = std::make_unique<Operon::OnePointMutation<Dist>>();
         dynamic_cast<Operon::OnePointMutation<Dist>*>(op.get())->ParameterizeDistribution(-range, +range);
-        return { std::move(ci), std::move(op) };
+        auto multi = std::make_unique<Operon::MultiPointMutation<Dist>>();
+        dynamic_cast<Operon::MultiPointMutation<Dist>*>(multi.get())->ParameterizeDistribution(-range, +range);
+        return { std::move(ci), std::move(op), std::move(multi) };
     }
     using Dist = std::normal_distribution<Operon::Scalar>;
     auto ci = std::make_unique<Operon::CoefficientInitializer<Dist>>();
     dynamic_cast<Operon::NormalCoefficientInitializer*>(ci.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
     auto op = std::make_unique<Operon::OnePointMutation<Dist>>();
     dynamic_cast<Operon::OnePointMutation<Dist>*>(op.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
-    return { std::move(ci), std::move(op) };
+    auto multi = std::make_unique<Operon::MultiPointMutation<Dist>>();
+    dynamic_cast<Operon::MultiPointMutation<Dist>*>(multi.get())->ParameterizeDistribution(Operon::Scalar { 0 }, Operon::Scalar { 1 });
+    return { std::move(ci), std::move(op), std::move(multi) };
 }
 } // anonymous namespace
 
@@ -128,18 +133,17 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         problem.SetInputs(inputs);
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
-        auto creator = ParseCreator(result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs(), maxLength);
+        auto [creator, creatorMaxLength, creatorMinDepth, creatorMaxDepth] = ParseCreator(
+            result["creator"].as<std::string>(), problem.GetPrimitiveSet(), problem.GetInputs(),
+            maxLength, result["creator-mindepth"].as<std::size_t>(), result["creator-maxdepth"].as<std::size_t>());
 
         auto [amin, amax] = problem.GetPrimitiveSet().FunctionArityLimits();
         Operon::UniformTreeInitializer treeInitializer(creator.get());
+        treeInitializer.ParameterizeDistribution(amin + 1, creatorMaxLength);
+        treeInitializer.SetMinDepth(creatorMinDepth);
+        treeInitializer.SetMaxDepth(creatorMaxDepth); // NOLINT
 
-        auto const initialMinDepth = result["creator-mindepth"].as<std::size_t>();
-        auto const initialMaxDepth = result["creator-maxdepth"].as<std::size_t>();
-        treeInitializer.ParameterizeDistribution(amin + 1, maxLength);
-        treeInitializer.SetMinDepth(initialMinDepth);
-        treeInitializer.SetMaxDepth(initialMaxDepth); // NOLINT
-
-        auto [coeffInitializer, onePoint] = MakeCoeffAndMutation(symbolic);
+        auto [coeffInitializer, onePoint, multiPoint] = MakeCoeffAndMutation(symbolic);
 
         Operon::SubtreeCrossover crossover { crossoverInternalProbability, maxDepth, maxLength };
         Operon::MultiMutation mutator {};
@@ -148,22 +152,34 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::ChangeFunctionMutation changeFunc { problem.GetPrimitiveSet() };
         Operon::ReplaceSubtreeMutation replaceSubtree { creator.get(), coeffInitializer.get(), maxDepth, maxLength };
         Operon::InsertSubtreeMutation insertSubtree { creator.get(), coeffInitializer.get(), maxDepth, maxLength };
-        Operon::RemoveSubtreeMutation removeSubtree { problem.GetPrimitiveSet() };
+        Operon::RemoveChildMutation removeChild { problem.GetPrimitiveSet() };
+        Operon::RemoveSubtreeMutation removeSubtree { creator.get(), coeffInitializer.get(), maxDepth };
+        Operon::ShuffleSubtreesMutation shuffleSubtrees;
         Operon::DiscretePointMutation discretePoint;
         for (auto v : Operon::Math::Constants) {
             discretePoint.Add(static_cast<Operon::Scalar>(v), 1);
         }
-        mutator.Add(onePoint.get(), 1.0);
-        mutator.Add(&changeVar, 1.0);
-        mutator.Add(&changeFunc, 1.0);
-        mutator.Add(&replaceSubtree, 1.0);
-        mutator.Add(&insertSubtree, 1.0);
-        mutator.Add(&removeSubtree, 1.0);
-        mutator.Add(&discretePoint, 1.0);
+
+        std::unordered_map<std::string, Operon::MutatorBase*> const availableMutators{
+            {"onepoint", onePoint.get()},
+            {"multipoint", multiPoint.get()},
+            {"changevar", &changeVar},
+            {"changefunc", &changeFunc},
+            {"replacesubtree", &replaceSubtree},
+            {"insertsubtree", &insertSubtree},
+            {"removechild", &removeChild},
+            {"removesubtree", &removeSubtree},
+            {"discretepoint", &discretePoint},
+            {"shuffle", &shuffleSubtrees},
+        };
+        Operon::ParseMutators(result["mutators"].as<std::string>(), availableMutators, mutator);
 
         Operon::ScalarDispatch dtable;
         auto const scale   = result["linear-scaling"].as<bool>();
         auto const jitMode = result["jit"].as<std::string>(); // "all", "jac", or ""
+        if (jitMode == "all" && result["skip-nonfinite"].as<bool>()) {
+            throw std::invalid_argument("--skip-nonfinite is not supported with --jit=all");
+        }
 
         std::unique_ptr<Operon::Zobrist>       zobrist;
         std::unique_ptr<Operon::EvaluatorBase> evaluator;
@@ -177,7 +193,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                 zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
                 config.Cache = zobrist.get();
             }
-            evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+            evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale,
+                result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
             optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
         } else {
             auto jobj = Operon::CLI::MakeJitObjects(
@@ -196,7 +213,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
             // "jac" mode: factory leaves evaluator null; create interpreter evaluator here.
             if (!evaluator) {
-                evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+                evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale,
+                result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
             }
             // unknown mode: factory returned null optimizer; fall back to defaults.
             if (!optimizer) {
