@@ -5,10 +5,15 @@
 #include "operon/core/distance.hpp"
 #include "operon/core/dispatch.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/local_search.hpp"
+#include "operon/optimizer/optimizer.hpp"
 #include "operon/random/random.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <operon/operon_export.hpp>
+#include <random>
 #include <type_traits>
 
 namespace Operon {
@@ -27,6 +32,100 @@ namespace {
         }
         auto b = stats.mean_y - (a * stats.mean_x); // offset
         return {a, b};
+    }
+
+    // Finite-aware variant: computes scale/offset from the finite subset
+    // only, returning the count of skipped (non-finite) pairs. A NaN/Inf row
+    // no longer disables scaling for every finite row via NaN-poisoned stats.
+    // NaN/Inf rows preserve their non-finiteness through `a*x + b`
+    // (NaN->NaN; Inf->+/-Inf when a != 0; Inf->NaN when a == 0 since
+    // 0*Inf==NaN before adding b), so the downstream FiniteSubset metric
+    // still detects and skips them after the in-place transform regardless
+    // of which non-finite value the scaling produces -- both NaN and Inf
+    // are excluded by the shared finiteness mask. (The symmetric "could a
+    // *previously finite* row become non-finite after scaling?" overflow
+    // case is a pre-existing risk of any linear scaling, not introduced
+    // or worsened by finite-aware scaling.) See `NormalizedMeanSquaredErrorFinite`
+    // / `MeanSquaredErrorFinite` for the mask this composes through.
+    template<typename T>
+    auto FitLeastSquaresFiniteImpl(Operon::Span<T const> estimated, Operon::Span<T const> target,
+                                   Operon::Span<T const> weights = {}) -> std::tuple<double, double, std::size_t>
+    requires std::is_arithmetic_v<T>
+    {
+        auto [stats, skipped] = weights.empty()
+            ? vstat::bivariate::accumulate<T, vstat::nan_policy::omit>(estimated.data(), estimated.data() + estimated.size(), target.data())
+            : vstat::bivariate::accumulate<T, vstat::nan_policy::omit>(estimated.data(), estimated.data() + estimated.size(), target.data(), weights.data());
+        auto a = stats.covariance / stats.variance_x; // scale
+        if (!std::isfinite(a)) {
+            a = 1;
+        }
+        auto b = stats.mean_y - (a * stats.mean_x); // offset
+        return {a, b, skipped};
+    }
+
+    // Outlined skip-mode body. Keeping this out of `Evaluate`'s inline path
+    // keeps the default (skipNonFinite_ == false) hot path small enough that
+    // the compiler still inlines `Evaluate` into its caller -- the inlining
+    // heuristic that regressed when the skip branching was first added was
+    // the dominant source of the ~7-9% end-to-end overhead measured in the
+    // performance handoff. `noinline` is harmless to the opt-in user since
+    // they have already accepted a modest per-call cost.
+    template<typename T>
+    [[gnu::noinline]] auto
+    SkipNonFiniteScore(ErrorMetric const& error, Operon::Span<T> estimated, Operon::Span<T const> target,
+                       Operon::Span<T const> weights, bool scaling, double penaltyWeight) -> Operon::Scalar
+    {
+        if (scaling) {
+            auto [a, b, s] = weights.empty()
+                ? FitLeastSquaresFiniteImpl<T>(estimated, target)
+                : FitLeastSquaresFiniteImpl<T>(estimated, target, weights);
+            (void)s;
+            std::ranges::transform(estimated, estimated.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+        }
+        auto [value, nonFiniteCount] = weights.empty()
+            ? error.FiniteSubset(estimated, target)
+            : error.FiniteSubset(estimated, target, weights);
+        if (nonFiniteCount == estimated.size()) {
+            return EvaluatorBase::ErrMax;
+        }
+        auto const fraction = nonFiniteCount != 0
+            ? static_cast<double>(nonFiniteCount) / static_cast<double>(estimated.size())
+            : 0.0;
+        // NMSE already normalizes by target variance, so its penalty needs no
+        // extra scale. The other metrics are unit-dependent on the target and
+        // each other, so the scale has to match each metric's own units, not
+        // just SSE/MSE's (squared-error) units, or the same penaltyWeight
+        // would over/under-shoot depending on which metric is active:
+        //   MSE  is in squared-error units  -> variance
+        //   RMSE/MAE are in linear-error units -> stddev (sqrt(variance))
+        //   SSE is a *sum*, not an average, of squared errors, so a
+        //   per-point variance-scale term alone would be ~N times too small
+        //   -> variance * (finite point count)
+        double sumWeights = 0.0;
+        double mean = 0.0;
+        double m2 = 0.0;
+        for (auto i = std::size_t{0}; i < target.size(); ++i) {
+            auto const y = static_cast<double>(target[i]);
+            auto const w = weights.empty() ? 1.0 : static_cast<double>(weights[i]);
+            if (!std::isfinite(y) || !std::isfinite(w) || w == 0.0) { continue; }
+            auto const nextSumWeights = sumWeights + w;
+            auto const delta = y - mean;
+            auto const r = delta * w / nextSumWeights;
+            mean += r;
+            m2 += sumWeights * delta * r;
+            sumWeights = nextSumWeights;
+        }
+        auto const variance = sumWeights > 0.0 ? m2 / sumWeights : 0.0;
+        double scale{};
+        switch (error.Type()) {
+        case ErrorType::NMSE: scale = 1.0; break;
+        case ErrorType::MSE:  scale = variance; break;
+        case ErrorType::RMSE:
+        case ErrorType::MAE:  scale = std::sqrt(variance); break;
+        case ErrorType::SSE:  scale = variance * static_cast<double>(estimated.size() - nonFiniteCount); break;
+        default:              scale = variance; break; // unreachable: R2/C2 reject --skip-nonfinite in ParseEvaluator
+        }
+        return static_cast<Operon::Scalar>(value + penaltyWeight * scale * fraction);
     }
 } // namespace
 
@@ -77,11 +176,19 @@ namespace {
         auto estimatedValues = buf.subspan(0, trainingRange.Size());
         auto coeff = tree.GetCoefficients();
         interpreter.Evaluate(coeff, trainingRange, estimatedValues);
-        if (scaling_) {
-            auto [a, b] = FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues, weights);
-            std::ranges::transform(estimatedValues, estimatedValues.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+
+        Operon::Scalar fit{};
+        if (skipNonFinite_) [[unlikely]] {
+            fit = SkipNonFiniteScore<Operon::Scalar>(error_, estimatedValues, targetValues, weights, scaling_, nonFinitePenaltyWeight_);
+        } else {
+            if (scaling_) {
+                auto [a, b] = weights.empty()
+                    ? FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues)
+                    : FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues, weights);
+                std::ranges::transform(estimatedValues, estimatedValues.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+            }
+            fit = static_cast<Operon::Scalar>(weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));
         }
-        auto fit = static_cast<Operon::Scalar>(weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));
 
         if (!std::isfinite(fit)) {
             fit = EvaluatorBase::ErrMax;
@@ -125,6 +232,7 @@ namespace {
     AggregateEvaluator::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
         using vstat::univariate::accumulate;
+        ++CallCount;
         auto f = (*evaluator_)(rng, ind, buf);
         switch(aggtype_) {
             case AggregateType::Min: {
@@ -177,5 +285,35 @@ namespace {
         auto aik = n/2 * (std::log(Operon::Math::Tau) + std::log(mse) + 1);
         if (!std::isfinite(aik)) { aik = EvaluatorBase::ErrMax; }
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(aik) };
+    }
+
+    auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck) -> std::optional<std::vector<Operon::Scalar>>
+    {
+        using BernoulliTrial = std::bernoulli_distribution;
+
+        if (coeffOptimizer == nullptr || pLocal <= 0 || !BernoulliTrial{pLocal}(random)) { return std::nullopt; }
+
+        auto c = ind.Genotype.GetCoefficients(); // save original coefficients
+        auto t0 = std::chrono::steady_clock::now();
+        auto [optimizedTree, outcome] = (*coeffOptimizer)(random, std::move(ind.Genotype));
+        auto t1 = std::chrono::steady_clock::now();
+        auto const& diag = Diagnostics(outcome);
+        evaluator.ResidualEvaluations += diag.FunctionEvaluations;
+        evaluator.JacobianEvaluations += diag.JacobianEvaluations;
+        evaluator.CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        ind.Genotype = std::move(optimizedTree);
+
+        return BernoulliTrial{pLamarck}(random) ? std::nullopt : std::make_optional(std::move(c));
+    }
+
+    auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind, Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf) -> void
+    {
+        auto originalCoeffs = LocalSearch(random, ind, evaluator, coeffOptimizer, pLocal, pLamarck);
+        ind.Fitness = evaluator(random, ind, buf);
+        if (originalCoeffs) { ind.Genotype.SetCoefficients(*originalCoeffs); }
+
+        for (auto& v : ind.Fitness) {
+            if (!std::isfinite(v)) { v = EvaluatorBase::ErrMax; }
+        }
     }
 } // namespace Operon

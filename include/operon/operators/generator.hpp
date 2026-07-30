@@ -5,7 +5,6 @@
 #ifndef OPERON_GENERATOR_HPP
 #define OPERON_GENERATOR_HPP
 
-#include <chrono>
 #include "operon/core/operator.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/crossover.hpp"
@@ -13,7 +12,6 @@
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/operators/local_search.hpp"
-#include "operon/optimizer/optimizer.hpp"
 
 namespace Operon {
 
@@ -73,28 +71,7 @@ public:
         }
 
         auto evaluate = [&]() {
-            if (coeffOptimizer_ != nullptr && BernoulliTrial{pLocal}(random)) {
-                auto c = res.Child->Genotype.GetCoefficients(); // save original coefficients
-                auto t0 = std::chrono::steady_clock::now();
-                auto [optimizedTree, outcome] = (*Optimizer())(random, std::move(res.Child->Genotype));
-                auto t1 = std::chrono::steady_clock::now();
-                auto const& diag = Diagnostics(outcome);
-                Evaluator()->ResidualEvaluations += diag.FunctionEvaluations;
-                Evaluator()->JacobianEvaluations += diag.JacobianEvaluations;
-                Evaluator()->CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-                res.Child->Genotype = std::move(optimizedTree);
-                res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
-
-                if(!BernoulliTrial{pLamarck}(random)) {
-                    res.Child->Genotype.SetCoefficients(c); // restore original coefficients
-                }
-            } else {
-                res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
-            }
-
-            for (auto& v : res.Child->Fitness) {
-                if (!std::isfinite(v)) { v = std::numeric_limits<Operon::Scalar>::max(); }
-            }
+            ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf);
         };
 
         if (cache_ != nullptr) {
@@ -193,16 +170,23 @@ public:
     void Prepare(const Operon::Span<const Individual> pop) const override
     {
         OffspringGeneratorBase::Prepare(pop);
-        lastEvaluations_ = this->Evaluator()->TotalEvaluations();
+        lastEvaluations_ = this->Evaluator()->CallCount;
     }
 
+    // Counts real offspring-candidate attempts (one CallCount increment per
+    // individual scored, regardless of local search), not local search's own
+    // internal residual/Jacobian evaluations - TotalEvaluations() (used here
+    // previously) counts the latter, wildly overstating selection pressure
+    // whenever local search runs (each attempt can cost dozens of internal
+    // LM evaluations, all counted as if they were separate failed
+    // candidates).
     auto SelectionPressure() const -> double
     {
         auto n = this->FemaleSelector()->Population().size();
         if (n == 0U) {
             return 0;
         }
-        auto e = this->Evaluator()->TotalEvaluations() - lastEvaluations_;
+        auto e = this->Evaluator()->CallCount - lastEvaluations_;
         return static_cast<double>(e) / static_cast<double>(n);
     }
 

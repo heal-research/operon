@@ -56,4 +56,26 @@ namespace Operon {
         default: throw std::runtime_error("unknown error metric");
         }
     }
+
+    auto ErrorMetric::FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const -> std::pair<double, std::size_t> {
+        switch (type_) {
+        case ErrorType::SSE: return SumOfSquaredErrorsFinite(x, y);
+        case ErrorType::MSE: return MeanSquaredErrorFinite(x, y);
+        case ErrorType::NMSE: return NormalizedMeanSquaredErrorFinite(x, y);
+        case ErrorType::RMSE: return RootMeanSquaredErrorFinite(x, y);
+        case ErrorType::MAE: return MeanAbsoluteErrorFinite(x, y);
+        default: throw std::runtime_error("ErrorMetric::FiniteSubset: SSE, MSE, NMSE, RMSE and MAE support skipping non-finite rows");
+        }
+    }
+
+    auto ErrorMetric::FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> std::pair<double, std::size_t> {
+        switch (type_) {
+        case ErrorType::SSE: return SumOfSquaredErrorsFinite(x, y, w);
+        case ErrorType::MSE: return MeanSquaredErrorFinite(x, y, w);
+        case ErrorType::NMSE: return NormalizedMeanSquaredErrorFinite(x, y, w);
+        case ErrorType::RMSE: return RootMeanSquaredErrorFinite(x, y, w);
+        case ErrorType::MAE: return MeanAbsoluteErrorFinite(x, y, w);
+        default: throw std::runtime_error("ErrorMetric::FiniteSubset: SSE, MSE, NMSE, RMSE and MAE support skipping non-finite rows");
+        }
+    }
 }  // namespace Operon

@@ -127,8 +127,8 @@ private:
     PrimitiveSet pset_;
 };
 
-struct OPERON_EXPORT RemoveSubtreeMutation final : public MutatorBase {
-    explicit RemoveSubtreeMutation(PrimitiveSet ps) : pset_(std::move(ps)) { }
+struct OPERON_EXPORT RemoveChildMutation final : public MutatorBase {
+    explicit RemoveChildMutation(PrimitiveSet ps) : pset_(std::move(ps)) { }
 
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 
@@ -176,6 +176,27 @@ struct OPERON_EXPORT ShuffleSubtreesMutation : public MutatorBase {
     auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
 };
 
+// Replaces a random subtree with the smallest possible replacement (a single
+// terminal) - matches HeuristicLab's RemoveBranchManipulation (which replaces
+// a random branch with the grammar-minimal alternative at that position).
+// Distinct from RemoveChildMutation, which only reduces a variadic-arity
+// parent's own child count.
+struct OPERON_EXPORT RemoveSubtreeMutation : public MutatorBase {
+    RemoveSubtreeMutation(gsl::not_null<CreatorBase const*> creator, gsl::not_null<CoefficientInitializerBase const*> coeffInit, size_t maxDepth)
+        : creator_(creator)
+        , coefficientInitializer_(coeffInit)
+        , maxDepth_(maxDepth)
+    {
+    }
+
+    auto operator()(Operon::RandomGenerator& /*random*/, Tree /*args*/) const -> Tree override;
+
+private:
+    gsl::not_null<CreatorBase const*> creator_;
+    gsl::not_null<CoefficientInitializerBase const*> coefficientInitializer_;
+    size_t maxDepth_;
+};
+
 // See core/concepts.hpp for why these are asserted here rather than constraining a template.
 // OnePointMutation/MultiPointMutation are templated on Dist, but satisfying
 // Mutator doesn't depend on which Dist is plugged in (only on the fixed
@@ -186,9 +207,10 @@ static_assert(Concepts::Mutator<DiscretePointMutation>);
 static_assert(Concepts::Mutator<MultiMutation>);
 static_assert(Concepts::Mutator<ChangeVariableMutation>);
 static_assert(Concepts::Mutator<ChangeFunctionMutation>);
-static_assert(Concepts::Mutator<RemoveSubtreeMutation>);
+static_assert(Concepts::Mutator<RemoveChildMutation>);
 static_assert(Concepts::Mutator<InsertSubtreeMutation>);
 static_assert(Concepts::Mutator<ReplaceSubtreeMutation>);
+static_assert(Concepts::Mutator<RemoveSubtreeMutation>);
 static_assert(Concepts::Mutator<ShuffleSubtreesMutation>);
 
 } // namespace Operon

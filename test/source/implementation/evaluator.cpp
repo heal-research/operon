@@ -11,8 +11,10 @@
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/local_search.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
+#include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
 
@@ -72,6 +74,68 @@ struct EvaluatorFixture {
         return ind;
     }
 };
+
+class FixedCoefficientOptimizer final : public OptimizerBase {
+public:
+    explicit FixedCoefficientOptimizer(gsl::not_null<Problem const*> problem)
+        : OptimizerBase(problem)
+    {
+    }
+
+    [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*rng*/, Tree const& tree) const -> FitOutcome override
+    {
+        FitResult result;
+        result.InitialParameters = tree.GetCoefficients();
+        result.FinalParameters.assign(result.InitialParameters.size(), static_cast<Operon::Scalar>(1));
+        result.InitialCost = static_cast<Operon::Scalar>(1);
+        result.FinalCost = static_cast<Operon::Scalar>(0);
+        result.FunctionEvaluations = 1;
+        return result;
+    }
+
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> /*x*/, Operon::Span<Operon::Scalar const> /*y*/, Operon::Span<Operon::Scalar const> /*w*/) const -> Operon::Scalar override
+    {
+        return Operon::Scalar{};
+    }
+
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> /*pred*/, Operon::Span<Operon::Scalar const> /*jac*/, Operon::Span<Operon::Scalar const> /*sigma*/) const -> Eigen::Matrix<Operon::Scalar, -1, -1> override
+    {
+        return {};
+    }
+};
+
+TEST_CASE("ScoreIndividual evaluates optimized coefficients before non-Lamarckian restore", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    Evaluator<EvaluatorFixture::DTable> evaluator{&fix.problem, &fix.dtable, MSE{}, /*linearScaling=*/false};
+    FixedCoefficientOptimizer optimizer{&fix.problem};
+    CoefficientOptimizer coeffOptimizer{&optimizer};
+    Operon::Vector<Operon::Scalar> buf(fix.problem.TrainingRange().Size());
+
+    SECTION("non-Lamarckian local search restores genotype but keeps optimized fitness") {
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        Operon::RandomGenerator rng{1};
+
+        ScoreIndividual(rng, ind, evaluator, &coeffOptimizer, /*pLocal=*/1.0, /*pLamarck=*/0.0, Operon::Span<Operon::Scalar>{buf});
+
+        CHECK_THAT(static_cast<double>(ind.Fitness.front()), Catch::Matchers::WithinAbs(0.0, 1e-6));
+        for (auto c : ind.Genotype.GetCoefficients()) {
+            CHECK_THAT(static_cast<double>(c), Catch::Matchers::WithinRel(0.1, 1e-5));
+        }
+    }
+
+    SECTION("Lamarckian local search keeps optimized genotype") {
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+        Operon::RandomGenerator rng{1};
+
+        ScoreIndividual(rng, ind, evaluator, &coeffOptimizer, /*pLocal=*/1.0, /*pLamarck=*/1.0, Operon::Span<Operon::Scalar>{buf});
+
+        CHECK_THAT(static_cast<double>(ind.Fitness.front()), Catch::Matchers::WithinAbs(0.0, 1e-6));
+        for (auto c : ind.Genotype.GetCoefficients()) {
+            CHECK_THAT(static_cast<double>(c), Catch::Matchers::WithinRel(1.0, 1e-5));
+        }
+    }
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Poisson likelihood static methods
@@ -534,6 +598,227 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
 
         CHECK_THAT(static_cast<double>(mseSlope2), Catch::Matchers::WithinAbs(0.0, 1e-4));
         CHECK_THAT(static_cast<double>(mseSlope3), Catch::Matchers::WithinAbs(0.0, 1e-4));
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// skipNonFinite_ evaluator mode: instead of clamping fitness to ErrMax the
+// moment any predicted row is non-finite, compute the metric over the
+// finite subset and add a penalty proportional to the non-finite fraction.
+// log(X1) is a natural non-finite-producing tree here: X1 ranges over
+// [-1, 1] (EvaluatorFixture), so log(X1) is NaN for roughly half the rows.
+// ──────────────────────────────────────────────────────────────────────────────
+TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
+{
+    using DTable = DispatchTable<Operon::Scalar>;
+
+    SECTION("all-finite tree: matches default (skipNonFinite_ off) exactly") {
+        EvaluatorFixture fix;
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree); // X1+X2+X3, always finite
+        DTable dtable;
+
+        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0};
+
+        auto r1 = baseline(fix.rng, ind)[0];
+        auto r2 = skipMode(fix.rng, ind)[0];
+        CHECK(std::isfinite(r1));
+        CHECK_THAT(static_cast<double>(r2), Catch::Matchers::WithinAbs(static_cast<double>(r1), 1e-9));
+    }
+
+    SECTION("partial non-finite tree: default clamps to ErrMax, skip mode gives a graded score") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true};
+        auto rBaseline = baseline(fix.rng, ind)[0];
+        CHECK_THAT(static_cast<double>(rBaseline), Catch::Matchers::WithinRel(static_cast<double>(EvaluatorBase::ErrMax), 1e-5));
+
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        auto rSkip = skipMode(fix.rng, ind)[0];
+        CHECK(std::isfinite(rSkip));
+        CHECK(rSkip < EvaluatorBase::ErrMax);
+    }
+
+    SECTION("penalty weight scales monotonically with the non-finite fraction's contribution") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> lowPenalty{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> highPenalty{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/10.0};
+
+        auto rLow = lowPenalty(fix.rng, ind)[0];
+        auto rHigh = highPenalty(fix.rng, ind)[0];
+        CHECK(std::isfinite(rLow));
+        CHECK(std::isfinite(rHigh));
+        CHECK(rHigh > rLow);
+    }
+
+    SECTION("NMSE also supports skipNonFinite_") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, NMSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        auto r = skipMode(fix.rng, ind)[0];
+        CHECK(std::isfinite(r));
+        CHECK(r < EvaluatorBase::ErrMax);
+
+        // Value-level hardening: two skip-mode runs with different penalty
+        // weights on the same tree must differ by exactly
+        // (weightHi - weightLo) * (nonFiniteCount / trainingRangeSize).
+        // Verifies the penalty term is actually composed in
+        // SkipNonFiniteScore rather than silently dropped, AND that the
+        // metric component (NMSE over the finite subset) is independent of
+        // the penalty coefficient -- i.e. Kmse(rHi) - Kmse(rLo) must equal
+        // the listed delta, NOT a value correlated with the metric. The
+        // exact nonFinite count is back-derived: fraction =
+        // (rHi - rLo) / (weightHi - weightLo); with log(X1) on X1~U(-1,1),
+        // fraction should be ~0.5 (X1 <= 0 -> NaN), so count ~ Nrow/2.
+        Evaluator<DTable> loPen{&fix.problem, &dtable, NMSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, NMSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        auto rLo = loPen(fix.rng, ind)[0];
+        auto rHi = hiPen(fix.rng, ind)[0];
+        CHECK(std::isfinite(rLo));
+        CHECK(std::isfinite(rHi));
+        CHECK(rHi > rLo);  // penalty strictly increases fit when some rows are non-finite
+
+        auto const fraction = static_cast<double>(rHi - rLo) / 0.5;  // weightHi - weightLo
+        CHECK(fraction > 0.0);
+        CHECK(fraction <= 1.0);
+        auto const nTotal = static_cast<double>(fix.problem.TrainingRange().Size());
+        auto const nonFiniteCount = static_cast<std::size_t>(std::round(fraction * nTotal));
+        auto constexpr expectedFraction = 0.5;  // log(X1): NaN iff X1<=0, X1~U(-1,+1)
+        // 5-sigma-style tolerance (well within U(0,1) sampling noise for
+        // Nrow=500: stddev of binomial(500, 0.5)/500 ~= 0.022).
+        CHECK_THAT(static_cast<double>(nonFiniteCount) / nTotal,
+                   Catch::Matchers::WithinRel(expectedFraction, 0.10));
+    }
+
+    SECTION("MSE penalty is scaled by target variance (unlike NMSE)") {
+        // MSE/SSE/RMSE/MAE are unit-dependent on the target, unlike NMSE
+        // which already divides by target variance -- SkipNonFiniteScore
+        // scales their penalty term by variance(target) too, so a single
+        // nonFinitePenaltyWeight_ stays meaningful across metrics/datasets.
+        // Same value-level hardening as the NMSE section: two runs with
+        // different penalty weights must differ by exactly
+        // (weightHi - weightLo) * variance(target) * (nonFiniteCount / N).
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> loPen{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        auto rLo = loPen(fix.rng, ind)[0];
+        auto rHi = hiPen(fix.rng, ind)[0];
+        CHECK(std::isfinite(rLo));
+        CHECK(std::isfinite(rHi));
+        CHECK(rHi > rLo);
+
+        auto targetValues = fix.problem.TargetValues(fix.problem.TrainingRange());
+        auto const targetVariance = vstat::univariate::accumulate<Operon::Scalar>(targetValues.begin(), targetValues.end()).variance;
+        auto const fraction = static_cast<double>(rHi - rLo) / (0.5 * targetVariance);  // weightHi - weightLo
+        CHECK(fraction > 0.0);
+        CHECK(fraction <= 1.0);
+        auto const nTotal = static_cast<double>(fix.problem.TrainingRange().Size());
+        auto const nonFiniteCount = static_cast<std::size_t>(std::round(fraction * nTotal));
+        auto constexpr expectedFraction = 0.5;  // log(X1): NaN iff X1<=0, X1~U(-1,+1)
+        CHECK_THAT(static_cast<double>(nonFiniteCount) / nTotal,
+                   Catch::Matchers::WithinRel(expectedFraction, 0.10));
+    }
+
+    SECTION("RMSE/MAE penalty is scaled by target stddev, not variance (regression: both are linear-error-unit metrics, variance is a squared-error-unit scale)") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        auto targetValues = fix.problem.TargetValues(fix.problem.TrainingRange());
+        auto const targetStdDev = std::sqrt(vstat::univariate::accumulate<Operon::Scalar>(targetValues.begin(), targetValues.end()).variance);
+        auto const nTotal = static_cast<double>(fix.problem.TrainingRange().Size());
+
+        for (auto metric : std::initializer_list<ErrorMetric>{RMSE{}, MAE{}}) {
+            Evaluator<DTable> loPen{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+            Evaluator<DTable> hiPen{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+            auto rLo = loPen(fix.rng, ind)[0];
+            auto rHi = hiPen(fix.rng, ind)[0];
+            CHECK(std::isfinite(rLo));
+            CHECK(std::isfinite(rHi));
+
+            auto const fraction = static_cast<double>(rHi - rLo) / (0.5 * targetStdDev); // weightHi - weightLo
+            auto const nonFiniteCount = static_cast<std::size_t>(std::round(fraction * nTotal));
+            auto constexpr expectedFraction = 0.5; // log(X1): NaN iff X1<=0, X1~U(-1,+1)
+            CHECK_THAT(static_cast<double>(nonFiniteCount) / nTotal,
+                       Catch::Matchers::WithinRel(expectedFraction, 0.10));
+        }
+    }
+
+    SECTION("SSE penalty is scaled by variance * finite-point-count, not variance alone (regression: SSE is a sum, not an average, of squared errors)") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> loPen{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        auto rLo = loPen(fix.rng, ind)[0];
+        auto rHi = hiPen(fix.rng, ind)[0];
+        CHECK(std::isfinite(rLo));
+        CHECK(std::isfinite(rHi));
+
+        auto targetValues = fix.problem.TargetValues(fix.problem.TrainingRange());
+        auto const targetVariance = vstat::univariate::accumulate<Operon::Scalar>(targetValues.begin(), targetValues.end()).variance;
+        auto const nTotal = fix.problem.TrainingRange().Size();
+        // log(X1) is NaN for X1<=0, X1~U(-1,+1): ~half the points are non-finite.
+        // penalty = penaltyWeight * (variance * finiteCount) * nonFiniteFraction
+        auto constexpr expectedNonFiniteFraction = 0.5;
+        auto const expectedFiniteCount = static_cast<double>(nTotal) * (1.0 - expectedNonFiniteFraction);
+        auto const expectedDelta = 0.5 * targetVariance * expectedFiniteCount * expectedNonFiniteFraction; // weightHi - weightLo
+        CHECK_THAT(static_cast<double>(rHi - rLo), Catch::Matchers::WithinRel(expectedDelta, 0.15));
+    }
+
+    SECTION("SSE/RMSE/MAE also support skipNonFinite_") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        for (auto metric : std::initializer_list<ErrorMetric>{SSE{}, RMSE{}, MAE{}}) {
+            Evaluator<DTable> skipMode{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+            auto r = skipMode(fix.rng, ind)[0];
+            CHECK(std::isfinite(r));
+            CHECK(r < EvaluatorBase::ErrMax);
+        }
+    }
+
+    SECTION("all non-finite predictions are clamped instead of scoring as perfect SSE") {
+        EvaluatorFixture fix;
+        auto t = InfixParser::Parse("log(X1 - X1 - 1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        auto r = skipMode(fix.rng, ind)[0];
+        CHECK(r == EvaluatorBase::ErrMax);
+    }
+
+    SECTION("non-finite target values do not poison skip-mode penalty variance") {
+        EvaluatorFixture fix;
+        fix.data(0, EvaluatorFixture::Ncol - 1) = std::numeric_limits<Operon::Scalar>::quiet_NaN();
+        auto t = InfixParser::Parse("log(X1)", *fix.problem.GetDataset());
+        auto ind = EvaluatorFixture::MakeIndividual(t);
+        DTable dtable;
+
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        auto r = skipMode(fix.rng, ind)[0];
+        CHECK(std::isfinite(r));
+        CHECK(r < EvaluatorBase::ErrMax);
     }
 }
 
