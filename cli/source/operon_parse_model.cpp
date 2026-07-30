@@ -125,6 +125,7 @@ namespace {
         Operon::Problem problem{&ds};
         problem.SetTrainingRange(range);
         problem.SetTestRange(range);
+        problem.SetTarget(result["target"].as<std::string>());
         Operon::RandomGenerator rng{0};
 
         // Optionally refit model's coefficients (--iterations > 0) before
@@ -137,9 +138,11 @@ namespace {
         // the stats below, unlike before.
         auto opt = ParseOptimizer(&dtable, &problem, result["optimizer"].as<std::string>(), result["likelihood"].as<std::string>());
         opt->SetIterations(result["iterations"].as<int>());
-        auto summary = opt->Optimize(rng, model);
-        auto const& diag = Operon::Diagnostics(summary);
-        model.SetCoefficients(diag.FinalParameters);
+        auto summary = Operon::FitOutcome{tl::unexpected(Operon::FitFailure{})};
+        if (opt->Iterations() > 0) {
+            summary = opt->Optimize(rng, model);
+            if (summary.has_value()) { model.SetCoefficients(summary->FinalParameters); }
+        }
 
         using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
         auto est = Interpreter::Evaluate(model, ds, range);
@@ -172,6 +175,7 @@ namespace {
         Operon::Reporter<void>::PrintStats(stats, /*printHeader=*/true);
 
         if (opt->Iterations() > 0) {
+            auto const& diag = Operon::Diagnostics(summary);
             fmt::print("optimization summary:\n");
             fmt::print("status: {}\n", summary.has_value());
             fmt::print("initial cost: {}\n", diag.InitialCost);
