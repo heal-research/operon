@@ -8,6 +8,7 @@
 #include "operon/random/random.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <operon/operon_export.hpp>
 #include <type_traits>
 
@@ -83,16 +84,28 @@ namespace {
         auto const fraction = nonFiniteCount != 0
             ? static_cast<double>(nonFiniteCount) / static_cast<double>(estimated.size())
             : 0.0;
-        // NMSE already normalizes by target variance; SSE/MSE/RMSE/MAE are
-        // unit-dependent on the target, so scale the penalty by the
-        // target's own variance too -- keeps a single penaltyWeight
-        // meaningful across metrics and datasets instead of requiring a
-        // metric/dataset-specific constant.
-        auto const scale = error.Type() == ErrorType::NMSE
-            ? 1.0
-            : (weights.empty()
-                ? vstat::univariate::accumulate<T>(target.begin(), target.end()).variance
-                : vstat::univariate::accumulate<T>(target.begin(), target.end(), weights.begin()).variance);
+        // NMSE already normalizes by target variance, so its penalty needs no
+        // extra scale. The other metrics are unit-dependent on the target and
+        // each other, so the scale has to match each metric's own units, not
+        // just SSE/MSE's (squared-error) units, or the same penaltyWeight
+        // would over/under-shoot depending on which metric is active:
+        //   MSE  is in squared-error units  -> variance
+        //   RMSE/MAE are in linear-error units -> stddev (sqrt(variance))
+        //   SSE is a *sum*, not an average, of squared errors, so a
+        //   per-point variance-scale term alone would be ~N times too small
+        //   -> variance * (finite point count)
+        auto const variance = weights.empty()
+            ? vstat::univariate::accumulate<T>(target.begin(), target.end()).variance
+            : vstat::univariate::accumulate<T>(target.begin(), target.end(), weights.begin()).variance;
+        double scale{};
+        switch (error.Type()) {
+        case ErrorType::NMSE: scale = 1.0; break;
+        case ErrorType::MSE:  scale = variance; break;
+        case ErrorType::RMSE:
+        case ErrorType::MAE:  scale = std::sqrt(variance); break;
+        case ErrorType::SSE:  scale = variance * static_cast<double>(estimated.size() - nonFiniteCount); break;
+        default:              scale = variance; break; // unreachable: R2/C2 reject --skip-nonfinite in ParseEvaluator
+        }
         return static_cast<Operon::Scalar>(value + penaltyWeight * scale * fraction);
     }
 } // namespace
