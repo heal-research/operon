@@ -5,7 +5,6 @@
 #ifndef OPERON_GENERATOR_HPP
 #define OPERON_GENERATOR_HPP
 
-#include <chrono>
 #include "operon/core/operator.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/crossover.hpp"
@@ -13,7 +12,6 @@
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/operators/local_search.hpp"
-#include "operon/optimizer/optimizer.hpp"
 
 namespace Operon {
 
@@ -73,28 +71,7 @@ public:
         }
 
         auto evaluate = [&]() {
-            if (coeffOptimizer_ != nullptr && BernoulliTrial{pLocal}(random)) {
-                auto c = res.Child->Genotype.GetCoefficients(); // save original coefficients
-                auto t0 = std::chrono::steady_clock::now();
-                auto [optimizedTree, outcome] = (*Optimizer())(random, std::move(res.Child->Genotype));
-                auto t1 = std::chrono::steady_clock::now();
-                auto const& diag = Diagnostics(outcome);
-                Evaluator()->ResidualEvaluations += diag.FunctionEvaluations;
-                Evaluator()->JacobianEvaluations += diag.JacobianEvaluations;
-                Evaluator()->CostFunctionTime += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-                res.Child->Genotype = std::move(optimizedTree);
-                res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
-
-                if(!BernoulliTrial{pLamarck}(random)) {
-                    res.Child->Genotype.SetCoefficients(c); // restore original coefficients
-                }
-            } else {
-                res.Child->Fitness = (*Evaluator())(random, *res.Child, buf);
-            }
-
-            for (auto& v : res.Child->Fitness) {
-                if (!std::isfinite(v)) { v = std::numeric_limits<Operon::Scalar>::max(); }
-            }
+            ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf);
         };
 
         if (cache_ != nullptr) {
