@@ -200,6 +200,38 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         CHECK(tree[0].IsVariable());
     }
 
+    SECTION("constant folding: unary Sub(Const(2)) -> Const(-2)") {
+        Operon::Vector<Node> ns{ Const(2), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sub), 1) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 1);
+        REQUIRE(tree[0].IsConstant());
+        CHECK(tree[0].Value == Catch::Approx(-2.0));
+    }
+
+    SECTION("constant folding: unary Div(Const(2)) -> Const(0.5)") {
+        Operon::Vector<Node> ns{ Const(2), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Div), 1) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 1);
+        REQUIRE(tree[0].IsConstant());
+        CHECK(tree[0].Value == Catch::Approx(0.5));
+    }
+
+    SECTION("unary Sub(x) is negation, not identity - must not simplify to x") {
+        Operon::Vector<Node> ns{ Var(), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sub), 1) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 2);
+        CHECK(tree[tree.Length() - 1].Arity == 1);
+        CHECK(tree[tree.Length() - 1].HashValue == static_cast<Operon::Hash>(BuiltinOp::Sub));
+    }
+
+    SECTION("unary Div(x) is inversion, not identity - must not simplify to x") {
+        Operon::Vector<Node> ns{ Var(), Node::Function(static_cast<Operon::Hash>(BuiltinOp::Div), 1) };
+        auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        REQUIRE(tree.Length() == 2);
+        CHECK(tree[tree.Length() - 1].Arity == 1);
+        CHECK(tree[tree.Length() - 1].HashValue == static_cast<Operon::Hash>(BuiltinOp::Div));
+    }
+
     SECTION("Pow: x^0 -> 1") {
         // [Const(0), Var, Pow]: base=Var (j=i-1), exp=Const(0) (k)
         Operon::Vector<Node> ns{ Const(0), Var(), Util::MakeOp<BuiltinOp::Pow>() };
