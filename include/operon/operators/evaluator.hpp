@@ -6,8 +6,10 @@
 #define OPERON_EVALUATOR_HPP
 
 #include <atomic>
+#include <cmath>
 #include <functional>
 #include <optional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -38,10 +40,17 @@ struct OPERON_EXPORT ErrorMetric {
 
     explicit ErrorMetric(ErrorType type) : type_(type) { }
 
+    [[nodiscard]] auto Type() const noexcept -> ErrorType { return type_; }
+
     auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const -> double;
     auto operator()(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> double;
     auto operator()(Iterator beg1, Iterator end1, Iterator beg2) const -> double;
     auto operator()(Iterator beg1, Iterator end1, Iterator beg2, Iterator beg3) const -> double;
+
+    // Metric over the finite subset of (x, y) pairs, plus the count of
+    // skipped (non-finite) pairs. SSE, MSE, NMSE, RMSE and MAE; throws otherwise.
+    auto FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y) const -> std::pair<double, std::size_t>;
+    auto FiniteSubset(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> std::pair<double, std::size_t>;
 
     private:
     ErrorType type_;
@@ -248,12 +257,20 @@ public:
     using TDispatch    = DTable;
     using TInterpreter = Operon::Interpreter<Operon::Scalar, DTable>;
 
-    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true)
+    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true, bool skipNonFinite = false, double nonFinitePenaltyWeight = 1.0)
         : EvaluatorBase(problem)
         , dtable_(dtable)
         , error_(error)
         , scaling_(linearScaling)
+        , skipNonFinite_(skipNonFinite)
+        , nonFinitePenaltyWeight_(nonFinitePenaltyWeight)
     {
+        if (skipNonFinite_ && (error_.Type() == ErrorType::R2 || error_.Type() == ErrorType::C2)) {
+            throw std::invalid_argument("--skip-nonfinite is only supported for sse, mse, nmse, rmse, and mae");
+        }
+        if (!std::isfinite(nonFinitePenaltyWeight_) || nonFinitePenaltyWeight_ < 0.0) {
+            throw std::invalid_argument("non-finite penalty weight must be finite and non-negative");
+        }
     }
 
     auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
@@ -265,6 +282,19 @@ private:
     gsl::not_null<DTable const*> dtable_;
     ErrorMetric error_;
     bool scaling_{false};
+    // Opt-in. When true: non-finite rows excluded via ErrorMetric::FiniteSubset
+    // (SSE/MSE/NMSE/RMSE/MAE). fit += nonFinitePenaltyWeight_ * nonfinite
+    // fraction, scaled by target variance for the non-normalized metrics
+    // (SSE/MSE/RMSE/MAE are unit-dependent; NMSE already divides by target
+    // variance, so it isn't scaled again) -- see SkipNonFiniteScore. This
+    // keeps a single default meaningful regardless of the metric or the
+    // dataset's units: at nonFinitePenaltyWeight_ == 1.0, an individual that
+    // is 100% non-finite is penalized by roughly one target-variance's worth
+    // of error, the same order of magnitude as a naive constant-mean
+    // predictor's MSE.
+    // Default (false): non-finite metric result clamps fit to ErrMax.
+    bool skipNonFinite_{false};
+    double nonFinitePenaltyWeight_{1.0};
 };
 
 class OPERON_EXPORT MultiEvaluator : public EvaluatorBase {

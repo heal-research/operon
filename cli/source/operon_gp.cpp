@@ -177,6 +177,9 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::ScalarDispatch dtable;
         auto const scale   = result["linear-scaling"].as<bool>();
         auto const jitMode = result["jit"].as<std::string>(); // "all", "jac", or ""
+        if (jitMode == "all" && result["skip-nonfinite"].as<bool>()) {
+            throw std::invalid_argument("--skip-nonfinite is not supported with --jit=all");
+        }
 
         std::unique_ptr<Operon::Zobrist>       zobrist;
         std::unique_ptr<Operon::EvaluatorBase> evaluator;
@@ -190,7 +193,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                 zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
                 config.Cache = zobrist.get();
             }
-            evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+            evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale,
+                result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
             optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
         } else {
             auto jobj = Operon::CLI::MakeJitObjects(
@@ -209,7 +213,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
             // "jac" mode: factory leaves evaluator null; create interpreter evaluator here.
             if (!evaluator) {
-                evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale);
+                evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale,
+                result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
             }
             // unknown mode: factory returned null optimizer; fall back to defaults.
             if (!optimizer) {

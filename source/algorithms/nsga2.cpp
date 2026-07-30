@@ -9,6 +9,7 @@
 #include <limits> // for numeric_limits
 #include <memory> // for allocator, allocator_tra...
 #include <optional> // for optional
+#include <random> // for bernoulli_distribution
 #include <taskflow/algorithm/for_each.hpp> // for taskflow.for_each_index
 #include <vector> // for vector, vector::size_type
 

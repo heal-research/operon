@@ -156,6 +156,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("epsilon", "Tolerance for fitness comparison (needed e.g. for eps-dominance)", cxxopts::value<Operon::Scalar>()->default_value("1e-6"))
         ("objective", "The error metric used for calculating fitness", cxxopts::value<std::string>()->default_value("r2"))
         ("linear-scaling", "Apply linear scaling on model predictions", cxxopts::value<bool>()->default_value("true"))
+        ("skip-nonfinite", "Skip non-finite rows instead of clamping fitness to ErrMax on any non-finite prediction (SSE/MSE/NMSE/RMSE/MAE objectives only)", cxxopts::value<bool>()->default_value("false"))
+        ("nonfinite-penalty-weight", "Penalty weight applied to the non-finite row fraction when --skip-nonfinite is set (scaled by target variance for non-normalized metrics)", cxxopts::value<double>()->default_value("1.0"))
         ("jit", "JIT mode: 'all' = JIT evaluator + optimizer, 'jac' = interpreter evaluator + JIT Jacobian optimizer (requires HAVE_ASMJIT). Use --jit=jac for jac mode; bare --jit defaults to all.", cxxopts::value<std::string>()->default_value("")->implicit_value("all"))
         ("jit-max-length", "Skip JIT compilation for trees longer than this (0 = disabled)", cxxopts::value<int>()->default_value("0"))
         ("jit-min-visits", "Compile a tree only after it has been seen this many times (default 1 = always)", cxxopts::value<std::size_t>()->default_value("1"))
