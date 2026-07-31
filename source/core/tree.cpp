@@ -251,10 +251,15 @@ auto Tree::Simplify() -> Tree& {
                     for (auto j : ch) { val *= nodes_[j].Value; }
                     break;
                 case Operon::Hash(BO::Sub):
+                    // arity 1 is negation (-x, see InfixFormatter::FormatNode), not identity -
+                    // the n-ary accumulator below is only correct for arity >= 2.
+                    if (ch.size() == 1) { val = -nodes_[ch[0]].Value; break; }
                     for (auto j : ch) { acc = acc ? *acc - nodes_[j].Value : nodes_[j].Value; }
                     val = acc.value_or(S{0});
                     break;
                 case Operon::Hash(BO::Div):
+                    // arity 1 is inversion (1/x, see InfixFormatter::FormatNode), not identity.
+                    if (ch.size() == 1) { val = S{1} / nodes_[ch[0]].Value; break; }
                     for (auto j : ch) { acc = acc ? *acc / nodes_[j].Value : nodes_[j].Value; }
                     val = acc.value_or(S{0});
                     break;
@@ -329,6 +334,11 @@ auto Tree::Simplify() -> Tree& {
                 break;
             }
             case Operon::Hash(BO::Sub): {
+                // Arity 1 is negation (-x), not identity - nothing to fold here
+                // (the loop below never runs at arity 1, which would otherwise
+                // leave newArity==1 and incorrectly disable the node as if its
+                // one child were the whole value).
+                if (n.Arity < 2) { break; }
                 // Remove Const(0) subtrahends (all children except the first).
                 auto newArity = n.Arity;
                 for (std::size_t ci = 1; ci < ch.size(); ++ci) {
@@ -345,6 +355,8 @@ auto Tree::Simplify() -> Tree& {
                 break;
             }
             case Operon::Hash(BO::Div): {
+                // Arity 1 is inversion (1/x), not identity - same reasoning as Sub above.
+                if (n.Arity < 2) { break; }
                 // Remove Const(1) denominators (all children except the first).
                 auto newArity = n.Arity;
                 for (std::size_t ci = 1; ci < ch.size(); ++ci) {
