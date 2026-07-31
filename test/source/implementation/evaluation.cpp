@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <stdexcept>
+
 #include "../operon_test.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/types.hpp"
@@ -102,6 +104,24 @@ TEST_CASE("Batch evaluation", "[interpreter]")
     // Should not throw
     REQUIRE_NOTHROW(Operon::EvaluateTrees(trees, &ds, range, {result.data(), result.size()}));
     REQUIRE_NOTHROW(Operon::EvaluateTrees(trees, &ds, range));
+}
+
+TEST_CASE("Batch evaluation propagates task exceptions", "[interpreter]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range{0, ds.Rows<std::size_t>()};
+
+    constexpr auto missingPrimitive = Operon::Hash{0xBADF00D};
+    auto tree = Operon::Tree({
+        Operon::Node::Constant(1),
+        Operon::Node::Constant(2),
+        Operon::Node::Function(missingPrimitive, 2),
+    });
+    Operon::Vector<Operon::Tree> trees{tree};
+    Operon::Vector<Operon::Scalar> result(range.Size());
+
+    REQUIRE_THROWS_AS(Operon::EvaluateTrees(trees, &ds, range, {result.data(), result.size()}), std::runtime_error);
+    REQUIRE_THROWS_AS(Operon::EvaluateTrees(trees, &ds, range), std::runtime_error);
 }
 
 } // namespace Operon::Test
