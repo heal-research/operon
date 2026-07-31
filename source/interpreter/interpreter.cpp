@@ -19,8 +19,7 @@ namespace Operon {
             Operon::Span<Operon::Scalar> const s{result[i].data(), result[i].size()};
             INT{&dtable, dataset, &trees[i]}.Evaluate({}, range, s);
         });
-        executor.run(taskflow);
-        executor.wait_for_all();
+        executor.run(taskflow).get(); // .wait_for_all() would silently drop an exception thrown by any task
         return result;
     }
 
@@ -35,7 +34,6 @@ namespace Operon {
             auto res = result.subspan(i * range.Size(), range.Size());
             INT{&dtable, dataset, &trees[i]}.Evaluate({}, range, res);
         });
-        executor.run(taskflow);
-        executor.wait_for_all();
+        executor.run(taskflow).get(); // .wait_for_all() would silently drop an exception thrown by any task
     }
 } // namespace Operon
