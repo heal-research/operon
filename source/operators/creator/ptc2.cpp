@@ -110,6 +110,7 @@ namespace Operon {
 auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*minDepth*/, size_t maxDepth) const -> Tree
 {
     EXPECT(targetLen > 0);
+    EXPECT(maxDepth > 0);
     auto const& variables = GetVariables();
     auto const& pset = GetPrimitiveSet();
     auto [minFunctionArity, maxFunctionArity] = pset->FunctionArityLimits();
@@ -156,7 +157,8 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     BuildPostfix(nodes, childIndices, postfix, idx, 0);
 
     auto tree = Tree(postfix).UpdateNodes();
-    ENSURE(tree.Nodes().size() <= requestedLen);
+    ENSURE(tree.Length() <= requestedLen);
+    ENSURE(tree.Depth() <= maxDepth);
     return tree;
 }
 } // namespace Operon
