@@ -74,11 +74,16 @@ auto ProcessNextNode(
     size_t maxFunctionArity,
     Operon::PrimitiveSet const* pset,
     Operon::Span<Operon::Hash const> variables,
-    std::bernoulli_distribution& sampleIrregular
+    std::bernoulli_distribution& sampleIrregular,
+    size_t maxDepth
 ) -> void {
     auto childDepth = RandomDequeue(random, q);
 
-    auto maxArity = q.size() > 1 && sampleIrregular(random)
+    // A node at childDepth == maxDepth is the deepest one this budget allows
+    // (root sits at depth 1), so it must be a leaf.
+    bool const depthExhausted = childDepth >= maxDepth;
+
+    auto maxArity = (q.size() > 1 && sampleIrregular(random)) || depthExhausted
         ? size_t{0}
         : std::min(maxFunctionArity, targetLen - q.size() - nodes.size() - 1);
 
@@ -102,7 +107,7 @@ auto ProcessNextNode(
 } // anonymous namespace
 
 namespace Operon {
-auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*args*/, size_t /*args*/) const -> Tree
+auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_t targetLen, size_t /*minDepth*/, size_t maxDepth) const -> Tree
 {
     EXPECT(targetLen > 0);
     auto const& variables = GetVariables();
@@ -115,7 +120,9 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     Operon::Vector<Node> nodes;
     nodes.reserve(targetLen);
 
-    auto maxArity = std::min(maxFunctionArity, targetLen - 1);
+    // the root lives at depth 1; if maxDepth can't fit even one level of
+    // children, force a terminal (same check ProcessNextNode applies).
+    auto maxArity = maxDepth <= 1 ? size_t{0} : std::min(maxFunctionArity, targetLen - 1);
     auto minArity = std::min(minFunctionArity, maxArity);
 
     auto root = pset->SampleRandomSymbol(random, minArity, maxArity);
@@ -138,7 +145,7 @@ auto ProbabilisticTreeCreator::operator()(Operon::RandomGenerator& random, size_
     std::bernoulli_distribution sampleIrregular(irregularityBias_);
 
     while (!q.empty()) {
-        ProcessNextNode(random, q, nodes, targetLen, minFunctionArity, maxFunctionArity, pset, variables, sampleIrregular);
+        ProcessNextNode(random, q, nodes, targetLen, minFunctionArity, maxFunctionArity, pset, variables, sampleIrregular, maxDepth);
     }
 
     std::sort(nodes.begin(), nodes.end(), [](const auto& lhs, const auto& rhs) -> auto { return lhs.Depth < rhs.Depth; });
