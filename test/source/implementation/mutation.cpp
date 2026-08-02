@@ -133,6 +133,37 @@ TEST_CASE("Mutation tree stays within bounds", "[operators]")
     }
 }
 
+TEST_CASE("ReplaceSubtreeMutation via PTC2 respects maxDepth", "[operators]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", true);
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
+    constexpr size_t maxLength = 50;
+    constexpr size_t maxDepth = 5;
+
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
+
+    // PTC2 is the creator whose depth enforcement is being exercised here: the
+    // mutation hands it a per-call depth budget and relies on the creator to
+    // honor it when growing the replacement subtree.
+    ProbabilisticTreeCreator const ptc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    UniformCoefficientInitializer cfi;
+    ReplaceSubtreeMutation const mut(gsl::not_null<Operon::CreatorBase const*>{&ptc}, gsl::not_null<Operon::CoefficientInitializerBase const*>{&cfi}, maxDepth, maxLength);
+
+    Operon::RandomGenerator random(42);
+
+    // start from a tree that already satisfies the budget (PTC2 enforces it),
+    // then keep mutating; every replacement subtree must stay within its budget
+    // so no tree in the chain can exceed maxDepth.
+    auto tree = ptc(random, maxLength, 1, maxDepth);
+    REQUIRE(tree.Depth() <= maxDepth);
+    for (int i = 0; i < 5000; ++i) {
+        tree = mut(random, std::move(tree));
+        CHECK(tree.Depth() <= maxDepth);
+    }
+}
+
 TEST_CASE("InsertSubtreeMutation leaves trees without eligible n-ary operators unchanged", "[operators]")
 {
     auto ds = Dataset("./data/Poly-10.csv", true);

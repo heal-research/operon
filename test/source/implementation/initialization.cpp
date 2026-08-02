@@ -200,6 +200,42 @@ TEST_CASE("PTC2 creator", "[operators]")
     }
 }
 
+TEST_CASE("PTC2 creator respects maxDepth", "[operators]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto inputs = ds.VariableHashes();
+    std::erase(inputs, ds.GetVariable("Y").value().Hash);
+
+    PrimitiveSet grammar;
+    grammar.SetConfig(PrimitiveSet::Arithmetic | BuiltinOp::Log | BuiltinOp::Exp);
+
+    constexpr size_t maxLength = 100;
+    ProbabilisticTreeCreator const ptc{&grammar, inputs, /* bias= */ 0.0, maxLength};
+    Operon::RandomGenerator random(1234);
+    auto sizeDistribution = std::uniform_int_distribution<size_t>(1, maxLength);
+
+    SECTION("produced trees never exceed the requested depth budget") {
+        for (size_t const maxDepth : { size_t{1}, size_t{2}, size_t{3}, size_t{5} }) {
+            for (int i = 0; i < 2000; ++i) {
+                auto const targetLen = sizeDistribution(random);
+                auto const tree = ptc(random, targetLen, 1, maxDepth);
+                CHECK(tree.Length() <= targetLen);
+                CHECK(tree.Depth() <= maxDepth);
+            }
+        }
+    }
+
+    SECTION("a depth budget of 1 yields a single-terminal tree") {
+        // the root sits at depth 1, so maxDepth == 1 must force a terminal at the root.
+        for (int i = 0; i < 1000; ++i) {
+            auto const tree = ptc(random, sizeDistribution(random), 1, 1);
+            REQUIRE(tree.Length() == 1);
+            CHECK(tree.Depth() == 1);
+            CHECK(tree.Nodes().front().IsLeaf());
+        }
+    }
+}
+
 TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     // A thin subclass that exposes the protected AchievableLength method.
