@@ -234,16 +234,16 @@ auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::o
     if (modes == ShapeConstraintEnforcement::None) { return "shape constraint policy must select at least one enforcement mode"; }
     if (policy.UnknownViolation < Operon::Scalar{0}) { return "shape unknown violation must be non-negative"; }
     if (policy.PenaltyWeight < Operon::Scalar{0}) { return "shape penalty weight must be non-negative"; }
-    if (penalty && extra) { return "shape constraint penalty and extra-objective modes are mutually exclusive"; }
 
     if (isNsga2) {
-        if (penalty) { return "shape constraint penalty mode is only valid for scalar GP"; }
-        (void)hard;
+        if (feasibilityFirst) { return "shape constraint feasibility-first mode is not valid for NSGA2"; }
+        if (hard && (penalty || extra)) { return "shape constraint hard-reject mode cannot be combined with penalty or extra-objective"; }
         return std::nullopt;
     }
 
     if (extra) { return "shape constraint extra-objective mode is only valid for NSGA2"; }
-    if (feasibilityFirst) { return "shape constraint feasibility-first mode is only valid for NSGA2"; }
+    if (hard && penalty) { return "shape constraint hard-reject mode cannot be combined with penalty"; }
+    (void)feasibilityFirst;
     return std::nullopt;
 }
 

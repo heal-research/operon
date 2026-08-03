@@ -199,21 +199,47 @@ TEST_CASE("ShapeConstraintPolicy validation covers GP and NSGA2 mode rules", "[s
 {
     using E = Operon::ShapeConstraintEnforcement;
 
-    CHECK_FALSE(Operon::ValidatePolicy({.Enforcement = E::HardReject}, false));
-    CHECK_FALSE(Operon::ValidatePolicy({.Enforcement = E::Penalty}, false));
-    CHECK_FALSE(Operon::ValidatePolicy({.Enforcement = E::HardReject | E::Penalty}, false));
+    auto valid = [](E enforcement, bool isNsga2) {
+        CHECK_FALSE(Operon::ValidatePolicy({.Enforcement = enforcement}, isNsga2));
+    };
+    auto invalid = [](E enforcement, bool isNsga2) {
+        CHECK(Operon::ValidatePolicy({.Enforcement = enforcement}, isNsga2));
+    };
 
-    CHECK_FALSE(Operon::ValidatePolicy({.Enforcement = E::HardReject}, true));
-    CHECK_FALSE(Operon::ValidatePolicy({.Enforcement = E::ExtraObjective}, true));
-    CHECK_FALSE(Operon::ValidatePolicy({.Enforcement = E::FeasibilityFirst}, true));
-    CHECK_FALSE(Operon::ValidatePolicy({.Enforcement = E::HardReject | E::ExtraObjective | E::FeasibilityFirst}, true));
+    SECTION("GP accepts only hard-reject, penalty, feasibility-first, and allowed GP combinations")
+    {
+        valid(E::HardReject, false);
+        valid(E::Penalty, false);
+        valid(E::FeasibilityFirst, false);
+        valid(E::HardReject | E::FeasibilityFirst, false);
+        valid(E::Penalty | E::FeasibilityFirst, false);
+
+        invalid(E::HardReject | E::Penalty, false);
+        invalid(E::ExtraObjective, false);
+        invalid(E::Penalty | E::ExtraObjective, false);
+        invalid(E::HardReject | E::ExtraObjective, false);
+        invalid(E::FeasibilityFirst | E::ExtraObjective, false);
+        invalid(E::HardReject | E::Penalty | E::ExtraObjective, false);
+    }
+
+    SECTION("NSGA2 accepts hard-reject, penalty, extra-objective, and penalty plus extra-objective")
+    {
+        valid(E::HardReject, true);
+        valid(E::Penalty, true);
+        valid(E::ExtraObjective, true);
+        valid(E::Penalty | E::ExtraObjective, true);
+
+        invalid(E::HardReject | E::Penalty, true);
+        invalid(E::HardReject | E::ExtraObjective, true);
+        invalid(E::FeasibilityFirst, true);
+        invalid(E::HardReject | E::FeasibilityFirst, true);
+        invalid(E::Penalty | E::FeasibilityFirst, true);
+        invalid(E::ExtraObjective | E::FeasibilityFirst, true);
+        invalid(E::HardReject | E::Penalty | E::ExtraObjective, true);
+    }
 
     CHECK(Operon::ValidatePolicy({.Enforcement = E::None}, false));
-    CHECK(Operon::ValidatePolicy({.Enforcement = E::ExtraObjective}, false));
-    CHECK(Operon::ValidatePolicy({.Enforcement = E::FeasibilityFirst}, false));
-    CHECK(Operon::ValidatePolicy({.Enforcement = E::Penalty}, true));
-    CHECK(Operon::ValidatePolicy({.Enforcement = E::Penalty | E::ExtraObjective}, true));
-    CHECK(Operon::ValidatePolicy({.Enforcement = E::Penalty | E::ExtraObjective}, false));
+    CHECK(Operon::ValidatePolicy({.Enforcement = static_cast<E>(1U << 9U)}, false));
     CHECK(Operon::ValidatePolicy({.Enforcement = E::HardReject, .UnknownViolation = Operon::Scalar{-1}}, false));
     CHECK(Operon::ValidatePolicy({.Enforcement = E::HardReject, .PenaltyWeight = Operon::Scalar{-1}}, false));
 }
