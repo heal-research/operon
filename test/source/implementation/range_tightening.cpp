@@ -4,7 +4,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <random>
+#include <vector>
 
 #include "../operon_test.hpp"
 
