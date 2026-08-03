@@ -591,12 +591,51 @@ auto DifferentiateFirstOrder(
     return constants;
 }
 
+auto DependsOnVariable(Nodes const& orig, std::size_t i, Operon::Hash variable) -> bool
+{
+    auto const& n = orig[i];
+    if (n.IsVariable()) { return n.HashValue == variable; }
+    if (n.IsConstant()) { return false; }
+    if (n.IsRef()) { return DependsOnVariable(orig, orig[i].RefTo, variable); }
+    for (auto c : ChildIndices(orig, i)) {
+        if (DependsOnVariable(orig, c, variable)) { return true; }
+    }
+    return false;
+}
+
+auto HasDifferentiationRule(Node const& n) -> bool
+{
+    if (!n.IsFunction()) { return true; }
+    auto const arity = static_cast<std::size_t>(n.Arity);
+    if (n.IsAddition() || n.IsMultiplication() || n.IsSubtraction()) { return true; }
+    if (n.IsDivision()) { return arity <= 2; }
+    if (n.IsPow()) { return arity == 2; }
+    if (n.IsAq() || n.IsPowabs() || n.IsOp<BuiltinOp::Fmin, BuiltinOp::Fmax>()) { return false; }
+    if (arity == 1) { return SymbolicDerivRules().TryGet(n.HashValue) != nullptr; }
+    if (arity == 2) { return BinaryDerivRules().TryGet(n.HashValue) != nullptr; }
+    return false;
+}
+
+auto HasUnsupportedDependentOp(Nodes const& orig, std::size_t i, Operon::Hash variable) -> bool
+{
+    if (!DependsOnVariable(orig, i, variable)) { return false; }
+    auto const& n = orig[i];
+    if (n.IsConstant() || n.IsVariable()) { return false; }
+    if (n.IsRef()) { return HasUnsupportedDependentOp(orig, orig[i].RefTo, variable); }
+    if (!HasDifferentiationRule(n)) { return true; }
+    for (auto c : ChildIndices(orig, i)) {
+        if (HasUnsupportedDependentOp(orig, c, variable)) { return true; }
+    }
+    return false;
+}
+
 // DifferentiateFirstOrder's analog for BuildVariableGradientDag: collects
 // distinct Variable hashes (not per-instance) and differentiates once per
 // distinct hash.
 auto DifferentiateVariableGradient(
     Tree const& tree, Nodes& dag, Memo& memo, Hashes& h,
     Operon::Vector<Operon::Hash>& variables, Operon::Vector<std::size_t>& roots,
+    Operon::Vector<bool>& certain,
     Operon::Span<Operon::Scalar const> coeff
 ) -> void
 {
@@ -640,6 +679,7 @@ auto DifferentiateVariableGradient(
     }
 
     roots.resize(variables.size(), Zero);
+    certain.resize(variables.size(), true);
     for (std::size_t vi = 0; vi < variables.size(); ++vi) {
         DerivTarget const target{
             .kind = DerivTarget::Kind::VariableValue,
@@ -647,6 +687,7 @@ auto DifferentiateVariableGradient(
             .effectiveValues = effectiveValues,
         };
         roots[vi] = Deriv(orig, dag, memo, h, n - 1, target);
+        certain[vi] = !HasUnsupportedDependentOp(orig, n - 1, variables[vi]);
     }
 }
 
@@ -767,7 +808,7 @@ auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar cons
     VariableGradientDag dag;
     Memo memo;
     Hashes h;
-    DifferentiateVariableGradient(tree, dag.Nodes, memo, h, dag.Variables, dag.Roots, coeff);
+    DifferentiateVariableGradient(tree, dag.Nodes, memo, h, dag.Variables, dag.Roots, dag.Certain, coeff);
     dag.OriginalSize = tree.Nodes().size();
     return dag;
 }
