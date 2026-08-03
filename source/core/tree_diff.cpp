@@ -591,18 +591,6 @@ auto DifferentiateFirstOrder(
     return constants;
 }
 
-auto DependsOnVariable(Nodes const& orig, std::size_t i, Operon::Hash variable) -> bool
-{
-    auto const& n = orig[i];
-    if (n.IsVariable()) { return n.HashValue == variable; }
-    if (n.IsConstant()) { return false; }
-    if (n.IsRef()) { return DependsOnVariable(orig, orig[i].RefTo, variable); }
-    for (auto c : ChildIndices(orig, i)) {
-        if (DependsOnVariable(orig, c, variable)) { return true; }
-    }
-    return false;
-}
-
 auto HasDifferentiationRule(Node const& n) -> bool
 {
     if (!n.IsFunction()) { return true; }
@@ -616,17 +604,43 @@ auto HasDifferentiationRule(Node const& n) -> bool
     return false;
 }
 
-auto HasUnsupportedDependentOp(Nodes const& orig, std::size_t i, Operon::Hash variable) -> bool
+auto HasUnsupportedDependentOp(Nodes const& orig, std::size_t root, Operon::Hash variable) -> bool
 {
-    if (!DependsOnVariable(orig, i, variable)) { return false; }
-    auto const& n = orig[i];
-    if (n.IsConstant() || n.IsVariable()) { return false; }
-    if (n.IsRef()) { return HasUnsupportedDependentOp(orig, orig[i].RefTo, variable); }
-    if (!HasDifferentiationRule(n)) { return true; }
-    for (auto c : ChildIndices(orig, i)) {
-        if (HasUnsupportedDependentOp(orig, c, variable)) { return true; }
+    Operon::Vector<bool> depends(orig.size(), false);
+    Operon::Vector<bool> unsupported(orig.size(), false);
+
+    for (std::size_t i = 0; i < orig.size(); ++i) {
+        auto const& n = orig[i];
+        if (n.IsVariable()) {
+            depends[i] = n.HashValue == variable;
+        } else if (n.IsRef()) {
+            depends[i] = depends[orig[i].RefTo];
+        } else if (!n.IsConstant()) {
+            for (auto c : ChildIndices(orig, i)) {
+                if (depends[c]) {
+                    depends[i] = true;
+                    break;
+                }
+            }
+        }
+
+        if (!depends[i] || n.IsConstant() || n.IsVariable()) { continue; }
+        if (n.IsRef()) {
+            unsupported[i] = unsupported[orig[i].RefTo];
+            continue;
+        }
+        unsupported[i] = !HasDifferentiationRule(n);
+        if (!unsupported[i]) {
+            for (auto c : ChildIndices(orig, i)) {
+                if (unsupported[c]) {
+                    unsupported[i] = true;
+                    break;
+                }
+            }
+        }
     }
-    return false;
+
+    return unsupported[root];
 }
 
 // DifferentiateFirstOrder's analog for BuildVariableGradientDag: collects
