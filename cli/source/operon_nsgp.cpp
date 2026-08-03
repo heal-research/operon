@@ -283,7 +283,9 @@ auto main(int argc, char** argv) -> int
         errorEvaluator->SetBudget(config.Evaluations);
         optimizer->SetIterations(config.Iterations);
 
-        Operon::LengthEvaluator lengthEvaluator(&problem, maxLength);
+        Operon::TreePropertyEvaluator lengthEvaluator(&problem, [](Operon::Tree const& tree) {
+            return static_cast<Operon::Scalar>(tree.Length());
+        }, static_cast<Operon::Scalar>(maxLength));
         // Operon::EntropyEvaluator entropyEvaluator(&problem);
 
         Operon::MultiEvaluator evaluator(&problem);
