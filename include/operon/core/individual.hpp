@@ -110,11 +110,11 @@ using ComparisonCallback = std::function<bool(Individual const&, Individual cons
 // infeasible other than the fitness values themselves -- and a
 // worst-value fitness substitution isn't reliably distinguishable from a
 // genuinely bad score. This struct itself does no caching -- it's a
-// thin, trivial wrapper matching the other comparators in this header;
-// ShapeConstrainedEvaluator::Feasible() does its own memoization
-// internally (populated by Prepare() each generation and by Evaluate()
-// as individuals are scored), so calling the predicate repeatedly here
-// is cheap in practice, not a naive re-walk of the affine bound.
+// thin, trivial wrapper matching the other comparators in this header.
+// Repeated predicate calls are cheap only when the caller supplies a
+// caching predicate (for example ShapeConstrainedEvaluator::Feasible(),
+// whose cache is populated by Prepare() and Evaluate()); non-caching
+// predicates may recompute on each comparison.
 struct FeasibilityFirstComparison {
     using FeasibilityPredicate = std::function<bool(Tree const&)>;
 
