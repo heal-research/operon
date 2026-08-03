@@ -10,6 +10,49 @@
 
 namespace Operon {
 
+struct ShapeConstraintMeasurement {
+    bool Certified{false};
+    std::optional<std::pair<Operon::Scalar, Operon::Scalar>> Bound{};
+    Operon::Scalar Violation{0};
+};
+
+struct ShapeConstraintMeasurementSummary {
+    bool Feasible{true};
+    Operon::Scalar Violation{0};
+    Operon::Vector<ShapeConstraintMeasurement> Measurements{};
+};
+
+enum class ShapeConstraintEnforcement : unsigned {
+    None = 0U,
+    HardReject = 1U << 0U,
+    Penalty = 1U << 1U,
+    ExtraObjective = 1U << 2U,
+    FeasibilityFirst = 1U << 3U,
+};
+
+[[nodiscard]] constexpr auto operator|(ShapeConstraintEnforcement lhs, ShapeConstraintEnforcement rhs) noexcept -> ShapeConstraintEnforcement
+{
+    return static_cast<ShapeConstraintEnforcement>(static_cast<unsigned>(lhs) | static_cast<unsigned>(rhs));
+}
+
+[[nodiscard]] constexpr auto operator&(ShapeConstraintEnforcement lhs, ShapeConstraintEnforcement rhs) noexcept -> ShapeConstraintEnforcement
+{
+    return static_cast<ShapeConstraintEnforcement>(static_cast<unsigned>(lhs) & static_cast<unsigned>(rhs));
+}
+
+[[nodiscard]] constexpr auto HasFlag(ShapeConstraintEnforcement value, ShapeConstraintEnforcement flag) noexcept -> bool
+{
+    return (value & flag) != ShapeConstraintEnforcement::None;
+}
+
+struct ShapeConstraintPolicy {
+    ShapeConstraintEnforcement Enforcement{ShapeConstraintEnforcement::HardReject};
+    Operon::Scalar UnknownViolation{1};
+    Operon::Scalar PenaltyWeight{1};
+};
+
+[[nodiscard]] auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
+
 // Wraps an inner EvaluatorBase (typically an NMSE-with-linear-scaling
 // Evaluator, matching Kronberger et al. 2021's own fitness setup) with the
 // shape-constraint check from that paper's Algorithm 1 `Evaluate`
@@ -103,6 +146,7 @@ public:
     // there just computes and stores the result under this tree's own
     // content hash, same as any other miss).
     [[nodiscard]] auto Feasible(Operon::Tree const& tree) const -> bool;
+    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation = Operon::Scalar{1}) const -> ShapeConstraintMeasurementSummary;
 
 private:
     gsl::not_null<EvaluatorBase const*> evaluator_;
@@ -117,9 +161,31 @@ private:
     mutable std::atomic_size_t violations_{0};
 
     struct FeasibleData {
-        bool Value{false};
+        ShapeConstraintMeasurementSummary Value{};
     };
     mutable ZobristCache<CacheEntry<FeasibleData>> feasibleCache_;
+};
+
+class OPERON_EXPORT ShapeViolationEvaluator final : public EvaluatorBase {
+public:
+    ShapeViolationEvaluator(gsl::not_null<EvaluatorBase const*> evaluator, ShapeConstraintSet constraints,
+        Operon::Scalar weight = Operon::Scalar{1}, Operon::Scalar unknownViolation = Operon::Scalar{1});
+
+    [[nodiscard]] auto Weight() const noexcept -> Operon::Scalar { return weight_; }
+    [[nodiscard]] auto UnknownViolation() const noexcept -> Operon::Scalar { return unknownViolation_; }
+    [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar;
+    [[nodiscard]] auto Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary;
+
+    auto Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    auto ObjectiveCount() const -> std::size_t override { return 1; }
+
+private:
+    gsl::not_null<EvaluatorBase const*> evaluator_;
+    ShapeConstraintSet constraints_;
+    Operon::Vector<Operon::Hash> constraintVarHash_;
+    Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
+    Operon::Scalar weight_{1};
+    Operon::Scalar unknownViolation_{1};
 };
 
 } // namespace Operon
