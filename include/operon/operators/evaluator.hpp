@@ -328,12 +328,12 @@ public:
     }
 
     auto SetAggregateType(std::optional<AggregateType> type) { aggregateType_ = type; }
+    auto ClearAggregateType() { aggregateType_ = std::nullopt; }
     auto GetAggregateType() const -> std::optional<AggregateType> { return aggregateType_; }
 
     auto ObjectiveCount() const -> std::size_t override
     {
-        if (aggregateType_) { return 1UL; }
-        return std::transform_reduce(evaluators_.begin(), evaluators_.end(), 0UL, std::plus {}, [](auto const eval) { return eval->ObjectiveCount(); });
+        return aggregateType_ ? 1UL : SubEvaluatorObjectiveCount();
     }
 
     auto
@@ -365,6 +365,11 @@ public:
     auto Evaluators() const { return evaluators_; }
 
 private:
+    auto SubEvaluatorObjectiveCount() const -> std::size_t
+    {
+        return std::transform_reduce(evaluators_.begin(), evaluators_.end(), 0UL, std::plus {}, [](auto const eval) { return eval->ObjectiveCount(); });
+    }
+
     std::vector<gsl::not_null<EvaluatorBase const*>> evaluators_;
     std::optional<AggregateType> aggregateType_;
 };

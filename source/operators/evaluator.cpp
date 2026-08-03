@@ -244,7 +244,7 @@ namespace {
         ++CallCount;
 
         EvaluatorBase::ReturnType fit;
-        fit.reserve(ind.Size());
+        fit.reserve(SubEvaluatorObjectiveCount());
 
         for (auto const& ev: evaluators_) {
             auto f = (*ev)(rng, ind, buf);
