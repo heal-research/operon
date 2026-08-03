@@ -5,6 +5,7 @@
 
 #include <bit>
 #include <limits>
+#include <memory>
 
 #include "operon/core/tree_diff.hpp"
 

@@ -23,6 +23,7 @@
 #include <string>
 #include <taskflow/taskflow.hpp>
 #include <thread>
+#include <vector>
 
 #include "operon/algorithms/config.hpp"
 #include "operon/algorithms/gp.hpp"

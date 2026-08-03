@@ -6,6 +6,8 @@
 
 #include <gsl/pointers>
 
+#include <memory>
+
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
 #include "operon/hash/zobrist.hpp"
