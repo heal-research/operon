@@ -1364,4 +1364,182 @@ TEST_CASE("BuildHessianDag performance vs JacRev FD", "[tree_diff][hessian][perf
     bench.render(nb::templates::csv(), std::cout);
 }
 
+// ============================================================
+// BuildVariableGradientDag — d/dx_i w.r.t. input variables.
+// ============================================================
+
+namespace {
+
+auto VariableIndex(VariableGradientDag const& dag, Operon::Hash hash) -> std::size_t
+{
+    auto it = std::ranges::find(dag.Variables, hash);
+    REQUIRE(it != dag.Variables.end());
+    return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
+}
+
+auto SliceDerivative(VariableGradientDag const& dag, std::size_t root) -> Tree
+{
+    REQUIRE(root != NoGrad);
+    Operon::Vector<Node> sliced(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
+    Tree tree(std::move(sliced));
+    tree.UpdateNodes();
+    return tree;
+}
+
+} // namespace
+
+TEST_CASE("BuildVariableGradientDag - single weighted variable", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{2.0F}});
+    auto xHash = ds.GetVariable("X")->Hash;
+
+    Operon::Vector<Node> nodes;
+    auto v = Node{NodeType::Variable, xHash}; v.Value = 3.0F; // f(x) = 3x
+    nodes.push_back(v);
+    Tree tree{nodes};
+
+    auto dag = BuildVariableGradientDag(tree, tree.GetCoefficients());
+    auto k = VariableIndex(dag, xHash);
+    REQUIRE(dag.Roots[k] != NoGrad);
+    REQUIRE(dag.OriginalSize == 1);
+    CHECK(dag.Certain[k]);
+    CHECK(dag.Nodes[dag.Roots[k]].IsConstant());
+    CHECK(dag.Nodes[dag.Roots[k]].Value == Catch::Approx(3.0F));
+}
+
+TEST_CASE("BuildVariableGradientDag - unreferenced variables are omitted", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string>{"X", "Y"},
+        std::vector<std::vector<Operon::Scalar>>{{2.0F}, {5.0F}});
+    auto xHash = ds.GetVariable("X")->Hash;
+    auto yHash = ds.GetVariable("Y")->Hash;
+
+    Operon::Vector<Node> nodes;
+    nodes.push_back(Node{NodeType::Variable, xHash});
+    Tree tree{nodes};
+
+    auto dag = BuildVariableGradientDag(tree);
+    CHECK(VariableIndex(dag, xHash) == 0);
+    CHECK(std::ranges::find(dag.Variables, yHash) == dag.Variables.end());
+}
+
+TEST_CASE("BuildVariableGradientDag - repeated occurrences sum via chain rule", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{7.0F}});
+    auto xHash = ds.GetVariable("X")->Hash;
+
+    Operon::Vector<Node> nodes;
+    nodes.push_back(Node{NodeType::Variable, xHash});
+    nodes.push_back(Node{NodeType::Variable, xHash});
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
+    Tree tree{nodes};
+    tree.UpdateNodes();
+
+    auto dag = BuildVariableGradientDag(tree);
+    auto k = VariableIndex(dag, xHash);
+    CHECK(dag.Certain[k]);
+    auto derivTree = SliceDerivative(dag, dag.Roots[k]);
+
+    Operon::ScalarDispatch dtable;
+    Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivTree);
+    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range{0, 1});
+    CHECK(result[0] == Catch::Approx(2.0));
+}
+
+TEST_CASE("BuildVariableGradientDag - Sin(Square(X)) correctness end-to-end", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{2.0F}});
+    auto xHash = ds.GetVariable("X")->Hash;
+
+    Operon::Vector<Node> nodes;
+    nodes.push_back(Node{NodeType::Variable, xHash});
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Square), 1));
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Sin), 1));
+    Tree tree{nodes};
+    tree.UpdateNodes();
+
+    auto dag = BuildVariableGradientDag(tree);
+    auto k = VariableIndex(dag, xHash);
+    CHECK(dag.Certain[k]);
+    auto derivTree = SliceDerivative(dag, dag.Roots[k]);
+
+    Operon::ScalarDispatch dtable;
+    Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivTree);
+    auto result = interp.Evaluate(derivTree.GetCoefficients(), Range{0, 1});
+
+    auto const expected = 2.0 * 2.0 * std::cos(2.0 * 2.0);
+    CHECK(result[0] == Catch::Approx(expected).epsilon(1e-4));
+}
+
+TEST_CASE("BuildVariableGradientDag - second order via re-differentiating the sliced result", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{2.0F}});
+    auto xHash = ds.GetVariable("X")->Hash;
+
+    Operon::Vector<Node> nodes;
+    nodes.push_back(Node::Constant(3.0F));
+    nodes.push_back(Node{NodeType::Variable, xHash});
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Pow), 2));
+    Tree tree{nodes};
+    tree.UpdateNodes();
+
+    auto dag1 = BuildVariableGradientDag(tree);
+    auto k1 = VariableIndex(dag1, xHash);
+    CHECK(dag1.Certain[k1]);
+    auto derivTree1 = SliceDerivative(dag1, dag1.Roots[k1]);
+
+    auto dag2 = BuildVariableGradientDag(derivTree1, derivTree1.GetCoefficients());
+    auto k2 = VariableIndex(dag2, xHash);
+    CHECK(dag2.Certain[k2]);
+    auto derivTree2 = SliceDerivative(dag2, dag2.Roots[k2]);
+
+    Operon::ScalarDispatch dtable;
+    Interpreter<Operon::Scalar, Operon::ScalarDispatch> interp(&dtable, &ds, &derivTree2);
+    auto result = interp.Evaluate(derivTree2.GetCoefficients(), Range{0, 1});
+    CHECK(result[0] == Catch::Approx(12.0).epsilon(1e-3));
+}
+
+TEST_CASE("BuildVariableGradientDag - unary Sub/Div are not falsely reported as uncertain", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string>{"X"}, std::vector<std::vector<Operon::Scalar>>{{2.0F}});
+    auto xHash = ds.GetVariable("X")->Hash;
+
+    for (auto op : {BuiltinOp::Sub, BuiltinOp::Div}) {
+        Operon::Vector<Node> nodes;
+        nodes.push_back(Node{NodeType::Variable, xHash});
+        nodes.push_back(Node::Function(static_cast<Operon::Hash>(op), 1));
+        Tree tree{nodes};
+        tree.UpdateNodes();
+        auto dag = BuildVariableGradientDag(tree);
+        auto k = VariableIndex(dag, xHash);
+        CHECK(dag.Certain[k]);
+        REQUIRE(dag.Roots[k] != NoGrad);
+    }
+}
+
+TEST_CASE("BuildVariableGradientDag - unsupported op certainty is per dependent variable", "[tree_diff]")
+{
+    Dataset const ds(std::vector<std::string>{"X", "Y"},
+        std::vector<std::vector<Operon::Scalar>>{{2.0F}, {3.0F}});
+    auto xHash = ds.GetVariable("X")->Hash;
+    auto yHash = ds.GetVariable("Y")->Hash;
+
+    // f(x,y) = abs(x) + y. d/dx is uncertain; d/dy is certain even though
+    // the whole tree contains an unsupported op on the unrelated x branch.
+    Operon::Vector<Node> nodes;
+    nodes.push_back(Node{NodeType::Variable, xHash});
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Abs), 1));
+    nodes.push_back(Node{NodeType::Variable, yHash});
+    nodes.push_back(Node::Function(static_cast<Operon::Hash>(BuiltinOp::Add), 2));
+    Tree tree{nodes};
+    tree.UpdateNodes();
+
+    auto dag = BuildVariableGradientDag(tree);
+    auto x = VariableIndex(dag, xHash);
+    auto y = VariableIndex(dag, yHash);
+    CHECK_FALSE(dag.Certain[x]);
+    CHECK(dag.Certain[y]);
+    CHECK(dag.Roots[y] != NoGrad);
+}
+
 } // namespace Operon::Test
