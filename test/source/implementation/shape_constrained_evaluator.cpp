@@ -3,8 +3,12 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
+#include <string>
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
@@ -12,6 +16,7 @@
 #include "operon/core/constraint.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
+#include "shape_constraints_config.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
 
@@ -60,7 +65,75 @@ struct Fixture {
     }
 };
 
+auto WriteShapeConfig(std::string const& name, std::string const& text) -> std::filesystem::path
+{
+    auto path = std::filesystem::temp_directory_path() / ("operon_shape_constraints_" + name + ".json");
+    std::ofstream out(path);
+    out << text;
+    return path;
+}
+
 } // namespace
+
+TEST_CASE("LoadShapeConstraints parses the field-based JSON schema", "[shape-constraints]")
+{
+    auto const path = WriteShapeConfig("valid", R"json({
+        "domains": { "X1": [1, 5.0], "X2": [1.0, 5], "x2": [-2, 2] },
+        "constraints": [
+            { "op": "id", "bound": [-4, 4] },
+            { "op": "id", "sign": 1 },
+            { "op": "derivative", "variable": "X1", "order": 1, "sign": 1 },
+            { "op": "derivative", "variable": "X2", "order": 2, "bound": [0, 0] },
+            { "op": "derivative", "variable": "x2", "order": 2, "sign": -1 }
+        ]
+    })json");
+
+    auto loaded = Operon::LoadShapeConstraints(path.string());
+    REQUIRE(loaded);
+    REQUIRE(loaded->Domains.size() == 3);
+    CHECK(loaded->Domains.at("X1").first == Catch::Approx(1.0));
+    CHECK(loaded->Domains.at("X2").second == Catch::Approx(5.0));
+    CHECK(loaded->Domains.at("x2").first == Catch::Approx(-2.0));
+
+    REQUIRE(loaded->Constraints.size() == 5);
+    CHECK(loaded->Constraints[0].Op == ShapeConstraintOp::Identity);
+    REQUIRE(loaded->Constraints[0].Bound);
+    CHECK(loaded->Constraints[0].Bound->first == Catch::Approx(-4.0));
+    CHECK(loaded->Constraints[1].Op == ShapeConstraintOp::Identity);
+    REQUIRE(loaded->Constraints[1].Sign);
+    CHECK(*loaded->Constraints[1].Sign == 1);
+    CHECK(loaded->Constraints[2].Op == ShapeConstraintOp::FirstDerivative);
+    CHECK(loaded->Constraints[2].Variable == "X1");
+    CHECK(loaded->Constraints[3].Op == ShapeConstraintOp::SecondDerivative);
+    CHECK(loaded->Constraints[3].Variable == "X2");
+    REQUIRE(loaded->Constraints[3].Bound);
+    CHECK(loaded->Constraints[4].Op == ShapeConstraintOp::SecondDerivative);
+    CHECK(loaded->Constraints[4].Variable == "x2"); // unambiguous variable name ending in '2'
+}
+
+TEST_CASE("LoadShapeConstraints handles empty paths and JSON schema errors", "[shape-constraints]")
+{
+    CHECK_FALSE(Operon::LoadShapeConstraints(""));
+    auto const missing = std::filesystem::temp_directory_path() / "operon_shape_constraints_missing_file_this_test_should_not_exist.json";
+    std::filesystem::remove(missing);
+    CHECK_THROWS_AS(Operon::LoadShapeConstraints(missing.string()), std::runtime_error);
+    CHECK_THROWS_AS(Operon::LoadShapeConstraints(WriteShapeConfig("malformed", R"json({"domains":)json").string()), std::runtime_error);
+
+    auto throwsConfig = [](std::string const& name, std::string const& json) {
+        CHECK_THROWS_AS(Operon::LoadShapeConstraints(WriteShapeConfig(name, json).string()), std::runtime_error);
+    };
+
+    throwsConfig("both_sign_bound", R"json({"constraints":[{"op":"id","sign":1,"bound":[0,1]}]})json");
+    throwsConfig("neither_sign_bound", R"json({"constraints":[{"op":"id"}]})json");
+    throwsConfig("non_integral_sign", R"json({"constraints":[{"op":"id","sign":1.5}]})json");
+    throwsConfig("out_of_range_sign", R"json({"constraints":[{"op":"id","sign":0}]})json");
+    throwsConfig("bad_order", R"json({"constraints":[{"op":"derivative","variable":"X1","order":3,"sign":1}]})json");
+    throwsConfig("non_integral_order", R"json({"constraints":[{"op":"derivative","variable":"X1","order":1.5,"sign":1}]})json");
+    throwsConfig("missing_variable", R"json({"constraints":[{"op":"derivative","order":1,"sign":1}]})json");
+    throwsConfig("missing_order", R"json({"constraints":[{"op":"derivative","variable":"X1","sign":1}]})json");
+    throwsConfig("bad_domain", R"json({"domains":{"X1":[0,1,2]},"constraints":[{"op":"id","sign":1}]})json");
+    throwsConfig("non_string_op", R"json({"constraints":[{"op":7,"sign":1}]})json");
+}
 
 TEST_CASE("ShapeConstrainedEvaluator - correctly-signed constraints are feasible", "[shape-constraints]")
 {
@@ -178,6 +251,17 @@ TEST_CASE("ShapeConstrainedEvaluator - constraint variable missing from domains 
     CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, cs), std::invalid_argument);
 }
 
+TEST_CASE("ShapeConstrainedEvaluator - problem input variable missing from domains throws", "[shape-constraints]")
+{
+    Fixture fx;
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Bound = std::pair{Operon::Scalar{-4}, Operon::Scalar{4}}});
+
+    CHECK_THROWS_WITH(Operon::ShapeConstrainedEvaluator(&fx.nmse, cs), Catch::Matchers::ContainsSubstring("X2"));
+    CHECK_THROWS_WITH(Operon::ShapeViolationEvaluator(&fx.nmse, cs), Catch::Matchers::ContainsSubstring("X2"));
+}
+
 TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-containing interval) is treated as infeasible, not a crash", "[shape-constraints]")
 {
     // f(x) = 1 / X1, with X1's domain spanning zero -- AffineEvaluator
@@ -261,6 +345,75 @@ TEST_CASE("ParseShapeEnforcement parses CLI enforcement tokens", "[shape-constra
     CHECK_THROWS_AS(Operon::ParseShapeEnforcement(""), std::invalid_argument);
     CHECK_THROWS_AS(Operon::ParseShapeEnforcement("penalty,"), std::invalid_argument);
     CHECK_THROWS_AS(Operon::ParseShapeEnforcement("unknown"), std::invalid_argument);
+}
+
+TEST_CASE("Shape constraint CLI-adjacent composition works for representative enforcement modes", "[shape-constraints]")
+{
+    Fixture fx;
+    auto const path = WriteShapeConfig("composition", R"json({
+        "domains": { "X1": [1, 5], "X2": [1, 5] },
+        "constraints": [ { "op": "derivative", "variable": "X1", "order": 1, "sign": 1 } ]
+    })json");
+    auto loaded = Operon::LoadShapeConstraints(path.string());
+    REQUIRE(loaded);
+
+    auto requireValid = [](Operon::ShapeConstraintPolicy const& policy, bool isNsga2) {
+        if (auto error = Operon::ValidatePolicy(policy, isNsga2)) { throw std::invalid_argument(*error); }
+    };
+
+    SECTION("GP hard-reject constructs the rejecting evaluator")
+    {
+        Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("hard-reject")};
+        REQUIRE_NOTHROW(requireValid(policy, false));
+        Operon::ShapeConstrainedEvaluator gated(&fx.nmse, *loaded);
+        CHECK(gated.Feasible(fx.tree));
+    }
+
+    SECTION("GP penalty constructs the violation evaluator and summed aggregate")
+    {
+        Operon::ShapeConstraintPolicy policy{
+            .Enforcement = Operon::ParseShapeEnforcement("penalty"),
+            .UnknownViolation = Operon::Scalar{2},
+            .PenaltyWeight = Operon::Scalar{3},
+        };
+        REQUIRE_NOTHROW(requireValid(policy, false));
+        Operon::ShapeViolationEvaluator violation(&fx.nmse, *loaded, policy.PenaltyWeight, policy.UnknownViolation);
+        Operon::MultiEvaluator aggregate(&fx.problem);
+        aggregate.Add(&fx.nmse);
+        aggregate.Add(&violation);
+        aggregate.SetAggregateType(Operon::MultiEvaluator::AggregateType::Sum);
+        CHECK(violation.RawViolation(fx.tree) == Catch::Approx(0.0));
+    }
+
+    SECTION("GP feasibility-first constructs the comparator-side violation evaluator")
+    {
+        Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("feasibility-first")};
+        REQUIRE_NOTHROW(requireValid(policy, false));
+        Operon::ShapeViolationEvaluator violation(&fx.nmse, *loaded, Operon::Scalar{1}, policy.UnknownViolation);
+        Operon::FeasibilityFirstComparison comp([&violation](Operon::Tree const& t) { return violation.Measure(t).Feasible; });
+        auto feasible = Fixture::MakeIndividual(fx.tree);
+        feasible.Fitness = {10.0F};
+        auto infeasible = Fixture::MakeIndividual(InfixParser::Parse("X2 - X1", fx.ds));
+        infeasible.Fitness = {0.1F};
+        CHECK(comp(feasible, infeasible));
+    }
+
+    SECTION("NSGA2 extra-objective constructs the added shape objective")
+    {
+        Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("extra-objective")};
+        REQUIRE_NOTHROW(requireValid(policy, true));
+        Operon::ShapeViolationEvaluator extra(&fx.nmse, *loaded, Operon::Scalar{1}, policy.UnknownViolation);
+        Operon::MultiEvaluator objectives(&fx.problem);
+        objectives.Add(&fx.nmse);
+        objectives.Add(&extra);
+        CHECK(extra.RawViolation(fx.tree) == Catch::Approx(0.0));
+    }
+
+    SECTION("invalid CLI mode combination is rejected by the same validation step")
+    {
+        Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("penalty,extra-objective")};
+        CHECK_THROWS_AS(requireValid(policy, false), std::invalid_argument);
+    }
 }
 
 TEST_CASE("ShapeViolationEvaluator - sign constraint violation magnitudes", "[shape-constraints]")

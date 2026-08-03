@@ -16,24 +16,6 @@ namespace {
 
 using Json = glz::generic_i64;
 
-// Parses an "op" string into (ShapeConstraintOp, variable name). "id" has
-// no variable; "d/d<var>" and "d2/d<var>2" carry <var> literally between
-// the fixed prefix/suffix (no attempt to disambiguate a variable name
-// that itself ends in a digit against the "d2/...2" marker -- none of
-// this codebase's problem set needs one).
-auto ParseOp(std::string const& op) -> std::pair<ShapeConstraintOp, std::string>
-{
-    if (op == "id") { return {ShapeConstraintOp::Identity, ""}; }
-    if (op.starts_with("d/d") && op.size() > 3) {
-        return {ShapeConstraintOp::FirstDerivative, op.substr(3)};
-    }
-    if (op.starts_with("d2/d") && op.ends_with('2') && op.size() > 5) {
-        return {ShapeConstraintOp::SecondDerivative, op.substr(4, op.size() - 5)};
-    }
-    throw std::runtime_error(fmt::format(
-        "shape-constraints config: unrecognized op '{}' (expected 'id', 'd/d<var>', or 'd2/d<var>2')", op));
-}
-
 // generic_i64 parses a bare-integer JSON literal (e.g. `-1`, no decimal
 // point) as int64_t, not double (that's the whole reason probes_config.cpp
 // and this file use generic_i64 over plain generic) — calling .get<double>()
@@ -60,6 +42,27 @@ auto RequireString(Json const& obj, char const* field, char const* context) -> s
         throw std::runtime_error(fmt::format("shape-constraints config: {} requires a string '{}'", context, field));
     }
     return obj.at(field).get<std::string>();
+}
+
+auto ParseOp(Json const& entry, std::string const& opStr) -> std::pair<ShapeConstraintOp, std::string>
+{
+    if (opStr == "id") { return {ShapeConstraintOp::Identity, ""}; }
+    if (opStr != "derivative") {
+        throw std::runtime_error(fmt::format(
+            "shape-constraints config: unrecognized op '{}' (expected 'id' or 'derivative')", opStr));
+    }
+
+    auto const variable = RequireString(entry, "variable", "derivative constraint");
+    if (!entry.contains("order") || !entry.at("order").is_number()) {
+        throw std::runtime_error("shape-constraints config: derivative constraint requires an integer 'order'");
+    }
+    auto const raw = ToNumber(entry.at("order"));
+    auto const order = static_cast<int>(raw);
+    if (static_cast<double>(order) != raw || (order != 1 && order != 2)) {
+        throw std::runtime_error(fmt::format(
+            "shape-constraints config: derivative constraint has 'order' {} (must be exactly 1 or 2)", raw));
+    }
+    return {order == 1 ? ShapeConstraintOp::FirstDerivative : ShapeConstraintOp::SecondDerivative, variable};
 }
 
 } // namespace
@@ -92,7 +95,7 @@ auto LoadShapeConstraints(std::string const& path) -> std::optional<ShapeConstra
     if (doc.contains("constraints")) {
         for (auto const& entry : doc.at("constraints").get_array()) {
             auto const opStr = RequireString(entry, "op", "each constraint entry");
-            auto [op, variable] = ParseOp(opStr);
+            auto [op, variable] = ParseOp(entry, opStr);
 
             ShapeConstraint c;
             c.Op = op;
