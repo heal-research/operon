@@ -145,6 +145,13 @@ namespace {
         return FitLeastSquaresImpl<double>(estimated, target, weights);
     }
 
+    TreePropertyEvaluator::TreePropertyEvaluator(gsl::not_null<Operon::Problem const*> problem, Property property, Operon::Scalar normalizer)
+        : UserDefinedEvaluator(problem, [property = std::move(property), normalizer](Operon::RandomGenerator& /*unused*/, Operon::Individual const& ind) {
+            return EvaluatorBase::ReturnType { property(ind.Genotype) / normalizer };
+        })
+    {
+    }
+
     template<> auto OPERON_EXPORT
     Evaluator<ScalarDispatch>::Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
