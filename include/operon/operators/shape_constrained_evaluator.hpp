@@ -7,6 +7,8 @@
 #include "operon/core/constraint.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/evaluator.hpp"
+#include <optional>
+#include <string>
 
 namespace Operon {
 
@@ -52,6 +54,7 @@ struct ShapeConstraintPolicy {
 };
 
 [[nodiscard]] auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
+[[nodiscard]] auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
 
 // Wraps an inner EvaluatorBase (typically an NMSE-with-linear-scaling
 // Evaluator, matching Kronberger et al. 2021's own fitness setup) with the

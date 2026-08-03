@@ -8,6 +8,7 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <memory>
+#include <stdexcept>
 #include <unordered_map>
 #include <taskflow/algorithm/reduce.hpp>
 #include <taskflow/taskflow.hpp>
@@ -287,21 +288,70 @@ auto main(int argc, char** argv) -> int
         }, static_cast<Operon::Scalar>(maxLength));
         // Operon::EntropyEvaluator entropyEvaluator(&problem);
 
+        auto shapeConstraints = Operon::LoadShapeConstraints(
+            result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
+        if (!shapeConstraints && result.count("shape-enforcement") != 0) {
+            throw std::invalid_argument("--shape-enforcement requires --shape-constraints-config");
+        }
+
+        Operon::ShapeConstraintEnforcement shapeEnforcement{Operon::ShapeConstraintEnforcement::None};
+        std::unique_ptr<Operon::ShapeViolationEvaluator> shapePenaltyStorage;
+        std::unique_ptr<Operon::ShapeViolationEvaluator> shapeExtraObjectiveStorage;
+        std::unique_ptr<Operon::MultiEvaluator> penalizedErrorStorage;
+        Operon::EvaluatorBase const* errorObjective = errorEvaluator.get();
+        if (shapeConstraints) {
+            shapeEnforcement = result.count("shape-enforcement") != 0
+                ? Operon::ParseShapeEnforcement(result["shape-enforcement"].as<std::string>())
+                : Operon::ShapeConstraintEnforcement::HardReject;
+            auto const unknownViolation = result["shape-unknown-violation"].as<double>();
+            auto const penaltyWeight = result["shape-penalty-weight"].as<double>();
+            auto const worstValue = result["shape-worst-value"].as<double>();
+            if (!(std::isfinite(unknownViolation) && unknownViolation >= 0.0)) {
+                throw std::invalid_argument(fmt::format("--shape-unknown-violation must be a finite, non-negative value (got {})", unknownViolation));
+            }
+            if (!(std::isfinite(penaltyWeight) && penaltyWeight >= 0.0)) {
+                throw std::invalid_argument(fmt::format("--shape-penalty-weight must be a finite, non-negative value (got {})", penaltyWeight));
+            }
+            if (!std::isfinite(worstValue)) {
+                throw std::invalid_argument(fmt::format("--shape-worst-value must be finite (got {})", worstValue));
+            }
+
+            Operon::ShapeConstraintPolicy const policy{
+                .Enforcement = shapeEnforcement,
+                .UnknownViolation = static_cast<Operon::Scalar>(unknownViolation),
+                .PenaltyWeight = static_cast<Operon::Scalar>(penaltyWeight),
+            };
+            if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/true)) { throw std::invalid_argument(*error); }
+
+            if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
+                shapePenaltyStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
+                    errorEvaluator.get(), *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
+                penalizedErrorStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
+                penalizedErrorStorage->Add(errorEvaluator.get());
+                penalizedErrorStorage->Add(shapePenaltyStorage.get());
+                penalizedErrorStorage->SetAggregateType(Operon::MultiEvaluator::AggregateType::Sum);
+                errorObjective = penalizedErrorStorage.get();
+            }
+            if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::ExtraObjective)) {
+                shapeExtraObjectiveStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
+                    errorEvaluator.get(), *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
+            }
+        }
+
         Operon::MultiEvaluator evaluator(&problem);
         evaluator.SetBudget(config.Evaluations);
-        evaluator.Add(errorEvaluator.get());
+        evaluator.Add(errorObjective);
         evaluator.Add(&lengthEvaluator);
+        if (shapeExtraObjectiveStorage) { evaluator.Add(shapeExtraObjectiveStorage.get()); }
         // evaluator.Add(&entropyEvaluator);
 
         // Optional shape-constraint wrapper (see operon_gp.cpp for the same
         // pattern/rationale) — wraps the whole MultiEvaluator, so an
-        // infeasible individual gets WorstValue() on every objective
-        // (error and length alike), not just the error one.
+        // infeasible individual gets WorstValue() on every objective.
         std::unique_ptr<Operon::ShapeConstrainedEvaluator> shapeConstrainedStorage;
-        auto shapeConstraints = Operon::LoadShapeConstraints(
-            result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
-        if (shapeConstraints) {
-            shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, std::move(*shapeConstraints));
+        if (shapeConstraints && Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
+            shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, *shapeConstraints);
+            shapeConstrainedStorage->SetWorstValue(result["shape-worst-value"].as<double>());
         }
         Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get()) : static_cast<Operon::EvaluatorBase*>(&evaluator);
 
