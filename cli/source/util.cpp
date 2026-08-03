@@ -199,6 +199,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("checkpoint-file", "Path for checkpoint output (BEVE binary format)", cxxopts::value<std::string>()->default_value("checkpoint.beve"))
         ("resume", "Resume a previous run from this checkpoint file", cxxopts::value<std::string>())
         ("probes-config", R"(Path to a JSON config file describing per-generation instrumentation probes to run, e.g. {"probes":[{"type":"cache_hit_rate","every":1}],"sink":{"type":"jsonl","path":"metrics.jsonl"}})", cxxopts::value<std::string>())
+        ("shape-constraints-config", R"(Path to a JSON config file describing shape constraints (function/derivative sign or value bounds over a domain box) to reject infeasible individuals during fitness evaluation, e.g. {"domains":{"x":[0.1,15]},"constraints":[{"op":"d/dx","sign":-1}]})", cxxopts::value<std::string>())
         ("debug", "Debug mode (more information displayed)")
         ("help", "Print help")
         ("version", "Print version and program information");
