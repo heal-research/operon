@@ -29,6 +29,9 @@ auto ToNumber(Json const& v) -> double
 
 auto ToDomainBound(Json const& arr, char const* context) -> std::pair<Operon::Scalar, Operon::Scalar>
 {
+    if (!arr.is_array()) {
+        throw std::runtime_error(fmt::format("shape-constraints config: {} must be a [lo, hi] number pair", context));
+    }
     auto const items = arr.get_array();
     if (items.size() != 2 || !items[0].is_number() || !items[1].is_number()) {
         throw std::runtime_error(fmt::format("shape-constraints config: {} must be a [lo, hi] number pair", context));
@@ -84,16 +87,31 @@ auto LoadShapeConstraints(std::string const& path) -> std::optional<ShapeConstra
         throw std::runtime_error(fmt::format("shape-constraints config '{}': {}", path, glz::format_error(ec, text)));
     }
 
+    if (!doc.is_object()) {
+        throw std::runtime_error("shape-constraints config: top-level JSON value must be an object");
+    }
+
     ShapeConstraintSet set;
 
     if (doc.contains("domains")) {
-        for (auto const& [name, bound] : doc.at("domains").get_object()) {
+        auto const& domains = doc.at("domains");
+        if (!domains.is_object()) {
+            throw std::runtime_error("shape-constraints config: 'domains' must be an object mapping variable names to [lo, hi] number pairs");
+        }
+        for (auto const& [name, bound] : domains.get_object()) {
             set.Domains.insert_or_assign(name, ToDomainBound(bound, fmt::format("domain '{}'", name).c_str()));
         }
     }
 
     if (doc.contains("constraints")) {
-        for (auto const& entry : doc.at("constraints").get_array()) {
+        auto const& constraints = doc.at("constraints");
+        if (!constraints.is_array()) {
+            throw std::runtime_error("shape-constraints config: 'constraints' must be an array of constraint entries");
+        }
+        for (auto const& entry : constraints.get_array()) {
+            if (!entry.is_object()) {
+                throw std::runtime_error("shape-constraints config: each constraint entry must be an object");
+            }
             auto const opStr = RequireString(entry, "op", "each constraint entry");
             auto [op, variable] = ParseOp(entry, opStr);
 
@@ -108,6 +126,10 @@ auto LoadShapeConstraints(std::string const& path) -> std::optional<ShapeConstra
                     "shape-constraints config: constraint '{}' must set exactly one of 'sign' or 'bound'", opStr));
             }
             if (hasSign) {
+                if (!entry.at("sign").is_number()) {
+                    throw std::runtime_error(fmt::format(
+                        "shape-constraints config: constraint '{}' has non-numeric 'sign' (must be exactly 1 or -1)", opStr));
+                }
                 auto const raw = ToNumber(entry.at("sign"));
                 auto const s = static_cast<int>(raw);
                 // Reject non-integral values (e.g. 1.9) rather than
