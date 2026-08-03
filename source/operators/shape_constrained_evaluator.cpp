@@ -127,6 +127,85 @@ auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
     return d2 ? TryAffineBound(*d2, domains) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
 }
 
+auto ResolveShapeConstraintContext(gsl::not_null<EvaluatorBase const*> evaluator, ShapeConstraintSet const& constraints,
+    Operon::Vector<Operon::Hash>& constraintVarHash,
+    Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>>& domainsByHash,
+    std::string_view owner) -> void
+{
+    auto const* ds = evaluator->GetProblem()->GetDataset();
+
+    for (auto const& [name, bound] : constraints.Domains) {
+        auto v = ds->GetVariable(name);
+        if (!v) { throw std::invalid_argument(fmt::format("{}: domain references unknown variable '{}'", owner, name)); }
+        domainsByHash.insert_or_assign(v->Hash, bound);
+    }
+
+    for (auto const& hash : evaluator->GetProblem()->GetInputs()) {
+        if (domainsByHash.contains(hash)) { continue; }
+        auto v = ds->GetVariable(hash);
+        throw std::invalid_argument(fmt::format(
+            "{}: input variable '{}' has no entry in 'domains'", owner, v ? v->Name : fmt::format("<hash {}>", hash)));
+    }
+
+    constraintVarHash.reserve(constraints.Constraints.size());
+    for (auto const& c : constraints.Constraints) {
+        if (c.Sign.has_value() == c.Bound.has_value()) {
+            throw std::invalid_argument(fmt::format("{}: constraint must set exactly one of Sign or Bound", owner));
+        }
+        if (c.Sign && *c.Sign != 1 && *c.Sign != -1) {
+            throw std::invalid_argument(fmt::format("{}: constraint Sign {} must be 1 or -1", owner, *c.Sign));
+        }
+        if (c.Bound && c.Bound->first > c.Bound->second) {
+            throw std::invalid_argument(fmt::format("{}: constraint Bound [{}, {}] has lo > hi", owner, c.Bound->first, c.Bound->second));
+        }
+
+        if (c.Op == ShapeConstraintOp::Identity) {
+            constraintVarHash.push_back(Operon::Hash{});
+            continue;
+        }
+        auto v = ds->GetVariable(c.Variable);
+        if (!v) { throw std::invalid_argument(fmt::format("{}: constraint references unknown variable '{}'", owner, c.Variable)); }
+        if (!domainsByHash.contains(v->Hash)) {
+            throw std::invalid_argument(fmt::format("{}: constraint on '{}' has no matching entry in 'domains'", owner, c.Variable));
+        }
+        constraintVarHash.push_back(v->Hash);
+    }
+}
+
+auto ConstraintViolation(ShapeConstraint const& c, Interval const& bound) -> Operon::Scalar
+{
+    if (c.Sign) {
+        return (*c.Sign > 0) ? std::max(Operon::Scalar{0}, -bound.inf()) : std::max(Operon::Scalar{0}, bound.sup());
+    }
+    return std::max(Operon::Scalar{0}, c.Bound->first - bound.inf())
+         + std::max(Operon::Scalar{0}, bound.sup() - c.Bound->second);
+}
+
+auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Operon::Hash> const& constraintVarHash,
+    Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> const& domainsByHash,
+    Operon::Tree const& tree, Operon::Scalar unknownViolation) -> ShapeConstraintMeasurementSummary
+{
+    ShapeConstraintMeasurementSummary summary;
+    summary.Measurements.reserve(constraints.Constraints.size());
+    for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
+        auto const& c = constraints.Constraints[i];
+        ShapeConstraintMeasurement m;
+        auto const bound = BoundFor(c.Op, tree, constraintVarHash[i], domainsByHash);
+        if (!bound) {
+            m.Certified = false;
+            m.Violation = unknownViolation;
+        } else {
+            m.Certified = true;
+            m.Bound = std::pair{bound->inf(), bound->sup()};
+            m.Violation = ConstraintViolation(c, *bound);
+        }
+        if (!m.Certified || m.Violation != Operon::Scalar{0}) { summary.Feasible = false; }
+        summary.Violation += m.Violation;
+        summary.Measurements.push_back(m);
+    }
+    return summary;
+}
+
 } // namespace
 
 ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase const*> evaluator, ShapeConstraintSet constraints)
@@ -134,117 +213,59 @@ ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase
     , evaluator_(evaluator)
     , constraints_(std::move(constraints))
 {
-    auto const* ds = evaluator_->GetProblem()->GetDataset();
-
-    for (auto const& [name, bound] : constraints_.Domains) {
-        auto v = ds->GetVariable(name);
-        if (!v) {
-            throw std::invalid_argument(fmt::format(
-                "ShapeConstrainedEvaluator: domain references unknown variable '{}'", name));
-        }
-        domainsByHash_.insert_or_assign(v->Hash, bound);
-    }
-
-    // `constraints.Domains` must cover every input variable the problem
-    // actually uses, not just the ones a constraint names directly (see
-    // the class-level doc comment: any variable in a scored tree needs a
-    // domain, because the affine bound walks the whole original tree
-    // internally). Checking this once here, loudly, beats discovering a
-    // missing domain later as every individual in a run being rejected.
-    for (auto const& hash : evaluator_->GetProblem()->GetInputs()) {
-        if (domainsByHash_.contains(hash)) { continue; }
-        auto v = ds->GetVariable(hash);
-        throw std::invalid_argument(fmt::format(
-            "ShapeConstrainedEvaluator: input variable '{}' has no entry in 'domains'",
-            v ? v->Name : fmt::format("<hash {}>", hash)));
-    }
-
-    constraintVarHash_.reserve(constraints_.Constraints.size());
-    for (auto const& c : constraints_.Constraints) {
-        // ShapeConstraint::Sign/Bound is an exactly-one-of pair the JSON
-        // loader (shape_constraints_config.cpp) already enforces, but the
-        // struct itself doesn't -- validate here too since this
-        // constructor is a public entry point a C++ caller can reach
-        // directly, bypassing the loader.
-        if (c.Sign.has_value() == c.Bound.has_value()) {
-            throw std::invalid_argument(
-                "ShapeConstrainedEvaluator: constraint must set exactly one of Sign or Bound");
-        }
-        if (c.Sign && *c.Sign != 1 && *c.Sign != -1) {
-            throw std::invalid_argument(fmt::format(
-                "ShapeConstrainedEvaluator: constraint Sign {} must be 1 or -1", *c.Sign));
-        }
-        if (c.Bound && c.Bound->first > c.Bound->second) {
-            throw std::invalid_argument(fmt::format(
-                "ShapeConstrainedEvaluator: constraint Bound [{}, {}] has lo > hi", c.Bound->first, c.Bound->second));
-        }
-
-        if (c.Op == ShapeConstraintOp::Identity) {
-            constraintVarHash_.push_back(Operon::Hash{});
-            continue;
-        }
-        auto v = ds->GetVariable(c.Variable);
-        if (!v) {
-            throw std::invalid_argument(fmt::format(
-                "ShapeConstrainedEvaluator: constraint references unknown variable '{}'", c.Variable));
-        }
-        if (!domainsByHash_.contains(v->Hash)) {
-            throw std::invalid_argument(fmt::format(
-                "ShapeConstrainedEvaluator: constraint on '{}' has no matching entry in 'domains'", c.Variable));
-        }
-        constraintVarHash_.push_back(v->Hash);
-    }
+    ResolveShapeConstraintContext(evaluator_, constraints_, constraintVarHash_, domainsByHash_, "ShapeConstrainedEvaluator");
 }
 
-namespace {
-auto ComputeFeasible(ShapeConstraintSet const& constraints, Operon::Vector<Operon::Hash> const& constraintVarHash,
-                      Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> const& domainsByHash,
-                      Operon::Tree const& tree) -> bool
+
+auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>
 {
-    for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
-        auto const& c = constraints.Constraints[i];
+    auto const modes = policy.Enforcement;
+    auto const hard = HasFlag(modes, ShapeConstraintEnforcement::HardReject);
+    auto const penalty = HasFlag(modes, ShapeConstraintEnforcement::Penalty);
+    auto const extra = HasFlag(modes, ShapeConstraintEnforcement::ExtraObjective);
+    auto const feasibilityFirst = HasFlag(modes, ShapeConstraintEnforcement::FeasibilityFirst);
+    auto const raw = static_cast<unsigned>(modes);
+    auto const known = static_cast<unsigned>(ShapeConstraintEnforcement::HardReject)
+        | static_cast<unsigned>(ShapeConstraintEnforcement::Penalty)
+        | static_cast<unsigned>(ShapeConstraintEnforcement::ExtraObjective)
+        | static_cast<unsigned>(ShapeConstraintEnforcement::FeasibilityFirst);
 
-        // An error result (domain violation, unmapped op, unsupported
-        // derivative op -- see BoundFor/TryAffineBound) means "this
-        // constraint can't be certified feasible for this tree", treated
-        // the same as a proven violation. The one thing this also
-        // swallows -- "no domain bound for variable hash N", a genuine
-        // domains-config bug -- degrades to every individual being
-        // rejected rather than a hard crash, which is still quickly
-        // diagnosable (100% rejection is not a plausible real result).
-        auto const bound = BoundFor(c.Op, tree, constraintVarHash[i], domainsByHash);
+    if ((raw & ~known) != 0U) { return "shape constraint policy contains unknown enforcement bits"; }
+    if (modes == ShapeConstraintEnforcement::None) { return "shape constraint policy must select at least one enforcement mode"; }
+    if (policy.UnknownViolation < Operon::Scalar{0}) { return "shape unknown violation must be non-negative"; }
+    if (policy.PenaltyWeight < Operon::Scalar{0}) { return "shape penalty weight must be non-negative"; }
+    if (penalty && extra) { return "shape constraint penalty and extra-objective modes are mutually exclusive"; }
 
-        bool violated = !bound.has_value();
-        if (bound) {
-            if (c.Sign) {
-                // +1 (non-decreasing): every point in the box must have
-                // derivative/value >= 0 -- the enclosure proves this only if
-                // its lower bound is already >= 0. -1 is the mirror image.
-                violated = (*c.Sign > 0) ? (bound->inf() < Operon::Scalar{0}) : (bound->sup() > Operon::Scalar{0});
-            } else if (c.Bound) {
-                violated = bound->inf() < c.Bound->first || bound->sup() > c.Bound->second;
-            }
-        }
-        if (violated) { return false; }
+    if (isNsga2) {
+        if (penalty) { return "shape constraint penalty mode is only valid for scalar GP"; }
+        (void)hard;
+        return std::nullopt;
     }
-    return true;
+
+    if (extra) { return "shape constraint extra-objective mode is only valid for NSGA2"; }
+    if (feasibilityFirst) { return "shape constraint feasibility-first mode is only valid for NSGA2"; }
+    return std::nullopt;
 }
-} // namespace
+
+auto ShapeConstrainedEvaluator::Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation) const -> ShapeConstraintMeasurementSummary
+{
+    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation);
+}
 
 auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
 {
     auto const hash = HashTreeForMemo(tree);
-    bool result{};
+    ShapeConstraintMeasurementSummary result;
     // LazyEmplace holds this hash's shard lock across the miss branch, so
     // a concurrent caller hashing to the same key blocks on the first
     // computation rather than duplicating it.
     feasibleCache_.LazyEmplace(hash,
         [&](auto const& e) { result = e.Value; },
         [&](auto& e) {
-            result = ComputeFeasible(constraints_, constraintVarHash_, domainsByHash_, tree);
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1});
             e.Value = result;
         });
-    return result;
+    return result.Feasible;
 }
 
 auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) const -> void
@@ -264,6 +285,33 @@ auto ShapeConstrainedEvaluator::Evaluate(Operon::RandomGenerator& rng, Individua
         return ReturnType(evaluator_->ObjectiveCount(), static_cast<Operon::Scalar>(worstValue_));
     }
     return (*evaluator_)(rng, ind, buf);
+}
+
+ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<EvaluatorBase const*> evaluator, ShapeConstraintSet constraints,
+    Operon::Scalar weight, Operon::Scalar unknownViolation)
+    : EvaluatorBase(evaluator->GetProblem())
+    , evaluator_(evaluator)
+    , constraints_(std::move(constraints))
+    , weight_(weight)
+    , unknownViolation_(unknownViolation)
+{
+    ResolveShapeConstraintContext(evaluator_, constraints_, constraintVarHash_, domainsByHash_, "ShapeViolationEvaluator");
+}
+
+auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary
+{
+    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_);
+}
+
+auto ShapeViolationEvaluator::RawViolation(Operon::Tree const& tree) const -> Operon::Scalar
+{
+    return Measure(tree).Violation;
+}
+
+auto ShapeViolationEvaluator::Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> /*buf*/) const -> typename EvaluatorBase::ReturnType
+{
+    ++CallCount;
+    return ReturnType{static_cast<Operon::Scalar>(weight_ * RawViolation(ind.Genotype))};
 }
 
 } // namespace Operon
