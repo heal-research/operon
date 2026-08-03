@@ -83,6 +83,7 @@ add_library(
     source/operators/generator/poly.cpp
     source/operators/local_search.cpp
     source/operators/mutation.cpp
+    source/operators/shape_constrained_evaluator.cpp
     source/operators/non_dominated_sorter/ndsort.cpp
     source/operators/selector/proportional.cpp
     source/operators/selector/tournament.cpp

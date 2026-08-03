@@ -53,6 +53,7 @@ add_executable(operon_test
     source/implementation/random.cpp
     source/implementation/selection.cpp
     source/implementation/serialization.cpp
+    source/implementation/shape_constrained_evaluator.cpp
     source/implementation/standard_library.cpp
     source/performance/autodiff.cpp
     source/performance/creator.cpp
