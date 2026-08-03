@@ -299,6 +299,17 @@ private:
 
 class OPERON_EXPORT MultiEvaluator : public EvaluatorBase {
 public:
+    // When AggregateType is set (see SetAggregateType), the per-evaluator
+    // results are combined into a single scalar (e.g. so several objectives
+    // can be optimized as one aggregate) instead of being concatenated into
+    // a multi-objective vector.
+    enum class AggregateType : int { Min,
+        Max,
+        Median,
+        Mean,
+        HarmonicMean,
+        Sum };
+
     explicit MultiEvaluator(Problem const* problem)
         : EvaluatorBase(problem)
     {
@@ -316,34 +327,17 @@ public:
         }
     }
 
+    auto SetAggregateType(std::optional<AggregateType> type) { aggregateType_ = type; }
+    auto GetAggregateType() const -> std::optional<AggregateType> { return aggregateType_; }
+
     auto ObjectiveCount() const -> std::size_t override
     {
+        if (aggregateType_) { return 1UL; }
         return std::transform_reduce(evaluators_.begin(), evaluators_.end(), 0UL, std::plus {}, [](auto const eval) { return eval->ObjectiveCount(); });
     }
 
     auto
-    Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override
-    {
-        // CallCount tracks "this evaluator instance scored one individual" at
-        // every composition depth, not just the leaf Evaluator<DTable> - a
-        // caller (e.g. OffspringSelectionGenerator::SelectionPressure) reading
-        // CallCount to count real evaluation attempts must see the same
-        // increment-per-call semantics regardless of how many inner
-        // evaluators this composite wraps. Stats() below separately sums the
-        // inner evaluators' own counters too - that is a distinct "total
-        // sub-evaluator work done" profiling figure, not a substitute for this.
-        ++CallCount;
-
-        EvaluatorBase::ReturnType fit;
-        fit.reserve(ind.Size());
-
-        for (auto const& ev: evaluators_) {
-            auto f = (*ev)(rng, ind, buf);
-            std::copy(f.begin(), f.end(), std::back_inserter(fit));
-        }
-
-        return fit;
-    }
+    Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> final {
         auto resEval{0UL};
@@ -372,32 +366,7 @@ public:
 
 private:
     std::vector<gsl::not_null<EvaluatorBase const*>> evaluators_;
-};
-
-class OPERON_EXPORT AggregateEvaluator final : public EvaluatorBase {
-public:
-    enum class AggregateType : int { Min,
-        Max,
-        Median,
-        Mean,
-        HarmonicMean,
-        Sum };
-
-    explicit AggregateEvaluator(gsl::not_null<EvaluatorBase const*> evaluator)
-        : EvaluatorBase(evaluator->GetProblem())
-        , evaluator_(evaluator)
-    {
-    }
-
-    auto SetAggregateType(AggregateType type) { aggtype_ = type; }
-    auto GetAggregateType() const { return aggtype_; }
-
-    auto
-    Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
-
-private:
-    gsl::not_null<EvaluatorBase const*> evaluator_;
-    AggregateType aggtype_ { AggregateType::Mean };
+    std::optional<AggregateType> aggregateType_;
 };
 
 // a couple of useful user-defined evaluators (mostly to avoid calling lambdas from python)
@@ -449,7 +418,6 @@ private:
 static_assert(Concepts::EvaluatorCallable<UserDefinedEvaluator>);
 static_assert(Concepts::EvaluatorCallable<Evaluator<ScalarDispatch>>);
 static_assert(Concepts::EvaluatorCallable<MultiEvaluator>);
-static_assert(Concepts::EvaluatorCallable<AggregateEvaluator>);
 static_assert(Concepts::EvaluatorCallable<DiversityEvaluator>);
 
 namespace detail {
