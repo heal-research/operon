@@ -14,6 +14,7 @@
 #include <cmath>
 #include <operon/operon_export.hpp>
 #include <random>
+#include <stdexcept>
 #include <type_traits>
 
 namespace Operon {
@@ -150,6 +151,9 @@ namespace {
             return EvaluatorBase::ReturnType { property(ind.Genotype) / normalizer };
         })
     {
+        if (normalizer == Operon::Scalar{0}) {
+            throw std::invalid_argument("TreePropertyEvaluator normalizer must be non-zero");
+        }
     }
 
     template<> auto OPERON_EXPORT
