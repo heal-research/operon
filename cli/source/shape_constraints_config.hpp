@@ -24,14 +24,13 @@ namespace Operon {
 //     "domains": { "p": [0.1, 15], "v": [0.01, 3], "T": [-50, 250] },
 //     "constraints": [
 //       { "op": "id", "bound": [0.0, 1.0] },
-//       { "op": "d/dp", "sign": -1 },
-//       { "op": "d2/dphi2", "sign": -1 }
+//       { "op": "derivative", "variable": "p", "order": 1, "sign": -1 },
+//       { "op": "derivative", "variable": "phi", "order": 2, "sign": -1 }
 //     ]
 //   }
-// `op` is one of: "id" (the model's own output), "d/d<var>" (first
-// derivative w.r.t. <var>), "d2/d<var>2" (second derivative w.r.t. the
-// same <var> -- mixed second partials aren't needed by any problem in
-// this codebase's benchmark set and aren't supported). Each constraint
+// `op` is one of: "id" (the model's own output) or "derivative".
+// Derivative constraints require a string "variable" and integer "order"
+// (exactly 1 or 2; mixed second partials aren't supported). Each constraint
 // entry must set exactly one of "sign" (+1 non-decreasing/non-negative,
 // -1 non-increasing/non-positive, threshold implicitly 0) or "bound"
 // ([lo, hi] on the selected quantity).
