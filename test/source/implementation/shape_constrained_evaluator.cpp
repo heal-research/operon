@@ -4,6 +4,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <stdexcept>
+
 #include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/problem.hpp"
@@ -242,6 +244,23 @@ TEST_CASE("ShapeConstraintPolicy validation covers GP and NSGA2 mode rules", "[s
     CHECK(Operon::ValidatePolicy({.Enforcement = static_cast<E>(1U << 9U)}, false));
     CHECK(Operon::ValidatePolicy({.Enforcement = E::HardReject, .UnknownViolation = Operon::Scalar{-1}}, false));
     CHECK(Operon::ValidatePolicy({.Enforcement = E::HardReject, .PenaltyWeight = Operon::Scalar{-1}}, false));
+}
+
+TEST_CASE("ParseShapeEnforcement parses CLI enforcement tokens", "[shape-constraints]")
+{
+    using E = Operon::ShapeConstraintEnforcement;
+
+    CHECK(Operon::ParseShapeEnforcement("hard-reject") == E::HardReject);
+    CHECK(Operon::ParseShapeEnforcement("penalty") == E::Penalty);
+    CHECK(Operon::ParseShapeEnforcement("extra-objective") == E::ExtraObjective);
+    CHECK(Operon::ParseShapeEnforcement("feasibility-first") == E::FeasibilityFirst);
+    CHECK(Operon::ParseShapeEnforcement("penalty,feasibility-first") == (E::Penalty | E::FeasibilityFirst));
+    CHECK(Operon::ParseShapeEnforcement("penalty,extra-objective") == (E::Penalty | E::ExtraObjective));
+    CHECK(Operon::ParseShapeEnforcement("hard-reject,hard-reject") == E::HardReject);
+
+    CHECK_THROWS_AS(Operon::ParseShapeEnforcement(""), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeEnforcement("penalty,"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeEnforcement("unknown"), std::invalid_argument);
 }
 
 TEST_CASE("ShapeViolationEvaluator - sign constraint violation magnitudes", "[shape-constraints]")

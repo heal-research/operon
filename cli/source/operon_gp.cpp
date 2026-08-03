@@ -9,6 +9,7 @@
 #include <fmt/core.h>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <unordered_map>
 #include <taskflow/algorithm/reduce.hpp>
 #include <taskflow/taskflow.hpp>
@@ -238,12 +239,55 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         // `activeEvaluator` is what the actual GP loop (ParseGenerator) and
         // the Reporter's call-count/budget stats source see.
         std::unique_ptr<Operon::ShapeConstrainedEvaluator> shapeConstrainedStorage;
+        std::unique_ptr<Operon::ShapeViolationEvaluator> shapeViolationStorage;
+        std::unique_ptr<Operon::MultiEvaluator> shapePenaltyAggregateStorage;
         auto shapeConstraints = Operon::LoadShapeConstraints(
             result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
-        if (shapeConstraints) {
-            shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(evaluator.get(), std::move(*shapeConstraints));
+        if (!shapeConstraints && result.count("shape-enforcement") != 0) {
+            throw std::invalid_argument("--shape-enforcement requires --shape-constraints-config");
         }
-        Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get()) : evaluator.get();
+
+        Operon::EvaluatorBase* activeEvaluator = evaluator.get();
+        Operon::ShapeConstraintEnforcement shapeEnforcement{Operon::ShapeConstraintEnforcement::None};
+        if (shapeConstraints) {
+            shapeEnforcement = result.count("shape-enforcement") != 0
+                ? Operon::ParseShapeEnforcement(result["shape-enforcement"].as<std::string>())
+                : (Operon::ShapeConstraintEnforcement::HardReject | Operon::ShapeConstraintEnforcement::FeasibilityFirst);
+            auto const unknownViolation = result["shape-unknown-violation"].as<double>();
+            auto const penaltyWeight = result["shape-penalty-weight"].as<double>();
+            auto const worstValue = result["shape-worst-value"].as<double>();
+            if (!(std::isfinite(unknownViolation) && unknownViolation >= 0.0)) {
+                throw std::invalid_argument(fmt::format("--shape-unknown-violation must be a finite, non-negative value (got {})", unknownViolation));
+            }
+            if (!(std::isfinite(penaltyWeight) && penaltyWeight >= 0.0)) {
+                throw std::invalid_argument(fmt::format("--shape-penalty-weight must be a finite, non-negative value (got {})", penaltyWeight));
+            }
+            if (!std::isfinite(worstValue)) {
+                throw std::invalid_argument(fmt::format("--shape-worst-value must be finite (got {})", worstValue));
+            }
+
+            Operon::ShapeConstraintPolicy const policy{
+                .Enforcement = shapeEnforcement,
+                .UnknownViolation = static_cast<Operon::Scalar>(unknownViolation),
+                .PenaltyWeight = static_cast<Operon::Scalar>(penaltyWeight),
+            };
+            if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/false)) { throw std::invalid_argument(*error); }
+
+            if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
+                shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(evaluator.get(), *shapeConstraints);
+                shapeConstrainedStorage->SetWorstValue(worstValue);
+                activeEvaluator = shapeConstrainedStorage.get();
+            } else if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
+                shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
+                    evaluator.get(), *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
+                shapePenaltyAggregateStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
+                shapePenaltyAggregateStorage->SetBudget(config.Evaluations);
+                shapePenaltyAggregateStorage->Add(evaluator.get());
+                shapePenaltyAggregateStorage->Add(shapeViolationStorage.get());
+                shapePenaltyAggregateStorage->SetAggregateType(Operon::MultiEvaluator::AggregateType::Sum);
+                activeEvaluator = shapePenaltyAggregateStorage.get();
+            }
+        }
 
         Operon::CoefficientOptimizer const cOpt { optimizer.get() };
 
@@ -263,9 +307,19 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         // feasible individual is never displaced by an infeasible one
         // that merely got lucky sharing the same WorstValue() fitness.
         Operon::ComparisonCallback comp = Operon::SingleObjectiveComparison{};
-        if (shapeConstrainedStorage) {
-            comp = Operon::FeasibilityFirstComparison(
-                [ptr = shapeConstrainedStorage.get()](Operon::Tree const& t) { return ptr->Feasible(t); });
+        if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::FeasibilityFirst)) {
+            if (shapeConstrainedStorage) {
+                comp = Operon::FeasibilityFirstComparison(
+                    [ptr = shapeConstrainedStorage.get()](Operon::Tree const& t) { return ptr->Feasible(t); });
+            } else {
+                if (!shapeViolationStorage) {
+                    auto const unknownViolation = result["shape-unknown-violation"].as<double>();
+                    shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
+                        evaluator.get(), *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
+                }
+                comp = Operon::FeasibilityFirstComparison(
+                    [ptr = shapeViolationStorage.get()](Operon::Tree const& t) { return ptr->Measure(t).Feasible; });
+            }
         }
 
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), Operon::ComparisonCallback{comp});
