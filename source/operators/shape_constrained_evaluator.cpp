@@ -7,6 +7,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <tuple>
 
 #include <fmt/format.h>
@@ -216,6 +217,33 @@ ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase
     ResolveShapeConstraintContext(evaluator_, constraints_, constraintVarHash_, domainsByHash_, "ShapeConstrainedEvaluator");
 }
 
+
+auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
+{
+    auto result = ShapeConstraintEnforcement::None;
+    std::size_t pos = 0;
+    while (pos <= str.size()) {
+        auto const next = str.find(',', pos);
+        auto const token = str.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
+        if (token.empty()) { throw std::invalid_argument(fmt::format("unable to parse shape-enforcement argument '{}'", str)); }
+
+        if (token == "hard-reject") {
+            result = result | ShapeConstraintEnforcement::HardReject;
+        } else if (token == "penalty") {
+            result = result | ShapeConstraintEnforcement::Penalty;
+        } else if (token == "extra-objective") {
+            result = result | ShapeConstraintEnforcement::ExtraObjective;
+        } else if (token == "feasibility-first") {
+            result = result | ShapeConstraintEnforcement::FeasibilityFirst;
+        } else {
+            throw std::invalid_argument(fmt::format("unable to parse shape-enforcement argument '{}'", token));
+        }
+
+        if (next == std::string::npos) { break; }
+        pos = next + 1;
+    }
+    return result;
+}
 
 auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>
 {
