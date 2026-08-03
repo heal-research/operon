@@ -53,8 +53,8 @@ struct ShapeConstraintPolicy {
     Operon::Scalar PenaltyWeight{1};
 };
 
-[[nodiscard]] auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
-[[nodiscard]] auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
+[[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
+[[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
 
 // Wraps an inner EvaluatorBase (typically an NMSE-with-linear-scaling
 // Evaluator, matching Kronberger et al. 2021's own fitness setup) with the
