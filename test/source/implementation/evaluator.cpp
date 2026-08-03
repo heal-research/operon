@@ -950,16 +950,18 @@ TEST_CASE("EvaluatorBase::Evaluate dispatch reaches the concrete derived overrid
         CHECK(combined[1] == expectedMse[0]);
     }
 
-    SECTION("AggregateEvaluator") {
+    SECTION("MultiEvaluator aggregate") {
         // Aggregating a single-objective evaluator is a no-op regardless of
         // AggregateType (min/max/median/mean of one element is that
         // element), so the 2-arg result must equal the wrapped evaluator's
         // own 2-arg result exactly.
         Operon::Evaluator<DTable> inner{&fix.problem, &fix.dtable, Operon::MSE{}};
-        Operon::AggregateEvaluator ae{&inner};
+        Operon::MultiEvaluator me{&fix.problem};
+        me.Add(&inner);
+        me.SetAggregateType(Operon::MultiEvaluator::AggregateType::Mean);
 
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
-        auto const aggregated = ae(fix.rng, ind); // 2-arg
+        auto const aggregated = me(fix.rng, ind); // 2-arg
         auto const expected   = inner(fix.rng, ind);
 
         REQUIRE(aggregated.size() == 1);
