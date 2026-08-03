@@ -29,6 +29,7 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
@@ -39,6 +40,7 @@
 #include "pareto_front.hpp"
 #include "probes_config.hpp"
 #include "reporter.hpp"
+#include "shape_constraints_config.hpp"
 #include "util.hpp"
 
 namespace {
@@ -289,15 +291,33 @@ auto main(int argc, char** argv) -> int
         evaluator.Add(&lengthEvaluator);
         // evaluator.Add(&entropyEvaluator);
 
+        // Optional shape-constraint wrapper (see operon_gp.cpp for the same
+        // pattern/rationale) — wraps the whole MultiEvaluator, so an
+        // infeasible individual gets WorstValue() on every objective
+        // (error and length alike), not just the error one.
+        std::unique_ptr<Operon::ShapeConstrainedEvaluator> shapeConstrainedStorage;
+        auto shapeConstraints = Operon::LoadShapeConstraints(
+            result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
+        if (shapeConstraints) {
+            shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, std::move(*shapeConstraints));
+        }
+        Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get()) : static_cast<Operon::EvaluatorBase*>(&evaluator);
+
         EXPECT(problem.TrainingRange().Size() > 0);
 
+        // Deliberately NOT swapped for Operon::FeasibilityFirstComparison
+        // when shape constraints are active (unlike operon_gp.cpp): the
+        // gate above already rejects an infeasible individual on every
+        // NSGA2 objective at once, and a feasibility-first *crowded*
+        // comparator (accounting for Rank/Distance too) is a separate
+        // design this CLI doesn't build yet -- not an oversight.
         Operon::CrowdedComparison comp;
 
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
         Operon::CoefficientOptimizer cOpt { optimizer.get() };
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *activeEvaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         // Default 0: NSGA2 had no elitism before this option existed, so an
         // unspecified --elitism preserves that. Opt in explicitly to enable it.
         auto const eliteCount = result.count("elitism") ? result["elitism"].as<size_t>() : size_t{0};
@@ -354,7 +374,7 @@ auto main(int argc, char** argv) -> int
         } else {
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
         }
-        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector), &evaluator);
+        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector), activeEvaluator);
         auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
         if (warmStart && result.contains("probes-config")) {
             fmt::print(stderr, "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior instrumentation history at any reused output path\n");

@@ -27,11 +27,13 @@
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
 #include "probes_config.hpp"
+#include "shape_constraints_config.hpp"
 #include "util.hpp"
 
 
@@ -224,21 +226,56 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         evaluator->SetBudget(config.Evaluations);
         optimizer->SetIterations(config.Iterations);
 
+        // Optional shape-constraint wrapper (Kronberger et al. 2021, arXiv:
+        // 2103.15624): rejects individuals whose affine-bounded output/
+        // derivatives can't satisfy the constraint set anywhere in the
+        // domain box, scoring them at the wrapped evaluator's WorstValue()
+        // instead of calling it. `evaluator` itself stays the unwrapped
+        // inner evaluator throughout (needed alive for shapeConstrained's
+        // non-owning pointer, and for the Reporter's typed R2/MSE stats
+        // dynamic_cast below, which only recognizes Operon::Evaluator<T>).
+        // `activeEvaluator` is what the actual GP loop (ParseGenerator) and
+        // the Reporter's call-count/budget stats source see.
+        std::unique_ptr<Operon::ShapeConstrainedEvaluator> shapeConstrainedStorage;
+        auto shapeConstraints = Operon::LoadShapeConstraints(
+            result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
+        if (shapeConstraints) {
+            shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(evaluator.get(), std::move(*shapeConstraints));
+        }
+        Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get()) : evaluator.get();
+
         Operon::CoefficientOptimizer const cOpt { optimizer.get() };
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
-        auto comp = [](auto const& lhs, auto const& rhs) -> auto { return lhs[0] < rhs[0]; };
+        // Single-objective comparison on objective 0 (matches the
+        // hardcoded `lhs[0] < rhs[0]` this replaces) -- or, when shape
+        // constraints are active, feasibility-first: a feasible
+        // individual always precedes an infeasible one regardless of
+        // fitness, falling back to SingleObjectiveComparison when both
+        // are equally (in)feasible. This is a constrained-dominance
+        // alternative to ShapeConstrainedEvaluator's own worst-value-
+        // substitution gate above, not a replacement for it -- both are
+        // active together here: the gate still assigns WorstValue() to
+        // rejected individuals (so unconstrained selection pressure still
+        // makes sense), and this comparator additionally guarantees a
+        // feasible individual is never displaced by an infeasible one
+        // that merely got lucky sharing the same WorstValue() fitness.
+        Operon::ComparisonCallback comp = Operon::SingleObjectiveComparison{};
+        if (shapeConstrainedStorage) {
+            comp = Operon::FeasibilityFirstComparison(
+                [ptr = shapeConstrainedStorage.get()](Operon::Tree const& t) { return ptr->Feasible(t); });
+        }
 
-        auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
-        auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
+        auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), Operon::ComparisonCallback{comp});
+        auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), Operon::ComparisonCallback{comp});
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *activeEvaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         // Default 1: preserves GP's historical single-elite behavior (previously
         // a hardcoded offspring[0] overwrite in gp.cpp, now handled uniformly by
         // ReinserterBase - see reinserter.hpp).
         auto const eliteCount = result.count("elitism") ? result["elitism"].as<size_t>() : size_t{1};
-        auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp, eliteCount);
+        auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), Operon::ComparisonCallback{comp}, eliteCount);
 
         Operon::RandomGenerator random(config.Seed);
         if (result["shuffle"].as<bool>()) { problem.GetDataset()->Shuffle(random); }
@@ -257,7 +294,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         } else {
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(evaluator.get());
         }
-        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, nullptr, evaluator.get());
+        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, nullptr, activeEvaluator);
         if (warmStart && result.contains("probes-config")) {
             fmt::print(stderr, "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior instrumentation history at any reused output path\n");
         }
