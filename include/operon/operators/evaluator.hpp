@@ -374,26 +374,11 @@ private:
     std::optional<AggregateType> aggregateType_;
 };
 
-// a couple of useful user-defined evaluators (mostly to avoid calling lambdas from python)
-// TODO: think about a better design
-class OPERON_EXPORT LengthEvaluator : public UserDefinedEvaluator {
+class OPERON_EXPORT TreePropertyEvaluator : public UserDefinedEvaluator {
 public:
-    explicit LengthEvaluator(gsl::not_null<Operon::Problem const*> problem, size_t maxlength = 1)
-        : UserDefinedEvaluator(problem, [maxlength](Operon::RandomGenerator& /*unused*/, Operon::Individual const& ind) {
-            return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.Length()) / static_cast<Operon::Scalar>(maxlength) };
-        })
-    {
-    }
-};
+    using Property = std::function<Operon::Scalar(Operon::Tree const&)>;
 
-class OPERON_EXPORT ShapeEvaluator : public UserDefinedEvaluator {
-public:
-    explicit ShapeEvaluator(Operon::Problem const* problem)
-        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator& /*unused*/, Operon::Individual const& ind) {
-            return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.VisitationLength()) };
-        })
-    {
-    }
+    explicit TreePropertyEvaluator(gsl::not_null<Operon::Problem const*> problem, Property property, Operon::Scalar normalizer = 1);
 };
 
 class OPERON_EXPORT DiversityEvaluator : public EvaluatorBase {
@@ -417,9 +402,8 @@ private:
 };
 
 // See core/concepts.hpp for why these are asserted here rather than constraining a template.
-// LengthEvaluator/ShapeEvaluator aren't asserted separately: they inherit
-// UserDefinedEvaluator's Evaluate override without overriding it themselves,
-// so UserDefinedEvaluator's assert below already covers them.
+// TreePropertyEvaluator inherits UserDefinedEvaluator's Evaluate override without
+// overriding it, so UserDefinedEvaluator's assert below already covers it.
 static_assert(Concepts::EvaluatorCallable<UserDefinedEvaluator>);
 static_assert(Concepts::EvaluatorCallable<Evaluator<ScalarDispatch>>);
 static_assert(Concepts::EvaluatorCallable<MultiEvaluator>);
