@@ -229,37 +229,56 @@ namespace {
     }
 
     auto
-    AggregateEvaluator::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
+    MultiEvaluator::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
     {
         using vstat::univariate::accumulate;
+
+        // CallCount tracks "this evaluator instance scored one individual" at
+        // every composition depth, not just the leaf Evaluator<DTable> - a
+        // caller (e.g. OffspringSelectionGenerator::SelectionPressure) reading
+        // CallCount to count real evaluation attempts must see the same
+        // increment-per-call semantics regardless of how many inner
+        // evaluators this composite wraps. Stats() below separately sums the
+        // inner evaluators' own counters too - that is a distinct "total
+        // sub-evaluator work done" profiling figure, not a substitute for this.
         ++CallCount;
-        auto f = (*evaluator_)(rng, ind, buf);
-        switch(aggtype_) {
+
+        EvaluatorBase::ReturnType fit;
+        fit.reserve(SubEvaluatorObjectiveCount());
+
+        for (auto const& ev: evaluators_) {
+            auto f = (*ev)(rng, ind, buf);
+            std::copy(f.begin(), f.end(), std::back_inserter(fit));
+        }
+
+        if (!aggregateType_) { return fit; }
+
+        switch(*aggregateType_) {
             case AggregateType::Min: {
-                return { *std::ranges::min_element(f) };
+                return { *std::ranges::min_element(fit) };
             }
             case AggregateType::Max: {
-                return { *std::ranges::max_element(f) };
+                return { *std::ranges::max_element(fit) };
             }
             case AggregateType::Median: {
-                auto const sz { std::ssize(f) };
-                auto const a = f.begin() + sz / 2;
-                std::nth_element(f.begin(), a, f.end());
+                auto const sz { std::ssize(fit) };
+                auto const a = fit.begin() + sz / 2;
+                std::nth_element(fit.begin(), a, fit.end());
                 if (sz % 2 == 0) {
-                    auto const b = std::max_element(f.begin(), a);
+                    auto const b = std::max_element(fit.begin(), a);
                     return { (*a + *b) / 2 };
                 }
                 return { *a };
             }
             case AggregateType::Mean: {
-                return { static_cast<Operon::Scalar>(accumulate<Operon::Scalar>(f.begin(), f.end()).mean) };
+                return { static_cast<Operon::Scalar>(accumulate<Operon::Scalar>(fit.begin(), fit.end()).mean) };
             }
             case AggregateType::HarmonicMean: {
-                auto stats = accumulate<Operon::Scalar>(f.begin(), f.end(), [](auto x) -> auto { return 1/x; });
+                auto stats = accumulate<Operon::Scalar>(fit.begin(), fit.end(), [](auto x) -> auto { return 1/x; });
                 return { static_cast<Operon::Scalar>(stats.count / stats.sum) };
             }
             case AggregateType::Sum: {
-                return { static_cast<Operon::Scalar>(vstat::univariate::accumulate<Operon::Scalar>(f.begin(), f.end()).sum) };
+                return { static_cast<Operon::Scalar>(vstat::univariate::accumulate<Operon::Scalar>(fit.begin(), fit.end()).sum) };
             }
             default: {
                 throw std::runtime_error("Unknown AggregateType");
