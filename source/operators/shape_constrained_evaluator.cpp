@@ -4,6 +4,7 @@
 #include "operon/operators/shape_constrained_evaluator.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -260,8 +261,8 @@ auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::o
 
     if ((raw & ~known) != 0U) { return "shape constraint policy contains unknown enforcement bits"; }
     if (modes == ShapeConstraintEnforcement::None) { return "shape constraint policy must select at least one enforcement mode"; }
-    if (policy.UnknownViolation < Operon::Scalar{0}) { return "shape unknown violation must be non-negative"; }
-    if (policy.PenaltyWeight < Operon::Scalar{0}) { return "shape penalty weight must be non-negative"; }
+    if (!std::isfinite(policy.UnknownViolation) || policy.UnknownViolation < Operon::Scalar{0}) { return "shape unknown violation must be finite and non-negative"; }
+    if (!std::isfinite(policy.PenaltyWeight) || policy.PenaltyWeight < Operon::Scalar{0}) { return "shape penalty weight must be finite and non-negative"; }
 
     if (isNsga2) {
         if (feasibilityFirst) { return "shape constraint feasibility-first mode is not valid for NSGA2"; }
@@ -328,7 +329,27 @@ ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<EvaluatorBase con
 
 auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary
 {
-    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_);
+    auto const hash = HashTreeForMemo(tree);
+    ShapeConstraintMeasurementSummary result;
+    // LazyEmplace holds this hash's shard lock across the miss branch, so
+    // a concurrent caller hashing to the same key blocks on the first
+    // computation rather than duplicating it.
+    measurementCache_.LazyEmplace(hash,
+        [&](auto const& e) { result = e.Value; },
+        [&](auto& e) {
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_);
+            e.Value = result;
+        });
+    return result;
+}
+
+auto ShapeViolationEvaluator::Prepare(Operon::Span<Individual const> pop) const -> void
+{
+    evaluator_->Prepare(pop);
+    measurementCache_.Clear();
+    for (auto const& ind : pop) {
+        std::ignore = Measure(ind.Genotype); // populates the cache as a side effect
+    }
 }
 
 auto ShapeViolationEvaluator::RawViolation(Operon::Tree const& tree) const -> Operon::Scalar

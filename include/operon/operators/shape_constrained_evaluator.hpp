@@ -181,6 +181,7 @@ public:
 
     auto Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
     auto ObjectiveCount() const -> std::size_t override { return 1; }
+    auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 
 private:
     gsl::not_null<EvaluatorBase const*> evaluator_;
@@ -189,6 +190,11 @@ private:
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     Operon::Scalar weight_{1};
     Operon::Scalar unknownViolation_{1};
+
+    struct MeasurementData {
+        ShapeConstraintMeasurementSummary Value{};
+    };
+    mutable ZobristCache<CacheEntry<MeasurementData>> measurementCache_;
 };
 
 } // namespace Operon
