@@ -16,7 +16,7 @@
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree_diff.hpp"
-#include "operon/hash/hash.hpp"
+#include "operon/core/tree_hash.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
 
 namespace Operon {
@@ -24,32 +24,6 @@ namespace Operon {
 namespace {
 
 constexpr std::size_t NoGrad = std::numeric_limits<std::size_t>::max();
-
-// Pure, non-mutating hash for the Feasible() memoization cache below.
-// Deliberately does NOT use Tree::Hash(), which writes each node's
-// CalculatedHashValue in place: Feasible() is called both from Prepare()
-// (single-threaded, safe to mutate) and from Evaluate() (parallel, one
-// call per offspring during generation) as well as any external caller
-// (e.g. FeasibilityFirstComparison, during parallel selection/
-// reinsertion) -- two threads hashing the same shared tree concurrently
-// would race on that mutation. Must fold in coefficient values, not just
-// structure: feasibility is checked against the tree's actual optimized
-// weights, so two structurally identical trees with different
-// coefficients can differ in feasibility and must not share a cache
-// entry. Collision risk is accepted the same way every other hash-keyed
-// cache in this codebase already does (Zobrist's own transposition
-// cache, content_hash.hpp).
-auto HashTreeForMemo(Tree const& tree) -> Operon::Hash
-{
-    Operon::Hasher const hasher;
-    Operon::Hash h{};
-    for (auto const& n : tree.Nodes()) {
-        auto const valueHash = hasher(reinterpret_cast<uint8_t const*>(&n.Value), sizeof(n.Value)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-        auto const nodeHash = n.HashValue ^ (valueHash + 0x9e3779b97f4a7c15ULL + (n.HashValue << 6U) + (n.HashValue >> 2U));
-        h ^= nodeHash + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
-    }
-    return h;
-}
 
 using Interval = AffineEvaluator::Interval;
 using BoundResult = tl::expected<Interval, std::string>;
@@ -183,9 +157,21 @@ auto ConstraintViolation(ShapeConstraint const& c, Interval const& bound) -> Ope
          + std::max(Operon::Scalar{0}, bound.sup() - c.Bound->second);
 }
 
+auto TransformBound(ShapeConstraintOp op, Interval const& bound, std::pair<Operon::Scalar, Operon::Scalar> const& scaling) -> Interval
+{
+    auto const [a, b] = scaling;
+    auto const lo = bound.inf();
+    auto const hi = bound.sup();
+    if (op == ShapeConstraintOp::Identity) {
+        return a >= Operon::Scalar{0} ? Interval((a * lo) + b, (a * hi) + b) : Interval((a * hi) + b, (a * lo) + b);
+    }
+    return a >= Operon::Scalar{0} ? Interval(a * lo, a * hi) : Interval(a * hi, a * lo);
+}
+
 auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Operon::Hash> const& constraintVarHash,
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> const& domainsByHash,
-    Operon::Tree const& tree, Operon::Scalar unknownViolation) -> ShapeConstraintMeasurementSummary
+    Operon::Tree const& tree, Operon::Scalar unknownViolation,
+    std::optional<std::pair<Operon::Scalar, Operon::Scalar>> scaling) -> ShapeConstraintMeasurementSummary
 {
     ShapeConstraintMeasurementSummary summary;
     summary.Measurements.reserve(constraints.Constraints.size());
@@ -197,9 +183,10 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
             m.Certified = false;
             m.Violation = unknownViolation;
         } else {
+            auto const checkedBound = scaling ? TransformBound(c.Op, *bound, *scaling) : *bound;
             m.Certified = true;
-            m.Bound = std::pair{bound->inf(), bound->sup()};
-            m.Violation = ConstraintViolation(c, *bound);
+            m.Bound = std::pair{checkedBound.inf(), checkedBound.sup()};
+            m.Violation = ConstraintViolation(c, checkedBound);
         }
         if (!m.Certified || m.Violation != Operon::Scalar{0}) { summary.Feasible = false; }
         summary.Violation += m.Violation;
@@ -278,12 +265,12 @@ auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::o
 
 auto ShapeConstrainedEvaluator::Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation) const -> ShapeConstraintMeasurementSummary
 {
-    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation);
+    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation, evaluator_->GetLinearScalingTerms(tree));
 }
 
 auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
 {
-    auto const hash = HashTreeForMemo(tree);
+    auto const hash = Operon::detail::HashTreeForMemo(tree);
     ShapeConstraintMeasurementSummary result;
     // LazyEmplace holds this hash's shard lock across the miss branch, so
     // a concurrent caller hashing to the same key blocks on the first
@@ -291,7 +278,7 @@ auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
     feasibleCache_.LazyEmplace(hash,
         [&](auto const& e) { result = e.Value; },
         [&](auto& e) {
-            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1});
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, evaluator_->GetLinearScalingTerms(tree));
             e.Value = result;
         });
     return result.Feasible;
@@ -329,7 +316,7 @@ ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<EvaluatorBase con
 
 auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary
 {
-    auto const hash = HashTreeForMemo(tree);
+    auto const hash = Operon::detail::HashTreeForMemo(tree);
     ShapeConstraintMeasurementSummary result;
     // LazyEmplace holds this hash's shard lock across the miss branch, so
     // a concurrent caller hashing to the same key blocks on the first
@@ -337,7 +324,7 @@ auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeCo
     measurementCache_.LazyEmplace(hash,
         [&](auto const& e) { result = e.Value; },
         [&](auto& e) {
-            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_);
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_, evaluator_->GetLinearScalingTerms(tree));
             e.Value = result;
         });
     return result;

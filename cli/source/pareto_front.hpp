@@ -9,6 +9,7 @@
 #include "operon/core/individual.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/types.hpp"
+#include "operon/operators/evaluator.hpp"
 #include <string>
 
 namespace Operon {
@@ -22,7 +23,8 @@ auto WriteParetoFront(std::string const& path,
                       Operon::Span<Individual const> population,
                       ScalarDispatch const& dtable,
                       Problem const& problem,
-                      bool linearScaling) -> void;
+                      bool linearScaling,
+                      EvaluatorBase const* evaluator = nullptr) -> void;
 
 } // namespace Operon
 #endif
