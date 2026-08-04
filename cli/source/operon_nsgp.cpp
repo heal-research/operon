@@ -444,6 +444,17 @@ auto main(int argc, char** argv) -> int
         Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
+        if (shapeConstrainedStorage || shapePenaltyStorage || shapeExtraObjectiveStorage) {
+            // Same rationale as operon_gp.cpp: hard-reject (or a penalty/extra-
+            // objective run that never drove violation to zero) can still
+            // return a "best" individual that isn't actually certified feasible
+            // over the domain box -- flag that explicitly rather than leaving a
+            // caller to assume printed-successfully means feasible.
+            bool const feasible = shapeConstrainedStorage ? shapeConstrainedStorage->Feasible(best.Genotype)
+                : shapeExtraObjectiveStorage    ? shapeExtraObjectiveStorage->Measure(best.Genotype).Feasible
+                                                 : shapePenaltyStorage->Measure(best.Genotype).Feasible;
+            fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
+        }
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10));
         if (result.contains("pareto-front")) {
             Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem);
