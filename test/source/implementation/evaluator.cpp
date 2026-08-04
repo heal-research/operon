@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -11,6 +12,7 @@
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/local_search.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
@@ -937,6 +939,47 @@ TEST_CASE("BIC and AIC honor Problem linear scaling flag", "[evaluator][informat
     REQUIRE(std::isfinite(aicUnscaled));
     CHECK(bicScaled != bicUnscaled);
     CHECK(aicScaled != aicUnscaled);
+}
+
+TEST_CASE("Problem linear scaling flag toggles Evaluator behavior", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    Operon::Evaluator<EvaluatorFixture::DTable> ev{&fix.problem, &fix.dtable, Operon::MSE{}};
+    auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+    fix.problem.SetLinearScalingEnabled(true);
+    auto const scaled = ev(fix.rng, ind)[0];
+
+    fix.problem.SetLinearScalingEnabled(false);
+    auto const raw = ev(fix.rng, ind)[0];
+
+    REQUIRE(std::isfinite(scaled));
+    REQUIRE(std::isfinite(raw));
+    CHECK(scaled != raw);
+    CHECK(scaled < raw);
+}
+
+TEST_CASE("FitLinearScaling span overload agrees with FitLeastSquares and omits non-finite rows", "[evaluator]")
+{
+    std::vector<Operon::Scalar> estimated{1, 2, 3, 4};
+    std::vector<Operon::Scalar> target{3, 5, 7, 9};
+    auto const scaling = Operon::FitLinearScaling(estimated, target, {}, /*omitNonFinite=*/false);
+    auto const legacy = Operon::FitLeastSquares(estimated, target);
+    CHECK(scaling.Scale == legacy.first);
+    CHECK(scaling.Offset == legacy.second);
+
+    std::vector<Operon::Scalar> withNonFiniteEstimated{1, std::numeric_limits<Operon::Scalar>::quiet_NaN(), 2, std::numeric_limits<Operon::Scalar>::infinity(), 3};
+    std::vector<Operon::Scalar> withNonFiniteTarget{3, 100, 5, 100, 7};
+    auto const omitted = Operon::FitLinearScaling(withNonFiniteEstimated, withNonFiniteTarget, {}, /*omitNonFinite=*/true);
+
+    std::vector<Operon::Scalar> finiteEstimated{1, 2, 3};
+    std::vector<Operon::Scalar> finiteTarget{3, 5, 7};
+    auto const manual = Operon::FitLinearScaling(finiteEstimated, finiteTarget, {}, /*omitNonFinite=*/false);
+
+    CHECK(omitted.Scale == Catch::Approx(manual.Scale));
+    CHECK(omitted.Offset == Catch::Approx(manual.Offset));
+    CHECK(omitted.Scale == Catch::Approx(2.0));
+    CHECK(omitted.Offset == Catch::Approx(1.0));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
