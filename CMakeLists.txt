@@ -77,6 +77,7 @@ add_library(
     source/operators/crossover.cpp
     source/operators/evaluator_error_metrics.cpp
     source/operators/evaluator.cpp
+    source/operators/linear_scaling.cpp
     source/operators/generator/basic.cpp
     source/operators/generator/brood.cpp
     source/operators/generator/os.cpp
