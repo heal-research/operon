@@ -172,6 +172,8 @@ private:
     mutable ZobristCache<CacheEntry<FeasibleData>> feasibleCache_;
 };
 
+// Computes shape-constraint violation as a standalone objective from a
+// Problem plus ScalarDispatch; it does not wrap or delegate to another evaluator.
 class OPERON_EXPORT ShapeViolationEvaluator final : public EvaluatorBase {
 public:
     ShapeViolationEvaluator(gsl::not_null<Operon::Problem const*> problem,
