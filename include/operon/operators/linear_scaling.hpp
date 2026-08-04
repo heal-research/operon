@@ -7,6 +7,9 @@
 #include <optional>
 #include <utility>
 
+#include "operon/core/dispatch.hpp"
+#include "operon/core/problem.hpp"
+#include "operon/core/range.hpp"
 #include "operon/core/types.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/operon_export.hpp"
@@ -51,6 +54,15 @@ struct OPERON_EXPORT LinearScaling {
     Operon::Span<Operon::Scalar const> target,
     Operon::Span<Operon::Scalar const> weights = {},
     bool omitNonFinite = false) -> LinearScaling;
+
+// Runs the interpreter over `range` and fits (a,b) against `problem`'s
+// target and weights, honouring problem.LinearScalingOmitsNonFinite().
+// Returns nullopt iff problem.LinearScalingEnabled() is false.
+[[nodiscard]] OPERON_EXPORT auto FitLinearScaling(
+    Operon::Tree const& tree,
+    Operon::Problem const& problem,
+    Operon::ScalarDispatch const& dtable,
+    Operon::Range range) -> std::optional<LinearScaling>;
 
 } // namespace Operon
 
