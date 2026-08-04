@@ -364,6 +364,16 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
+        if (shapeConstrainedStorage || shapeViolationStorage) {
+            // Hard-reject with no certifiably-feasible individual in the final
+            // population still returns a "best" (tied at WorstValue()/highest
+            // violation, whichever the fallback comparator preferred) -- flag
+            // that here so a caller relying on the printed model can't mistake
+            // a failed-to-find-feasible run for an ordinary successful one.
+            bool const feasible = shapeConstrainedStorage ? shapeConstrainedStorage->Feasible(best.Genotype)
+                                                           : shapeViolationStorage->Measure(best.Genotype).Feasible;
+            fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
+        }
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
