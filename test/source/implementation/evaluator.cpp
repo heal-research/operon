@@ -909,6 +909,36 @@ TEST_CASE("Evaluator<DTable>: oversized buffer matches exact-size buffer", "[eva
     }
 }
 
+TEST_CASE("BIC and AIC honor Problem linear scaling flag", "[evaluator][information-criteria]")
+{
+    EvaluatorFixture fix;
+    using DTable = EvaluatorFixture::DTable;
+
+    auto tree = InfixParser::Parse("X1", *fix.problem.GetDataset());
+    for (auto& node : tree.Nodes()) {
+        if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.1); }
+    }
+    auto ind = EvaluatorFixture::MakeIndividual(tree);
+
+    BayesianInformationCriterionEvaluator<DTable> const bic{&fix.problem, &fix.dtable};
+    AkaikeInformationCriterionEvaluator<DTable> const aic{&fix.problem, &fix.dtable};
+
+    fix.problem.SetLinearScalingEnabled(true);
+    auto const bicScaled = bic(fix.rng, ind)[0];
+    auto const aicScaled = aic(fix.rng, ind)[0];
+
+    fix.problem.SetLinearScalingEnabled(false);
+    auto const bicUnscaled = bic(fix.rng, ind)[0];
+    auto const aicUnscaled = aic(fix.rng, ind)[0];
+
+    REQUIRE(std::isfinite(bicScaled));
+    REQUIRE(std::isfinite(bicUnscaled));
+    REQUIRE(std::isfinite(aicScaled));
+    REQUIRE(std::isfinite(aicUnscaled));
+    CHECK(bicScaled != bicUnscaled);
+    CHECK(aicScaled != aicUnscaled);
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // EvaluatorBase::Evaluate (deducing-this) dispatch
 //
