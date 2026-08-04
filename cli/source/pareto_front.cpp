@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <optional>
 
 #include <fmt/os.h>
 
@@ -41,7 +42,8 @@ auto WriteParetoFront(std::string const& path,
                       Operon::Span<Individual const> population,
                       ScalarDispatch const& dtable,
                       Problem const& problem,
-                      bool linearScaling) -> void
+                      bool linearScaling,
+                      EvaluatorBase const* evaluator) -> void
 {
     auto const* ds         = problem.GetDataset();
     auto const trainRange  = problem.TrainingRange();
@@ -76,7 +78,9 @@ auto WriteParetoFront(std::string const& path,
         // the fitted slope isn't ~1.
         auto scale = Scalar{1};
         if (linearScaling) {
-            auto [a, b] = FitLeastSquares(Span<Scalar const>{estimTrain}, Span<Scalar const>{targetTrain});
+            auto terms = evaluator != nullptr ? evaluator->GetLinearScalingTerms(ind->Genotype) : std::nullopt;
+            if (!terms) { terms = FitLeastSquares(Span<Scalar const>{estimTrain}, Span<Scalar const>{targetTrain}); }
+            auto const [a, b] = *terms;
             scale = static_cast<Scalar>(a);
             auto const bs = static_cast<Scalar>(b);
             for (auto& v : estimTrain) { v = (v * scale) + bs; }
