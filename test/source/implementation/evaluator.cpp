@@ -107,7 +107,8 @@ public:
 TEST_CASE("ScoreIndividual evaluates optimized coefficients before non-Lamarckian restore", "[evaluator]")
 {
     EvaluatorFixture fix;
-    Evaluator<EvaluatorFixture::DTable> evaluator{&fix.problem, &fix.dtable, MSE{}, /*linearScaling=*/false};
+    fix.problem.SetLinearScalingEnabled(false);
+    Evaluator<EvaluatorFixture::DTable> evaluator{&fix.problem, &fix.dtable, MSE{}};
     FixedCoefficientOptimizer optimizer{&fix.problem};
     CoefficientOptimizer coeffOptimizer{&optimizer};
     Operon::Vector<Operon::Scalar> buf(fix.problem.TrainingRange().Size());
@@ -506,9 +507,10 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
     SECTION("No weights: result matches unweighted evaluator") {
         auto ds = makeDataset();
         auto problem = makeProblem(&ds);
+        problem->SetLinearScalingEnabled(false);
         auto ind = makeInd(ds, 0.5F); // imperfect: predicts 0.5 * X1
 
-        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, false};
+        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}};
         auto r1 = ev(rng, ind);
         REQUIRE(r1.size() == 1);
         CHECK(std::isfinite(r1[0]));
@@ -525,9 +527,10 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
     SECTION("Uniform weights equal unweighted result") {
         auto ds = makeDataset();
         auto problem = makeProblem(&ds);
+        problem->SetLinearScalingEnabled(false);
         auto ind = makeInd(ds, 0.7F); // imperfect
 
-        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, false};
+        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}};
         auto unweighted = ev(rng, ind)[0];
 
         std::vector<Operon::Scalar> w(N, 1.0F);
@@ -542,9 +545,10 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
         data(0, 1) = 1000.0F; // inject outlier before dataset copies the array
         auto ds = makeDataset();
         auto problem = makeProblem(&ds);
+        problem->SetLinearScalingEnabled(false);
         auto perfect = makeInd(ds, 1.0F); // predicts X1 exactly (residual != 0 at row 0)
 
-        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, false};
+        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}};
 
         // without weights: MSE is dominated by the outlier
         auto mseUnweighted = ev(rng, perfect)[0];
@@ -586,7 +590,7 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
             auto ds = Operon::Dataset(gsl::not_null{d.data()}, N, 2);
             auto problem = makeProblem(&ds);
             auto ind = makeInd(ds, 1.0F);
-            Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, /*linearScaling=*/true};
+            Evaluator<DTable> ev{problem.get(), &dtable, MSE{}};
             std::vector<Operon::Scalar> w(N, 0.0F);
             std::fill(w.begin(), w.begin() + N/2, 1.0F); // weight only the first half
             ds.SetWeights(w);
@@ -617,8 +621,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree); // X1+X2+X3, always finite
         DTable dtable;
 
-        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true};
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0};
+        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0};
 
         auto r1 = baseline(fix.rng, ind)[0];
         auto r2 = skipMode(fix.rng, ind)[0];
@@ -632,11 +636,11 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true};
+        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}};
         auto rBaseline = baseline(fix.rng, ind)[0];
         CHECK_THAT(static_cast<double>(rBaseline), Catch::Matchers::WithinRel(static_cast<double>(EvaluatorBase::ErrMax), 1e-5));
 
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
         auto rSkip = skipMode(fix.rng, ind)[0];
         CHECK(std::isfinite(rSkip));
         CHECK(rSkip < EvaluatorBase::ErrMax);
@@ -648,8 +652,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> lowPenalty{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-        Evaluator<DTable> highPenalty{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/10.0};
+        Evaluator<DTable> lowPenalty{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> highPenalty{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/10.0};
 
         auto rLow = lowPenalty(fix.rng, ind)[0];
         auto rHigh = highPenalty(fix.rng, ind)[0];
@@ -664,7 +668,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, NMSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, NMSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto r = skipMode(fix.rng, ind)[0];
         CHECK(std::isfinite(r));
         CHECK(r < EvaluatorBase::ErrMax);
@@ -680,8 +684,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         // exact nonFinite count is back-derived: fraction =
         // (rHi - rLo) / (weightHi - weightLo); with log(X1) on X1~U(-1,1),
         // fraction should be ~0.5 (X1 <= 0 -> NaN), so count ~ Nrow/2.
-        Evaluator<DTable> loPen{&fix.problem, &dtable, NMSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-        Evaluator<DTable> hiPen{&fix.problem, &dtable, NMSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> loPen{&fix.problem, &dtable, NMSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, NMSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto rLo = loPen(fix.rng, ind)[0];
         auto rHi = hiPen(fix.rng, ind)[0];
         CHECK(std::isfinite(rLo));
@@ -713,8 +717,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> loPen{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-        Evaluator<DTable> hiPen{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> loPen{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto rLo = loPen(fix.rng, ind)[0];
         auto rHi = hiPen(fix.rng, ind)[0];
         CHECK(std::isfinite(rLo));
@@ -744,8 +748,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto const nTotal = static_cast<double>(fix.problem.TrainingRange().Size());
 
         for (auto metric : std::initializer_list<ErrorMetric>{RMSE{}, MAE{}}) {
-            Evaluator<DTable> loPen{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-            Evaluator<DTable> hiPen{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+            Evaluator<DTable> loPen{&fix.problem, &dtable, metric, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+            Evaluator<DTable> hiPen{&fix.problem, &dtable, metric, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
             auto rLo = loPen(fix.rng, ind)[0];
             auto rHi = hiPen(fix.rng, ind)[0];
             CHECK(std::isfinite(rLo));
@@ -765,8 +769,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> loPen{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-        Evaluator<DTable> hiPen{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> loPen{&fix.problem, &dtable, SSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, SSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto rLo = loPen(fix.rng, ind)[0];
         auto rHi = hiPen(fix.rng, ind)[0];
         CHECK(std::isfinite(rLo));
@@ -790,7 +794,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         DTable dtable;
 
         for (auto metric : std::initializer_list<ErrorMetric>{SSE{}, RMSE{}, MAE{}}) {
-            Evaluator<DTable> skipMode{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+            Evaluator<DTable> skipMode{&fix.problem, &dtable, metric, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
             auto r = skipMode(fix.rng, ind)[0];
             CHECK(std::isfinite(r));
             CHECK(r < EvaluatorBase::ErrMax);
@@ -803,7 +807,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, SSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
         auto r = skipMode(fix.rng, ind)[0];
         CHECK(r == EvaluatorBase::ErrMax);
     }
@@ -815,7 +819,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto r = skipMode(fix.rng, ind)[0];
         CHECK(std::isfinite(r));
         CHECK(r < EvaluatorBase::ErrMax);
@@ -859,7 +863,8 @@ TEST_CASE("Evaluator<DTable>: oversized buffer matches exact-size buffer", "[eva
     }
 
     SECTION("Scaling off") {
-        Evaluator<DTable> const ev{&fix.problem, &fix.dtable, MSE{}, /*linearScaling=*/false};
+        fix.problem.SetLinearScalingEnabled(false);
+        Evaluator<DTable> const ev{&fix.problem, &fix.dtable, MSE{}};
 
         std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
         auto const exactResult = ev(fix.rng, ind, exactBuf);

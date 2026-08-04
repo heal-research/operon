@@ -41,6 +41,12 @@ class Problem {
 
     bool ownership_{true};
 
+    // Problem owns the PrimitiveSet, so it represents the problem formulation
+    // rather than a bare dataset view; whether the fitted model is
+    // Keijzer-scaled is part of that formulation.
+    bool linearScaling_{true};
+    bool linearScalingOmitsNonFinite_{false};
+
 public:
     Problem(const Problem&) = delete;
     Problem(Problem&&) = delete;
@@ -115,6 +121,11 @@ public:
     template<typename Self>
     [[nodiscard]] auto GetPrimitiveSet(this Self& self) -> decltype(auto) { return (self.pset_); }
     auto ConfigurePrimitiveSet(Operon::PrimitiveSetConfig config) { pset_.SetConfig(config); }
+
+    [[nodiscard]] auto LinearScalingEnabled() const noexcept -> bool { return linearScaling_; }
+    void SetLinearScalingEnabled(bool value) noexcept { linearScaling_ = value; }
+    [[nodiscard]] auto LinearScalingOmitsNonFinite() const noexcept -> bool { return linearScalingOmitsNonFinite_; }
+    void SetLinearScalingOmitsNonFinite(bool value) noexcept { linearScalingOmitsNonFinite_ = value; }
 
     // unique_ptr::get() doesn't propagate constness; conditional_t restores it.
     template<typename Self>

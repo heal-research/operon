@@ -168,6 +168,8 @@ auto main(int argc, char** argv) -> int
         problem.SetTestRange(testRange);
         problem.SetTarget(target.Hash);
         problem.SetInputs(inputs);
+        problem.SetLinearScalingEnabled(result["linear-scaling"].as<bool>());
+        problem.SetLinearScalingOmitsNonFinite(result["skip-nonfinite"].as<bool>());
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
         auto [creator, creatorMaxLength, creatorMinDepth, creatorMaxDepth] = ParseCreator(
@@ -235,7 +237,6 @@ auto main(int argc, char** argv) -> int
         // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
         // dtable.RegisterCallable(12345UL, f, f);
 
-        auto const scale   = result["linear-scaling"].as<bool>();
         auto const jitMode = result["jit"].as<std::string>(); // "all", "jac", or ""
         if (jitMode == "all" && result["skip-nonfinite"].as<bool>()) {
             throw std::invalid_argument("--skip-nonfinite is not supported with --jit=all");
@@ -253,13 +254,13 @@ auto main(int argc, char** argv) -> int
                 zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
                 config.Cache = zobrist.get();
             }
-            errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale,
+            errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
                 result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
             optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
         } else {
             auto jobj = Operon::CLI::MakeJitObjects(
                 jitMode, problem, dtable,
-                result["objective"].as<std::string>(), scale,
+                result["objective"].as<std::string>(),
                 result["jit-max-length"].as<int>(),
                 result["jit-min-visits"].as<std::size_t>(),
                 static_cast<int>(maxLength), config.Seed,
@@ -273,7 +274,7 @@ auto main(int argc, char** argv) -> int
             if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
             // "jac" mode: factory leaves evaluator null; create interpreter evaluator here.
             if (!errorEvaluator) {
-                errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale,
+                errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
                     result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
             }
             // unknown mode: factory returned null optimizer; fall back to defaults.
@@ -422,7 +423,7 @@ auto main(int argc, char** argv) -> int
         std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
         Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
         if (jitMode == "all") {
-            reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{}, scale);
+            reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{});
             ptr = reporterEvalStorage.get();
         } else {
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
@@ -445,7 +446,7 @@ auto main(int argc, char** argv) -> int
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10));
         if (result.contains("pareto-front")) {
-            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem, scale);
+            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem);
         }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());

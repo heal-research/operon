@@ -258,11 +258,10 @@ public:
     using TDispatch    = DTable;
     using TInterpreter = Operon::Interpreter<Operon::Scalar, DTable>;
 
-    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true, bool skipNonFinite = false, double nonFinitePenaltyWeight = 1.0)
+    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool skipNonFinite = false, double nonFinitePenaltyWeight = 1.0)
         : EvaluatorBase(problem)
         , dtable_(dtable)
         , error_(error)
-        , scaling_(linearScaling)
         , skipNonFinite_(skipNonFinite)
         , nonFinitePenaltyWeight_(nonFinitePenaltyWeight)
     {
@@ -279,10 +278,15 @@ public:
     auto
     Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
+protected:
+    // virtual only so BIC/AIC can pin their pre-existing "always scale"
+    // behavior via an override until that's fixed in a separate follow-up
+    // commit; devirtualize once that lands.
+    [[nodiscard]] virtual auto UsesLinearScaling() const -> bool { return GetProblem()->LinearScalingEnabled(); }
+
 private:
     gsl::not_null<DTable const*> dtable_;
     ErrorMetric error_;
-    bool scaling_{false};
     // Opt-in. When true: non-finite rows excluded via ErrorMetric::FiniteSubset
     // (SSE/MSE/NMSE/RMSE/MAE). fit += nonFinitePenaltyWeight_ * nonfinite
     // fraction, scaled by target variance for the non-normalized metrics
@@ -581,6 +585,16 @@ public:
 
     auto
     Evaluate(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+protected:
+    // PRE-EXISTING BEHAVIOR, frozen here on purpose: these two evaluators
+    // have always applied linear scaling regardless of --linear-scaling,
+    // because they inherited Evaluator's old `linearScaling = true`
+    // default. This override pins that exact behavior through this
+    // refactor. A separate follow-up commit removes this override (and
+    // devirtualizes UsesLinearScaling on the base) to actually fix it --
+    // don't fix it here, this step must be behavior-preserving.
+    [[nodiscard]] auto UsesLinearScaling() const -> bool override { return true; }
 };
 
 template <typename DTable>
@@ -595,6 +609,16 @@ public:
 
     auto
     Evaluate(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+
+protected:
+    // PRE-EXISTING BEHAVIOR, frozen here on purpose: these two evaluators
+    // have always applied linear scaling regardless of --linear-scaling,
+    // because they inherited Evaluator's old `linearScaling = true`
+    // default. This override pins that exact behavior through this
+    // refactor. A separate follow-up commit removes this override (and
+    // devirtualizes UsesLinearScaling on the base) to actually fix it --
+    // don't fix it here, this step must be behavior-preserving.
+    [[nodiscard]] auto UsesLinearScaling() const -> bool override { return true; }
 };
 
 template<typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
