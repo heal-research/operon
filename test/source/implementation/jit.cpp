@@ -277,8 +277,8 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
     JIT::JitZobrist zobrist(rng, /*maxLength=*/50, inputs);
 
     DTable dtable;
-    Evaluator<DTable> refEval(&problem, &dtable, MSE{}, /*linearScaling=*/true);
-    JIT::JitEvaluator  jitEval(&problem, &zobrist, MSE{}, /*linearScaling=*/true);
+    Evaluator<DTable> refEval(&problem, &dtable, MSE{});
+    JIT::JitEvaluator  jitEval(&problem, &zobrist, MSE{});
 
     auto check = [&](std::string_view expr) {
         INFO("expression: " << expr);
@@ -369,7 +369,7 @@ TEST_CASE("JitEvaluator: oversized buffer matches exact-size buffer", "[jit][eva
 
     SECTION("Compiled path") {
         JIT::JitZobrist   zobrist(rng, /*maxLength=*/50, inputs);
-        JIT::JitEvaluator jitEval(&problem, &zobrist, MSE{}, /*linearScaling=*/true);
+        JIT::JitEvaluator jitEval(&problem, &zobrist, MSE{});
         jitEval.SetMinVisits(1); // compile on first call
 
         std::vector<Scalar> exactBuf(range.Size());
@@ -387,7 +387,7 @@ TEST_CASE("JitEvaluator: oversized buffer matches exact-size buffer", "[jit][eva
 
     SECTION("Fallback (uncompiled) path") {
         JIT::JitZobrist   zobrist(rng, /*maxLength=*/50, inputs);
-        JIT::JitEvaluator jitEval(&problem, &zobrist, MSE{}, /*linearScaling=*/true);
+        JIT::JitEvaluator jitEval(&problem, &zobrist, MSE{});
         jitEval.SetMaxLength(1); // forces GetOrCompile to return nullptr for this tree
 
         std::vector<Scalar> exactBuf(range.Size());
@@ -451,7 +451,8 @@ TEST_CASE("Zobrist hash is structural: constant values do not affect the hash", 
         problem.SetTrainingRange({0, 100});
         problem.SetInputs(inputs);
 
-        JIT::JitEvaluator jitEval(&problem, &zobrist, MSE{}, /*linearScaling=*/false);
+        problem.SetLinearScalingEnabled(false);
+        JIT::JitEvaluator jitEval(&problem, &zobrist, MSE{});
         jitEval.SetBudget(std::numeric_limits<std::size_t>::max());
 
         auto tree1 = InfixParser::Parse("X1 + 1.0", ds);
@@ -504,8 +505,8 @@ TEST_CASE("JitEvaluator vs interpreter on random population", "[jit][evaluator][
     JIT::JitZobrist zobrist(rng, /*maxLength=*/50, ds.VariableHashes());
 
     DTable dtable;
-    Evaluator<DTable>  refEval(&problem, &dtable, MSE{}, /*linearScaling=*/true);
-    JIT::JitEvaluator  jitEval(&problem, &zobrist, MSE{}, /*linearScaling=*/true);
+    Evaluator<DTable>  refEval(&problem, &dtable, MSE{});
+    JIT::JitEvaluator  jitEval(&problem, &zobrist, MSE{});
 
     // Generate 200 random trees and compare fitness.
     constexpr int MaxLength = 50;

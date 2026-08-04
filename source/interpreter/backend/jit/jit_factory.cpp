@@ -15,7 +15,6 @@ auto MakeJitObjects(
     Operon::Problem&              problem,
     Operon::ScalarDispatch const& dtable,
     Operon::ErrorMetric const&    metric,
-    bool                          linearScaling,
     int                           maxLength,
     int                           jitMaxLength,
     std::size_t                   jitMinVisits,
@@ -30,13 +29,13 @@ auto MakeJitObjects(
     out.Zobrist = std::move(jz);
 
     if (mode == "all") {
-        out.Evaluator = std::make_unique<JitEvaluator>(&problem, jzp, metric, linearScaling);
+        out.Evaluator = std::make_unique<JitEvaluator>(&problem, jzp, metric);
         out.Optimizer = std::make_unique<JitLevenbergMarquardtOptimizer<Operon::ScalarDispatch>>(
             &dtable, &problem,
             static_cast<JitEvaluator*>(out.Evaluator.get())); // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
     } else if (mode == "jac") {
         // Evaluator stays null — caller creates the interpreter evaluator.
-        out.OptimizerJacEval = std::make_unique<JitEvaluator>(&problem, jzp, metric, linearScaling);
+        out.OptimizerJacEval = std::make_unique<JitEvaluator>(&problem, jzp, metric);
         out.Optimizer = std::make_unique<JitLevenbergMarquardtOptimizer<Operon::ScalarDispatch,
                                                                          Operon::OptimizerType::Eigen,
                                                                          /*JacobianOnly=*/true>>(
