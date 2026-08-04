@@ -222,6 +222,37 @@ TEST_CASE("ShapeConstrainedEvaluator - negative linear scale flips derivative co
     CHECK(raw.Feasible(negated));
 }
 
+TEST_CASE("ShapeConstrainedEvaluator - negative linear scale swaps derivative bound endpoints", "[shape-constraints]")
+{
+    Fixture fx;
+    auto negated = InfixParser::Parse("X2 - X1", fx.ds);
+
+    auto scaling = Operon::FitLinearScaling(negated, fx.problem, fx.dtable, fx.problem.TrainingRange());
+    REQUIRE(scaling);
+    CHECK(scaling->Scale < 0.0);
+    CHECK(scaling->Offset == Catch::Approx(0.0).margin(1e-5));
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    // Raw d(X2-X1)/dX1 is [-1,-1], satisfying this bound.  After the fitted
+    // negative scale is applied to the delivered model, the derivative interval
+    // becomes [1,1] via LinearScaling::ApplyToDerivativeInterval's endpoint swap,
+    // and the bound-arithmetic violation path must reject it.
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1.5F}, Operon::Scalar{-0.5F}}});
+
+    Operon::ShapeConstrainedEvaluator scaled(&fx.nmse, &fx.dtable, cs);
+    CHECK_FALSE(scaled.Feasible(negated));
+
+    auto const measurement = scaled.Measure(negated);
+    REQUIRE(measurement.Measurements.size() == 1);
+    CHECK(measurement.Measurements[0].Violation > 0.0F);
+
+    fx.problem.SetLinearScalingEnabled(false);
+    Operon::ShapeConstrainedEvaluator raw(&fx.nmse, &fx.dtable, cs);
+    CHECK(raw.Feasible(negated));
+}
+
 TEST_CASE("ShapeConstrainedEvaluator - offset shifts identity bound constraints", "[shape-constraints]")
 {
     constexpr auto nrow = std::size_t{5};
