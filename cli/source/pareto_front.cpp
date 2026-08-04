@@ -17,6 +17,7 @@
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 
 namespace Operon {
@@ -76,7 +77,9 @@ auto WriteParetoFront(std::string const& path,
         // the fitted slope isn't ~1.
         auto scale = Scalar{1};
         if (linearScaling) {
-            auto [a, b] = FitLeastSquares(Span<Scalar const>{estimTrain}, Span<Scalar const>{targetTrain});
+            auto const scaling = Operon::FitLinearScaling(Span<Scalar const>{estimTrain}, Span<Scalar const>{targetTrain});
+            auto const a = scaling.Scale;
+            auto const b = scaling.Offset;
             scale = static_cast<Scalar>(a);
             auto const bs = static_cast<Scalar>(b);
             for (auto& v : estimTrain) { v = (v * scale) + bs; }
