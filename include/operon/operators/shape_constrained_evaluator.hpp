@@ -5,6 +5,7 @@
 #define OPERON_OPERATORS_SHAPE_CONSTRAINED_EVALUATOR_HPP
 
 #include "operon/core/constraint.hpp"
+#include "operon/core/dispatch.hpp"
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/evaluator.hpp"
 #include <optional>
@@ -98,7 +99,8 @@ public:
     // matches how the paper's own problems specify one shared input-space
     // box per problem (see operon-publications' shape-constraints-
     // reproduction/problems.yml), not a per-constraint domain.
-    ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase const*> evaluator, ShapeConstraintSet constraints);
+    ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase const*> evaluator,
+        gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints);
 
     [[nodiscard]] auto WorstValue() const noexcept -> double { return worstValue_; }
     void SetWorstValue(double value) { worstValue_ = value; }
@@ -153,6 +155,7 @@ public:
 
 private:
     gsl::not_null<EvaluatorBase const*> evaluator_;
+    gsl::not_null<Operon::ScalarDispatch const*> dtable_;
     ShapeConstraintSet constraints_;
     // constraintVarHash_[i] is constraints_.Constraints[i].Variable's resolved
     // Dataset hash (default Operon::Hash{} for an Identity constraint, which
@@ -171,7 +174,8 @@ private:
 
 class OPERON_EXPORT ShapeViolationEvaluator final : public EvaluatorBase {
 public:
-    ShapeViolationEvaluator(gsl::not_null<EvaluatorBase const*> evaluator, ShapeConstraintSet constraints,
+    ShapeViolationEvaluator(gsl::not_null<Operon::Problem const*> problem,
+        gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints,
         Operon::Scalar weight = Operon::Scalar{1}, Operon::Scalar unknownViolation = Operon::Scalar{1});
 
     [[nodiscard]] auto Weight() const noexcept -> Operon::Scalar { return weight_; }
@@ -184,7 +188,8 @@ public:
     auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 
 private:
-    gsl::not_null<EvaluatorBase const*> evaluator_;
+    gsl::not_null<Operon::Problem const*> problem_;
+    gsl::not_null<Operon::ScalarDispatch const*> dtable_;
     ShapeConstraintSet constraints_;
     Operon::Vector<Operon::Hash> constraintVarHash_;
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;

@@ -3,6 +3,8 @@
 
 #include "operon/operators/linear_scaling.hpp"
 
+#include "operon/interpreter/interpreter.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -121,6 +123,25 @@ void LinearScaling::ApplyInPlace(Operon::Span<Operon::Scalar> values) const noex
             : FitLeastSquaresImpl<Operon::Scalar>(estimated, target, weights);
     }();
     return LinearScaling{a, b};
+}
+
+[[nodiscard]] auto FitLinearScaling(Operon::Tree const& tree, Operon::Problem const& problem,
+                                    Operon::ScalarDispatch const& dtable, Operon::Range range)
+    -> std::optional<LinearScaling>
+{
+    if (!problem.LinearScalingEnabled()) {
+        return std::nullopt;
+    }
+
+    auto const* dataset = problem.GetDataset();
+    Interpreter<Operon::Scalar, ScalarDispatch> const interpreter{&dtable, dataset, &tree};
+    Operon::Vector<Operon::Scalar> estimatedValues(range.Size());
+    auto coeff = tree.GetCoefficients();
+    interpreter.Evaluate(coeff, range, estimatedValues);
+
+    return FitLinearScaling(estimatedValues, problem.TargetValues(range),
+        problem.Weights(range).value_or(Operon::Span<Operon::Scalar const>{}),
+        problem.LinearScalingOmitsNonFinite());
 }
 
 } // namespace Operon
