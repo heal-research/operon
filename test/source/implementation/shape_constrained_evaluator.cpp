@@ -17,6 +17,7 @@
 #include "operon/core/problem.hpp"
 #include "operon/core/constraint.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
 #include "shape_constraints_config.hpp"
 #include "operon/parser/infix.hpp"
@@ -196,6 +197,96 @@ TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constrai
     cs.Constraints[0].Bound = std::pair{Operon::Scalar{-1}, Operon::Scalar{1}};
     Operon::ShapeConstrainedEvaluator narrow(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(narrow.Feasible(fx.tree));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - negative linear scale flips derivative constraints", "[shape-constraints]")
+{
+    Fixture fx;
+    auto negated = InfixParser::Parse("X2 - X1", fx.ds);
+
+    auto scaling = Operon::FitLinearScaling(negated, fx.problem, fx.dtable, fx.problem.TrainingRange());
+    REQUIRE(scaling);
+    CHECK(scaling->Scale < 0.0);
+    CHECK(scaling->Offset == Catch::Approx(0.0).margin(1e-5));
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt});
+
+    Operon::ShapeConstrainedEvaluator scaled(&fx.nmse, &fx.dtable, cs);
+    CHECK_FALSE(scaled.Feasible(negated));
+
+    fx.problem.SetLinearScalingEnabled(false);
+    Operon::ShapeConstrainedEvaluator raw(&fx.nmse, &fx.dtable, cs);
+    CHECK(raw.Feasible(negated));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - offset shifts identity bound constraints", "[shape-constraints]")
+{
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{2};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i) / static_cast<Operon::Scalar>(nrow - 1);
+        data(static_cast<Eigen::Index>(i), 1) = data(static_cast<Eigen::Index>(i), 0) + Operon::Scalar{10};
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto tree = InfixParser::Parse("X1", ds);
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X2");
+    problem.SetDefaultInputs();
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    auto scaling = Operon::FitLinearScaling(tree, problem, dtable, problem.TrainingRange());
+    REQUIRE(scaling);
+    CHECK(scaling->Scale == Catch::Approx(1.0));
+    CHECK(scaling->Offset == Catch::Approx(10.0));
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{0}, Operon::Scalar{1}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{0}, Operon::Scalar{1}}});
+
+    Operon::ShapeConstrainedEvaluator scaled(&nmse, &dtable, cs);
+    CHECK_FALSE(scaled.Feasible(tree));
+
+    problem.SetLinearScalingEnabled(false);
+    Operon::ShapeConstrainedEvaluator raw(&nmse, &dtable, cs);
+    CHECK(raw.Feasible(tree));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator and ShapeViolationEvaluator report directly fitted scaled bounds", "[shape-constraints]")
+{
+    Fixture fx;
+    auto tree = InfixParser::Parse("2 * (X1 - X2) + 3", fx.ds);
+    auto scaling = Operon::FitLinearScaling(tree, fx.problem, fx.dtable, fx.problem.TrainingRange());
+    REQUIRE(scaling);
+
+    // The public API does not expose BoundFor directly. For this affine tree/domain
+    // we can reconstruct the raw identity enclosure exactly by hand: [2*(-4)+3, 2*4+3].
+    auto const [expectedLo, expectedHi] = scaling->ApplyToValueInterval(Operon::Scalar{-5}, Operon::Scalar{11});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-100}, Operon::Scalar{100}}});
+
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    auto const constrained = sce.Measure(tree);
+    REQUIRE(constrained.Measurements.size() == 1);
+    REQUIRE(constrained.Measurements[0].Bound);
+    CHECK(constrained.Measurements[0].Bound->first == Catch::Approx(expectedLo));
+    CHECK(constrained.Measurements[0].Bound->second == Catch::Approx(expectedHi));
+
+    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
+    auto const violation = sve.Measure(tree);
+    REQUIRE(violation.Measurements.size() == 1);
+    REQUIRE(violation.Measurements[0].Bound);
+    CHECK(violation.Measurements[0].Bound->first == Catch::Approx(expectedLo));
+    CHECK(violation.Measurements[0].Bound->second == Catch::Approx(expectedHi));
 }
 
 TEST_CASE("ShapeConstrainedEvaluator - derivative through an unsupported op is not falsely feasible", "[shape-constraints]")

@@ -441,6 +441,7 @@ namespace detail {
 template <typename DTable, Concepts::Likelihood Lik>
 requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
+    // Deliberately scores the raw, unscaled tree; do not mirror pareto_front.cpp's scaled MDL export here.
     using Base = Evaluator<DTable>;
 
 public:
@@ -510,6 +511,7 @@ private:
 template <typename DTable, Concepts::Likelihood Lik>
 requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT FractionalBayesFactorEvaluator final : public Evaluator<DTable> {
+    // Deliberately scores the raw, unscaled tree; do not mirror pareto_front.cpp's scaled MDL export here.
     using Base = Evaluator<DTable>;
 
 public:
@@ -601,6 +603,7 @@ public:
 template<typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
 requires (DTable::template SupportsType<typename Likelihood::Scalar>)
 class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
+    // Deliberately scores the raw, unscaled tree; do not mirror pareto_front.cpp's scaled MDL export here.
     using Base = Evaluator<DTable>;
 
     public:
