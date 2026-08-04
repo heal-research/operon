@@ -4,6 +4,7 @@
 
 #include "operon/core/distance.hpp"
 #include "operon/core/dispatch.hpp"
+#include "operon/core/tree_hash.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/local_search.hpp"
 #include "operon/optimizer/optimizer.hpp"
@@ -154,6 +155,44 @@ namespace {
         if (normalizer == Operon::Scalar{0}) {
             throw std::invalid_argument("TreePropertyEvaluator normalizer must be non-zero");
         }
+    }
+
+    template<> auto OPERON_EXPORT
+    Evaluator<ScalarDispatch>::GetLinearScalingTerms(Operon::Tree const& tree) const -> std::optional<std::pair<Operon::Scalar, Operon::Scalar>>
+    {
+        if (!scaling_) { return std::nullopt; }
+
+        auto const hash = Operon::detail::HashTreeForMemo(tree);
+        std::pair<Operon::Scalar, Operon::Scalar> result{};
+        linearScalingCache_.LazyEmplace(hash,
+            [&](auto const& e) { result = e.Value; },
+            [&](auto& e) {
+                auto const* problem = GetProblem();
+                auto const* dataset = problem->GetDataset();
+                auto const trainingRange = problem->TrainingRange();
+                auto const targetValues = problem->TargetValues(trainingRange);
+                auto const weightsOpt = problem->Weights(trainingRange);
+                auto const weights = weightsOpt.value_or(Operon::Span<Operon::Scalar const>{});
+
+                TInterpreter const interpreter{GetDispatchTable(), dataset, &tree};
+                Operon::Vector<Operon::Scalar> estimatedValues(trainingRange.Size());
+                interpreter.Evaluate(tree.GetCoefficients(), trainingRange, estimatedValues);
+
+                if (skipNonFinite_) [[unlikely]] {
+                    auto [a, b, skipped] = weights.empty()
+                        ? FitLeastSquaresFiniteImpl<Operon::Scalar>(estimatedValues, targetValues)
+                        : FitLeastSquaresFiniteImpl<Operon::Scalar>(estimatedValues, targetValues, weights);
+                    (void)skipped;
+                    result = {static_cast<Operon::Scalar>(a), static_cast<Operon::Scalar>(b)};
+                } else {
+                    auto [a, b] = weights.empty()
+                        ? FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues)
+                        : FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues, weights);
+                    result = {static_cast<Operon::Scalar>(a), static_cast<Operon::Scalar>(b)};
+                }
+                e.Value = result;
+            });
+        return result;
     }
 
     template<> auto OPERON_EXPORT
