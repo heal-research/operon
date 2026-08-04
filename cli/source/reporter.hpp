@@ -100,13 +100,13 @@ public:
         });
 
         // scale values
-        Operon::Scalar a{1.0};
-        Operon::Scalar b{0.0};
         auto linearScaling = tf.emplace([&]() {
-            auto const scaling = Operon::FitLinearScaling(estimatedTrain, targetTrain);
-            a = scaling.Scale;
-            b = scaling.Offset;
-            best_.Genotype = scaling.Materialize(std::move(best_.Genotype));
+            auto const scaling = Operon::FitLinearScaling(best_.Genotype, *problem, *dtable, trainingRange);
+            if (!scaling) { return; }
+
+            best_.Genotype = scaling->Materialize(std::move(best_.Genotype));
+            scaling->ApplyInPlace(Operon::Span<Operon::Scalar>{estimatedTrain});
+            scaling->ApplyInPlace(Operon::Span<Operon::Scalar>{estimatedTest});
         }).name("linear scaling");
 
         double r2Train{};
@@ -115,20 +115,6 @@ public:
         double nmseTest{};
         double maeTrain{};
         double maeTest{};
-
-        auto scale = tf.emplace([&](tf::Subflow& sf) {
-            sf.emplace([&]() {
-                ENSURE(estimatedTrain.size() == trainingRange.Size());
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), std::ssize(estimatedTrain));
-                estimated = estimated * a + b;
-            }).name("scale train");
-
-            sf.emplace([&]() {
-                ENSURE(estimatedTest.size() == testRange.Size());
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), std::ssize(estimatedTest));
-                estimated = estimated * a + b;
-            }).name("scale test");
-        });
 
         auto calcStats = tf.emplace([&]() {
             ENSURE(!best_.Genotype.Empty());
@@ -155,8 +141,7 @@ public:
 
         // define task graph
         evaluate.precede(linearScaling);
-        linearScaling.precede(scale);
-        calcStats.succeed(scale);
+        calcStats.succeed(linearScaling);
         calcStats.precede(calculateLength, calculateQuality, calculatePopMemory, calculateOffMemory);
         // taskflow.dump(std::cout);
 
