@@ -125,6 +125,9 @@ public:
     [[nodiscard]] auto LinearScalingEnabled() const noexcept -> bool { return linearScaling_; }
     void SetLinearScalingEnabled(bool value) noexcept { linearScaling_ = value; }
     [[nodiscard]] auto LinearScalingOmitsNonFinite() const noexcept -> bool { return linearScalingOmitsNonFinite_; }
+    // Caller responsibility: keep this in sync with evaluator-level non-finite handling
+    // (e.g. skipNonFinite). Otherwise certification and scoring may fit different
+    // linear scales for the same individual; the library does not enforce this coupling.
     void SetLinearScalingOmitsNonFinite(bool value) noexcept { linearScalingOmitsNonFinite_ = value; }
 
     // unique_ptr::get() doesn't propagate constness; conditional_t restores it.
