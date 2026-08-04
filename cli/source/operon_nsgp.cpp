@@ -326,7 +326,7 @@ auto main(int argc, char** argv) -> int
 
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
                 shapePenaltyStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
-                    errorEvaluator.get(), *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
+                    &problem, &dtable, *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
                 penalizedErrorStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
                 penalizedErrorStorage->Add(errorEvaluator.get());
                 penalizedErrorStorage->Add(shapePenaltyStorage.get());
@@ -335,7 +335,7 @@ auto main(int argc, char** argv) -> int
             }
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::ExtraObjective)) {
                 shapeExtraObjectiveStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
-                    errorEvaluator.get(), *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
+                    &problem, &dtable, *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
             }
         }
 
@@ -351,7 +351,7 @@ auto main(int argc, char** argv) -> int
         // infeasible individual gets WorstValue() on every objective.
         std::unique_ptr<Operon::ShapeConstrainedEvaluator> shapeConstrainedStorage;
         if (shapeConstraints && Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
-            shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, *shapeConstraints);
+            shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, &dtable, *shapeConstraints);
             shapeConstrainedStorage->SetWorstValue(result["shape-worst-value"].as<double>());
         }
         Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get()) : static_cast<Operon::EvaluatorBase*>(&evaluator);

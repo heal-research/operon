@@ -18,6 +18,7 @@
 #include "operon/core/tree_diff.hpp"
 #include "operon/core/tree_hash.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 
 namespace Operon {
 
@@ -103,12 +104,12 @@ auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
     return d2 ? TryAffineBound(*d2, domains) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
 }
 
-auto ResolveShapeConstraintContext(gsl::not_null<EvaluatorBase const*> evaluator, ShapeConstraintSet const& constraints,
+auto ResolveShapeConstraintContext(gsl::not_null<Operon::Problem const*> problem, ShapeConstraintSet const& constraints,
     Operon::Vector<Operon::Hash>& constraintVarHash,
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>>& domainsByHash,
     std::string_view owner) -> void
 {
-    auto const* ds = evaluator->GetProblem()->GetDataset();
+    auto const* ds = problem->GetDataset();
 
     for (auto const& [name, bound] : constraints.Domains) {
         auto v = ds->GetVariable(name);
@@ -116,7 +117,7 @@ auto ResolveShapeConstraintContext(gsl::not_null<EvaluatorBase const*> evaluator
         domainsByHash.insert_or_assign(v->Hash, bound);
     }
 
-    for (auto const& hash : evaluator->GetProblem()->GetInputs()) {
+    for (auto const& hash : problem->GetInputs()) {
         if (domainsByHash.contains(hash)) { continue; }
         auto v = ds->GetVariable(hash);
         throw std::invalid_argument(fmt::format(
@@ -157,21 +158,18 @@ auto ConstraintViolation(ShapeConstraint const& c, Interval const& bound) -> Ope
          + std::max(Operon::Scalar{0}, bound.sup() - c.Bound->second);
 }
 
-auto TransformBound(ShapeConstraintOp op, Interval const& bound, std::pair<Operon::Scalar, Operon::Scalar> const& scaling) -> Interval
+auto TransformBound(ShapeConstraintOp op, Interval const& bound, Operon::LinearScaling const& scaling) -> Interval
 {
-    auto const [a, b] = scaling;
-    auto const lo = bound.inf();
-    auto const hi = bound.sup();
-    if (op == ShapeConstraintOp::Identity) {
-        return a >= Operon::Scalar{0} ? Interval((a * lo) + b, (a * hi) + b) : Interval((a * hi) + b, (a * lo) + b);
-    }
-    return a >= Operon::Scalar{0} ? Interval(a * lo, a * hi) : Interval(a * hi, a * lo);
+    auto const [lo, hi] = op == ShapeConstraintOp::Identity
+        ? scaling.ApplyToValueInterval(bound.inf(), bound.sup())
+        : scaling.ApplyToDerivativeInterval(bound.inf(), bound.sup());
+    return Interval(lo, hi);
 }
 
 auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Operon::Hash> const& constraintVarHash,
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> const& domainsByHash,
     Operon::Tree const& tree, Operon::Scalar unknownViolation,
-    std::optional<std::pair<Operon::Scalar, Operon::Scalar>> scaling) -> ShapeConstraintMeasurementSummary
+    std::optional<Operon::LinearScaling> scaling) -> ShapeConstraintMeasurementSummary
 {
     ShapeConstraintMeasurementSummary summary;
     summary.Measurements.reserve(constraints.Constraints.size());
@@ -197,12 +195,14 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
 
 } // namespace
 
-ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase const*> evaluator, ShapeConstraintSet constraints)
+ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase const*> evaluator,
+    gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints)
     : EvaluatorBase(evaluator->GetProblem())
     , evaluator_(evaluator)
+    , dtable_(dtable)
     , constraints_(std::move(constraints))
 {
-    ResolveShapeConstraintContext(evaluator_, constraints_, constraintVarHash_, domainsByHash_, "ShapeConstrainedEvaluator");
+    ResolveShapeConstraintContext(evaluator->GetProblem(), constraints_, constraintVarHash_, domainsByHash_, "ShapeConstrainedEvaluator");
 }
 
 
@@ -265,7 +265,11 @@ auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::o
 
 auto ShapeConstrainedEvaluator::Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation) const -> ShapeConstraintMeasurementSummary
 {
-    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation, std::nullopt);
+    // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
+    // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
+    // so scoring-path scaling could describe a different tree than the genotype certified here.
+    auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
+    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation, scaling);
 }
 
 auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
@@ -278,7 +282,11 @@ auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
     feasibleCache_.LazyEmplace(hash,
         [&](auto const& e) { result = e.Value; },
         [&](auto& e) {
-            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, std::nullopt);
+            // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
+            // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
+            // so scoring-path scaling could describe a different tree than the genotype certified here.
+            auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, scaling);
             e.Value = result;
         });
     return result.Feasible;
@@ -303,15 +311,17 @@ auto ShapeConstrainedEvaluator::Evaluate(Operon::RandomGenerator& rng, Individua
     return (*evaluator_)(rng, ind, buf);
 }
 
-ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<EvaluatorBase const*> evaluator, ShapeConstraintSet constraints,
+ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<Operon::Problem const*> problem,
+    gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints,
     Operon::Scalar weight, Operon::Scalar unknownViolation)
-    : EvaluatorBase(evaluator->GetProblem())
-    , evaluator_(evaluator)
+    : EvaluatorBase(problem)
+    , problem_(problem)
+    , dtable_(dtable)
     , constraints_(std::move(constraints))
     , weight_(weight)
     , unknownViolation_(unknownViolation)
 {
-    ResolveShapeConstraintContext(evaluator_, constraints_, constraintVarHash_, domainsByHash_, "ShapeViolationEvaluator");
+    ResolveShapeConstraintContext(problem_, constraints_, constraintVarHash_, domainsByHash_, "ShapeViolationEvaluator");
 }
 
 auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary
@@ -324,7 +334,11 @@ auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeCo
     measurementCache_.LazyEmplace(hash,
         [&](auto const& e) { result = e.Value; },
         [&](auto& e) {
-            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_, std::nullopt);
+            // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
+            // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
+            // so scoring-path scaling could describe a different tree than the genotype certified here.
+            auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_, scaling);
             e.Value = result;
         });
     return result;
@@ -332,7 +346,6 @@ auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeCo
 
 auto ShapeViolationEvaluator::Prepare(Operon::Span<Individual const> pop) const -> void
 {
-    evaluator_->Prepare(pop);
     measurementCache_.Clear();
     for (auto const& ind : pop) {
         std::ignore = Measure(ind.Genotype); // populates the cache as a side effect
