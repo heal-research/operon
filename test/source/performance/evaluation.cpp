@@ -234,12 +234,13 @@ TEST_CASE("Evaluator performance", "[performance]")
 
     using DTable = ScalarDispatch;
     DTable dtable;
+    problem.SetLinearScalingEnabled(false);
 
-    test("c2", Operon::Evaluator<DTable>(&problem, &dtable, Operon::C2{}, /*linearScaling=*/false));
-    test("r2", Operon::Evaluator<DTable>(&problem, &dtable, Operon::R2{}, /*linearScaling=*/false));
-    test("nmse", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}, /*linearScaling=*/false));
-    test("mae", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MAE{}, /*linearScaling=*/false));
-    test("mse", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*linearScaling=*/false));
+    test("c2", Operon::Evaluator<DTable>(&problem, &dtable, Operon::C2{}));
+    test("r2", Operon::Evaluator<DTable>(&problem, &dtable, Operon::R2{}));
+    test("nmse", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}));
+    test("mae", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MAE{}));
+    test("mse", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}));
 }
 
 TEST_CASE("skipNonFinite_ evaluator performance", "[performance]")
@@ -328,11 +329,12 @@ TEST_CASE("skipNonFinite_ evaluator performance", "[performance]")
 
             using DTable = ScalarDispatch;
             DTable dtable;
+            problem.SetLinearScalingEnabled(false);
 
-            test("mse (default)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*linearScaling=*/false));
-            test("mse (skipNonFinite)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*linearScaling=*/false, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0));
-            test("nmse (default)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}, /*linearScaling=*/false));
-            test("nmse (skipNonFinite)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}, /*linearScaling=*/false, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0));
+            test("mse (default)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}));
+            test("mse (skipNonFinite)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0));
+            test("nmse (default)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}));
+            test("nmse (skipNonFinite)", Operon::Evaluator<DTable>(&problem, &dtable, Operon::NMSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0));
         }
     }
     auto constexpr csvTemplate = R"DELIM("name";"nrow";"data";"batch";"elapsed";"instructions";"branches";"branch misses"
@@ -414,8 +416,9 @@ namespace {
         problem.SetTestRange(fx.range);
         problem.GetPrimitiveSet().SetConfig(Operon::PrimitiveSet::Arithmetic);
         problem.SetTarget(fx.target);
+        problem.SetLinearScalingEnabled(false);
         DTable dtable;
-        Operon::Evaluator<DTable> ev(&problem, &dtable, metric, /*linearScaling=*/false, skipNonFinite, /*nonFinitePenaltyWeight=*/1.0);
+        Operon::Evaluator<DTable> ev(&problem, &dtable, metric, skipNonFinite, /*nonFinitePenaltyWeight=*/1.0);
         RunPerfIsolated<DTable>(ev, fx.individuals, fx.range, 20);
     }
 } // namespace
@@ -522,8 +525,9 @@ TEST_CASE("JIT evaluator performance", "[performance][jit]")
         auto const totalNodes = TotalNodes(trees);
 
         ScalarDispatch dtable;
-        Evaluator<ScalarDispatch> interp(&problem, &dtable, MSE{}, /*linearScaling=*/false);
-        JIT::JitEvaluator          jit   (&problem, &zobrist, MSE{}, /*linearScaling=*/false);
+        problem.SetLinearScalingEnabled(false);
+        Evaluator<ScalarDispatch> interp(&problem, &dtable, MSE{});
+        JIT::JitEvaluator          jit   (&problem, &zobrist, MSE{});
         interp.SetBudget(std::numeric_limits<size_t>::max());
         jit   .SetBudget(std::numeric_limits<size_t>::max());
 
@@ -645,6 +649,7 @@ TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
     problem.SetTrainingRange(range);
     problem.SetTestRange(range);
     problem.SetTarget(target);
+    problem.SetLinearScalingEnabled(false);
 
     Operon::JIT::JitZobrist zobrist(rd, static_cast<int>(maxLength), inputs);
 
@@ -665,7 +670,7 @@ TEST_CASE("JIT LM optimizer performance", "[performance][jit][optimizer]")
         if (trees.empty()) { return; }
 
         ScalarDispatch dtable;
-        JIT::JitEvaluator jitEval{&problem, &zobrist, MSE{}, false};
+        JIT::JitEvaluator jitEval{&problem, &zobrist, MSE{}};
 
         // Pre-warm JIT cache.
         {

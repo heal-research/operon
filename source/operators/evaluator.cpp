@@ -163,9 +163,9 @@ namespace {
 
         Operon::Scalar fit{};
         if (skipNonFinite_) [[unlikely]] {
-            fit = SkipNonFiniteScore<Operon::Scalar>(error_, estimatedValues, targetValues, weights, scaling_, nonFinitePenaltyWeight_);
+            fit = SkipNonFiniteScore<Operon::Scalar>(error_, estimatedValues, targetValues, weights, UsesLinearScaling(), nonFinitePenaltyWeight_);
         } else {
-            if (scaling_) {
+            if (UsesLinearScaling()) {
                 FitLinearScaling(estimatedValues, targetValues, weights, /*omitNonFinite=*/false).ApplyInPlace(estimatedValues);
             }
             fit = static_cast<Operon::Scalar>(weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));

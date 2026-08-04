@@ -41,8 +41,7 @@ auto EscapeJson(std::string const& s) -> std::string
 auto WriteParetoFront(std::string const& path,
                       Operon::Span<Individual const> population,
                       ScalarDispatch const& dtable,
-                      Problem const& problem,
-                      bool linearScaling) -> void
+                      Problem const& problem) -> void
 {
     auto const* ds         = problem.GetDataset();
     auto const trainRange  = problem.TrainingRange();
@@ -76,7 +75,7 @@ auto WriteParetoFront(std::string const& path,
         // parameter-cost term is biased by a missing a^2 factor whenever
         // the fitted slope isn't ~1.
         auto scale = Scalar{1};
-        if (linearScaling) {
+        if (problem.LinearScalingEnabled()) {
             auto const scaling = Operon::FitLinearScaling(Span<Scalar const>{estimTrain}, Span<Scalar const>{targetTrain});
             auto const a = scaling.Scale;
             auto const b = scaling.Offset;
