@@ -7,6 +7,7 @@
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
 #include "operon/core/tree_diff.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/interpreter/interpreter.hpp"
 
 #include <algorithm>
@@ -181,9 +182,7 @@ auto JitEvaluator::Evaluate(RandomGenerator& /*rng*/, Individual const& ind,
     }
 
     if (scaling_) {
-        auto [a, b] = FitLeastSquares(Span<Scalar const>(estimatedValues.data(), estimatedValues.size()), targetValues, weights);
-        std::ranges::transform(estimatedValues, estimatedValues.begin(),
-            [a=a, b=b](auto x) -> Scalar { return static_cast<Scalar>((a * x) + b); });
+        FitLinearScaling(Span<Scalar const>(estimatedValues.data(), estimatedValues.size()), targetValues, weights, /*omitNonFinite=*/false).ApplyInPlace(estimatedValues);
     }
 
     auto fit = static_cast<Scalar>(weights.empty()
