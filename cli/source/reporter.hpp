@@ -102,9 +102,7 @@ public:
         Operon::Scalar a{1.0};
         Operon::Scalar b{0.0};
         auto linearScaling = tf.emplace([&]() {
-            auto terms = statsSource_ != nullptr ? statsSource_->GetLinearScalingTerms(best_.Genotype) : evaluator_->GetLinearScalingTerms(best_.Genotype);
-            if (!terms) { terms = Operon::FitLeastSquares(estimatedTrain, targetTrain); }
-            auto const [a_, b_] = *terms;
+            auto [a_, b_] = Operon::FitLeastSquares(estimatedTrain, targetTrain);
             a = static_cast<Operon::Scalar>(a_);
             b = static_cast<Operon::Scalar>(b_);
             // add scaling terms to the tree

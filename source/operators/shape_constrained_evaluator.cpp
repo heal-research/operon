@@ -265,7 +265,7 @@ auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::o
 
 auto ShapeConstrainedEvaluator::Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation) const -> ShapeConstraintMeasurementSummary
 {
-    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation, evaluator_->GetLinearScalingTerms(tree));
+    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation, std::nullopt);
 }
 
 auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
@@ -278,7 +278,7 @@ auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
     feasibleCache_.LazyEmplace(hash,
         [&](auto const& e) { result = e.Value; },
         [&](auto& e) {
-            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, evaluator_->GetLinearScalingTerms(tree));
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, std::nullopt);
             e.Value = result;
         });
     return result.Feasible;
@@ -324,7 +324,7 @@ auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeCo
     measurementCache_.LazyEmplace(hash,
         [&](auto const& e) { result = e.Value; },
         [&](auto& e) {
-            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_, evaluator_->GetLinearScalingTerms(tree));
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_, std::nullopt);
             e.Value = result;
         });
     return result;

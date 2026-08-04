@@ -68,7 +68,6 @@ public:
     JitEvaluator& operator=(JitEvaluator&&)      = delete;
 
     auto Evaluate(RandomGenerator& rng, Individual const& ind, Span<Scalar> buf) const -> ReturnType override;
-    auto GetLinearScalingTerms(Operon::Tree const& tree) const -> std::optional<std::pair<Operon::Scalar, Operon::Scalar>> override;
 
     [[nodiscard]] auto CacheSize()   const -> std::size_t;
     [[nodiscard]] auto CacheHits()   const -> std::size_t { return hits_.load(); }
@@ -99,16 +98,11 @@ public:
 private:
     [[nodiscard]] auto GetOrCompile(Tree const& tree, Hash hash) const -> CompileMeta const*;
 
-    struct LinearScalingData {
-        std::pair<Operon::Scalar, Operon::Scalar> Value{};
-    };
-
     gsl::not_null<JitZobrist const*> zobrist_;
     ErrorMetric                      error_;
     bool                             scaling_;
 
     mutable TreeCompiler compiler_;
-    mutable Operon::ZobristCache<Operon::CacheEntry<LinearScalingData>> linearScalingCache_;
 
     int         maxLength_{0};
     std::size_t minVisits_{1};

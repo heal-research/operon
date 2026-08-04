@@ -19,7 +19,6 @@
 #include "operon/core/operator.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/types.hpp"
-#include "operon/hash/zobrist.hpp"
 #include "operon/information_criteria/fractional_bayes_factor.hpp"
 #include "operon/information_criteria/minimum_description_length.hpp"
 #include "operon/information_criteria/weighted_complexity.hpp"
@@ -185,10 +184,6 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Opero
         };
     }
 
-    virtual auto GetLinearScalingTerms(Operon::Tree const& /*tree*/) const -> std::optional<std::pair<Operon::Scalar, Operon::Scalar>>
-    {
-        return std::nullopt;
-    }
 
     auto Population() const -> Operon::Span<Individual const> { return population_; }
     auto SetPopulation(Operon::Span<Operon::Individual const> pop) const { population_ = pop; }
@@ -284,13 +279,7 @@ public:
     auto
     Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
-    auto GetLinearScalingTerms(Operon::Tree const& tree) const -> std::optional<std::pair<Operon::Scalar, Operon::Scalar>> override;
-
 private:
-    struct LinearScalingData {
-        std::pair<Operon::Scalar, Operon::Scalar> Value{};
-    };
-
     gsl::not_null<DTable const*> dtable_;
     ErrorMetric error_;
     bool scaling_{false};
@@ -307,7 +296,6 @@ private:
     // Default (false): non-finite metric result clamps fit to ErrMax.
     bool skipNonFinite_{false};
     double nonFinitePenaltyWeight_{1.0};
-    mutable ZobristCache<CacheEntry<LinearScalingData>> linearScalingCache_;
 };
 
 class OPERON_EXPORT MultiEvaluator : public EvaluatorBase {
@@ -352,13 +340,6 @@ public:
     auto
     Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
-    auto GetLinearScalingTerms(Operon::Tree const& tree) const -> std::optional<std::pair<Operon::Scalar, Operon::Scalar>> override
-    {
-        for (auto const& ev : evaluators_) {
-            if (auto terms = ev->GetLinearScalingTerms(tree)) { return terms; }
-        }
-        return std::nullopt;
-    }
 
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> final {
         auto resEval{0UL};
