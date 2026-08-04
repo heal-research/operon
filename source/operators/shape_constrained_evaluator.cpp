@@ -182,9 +182,19 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
             m.Violation = unknownViolation;
         } else {
             auto const checkedBound = scaling ? TransformBound(c.Op, *bound, *scaling) : *bound;
-            m.Certified = true;
-            m.Bound = std::pair{checkedBound.inf(), checkedBound.sup()};
-            m.Violation = ConstraintViolation(c, checkedBound);
+            // A NaN endpoint (e.g. Scale == 0 times an unbounded raw-tree
+            // interval, 0 * inf) must not reach ConstraintViolation:
+            // std::max(0, NaN) returns 0 (NaN comparisons are always false),
+            // which would silently certify an uncheckable tree as having zero
+            // violation instead of flagging it as uncertified.
+            if (!std::isfinite(checkedBound.inf()) || !std::isfinite(checkedBound.sup())) {
+                m.Certified = false;
+                m.Violation = unknownViolation;
+            } else {
+                m.Certified = true;
+                m.Bound = std::pair{checkedBound.inf(), checkedBound.sup()};
+                m.Violation = ConstraintViolation(c, checkedBound);
+            }
         }
         if (!m.Certified || m.Violation != Operon::Scalar{0}) { summary.Feasible = false; }
         summary.Violation += m.Violation;

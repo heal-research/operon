@@ -409,6 +409,48 @@ TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-conta
     CHECK_FALSE(sce.Feasible(tree));
 }
 
+TEST_CASE("ShapeConstrainedEvaluator - a NaN bound endpoint (Scale==0 times an unbounded raw interval) is not falsely feasible", "[shape-constraints]")
+{
+    // Regression test: TransformBound multiplies the raw tree's affine
+    // interval by the fitted Scale. If the target column is constant, OLS
+    // gives Scale == 0 exactly (covariance with a constant is 0); if the
+    // raw tree's own affine interval also overflows to +-inf somewhere in
+    // the box (exp() over a wide-enough domain, no exception -- unlike the
+    // zero-containing-interval division case above, which throws), the
+    // product is 0 * inf == NaN. std::max(0, NaN) in ConstraintViolation
+    // returns 0 (comparisons against NaN are always false), which used to
+    // certify this as a zero-violation, feasible tree instead of flagging
+    // it as uncertified.
+    constexpr auto Nrow = 20;
+    Eigen::Array<Operon::Scalar, -1, -1> data(Nrow, 2); // X1, y
+    for (auto i = 0; i < Nrow; ++i) { data(i, 0) = static_cast<Operon::Scalar>(i); } // 0..19 -- training points stay finite under exp(); the domain box below is what overflows
+    data.col(1).setConstant(Operon::Scalar{5}); // constant target -> covariance(*, y) == 0
+    Operon::Dataset ds(gsl::not_null{data.data()}, Nrow, 2);
+
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, Nrow});
+    problem.SetTestRange({0, Nrow});
+    problem.SetTarget("X2");
+    problem.SetDefaultInputs();
+    problem.SetLinearScalingEnabled(true);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    auto tree = InfixParser::Parse("exp(X1)", ds);
+    auto const scaling = Operon::FitLinearScaling(tree, problem, dtable, problem.TrainingRange());
+    REQUIRE(scaling.has_value());
+    CHECK(scaling->Scale == Operon::Scalar{0}); // exact zero, not a fallback
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{0}, Operon::Scalar{1000}}); // exp(1000) overflows double to +inf
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{0}, Operon::Scalar{1}}});
+
+    Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, cs);
+    CHECK_FALSE(sce.Feasible(tree));
+}
+
 TEST_CASE("ShapeConstraintPolicy validation covers GP and NSGA2 mode rules", "[shape-constraints]")
 {
     using E = Operon::ShapeConstraintEnforcement;
