@@ -274,12 +274,12 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/false)) { throw std::invalid_argument(*error); }
 
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
-                shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(evaluator.get(), *shapeConstraints);
+                shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(evaluator.get(), &dtable, *shapeConstraints);
                 shapeConstrainedStorage->SetWorstValue(worstValue);
                 activeEvaluator = shapeConstrainedStorage.get();
             } else if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
                 shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
-                    evaluator.get(), *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
+                    &problem, &dtable, *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
                 shapePenaltyAggregateStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
                 shapePenaltyAggregateStorage->SetBudget(config.Evaluations);
                 shapePenaltyAggregateStorage->Add(evaluator.get());
@@ -315,7 +315,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                 if (!shapeViolationStorage) {
                     auto const unknownViolation = result["shape-unknown-violation"].as<double>();
                     shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
-                        evaluator.get(), *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
+                        &problem, &dtable, *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
                 }
                 comp = Operon::FeasibilityFirstComparison(
                     [ptr = shapeViolationStorage.get()](Operon::Tree const& t) { return ptr->Measure(t).Feasible; });

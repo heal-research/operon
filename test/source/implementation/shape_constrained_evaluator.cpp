@@ -150,7 +150,7 @@ TEST_CASE("ShapeConstrainedEvaluator - correctly-signed constraints are feasible
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});  // non-decreasing: true
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X2", .Sign = -1, .Bound = std::nullopt}); // non-increasing: true
 
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
     CHECK(sce.Feasible(fx.tree));
 
     auto ind = Fixture::MakeIndividual(fx.tree);
@@ -171,7 +171,7 @@ TEST_CASE("ShapeConstrainedEvaluator - wrongly-signed constraint is rejected wit
     // f is actually non-decreasing in X1; asserting the opposite must be rejected.
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt});
 
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(sce.Feasible(fx.tree));
 
     auto ind = Fixture::MakeIndividual(fx.tree);
@@ -190,11 +190,11 @@ TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constrai
     cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
     // f = X1 - X2 over [1,5]x[1,5] has range [-4, 4]; a [-4,4] bound holds, a [-1,1] bound doesn't.
     cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-4}, Operon::Scalar{4}}});
-    Operon::ShapeConstrainedEvaluator wide(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator wide(&fx.nmse, &fx.dtable, cs);
     CHECK(wide.Feasible(fx.tree));
 
     cs.Constraints[0].Bound = std::pair{Operon::Scalar{-1}, Operon::Scalar{1}};
-    Operon::ShapeConstrainedEvaluator narrow(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator narrow(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(narrow.Feasible(fx.tree));
 }
 
@@ -214,7 +214,7 @@ TEST_CASE("ShapeConstrainedEvaluator - derivative through an unsupported op is n
     cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
 
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(sce.Feasible(tree));
 }
 
@@ -232,11 +232,11 @@ TEST_CASE("ShapeConstrainedEvaluator - identically-zero derivative satisfies eit
     cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
 
-    Operon::ShapeConstrainedEvaluator nonDecreasing(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator nonDecreasing(&fx.nmse, &fx.dtable, cs);
     CHECK(nonDecreasing.Feasible(tree));
 
     cs.Constraints[0].Sign = -1;
-    Operon::ShapeConstrainedEvaluator nonIncreasing(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator nonIncreasing(&fx.nmse, &fx.dtable, cs);
     CHECK(nonIncreasing.Feasible(tree));
 }
 
@@ -245,7 +245,7 @@ TEST_CASE("ShapeConstrainedEvaluator - unknown variable in domains throws", "[sh
     Fixture fx;
     Operon::ShapeConstraintSet cs;
     cs.Domains.insert_or_assign("NotAColumn", std::pair{Operon::Scalar{0}, Operon::Scalar{1}});
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, cs), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable, cs), std::invalid_argument);
 }
 
 TEST_CASE("ShapeConstrainedEvaluator - constraint variable missing from domains throws", "[shape-constraints]")
@@ -254,7 +254,7 @@ TEST_CASE("ShapeConstrainedEvaluator - constraint variable missing from domains 
     Operon::ShapeConstraintSet cs;
     // No domains entry for X1 at all.
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, cs), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable, cs), std::invalid_argument);
 }
 
 TEST_CASE("ShapeConstrainedEvaluator - problem input variable missing from domains throws", "[shape-constraints]")
@@ -264,8 +264,8 @@ TEST_CASE("ShapeConstrainedEvaluator - problem input variable missing from domai
     cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
     cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-4}, Operon::Scalar{4}}});
 
-    CHECK_THROWS_WITH(Operon::ShapeConstrainedEvaluator(&fx.nmse, cs), Catch::Matchers::ContainsSubstring("X2"));
-    CHECK_THROWS_WITH(Operon::ShapeViolationEvaluator(&fx.nmse, cs), Catch::Matchers::ContainsSubstring("X2"));
+    CHECK_THROWS_WITH(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable, cs), Catch::Matchers::ContainsSubstring("X2"));
+    CHECK_THROWS_WITH(Operon::ShapeViolationEvaluator(&fx.problem, &fx.dtable, cs), Catch::Matchers::ContainsSubstring("X2"));
 }
 
 TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-containing interval) is treated as infeasible, not a crash", "[shape-constraints]")
@@ -283,7 +283,7 @@ TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-conta
     cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
     cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-100}, Operon::Scalar{100}}});
 
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(sce.Feasible(tree));
 }
 
@@ -373,7 +373,7 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
     {
         Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("hard-reject"), .UnknownViolation = Operon::Scalar{1}, .PenaltyWeight = Operon::Scalar{1}};
         REQUIRE_NOTHROW(requireValid(policy, false));
-        Operon::ShapeConstrainedEvaluator gated(&fx.nmse, *loaded);
+        Operon::ShapeConstrainedEvaluator gated(&fx.nmse, &fx.dtable, *loaded);
         CHECK(gated.Feasible(fx.tree));
     }
 
@@ -385,7 +385,7 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
             .PenaltyWeight = Operon::Scalar{3},
         };
         REQUIRE_NOTHROW(requireValid(policy, false));
-        Operon::ShapeViolationEvaluator violation(&fx.nmse, *loaded, policy.PenaltyWeight, policy.UnknownViolation);
+        Operon::ShapeViolationEvaluator violation(&fx.problem, &fx.dtable, *loaded, policy.PenaltyWeight, policy.UnknownViolation);
         Operon::MultiEvaluator aggregate(&fx.problem);
         aggregate.Add(&fx.nmse);
         aggregate.Add(&violation);
@@ -398,7 +398,7 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
         Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("feasibility-first"), .UnknownViolation = Operon::Scalar{1}, .PenaltyWeight = Operon::Scalar{1}};
         REQUIRE_NOTHROW(requireValid(policy, false));
         fx.problem.SetLinearScalingEnabled(false);
-        Operon::ShapeViolationEvaluator violation(&fx.nmse, *loaded, Operon::Scalar{1}, policy.UnknownViolation);
+        Operon::ShapeViolationEvaluator violation(&fx.problem, &fx.dtable, *loaded, Operon::Scalar{1}, policy.UnknownViolation);
         Operon::FeasibilityFirstComparison comp([&violation](Operon::Tree const& t) { return violation.Measure(t).Feasible; });
         auto feasible = Fixture::MakeIndividual(fx.tree);
         feasible.Fitness = {10.0F};
@@ -411,7 +411,7 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
     {
         Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("extra-objective"), .UnknownViolation = Operon::Scalar{1}, .PenaltyWeight = Operon::Scalar{1}};
         REQUIRE_NOTHROW(requireValid(policy, true));
-        Operon::ShapeViolationEvaluator extra(&fx.nmse, *loaded, Operon::Scalar{1}, policy.UnknownViolation);
+        Operon::ShapeViolationEvaluator extra(&fx.problem, &fx.dtable, *loaded, Operon::Scalar{1}, policy.UnknownViolation);
         Operon::MultiEvaluator objectives(&fx.problem);
         objectives.Add(&fx.nmse);
         objectives.Add(&extra);
@@ -435,7 +435,7 @@ TEST_CASE("ShapeViolationEvaluator - sign constraint violation magnitudes", "[sh
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
 
     auto bad = InfixParser::Parse("X2 - X1", fx.ds);
-    Operon::ShapeViolationEvaluator sve(&fx.nmse, cs, Operon::Scalar{3});
+    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs, Operon::Scalar{3});
     auto m = sve.Measure(bad);
     REQUIRE(m.Measurements.size() == 1);
     CHECK_FALSE(m.Feasible);
@@ -450,7 +450,7 @@ TEST_CASE("ShapeViolationEvaluator - sign constraint violation magnitudes", "[sh
     CHECK(fit[0] == Catch::Approx(3.0));
 
     cs.Constraints[0].Sign = -1;
-    Operon::ShapeViolationEvaluator mirror(&fx.nmse, cs);
+    Operon::ShapeViolationEvaluator mirror(&fx.problem, &fx.dtable, cs);
     CHECK(mirror.RawViolation(fx.tree) == Catch::Approx(1.0));
 }
 
@@ -462,7 +462,7 @@ TEST_CASE("ShapeViolationEvaluator - bound constraint violation magnitude", "[sh
     cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
     cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1}, Operon::Scalar{1}}});
 
-    Operon::ShapeViolationEvaluator sve(&fx.nmse, cs);
+    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
     auto m = sve.Measure(fx.tree);
     REQUIRE(m.Measurements.size() == 1);
     REQUIRE(m.Measurements[0].Bound);
@@ -482,7 +482,7 @@ TEST_CASE("ShapeViolationEvaluator - identity, first-derivative, and second-deri
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{1}, Operon::Scalar{1}}});
     cs.Constraints.push_back({.Op = ShapeConstraintOp::SecondDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
 
-    Operon::ShapeViolationEvaluator sve(&fx.nmse, cs);
+    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
     auto m = sve.Measure(fx.tree);
     REQUIRE(m.Measurements.size() == 3);
     CHECK(m.Feasible);
@@ -496,7 +496,7 @@ TEST_CASE("ShapeViolationEvaluator - identity, first-derivative, and second-deri
     secondDerivativeOnly.Domains = cs.Domains;
     secondDerivativeOnly.Constraints.push_back({.Op = ShapeConstraintOp::SecondDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt});
     fx.problem.SetLinearScalingEnabled(false);
-    Operon::ShapeViolationEvaluator violated(&fx.nmse, secondDerivativeOnly);
+    Operon::ShapeViolationEvaluator violated(&fx.problem, &fx.dtable, secondDerivativeOnly);
     auto v = violated.Measure(square);
     CHECK_FALSE(v.Feasible);
     CHECK(v.Violation == Catch::Approx(2.0));
@@ -511,7 +511,7 @@ TEST_CASE("ShapeViolationEvaluator - Measure() uses stable cached results across
     cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1}, Operon::Scalar{1}}});
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
 
-    Operon::ShapeViolationEvaluator sve(&fx.nmse, cs);
+    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
     auto const first = sve.Measure(fx.tree);
     auto const second = sve.Measure(fx.tree);
 
@@ -542,7 +542,7 @@ TEST_CASE("ShapeViolationEvaluator - unknown violation and empty constraint set"
     cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
 
-    Operon::ShapeViolationEvaluator sve(&fx.nmse, cs, Operon::Scalar{1}, Operon::Scalar{2.5});
+    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs, Operon::Scalar{1}, Operon::Scalar{2.5});
     auto m = sve.Measure(unknownTree);
     REQUIRE(m.Measurements.size() == 1);
     CHECK_FALSE(m.Measurements[0].Certified);
@@ -550,7 +550,7 @@ TEST_CASE("ShapeViolationEvaluator - unknown violation and empty constraint set"
     CHECK(m.Violation == Catch::Approx(2.5));
 
     cs.Constraints.clear();
-    Operon::ShapeViolationEvaluator empty(&fx.nmse, cs);
+    Operon::ShapeViolationEvaluator empty(&fx.problem, &fx.dtable, cs);
     auto e = empty.Measure(fx.tree);
     CHECK(e.Feasible);
     CHECK(e.Measurements.empty());
@@ -570,17 +570,17 @@ TEST_CASE("ShapeConstrainedEvaluator - constructor rejects malformed constraints
     };
 
     // neither Sign nor Bound set
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, withOneConstraint({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::nullopt})),
+    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable, withOneConstraint({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::nullopt})),
         std::invalid_argument);
     // both set
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse,
+    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable,
         withOneConstraint({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = 1, .Bound = std::pair{Operon::Scalar{0}, Operon::Scalar{1}}})),
         std::invalid_argument);
     // invalid sign
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, withOneConstraint({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = 2, .Bound = std::nullopt})),
+    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable, withOneConstraint({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = 2, .Bound = std::nullopt})),
         std::invalid_argument);
     // lo > hi
-    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse,
+    CHECK_THROWS_AS(Operon::ShapeConstrainedEvaluator(&fx.nmse, &fx.dtable,
         withOneConstraint({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{5}, Operon::Scalar{1}}})),
         std::invalid_argument);
 }
@@ -594,7 +594,7 @@ TEST_CASE("FeasibilityFirstComparison - feasible precedes infeasible regardless 
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt}); // true: f is non-decreasing in X1
 
     fx.problem.SetLinearScalingEnabled(false);
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
     Operon::FeasibilityFirstComparison comp([&sce](Operon::Tree const& t) { return sce.Feasible(t); });
 
     auto feasibleWorseFit = Fixture::MakeIndividual(fx.tree); // satisfies the constraint
@@ -628,7 +628,7 @@ TEST_CASE("ShapeConstrainedEvaluator - Prepare() populates the feasibility cache
     cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt}); // true for X1 - X2
 
     fx.problem.SetLinearScalingEnabled(false);
-    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, cs);
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
 
     auto infeasibleTree = InfixParser::Parse("X2 - X1", fx.ds); // false: non-increasing in X1
     std::vector<Operon::Individual> pop{Fixture::MakeIndividual(fx.tree), Fixture::MakeIndividual(infeasibleTree)};
