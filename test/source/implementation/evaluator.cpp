@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <array>
 #include <limits>
 
 #include "operon/core/dataset.hpp"
@@ -251,18 +252,21 @@ TEST_CASE("Gaussian per-sample sigma", "[likelihood]")
 // ──────────────────────────────────────────────────────────────────────────────
 // MDL evaluator
 // ──────────────────────────────────────────────────────────────────────────────
-TEST_CASE("MDL evaluator", "[evaluator]")
+TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
 {
     EvaluatorFixture fix;
     using DTable = EvaluatorFixture::DTable;
 
-    SECTION("Gaussian / profiled sigma: finite positive result") {
+    SECTION("Gaussian / profiled sigma: finite result") {
         MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
-        CHECK(result[0] > 0);
+        // With Problem linear scaling enabled, this fixture's 0.1-weight tree
+        // fits the target almost exactly after scaling (scale ~= 10), so the
+        // profiled NLL/MDL can be negative. The regression guard is finiteness,
+        // not positivity of the old raw-tree score.
     }
 
     SECTION("Gaussian / fixed sigma: finite positive result") {
@@ -313,6 +317,49 @@ TEST_CASE("MDL evaluator", "[evaluator]")
         CHECK(std::isfinite(oversizedResult[0]));
         CHECK(oversizedResult[0] == exactResult[0]);
     }
+
+    SECTION("Gaussian / profiled sigma: evaluator MDL matches scaled Pareto export pattern") {
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+        std::vector<Operon::Scalar> buf(EvaluatorFixture::Nrow);
+        auto const result = ev(fix.rng, ind, buf);
+        REQUIRE(result.size() == 1);
+
+        auto const trainingRange = fix.problem.TrainingRange();
+        Operon::Interpreter<Operon::Scalar, DTable> const interp{&fix.dtable, &fix.ds, &ind.Genotype};
+        auto const coeffs = ind.Genotype.GetCoefficients();
+        auto estimTrain = interp.Evaluate(coeffs, trainingRange);
+
+        auto scale = Operon::Scalar{1};
+        auto const scaling = Operon::FitLinearScaling(ind.Genotype, fix.problem, fix.dtable, trainingRange);
+        REQUIRE(scaling);
+        CHECK(scaling->Scale != Catch::Approx(1.0)); // this is a real non-identity scaling regression
+        scale = static_cast<Operon::Scalar>(scaling->Scale);
+        scaling->ApplyInPlace(Operon::Span<Operon::Scalar>{estimTrain});
+
+        auto const targetTrain = fix.problem.TargetValues(trainingRange);
+        auto ssr = double{0};
+        for (std::size_t i = 0; i < estimTrain.size(); ++i) {
+            auto const err = static_cast<double>(estimTrain[i]) - static_cast<double>(targetTrain[i]);
+            ssr += err * err;
+        }
+        auto const sigma = std::max(static_cast<Operon::Scalar>(std::sqrt(ssr / static_cast<double>(estimTrain.size()))),
+                                    std::numeric_limits<Operon::Scalar>::epsilon());
+        auto const sigmaArr = std::array<Operon::Scalar, 1>{sigma};
+        auto const nll = static_cast<double>(GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(
+            {estimTrain.data(), estimTrain.size()}, targetTrain, {sigmaArr.data(), sigmaArr.size()}));
+
+        auto jac = interp.JacRev(coeffs, trainingRange);
+        jac *= scale; // same scaled-Jacobian step used by pareto_front.cpp's MDL export
+        auto const fisherMatrix = GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(
+            {estimTrain.data(), estimTrain.size()},
+            {jac.data(), static_cast<std::size_t>(jac.size())},
+            {sigmaArr.data(), sigmaArr.size()});
+        auto const expected = Operon::MinimumDescriptionLength(ind.Genotype, coeffs, fisherMatrix.diagonal().array(), nll);
+
+        CHECK(result[0] == Catch::Approx(expected));
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -323,13 +370,14 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     EvaluatorFixture fix;
     using DTable = EvaluatorFixture::DTable;
 
-    SECTION("Gaussian / profiled sigma: finite positive result") {
+    SECTION("Gaussian / profiled sigma: finite result") {
         FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
-        CHECK(result[0] > 0);
+        // Same scaled near-exact fit as the MDL fixture above: the profiled
+        // likelihood term can make FBF negative, so only finiteness is asserted.
     }
 
     SECTION("Gaussian / fixed sigma: finite positive result") {
