@@ -23,6 +23,7 @@
 #include "operon/information_criteria/minimum_description_length.hpp"
 #include "operon/information_criteria/weighted_complexity.hpp"
 #include "operon/interpreter/interpreter.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/operon_export.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/likelihood_base.hpp"
@@ -441,7 +442,8 @@ namespace detail {
 template <typename DTable, Concepts::Likelihood Lik>
 requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
-    // Deliberately scores the raw, unscaled tree; do not mirror pareto_front.cpp's scaled MDL export here.
+    // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
+    // closing the previous in-search/exported MDL divergence for the same individual.
     using Base = Evaluator<DTable>;
 
 public:
@@ -483,6 +485,11 @@ public:
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, estimatedValues);
 
+        auto const scaling = Operon::FitLinearScaling(tree, *problem, *dtable, trainingRange);
+        if (scaling) {
+            scaling->ApplyInPlace(estimatedValues);
+        }
+
         auto targetValues = problem->TargetValues(trainingRange);
         Operon::Scalar profiledSigma{};
         if (sigma_.empty() && Lik::UsesSigma) {
@@ -494,6 +501,9 @@ public:
 
         ++Base::JacobianEvaluations;
         Eigen::Matrix<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, trainingRange); // jacobian
+        if (scaling) {
+            jac *= static_cast<Operon::Scalar>(scaling->Scale); // d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs)
+        }
         auto fisherMatrix = Lik::ComputeFisherMatrix(estimatedValues, {jac.data(), static_cast<std::size_t>(jac.size())}, effectiveSigma);
         auto fisherDiag   = fisherMatrix.diagonal().array();
         ENSURE(fisherDiag.size() == p);
@@ -511,7 +521,8 @@ private:
 template <typename DTable, Concepts::Likelihood Lik>
 requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT FractionalBayesFactorEvaluator final : public Evaluator<DTable> {
-    // Deliberately scores the raw, unscaled tree; do not mirror pareto_front.cpp's scaled MDL export here.
+    // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
+    // closing the previous in-search/exported FBF divergence for the same individual.
     using Base = Evaluator<DTable>;
 
 public:
@@ -544,6 +555,11 @@ public:
 
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, estimatedValues);
+
+        auto const scaling = Operon::FitLinearScaling(tree, *problem, *dtable, trainingRange);
+        if (scaling) {
+            scaling->ApplyInPlace(estimatedValues);
+        }
 
         auto targetValues = problem->TargetValues(trainingRange);
         double mlNLL{};
@@ -603,7 +619,8 @@ public:
 template<typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
 requires (DTable::template SupportsType<typename Likelihood::Scalar>)
 class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
-    // Deliberately scores the raw, unscaled tree; do not mirror pareto_front.cpp's scaled MDL export here.
+    // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
+    // closing the previous in-search/exported likelihood divergence for the same individual.
     using Base = Evaluator<DTable>;
 
     public:
@@ -633,6 +650,11 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
         auto estimatedValues = buf.subspan(0, trainingRange.Size());
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, estimatedValues);
+
+        auto const scaling = Operon::FitLinearScaling(*tree, *problem, *dtable, trainingRange);
+        if (scaling) {
+            scaling->ApplyInPlace(estimatedValues);
+        }
 
         auto targetValues = problem->TargetValues(trainingRange);
 
