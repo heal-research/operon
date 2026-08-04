@@ -5,6 +5,7 @@
 #include "operon/core/distance.hpp"
 #include "operon/core/dispatch.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/local_search.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/random/random.hpp"
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <operon/operon_export.hpp>
+#include <vstat/vstat.hpp>
 #include <random>
 #include <stdexcept>
 #include <type_traits>
@@ -20,48 +22,23 @@
 namespace Operon {
 namespace {
     template<typename T>
-    auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target,
-                             Operon::Span<T const> weights = {}) -> std::pair<double, double>
-    requires std::is_arithmetic_v<T>
+    auto FitLeastSquaresForward(Operon::Span<T const> estimated, Operon::Span<T const> target,
+                                Operon::Span<T const> weights = {}) -> std::pair<double, double>
     {
-        auto stats = weights.empty()
-            ? vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data())
-            : vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data(), weights.data());
-        auto a = stats.covariance / stats.variance_x; // scale
-        if (!std::isfinite(a)) {
-            a = 1;
+        if constexpr (std::is_same_v<T, Operon::Scalar>) {
+            auto const scaling = FitLinearScaling(estimated, target, weights);
+            return {scaling.Scale, scaling.Offset};
+        } else {
+            auto stats = weights.empty()
+                ? vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data())
+                : vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data(), weights.data());
+            auto a = stats.covariance / stats.variance_x; // scale
+            if (!std::isfinite(a)) {
+                a = 1;
+            }
+            auto b = stats.mean_y - (a * stats.mean_x); // offset
+            return {a, b};
         }
-        auto b = stats.mean_y - (a * stats.mean_x); // offset
-        return {a, b};
-    }
-
-    // Finite-aware variant: computes scale/offset from the finite subset
-    // only, returning the count of skipped (non-finite) pairs. A NaN/Inf row
-    // no longer disables scaling for every finite row via NaN-poisoned stats.
-    // NaN/Inf rows preserve their non-finiteness through `a*x + b`
-    // (NaN->NaN; Inf->+/-Inf when a != 0; Inf->NaN when a == 0 since
-    // 0*Inf==NaN before adding b), so the downstream FiniteSubset metric
-    // still detects and skips them after the in-place transform regardless
-    // of which non-finite value the scaling produces -- both NaN and Inf
-    // are excluded by the shared finiteness mask. (The symmetric "could a
-    // *previously finite* row become non-finite after scaling?" overflow
-    // case is a pre-existing risk of any linear scaling, not introduced
-    // or worsened by finite-aware scaling.) See `NormalizedMeanSquaredErrorFinite`
-    // / `MeanSquaredErrorFinite` for the mask this composes through.
-    template<typename T>
-    auto FitLeastSquaresFiniteImpl(Operon::Span<T const> estimated, Operon::Span<T const> target,
-                                   Operon::Span<T const> weights = {}) -> std::tuple<double, double, std::size_t>
-    requires std::is_arithmetic_v<T>
-    {
-        auto [stats, skipped] = weights.empty()
-            ? vstat::bivariate::accumulate<T, vstat::nan_policy::omit>(estimated.data(), estimated.data() + estimated.size(), target.data())
-            : vstat::bivariate::accumulate<T, vstat::nan_policy::omit>(estimated.data(), estimated.data() + estimated.size(), target.data(), weights.data());
-        auto a = stats.covariance / stats.variance_x; // scale
-        if (!std::isfinite(a)) {
-            a = 1;
-        }
-        auto b = stats.mean_y - (a * stats.mean_x); // offset
-        return {a, b, skipped};
     }
 
     // Outlined skip-mode body. Keeping this out of `Evaluate`'s inline path
@@ -77,11 +54,7 @@ namespace {
                        Operon::Span<T const> weights, bool scaling, double penaltyWeight) -> Operon::Scalar
     {
         if (scaling) {
-            auto [a, b, s] = weights.empty()
-                ? FitLeastSquaresFiniteImpl<T>(estimated, target)
-                : FitLeastSquaresFiniteImpl<T>(estimated, target, weights);
-            (void)s;
-            std::ranges::transform(estimated, estimated.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+            FitLinearScaling(estimated, target, weights, /*omitNonFinite=*/true).ApplyInPlace(estimated);
         }
         auto [value, nonFiniteCount] = weights.empty()
             ? error.FiniteSubset(estimated, target)
@@ -131,19 +104,19 @@ namespace {
 } // namespace
 
     auto FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target) noexcept -> std::pair<double, double> {
-        return FitLeastSquaresImpl<float>(estimated, target);
+        return FitLeastSquaresForward<float>(estimated, target);
     }
 
     auto FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target) noexcept -> std::pair<double, double> {
-        return FitLeastSquaresImpl<double>(estimated, target);
+        return FitLeastSquaresForward<double>(estimated, target);
     }
 
     auto FitLeastSquares(Operon::Span<float const> estimated, Operon::Span<float const> target, Operon::Span<float const> weights) noexcept -> std::pair<double, double> {
-        return FitLeastSquaresImpl<float>(estimated, target, weights);
+        return FitLeastSquaresForward<float>(estimated, target, weights);
     }
 
     auto FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target, Operon::Span<double const> weights) noexcept -> std::pair<double, double> {
-        return FitLeastSquaresImpl<double>(estimated, target, weights);
+        return FitLeastSquaresForward<double>(estimated, target, weights);
     }
 
     TreePropertyEvaluator::TreePropertyEvaluator(gsl::not_null<Operon::Problem const*> problem, Property property, Operon::Scalar normalizer)
@@ -193,10 +166,7 @@ namespace {
             fit = SkipNonFiniteScore<Operon::Scalar>(error_, estimatedValues, targetValues, weights, scaling_, nonFinitePenaltyWeight_);
         } else {
             if (scaling_) {
-                auto [a, b] = weights.empty()
-                    ? FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues)
-                    : FitLeastSquaresImpl<Operon::Scalar>(estimatedValues, targetValues, weights);
-                std::ranges::transform(estimatedValues, estimatedValues.begin(), [a=a,b=b](auto x) -> auto { return (a * x) + b; });
+                FitLinearScaling(estimatedValues, targetValues, weights, /*omitNonFinite=*/false).ApplyInPlace(estimatedValues);
             }
             fit = static_cast<Operon::Scalar>(weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));
         }
