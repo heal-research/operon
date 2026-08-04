@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -333,6 +334,8 @@ TEST_CASE("ShapeConstraintPolicy validation covers GP and NSGA2 mode rules", "[s
     CHECK(Operon::ValidatePolicy({.Enforcement = static_cast<E>(1U << 9U), .UnknownViolation = Operon::Scalar{1}, .PenaltyWeight = Operon::Scalar{1}}, false));
     CHECK(Operon::ValidatePolicy({.Enforcement = E::HardReject, .UnknownViolation = Operon::Scalar{-1}, .PenaltyWeight = Operon::Scalar{1}}, false));
     CHECK(Operon::ValidatePolicy({.Enforcement = E::HardReject, .UnknownViolation = Operon::Scalar{1}, .PenaltyWeight = Operon::Scalar{-1}}, false));
+    CHECK(Operon::ValidatePolicy({.Enforcement = E::HardReject, .UnknownViolation = std::numeric_limits<Operon::Scalar>::quiet_NaN(), .PenaltyWeight = Operon::Scalar{1}}, false));
+    CHECK(Operon::ValidatePolicy({.Enforcement = E::HardReject, .UnknownViolation = Operon::Scalar{1}, .PenaltyWeight = std::numeric_limits<Operon::Scalar>::quiet_NaN()}, false));
 }
 
 TEST_CASE("ParseShapeEnforcement parses CLI enforcement tokens", "[shape-constraints]")
@@ -494,6 +497,36 @@ TEST_CASE("ShapeViolationEvaluator - identity, first-derivative, and second-deri
     auto v = violated.Measure(square);
     CHECK_FALSE(v.Feasible);
     CHECK(v.Violation == Catch::Approx(2.0));
+}
+
+TEST_CASE("ShapeViolationEvaluator - Measure() uses stable cached results across Prepare()", "[shape-constraints]")
+{
+    Fixture fx;
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1}, Operon::Scalar{1}}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
+
+    Operon::ShapeViolationEvaluator sve(&fx.nmse, cs);
+    auto const first = sve.Measure(fx.tree);
+    auto const second = sve.Measure(fx.tree);
+
+    auto checkSame = [](auto const& lhs, auto const& rhs) {
+        REQUIRE(lhs.Measurements.size() == rhs.Measurements.size());
+        CHECK(lhs.Feasible == rhs.Feasible);
+        CHECK(lhs.Violation == rhs.Violation);
+        for (std::size_t i = 0; i < lhs.Measurements.size(); ++i) {
+            CHECK(lhs.Measurements[i].Certified == rhs.Measurements[i].Certified);
+            CHECK(lhs.Measurements[i].Bound == rhs.Measurements[i].Bound);
+            CHECK(lhs.Measurements[i].Violation == rhs.Measurements[i].Violation);
+        }
+    };
+    checkSame(first, second);
+
+    std::vector<Operon::Individual> pop{Fixture::MakeIndividual(fx.tree)};
+    sve.Prepare(pop);
+    checkSame(first, sve.Measure(fx.tree));
 }
 
 TEST_CASE("ShapeViolationEvaluator - unknown violation and empty constraint set", "[shape-constraints]")
