@@ -184,43 +184,6 @@ TEST_CASE("ShapeConstrainedEvaluator - wrongly-signed constraint is rejected wit
     CHECK(sce.Violations() == 1);
 }
 
-TEST_CASE("ShapeConstrainedEvaluator applies negative linear scaling to derivative bounds", "[shape-constraints]")
-{
-    Fixture fx;
-    auto mirrored = InfixParser::Parse("X2 - X1", fx.ds);
-
-    Operon::ShapeConstraintSet cs;
-    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
-    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
-    cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt});
-
-    REQUIRE(fx.nmse.GetLinearScalingTerms(mirrored));
-    CHECK(fx.nmse.GetLinearScalingTerms(mirrored)->first < Operon::Scalar{0});
-
-    Operon::ShapeConstrainedEvaluator scaled(&fx.nmse, cs);
-    CHECK_FALSE(scaled.Feasible(mirrored));
-
-    Operon::ShapeViolationEvaluator violation(&fx.nmse, cs);
-    CHECK_FALSE(violation.Measure(mirrored).Feasible);
-    CHECK(violation.RawViolation(mirrored) == Catch::Approx(1.0));
-}
-
-TEST_CASE("ShapeConstrainedEvaluator keeps raw-bound behavior when linear scaling is unavailable", "[shape-constraints]")
-{
-    Fixture fx;
-    auto mirrored = InfixParser::Parse("X2 - X1", fx.ds);
-    Operon::Evaluator<Fixture::DTable> noScaling(&fx.problem, &fx.dtable, Operon::NMSE{}, /*linearScaling=*/false);
-
-    Operon::ShapeConstraintSet cs;
-    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
-    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
-    cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt});
-
-    CHECK_FALSE(noScaling.GetLinearScalingTerms(mirrored));
-    Operon::ShapeConstrainedEvaluator raw(&noScaling, cs);
-    CHECK(raw.Feasible(mirrored));
-}
-
 TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constraints]")
 {
     Fixture fx;

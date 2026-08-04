@@ -445,7 +445,7 @@ auto main(int argc, char** argv) -> int
         auto best = reporter.GetBest();
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10));
         if (result.contains("pareto-front")) {
-            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem, scale, activeEvaluator);
+            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem, scale);
         }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
