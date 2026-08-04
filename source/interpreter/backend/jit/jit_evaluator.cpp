@@ -5,7 +5,6 @@
 #ifdef HAVE_ASMJIT
 
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
-#include "operon/core/tree_hash.hpp"
 #include "operon/core/tree_diff.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/interpreter/interpreter.hpp"
@@ -118,61 +117,6 @@ auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> CompileMeta c
         if (e.meta) { meta = e.meta.get(); }
     });
     return meta;
-}
-
-auto JitEvaluator::GetLinearScalingTerms(Operon::Tree const& tree) const -> std::optional<std::pair<Operon::Scalar, Operon::Scalar>>
-{
-    if (!scaling_) { return std::nullopt; }
-
-    auto const hash = Operon::detail::HashTreeForMemo(tree);
-    std::pair<Operon::Scalar, Operon::Scalar> result{};
-    linearScalingCache_.LazyEmplace(hash,
-        [&](auto const& e) { result = e.Value; },
-        [&](auto& e) {
-            auto const* problem = GetProblem();
-            auto const* dataset = problem->GetDataset();
-            auto const range = problem->TrainingRange();
-            auto const targetValues = problem->TargetValues(range);
-            auto const weightsOpt = problem->Weights(range);
-            auto const weights = weightsOpt.value_or(Span<Scalar const>{});
-
-            Operon::Vector<Operon::Scalar> estimatedValues(range.Size());
-            auto const structuralHash = zobrist_->ComputeHash(tree);
-            CompileMeta const* compiled = GetOrCompile(tree, structuralHash);
-            if (compiled != nullptr) {
-                auto const nRows = static_cast<int32_t>(range.Size());
-                auto const nRowsPad = (nRows + 7) & ~7; // NOLINT(hicpp-signed-bitwise)
-
-                thread_local std::vector<Hash> varOrderBuf;
-                thread_local std::vector<float const*> colPtrs;
-                varOrderBuf = VarOrder(tree);
-                colPtrs.resize(varOrderBuf.size());
-                for (std::size_t i = 0; i < varOrderBuf.size(); ++i) {
-                    colPtrs[i] = dataset->GetPaddedValues(varOrderBuf[i]) + static_cast<std::ptrdiff_t>(range.Start());
-                }
-
-                thread_local std::vector<Scalar> scratch;
-                scratch.resize(static_cast<std::size_t>(nRowsPad));
-
-                thread_local std::vector<Scalar> coeff;
-                tree.GetCoefficients(coeff);
-                ENSURE(static_cast<int>(varOrderBuf.size()) == compiled->nVars);
-                ENSURE(static_cast<int>(coeff.size()) == compiled->nConsts);
-                compiled->fn(scratch.data(), colPtrs.data(), nRowsPad, coeff.empty() ? nullptr : coeff.data());
-                std::copy_n(scratch.data(), nRows, estimatedValues.data());
-            } else {
-                thread_local ScalarDispatch fallbackDtable;
-                thread_local std::vector<Scalar> coeffBuf;
-                tree.GetCoefficients(coeffBuf);
-                Interpreter<Scalar, ScalarDispatch> const interp{&fallbackDtable, dataset, &tree};
-                interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, estimatedValues);
-            }
-
-            auto [a, b] = FitLeastSquares(Span<Scalar const>(estimatedValues.data(), estimatedValues.size()), targetValues, weights);
-            result = {static_cast<Operon::Scalar>(a), static_cast<Operon::Scalar>(b)};
-            e.Value = result;
-        });
-    return result;
 }
 
 auto JitEvaluator::Evaluate(RandomGenerator& /*rng*/, Individual const& ind,
