@@ -813,4 +813,52 @@ TEST_CASE("ShapeConstrainedEvaluator - Prepare() populates the feasibility cache
     CHECK_FALSE(sce.Feasible(infeasibleTree));
 }
 
+TEST_CASE("SCRATCH pappus-fix false-feasibility repro", "[.][shape-constraints-scratch]")
+{
+    auto runCase = [](std::string const& label, std::string const& csvPath, std::string const& target,
+                       std::string const& constraintsJson, std::string const& model) {
+        Operon::Dataset ds(csvPath, /*hasHeader=*/true);
+        Operon::Problem problem(&ds);
+        problem.SetTrainingRange({0, static_cast<std::size_t>(ds.Rows())});
+        problem.SetTestRange({0, static_cast<std::size_t>(ds.Rows())});
+        problem.SetTarget(target);
+        problem.SetDefaultInputs();
+
+        auto path = WriteShapeConfig(label, constraintsJson);
+        auto loaded = Operon::LoadShapeConstraints(path.string());
+        REQUIRE(loaded);
+
+        using DTable = DispatchTable<Operon::Scalar>;
+        DTable dtable;
+        Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+        auto tree = InfixParser::Parse(model, ds);
+        Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, *loaded);
+        auto feasible = sce.Feasible(tree);
+        WARN(label << " Feasible()=" << feasible << " (expected false -- independent check found a real violation)");
+        CHECK_FALSE(feasible);
+    };
+
+    auto const base = std::string{"/home/bogdb/src/operon-workspace/operon-publications/experiments/shape-constraints-reproduction/results/full_run/"};
+    auto const flowStressConstraints = R"json({"domains": {"T": [350, 510], "phi": [0, 0.7], "phi_dot": [0.001, 10]}, "constraints": [{"op": "id", "bound": [0, 200]}, {"op": "derivative", "variable": "T", "order": 1, "sign": -1}, {"op": "derivative", "variable": "phi_dot", "order": 1, "sign": 1}, {"op": "derivative", "variable": "phi", "order": 2, "sign": -1}]})json";
+    auto const carsConstraints = R"json({"domains": {"cylinders": [3, 8], "displacement": [68, 455], "horsepower": [46, 230], "weight": [1613, 5140], "acceleration": [8, 23.5]}, "constraints": [{"op": "id", "bound": [9.0, 46.6]}, {"op": "derivative", "variable": "displacement", "order": 1, "sign": -1}, {"op": "derivative", "variable": "horsepower", "order": 1, "sign": -1}, {"op": "derivative", "variable": "weight", "order": 1, "sign": -1}]})json";
+
+    SECTION("Case A") {
+        runCase("caseA", base + "Flow_stress_data.csv", "kf", flowStressConstraints,
+            "((-1656471.375000) + (3.006961 * (((2.070481 * phi) + ((((((-0.107675) * T) + (2.079886 + (1.591433 * phi_dot))) + (((2.379283 * phi_dot) + (sin(((1.591433 * phi_dot) / 1.596721)) + (exp(exp(2.646259)) + (sin((1.591433 * phi_dot)) + (log((1.155026 + (1.591433 * phi_dot))) + (((-0.133379) * T) + log((1.155026 + (1.591433 * phi_dot))))))))) + ((sin((1.766540 * phi_dot)) + exp(2.313587)) / (exp(1.995921) ^ 2)))) * 0.065602) / 1.268149)) * exp(2.079886))))");
+    }
+    SECTION("Case B") {
+        runCase("caseB", base + "Flow_stress_data.csv", "kf", flowStressConstraints,
+            "(175.725388 + (0.000001 * (((((1.661356 * phi_dot) ^ 2) ^ 2) + ((((((cos(((3.070189 * phi_dot) / (-3.244338))) / 0.146962) ^ 2) ^ 2) / (-2.819170)) + (((((((2.715578 * phi_dot) ^ 2) + (((3.070189 * phi_dot) / (-3.244338)) / 0.035275)) + ((-0.302006) * T)) + (((1.920551 * phi_dot) ^ 2) + ((((((3.367852 * phi_dot) / (-3.460277)) / (-0.037834)) + ((-1.131171) * T)) / (-0.037834)) + ((1.920551 * phi_dot) ^ 2)))) + ((-1.244043) * T)) / (-0.037834))) / (-0.037834))) / (-0.037834))))");
+    }
+    SECTION("Case C") {
+        runCase("caseC", base + "Flow_stress_data.csv", "kf", flowStressConstraints,
+            "((-0.541280) + (0.997766 * (((((((((((((((((-0.000020) * phi) + ((-0.000002) * phi_dot)) + (-1.965610)) + 1.881476) * 2041.673462) + ((-1.431116) * (-119.989891))) + (0.000224 * T)) / 168.553055) * ((-145.032639) + ((1.275833 * phi_dot) + (0.093371 * T)))) + (-1.971097)) + 1.879035) * 2041.673462) + ((-1.337756) * (-112.162704))) + ((-0.049931) * T)) + 159.525269) + (-6.337012))))");
+    }
+    SECTION("Case D") {
+        runCase("caseD", base + "Cars_data.csv", "mpg", carsConstraints,
+            "(13634192.000000 + ((-0.001787) * ((((2.305640 * displacement) + ((1.891310 * weight) + ((exp(exp(1.582666)) * ((1.250606 * cylinders) + exp(exp(2.884111)))) + (0.360743 * displacement)))) + ((0.781982 * cylinders) + (exp(0.058231) + ((((-0.539599) * cylinders) + ((0.506669 * displacement) + ((0.506669 * displacement) + 0.303519))) + (exp(exp(1.582666)) + (exp(0.303519) + (exp(1.582666) * 0.058231))))))) + (((1.525301 * weight) * exp((0.058231 + exp(0.303519)))) * 0.058231))))");
+    }
+}
+
 } // namespace Operon::Test
