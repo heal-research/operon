@@ -67,10 +67,10 @@ auto VariableIndex(VariableGradientDag const& dag, Operon::Hash variable) -> std
 // arithmetic while still catching a genuinely unsound enclosure.
 constexpr Operon::Scalar IllConditionedThreshold = Operon::Scalar{4};
 
-auto TryAffineBound(Tree const& tree, AffineEvaluator::DomainMap const& domains) -> BoundResult
+auto TryAffineBound(Tree const& tree, AffineEvaluator& ae) -> BoundResult
 {
     try {
-        AffineEvaluator ae(&tree, domains);
+        ae.SetTree(&tree);
         auto affine = ae.Evaluate(tree.GetCoefficients());
         // Catastrophic cancellation can make this float32 enclosure unsound:
         // an intermediate center orders of magnitude larger than the result
@@ -116,17 +116,17 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator::DomainMap const& domains)
 // common case). SecondDerivative still builds its own dag2 from the sliced
 // first-derivative tree `d1`, which IS variable-specific.
 auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
-              AffineEvaluator::DomainMap const& domains,
+              AffineEvaluator& ae,
               VariableGradientDag const& dag1) -> BoundResult
 {
-    if (op == ShapeConstraintOp::Identity) { return TryAffineBound(tree, domains); }
+    if (op == ShapeConstraintOp::Identity) { return TryAffineBound(tree, ae); }
 
     auto const i1 = VariableIndex(dag1, variable);
     if (!i1) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
     if (!dag1.Certain[*i1]) { return tl::unexpected("variable derivative involves an op with no differentiation rule"); }
     auto d1 = SliceToTree(dag1, dag1.Roots[*i1]);
     if (op == ShapeConstraintOp::FirstDerivative) {
-        return d1 ? TryAffineBound(*d1, domains) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
+        return d1 ? TryAffineBound(*d1, ae) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
     }
 
     // SecondDerivative: differentiate the materialized first-derivative
@@ -138,7 +138,7 @@ auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
     if (!i2) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
     if (!dag2.Certain[*i2]) { return tl::unexpected("variable derivative involves an op with no differentiation rule"); }
     auto d2 = SliceToTree(dag2, dag2.Roots[*i2]);
-    return d2 ? TryAffineBound(*d2, domains) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
+    return d2 ? TryAffineBound(*d2, ae) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
 }
 
 auto ResolveShapeConstraintContext(gsl::not_null<Operon::Problem const*> problem, ShapeConstraintSet const& constraints,
@@ -216,6 +216,15 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
     }
     ShapeConstraintMeasurementSummary summary;
     summary.Measurements.reserve(constraints.Constraints.size());
+    // One AffineEvaluator shared across every bound in this set: skip
+    // re-copying the DomainMap and re-growing primal_ capacity for each
+    // constraint (typical Friction config = identity + two first-derivative
+    // constraints, so 3x savings on those costs per individual per cache
+    // miss). SetTree() retargets it at each constraint's slice (the original
+    // tree for identity, the sliced derivative trees for the derivatives);
+    // ctx_ keeps a single monotonic noise-symbol counter, which is sound --
+    // the bounds are consumed as intervals independently of each other.
+    AffineEvaluator ae(&tree, domainsByHash);
     // Built on first use by BoundFor; shared across every derivative
     // constraint in this bound set (see BoundFor's comment). Identity
     // constraints never touch it, so it is lazily constructed only when a
@@ -228,7 +237,7 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
     for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
         auto const& c = constraints.Constraints[i];
         ShapeConstraintMeasurement m;
-        auto const bound = BoundFor(c.Op, tree, constraintVarHash[i], domainsByHash, SharedDag1());
+        auto const bound = BoundFor(c.Op, tree, constraintVarHash[i], ae, SharedDag1());
         if (dbg) {
             std::fprintf(stderr, "[shape] c[%zu] op=%d var_hash=%llu raw=", i, static_cast<int>(c.Op),
                          static_cast<unsigned long long>(constraintVarHash[i]));
