@@ -385,6 +385,12 @@ auto main(int argc, char** argv) -> int
             problem.StandardizeData(problem.TrainingRange());
         }
         tf::Executor executor(threads);
+        // Reuse the same executor for shape-constraint Prepare() rather than
+        // each evaluator owning a private one -- see
+        // ShapeConstrainedEvaluator::SetExecutor's doc comment.
+        if (shapeConstrainedStorage) { shapeConstrainedStorage->SetExecutor(executor); }
+        if (shapePenaltyStorage) { shapePenaltyStorage->SetExecutor(executor); }
+        if (shapeExtraObjectiveStorage) { shapeExtraObjectiveStorage->SetExecutor(executor); }
         auto const sorterName = result["sorter"].as<std::string>();
         Operon::RankIntersectSorter rsSorter;
         Operon::MergeSorter msSorter;

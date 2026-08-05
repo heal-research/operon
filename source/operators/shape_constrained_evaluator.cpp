@@ -14,6 +14,7 @@
 #include <tuple>
 
 #include <fmt/format.h>
+#include <taskflow/algorithm/for_each.hpp>
 #include <tl/expected.hpp>
 
 #include "operon/core/dataset.hpp"
@@ -254,6 +255,39 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
     return summary;
 }
 
+// Runs `f(i)` for i in [0,pop.size()) on `executor` when one was set (via
+// SetExecutor -- the caller's own, already-sized-to-`--threads` executor,
+// e.g. the one cli/source/operon_gp.cpp threads into both gp.Run() and
+// Reporter::operator()), else sequentially. Uses executor->corun(...), not
+// run(...).get(): the only caller is Prepare(), which is itself already
+// running as a task on that same executor (a single non-parallel "prepare
+// evaluator" task, see gp.cpp/nsga2.cpp), so run().get() would risk a
+// worker blocking on a taskflow that needs a free worker to progress --
+// corun() has the calling thread join in as a worker on the nested graph
+// instead, avoiding that deadlock (same reasoning as Reporter's own
+// executor.corun(tf) call). A private per-instance Executor was tried
+// first and measured to not help (~3x higher CPU, no wall-clock change on
+// a real 200-generation run) while needlessly doubling the machine's
+// thread count on top of the caller's own executor -- reusing the
+// caller's is both correct and matches this codebase's existing pattern.
+// NULL is never passed for f: the only caller is Prepare(), whose wrapped
+// cache Emplace already serializes same-hash concurrent callers, so the
+// only shared mutable state here is the cache shards the body writes
+// through.
+template<typename F>
+auto ParallelForPopulation(tf::Executor* executor, Operon::Span<Operon::Individual const> pop, F&& f) -> void
+{
+    auto const n = pop.size();
+    if (n == 0) { return; }
+    if (executor == nullptr || n == 1) {
+        for (std::size_t i = 0; i != n; ++i) { f(i); }
+        return;
+    }
+    tf::Taskflow taskflow;
+    taskflow.for_each_index(std::size_t{0}, n, std::size_t{1}, [&](std::size_t i) { f(i); });
+    executor->corun(taskflow);
+}
+
 } // namespace
 
 ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase const*> evaluator,
@@ -265,7 +299,6 @@ ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase
 {
     ResolveShapeConstraintContext(evaluator->GetProblem(), constraints_, constraintVarHash_, domainsByHash_, "ShapeConstrainedEvaluator");
 }
-
 
 auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
 {
@@ -357,9 +390,9 @@ auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) cons
 {
     evaluator_->Prepare(pop);
     feasibleCache_.Clear();
-    for (auto const& ind : pop) {
-        std::ignore = Feasible(ind.Genotype); // populates the cache as a side effect
-    }
+    ParallelForPopulation(taskExecutor_, pop, [&](std::size_t i) {
+        std::ignore = Feasible(pop[i].Genotype); // populates the cache as a side effect
+    });
 }
 
 auto ShapeConstrainedEvaluator::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
@@ -408,9 +441,9 @@ auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeCo
 auto ShapeViolationEvaluator::Prepare(Operon::Span<Individual const> pop) const -> void
 {
     measurementCache_.Clear();
-    for (auto const& ind : pop) {
-        std::ignore = Measure(ind.Genotype); // populates the cache as a side effect
-    }
+    ParallelForPopulation(taskExecutor_, pop, [&](std::size_t i) {
+        std::ignore = Measure(pop[i].Genotype); // populates the cache as a side effect
+    });
 }
 
 auto ShapeViolationEvaluator::RawViolation(Operon::Tree const& tree) const -> Operon::Scalar
