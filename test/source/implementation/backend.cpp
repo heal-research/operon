@@ -98,10 +98,17 @@ TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
 
     // clang-format off
     std::array cases {
-        // Clamped at ±88.723; test only above -86 where outputs are normal floats
-        // (below that, eve::ldexp flushes subnormals to 0 -- acceptable for GP use).
+        // Clamped at ±88.723; the main sweep stays above -86 where outputs
+        // are normal floats (below that, down to ~-104, exp(x) is a
+        // representable subnormal that eve::ldexp still flushes to 0 --
+        // an accepted, separate limitation, not tested here). The extra
+        // points below -104 regression-test a *different*, now-fixed bug:
+        // FastExp once returned its raw input unchanged (not 0) out here --
+        // e.g. FastExp(-128) used to return -128 -- because a
+        // `max(ldexp_result, a)` clamp meant to guard overflow also, wrongly,
+        // floored the underflow direction against the input itself.
         Case{ "Exp",    Backend::Exp<T,S>,
-              Linspace(-86, 88, N, {0.f, -0.f, 88.3f, -86.0f}),
+              Linspace(-86, 88, N, {0.f, -0.f, 88.3f, -86.0f, -110.f, -128.f, -200.f, -300.f}),
               [](double x){ return std::exp(x); },   2 },
 
         // SQRTHF branch at x≈0.7071; near-1 and small positive values.
