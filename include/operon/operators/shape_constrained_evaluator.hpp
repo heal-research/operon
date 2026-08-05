@@ -11,6 +11,8 @@
 #include <optional>
 #include <string>
 
+namespace tf { class Executor; } // NOLINT(readability-identifier-naming) -- Taskflow's own namespace
+
 namespace Operon {
 
 struct ShapeConstraintMeasurement {
@@ -105,6 +107,24 @@ public:
     [[nodiscard]] auto WorstValue() const noexcept -> double { return worstValue_; }
     void SetWorstValue(double value) { worstValue_ = value; }
 
+    // The tf::Executor Prepare() uses to parallelize its population-wide
+    // Feasible() pre-warm -- the SAME executor the caller's GP/NSGA2 loop
+    // already created (see cli/source/operon_gp.cpp: `tf::Executor
+    // executor(threads);` threaded into both `gp.Run(executor, ...)` and
+    // `Reporter::operator()`), not a private one owned by this class. A
+    // private/self-owned executor was tried first and measured to not
+    // help (~3x higher CPU, no wall-clock change on a real run) while
+    // needlessly doubling the machine's thread count; reusing the
+    // caller's is both correct (one thread pool, sized once to
+    // --threads) and matches this codebase's existing pattern (see
+    // Reporter, which also takes a `tf::Executor&` and calls
+    // `executor.corun(...)`, never owns one). Not set (nullptr) means
+    // Prepare() runs its population loop sequentially -- the safe
+    // default for any caller (e.g. a test) that constructs this evaluator
+    // without wiring an executor. Named distinctly from `evaluator_`
+    // (the wrapped inner EvaluatorBase) to avoid visual confusion.
+    void SetExecutor(tf::Executor& executor) noexcept { taskExecutor_ = &executor; }
+
     // Number of individuals rejected by the constraint check so far
     // (paper's Sec. 5.1 "constraint violations" figure). Accumulates over
     // this evaluator's lifetime, not per-generation — EvaluatorBase::Reset()
@@ -118,18 +138,27 @@ public:
     auto ObjectiveCount() const -> std::size_t override { return evaluator_->ObjectiveCount(); }
 
     // Delegates to the inner evaluator's own Prepare(), then bulk-computes
-    // and caches Feasible() for every individual in `pop`, single-threaded
-    // (this runs from a dedicated, non-parallel taskflow task each
-    // generation — see gp.cpp/nsga2.cpp's "prepare evaluator" task — the
-    // same execution context DiversityEvaluator::Prepare already relies on
-    // for its own non-thread-safe population snapshot). This is what lets
-    // Feasible() avoid recomputing the affine bound for individuals a
-    // caller (e.g. FeasibilityFirstComparison, used during selection/
-    // reinsertion) asks about again after they were just evaluated or
-    // just prepared: a cache hit, not a fresh walk. The cache itself is
-    // cleared and rebuilt on every call, so it always reflects `pop` as of
-    // the most recent Prepare() -- state is not carried forward silently
-    // across generations.
+    // and caches Feasible() for every individual in `pop`. The outer GP/
+    // NSGA2 loop still schedules this as one non-parallel taskflow task
+    // (the same single-task context DiversityEvaluator::Prepare relies on
+    // for its own non-thread-safe population snapshot, and Reporter also
+    // runs from) — Prepare() parallelizes *within* that task by building
+    // a local tf::Taskflow over the population and running it via
+    // `taskExecutor_->corun(...)` on the caller's own executor (see
+    // SetExecutor), exactly like Reporter does for its own nested
+    // taskflow. corun() (not run().get()) is required here specifically
+    // because Prepare() is itself already running as a task on that same
+    // executor -- run().get() would block a worker thread waiting on a
+    // taskflow that needs a free worker to make progress, a classic
+    // nested-executor deadlock risk; corun() has the calling thread join
+    // in as a worker on the nested graph instead of just blocking.
+    // feasibleCache_ is already a shard-locked parallel map whose
+    // LazyEmplace serializes same-hash callers, and Feasible()/Measure()/
+    // FitLinearScaling only read shared immutable state (Problem/Dataset/
+    // constraints), so concurrent Feasible() calls are safe. The cache is
+    // cleared and rebuilt on every call, so it always reflects `pop` as
+    // of the most recent Prepare(). Runs sequentially if no executor was
+    // ever set.
     auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> override { return evaluator_->Stats(); }
@@ -164,6 +193,9 @@ private:
     Operon::Vector<Operon::Hash> constraintVarHash_;
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     double worstValue_{1.0};
+    // Non-owning; set via SetExecutor(). nullptr means Prepare() runs
+    // sequentially -- see Prepare()'s doc comment.
+    tf::Executor* taskExecutor_{nullptr};
     mutable std::atomic_size_t violations_{0};
 
     struct FeasibleData {
@@ -185,6 +217,10 @@ public:
     [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar;
     [[nodiscard]] auto Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary;
 
+    // See ShapeConstrainedEvaluator::SetExecutor — Prepare()'s population
+    // Measure() pre-warm reuses the caller's executor the same way.
+    void SetExecutor(tf::Executor& executor) noexcept { taskExecutor_ = &executor; }
+
     auto Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
     auto ObjectiveCount() const -> std::size_t override { return 1; }
     auto Prepare(Operon::Span<Individual const> pop) const -> void override;
@@ -197,6 +233,7 @@ private:
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     Operon::Scalar weight_{1};
     Operon::Scalar unknownViolation_{1};
+    tf::Executor* taskExecutor_{nullptr};
 
     struct MeasurementData {
         ShapeConstraintMeasurementSummary Value{};
