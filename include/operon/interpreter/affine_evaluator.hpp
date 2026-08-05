@@ -6,8 +6,6 @@
 
 #include <fmt/format.h>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
 #include <functional>
 #include <gsl/pointers>
 #include <optional>
@@ -303,12 +301,6 @@ public:
             // one entry, so tracking primal_.back() here feeds the max from all
             // push sites (Constant/Variable/Ref/folds/registry) at once.
             maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(primal_.back().center()));
-            if (std::getenv("OPERON_AFFINE_DEBUG")) {
-                auto const& p = primal_.back();
-                std::fprintf(stderr, "[aff] [%zu] name=%s val=%.9g center=%.9g radius=%.9g nterms=%zu\n",
-                             i, node.Name().c_str(), static_cast<double>(v),
-                             static_cast<double>(p.center()), static_cast<double>(p.radius()), p.size());
-            }
         }
         return primal_.back();
     }
