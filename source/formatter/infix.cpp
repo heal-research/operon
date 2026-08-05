@@ -22,6 +22,13 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
         } else {
             throw std::runtime_error(fmt::format("A key with hash value {} could not be found in the variable map.\n", s.HashValue));
         }
+    } else if (s.IsRef()) {
+        // Ref is a leaf (Arity == 0) that points backward to a shared
+        // subtree via RefTo, not the physically preceding node -- without
+        // this case the generic operator fallback below would recurse into
+        // `i-1`, silently formatting the wrong subtree for any tree with
+        // structural sharing (e.g. a symbolic-derivative DAG).
+        FormatNode(tree, variableNames, s.RefTo, current, decimalPrecision);
     } else {
         if (s.Value != 1) {
             fmt::format_to(std::back_inserter(current), "(");
