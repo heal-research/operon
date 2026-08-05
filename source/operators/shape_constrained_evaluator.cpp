@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -57,11 +59,38 @@ auto VariableIndex(VariableGradientDag const& dag, Operon::Hash variable) -> std
 // tl::expected is a separate, larger change (deferred); this is the one
 // place that adapts its exceptions to this file's own expected-based
 // internals, so the rest of this file never needs a try/catch.
+// k: flag a bound as uncertified when the float32 rounding-error floor
+// implied by the largest intermediate center exceeds k * the final radius.
+// A pathological cancellation (Case D) reaches ~909 vs radius ~9 (~100x);
+// k=4 leaves two orders of magnitude of headroom for benign large-then-small
+// arithmetic while still catching a genuinely unsound enclosure.
+constexpr Operon::Scalar IllConditionedThreshold = Operon::Scalar{4};
+
 auto TryAffineBound(Tree const& tree, AffineEvaluator::DomainMap const& domains) -> BoundResult
 {
     try {
         AffineEvaluator ae(&tree, domains);
-        return ae.Evaluate(tree.GetCoefficients()).to_interval();
+        auto affine = ae.Evaluate(tree.GetCoefficients());
+        // Catastrophic cancellation can make this float32 enclosure unsound:
+        // an intermediate center orders of magnitude larger than the result
+        // implies a rounding-error floor exceeding the tracked radius, so the
+        // true value may fall outside the certified interval. Treat as
+        // uncertified (same path as a pow domain error or a NaN bound) rather
+        // than trusting a possibly-wrong interval.
+        constexpr auto eps = std::numeric_limits<Operon::Scalar>::epsilon();
+        auto const impliedErrorFloor = ae.MaxAbsCenter() * eps;
+        // A zero radius means the form is an exact constant: every noise symbol
+        // cancelled (e.g. a linear model's derivative, or x - x). That is
+        // structurally sound, not an underestimate -- comparing floor > k*0 is
+        // degenerate (any nonzero floor fires), so only judge forms that track
+        // real variable uncertainty.
+        auto const r = affine.radius();
+        if (r > 0 && impliedErrorFloor > IllConditionedThreshold * r) {
+            return tl::unexpected(fmt::format(
+                "ill-conditioned: intermediate magnitude implies rounding error {} exceeds result radius {}",
+                impliedErrorFloor, affine.radius()));
+        }
+        return affine.to_interval();
     } catch (std::exception const& e) {
         return tl::unexpected(std::string(e.what()));
     }
@@ -171,17 +200,35 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
     Operon::Tree const& tree, Operon::Scalar unknownViolation,
     std::optional<Operon::LinearScaling> scaling) -> ShapeConstraintMeasurementSummary
 {
+    static bool const dbg = std::getenv("OPERON_SHAPE_DEBUG") != nullptr;
+    if (dbg && scaling) {
+        std::fprintf(stderr, "[shape] scaling Scale=%.9g Offset=%.9g\n", scaling->Scale, scaling->Offset);
+    } else if (dbg) {
+        std::fprintf(stderr, "[shape] no scaling (nullopt)\n");
+    }
     ShapeConstraintMeasurementSummary summary;
     summary.Measurements.reserve(constraints.Constraints.size());
     for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
         auto const& c = constraints.Constraints[i];
         ShapeConstraintMeasurement m;
         auto const bound = BoundFor(c.Op, tree, constraintVarHash[i], domainsByHash);
+        if (dbg) {
+            std::fprintf(stderr, "[shape] c[%zu] op=%d var_hash=%llu raw=", i, static_cast<int>(c.Op),
+                         static_cast<unsigned long long>(constraintVarHash[i]));
+            if (bound) std::fprintf(stderr, "[%.9g, %.9g]", bound->inf(), bound->sup());
+            else std::fprintf(stderr, "<error: %s>", bound.error().c_str());
+            std::fprintf(stderr, "\n");
+        }
         if (!bound) {
             m.Certified = false;
             m.Violation = unknownViolation;
         } else {
             auto const checkedBound = scaling ? TransformBound(c.Op, *bound, *scaling) : *bound;
+            if (dbg) {
+                std::fprintf(stderr, "[shape] c[%zu] checked=[%.9g, %.9g] finite=%d\n", i,
+                             checkedBound.inf(), checkedBound.sup(),
+                             static_cast<int>(std::isfinite(checkedBound.inf()) && std::isfinite(checkedBound.sup())));
+            }
             // A NaN endpoint (e.g. Scale == 0 times an unbounded raw-tree
             // interval, 0 * inf) must not reach ConstraintViolation:
             // std::max(0, NaN) returns 0 (NaN comparisons are always false),
@@ -195,6 +242,10 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
                 m.Bound = std::pair{checkedBound.inf(), checkedBound.sup()};
                 m.Violation = ConstraintViolation(c, checkedBound);
             }
+        }
+        if (dbg) {
+            std::fprintf(stderr, "[shape] c[%zu] certified=%d violation=%.9g\n", i,
+                         static_cast<int>(m.Certified), static_cast<double>(m.Violation));
         }
         if (!m.Certified || m.Violation != Operon::Scalar{0}) { summary.Feasible = false; }
         summary.Violation += m.Violation;

@@ -5,6 +5,9 @@
 #define OPERON_AFFINE_EVALUATOR_HPP
 
 #include <fmt/format.h>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <gsl/pointers>
 #include <optional>
@@ -138,6 +141,12 @@ public:
         return primal_.empty() ? 0 : primal_.back().size();
     }
 
+    // Largest |center()| over every intermediate form pushed during the last
+    // Evaluate() call. Used by callers to gauge float32 cancellation risk: an
+    // intermediate that large implies a rounding-error floor that can exceed the
+    // tracked radius of a small final result, making the enclosure unsound.
+    [[nodiscard]] auto MaxAbsCenter() const noexcept -> Scalar { return maxAbsCenter_; }
+
     // The affine interval enclosure of the root.
     [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Affine
     {
@@ -159,6 +168,7 @@ public:
         // we can't resize — clear() preserves capacity and push_back reuses it.
         primal_.clear();
         primal_.reserve(n);
+        maxAbsCenter_ = Scalar{0};
         std::size_t ci = 0;
 
         // Add/Mul: identity-seeded folds — no spurious affine_form copy.
@@ -283,11 +293,21 @@ public:
                             primal_.push_back((*binary)(ctx_, primal_[j], primal_[k]) * v);
                             break;
                         }
-                    }
-                    throw std::runtime_error(fmt::format(
+}
+                throw std::runtime_error(fmt::format(
                         "AffineEvaluator: node kind `{}` not yet mapped",
                         node.Name()));
                 }
+            }
+            // One fabs + compare per node: every path above pushes exactly
+            // one entry, so tracking primal_.back() here feeds the max from all
+            // push sites (Constant/Variable/Ref/folds/registry) at once.
+            maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(primal_.back().center()));
+            if (std::getenv("OPERON_AFFINE_DEBUG")) {
+                auto const& p = primal_.back();
+                std::fprintf(stderr, "[aff] [%zu] name=%s val=%.9g center=%.9g radius=%.9g nterms=%zu\n",
+                             i, node.Name().c_str(), static_cast<double>(v),
+                             static_cast<double>(p.center()), static_cast<double>(p.radius()), p.size());
             }
         }
         return primal_.back();
@@ -298,6 +318,7 @@ private:
     DomainMap domains_;
     mutable Context ctx_; // shared by all forms; counter grows monotonically
     mutable std::vector<Affine> primal_; // reused across Evaluate calls
+    mutable Scalar maxAbsCenter_{0}; // largest |center()| over the last Evaluate()
 };
 
 } // namespace Operon
