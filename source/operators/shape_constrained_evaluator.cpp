@@ -106,13 +106,21 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator::DomainMap const& domains)
 // op with no rule on this variable's dependency path -- Roots[k] then isn't
 // a trustworthy "derivative is zero" claim (see tree_diff.hpp). Reported as
 // an error result here, same as any other can't-certify case.
+//
+// dag1 is the first-order gradient-dag of `tree` (df/d(variables)), built
+// once per bound set by the caller and shared across every derivative
+// constraint in it: it's a pure function of (tree, coeff) and does not
+// depend on which variable a given constraint is on. Hoisting it out of
+// here removes a previously-per-constraint rebuild that was pure redundant
+// work whenever a bound set has more than one derivative constraint (the
+// common case). SecondDerivative still builds its own dag2 from the sliced
+// first-derivative tree `d1`, which IS variable-specific.
 auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
-              AffineEvaluator::DomainMap const& domains) -> BoundResult
+              AffineEvaluator::DomainMap const& domains,
+              VariableGradientDag const& dag1) -> BoundResult
 {
     if (op == ShapeConstraintOp::Identity) { return TryAffineBound(tree, domains); }
 
-    auto const coeff = tree.GetCoefficients();
-    auto dag1 = BuildVariableGradientDag(tree, coeff);
     auto const i1 = VariableIndex(dag1, variable);
     if (!i1) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
     if (!dag1.Certain[*i1]) { return tl::unexpected("variable derivative involves an op with no differentiation rule"); }
@@ -125,8 +133,7 @@ auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
     // tree again, same variable both times — mixed partials aren't needed
     // by any constraint in this codebase's problem set.
     if (!d1) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
-    auto const coeff1 = d1->GetCoefficients();
-    auto dag2 = BuildVariableGradientDag(*d1, coeff1);
+    auto dag2 = BuildVariableGradientDag(*d1, d1->GetCoefficients());
     auto const i2 = VariableIndex(dag2, variable);
     if (!i2) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
     if (!dag2.Certain[*i2]) { return tl::unexpected("variable derivative involves an op with no differentiation rule"); }
@@ -209,10 +216,19 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
     }
     ShapeConstraintMeasurementSummary summary;
     summary.Measurements.reserve(constraints.Constraints.size());
+    // Built on first use by BoundFor; shared across every derivative
+    // constraint in this bound set (see BoundFor's comment). Identity
+    // constraints never touch it, so it is lazily constructed only when a
+    // bound set actually contains a derivative constraint.
+    std::optional<VariableGradientDag> dag1;
+    auto const SharedDag1 = [&]() -> VariableGradientDag const& {
+        if (!dag1) { dag1.emplace(BuildVariableGradientDag(tree, tree.GetCoefficients())); }
+        return *dag1;
+    };
     for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
         auto const& c = constraints.Constraints[i];
         ShapeConstraintMeasurement m;
-        auto const bound = BoundFor(c.Op, tree, constraintVarHash[i], domainsByHash);
+        auto const bound = BoundFor(c.Op, tree, constraintVarHash[i], domainsByHash, SharedDag1());
         if (dbg) {
             std::fprintf(stderr, "[shape] c[%zu] op=%d var_hash=%llu raw=", i, static_cast<int>(c.Op),
                          static_cast<unsigned long long>(constraintVarHash[i]));
