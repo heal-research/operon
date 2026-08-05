@@ -58,7 +58,7 @@ stdenv.mkDerivation rec {
       unordered_dense
       vstat
       (if enableShared then infix-parser else infix-parser-static)
-      (xxHash.overrideAttrs (old: {
+      (xxhash.overrideAttrs (old: {
         cmakeFlags = (old.cmakeFlags or [ ]) ++ pkgs.lib.optionals (!enableShared) [
           "-DBUILD_SHARED_LIBS=OFF"
         ];

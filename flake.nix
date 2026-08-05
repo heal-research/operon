@@ -24,6 +24,18 @@
     fluky.inputs.nixpkgs.follows = "nixpkgs";
     pappus.inputs.nixpkgs.follows = "nixpkgs";
     pappus.inputs.foolnotion.follows = "foolnotion";
+
+    # dedupe each sibling's own flake-parts pin against ours, so their
+    # (often stale) bundled nixpkgs-lib snapshots aren't each evaluated
+    # separately -- that's what caused the repeated deprecation-warning
+    # spam on every `nix develop`.
+    fluky.inputs.flake-parts.follows = "flake-parts";
+    lbfgs.inputs.flake-parts.follows = "flake-parts";
+    infix-parser.inputs.flake-parts.follows = "flake-parts";
+    ndsort.inputs.flake-parts.follows = "flake-parts";
+    vstat.inputs.flake-parts.follows = "flake-parts";
+    vdt.inputs.flake-parts.follows = "flake-parts";
+    pappus.inputs.flake-parts.follows = "flake-parts";
   };
 
   outputs =
