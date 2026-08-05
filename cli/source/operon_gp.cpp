@@ -337,6 +337,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         if (result["standardize"].as<bool>()) { problem.StandardizeData(problem.TrainingRange()); }
 
         tf::Executor executor(threads);
+        // Reuse the same executor for shape-constraint Prepare() rather than
+        // each evaluator owning a private one -- see
+        // ShapeConstrainedEvaluator::SetExecutor's doc comment.
+        if (shapeConstrainedStorage) { shapeConstrainedStorage->SetExecutor(executor); }
+        if (shapeViolationStorage) { shapeViolationStorage->SetExecutor(executor); }
         Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get() };
 
         auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
