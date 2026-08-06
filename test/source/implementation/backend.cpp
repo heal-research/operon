@@ -257,6 +257,39 @@ TEST_CASE("Backend NaN propagation", "[backend]")
     CHECK(allNan2(Backend::Powabs<T,S>, 2.f, NaN));
 }
 
+// eve::sinh has a confirmed third-party bug: a NaN in one SIMD lane
+// corrupts the computed result in an unrelated, non-NaN lane of the same
+// eve::wide register -- a different, cross-lane defect from the single-
+// lane NaN-swallowing pattern the "Backend NaN propagation" test above
+// checks. Backend::Sinh defends against it via SafeSinh (scrub-compute-
+// restore around eve::sinh). Verify a NaN anywhere in the batch changes
+// no *other* lane's result versus an otherwise-identical all-clean batch.
+TEST_CASE("Backend Sinh is immune to eve::sinh's cross-lane NaN corruption", "[backend]")
+{
+    Buf clean{};
+    for (std::size_t i = 0; i < S; ++i) {
+        clean.v[i] = static_cast<T>(-2.0 + 0.1 * static_cast<double>(i));
+    }
+
+    Buf dstClean{};
+    Backend::Sinh<T,S>(dstClean.v.data(), T{1}, clean.v.data());
+
+    for (std::size_t nanPos = 0; nanPos < S; ++nanPos) {
+        Buf dirty = clean;
+        dirty.v[nanPos] = NaN;
+        Buf dstDirty{};
+        Backend::Sinh<T,S>(dstDirty.v.data(), T{1}, dirty.v.data());
+        for (std::size_t i = 0; i < S; ++i) {
+            INFO("nanPos=" << nanPos << " lane=" << i);
+            if (i == nanPos) {
+                CHECK(std::isnan(dstDirty.v[i]));
+            } else {
+                CHECK(dstDirty.v[i] == dstClean.v[i]);
+            }
+        }
+    }
+}
+
 TEST_CASE("Backend Pow/Powabs ULP accuracy", "[backend]")
 {
     auto MaxUlpError2 = [](auto fn, auto ref, std::vector<T> const& xs, std::vector<T> const& ys) {

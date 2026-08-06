@@ -324,7 +324,7 @@ namespace detail {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(eve::sinh(W{pj+s}), res+s);
+            eve::store(detail::SafeSinh<T>(W{pj+s}), res+s);
         }
     }
 
@@ -336,7 +336,13 @@ namespace detail {
         auto* res = Ptr(trace, j);
         auto const* pj = Ptr(primal, j);
         for (auto s = 0UL; s < S; s += L) {
-            eve::store(T{1} - eve::sqr(eve::tanh(W{pj+s})), res+s);
+            // FastTanh, not eve::tanh directly -- eve::tanh has a confirmed
+            // cross-lane NaN corruption bug (see functions.hpp's SafeSinh
+            // comment for the general shape of the issue); FastTanh is
+            // already NaN-safe (explicit is_nan guard) and structurally
+            // immune to cross-lane corruption (pure per-lane fma/clamp
+            // arithmetic, no operation touches more than one lane at once).
+            eve::store(T{1} - eve::sqr(detail::FastTanh<T>(W{pj+s})), res+s);
         }
     }
 
