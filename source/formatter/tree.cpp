@@ -46,12 +46,19 @@ auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::
     }
     fmt::format_to(std::back_inserter(current), " D:{} L:{} N:{}\n", s.Depth, s.Level, s.Length + 1);
 
-    if (s.IsLeaf()) {
+    if (s.IsLeaf() && !s.IsRef()) {
         return;
     }
 
     if (i != tree.Length() - 1) {
         indent += isLast ? "    " : "│   ";
+    }
+
+    if (s.IsRef()) {
+        // Ref has no children of its own -- nest the shared subtree's
+        // diagram directly under it so it's visible rather than eliding it.
+        FormatNode(tree, variableNames, s.RefTo, current, indent, /*isLast=*/true, /*initialMarker=*/true, decimalPrecision);
+        return;
     }
 
     size_t count = 0;
