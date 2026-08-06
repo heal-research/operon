@@ -39,7 +39,17 @@ auto FastExp(eve::wide<T> a) -> eve::wide<T> {
         // just deep in the clamped-out region but even near the boundary,
         // e.g. a=-88.7 subnormal-adjacent), e.g. FastExp(-128) returned
         // -128 instead of ~0.
-        return eve::max(eve::ldexp(y, eve::convert(m, eve::as<std::int32_t>{})), W{T(0)});
+        auto result = eve::max(eve::ldexp(y, eve::convert(m, eve::as<std::int32_t>{})), W{T(0)});
+        // eve::clamp/min/max on this platform return the non-NaN operand
+        // instead of propagating NaN (x86 minps/maxps semantics, not IEEE
+        // NaN rules) -- the initial clamp above silently turns a NaN input
+        // into a finite boundary value, and the max(...,0) floor does the
+        // same again if that corrupted computation itself produces NaN. Both
+        // combined made FastExp(NaN) return 0 instead of NaN, e.g. from a
+        // NaN that arose from an earlier sqrt(negative) elsewhere in the
+        // tree -- silently laundering it into a plausible-looking fitness
+        // value instead of correctly propagating "undefined" outward.
+        return eve::if_else(eve::is_nan(a), eve::nan(eve::as<W>{}), result);
     } else {
         return eve::exp(a);
     }
@@ -185,7 +195,12 @@ auto FastTanh(eve::wide<T> a) -> eve::wide<T> {
         auto q = eve::fma(x2, W{T(1.19825839466702e-06f)}, W{T(1.18534705686654e-04f)});
         q = eve::fma(x2, q, W{T(2.26843463243900e-03f)});
         q = eve::fma(x2, q, W{T(4.89352518554385e-03f)});
-        return eve::if_else(tiny, x, p / q);
+        auto result = eve::if_else(tiny, x, p / q);
+        // Same eve::clamp NaN-swallowing issue as FastExp above: a NaN input
+        // (e.g. from sqrt(negative) elsewhere in the tree) silently becomes
+        // the clamp boundary instead of propagating, so FastTanh(NaN) would
+        // otherwise return -1 or 1 instead of NaN.
+        return eve::if_else(eve::is_nan(a), eve::nan(eve::as<W>{}), result);
     } else {
         // 19/18-degree rational minimax, ~2 ULP on [-18.7,18.7].
         // Ported from Eigen's ptanh_double (rminimax-optimised coefficients).
@@ -210,7 +225,8 @@ auto FastTanh(eve::wide<T> a) -> eve::wide<T> {
         q = eve::fma(x2, q, W{T(3.437448108450402717e-02)});
         q = eve::fma(x2, q, W{T(4.851805297361760360e-01)});
         q = eve::fma(x2, q, W{T(1.0)});
-        return eve::if_else(tiny, x, p / q);
+        auto result = eve::if_else(tiny, x, p / q);
+        return eve::if_else(eve::is_nan(a), eve::nan(eve::as<W>{}), result);
     }
 }
 
