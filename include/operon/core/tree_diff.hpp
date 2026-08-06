@@ -157,4 +157,23 @@ struct HessianDag {
 
 OPERON_EXPORT auto BuildHessianDag(Tree const& tree) -> HessianDag;
 
+// Like JacobianDag, but roots are the gradient w.r.t. each distinct input
+// Variable's value (grouped by Node::HashValue), not per-instance w.r.t.
+// each optimizable coefficient weight. All occurrences of one variable sum
+// into a single root.
+struct VariableGradientDag {
+    Operon::Vector<Node> Nodes;
+    std::size_t OriginalSize{};
+    Operon::Vector<Operon::Hash> Variables; // Variables[k] pairs with Roots[k]
+    Operon::Vector<std::size_t> Roots;      // SIZE_MAX means zero
+};
+
+// Gradient of tree's output w.r.t. each distinct input variable's value.
+// `coeff` (optional) supplies live weights for Optimize==true Variable
+// nodes, since — unlike every other Deriv() leaf case — this one bakes a
+// numeric weight into the dag at build time rather than resolving it later.
+OPERON_EXPORT auto BuildVariableGradientDag(
+    Tree const& tree, Operon::Span<Operon::Scalar const> coeff = {}
+) -> VariableGradientDag;
+
 } // namespace Operon
