@@ -32,7 +32,14 @@ auto FastExp(eve::wide<T> a) -> eve::wide<T> {
         y1      = eve::fma(y1, r,  W{T(5.0000001201E-1f)});
         y       = eve::fma(y,  r3, y1);
         y       = eve::fma(y,  r2, y2);
-        return eve::max(eve::ldexp(y, eve::convert(m, eve::as<std::int32_t>{})), a);
+        // exp(x) >= 0 always, so 0 -- not the (possibly very negative) raw
+        // input `a` -- is the only mathematically valid floor. The original
+        // `max(ldexp_result, a)` silently returned `a` itself whenever
+        // ldexp's underflow handling produced something below `a` (true not
+        // just deep in the clamped-out region but even near the boundary,
+        // e.g. a=-88.7 subnormal-adjacent), e.g. FastExp(-128) returned
+        // -128 instead of ~0.
+        return eve::max(eve::ldexp(y, eve::convert(m, eve::as<std::int32_t>{})), W{T(0)});
     } else {
         return eve::exp(a);
     }
