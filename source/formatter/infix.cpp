@@ -52,21 +52,31 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 fmt::format_to(std::back_inserter(current), " ^ ");
                 FormatNode(tree, variableNames, k, current, decimalPrecision);
             } else if (s.IsOp<BuiltinOp::Powabs>()) {
-                // format powabs(a,b) as abs(a)^b
+                // powabs(a,b) has its own dedicated infix_parser call syntax
+                // (see binary_symbols in infix-parser's parser.cpp) -- printing
+                // it as the decomposed "abs(a) ^ b" instead reparses as
+                // Pow(Abs(a), b), a different node that (unlike the dedicated
+                // Powabs backend) routes through FastPow's FastExp/FastLog
+                // approximation and can diverge numerically on round-trip.
                 auto j = i - 1;
                 auto k = j - tree[j].Length - 1;
-                fmt::format_to(std::back_inserter(current), "abs(");
+                fmt::format_to(std::back_inserter(current), "powabs(");
                 FormatNode(tree, variableNames, j, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), ") ^ ");
+                fmt::format_to(std::back_inserter(current), ", ");
                 FormatNode(tree, variableNames, k, current, decimalPrecision);
+                fmt::format_to(std::back_inserter(current), ")");
             } else if (s.IsOp<BuiltinOp::Aq>()) {
-                // format aq(a,b) as a / (1 + b^2)
+                // aq(a,b) likewise has its own dedicated call syntax; the
+                // previously-used decomposed "a / (sqrt(1 + b^2))" form
+                // reparses as Div/Sqrt/Add/Pow instead of a native Aq node,
+                // for the same FastPow/FastExp round-trip reason as above.
                 auto j = i - 1;
                 auto k = j - tree[j].Length - 1;
+                fmt::format_to(std::back_inserter(current), "aq(");
                 FormatNode(tree, variableNames, j, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), " / (sqrt(1 + ");
+                fmt::format_to(std::back_inserter(current), ", ");
                 FormatNode(tree, variableNames, k, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), " ^ 2))");
+                fmt::format_to(std::back_inserter(current), ")");
             } else if (s.IsOp<BuiltinOp::Fmin>()) {
                 auto j = i - 1;
                 auto k = j - tree[j].Length - 1;
