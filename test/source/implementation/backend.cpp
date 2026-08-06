@@ -284,7 +284,8 @@ TEST_CASE("Backend Sinh is immune to eve::sinh's cross-lane NaN corruption", "[b
             if (i == nanPos) {
                 CHECK(std::isnan(dstDirty.v[i]));
             } else {
-                CHECK(dstDirty.v[i] == dstClean.v[i]);
+                using U = std::conditional_t<sizeof(T) == 4, uint32_t, uint64_t>;
+                CHECK(std::bit_cast<U>(dstDirty.v[i]) == std::bit_cast<U>(dstClean.v[i]));
             }
         }
     }
