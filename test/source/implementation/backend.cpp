@@ -83,6 +83,7 @@ namespace {
     }
 
     constexpr T   Inf = std::numeric_limits<T>::infinity();
+    constexpr T   NaN = std::numeric_limits<T>::quiet_NaN();
     constexpr int N   = 10000;
 } // namespace
 
@@ -194,6 +195,66 @@ TEST_CASE("Backend transcendental ULP accuracy", "[backend]")
              << ") at x=" << worst << " got=" << got << " expected=" << expected);
         CHECK(max_ulp <= ulp_limit);
     }
+}
+
+// Regression net for a previously-unknown bug: eve::clamp/min/max on this
+// platform return the non-NaN operand instead of propagating NaN (x86
+// minps/maxps semantics, not IEEE-754 NaN rules), so any Fast* approximation
+// that range-limits its input via those primitives can silently turn a NaN
+// (e.g. from sqrt(negative) elsewhere in a tree) into a finite,
+// plausible-looking wrong value instead of correctly propagating
+// "undefined" outward. Found in FastExp and FastTanh (both fixed with an
+// explicit is_nan guard, matching FastLog's pre-existing one).
+//
+// Each lane in every batch here is either NaN or the inert padding value
+// 0.5 -- deliberately NOT mixed with other "interesting" edge-case values.
+// A NaN placed alongside an unrelated real value in the same batch was
+// found, separately, to trigger a genuine third-party bug in eve::sinh
+// (a NaN in one SIMD lane corrupting an unrelated lane's result) -- see
+// project_eve_sinh_crosslane_nan_bug in memory. That's a different bug in
+// eve itself, not something this test is trying to catch, and mixing
+// values here would make this test's pass/fail depend on unrelated
+// batch-layout coincidences.
+TEST_CASE("Backend NaN propagation", "[backend]")
+{
+    auto allNan = [](auto fn) -> bool {
+        Buf src{};
+        src.v.fill(T{0.5});
+        src.v[0] = NaN;
+        Buf dst{};
+        fn(dst.v.data(), T{1}, src.v.data());
+        return std::isnan(dst.v[0]);
+    };
+
+    CHECK(allNan(Backend::Exp<T,S>));
+    CHECK(allNan(Backend::Log<T,S>));
+    CHECK(allNan(Backend::Log1p<T,S>));
+    CHECK(allNan(Backend::Logabs<T,S>));
+    CHECK(allNan(Backend::Sin<T,S>));
+    CHECK(allNan(Backend::Cos<T,S>));
+    CHECK(allNan(Backend::Tan<T,S>));
+    CHECK(allNan(Backend::Asin<T,S>));
+    CHECK(allNan(Backend::Acos<T,S>));
+    CHECK(allNan(Backend::Atan<T,S>));
+    CHECK(allNan(Backend::Sinh<T,S>));
+    CHECK(allNan(Backend::Cosh<T,S>));
+    CHECK(allNan(Backend::Tanh<T,S>));
+    CHECK(allNan(Backend::Sqrt<T,S>));
+    CHECK(allNan(Backend::Sqrtabs<T,S>));
+    CHECK(allNan(Backend::Cbrt<T,S>));
+
+    auto allNan2 = [](auto fn, T x, T y) -> bool {
+        Buf sa{}; sa.v.fill(T{0.5}); sa.v[0] = x;
+        Buf sb{}; sb.v.fill(T{0.5}); sb.v[0] = y;
+        Buf dst{};
+        fn(dst.v.data(), T{1}, sa.v.data(), sb.v.data());
+        return std::isnan(dst.v[0]);
+    };
+
+    CHECK(allNan2(Backend::Pow<T,S>, NaN, 2.f));
+    CHECK(allNan2(Backend::Pow<T,S>, 2.f, NaN));
+    CHECK(allNan2(Backend::Powabs<T,S>, NaN, 2.f));
+    CHECK(allNan2(Backend::Powabs<T,S>, 2.f, NaN));
 }
 
 TEST_CASE("Backend Pow/Powabs ULP accuracy", "[backend]")
