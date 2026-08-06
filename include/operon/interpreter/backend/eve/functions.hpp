@@ -230,6 +230,24 @@ auto FastTanh(eve::wide<T> a) -> eve::wide<T> {
     }
 }
 
+// eve::sinh has a confirmed cross-lane bug: a NaN in one SIMD lane corrupts
+// the computed result in a completely unrelated, non-NaN lane of the same
+// eve::wide register (not the single-lane NaN-swallowing pattern FastExp/
+// FastTanh above have -- this is a different, third-party defect in eve
+// itself, reported upstream). There is no in-house FastSinh polynomial to
+// fall back to, so defend the call site directly: scrub NaN lanes to a safe
+// placeholder before calling eve::sinh (so the SIMD op never sees a NaN in
+// any lane, which is what triggers the cross-lane corruption), then restore
+// NaN in the lanes that were actually NaN.
+template<std::floating_point T>
+auto SafeSinh(eve::wide<T> a) -> eve::wide<T> {
+    using W = eve::wide<T>;
+    auto isNan = eve::is_nan(a);
+    auto safe  = eve::if_else(isNan, W{T{0}}, a);
+    auto result = eve::sinh(safe);
+    return eve::if_else(isNan, eve::nan(eve::as<W>{}), result);
+}
+
 // FastPow: exp(y * log|x|) using FastExp+FastLog, ~2 ULP.
 // Sign rule: negate when x<0 and y is a finite odd integer.
 // Matches SLEEF xfastpowf_u3500 structure. Double falls back to eve::pow.
@@ -540,7 +558,7 @@ namespace Operon::Backend {
         using W = eve::wide<T>;
         constexpr auto L = W::size();
         for (auto i = 0UL; i < S; i += L) {
-            eve::store(weight * eve::sinh(W{arg + i}), res+i);
+            eve::store(weight * detail::SafeSinh<T>(W{arg + i}), res+i);
         }
     }
 
