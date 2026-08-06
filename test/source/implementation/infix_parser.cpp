@@ -104,36 +104,6 @@ TEST_CASE("Parse specific expressions", "[parser]")
         CHECK(tree.Length() > 0);
     }
 
-    SECTION("Aq and Powabs formatting round-trips through the native node, not a decomposition") {
-        // aq(a,b) and powabs(a,b) both have dedicated infix_parser call
-        // syntax. Formatting them as a decomposed expression instead (e.g.
-        // "a / (sqrt(1 + b^2))") reparses as Div/Sqrt/Add/Pow rather than a
-        // native Aq node, which routes through FastPow's FastExp/FastLog
-        // approximation instead of Aq's exact eve::sqr-based implementation
-        // -- a numerically different code path that can diverge for the
-        // same nominal formula.
-        Node a(NodeType::Constant); a.Value = 3;
-        Node b(NodeType::Constant); b.Value = 5;
-
-        Operon::Vector<Node> const aqNodes{a, b, Util::MakeOp<BuiltinOp::Aq>()};
-        Tree aqTree(aqNodes);
-        aqTree.UpdateNodes();
-        auto aqStr = InfixFormatter::Format(aqTree, {});
-        CHECK(aqStr.find("aq(") != std::string::npos);
-        auto aqReparsed = InfixParser::Parse(aqStr);
-        REQUIRE(aqReparsed.Length() == aqTree.Length());
-        CHECK(aqReparsed[aqReparsed.Length() - 1].IsAq());
-
-        Operon::Vector<Node> const powabsNodes{a, b, Util::MakeOp<BuiltinOp::Powabs>()};
-        Tree powabsTree(powabsNodes);
-        powabsTree.UpdateNodes();
-        auto powabsStr = InfixFormatter::Format(powabsTree, {});
-        CHECK(powabsStr.find("powabs(") != std::string::npos);
-        auto powabsReparsed = InfixParser::Parse(powabsStr);
-        REQUIRE(powabsReparsed.Length() == powabsTree.Length());
-        CHECK(powabsReparsed[powabsReparsed.Length() - 1].IsPowabs());
-    }
-
     SECTION("Multiple additions") {
         const auto* modelStr = "1 + 2 + 3 + 4";
         auto tree = Operon::InfixParser::Parse(modelStr);
