@@ -131,7 +131,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     mutator.Add(&insertSub,  1.0);
 
     // evaluator, coefficient optimizer, selectors, offspring generator
-    Operon::Evaluator<DT> evaluator { &problem, &dtable, Operon::MSE{}, /*linearScaling=*/true };
+    Operon::Evaluator<DT> evaluator { &problem, &dtable, Operon::MSE{} };
     evaluator.SetBudget(std::numeric_limits<size_t>::max()); // generations is the only stop criterion
 
     Operon::LevenbergMarquardtOptimizer<DT, Operon::OptimizerType::Eigen> lmOptimizer {

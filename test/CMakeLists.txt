@@ -53,6 +53,8 @@ add_executable(operon_test
     source/implementation/random.cpp
     source/implementation/selection.cpp
     source/implementation/serialization.cpp
+    source/implementation/shape_constrained_evaluator.cpp
+    ../cli/source/shape_constraints_config.cpp
     source/implementation/standard_library.cpp
     source/performance/autodiff.cpp
     source/performance/creator.cpp
@@ -75,7 +77,7 @@ if(vdt_FOUND)
     target_compile_definitions(operon_test PRIVATE OPERON_HAVE_VDT)
 endif()
 target_compile_features(operon_test PRIVATE cxx_std_23)
-target_include_directories(operon_test PRIVATE ${PROJECT_SOURCE_DIR}/source/thirdparty)
+target_include_directories(operon_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../source/thirdparty ${CMAKE_CURRENT_SOURCE_DIR}/../cli/source)
 set_target_properties(operon_test PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES

@@ -5,6 +5,7 @@
 #define OPERON_AFFINE_EVALUATOR_HPP
 
 #include <fmt/format.h>
+#include <cmath>
 #include <functional>
 #include <gsl/pointers>
 #include <optional>
@@ -130,6 +131,14 @@ public:
     }
 
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
+    // Re-point at a different tree without rebuilding the evaluator: reuses
+    // this instance's already-grown primal_ vector capacity, its affine
+    // context, and its DomainMap copy across several Evaluate calls (the
+    // shared noise-symbol counter keeps growing monotonically, which is
+    // sound — see Evaluate()'s comment). The Domin map is *not* reseeded;
+    // a caller swapping trees within the same bound set wants the same
+    // variable domain box for every constraint.
+    void SetTree(gsl::not_null<Operon::Tree const*> tree) noexcept { tree_ = tree; }
     [[nodiscard]] auto Domains() const noexcept -> DomainMap const& { return domains_; }
     [[nodiscard]] auto GetContext() const noexcept -> Context const& { return ctx_; }
     // Number of noise terms in the last root result (0 if Evaluate has not been called).
@@ -137,6 +146,12 @@ public:
     [[nodiscard]] auto TermCount() const noexcept -> std::size_t {
         return primal_.empty() ? 0 : primal_.back().size();
     }
+
+    // Largest |center()| over every intermediate form pushed during the last
+    // Evaluate() call. Used by callers to gauge float32 cancellation risk: an
+    // intermediate that large implies a rounding-error floor that can exceed the
+    // tracked radius of a small final result, making the enclosure unsound.
+    [[nodiscard]] auto MaxAbsCenter() const noexcept -> Scalar { return maxAbsCenter_; }
 
     // The affine interval enclosure of the root.
     [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Affine
@@ -159,6 +174,7 @@ public:
         // we can't resize — clear() preserves capacity and push_back reuses it.
         primal_.clear();
         primal_.reserve(n);
+        maxAbsCenter_ = Scalar{0};
         std::size_t ci = 0;
 
         // Add/Mul: identity-seeded folds — no spurious affine_form copy.
@@ -214,6 +230,22 @@ public:
             return std::move(*acc);
         };
 
+        // Stage a freshly-built affine_form, apply the per-node scalar
+        // coefficient `v` in place, then move it into primal_. affine_form
+        // has no default constructor (it binds a context), so the
+        // pass-by-value parameter is the staging slot: a prvalue argument
+        // (every non-Ref branch below builds a fresh temp) is copy-elided
+        // into it, and `f *= v` scales f's own term vector in place instead
+        // of `operator*(v)`, which copies `*this` first. Skipping the scale
+        // when v == 1 (x*1.0 is exact in IEEE) leaves the form bit-identical
+        // to its `* 1` result. maxAbsCenter_ is read after the scale,
+        // matching the old post-push primal_.back().center() value.
+        auto const emit = [&](Affine f, Scalar s) {
+            if (s != Scalar{1}) { f *= s; }
+            maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(f.center()));
+            primal_.push_back(std::move(f));
+        };
+
         for (std::size_t i = 0; i < n; ++i) {
             auto const& node = nodes[i];
             Scalar v;
@@ -225,7 +257,8 @@ public:
             }
 
             if (node.Type == NodeType::Constant) {
-                primal_.push_back(pappus::ops::constant<Scalar>(ctx_, v));
+                // Constant bakes `v` into the form directly — no `* v` scale.
+                emit(pappus::ops::constant<Scalar>(ctx_, v), Scalar{1});
             } else if (node.Type == NodeType::Variable) {
                 auto it = domains_.find(node.HashValue);
                 if (it == domains_.end()) {
@@ -234,36 +267,39 @@ public:
                         node.HashValue));
                 }
                 auto const& [lo, hi] = it->second;
-                primal_.push_back(pappus::ops::variable<Scalar>(ctx_, lo, hi) * v);
+                emit(pappus::ops::variable<Scalar>(ctx_, lo, hi), v);
             } else if (node.Type == NodeType::Ref) {
                 EXPECT(static_cast<std::size_t>(node.RefTo) < primal_.size());
-                primal_.push_back(primal_[node.RefTo]);
+                // Ref ignores `v` by design (its coefficient is baked in);
+                // emit's copy is unavoidable — the referenced form stays
+                // live in primal_ for later nodes.
+                emit(primal_[node.RefTo], Scalar{1});
             } else {
                 // Add/Mul/Sub/Div/Fmin/Fmax stay hardcoded: verified n-ary
                 // folds, same scope boundary as IntervalEvaluator. Every
                 // other op goes through the registry.
                 switch (node.HashValue) {
                 case Operon::Hash(BuiltinOp::Add):
-                    primal_.push_back(addFold(i) * v);
+                    emit(addFold(i), v);
                     break;
                 case Operon::Hash(BuiltinOp::Mul):
-                    primal_.push_back(mulFold(i) * v);
+                    emit(mulFold(i), v);
                     break;
                 case Operon::Hash(BuiltinOp::Sub):
-                    primal_.push_back((node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1])
-                                                      : subFold(i)) * v);
+                    emit(node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1])
+                                         : subFold(i), v);
                     break;
                 case Operon::Hash(BuiltinOp::Div):
-                    // May throw if the denominator form contains zero (affine inv
-                    // is stricter than interval inv).
-                    primal_.push_back((node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1])
-                                                      : divFold(i)) * v);
+                    // May throw if the denominator form contains zero (affine
+                    // inv is stricter than interval inv).
+                    emit(node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1])
+                                         : divFold(i), v);
                     break;
                 case Operon::Hash(BuiltinOp::Fmin):
-                    primal_.push_back(minFold(i) * v);
+                    emit(minFold(i), v);
                     break;
                 case Operon::Hash(BuiltinOp::Fmax):
-                    primal_.push_back(maxFold(i) * v);
+                    emit(maxFold(i), v);
                     break;
                 default:
                     // Gated on the node's actual arity (exactly 1 for unary,
@@ -273,14 +309,14 @@ public:
                     // throw rather than only guarding against 1-vs-2.
                     if (node.Arity == 1) {
                         if (auto const* unary = AffineUnaryRules().TryGet(node.HashValue)) {
-                            primal_.push_back((*unary)(ctx_, primal_[i - 1]) * v);
+                            emit((*unary)(ctx_, primal_[i - 1]), v);
                             break;
                         }
                     } else if (node.Arity == 2) {
                         if (auto const* binary = AffineBinaryRules().TryGet(node.HashValue)) {
                             auto const j = static_cast<std::size_t>(i - 1);
                             auto const k = j - (nodes[j].Length + 1);
-                            primal_.push_back((*binary)(ctx_, primal_[j], primal_[k]) * v);
+                            emit((*binary)(ctx_, primal_[j], primal_[k]), v);
                             break;
                         }
                     }
@@ -298,6 +334,7 @@ private:
     DomainMap domains_;
     mutable Context ctx_; // shared by all forms; counter grows monotonically
     mutable std::vector<Affine> primal_; // reused across Evaluate calls
+    mutable Scalar maxAbsCenter_{0}; // largest |center()| over the last Evaluate()
 };
 
 } // namespace Operon

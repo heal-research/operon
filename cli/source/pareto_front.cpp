@@ -17,6 +17,7 @@
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 
 namespace Operon {
@@ -40,8 +41,7 @@ auto EscapeJson(std::string const& s) -> std::string
 auto WriteParetoFront(std::string const& path,
                       Operon::Span<Individual const> population,
                       ScalarDispatch const& dtable,
-                      Problem const& problem,
-                      bool linearScaling) -> void
+                      Problem const& problem) -> void
 {
     auto const* ds         = problem.GetDataset();
     auto const trainRange  = problem.TrainingRange();
@@ -75,12 +75,11 @@ auto WriteParetoFront(std::string const& path,
         // parameter-cost term is biased by a missing a^2 factor whenever
         // the fitted slope isn't ~1.
         auto scale = Scalar{1};
-        if (linearScaling) {
-            auto [a, b] = FitLeastSquares(Span<Scalar const>{estimTrain}, Span<Scalar const>{targetTrain});
-            scale = static_cast<Scalar>(a);
-            auto const bs = static_cast<Scalar>(b);
-            for (auto& v : estimTrain) { v = (v * scale) + bs; }
-            for (auto& v : estimTest)  { v = (v * scale) + bs; }
+        auto const scaling = Operon::FitLinearScaling(ind->Genotype, problem, dtable, trainRange);
+        if (scaling) {
+            scale = static_cast<Scalar>(scaling->Scale);
+            scaling->ApplyInPlace(Operon::Span<Operon::Scalar>{estimTrain});
+            scaling->ApplyInPlace(Operon::Span<Operon::Scalar>{estimTest});
         }
 
         auto const r2Train   = -R2{}(estimTrain, targetTrain);

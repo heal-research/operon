@@ -7,6 +7,7 @@
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
 #include "operon/core/tree_diff.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/interpreter/interpreter.hpp"
 
 #include <algorithm>
@@ -25,12 +26,10 @@ JitZobrist::JitZobrist(Operon::RandomGenerator& rng, int maxLength,
 
 JitEvaluator::JitEvaluator(gsl::not_null<Problem const*>    problem,
                              gsl::not_null<JitZobrist const*> zobrist,
-                             ErrorMetric                      error,
-                             bool                             linearScaling)
+                             ErrorMetric                      error)
     : EvaluatorBase(problem)
     , zobrist_(zobrist)
     , error_(error)
-    , scaling_(linearScaling)
     , compiler_(&zobrist->Pool())
 {}
 
@@ -180,10 +179,8 @@ auto JitEvaluator::Evaluate(RandomGenerator& /*rng*/, Individual const& ind,
         interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, estimatedValues);
     }
 
-    if (scaling_) {
-        auto [a, b] = FitLeastSquares(Span<Scalar const>(estimatedValues.data(), estimatedValues.size()), targetValues, weights);
-        std::ranges::transform(estimatedValues, estimatedValues.begin(),
-            [a=a, b=b](auto x) -> Scalar { return static_cast<Scalar>((a * x) + b); });
+    if (GetProblem()->LinearScalingEnabled()) {
+        FitLinearScaling(Span<Scalar const>(estimatedValues.data(), estimatedValues.size()), targetValues, weights, /*omitNonFinite=*/false).ApplyInPlace(estimatedValues);
     }
 
     auto fit = static_cast<Scalar>(weights.empty()

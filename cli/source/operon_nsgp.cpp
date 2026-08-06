@@ -8,6 +8,7 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <memory>
+#include <stdexcept>
 #include <unordered_map>
 #include <taskflow/algorithm/reduce.hpp>
 #include <taskflow/taskflow.hpp>
@@ -29,6 +30,7 @@
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
@@ -39,6 +41,7 @@
 #include "pareto_front.hpp"
 #include "probes_config.hpp"
 #include "reporter.hpp"
+#include "shape_constraints_config.hpp"
 #include "util.hpp"
 
 namespace {
@@ -164,6 +167,8 @@ auto main(int argc, char** argv) -> int
         problem.SetTestRange(testRange);
         problem.SetTarget(target.Hash);
         problem.SetInputs(inputs);
+        problem.SetLinearScalingEnabled(result["linear-scaling"].as<bool>());
+        problem.SetLinearScalingOmitsNonFinite(result["skip-nonfinite"].as<bool>());
         problem.ConfigurePrimitiveSet(primitiveSetConfig);
 
         auto [creator, creatorMaxLength, creatorMinDepth, creatorMaxDepth] = ParseCreator(
@@ -231,7 +236,6 @@ auto main(int argc, char** argv) -> int
         // DynamicPrimitives::Saxpy<Operon::Scalar, Operon::Backend::BatchSize<Operon::Scalar>> f{};
         // dtable.RegisterCallable(12345UL, f, f);
 
-        auto const scale   = result["linear-scaling"].as<bool>();
         auto const jitMode = result["jit"].as<std::string>(); // "all", "jac", or ""
         if (jitMode == "all" && result["skip-nonfinite"].as<bool>()) {
             throw std::invalid_argument("--skip-nonfinite is not supported with --jit=all");
@@ -249,13 +253,13 @@ auto main(int argc, char** argv) -> int
                 zobrist = std::make_unique<Operon::Zobrist>(cacheRng, static_cast<int>(maxLength), problem.GetInputs(), result["cache-max-age"].as<size_t>());
                 config.Cache = zobrist.get();
             }
-            errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale,
+            errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
                 result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
             optimizer = std::make_unique<Operon::LevenbergMarquardtOptimizer<decltype(dtable), Operon::OptimizerType::Eigen>>(&dtable, &problem);
         } else {
             auto jobj = Operon::CLI::MakeJitObjects(
                 jitMode, problem, dtable,
-                result["objective"].as<std::string>(), scale,
+                result["objective"].as<std::string>(),
                 result["jit-max-length"].as<int>(),
                 result["jit-min-visits"].as<std::size_t>(),
                 static_cast<int>(maxLength), config.Seed,
@@ -269,7 +273,7 @@ auto main(int argc, char** argv) -> int
             if (result["transposition-cache"].as<bool>()) { config.Cache = zobrist.get(); }
             // "jac" mode: factory leaves evaluator null; create interpreter evaluator here.
             if (!errorEvaluator) {
-                errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable, scale,
+                errorEvaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
                     result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
             }
             // unknown mode: factory returned null optimizer; fall back to defaults.
@@ -280,24 +284,93 @@ auto main(int argc, char** argv) -> int
         errorEvaluator->SetBudget(config.Evaluations);
         optimizer->SetIterations(config.Iterations);
 
-        Operon::LengthEvaluator lengthEvaluator(&problem, maxLength);
+        Operon::TreePropertyEvaluator lengthEvaluator(&problem, [](Operon::Tree const& tree) {
+            return static_cast<Operon::Scalar>(tree.Length());
+        }, static_cast<Operon::Scalar>(maxLength));
         // Operon::EntropyEvaluator entropyEvaluator(&problem);
+
+        auto shapeConstraints = Operon::LoadShapeConstraints(
+            result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
+        if (!shapeConstraints && result.count("shape-enforcement") != 0) {
+            throw std::invalid_argument("--shape-enforcement requires --shape-constraints-config");
+        }
+
+        Operon::ShapeConstraintEnforcement shapeEnforcement{Operon::ShapeConstraintEnforcement::None};
+        std::unique_ptr<Operon::ShapeViolationEvaluator> shapePenaltyStorage;
+        std::unique_ptr<Operon::ShapeViolationEvaluator> shapeExtraObjectiveStorage;
+        std::unique_ptr<Operon::MultiEvaluator> penalizedErrorStorage;
+        Operon::EvaluatorBase const* errorObjective = errorEvaluator.get();
+        if (shapeConstraints) {
+            shapeEnforcement = result.count("shape-enforcement") != 0
+                ? Operon::ParseShapeEnforcement(result["shape-enforcement"].as<std::string>())
+                : Operon::ShapeConstraintEnforcement::HardReject;
+            auto const unknownViolation = result["shape-unknown-violation"].as<double>();
+            auto const penaltyWeight = result["shape-penalty-weight"].as<double>();
+            auto const worstValue = result["shape-worst-value"].as<double>();
+            if (!(std::isfinite(unknownViolation) && unknownViolation >= 0.0)) {
+                throw std::invalid_argument(fmt::format("--shape-unknown-violation must be a finite, non-negative value (got {})", unknownViolation));
+            }
+            if (!(std::isfinite(penaltyWeight) && penaltyWeight >= 0.0)) {
+                throw std::invalid_argument(fmt::format("--shape-penalty-weight must be a finite, non-negative value (got {})", penaltyWeight));
+            }
+            if (!std::isfinite(worstValue)) {
+                throw std::invalid_argument(fmt::format("--shape-worst-value must be finite (got {})", worstValue));
+            }
+
+            Operon::ShapeConstraintPolicy const policy{
+                .Enforcement = shapeEnforcement,
+                .UnknownViolation = static_cast<Operon::Scalar>(unknownViolation),
+                .PenaltyWeight = static_cast<Operon::Scalar>(penaltyWeight),
+            };
+            if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/true)) { throw std::invalid_argument(*error); }
+
+            if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
+                shapePenaltyStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
+                    &problem, &dtable, *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
+                penalizedErrorStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
+                penalizedErrorStorage->Add(errorEvaluator.get());
+                penalizedErrorStorage->Add(shapePenaltyStorage.get());
+                penalizedErrorStorage->SetAggregateType(Operon::MultiEvaluator::AggregateType::Sum);
+                errorObjective = penalizedErrorStorage.get();
+            }
+            if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::ExtraObjective)) {
+                shapeExtraObjectiveStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
+                    &problem, &dtable, *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
+            }
+        }
 
         Operon::MultiEvaluator evaluator(&problem);
         evaluator.SetBudget(config.Evaluations);
-        evaluator.Add(errorEvaluator.get());
+        evaluator.Add(errorObjective);
         evaluator.Add(&lengthEvaluator);
+        if (shapeExtraObjectiveStorage) { evaluator.Add(shapeExtraObjectiveStorage.get()); }
         // evaluator.Add(&entropyEvaluator);
+
+        // Optional shape-constraint wrapper (see operon_gp.cpp for the same
+        // pattern/rationale) — wraps the whole MultiEvaluator, so an
+        // infeasible individual gets WorstValue() on every objective.
+        std::unique_ptr<Operon::ShapeConstrainedEvaluator> shapeConstrainedStorage;
+        if (shapeConstraints && Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
+            shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, &dtable, *shapeConstraints);
+            shapeConstrainedStorage->SetWorstValue(result["shape-worst-value"].as<double>());
+        }
+        Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get()) : static_cast<Operon::EvaluatorBase*>(&evaluator);
 
         EXPECT(problem.TrainingRange().Size() > 0);
 
+        // Deliberately NOT swapped for Operon::FeasibilityFirstComparison
+        // when shape constraints are active (unlike operon_gp.cpp): the
+        // gate above already rejects an infeasible individual on every
+        // NSGA2 objective at once, and a feasibility-first *crowded*
+        // comparator (accounting for Rank/Distance too) is a separate
+        // design this CLI doesn't build yet -- not an oversight.
         Operon::CrowdedComparison comp;
 
         auto femaleSelector = Operon::ParseSelector(result["female-selector"].as<std::string>(), comp);
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
         Operon::CoefficientOptimizer cOpt { optimizer.get() };
 
-        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), evaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
+        auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *activeEvaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         // Default 0: NSGA2 had no elitism before this option existed, so an
         // unspecified --elitism preserves that. Opt in explicitly to enable it.
         auto const eliteCount = result.count("elitism") ? result["elitism"].as<size_t>() : size_t{0};
@@ -311,6 +384,12 @@ auto main(int argc, char** argv) -> int
             problem.StandardizeData(problem.TrainingRange());
         }
         tf::Executor executor(threads);
+        // Reuse the same executor for shape-constraint Prepare() rather than
+        // each evaluator owning a private one -- see
+        // ShapeConstrainedEvaluator::SetExecutor's doc comment.
+        if (shapeConstrainedStorage) { shapeConstrainedStorage->SetExecutor(executor); }
+        if (shapePenaltyStorage) { shapePenaltyStorage->SetExecutor(executor); }
+        if (shapeExtraObjectiveStorage) { shapeExtraObjectiveStorage->SetExecutor(executor); }
         auto const sorterName = result["sorter"].as<std::string>();
         Operon::RankIntersectSorter rsSorter;
         Operon::MergeSorter msSorter;
@@ -349,12 +428,12 @@ auto main(int argc, char** argv) -> int
         std::unique_ptr<Operon::Evaluator<decltype(dtable)>> reporterEvalStorage;
         Operon::Evaluator<decltype(dtable)> const* ptr = nullptr;
         if (jitMode == "all") {
-            reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{}, scale);
+            reporterEvalStorage = std::make_unique<Operon::Evaluator<decltype(dtable)>>(&problem, &dtable, Operon::MSE{});
             ptr = reporterEvalStorage.get();
         } else {
             ptr = dynamic_cast<Operon::Evaluator<decltype(dtable)> const*>(errorEvaluator.get());
         }
-        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector), &evaluator);
+        Operon::Reporter<Operon::Evaluator<decltype(dtable)>> reporter(ptr, std::move(modelSelector), activeEvaluator);
         auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);
         if (warmStart && result.contains("probes-config")) {
             fmt::print(stderr, "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior instrumentation history at any reused output path\n");
@@ -370,9 +449,20 @@ auto main(int argc, char** argv) -> int
         Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
+        if (shapeConstrainedStorage || shapePenaltyStorage || shapeExtraObjectiveStorage) {
+            // Same rationale as operon_gp.cpp: hard-reject (or a penalty/extra-
+            // objective run that never drove violation to zero) can still
+            // return a "best" individual that isn't actually certified feasible
+            // over the domain box -- flag that explicitly rather than leaving a
+            // caller to assume printed-successfully means feasible.
+            bool const feasible = shapeConstrainedStorage ? shapeConstrainedStorage->Feasible(best.Genotype)
+                : shapeExtraObjectiveStorage    ? shapeExtraObjectiveStorage->Measure(best.Genotype).Feasible
+                                                 : shapePenaltyStorage->Measure(best.Genotype).Feasible;
+            fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
+        }
         fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::digits));
         if (result.contains("pareto-front")) {
-            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem, scale);
+            Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem);
         }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
