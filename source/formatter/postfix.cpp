@@ -28,6 +28,26 @@ auto PostfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, st
             }
             break;
         }
+        case NodeType::Ref: {
+            // Ref has no tokens of its own -- replay the referenced
+            // subtree's token range (it occupies the contiguous flat
+            // range [RefTo-Length, RefTo], same as any other subtree)
+            // instead of emitting a bare, non-evaluable "ref" token.
+            auto const& t = tree[s.RefTo];
+            for (auto j = s.RefTo - t.Length; j <= s.RefTo; ++j) {
+                if (static_cast<int>(j) == tree[j].Parent - tree[tree[j].Parent].Length) {
+                    fmt::format_to(std::back_inserter(current), "(");
+                }
+                FormatNode(tree, variableNames, j, current, decimalPrecision);
+                if (!tree[j].IsLeaf()) {
+                    fmt::format_to(std::back_inserter(current), ")");
+                }
+                if (j != s.RefTo) {
+                    fmt::format_to(std::back_inserter(current), " ");
+                }
+            }
+            break;
+        }
         default: {
             fmt::format_to(std::back_inserter(current), fmt::runtime(s.Name()));
         }
