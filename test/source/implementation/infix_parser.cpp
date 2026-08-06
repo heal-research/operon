@@ -183,6 +183,58 @@ TEST_CASE("Formatter output", "[parser]")
         CHECK(original[0] == Catch::Approx(8.0F)); // x*y + x = 2*3 + 2
         CHECK(roundtrip[0] == Catch::Approx(original[0]));
     }
+
+    SECTION("PostfixFormatter, TreeFormatter and DotFormatter follow RefTo") {
+        // same x*y + ref(x) tree as the InfixFormatter section above
+        Operon::Dataset const ds2({"x", "y"}, {{2.0F}, {3.0F}});
+        auto const hx = ds2.GetVariable("x").value().Hash;
+        auto const hy = ds2.GetVariable("y").value().Hash;
+        Operon::Map<Operon::Hash, std::string> const names { {hx, "x"}, {hy, "y"} };
+
+        Operon::Node nx(NodeType::Variable);
+        nx.HashValue = hx;
+        nx.Value = 1;
+        Operon::Node ny(NodeType::Variable);
+        ny.HashValue = hy;
+        ny.Value = 1;
+        auto mul = Operon::Node::Function(Operon::Hash(BuiltinOp::Mul), 2);
+        auto refX = Operon::Node::Ref(0); // points at nx (index 0)
+        auto add = Operon::Node::Function(Operon::Hash(BuiltinOp::Add), 2);
+
+        Operon::Tree tree({nx, ny, mul, refX, add});
+        tree.UpdateNodes();
+
+        auto countOccurrences = [](std::string const& s, std::string const& sub) -> size_t {
+            size_t count{0};
+            for (size_t pos = s.find(sub); pos != std::string::npos; pos = s.find(sub, pos + sub.size())) {
+                ++count;
+            }
+            return count;
+        };
+
+        SECTION("PostfixFormatter replays the referenced subtree's tokens") {
+            auto const s = PostfixFormatter::Format(tree, names, 2);
+            // x*y contributes one "x", ref(x) must replay x's token again --
+            // a formatter following i-1 instead of RefTo would instead
+            // duplicate the "y" (or mul) token and never emit a second x.
+            CHECK(countOccurrences(s, "x") == 2);
+            CHECK(s.find("ref") == std::string::npos);
+        }
+
+        SECTION("TreeFormatter nests the referenced subtree under the Ref leaf") {
+            auto const s = TreeFormatter::Format(tree, names, 2);
+            CHECK(countOccurrences(s, "x D:") == 2);
+        }
+
+        SECTION("DotFormatter points edges at the shared node, not a duplicate/dangling Ref box") {
+            auto const s = DotFormatter::Format(tree, names, 2);
+            CHECK_NOTHROW(DotFormatter::Format(tree, names, 2));
+            CHECK(s.find("3 [label=") == std::string::npos); // no box for the Ref node itself
+            CHECK(s.find("0 -> 4") != std::string::npos); // nx -> add, resolved through the Ref
+            CHECK(s.find("3 ->") == std::string::npos);
+            CHECK(s.find("-> 3") == std::string::npos);
+        }
+    }
 }
 
 TEST_CASE("ParseFunctionBody", "[parser]")

@@ -35,14 +35,24 @@ auto DotFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::strin
         return s.Name();
     };
 
+    // A Ref is a pointer, not an independent DAG node -- chase it to the
+    // node it actually points at so edges connect to the shared node
+    // itself rather than to a dangling/duplicated placeholder.
+    auto resolve = [&](auto idx) {
+        while (tree[idx].IsRef()) { idx = tree[idx].RefTo; }
+        return idx;
+    };
+
     for (auto i = 0UL; i < tree.Length(); ++i) {
+        if (tree[i].IsRef()) { continue; }
+
         auto label = format(tree[i]);
         fmt::format_to(std::back_inserter(result), "\t{} [label=\"{}\"]\n", i, label);
 
         if (tree[i].IsLeaf()) { continue; }
 
         for (auto j : tree.Indices(i)) {
-            fmt::format_to(std::back_inserter(result), "\t{} -> {}\n", j, i);
+            fmt::format_to(std::back_inserter(result), "\t{} -> {}\n", resolve(j), i);
         }
     }
 
