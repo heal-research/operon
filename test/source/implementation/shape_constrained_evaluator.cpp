@@ -16,6 +16,9 @@
 #include "operon/core/individual.hpp"
 #include "operon/core/problem.hpp"
 #include "operon/core/constraint.hpp"
+#include "operon/core/tree_diff.hpp"
+#include "operon/interpreter/affine_evaluator.hpp"
+#include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
@@ -406,7 +409,35 @@ TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-conta
     cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-100}, Operon::Scalar{100}}});
 
     Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    auto const measurement = sce.Measure(tree);
+    REQUIRE(measurement.Measurements.size() == 1);
+    CHECK_FALSE(measurement.Measurements[0].Certified);
+    CHECK(measurement.Measurements[0].Violation == Catch::Approx(1.0));
     CHECK_FALSE(sce.Feasible(tree));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - falls back to interval bounds for constant integer powers", "[shape-constraints]")
+{
+    // AffineEvaluator represents both operands as affine forms. Its general
+    // affine-base/affine-exponent operation rejects a negative base before it
+    // discovers that the exponent is the constant integer 2. IntervalEvaluator
+    // handles the mathematically valid power directly.
+    Fixture fx;
+    auto tree = InfixParser::Parse("(-0.91) ^ 2", fx.ds);
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt,
+                              .Bound = std::pair{Operon::Scalar{-1}, Operon::Scalar{1}}});
+
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    auto const measurement = sce.Measure(tree);
+    REQUIRE(measurement.Measurements.size() == 1);
+    CHECK(measurement.Measurements[0].Certified);
+    REQUIRE(measurement.Measurements[0].Bound);
+    CHECK(measurement.Feasible);
+    CHECK(sce.Feasible(tree));
 }
 
 TEST_CASE("ShapeConstrainedEvaluator - a NaN bound endpoint (Scale==0 times an unbounded raw interval) is not falsely feasible", "[shape-constraints]")
@@ -858,6 +889,118 @@ TEST_CASE("SCRATCH pappus-fix false-feasibility repro", "[.][shape-constraints-s
     SECTION("Case D") {
         runCase("caseD", base + "Cars_data.csv", "mpg", carsConstraints,
             "(13634192.000000 + ((-0.001787) * ((((2.305640 * displacement) + ((1.891310 * weight) + ((exp(exp(1.582666)) * ((1.250606 * cylinders) + exp(exp(2.884111)))) + (0.360743 * displacement)))) + ((0.781982 * cylinders) + (exp(0.058231) + ((((-0.539599) * cylinders) + ((0.506669 * displacement) + ((0.506669 * displacement) + 0.303519))) + (exp(exp(1.582666)) + (exp(0.303519) + (exp(1.582666) * 0.058231))))))) + (((1.525301 * weight) * exp((0.058231 + exp(0.303519)))) * 0.058231))))");
+    }
+}
+
+// Reproduces the 2026-08-08/09 Operon-vs-HL bound cross-comparison finding
+// (operon-publications shape-constraints-reproduction: 1506/2796 jointly-
+// certified derivative bounds disagreed in SIGN between Operon's affine
+// bound and HL's plain interval bound, on the same tree/variable/domain
+// box). This individual (from a real constraint-dynamics run, II_11_27,
+// seed 500001, final generation) is the smallest confirmed case: Operon
+// certified d/dn in [0, 96.14] (non-negative -> feasible), but 200k random
+// finite-difference samples over the domain box show the true derivative
+// is always negative (empirical range roughly [-268, -0.001]) -- Operon's
+// bound is unsound here, not just conservative. Run with
+// OPERON_SHAPE_DEBUG=1 and this test's tag alone
+// (`-t "[shape-constraints-scratch]"`) to see which of TryAffineBound's
+// three paths (affine-direct / ill-conditioned-fallback / exception-
+// fallback) produced the wrong bound.
+TEST_CASE("SCRATCH ind333 sign-wrong derivative bound repro", "[.][shape-constraints-scratch]")
+{
+    // Must be the real training data (not a degenerate stand-in): the
+    // linear-scaling fit (Scale/Offset) that TransformBound applies to the
+    // raw derivative bound depends on it, and a degenerate/constant target
+    // fits Scale=0, which zeroes out any bound (including a correct one)
+    // and produces a misleadingly "feasible" result unrelated to the real bug.
+    Operon::Dataset ds("/home/bogdb/src/operon-workspace/operon-publications/experiments/shape-constraints-reproduction/results/full_sweep/II_11_27_without_noise_rep00_data.csv", /*hasHeader=*/true);
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, 100});
+    problem.SetTestRange({100, 200});
+    problem.SetTarget("y");
+    problem.SetDefaultInputs();
+
+    auto const constraintsJson = R"json({"domains": {"n": [0, 1], "alpha": [0, 1], "epsilon": [1, 2], "Ef": [1, 2]}, "constraints": [{"op": "derivative", "variable": "n", "order": 1, "sign": 1}, {"op": "derivative", "variable": "alpha", "order": 1, "sign": 1}, {"op": "derivative", "variable": "epsilon", "order": 1, "sign": 1}, {"op": "derivative", "variable": "Ef", "order": 1, "sign": 1}]})json";
+    auto const path = WriteShapeConfig("ind333", constraintsJson);
+    auto loaded = Operon::LoadShapeConstraints(path.string());
+    REQUIRE(loaded);
+
+    auto const model = "(exp((((0.903161883 * n) * (4.700151443 * alpha)) * ((((-4.018970013) * Ef) * (4.741394520 * epsilon)) + (((2.177207947 * n) * (2.639619350 * alpha)) * (((-1.325337768) * Ef) * (1.827161431 * epsilon)))))) + (((-4.018970013) * Ef) * ((0.903161883 * n) * (4.700151443 * alpha))))";
+    auto tree = InfixParser::Parse(model, ds);
+
+    using DTable = DispatchTable<Operon::Scalar>;
+    DTable dtable;
+    Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE{});
+    Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, *loaded);
+    auto const summary = sce.Measure(tree);
+    REQUIRE(summary.Measurements.size() == 4);
+    auto const& dn = summary.Measurements[0]; // d/dn, sign >= 0 required
+    INFO("d/dn certified=" << dn.Certified << " bound=[" << (dn.Bound ? dn.Bound->first : 0) << ", " << (dn.Bound ? dn.Bound->second : 0) << "] violation=" << dn.Violation);
+    WARN("Operon certifies feasible=" << summary.Feasible << " for a tree whose true d/dn is always negative over the domain box (verified by finite-difference sampling) -- expected infeasible.");
+    CHECK(dn.Certified);
+}
+
+// Direct affine-vs-plain-interval comparison on two of the 107 "Operon
+// infeasible, HL feasible" disagreements from the 2026-08-09 cross-engine
+// bound comparison. Empirical (500k-sample finite-difference) ground truth
+// for both: d/dn of the SCALED model is always positive, HL's plain
+// interval bound [0, ~7.85] is tight and correct, Operon's affine bound
+// [-5.15, 7.85] is a sound but needlessly loose superset (overshoots
+// negative). This reproduces that gap directly against Operon's own plain
+// IntervalEvaluator (the same one TryAffineBound falls back to) to see
+// whether IT also stays tight here -- i.e. whether the looseness is
+// specific to AffineEvaluator's linearization of repeated correlated
+// multiplication, not interval arithmetic in general.
+TEST_CASE("SCRATCH ind431/ind450 affine-vs-interval bound comparison", "[.][shape-constraints-scratch]")
+{
+    Operon::Dataset ds("/home/bogdb/src/operon-workspace/operon-publications/experiments/shape-constraints-reproduction/results/full_sweep/II_11_27_without_noise_rep00_data.csv", /*hasHeader=*/true);
+
+    Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domains;
+    domains.insert_or_assign(ds.GetVariable("n")->Hash, std::pair{Operon::Scalar{0}, Operon::Scalar{1}});
+    domains.insert_or_assign(ds.GetVariable("alpha")->Hash, std::pair{Operon::Scalar{0}, Operon::Scalar{1}});
+    domains.insert_or_assign(ds.GetVariable("epsilon")->Hash, std::pair{Operon::Scalar{1}, Operon::Scalar{2}});
+    domains.insert_or_assign(ds.GetVariable("Ef")->Hash, std::pair{Operon::Scalar{1}, Operon::Scalar{2}});
+
+    struct Case { std::string label; std::string model; Operon::Scalar scale; };
+    std::vector<Case> const cases{
+        {"ind431", "(exp(exp((((-1.325337768) * Ef) * (1.827161431 * epsilon)))) + (((0.903161883 * n) * (4.700151443 * alpha)) * ((((-4.018970013) * Ef) * (4.741394520 * epsilon)) + (((0.903161883 * n) * (4.700151443 * alpha)) * (((-1.325337768) * Ef) * (1.827161431 * epsilon))))))", Operon::Scalar{-0.0116670932}},
+        {"ind450", "(((4.700151443 * alpha) * (((-1.325337768) * Ef) * (1.827161431 * epsilon))) + (((0.903161883 * n) * (4.700151443 * alpha)) * ((((-4.018970013) * Ef) * (4.741394520 * epsilon)) + (((0.903161883 * n) * (4.700151443 * alpha)) * (((-1.325337768) * Ef) * (1.827161431 * epsilon))))))", Operon::Scalar{-0.0104688368}},
+    };
+
+    for (auto const& c : cases) {
+        auto tree = InfixParser::Parse(c.model, ds);
+        auto const nHash = ds.GetVariable("n")->Hash;
+        auto const dag = Operon::BuildVariableGradientDag(tree, tree.GetCoefficients());
+        auto it = std::ranges::find(dag.Variables, nHash);
+        REQUIRE(it != dag.Variables.end());
+        auto const k = static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
+        REQUIRE(dag.Certain[k]);
+        auto const root = dag.Roots[k];
+        REQUIRE(root != std::numeric_limits<std::size_t>::max());
+
+        Operon::Vector<Operon::Node> sliced(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
+        Operon::Tree dtree(std::move(sliced));
+        dtree.UpdateNodes();
+
+        Operon::AffineEvaluator ae(&dtree, domains);
+        auto const affineRaw = ae.Evaluate(dtree.GetCoefficients()).to_interval();
+
+        Operon::IntervalEvaluator ie(&dtree, Operon::IntervalEvaluator::DomainMap{domains});
+        auto const intervalRaw = ie.Evaluate(dtree.GetCoefficients());
+
+        // Apply the scale factor manually (matches TransformBound's
+        // ApplyToDerivativeInterval for a pure scale multiply -- offset drops
+        // out of a derivative).
+        auto const scaleInterval = [&](Operon::Scalar lo, Operon::Scalar hi) -> std::pair<Operon::Scalar, Operon::Scalar> {
+            auto a = c.scale * lo;
+            auto b = c.scale * hi;
+            return a <= b ? std::pair{a, b} : std::pair{b, a};
+        };
+        auto const [affLo, affHi] = scaleInterval(affineRaw.inf(), affineRaw.sup());
+        auto const [intLo, intHi] = scaleInterval(intervalRaw.inf(), intervalRaw.sup());
+
+        WARN(c.label << " d/dn (scaled): affine=[" << affLo << ", " << affHi << "] "
+            << "operon-interval=[" << intLo << ", " << intHi << "]");
     }
 }
 
