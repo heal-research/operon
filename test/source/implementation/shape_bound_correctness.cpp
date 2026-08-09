@@ -223,12 +223,18 @@ auto BisectedAffine(
         }
         AE eval(&tree, dm);
         auto const iv = [&]() -> Interval {
-            try {
-                auto r = eval.Evaluate(tree.GetCoefficients());
-                return r.to_interval();
-            } catch (std::exception const&) {
+            auto r = eval.Evaluate(tree.GetCoefficients());
+            auto result = r.to_interval();
+            // pappus no longer throws on a domain error (log of a
+            // non-positive range, sqrt of negative, etc.) -- it returns a
+            // NaN-poisoned form instead (see affine_form::invalid()). A NaN
+            // sub-box result must still be excluded from the `|` union
+            // below rather than unioned in, or it silently corrupts the
+            // WHOLE bisected result even when the sibling sub-box is sound.
+            if (!std::isfinite(result.inf()) || !std::isfinite(result.sup())) {
                 return Interval::empty();
             }
+            return result;
         }();
         if (d <= 0) { return iv; }
 
