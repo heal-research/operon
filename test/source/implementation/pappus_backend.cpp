@@ -617,8 +617,11 @@ TEST_CASE("Affine backend: no index reuse across evaluations", "[pappus][affine]
     REQUIRE(iv.sup() - iv.inf() > 1.0);
 }
 
-TEST_CASE("Affine backend: inv over zero-containing domain throws", "[pappus][affine]")
+TEST_CASE("Affine backend: inv over zero-containing domain is NaN-poisoned, not thrown", "[pappus][affine]")
 {
+    // affine_form::inv() no longer throws on a zero-crossing domain (see
+    // affine_form::invalid() in affine.hpp for why) -- it returns a
+    // NaN-centered form instead, which to_interval() surfaces as NaN bounds.
     constexpr Operon::Hash X1{1};
     auto node = Util::MakeOp<Operon::BuiltinOp::Div>();
     node.Arity = 1;
@@ -626,7 +629,9 @@ TEST_CASE("Affine backend: inv over zero-containing domain throws", "[pappus][af
     auto d = Domains();
     d[X1] = {S{-1}, S{1}}; // contains zero
     AE eval(&tree, std::move(d));
-    REQUIRE_THROWS_AS(eval.Evaluate(tree.GetCoefficients()), std::invalid_argument);
+    auto const r = eval.Evaluate(tree.GetCoefficients()).to_interval();
+    REQUIRE(std::isnan(r.inf()));
+    REQUIRE(std::isnan(r.sup()));
 }
 
 // ---------------------------------------------------------------------------
