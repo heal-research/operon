@@ -955,6 +955,20 @@ TEST_CASE("Affine backend: pow/powabs child ordering", "[pappus][affine]")
     }
 }
 
+TEST_CASE("Affine backend: pow with non-degenerate exponent falls back to interval enclosure", "[pappus][affine]")
+{
+    constexpr Operon::Hash X1{1}, X2{2};
+    Operon::Vector<Operon::Node> ns{Var(X2), Var(X1), Util::MakeOp<Operon::BuiltinOp::Pow>()};
+    auto tree = Operon::Tree(std::move(ns)).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{2}, S{3}};
+    d[X2] = {S{1}, S{2}};
+
+    AE eval(&tree, std::move(d));
+    auto const r = eval.Evaluate(tree.GetCoefficients());
+    REQUIRE(Contains(r, 2.0, 9.0, 1e-2));
+}
+
 // ---------------------------------------------------------------------------
 // Phase 8: Performance benchmarks (nanobench, [pappus][performance])
 // ---------------------------------------------------------------------------

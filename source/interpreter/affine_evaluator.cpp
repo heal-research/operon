@@ -50,6 +50,9 @@ void RegisterAffineBuiltins()
         unary.Register(Operon::Hash(BuiltinOp::Ceil), [](Context const& ctx, Affine const& v) { return pappus::ops::ceil<Scalar>(ctx, v); });
 
         binary.Register(Operon::Hash(BuiltinOp::Pow), [](Context const& ctx, Affine const& a, Affine const& b) {
+            if (b.radius() != Scalar{0}) {
+                return Affine(ctx.state, pappus::ops::pow<Scalar>(a.to_interval(), b.to_interval()));
+            }
             return pappus::ops::pow<Scalar>(ctx, a, b);
         });
         binary.Register(Operon::Hash(BuiltinOp::Aq), [](Context const& ctx, Affine const& a, Affine const& b) {
@@ -57,6 +60,9 @@ void RegisterAffineBuiltins()
         });
         binary.Register(Operon::Hash(BuiltinOp::Powabs), [](Context const& ctx, Affine const& a, Affine const& b) {
             auto absBase = pappus::ops::abs<Scalar>(ctx, a);
+            if (b.radius() != Scalar{0}) {
+                return Affine(ctx.state, pappus::ops::pow<Scalar>(absBase.to_interval(), b.to_interval()));
+            }
             return pappus::ops::pow<Scalar>(ctx, absBase, b);
         });
 
