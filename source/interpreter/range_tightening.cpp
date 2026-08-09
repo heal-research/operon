@@ -167,6 +167,31 @@ auto TightenRange(
     }
 
     if (meanValue.is_empty()) { return finish(naive); }
+
+    // Soundness guard (2026-08-09 Fuel_flow finding): a gradient column's
+    // interval evaluation can silently collapse to a degenerate near-zero
+    // result when the tree carries a huge constant that -- unreduced by
+    // Deriv()'s mechanical product/quotient rule -- gets implicitly squared
+    // (or otherwise combined) into an intermediate value beyond float32's
+    // representable range. The intermediate overflows to +-inf, and a
+    // subsequent finite/inf division silently (and IEEE754-correctly)
+    // yields +-0, corrupting the mean-value slope term into a confidently
+    // wrong near-exact-point bound (observed: TightenRange certified [1,1]
+    // for a tree whose true range was [0.667, 1.999]). meanValue can't be
+    // trusted on gradInterval's word alone; cross-check it against a direct
+    // point evaluation at each variable's domain endpoints (holding the
+    // others at their midpoint) -- a genuine mean-value enclosure must
+    // contain these by construction, so if it doesn't, gradInterval was
+    // corrupted somewhere and the whole tightened bound must be discarded.
+    for (auto const& [hash, domain] : domains) {
+        auto probe = midpoints;
+        probe[hash] = IntervalEvaluator::Domain{domain.first, domain.first};
+        auto const flo = IntervalEvaluator(&tree, probe).Evaluate(coeff);
+        probe[hash] = IntervalEvaluator::Domain{domain.second, domain.second};
+        auto const fhi = IntervalEvaluator(&tree, probe).Evaluate(coeff);
+        if (!meanValue.contains(flo) || !meanValue.contains(fhi)) { return finish(naive); }
+    }
+
     return finish(naive & meanValue);
 }
 
