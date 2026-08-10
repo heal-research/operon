@@ -3,7 +3,7 @@
         {
             "kind": "git",
             "repository": "https://github.com/foolnotion/vcpkg-registry",
-            "baseline": "ef66d57bf16d0f407c7e1cc0f86332f704d82426",
+            "baseline": "82663846db2204d2c78a2dd567a87e71123ab3fa",
             "packages": [
                 "aria-csv",
                 "asmjit",
