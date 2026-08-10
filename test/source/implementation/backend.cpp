@@ -257,13 +257,13 @@ TEST_CASE("Backend NaN propagation", "[backend]")
     CHECK(allNan2(Backend::Powabs<T,S>, 2.f, NaN));
 }
 
-// eve::sinh has a confirmed third-party bug: a NaN in one SIMD lane
-// corrupts the computed result in an unrelated, non-NaN lane of the same
-// eve::wide register -- a different, cross-lane defect from the single-
-// lane NaN-swallowing pattern the "Backend NaN propagation" test above
-// checks. Backend::Sinh defends against it via SafeSinh (scrub-compute-
-// restore around eve::sinh). Verify a NaN anywhere in the batch changes
-// no *other* lane's result versus an otherwise-identical all-clean batch.
+// eve::sinh had a third-party cross-lane bug (a NaN in one SIMD lane
+// corrupted the computed result in an unrelated, non-NaN lane of the same
+// eve::wide register), fixed upstream in eve#2366. Kept as a permanent
+// regression guard now that Backend::Sinh calls eve::sinh directly again
+// (no more scrub-compute-restore wrapper). Verify a NaN anywhere in the
+// batch changes no *other* lane's result versus an otherwise-identical
+// all-clean batch.
 TEST_CASE("Backend Sinh is immune to eve::sinh's cross-lane NaN corruption", "[backend]")
 {
     Buf clean{};
