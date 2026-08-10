@@ -65,7 +65,7 @@ namespace {
     auto VecLogabsf(__m256 v) noexcept -> __m256 { return Backend::detail::FastLog<float>(W8(eve::abs(W8(v)))); }
     auto VecLog1pf(__m256 v) noexcept -> __m256 { return eve::log1p(W8(v)); }
     auto VecSinf(__m256 v) noexcept -> __m256 { return Backend::detail::FastSinCos<true, float>(W8(v)); }
-    auto VecSinhf(__m256 v) noexcept -> __m256 { return Backend::detail::SafeSinh<float>(W8(v)); }
+    auto VecSinhf(__m256 v) noexcept -> __m256 { return eve::sinh(W8(v)); }
     auto VecTanf(__m256 v) noexcept -> __m256 { return eve::tan(W8(v)); }
     auto VecTanhf(__m256 v) noexcept -> __m256 { return Backend::detail::FastTanh<float>(W8(v)); }
     // Match interpreter's FastPow exactly.
