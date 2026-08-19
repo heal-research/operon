@@ -669,12 +669,6 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
     auto result = std::make_unique<CompileMeta>();
     result->rtJac = &rt;
     result->jacFn = fnPtr;
-    // Unlike CompileAVX2, this was previously left unset (default 0), which
-    // JitLMCostFunction::Evaluate's ENSURE(nVars_ < 0 || jacColPtrs_.size()
-    // == nVars_) trips on for any tree with variables -- fatal for --jit=jac
-    // mode, which (unlike --jit=all) never falls through to GetOrCompile's
-    // merge branch that would otherwise backfill these from the residual
-    // compile.
     result->nVars = static_cast<int>(varOrder.size());
     result->nConsts = nConsts;
     return result;
