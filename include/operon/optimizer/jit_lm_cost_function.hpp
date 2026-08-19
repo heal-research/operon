@@ -61,6 +61,15 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
         , nConsts_(nConsts)
     {
         ValidateLMWeights(weights_, this->numResiduals_);
+        // Precomputed once: these point into scratchJac_'s fixed layout, which
+        // never changes across Evaluate() calls, so recomputing them per call
+        // (as a freshly heap-allocated std::vector, no less) was pure waste on
+        // what can be a very hot path (up to population x selection-pressure x
+        // LM-iterations calls per generation).
+        jacOutPtrs_.resize(this->numParameters_);
+        for (std::size_t k = 0; k < this->numParameters_; ++k) {
+            jacOutPtrs_[k] = scratchJac_.data() + k * nRowsPad_;
+        }
     }
 
     inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
@@ -77,11 +86,7 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
                 ENSURE(nVars_   < 0 || static_cast<int>(jacColPtrs_.size()) == nVars_);
                 ENSURE(nConsts_ < 0 || static_cast<int>(this->numParameters_) == nConsts_);
                 // Write into padded per-column scratch, then copy valid rows to jacobian.
-                std::vector<float*> outs(this->numParameters_);
-                for (std::size_t k = 0; k < this->numParameters_; ++k) {
-                    outs[k] = scratchJac_.data() + k * nRowsPad_;
-                }
-                jacFn_(outs.data(), jacColPtrs_.data(), nRowsPad, parameters);
+                jacFn_(jacOutPtrs_.data(), jacColPtrs_.data(), nRowsPad, parameters);
                 for (std::size_t k = 0; k < this->numParameters_; ++k) {
                     std::copy_n(scratchJac_.data() + k * nRowsPad_, this->numResiduals_,
                                 jacobian + k * static_cast<std::ptrdiff_t>(this->numResiduals_));
@@ -125,6 +130,7 @@ private:
     std::size_t                              nRowsPad_;
     mutable std::vector<Scalar>              scratchResiduals_;
     mutable std::vector<Scalar>              scratchJac_;
+    std::vector<float*>                      jacOutPtrs_; // precomputed pointers into scratchJac_, see ctor
 
     int                                      nVars_   = -1;
     int                                      nConsts_ = -1;
