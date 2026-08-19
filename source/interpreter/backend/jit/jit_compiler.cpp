@@ -60,14 +60,11 @@ namespace {
     auto VecCbrtf(__m256 v) noexcept -> __m256 { return eve::cbrt(W8(v)); }
     auto VecCosf(__m256 v) noexcept -> __m256 { return Backend::detail::FastSinCos<false, float>(W8(v)); }
     auto VecCoshf(__m256 v) noexcept -> __m256 { return eve::cosh(W8(v)); }
-    auto VecExpf(__m256 v) noexcept -> __m256 { return Backend::detail::FastExp<float>(W8(v)); }
-    auto VecLogf(__m256 v) noexcept -> __m256 { return Backend::detail::FastLog<float>(W8(v)); }
     auto VecLogabsf(__m256 v) noexcept -> __m256 { return Backend::detail::FastLog<float>(W8(eve::abs(W8(v)))); }
     auto VecLog1pf(__m256 v) noexcept -> __m256 { return eve::log1p(W8(v)); }
     auto VecSinf(__m256 v) noexcept -> __m256 { return Backend::detail::FastSinCos<true, float>(W8(v)); }
     auto VecSinhf(__m256 v) noexcept -> __m256 { return eve::sinh(W8(v)); }
     auto VecTanf(__m256 v) noexcept -> __m256 { return eve::tan(W8(v)); }
-    auto VecTanhf(__m256 v) noexcept -> __m256 { return Backend::detail::FastTanh<float>(W8(v)); }
     // Match interpreter's FastPow exactly.
     auto VecPowf(__m256 a, __m256 b) noexcept -> __m256 { return Backend::detail::FastPow<float>(W8(a), W8(b)); }
 
@@ -110,6 +107,165 @@ namespace {
         Vec const ymm = cc.new_ymm_ps();
         cc.vbroadcastss(ymm, xmm);
         return ymm;
+    }
+
+    // --- Inline AVX2/FMA codegen helpers for the Fast{Exp,Log,SinCos,Tanh}
+    // polynomials in interpreter/backend/eve/functions.hpp -- mirrors that
+    // header's `eve::` primitive calls one-for-one so a diff against it is
+    // easy to audit. Only reached when the compile-time feature gate (see
+    // CompileAVX2/CompileJacobian) has already confirmed FMA is available.
+
+    // dst = a*b + c (matches eve::fma(a,b,c)). VFMADD213PS's in-place
+    // convention needs `a` copied into the destination register first.
+    [[maybe_unused]] auto EmitFma(Compiler& cc, Vec const& a, Vec const& b, Vec const& c) -> Vec
+    {
+        Vec dst = cc.new_ymm_ps();
+        cc.vmovaps(dst, a);
+        cc.vfmadd213ps(dst, b, c);
+        return dst;
+    }
+
+    [[maybe_unused]] auto EmitMul(Compiler& cc, Vec const& a, Vec const& b) -> Vec
+    {
+        Vec res = cc.new_ymm_ps();
+        cc.vmulps(res, a, b);
+        return res;
+    }
+
+    [[maybe_unused]] auto EmitDiv(Compiler& cc, Vec const& a, Vec const& b) -> Vec
+    {
+        Vec res = cc.new_ymm_ps();
+        cc.vdivps(res, a, b);
+        return res;
+    }
+
+    // eve::clamp(a, lo, hi) = min(max(a, lo), hi).
+    [[maybe_unused]] auto EmitClamp(Compiler& cc, Vec const& a, float lo, float hi) -> Vec
+    {
+        Vec const t = cc.new_ymm_ps();
+        cc.vmaxps(t, a, BroadcastFloat(cc, lo));
+        Vec res = cc.new_ymm_ps();
+        cc.vminps(res, t, BroadcastFloat(cc, hi));
+        return res;
+    }
+
+    // eve::abs(a): mask off the sign bit.
+    [[maybe_unused]] auto EmitAbs(Compiler& cc, Vec const& a) -> Vec
+    {
+        Vec const mask = BroadcastFloat(cc, std::bit_cast<float>(0x7FFFFFFFU));
+        Vec res = cc.new_ymm_ps();
+        cc.vandps(res, a, mask);
+        return res;
+    }
+
+    // Elementwise a `pred` b -> all-ones/all-zeros mask, for use with EmitBlend.
+    [[maybe_unused]] auto EmitCmp(Compiler& cc, Vec const& a, Vec const& b, VCmpImm pred) -> Vec
+    {
+        Vec res = cc.new_ymm_ps();
+        cc.vcmpps(res, a, b, Imm(static_cast<uint8_t>(pred)));
+        return res;
+    }
+
+    // eve::if_else(mask, whenTrue, whenFalse) -- VBLENDVPS's mask selects its
+    // *third* operand when the mask's sign bit is set, so operand order here
+    // is (whenFalse, whenTrue, mask), matching Intel's documented semantics.
+    [[maybe_unused]] auto EmitBlend(Compiler& cc, Vec const& mask, Vec const& whenTrue, Vec const& whenFalse) -> Vec
+    {
+        Vec res = cc.new_ymm_ps();
+        cc.vblendvps(res, whenFalse, whenTrue, mask);
+        return res;
+    }
+
+    // eve::is_nan(a): unordered-quiet self-compare.
+    [[maybe_unused]] auto EmitIsNan(Compiler& cc, Vec const& a) -> Vec
+    {
+        return EmitCmp(cc, a, a, VCmpImm::kUNORD_Q);
+    }
+
+    [[maybe_unused]] auto EmitAdd(Compiler& cc, Vec const& a, Vec const& b) -> Vec
+    {
+        Vec res = cc.new_ymm_ps();
+        cc.vaddps(res, a, b);
+        return res;
+    }
+
+    [[maybe_unused]] auto EmitMax(Compiler& cc, Vec const& a, Vec const& b) -> Vec
+    {
+        Vec res = cc.new_ymm_ps();
+        cc.vmaxps(res, a, b);
+        return res;
+    }
+
+    // eve::floor(a).
+    [[maybe_unused]] auto EmitFloor(Compiler& cc, Vec const& a) -> Vec
+    {
+        Vec res = cc.new_ymm_ps();
+        cc.vroundps(res, a, Imm(static_cast<uint8_t>(RoundImm::kDown) | static_cast<uint8_t>(RoundImm::kSuppress)));
+        return res;
+    }
+
+    // Broadcast a 32-bit integer constant's raw bit pattern into all 8 lanes.
+    [[maybe_unused]] auto BroadcastInt(Compiler& cc, int32_t val) -> Vec
+    {
+        Gp const tmp = cc.new_gp32();
+        cc.mov(tmp, static_cast<uint32_t>(val));
+        Vec const xmm = cc.new_xmm_ss();
+        cc.vmovd(xmm, tmp);
+        Vec const ymm = cc.new_ymm_ps();
+        cc.vpbroadcastd(ymm, xmm);
+        return ymm;
+    }
+
+    // eve::convert(m, as<int32_t>): truncating float -> int32, lanes reinterpreted as packed int32.
+    [[maybe_unused]] auto EmitCvttps2dq(Compiler& cc, Vec const& a) -> Vec
+    {
+        Vec res = cc.new_ymm_ps();
+        cc.vcvttps2dq(res, a);
+        return res;
+    }
+
+    // eve::ldexp(y, mInt) = y * 2^mInt: build 2^mInt's IEEE754 bit pattern by
+    // biasing mInt into the exponent field of 1.0f ((mInt+127)<<23), which
+    // *is* the float 2^mInt with no conversion instruction needed, then scale.
+    [[maybe_unused]] auto EmitLdexp(Compiler& cc, Vec const& y, Vec const& mInt) -> Vec
+    {
+        Vec biased = cc.new_ymm_ps();
+        cc.vpaddd(biased, mInt, BroadcastInt(cc, 127));
+        Vec pow2 = cc.new_ymm_ps();
+        cc.vpslld(pow2, biased, Imm(23));
+        Vec res = cc.new_ymm_ps();
+        cc.vmulps(res, y, pow2);
+        return res;
+    }
+
+    [[maybe_unused]] auto EmitSub(Compiler& cc, Vec const& a, Vec const& b) -> Vec
+    {
+        Vec res = cc.new_ymm_ps();
+        cc.vsubps(res, a, b);
+        return res;
+    }
+
+    // eve::frexp(x) for x > 0: {mant in [0.5,1), exponent} with x = mant * 2^exponent.
+    // mant's bits = x's bits with the exponent field replaced by 126 (bias for
+    // 2^-1, giving the [0.5,1) range); exponent = x's biased exponent field - 126.
+    struct FrexpResult { Vec mant; Vec exponent; };
+    [[maybe_unused]] auto EmitFrexp(Compiler& cc, Vec const& x) -> FrexpResult
+    {
+        Vec mantBits = cc.new_ymm_ps();
+        cc.vandps(mantBits, x, BroadcastFloat(cc, std::bit_cast<float>(0x807FFFFFU)));
+        Vec mant = cc.new_ymm_ps();
+        cc.vorps(mant, mantBits, BroadcastFloat(cc, std::bit_cast<float>(126U << 23U)));
+
+        Vec expBits = cc.new_ymm_ps();
+        cc.vpsrld(expBits, x, Imm(23));
+        Vec expMasked = cc.new_ymm_ps();
+        cc.vpand(expMasked, expBits, BroadcastInt(cc, 0xFF));
+        Vec eInt = cc.new_ymm_ps();
+        cc.vpsubd(eInt, expMasked, BroadcastInt(cc, 126));
+        Vec eFloat = cc.new_ymm_ps();
+        cc.vcvtdq2ps(eFloat, eInt);
+
+        return {mant, eFloat};
     }
 
     // Emit AVX2 (ymm_ps) evaluation of `nodes[start..end)` into `stack`.
@@ -335,13 +491,70 @@ void RegisterBuiltinJitCodegens()
         });
         unary.Register(Operon::Hash(Operon::BuiltinOp::Cos),     [](Compiler& cc, Vec const& a) { return InvokeF1Ps(cc, VecCosf, a); });
         unary.Register(Operon::Hash(Operon::BuiltinOp::Cosh),    [](Compiler& cc, Vec const& a) { return InvokeF1Ps(cc, VecCoshf, a); });
-        unary.Register(Operon::Hash(Operon::BuiltinOp::Exp),     [](Compiler& cc, Vec const& a) { return InvokeF1Ps(cc, VecExpf, a); });
+        unary.Register(Operon::Hash(Operon::BuiltinOp::Exp),     [](Compiler& cc, Vec const& a) {
+            // Inlined FastExp (Cephes-style, ported from Eigen pexp_float) --
+            // see functions.hpp's FastExp<float> for the reference.
+            Vec const x = EmitClamp(cc, a, -88.723F, 88.723F);
+            Vec m = EmitFloor(cc, EmitFma(cc, x, BroadcastFloat(cc, 1.44269504088896341F), BroadcastFloat(cc, 0.5F)));
+            Vec r = EmitFma(cc, m, BroadcastFloat(cc, -0.693359375F), x);
+            r = EmitFma(cc, m, BroadcastFloat(cc, 2.12194440e-4F), r);
+            Vec const r2 = EmitMul(cc, r, r);
+            Vec const r3 = EmitMul(cc, r2, r);
+
+            Vec y  = EmitFma(cc, BroadcastFloat(cc, 1.9875691500E-4F), r, BroadcastFloat(cc, 1.3981999507E-3F));
+            Vec y1 = EmitFma(cc, BroadcastFloat(cc, 4.1665795894E-2F), r, BroadcastFloat(cc, 1.6666665459E-1F));
+            Vec const y2 = EmitAdd(cc, r, BroadcastFloat(cc, 1.0F));
+            y  = EmitFma(cc, y,  r,  BroadcastFloat(cc, 8.3334519073E-3F));
+            y1 = EmitFma(cc, y1, r,  BroadcastFloat(cc, 5.0000001201E-1F));
+            y  = EmitFma(cc, y,  r3, y1);
+            y  = EmitFma(cc, y,  r2, y2);
+
+            Vec const mInt   = EmitCvttps2dq(cc, m);
+            Vec const result = EmitMax(cc, EmitLdexp(cc, y, mInt), BroadcastFloat(cc, 0.0F));
+            return EmitBlend(cc, EmitIsNan(cc, a), BroadcastFloat(cc, std::numeric_limits<float>::quiet_NaN()), result);
+        });
         unary.Register(Operon::Hash(Operon::BuiltinOp::Floor),   [](Compiler& cc, Vec const& a) {
             Vec res = cc.new_ymm_ps();
             cc.vroundps(res, a, Imm(static_cast<uint8_t>(RoundImm::kDown) | static_cast<uint8_t>(RoundImm::kSuppress)));
             return res;
         });
-        unary.Register(Operon::Hash(Operon::BuiltinOp::Log),     [](Compiler& cc, Vec const& a) { return InvokeF1Ps(cc, VecLogf, a); });
+        unary.Register(Operon::Hash(Operon::BuiltinOp::Log),     [](Compiler& cc, Vec const& a) {
+            // Inlined FastLog (Cephes-style, ported from Eigen plog_impl_float) --
+            // see functions.hpp's FastLog<float> for the reference, whose
+            // eve::-call structure this mirrors one line at a time.
+            constexpr float MinNorm = std::bit_cast<float>(0x00800000U);
+            Vec const xClamped = EmitMax(cc, a, BroadcastFloat(cc, MinNorm));
+            auto [mant, e0] = EmitFrexp(cc, xClamped);
+
+            Vec const mask = EmitCmp(cc, mant, BroadcastFloat(cc, 0.707106781186547524F), VCmpImm::kLT_OQ);
+            Vec x = EmitFma(cc, EmitBlend(cc, mask, mant, BroadcastFloat(cc, 0.0F)),
+                             BroadcastFloat(cc, 1.0F), EmitSub(cc, mant, BroadcastFloat(cc, 1.0F)));
+            Vec const e = EmitSub(cc, e0, EmitBlend(cc, mask, BroadcastFloat(cc, 1.0F), BroadcastFloat(cc, 0.0F)));
+
+            Vec const x2 = EmitMul(cc, x, x);
+            Vec const x3 = EmitMul(cc, x2, x);
+
+            Vec y  = EmitFma(cc, BroadcastFloat(cc,  7.0376836292E-2F), x, BroadcastFloat(cc, -1.1514610310E-1F));
+            Vec y1 = EmitFma(cc, BroadcastFloat(cc, -1.2420140846E-1F), x, BroadcastFloat(cc, 1.4249322787E-1F));
+            Vec y2 = EmitFma(cc, BroadcastFloat(cc,  2.0000714765E-1F), x, BroadcastFloat(cc, -2.4999993993E-1F));
+            y  = EmitFma(cc, y,  x, BroadcastFloat(cc,  1.1676998740E-1F));
+            y1 = EmitFma(cc, y1, x, BroadcastFloat(cc, -1.6668057665E-1F));
+            y2 = EmitFma(cc, y2, x, BroadcastFloat(cc,  3.3333331174E-1F));
+            y  = EmitFma(cc, y, x3, y1);
+            y  = EmitFma(cc, y, x3, y2);
+            y  = EmitMul(cc, y, x3);
+
+            y = EmitFma(cc, BroadcastFloat(cc, -0.5F), x2, y);
+            x = EmitFma(cc, e, BroadcastFloat(cc, 0.693147180559945309F), EmitAdd(cc, x, y));
+
+            x = EmitBlend(cc, EmitCmp(cc, a, BroadcastFloat(cc, 0.0F), VCmpImm::kLT_OQ),
+                           BroadcastFloat(cc, std::numeric_limits<float>::quiet_NaN()), x);
+            x = EmitBlend(cc, EmitIsNan(cc, a), BroadcastFloat(cc, std::numeric_limits<float>::quiet_NaN()), x);
+            x = EmitBlend(cc, EmitCmp(cc, a, BroadcastFloat(cc, 0.0F), VCmpImm::kEQ_OQ),
+                           BroadcastFloat(cc, -std::numeric_limits<float>::infinity()), x);
+            x = EmitBlend(cc, EmitCmp(cc, a, BroadcastFloat(cc, std::numeric_limits<float>::infinity()), VCmpImm::kEQ_OQ), a, x);
+            return x;
+        });
         unary.Register(Operon::Hash(Operon::BuiltinOp::Logabs),  [](Compiler& cc, Vec const& a) { return InvokeF1Ps(cc, VecLogabsf, a); });
         unary.Register(Operon::Hash(Operon::BuiltinOp::Log1p),   [](Compiler& cc, Vec const& a) { return InvokeF1Ps(cc, VecLog1pf, a); });
         unary.Register(Operon::Hash(Operon::BuiltinOp::Sin),     [](Compiler& cc, Vec const& a) { return InvokeF1Ps(cc, VecSinf, a); });
@@ -358,7 +571,30 @@ void RegisterBuiltinJitCodegens()
             return res;
         });
         unary.Register(Operon::Hash(Operon::BuiltinOp::Tan),     [](Compiler& cc, Vec const& a) { return InvokeF1Ps(cc, VecTanf, a); });
-        unary.Register(Operon::Hash(Operon::BuiltinOp::Tanh),    [](Compiler& cc, Vec const& a) { return InvokeF1Ps(cc, VecTanhf, a); });
+        unary.Register(Operon::Hash(Operon::BuiltinOp::Tanh),    [](Compiler& cc, Vec const& a) {
+            // Inlined FastTanh (13/6-degree rational minimax, Pedro Gonnet 2014,
+            // via Eigen's generic_fast_tanh_float) -- see functions.hpp's
+            // FastTanh<float> for the reference this must stay in lockstep with.
+            Vec const x   = EmitClamp(cc, a, -7.99881172180175781F, 7.99881172180175781F);
+            Vec const tiny = EmitCmp(cc, EmitAbs(cc, a), BroadcastFloat(cc, 0.0004F), VCmpImm::kLT_OQ);
+            Vec const x2  = EmitMul(cc, x, x);
+
+            Vec p = EmitFma(cc, x2, BroadcastFloat(cc, -2.76076847742355e-16F), BroadcastFloat(cc, 2.00018790482477e-13F));
+            p = EmitFma(cc, x2, p, BroadcastFloat(cc, -8.60467152213735e-11F));
+            p = EmitFma(cc, x2, p, BroadcastFloat(cc,  5.12229709037114e-08F));
+            p = EmitFma(cc, x2, p, BroadcastFloat(cc,  1.48572235717979e-05F));
+            p = EmitFma(cc, x2, p, BroadcastFloat(cc,  6.37261928875436e-04F));
+            p = EmitFma(cc, x2, p, BroadcastFloat(cc,  4.89352455891786e-03F));
+            p = EmitMul(cc, x, p);
+
+            Vec q = EmitFma(cc, x2, BroadcastFloat(cc, 1.19825839466702e-06F), BroadcastFloat(cc, 1.18534705686654e-04F));
+            q = EmitFma(cc, x2, q, BroadcastFloat(cc, 2.26843463243900e-03F));
+            q = EmitFma(cc, x2, q, BroadcastFloat(cc, 4.89352518554385e-03F));
+
+            Vec const pq     = EmitDiv(cc, p, q);
+            Vec const result = EmitBlend(cc, tiny, x, pq);
+            return EmitBlend(cc, EmitIsNan(cc, a), BroadcastFloat(cc, std::numeric_limits<float>::quiet_NaN()), result);
+        });
         unary.Register(Operon::Hash(Operon::BuiltinOp::Square),  [](Compiler& cc, Vec const& a) {
             Vec res = cc.new_ymm_ps();
             cc.vmulps(res, a, a);
@@ -411,7 +647,7 @@ auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<Comp
 
     auto& rt = pick();
 
-    if (!rt.cpu_features().x86().has(CpuFeatures::X86::kAVX2)) {
+    if (!rt.cpu_features().x86().has(CpuFeatures::X86::kAVX2) || !rt.cpu_features().x86().has(CpuFeatures::X86::kFMA)) {
         return nullptr;
     }
 
@@ -524,7 +760,7 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
 
     auto& rt = pick();
 
-    if (!rt.cpu_features().x86().has(CpuFeatures::X86::kAVX2)) {
+    if (!rt.cpu_features().x86().has(CpuFeatures::X86::kAVX2) || !rt.cpu_features().x86().has(CpuFeatures::X86::kFMA)) {
         return nullptr;
     }
 
@@ -669,6 +905,14 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
     auto result = std::make_unique<CompileMeta>();
     result->rtJac = &rt;
     result->jacFn = fnPtr;
+    // Unlike CompileAVX2, this was previously left unset (default 0), which
+    // JitLMCostFunction::Evaluate's ENSURE(nVars_ < 0 || jacColPtrs_.size()
+    // == nVars_) trips on for any tree with variables -- fatal for --jit=jac
+    // mode, which (unlike --jit=all) never falls through to GetOrCompile's
+    // merge branch that would otherwise backfill these from the residual
+    // compile.
+    result->nVars = static_cast<int>(varOrder.size());
+    result->nConsts = nConsts;
     return result;
     } catch (std::exception const&) {
         return nullptr;

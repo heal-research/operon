@@ -183,6 +183,129 @@ TEST_CASE("JIT AVX2 correctness: floor/ceil", "[jit][avx2]")
     SECTION("Ceil")  { checkOp(Operon::BuiltinOp::Ceil); }
 }
 
+// Tanh's inlined codegen (EmitFma/EmitClamp/EmitBlend/... in jit_compiler.cpp)
+// replaced an out-of-line call to the same FastTanh polynomial the
+// interpreter uses -- exercise the specific value ranges its branches
+// (the |x|<0.0004 "tiny" linear region, the +-7.99881... clamp boundary,
+// and NaN propagation) depend on, which a real dataset's column values
+// aren't guaranteed to hit.
+TEST_CASE("JIT AVX2 correctness: Tanh edge cases", "[jit][avx2]")
+{
+    std::vector<float> x1 = {
+        0.0F, 0.0001F, -0.0001F, 0.0004F, -0.0004F, 0.0005F, -0.0005F,
+        1.0F, -1.0F, 5.0F, -5.0F,
+        7.99881172180175781F, -7.99881172180175781F, // exact clamp boundary
+        8.0F, -8.0F, 50.0F, -50.0F, 1000.0F, -1000.0F,
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+    };
+    auto ds = Dataset({"X1"}, std::vector<std::vector<float>>{x1});
+    // 21 rows: 2 full AVX2 groups (16) + 5-row scalar tail.
+    auto range = Range{0, x1.size()};
+
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) { SKIP("AVX2 not available"); }
+
+    auto tree = InfixParser::Parse("tanh(X1)", ds);
+    auto ref  = EvalRef(tree, ds, range);
+    auto avx2 = EvalJIT_AVX2(compiler, tree, ds, range);
+
+    REQUIRE(ref.size() == avx2.size());
+    for (std::size_t i = 0; i < ref.size(); ++i) {
+        INFO("row " << i << " (X1=" << x1[i] << "): ref=" << ref[i] << " avx2=" << avx2[i]);
+        if (std::isnan(ref[i])) {
+            CHECK(std::isnan(avx2[i]));
+        } else {
+            CHECK(avx2[i] == Catch::Approx(ref[i]).epsilon(Tol));
+        }
+    }
+}
+
+// Exp's inlined codegen (EmitFloor/EmitLdexp/... in jit_compiler.cpp) replaced
+// an out-of-line call to the same FastExp polynomial the interpreter uses --
+// exercise the +-88.723 clamp boundary, deep-underflow (where the old
+// ldexp-vs-input-max bug this file's history references would have shown up),
+// and NaN propagation.
+TEST_CASE("JIT AVX2 correctness: Exp edge cases", "[jit][avx2]")
+{
+    std::vector<float> x1 = {
+        0.0F, 1.0F, -1.0F, 10.0F, -10.0F,
+        88.723F, -88.723F, // exact clamp boundary
+        89.0F, -89.0F, -128.0F, 100.0F, -100.0F,
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+    };
+    auto ds = Dataset({"X1"}, std::vector<std::vector<float>>{x1});
+    // 15 rows: 1 full AVX2 group (8) + 7-row scalar tail.
+    auto range = Range{0, x1.size()};
+
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) { SKIP("AVX2 not available"); }
+
+    auto tree = InfixParser::Parse("exp(X1)", ds);
+    auto ref  = EvalRef(tree, ds, range);
+    auto avx2 = EvalJIT_AVX2(compiler, tree, ds, range);
+
+    REQUIRE(ref.size() == avx2.size());
+    for (std::size_t i = 0; i < ref.size(); ++i) {
+        INFO("row " << i << " (X1=" << x1[i] << "): ref=" << ref[i] << " avx2=" << avx2[i]);
+        if (std::isnan(ref[i])) {
+            CHECK(std::isnan(avx2[i]));
+        } else if (std::isinf(ref[i])) {
+            CHECK(std::isinf(avx2[i]));
+            CHECK((ref[i] > 0) == (avx2[i] > 0));
+        } else {
+            CHECK(avx2[i] == Catch::Approx(ref[i]).epsilon(Tol));
+        }
+    }
+}
+
+// Log's inlined codegen (EmitFrexp/EmitBlend/... in jit_compiler.cpp) replaced
+// an out-of-line call to the same FastLog polynomial the interpreter uses --
+// exercise the sub-normal/near-zero domain, the sqrt(1/2) mantissa-range-
+// reduction branch on both sides, and all four of the function's edge cases
+// (negative -> NaN, NaN -> NaN, zero -> -inf, +inf -> +inf).
+TEST_CASE("JIT AVX2 correctness: Log edge cases", "[jit][avx2]")
+{
+    std::vector<float> x1 = {
+        1.0F, 2.718281828F, 0.5F, 0.707106781186547524F, 0.70710677F, // mantissa-reduction boundary, both sides
+        1e-30F, 1e30F, 1e-38F, // near subnormal / large magnitude
+        0.0F,                  // -> -inf
+        -1.0F, -0.5F,          // -> NaN
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+    };
+    auto ds = Dataset({"X1"}, std::vector<std::vector<float>>{x1});
+    // 14 rows: 1 full AVX2 group (8) + 6-row scalar tail.
+    auto range = Range{0, x1.size()};
+
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) { SKIP("AVX2 not available"); }
+
+    auto tree = InfixParser::Parse("log(X1)", ds);
+    auto ref  = EvalRef(tree, ds, range);
+    auto avx2 = EvalJIT_AVX2(compiler, tree, ds, range);
+
+    REQUIRE(ref.size() == avx2.size());
+    for (std::size_t i = 0; i < ref.size(); ++i) {
+        INFO("row " << i << " (X1=" << x1[i] << "): ref=" << ref[i] << " avx2=" << avx2[i]);
+        if (std::isnan(ref[i])) {
+            CHECK(std::isnan(avx2[i]));
+        } else if (std::isinf(ref[i])) {
+            CHECK(std::isinf(avx2[i]));
+            CHECK((ref[i] > 0) == (avx2[i] > 0));
+        } else {
+            CHECK(avx2[i] == Catch::Approx(ref[i]).epsilon(Tol));
+        }
+    }
+}
+
 // Smoke test for Ref node handling in the JIT compiler. The explicit register
 // copy (vmovaps/vmovups) is preventive — it shortens live ranges and simplifies
 // the use graph for asmjit's RA, but no wrong-result bug was observed with the
