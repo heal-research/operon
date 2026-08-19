@@ -127,7 +127,7 @@ auto WriteParetoFront(std::string const& path,
             "   \"nmse_train\": {}, \"nmse_test\": {},\n"
             "   \"mae_train\": {}, \"mae_test\": {},\n"
             "   \"mdl\": {}, \"fbf\": {}}}",
-            i, EscapeJson(InfixFormatter::Format(ind->Genotype, *ds, std::numeric_limits<Scalar>::digits10)),
+            i, EscapeJson(InfixFormatter::Format(ind->Genotype, *ds, std::numeric_limits<Scalar>::max_digits10)),
             ind->Genotype.AdjustedLength(), static_cast<size_t>(k), objArr,
             jsonNum(r2Train), jsonNum(r2Test),
             jsonNum(mseTrain), jsonNum(mseTest),

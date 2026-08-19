@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <fmt/core.h>
+#include <limits>
 #include <memory>
 #include <unordered_map>
 #include <taskflow/algorithm/reduce.hpp>
@@ -272,7 +273,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         Operon::MaybeSaveCheckpoint(gp, random, result, /*force=*/true);
         jitReport();
         auto best = reporter.GetBest();
-        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));
+        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;

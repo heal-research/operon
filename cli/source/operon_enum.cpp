@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <fmt/core.h>
+#include <limits>
 #include <memory>
 
 #include "operon/algorithms/enumeration.hpp"
@@ -116,7 +117,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             return EXIT_FAILURE;
         }
         for (auto const& [fitness, tree] : best) {
-            fmt::print("fitness={:.6g}\t{}\n", fitness, Operon::InfixFormatter::Format(tree, *problem.GetDataset(), 6));
+            fmt::print("fitness={:.6g}\t{}\n", fitness, Operon::InfixFormatter::Format(tree, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10));
         }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
