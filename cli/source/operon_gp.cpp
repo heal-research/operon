@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <fmt/core.h>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <unordered_map>
@@ -379,7 +380,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                                                            : shapeViolationStorage->Measure(best.Genotype).Feasible;
             fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
         }
-        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), 6));
+        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10));
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;

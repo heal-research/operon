@@ -13,7 +13,7 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
 {
     const auto& s = tree[i];
     if (s.IsConstant()) {
-        auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}f}}"), decimalPrecision);
+        auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}}}"), decimalPrecision);
         fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
     } else if (s.IsVariable()) {
         auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "(({{:.{}f}}) * {{}})" : "({{:.{}f}} * {{}})"), decimalPrecision);
@@ -32,7 +32,7 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
     } else {
         if (s.Value != 1) {
             fmt::format_to(std::back_inserter(current), "(");
-            auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}f}}"), decimalPrecision);
+            auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}}}"), decimalPrecision);
             fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
             fmt::format_to(std::back_inserter(current), " * ");
         }
