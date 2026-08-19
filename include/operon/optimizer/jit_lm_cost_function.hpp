@@ -65,12 +65,22 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
         // never changes across Evaluate() calls, so recomputing them per call
         // (as a freshly heap-allocated std::vector, no less) was pure waste on
         // what can be a very hot path (up to population x selection-pressure x
-        // LM-iterations calls per generation).
-        jacOutPtrs_.resize(this->numParameters_);
-        for (std::size_t k = 0; k < this->numParameters_; ++k) {
-            jacOutPtrs_[k] = scratchJac_.data() + k * nRowsPad_;
+        // LM-iterations calls per generation). Skipped for residual-only objects
+        // (jacFn_ == nullptr), which never dereference jacOutPtrs_.
+        if (jacFn_ != nullptr) {
+            jacOutPtrs_.resize(this->numParameters_);
+            for (std::size_t k = 0; k < this->numParameters_; ++k) {
+                jacOutPtrs_[k] = scratchJac_.data() + k * nRowsPad_;
+            }
         }
     }
+
+    // jacOutPtrs_ points into this object's own scratchJac_; a copy would leave
+    // the copy's pointers aimed at the source's buffer, silently returning stale
+    // Jacobians. All current call sites hold this by reference, so deleting the
+    // copy ops just fences the footgun rather than fixing a live bug.
+    JitLMCostFunction(JitLMCostFunction const&) = delete;
+    auto operator=(JitLMCostFunction const&) -> JitLMCostFunction& = delete;
 
     inline auto Evaluate(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool // NOLINT
     {
