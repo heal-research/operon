@@ -39,12 +39,14 @@ void RegisterAffineBuiltins()
         unary.Register(Operon::Hash(BuiltinOp::Sinh), [](Context const& ctx, Affine const& v) { return pappus::ops::sinh<Scalar>(ctx, v); });
         unary.Register(Operon::Hash(BuiltinOp::Cosh), [](Context const& ctx, Affine const& v) { return pappus::ops::cosh<Scalar>(ctx, v); });
         unary.Register(Operon::Hash(BuiltinOp::Tanh), [](Context const& ctx, Affine const& v) { return pappus::ops::tanh<Scalar>(ctx, v); });
-        // May throw if the domain crosses zero (requires Chebyshev V-shape).
+        // Uses a Chebyshev/secant V-shape enclosure when the domain crosses
+        // zero -- returns an ordinary (non-invalid) affine form, no domain error.
         unary.Register(Operon::Hash(BuiltinOp::Abs), [](Context const& ctx, Affine const& v) { return pappus::ops::abs<Scalar>(ctx, v); });
         unary.Register(Operon::Hash(BuiltinOp::Sqrtabs), [](Context const& ctx, Affine const& v) { return pappus::ops::sqrtabs<Scalar>(ctx, v); });
         unary.Register(Operon::Hash(BuiltinOp::Logabs), [](Context const& ctx, Affine const& v) { return pappus::ops::logabs<Scalar>(ctx, v); });
         unary.Register(Operon::Hash(BuiltinOp::Cbrt), [](Context const& ctx, Affine const& v) { return pappus::ops::cbrt<Scalar>(ctx, v); });
-        // May throw if the domain includes values <= -1.
+        // Returns an invalid() (NaN-poisoned) form, not a throw, if the domain
+        // includes values <= -1.
         unary.Register(Operon::Hash(BuiltinOp::Log1p), [](Context const& ctx, Affine const& v) { return pappus::ops::log1p<Scalar>(ctx, v); });
         unary.Register(Operon::Hash(BuiltinOp::Floor), [](Context const& ctx, Affine const& v) { return pappus::ops::floor<Scalar>(ctx, v); });
         unary.Register(Operon::Hash(BuiltinOp::Ceil), [](Context const& ctx, Affine const& v) { return pappus::ops::ceil<Scalar>(ctx, v); });
