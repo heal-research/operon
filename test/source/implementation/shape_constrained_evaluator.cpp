@@ -5,15 +5,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
-
-#include <fmt/format.h>
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
@@ -429,6 +426,15 @@ TEST_CASE("ShapeConstrainedEvaluator - certifies constant integer powers of a ne
     // the same case directly and would also certify this if affine somehow
     // regressed back to rejecting it.
     Fixture fx;
+    // This test's whole point is the raw (-0.91)^2 bound computation, not
+    // FitLinearScaling's fit against Fixture's data -- and that data comes
+    // from std::uniform_real_distribution, whose output sequence for a
+    // given seed the C++ standard does not guarantee portable across
+    // library implementations (confirmed via a diagnostic-instrumented CI
+    // run, 2026-08-21: identical std::pow(-0.91, 2) on every platform, but
+    // a materially different fitted Scale/Offset on macOS vs Linux, flipping
+    // Feasible). Skip the fit so this checks the one thing it's meant to.
+    fx.problem.SetLinearScalingEnabled(false);
     auto tree = InfixParser::Parse("(-0.91) ^ 2", fx.ds);
 
     Operon::ShapeConstraintSet cs;
@@ -440,18 +446,10 @@ TEST_CASE("ShapeConstrainedEvaluator - certifies constant integer powers of a ne
     Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
     auto const measurement = sce.Measure(tree);
     REQUIRE(measurement.Measurements.size() == 1);
-    auto const& m = measurement.Measurements[0];
-    // TEMPORARY diagnostics (2026-08-21, tracking down a macOS-only CI
-    // failure on this exact case): print what was actually computed rather
-    // than guessing blind -- remove once root-caused. INFO is scoped to the
-    // rest of this test case, so it attaches to every CHECK below too.
-    INFO("Certified=" << m.Certified << " Violation=" << m.Violation
-        << " Bound=" << (m.Bound ? fmt::format("[{}:{}]", m.Bound->first, m.Bound->second) : std::string{"<none>"})
-        << " double std::pow(-0.91,2)=" << std::pow(-0.91, 2)
-        << " float std::pow(-0.91f,2.0f)=" << std::pow(-0.91F, 2.0F)
-        << " trunc(2.0F)==2.0F: " << (std::trunc(2.0F) == 2.0F));
-    CHECK(m.Certified);
+    CHECK(measurement.Measurements[0].Certified);
     REQUIRE(measurement.Measurements[0].Bound);
+    CHECK(measurement.Measurements[0].Bound->first == Catch::Approx(0.8281).margin(1e-3));
+    CHECK(measurement.Measurements[0].Bound->second == Catch::Approx(0.8281).margin(1e-3));
     CHECK(measurement.Feasible);
     CHECK(sce.Feasible(tree));
 }
