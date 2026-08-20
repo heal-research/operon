@@ -23,6 +23,7 @@
 #include "operon/information_criteria/minimum_description_length.hpp"
 #include "operon/information_criteria/weighted_complexity.hpp"
 #include "operon/interpreter/interpreter.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/operon_export.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/likelihood_base.hpp"
@@ -184,6 +185,7 @@ struct EvaluatorBase : public OperatorBase<Operon::Vector<Operon::Scalar>, Opero
         };
     }
 
+
     auto Population() const -> Operon::Span<Individual const> { return population_; }
     auto SetPopulation(Operon::Span<Operon::Individual const> pop) const { population_ = pop; }
     auto GetProblem() const -> Problem const* { return problem_; }
@@ -257,11 +259,10 @@ public:
     using TDispatch    = DTable;
     using TInterpreter = Operon::Interpreter<Operon::Scalar, DTable>;
 
-    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool linearScaling = true, bool skipNonFinite = false, double nonFinitePenaltyWeight = 1.0)
+    explicit Evaluator(gsl::not_null<Problem const*> problem, gsl::not_null<DTable const*> dtable, ErrorMetric error = MSE{}, bool skipNonFinite = false, double nonFinitePenaltyWeight = 1.0)
         : EvaluatorBase(problem)
         , dtable_(dtable)
         , error_(error)
-        , scaling_(linearScaling)
         , skipNonFinite_(skipNonFinite)
         , nonFinitePenaltyWeight_(nonFinitePenaltyWeight)
     {
@@ -278,10 +279,12 @@ public:
     auto
     Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
+protected:
+    [[nodiscard]] auto UsesLinearScaling() const -> bool { return GetProblem()->LinearScalingEnabled(); }
+
 private:
     gsl::not_null<DTable const*> dtable_;
     ErrorMetric error_;
-    bool scaling_{false};
     // Opt-in. When true: non-finite rows excluded via ErrorMetric::FiniteSubset
     // (SSE/MSE/NMSE/RMSE/MAE). fit += nonFinitePenaltyWeight_ * nonfinite
     // fraction, scaled by target variance for the non-normalized metrics
@@ -339,6 +342,7 @@ public:
     auto
     Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
+
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> final {
         auto resEval{0UL};
         auto jacEval{0UL};
@@ -374,26 +378,11 @@ private:
     std::optional<AggregateType> aggregateType_;
 };
 
-// a couple of useful user-defined evaluators (mostly to avoid calling lambdas from python)
-// TODO: think about a better design
-class OPERON_EXPORT LengthEvaluator : public UserDefinedEvaluator {
+class OPERON_EXPORT TreePropertyEvaluator : public UserDefinedEvaluator {
 public:
-    explicit LengthEvaluator(gsl::not_null<Operon::Problem const*> problem, size_t maxlength = 1)
-        : UserDefinedEvaluator(problem, [maxlength](Operon::RandomGenerator& /*unused*/, Operon::Individual const& ind) {
-            return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.Length()) / static_cast<Operon::Scalar>(maxlength) };
-        })
-    {
-    }
-};
+    using Property = std::function<Operon::Scalar(Operon::Tree const&)>;
 
-class OPERON_EXPORT ShapeEvaluator : public UserDefinedEvaluator {
-public:
-    explicit ShapeEvaluator(Operon::Problem const* problem)
-        : UserDefinedEvaluator(problem, [](Operon::RandomGenerator& /*unused*/, Operon::Individual const& ind) {
-            return EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(ind.Genotype.VisitationLength()) };
-        })
-    {
-    }
+    explicit TreePropertyEvaluator(gsl::not_null<Operon::Problem const*> problem, Property property, Operon::Scalar normalizer = 1);
 };
 
 class OPERON_EXPORT DiversityEvaluator : public EvaluatorBase {
@@ -417,9 +406,8 @@ private:
 };
 
 // See core/concepts.hpp for why these are asserted here rather than constraining a template.
-// LengthEvaluator/ShapeEvaluator aren't asserted separately: they inherit
-// UserDefinedEvaluator's Evaluate override without overriding it themselves,
-// so UserDefinedEvaluator's assert below already covers them.
+// TreePropertyEvaluator inherits UserDefinedEvaluator's Evaluate override without
+// overriding it, so UserDefinedEvaluator's assert below already covers it.
 static_assert(Concepts::EvaluatorCallable<UserDefinedEvaluator>);
 static_assert(Concepts::EvaluatorCallable<Evaluator<ScalarDispatch>>);
 static_assert(Concepts::EvaluatorCallable<MultiEvaluator>);
@@ -454,6 +442,8 @@ namespace detail {
 template <typename DTable, Concepts::Likelihood Lik>
 requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT MinimumDescriptionLengthEvaluator final : public Evaluator<DTable> {
+    // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
+    // closing the previous in-search/exported MDL divergence for the same individual.
     using Base = Evaluator<DTable>;
 
 public:
@@ -495,6 +485,11 @@ public:
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, estimatedValues);
 
+        auto const scaling = Operon::FitLinearScaling(tree, *problem, *dtable, trainingRange);
+        if (scaling) {
+            scaling->ApplyInPlace(estimatedValues);
+        }
+
         auto targetValues = problem->TargetValues(trainingRange);
         Operon::Scalar profiledSigma{};
         if (sigma_.empty() && Lik::UsesSigma) {
@@ -506,6 +501,9 @@ public:
 
         ++Base::JacobianEvaluations;
         Eigen::Matrix<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, trainingRange); // jacobian
+        if (scaling) {
+            jac *= static_cast<Operon::Scalar>(scaling->Scale); // d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs)
+        }
         auto fisherMatrix = Lik::ComputeFisherMatrix(estimatedValues, {jac.data(), static_cast<std::size_t>(jac.size())}, effectiveSigma);
         auto fisherDiag   = fisherMatrix.diagonal().array();
         ENSURE(fisherDiag.size() == p);
@@ -523,6 +521,8 @@ private:
 template <typename DTable, Concepts::Likelihood Lik>
 requires Concepts::HasFisherMatrix<Lik>
 class OPERON_EXPORT FractionalBayesFactorEvaluator final : public Evaluator<DTable> {
+    // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
+    // closing the previous in-search/exported FBF divergence for the same individual.
     using Base = Evaluator<DTable>;
 
 public:
@@ -555,6 +555,11 @@ public:
 
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, estimatedValues);
+
+        auto const scaling = Operon::FitLinearScaling(tree, *problem, *dtable, trainingRange);
+        if (scaling) {
+            scaling->ApplyInPlace(estimatedValues);
+        }
 
         auto targetValues = problem->TargetValues(trainingRange);
         double mlNLL{};
@@ -614,6 +619,8 @@ public:
 template<typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
 requires (DTable::template SupportsType<typename Likelihood::Scalar>)
 class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
+    // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
+    // closing the previous in-search/exported likelihood divergence for the same individual.
     using Base = Evaluator<DTable>;
 
     public:
@@ -643,6 +650,11 @@ class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
         auto estimatedValues = buf.subspan(0, trainingRange.Size());
         ++Base::ResidualEvaluations;
         interpreter.Evaluate(parameters, trainingRange, estimatedValues);
+
+        auto const scaling = Operon::FitLinearScaling(*tree, *problem, *dtable, trainingRange);
+        if (scaling) {
+            scaling->ApplyInPlace(estimatedValues);
+        }
 
         auto targetValues = problem->TargetValues(trainingRange);
 
