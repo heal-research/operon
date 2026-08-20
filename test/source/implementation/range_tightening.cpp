@@ -147,6 +147,28 @@ TEST_CASE("TightenRange - uses the live coeff span for an optimizable variable w
     REQUIRE(tightened.sup() == Catch::Approx(2.0).margin(1e-4));
 }
 
+TEST_CASE("TightenRange - uses live coeff span for optimizable function weights", "[range_tightening]")
+{
+    constexpr Operon::Hash X1{1};
+    auto x = Var(X1);
+    x.Optimize = false;
+    auto add = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 1);
+    add.Value = 1.0F;
+    add.Optimize = true;
+    auto tree = Operon::Tree({x, add}).UpdateNodes();
+    auto d = Domains();
+    d[X1] = {S{0}, S{1}};
+    std::vector<Operon::Scalar> const coeff{100.0F};
+
+    auto const naive     = IE(&tree, IE::DomainMap{d}).Evaluate(coeff);
+    auto const tightened = TightenRange(tree, d, coeff);
+
+    REQUIRE(naive.inf() == Catch::Approx(0.0).margin(1e-4));
+    REQUIRE(naive.sup() == Catch::Approx(100.0).margin(1e-3));
+    REQUIRE(tightened.inf() <= 0.0 + 1e-3);
+    REQUIRE(tightened.sup() >= 100.0 - 1e-3);
+}
+
 TEST_CASE("TightenRange - constant tree matches naive exactly (no variables)", "[range_tightening]")
 {
     auto tree = Operon::Tree({Const(2.5)}).UpdateNodes();
