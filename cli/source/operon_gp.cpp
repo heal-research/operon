@@ -274,13 +274,16 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             };
             if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/false)) { throw std::invalid_argument(*error); }
 
+            auto const boundMode = Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>());
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
                 shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(evaluator.get(), &dtable, *shapeConstraints);
                 shapeConstrainedStorage->SetWorstValue(worstValue);
+                shapeConstrainedStorage->SetBoundMode(boundMode);
                 activeEvaluator = shapeConstrainedStorage.get();
             } else if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
                 shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                     &problem, &dtable, *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
+                shapeViolationStorage->SetBoundMode(boundMode);
                 shapePenaltyAggregateStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
                 shapePenaltyAggregateStorage->SetBudget(config.Evaluations);
                 shapePenaltyAggregateStorage->Add(evaluator.get());

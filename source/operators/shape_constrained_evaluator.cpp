@@ -24,6 +24,7 @@
 #include "operon/formatter/formatter.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
 #include "operon/interpreter/interval_evaluator.hpp"
+#include "operon/interpreter/range_tightening.hpp"
 #include "operon/operators/linear_scaling.hpp"
 
 #include <fstream>
@@ -59,6 +60,10 @@ struct BoundPathStats {
     std::atomic_size_t illConditionedFallback{0}; // affine distrusted outright -- interval alone
     std::atomic_size_t nonFiniteFallback{0};      // affine non-finite -- interval alone
     std::atomic_size_t exceptionFallback{0};      // affine threw -- interval alone
+    std::atomic_size_t bisectionAttempted{0};     // direct path failed/non-finite, tried domain bisection
+    std::atomic_size_t bisectionRescued{0};       // bisection found a finite sound bound the direct path missed
+    std::atomic_size_t tightenRangeAttempted{0};  // direct path failed/non-finite, tried TightenRange
+    std::atomic_size_t tightenRangeRescued{0};    // TightenRange found a finite sound bound the direct path missed
 };
 
 auto GlobalBoundPathStats() -> BoundPathStats&
@@ -78,12 +83,15 @@ auto BoundPathStatsEnabled() -> bool
                 std::fprintf(stderr,
                     "[shape-bound-stats] affine-direct=%zu intersect=%zu (lo: affine=%zu interval=%zu tied=%zu; "
                     "hi: affine=%zu interval=%zu tied=%zu) non-overlapping=%zu ill-conditioned-fallback=%zu "
-                    "non-finite-fallback=%zu exception-fallback=%zu\n",
+                    "non-finite-fallback=%zu exception-fallback=%zu bisection-attempted=%zu bisection-rescued=%zu "
+                    "tightenrange-attempted=%zu tightenrange-rescued=%zu\n",
                     s.affineDirect.load(), s.intersectCount.load(),
                     s.intersectLoFromAffine.load(), s.intersectLoFromInterval.load(), s.intersectLoTied.load(),
                     s.intersectHiFromAffine.load(), s.intersectHiFromInterval.load(), s.intersectHiTied.load(),
                     s.nonOverlapping.load(), s.illConditionedFallback.load(),
-                    s.nonFiniteFallback.load(), s.exceptionFallback.load());
+                    s.nonFiniteFallback.load(), s.exceptionFallback.load(),
+                    s.bisectionAttempted.load(), s.bisectionRescued.load(),
+                    s.tightenRangeAttempted.load(), s.tightenRangeRescued.load());
             });
         });
     }
@@ -140,7 +148,10 @@ auto ShapeAffineIllConditionedThreshold() -> Operon::Scalar
     return threshold;
 }
 
-auto TryAffineBound(Tree const& tree, AffineEvaluator& ae) -> BoundResult
+// The affine+interval intersection path, unchanged from before -- extracted
+// so TryAffineBound (below) can retry it over bisected sub-boxes when it
+// fails on the whole domain.
+auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode mode) -> BoundResult
 {
     // TEMPORARY diagnostic (not a permanent feature): OPERON_SHAPE_DEBUG=1
     // traces which of the three paths (affine / ill-conditioned-fallback /
@@ -161,6 +172,8 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator& ae) -> BoundResult
             return tl::unexpected(std::string(e.what()));
         }
     };
+
+    if (mode == ShapeBoundMode::IntervalOnly) { return IntervalBound(); }
 
     try {
         ae.SetTree(&tree);
@@ -223,6 +236,10 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator& ae) -> BoundResult
         // result would mean one of the two is unsound, not that the
         // intersection is empty -- fall back to the affine bound alone
         // rather than construct an inverted interval).
+        if (mode == ShapeBoundMode::AffineOnly) {
+            if (boundStats) { ++GlobalBoundPathStats().affineDirect; }
+            return bound;
+        }
         if (auto ibound = IntervalBound(); ibound) {
             auto const lo = std::max(bound.inf(), ibound->inf());
             auto const hi = std::min(bound.sup(), ibound->sup());
@@ -263,6 +280,111 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator& ae) -> BoundResult
     }
 }
 
+auto IsFiniteBound(BoundResult const& b) -> bool
+{
+    return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
+}
+
+// Bounded-depth domain bisection, used only as a last resort when
+// TryAffineBoundDirect fails on the whole domain box (e.g. log(x) where x's
+// full range straddles zero, but a narrower sub-box's range doesn't). Picks
+// the widest axis, splits it at its midpoint, recurses on both halves, and
+// takes the hull of the two sub-results -- sound by construction (a union
+// of sound sub-box enclosures is itself a sound enclosure of the whole
+// box), same reasoning as pappus's own evaluate_bisected. Deliberately NOT
+// operon's TightenRange/TightenRangeBisected (the mean-value/Newton-style
+// method) -- that failed a soundness gate on this exact shape-constraint
+// derivative-slice tree class (see project memory, 2026-08-06 finding), and
+// this is a different, unrelated mechanism (no gradient/mean-value math
+// involved) not affected by that bug.
+//
+// Only fires on the (relatively rare) already-uncertified path, so the
+// exponential blowup with depth is bounded to cases that were already
+// failing outright, not a per-call tax on the common case. Still measured
+// as a net wall-clock LOSS on both problems tested so far (2026-08-09):
+// most uncertified cases turn out to be genuinely non-finite over every
+// sub-box, not just the whole one, so the exponential retry cost is rarely
+// repaid. Opt-in only (default off) until a broader problem sweep shows a
+// net win somewhere -- see OPERON_SHAPE_BOUND_STATS's bisection-attempted
+// vs bisection-rescued counters to judge the trade-off on a given problem.
+auto BisectionMaxDepth() -> int
+{
+    static int const depth = [] {
+        auto const* env = std::getenv("OPERON_SHAPE_BISECTION_DEPTH");
+        return env ? std::atoi(env) : 0;
+    }();
+    return depth;
+}
+
+auto BisectedDomainBound(Tree const& tree, AffineEvaluator::DomainMap const& domains, int depth, ShapeBoundMode mode) -> BoundResult
+{
+    AffineEvaluator subAe(&tree, domains);
+    auto direct = TryAffineBoundDirect(tree, subAe, mode);
+    if (depth <= 0 || IsFiniteBound(direct)) { return direct; }
+
+    Operon::Hash widest{};
+    Operon::Scalar widestDiam{-1};
+    bool any = false;
+    for (auto const& [h, dom] : domains) {
+        auto const diam = dom.second - dom.first;
+        if (diam > widestDiam) { widestDiam = diam; widest = h; any = true; }
+    }
+    if (!any || widestDiam <= Operon::Scalar{0}) { return direct; }
+
+    auto loDomains = domains;
+    auto hiDomains = domains;
+    auto const [lo, hi] = domains.at(widest);
+    auto const mid = lo + (hi - lo) / Operon::Scalar{2};
+    loDomains[widest].second = mid;
+    hiDomains[widest].first = mid;
+
+    auto left = BisectedDomainBound(tree, loDomains, depth - 1, mode);
+    auto right = BisectedDomainBound(tree, hiDomains, depth - 1, mode);
+    if (!IsFiniteBound(left) || !IsFiniteBound(right)) { return direct; }
+
+    return Interval(std::min(left->inf(), right->inf()), std::max(left->sup(), right->sup()));
+}
+
+// Opt-in (default off), independent of bisection so each can be A/B tested
+// on its own. TightenRange's own soundness gate now passes (2026-08-09,
+// see project memory) after fixing the mean-value-form overflow bug, so
+// this is safe to try -- but its value as a *rescue* mechanism here is
+// separate from and untested against bisection's, hence the independent
+// toggle.
+auto UseTightenRangeFallback() -> bool
+{
+    static bool const enabled = std::getenv("OPERON_SHAPE_USE_TIGHTENRANGE") != nullptr;
+    return enabled;
+}
+
+auto TryAffineBound(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode mode) -> BoundResult
+{
+    auto direct = TryAffineBoundDirect(tree, ae, mode);
+    if (IsFiniteBound(direct)) { return direct; }
+
+    bool const boundStats = BoundPathStatsEnabled();
+
+    if (UseTightenRangeFallback()) {
+        if (boundStats) { ++GlobalBoundPathStats().tightenRangeAttempted; }
+        auto tr = TightenRange(tree, ae.Domains(), tree.GetCoefficients());
+        if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
+            if (boundStats) { ++GlobalBoundPathStats().tightenRangeRescued; }
+            return tr;
+        }
+    }
+
+    auto const depth = BisectionMaxDepth();
+    if (depth <= 0) { return direct; }
+
+    if (boundStats) { ++GlobalBoundPathStats().bisectionAttempted; }
+    auto bisected = BisectedDomainBound(tree, ae.Domains(), depth, mode);
+    if (IsFiniteBound(bisected)) {
+        if (boundStats) { ++GlobalBoundPathStats().bisectionRescued; }
+        return bisected;
+    }
+    return direct;
+}
+
 // The bound for one constraint's Op: the tree itself for Identity, or the
 // (possibly twice-)differentiated tree for First-/SecondDerivative — an
 // identically-zero derivative bounds to the degenerate interval [0, 0]
@@ -283,16 +405,16 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator& ae) -> BoundResult
 // first-derivative tree `d1`, which IS variable-specific.
 auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
               AffineEvaluator& ae,
-              VariableGradientDag const& dag1) -> BoundResult
+              VariableGradientDag const& dag1, ShapeBoundMode mode) -> BoundResult
 {
-    if (op == ShapeConstraintOp::Identity) { return TryAffineBound(tree, ae); }
+    if (op == ShapeConstraintOp::Identity) { return TryAffineBound(tree, ae, mode); }
 
     auto const i1 = VariableIndex(dag1, variable);
     if (!i1) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
     if (!dag1.Certain[*i1]) { return tl::unexpected("variable derivative involves an op with no differentiation rule"); }
     auto d1 = SliceToTree(dag1, dag1.Roots[*i1]);
     if (op == ShapeConstraintOp::FirstDerivative) {
-        return d1 ? TryAffineBound(*d1, ae) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
+        return d1 ? TryAffineBound(*d1, ae, mode) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
     }
 
     // SecondDerivative: differentiate the materialized first-derivative
@@ -304,7 +426,7 @@ auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
     if (!i2) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
     if (!dag2.Certain[*i2]) { return tl::unexpected("variable derivative involves an op with no differentiation rule"); }
     auto d2 = SliceToTree(dag2, dag2.Roots[*i2]);
-    return d2 ? TryAffineBound(*d2, ae) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
+    return d2 ? TryAffineBound(*d2, ae, mode) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
 }
 
 auto ResolveShapeConstraintContext(gsl::not_null<Operon::Problem const*> problem, ShapeConstraintSet const& constraints,
@@ -372,7 +494,7 @@ auto TransformBound(ShapeConstraintOp op, Interval const& bound, Operon::LinearS
 auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Operon::Hash> const& constraintVarHash,
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> const& domainsByHash,
     Operon::Tree const& tree, Operon::Scalar unknownViolation,
-    std::optional<Operon::LinearScaling> scaling) -> ShapeConstraintMeasurementSummary
+    std::optional<Operon::LinearScaling> scaling, ShapeBoundMode mode) -> ShapeConstraintMeasurementSummary
 {
     static bool const dbg = std::getenv("OPERON_SHAPE_DEBUG") != nullptr;
     if (dbg && scaling) {
@@ -404,8 +526,8 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
         auto const& c = constraints.Constraints[i];
         ShapeConstraintMeasurement m;
         auto const bound = c.Op == ShapeConstraintOp::Identity
-            ? TryAffineBound(tree, ae)
-            : BoundFor(c.Op, tree, constraintVarHash[i], ae, SharedDag1());
+            ? TryAffineBound(tree, ae, mode)
+            : BoundFor(c.Op, tree, constraintVarHash[i], ae, SharedDag1(), mode);
         if (dbg) {
             std::fprintf(stderr, "[shape] c[%zu] op=%d var_hash=%llu raw=", i, static_cast<int>(c.Op),
                          static_cast<unsigned long long>(constraintVarHash[i]));
@@ -520,6 +642,14 @@ auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
     return result;
 }
 
+auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode
+{
+    if (str == "combined") { return ShapeBoundMode::Combined; }
+    if (str == "interval-only") { return ShapeBoundMode::IntervalOnly; }
+    if (str == "affine-only") { return ShapeBoundMode::AffineOnly; }
+    throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode argument '{}'", str));
+}
+
 auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>
 {
     auto const modes = policy.Enforcement;
@@ -556,7 +686,7 @@ auto ShapeConstrainedEvaluator::Measure(Operon::Tree const& tree, Operon::Scalar
     // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
     // so scoring-path scaling could describe a different tree than the genotype certified here.
     auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
-    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation, scaling);
+    return MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation, scaling, boundMode_);
 }
 
 auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
@@ -573,7 +703,7 @@ auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
             // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
             // so scoring-path scaling could describe a different tree than the genotype certified here.
             auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
-            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, scaling);
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, scaling, boundMode_);
             e.Value = result;
         });
     return result.Feasible;
@@ -632,7 +762,7 @@ auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) cons
         std::ignore = Feasible(pop[i].Genotype); // populates the ordinary cache as a side effect
 
         if (dump) {
-            auto const infix = Operon::InfixFormatter::Format(pop[i].Genotype, *GetProblem()->GetDataset(), /*decimalPrecision=*/9);
+            auto const infix = Operon::InfixFormatter::Format(pop[i].Genotype, *GetProblem()->GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10);
             // Constraints are checked against the SCALED model (Scale*f+Offset),
             // not the raw subtree -- TransformBound applies this same fit to the
             // bound rather than baking it into the tree (see MeasureConstraints).
@@ -704,7 +834,7 @@ auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeCo
             // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
             // so scoring-path scaling could describe a different tree than the genotype certified here.
             auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
-            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_, scaling);
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_, scaling, boundMode_);
             e.Value = result;
         });
     return result;
