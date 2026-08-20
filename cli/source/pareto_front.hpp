@@ -16,13 +16,12 @@ namespace Operon {
 // Write the rank-0 individuals from `population` to a JSON file at `path`.
 // Each entry contains the infix expression, tree length, weighted complexity (k),
 // raw objective values, R²/MSE/NMSE/MAE on train+test, MDL, and FBF.
-// If `linearScaling` is true, a least-squares (a, b) fit is applied to each
-// individual's train predictions before computing all metrics.
+// If problem.LinearScalingEnabled() is true, a least-squares (a, b) fit is
+// applied to each individual's train predictions before computing all metrics.
 auto WriteParetoFront(std::string const& path,
                       Operon::Span<Individual const> population,
                       ScalarDispatch const& dtable,
-                      Problem const& problem,
-                      bool linearScaling) -> void;
+                      Problem const& problem) -> void;
 
 } // namespace Operon
 #endif

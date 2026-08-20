@@ -18,6 +18,7 @@
 #include "operon/parser/infix.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "reporter.hpp"
 
 #include <cxxopts.hpp>
@@ -99,8 +100,11 @@ namespace {
         return opt;
     }
 
-    auto FitScale(cxxopts::ParseResult const& result, Operon::Span<Operon::Scalar const> est, Operon::Span<Operon::Scalar const> tgt)
-        -> std::pair<Operon::Scalar, Operon::Scalar>
+    auto FitScale(cxxopts::ParseResult const& result,
+                  Operon::Tree const& model,
+                  Operon::Problem const& problem,
+                  Operon::ScalarDispatch const& dtable,
+                  Operon::Range range) -> std::pair<Operon::Scalar, Operon::Scalar>
     {
         if (result["scale"].count() > 0) {
             auto res = scn::scan<Operon::Scalar, Operon::Scalar>(result["scale"].as<std::string>(), "{}:{}");
@@ -108,8 +112,9 @@ namespace {
             auto [a, b] = res->values();
             return { static_cast<Operon::Scalar>(a), static_cast<Operon::Scalar>(b) };
         }
-        auto [a, b] = Operon::FitLeastSquares(est, tgt);
-        return { static_cast<Operon::Scalar>(a), static_cast<Operon::Scalar>(b) };
+        auto const scaling = Operon::FitLinearScaling(model, problem, dtable, range);
+        return scaling ? std::pair{static_cast<Operon::Scalar>(scaling->Scale), static_cast<Operon::Scalar>(scaling->Offset)}
+                       : std::pair{Operon::Scalar{1}, Operon::Scalar{0}};
     }
 
     auto PrintTargetAnalysis(
@@ -148,7 +153,7 @@ namespace {
         using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
         auto est = Interpreter::Evaluate(model, ds, range);
 
-        auto [a, b] = FitScale(result, Operon::Span<Operon::Scalar const>{est}, tgt);
+        auto [a, b] = FitScale(result, model, problem, dtable, range);
         std::ranges::transform(est, est.begin(), [&](auto v) -> auto { return (v * a) + b; });
         auto r2   = -Operon::R2{}(Operon::Span<Operon::Scalar>{est}, tgt);
         auto rs   = -Operon::C2{}(Operon::Span<Operon::Scalar>{est}, tgt);

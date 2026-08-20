@@ -57,8 +57,7 @@ class OPERON_EXPORT JitEvaluator final : public EvaluatorBase {
 public:
     JitEvaluator(gsl::not_null<Problem const*>    problem,
                  gsl::not_null<JitZobrist const*> zobrist,
-                 ErrorMetric                      error         = MSE{},
-                 bool                             linearScaling = true);
+                 ErrorMetric                      error         = MSE{});
 
     ~JitEvaluator() override;
 
@@ -100,7 +99,6 @@ private:
 
     gsl::not_null<JitZobrist const*> zobrist_;
     ErrorMetric                      error_;
-    bool                             scaling_;
 
     mutable TreeCompiler compiler_;
 

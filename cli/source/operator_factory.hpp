@@ -66,7 +66,7 @@ auto ParseCreator(std::string const& str, PrimitiveSet const& pset, std::vector<
 // the shared "which of my already-built operators, at what weight" parsing).
 auto ParseMutators(std::string const& str, std::unordered_map<std::string, MutatorBase*> const& available, MultiMutation& mutator) -> void;
 
-auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool scale = true, bool skipNonFinite = false, double nonFinitePenaltyWeight = 1.0) -> std::unique_ptr<EvaluatorBase>;
+auto ParseEvaluator(std::string const& str, Problem& problem, ScalarDispatch& dtable, bool skipNonFinite = false, double nonFinitePenaltyWeight = 1.0) -> std::unique_ptr<EvaluatorBase>;
 
 auto ParseErrorMetric(std::string const& str) -> std::tuple<std::unique_ptr<Operon::ErrorMetric>, bool>;
 

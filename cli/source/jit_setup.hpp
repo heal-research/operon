@@ -36,7 +36,6 @@ auto MakeJitObjects(
     Operon::Problem&            problem,
     Operon::ScalarDispatch const& dtable,
     std::string const&          objective,
-    bool                        linearScaling,
     int                         jitMaxLength,
     std::size_t                 jitMinVisits,
     int                         maxLength,

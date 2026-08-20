@@ -265,7 +265,9 @@ TEST_CASE("NSGA2: keep-best and replace-worst reinserters produce different resu
 
     DTable dtable;
     Operon::Evaluator<DTable> rmseEval{ &problem, &dtable };
-    Operon::LengthEvaluator lenEval{ &problem, /*maxLength=*/20 };
+    Operon::TreePropertyEvaluator lenEval{ &problem, [](Operon::Tree const& tree) {
+        return static_cast<Operon::Scalar>(tree.Length());
+    }, /*normalizer=*/20 };
     Operon::MultiEvaluator multiEval{ &problem };
     multiEval.Add(&rmseEval);
     multiEval.Add(&lenEval);

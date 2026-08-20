@@ -77,12 +77,14 @@ add_library(
     source/operators/crossover.cpp
     source/operators/evaluator_error_metrics.cpp
     source/operators/evaluator.cpp
+    source/operators/linear_scaling.cpp
     source/operators/generator/basic.cpp
     source/operators/generator/brood.cpp
     source/operators/generator/os.cpp
     source/operators/generator/poly.cpp
     source/operators/local_search.cpp
     source/operators/mutation.cpp
+    source/operators/shape_constrained_evaluator.cpp
     source/operators/non_dominated_sorter/ndsort.cpp
     source/operators/selector/proportional.cpp
     source/operators/selector/tournament.cpp

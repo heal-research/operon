@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 #include <operon/algorithms/ga_base.hpp>
 #include <operon/algorithms/phase_timer.hpp>
+#include <operon/operators/linear_scaling.hpp>
 
 #include <functional>
 #include <string>
@@ -99,26 +100,13 @@ public:
         });
 
         // scale values
-        Operon::Scalar a{1.0};
-        Operon::Scalar b{0.0};
         auto linearScaling = tf.emplace([&]() {
-            auto [a_, b_] = Operon::FitLeastSquares(estimatedTrain, targetTrain);
-            a = static_cast<Operon::Scalar>(a_);
-            b = static_cast<Operon::Scalar>(b_);
-            // add scaling terms to the tree
-            auto& nodes = best_.Genotype.Nodes();
-            auto const sz = nodes.size();
-            if (std::abs(a - Operon::Scalar{1}) > std::numeric_limits<Operon::Scalar>::epsilon()) {
-                nodes.emplace_back(Operon::Node::Constant(a));
-                nodes.push_back(Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Mul), 2));
-            }
-            if (std::abs(b) > std::numeric_limits<Operon::Scalar>::epsilon()) {
-                nodes.emplace_back(Operon::Node::Constant(b));
-                nodes.push_back(Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Add), 2));
-            }
-            if (nodes.size() > sz) {
-                best_.Genotype.UpdateNodes();
-            }
+            auto const scaling = Operon::FitLinearScaling(best_.Genotype, *problem, *dtable, trainingRange);
+            if (!scaling) { return; }
+
+            best_.Genotype = scaling->Materialize(std::move(best_.Genotype));
+            scaling->ApplyInPlace(Operon::Span<Operon::Scalar>{estimatedTrain});
+            scaling->ApplyInPlace(Operon::Span<Operon::Scalar>{estimatedTest});
         }).name("linear scaling");
 
         double r2Train{};
@@ -127,20 +115,6 @@ public:
         double nmseTest{};
         double maeTrain{};
         double maeTest{};
-
-        auto scale = tf.emplace([&](tf::Subflow& sf) {
-            sf.emplace([&]() {
-                ENSURE(estimatedTrain.size() == trainingRange.Size());
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTrain.data(), std::ssize(estimatedTrain));
-                estimated = estimated * a + b;
-            }).name("scale train");
-
-            sf.emplace([&]() {
-                ENSURE(estimatedTest.size() == testRange.Size());
-                Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> estimated(estimatedTest.data(), std::ssize(estimatedTest));
-                estimated = estimated * a + b;
-            }).name("scale test");
-        });
 
         auto calcStats = tf.emplace([&]() {
             ENSURE(!best_.Genotype.Empty());
@@ -167,8 +141,7 @@ public:
 
         // define task graph
         evaluate.precede(linearScaling);
-        linearScaling.precede(scale);
-        calcStats.succeed(scale);
+        calcStats.succeed(linearScaling);
         calcStats.precede(calculateLength, calculateQuality, calculatePopMemory, calculateOffMemory);
         // taskflow.dump(std::cout);
 

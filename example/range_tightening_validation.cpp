@@ -136,7 +136,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     mutator.Add(&removeSub,  1.0);
     mutator.Add(&insertSub,  1.0);
 
-    Operon::Evaluator<DT> evaluator { &problem, &dtable, Operon::MSE{}, /*linearScaling=*/true };
+    Operon::Evaluator<DT> evaluator { &problem, &dtable, Operon::MSE{} };
     evaluator.SetBudget(std::numeric_limits<std::size_t>::max());
 
     Operon::LevenbergMarquardtOptimizer<DT, Operon::OptimizerType::Eigen> lmOptimizer {

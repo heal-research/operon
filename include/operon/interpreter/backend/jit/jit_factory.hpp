@@ -33,7 +33,7 @@ struct JitObjects {
 };
 
 // Create JIT-backed evaluator/optimizer for mode "all" or "jac".
-// metric and linearScaling are already resolved by the caller (no string parsing here).
+// metric is already resolved by the caller (no string parsing here).
 // maxLength is the tree size used to size the Zobrist table; jitMaxLength/jitMinVisits
 // gate per-tree compilation.
 OPERON_EXPORT auto MakeJitObjects(
@@ -41,7 +41,6 @@ OPERON_EXPORT auto MakeJitObjects(
     Operon::Problem&          problem,
     Operon::ScalarDispatch const& dtable,
     Operon::ErrorMetric const& metric,
-    bool                      linearScaling,
     int                       maxLength,
     int                       jitMaxLength,
     std::size_t               jitMinVisits,

@@ -86,7 +86,9 @@ TEST_CASE("NSGA2 Pareto front: interval bounds are valid", "[pappus][nsgp]")
     constexpr std::size_t MaxDepth  = 10;
 
     Operon::Evaluator<DTable> rmseEval(&problem, &dtable);
-    Operon::LengthEvaluator   lenEval(&problem, MaxLength);
+    Operon::TreePropertyEvaluator lenEval(&problem, [](Operon::Tree const& tree) {
+        return static_cast<Operon::Scalar>(tree.Length());
+    }, static_cast<Operon::Scalar>(MaxLength));
     Operon::MultiEvaluator    multiEval(&problem);
     multiEval.Add(&rmseEval);
     multiEval.Add(&lenEval);

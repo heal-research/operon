@@ -164,14 +164,18 @@ OPERON_EXPORT auto BuildHessianDag(Tree const& tree) -> HessianDag;
 struct VariableGradientDag {
     Operon::Vector<Node> Nodes;
     std::size_t OriginalSize{};
-    Operon::Vector<Operon::Hash> Variables; // Variables[k] pairs with Roots[k]
+    Operon::Vector<Operon::Hash> Variables; // Variables[k] pairs with Roots[k]/Certain[k]
     Operon::Vector<std::size_t> Roots;      // SIZE_MAX means zero
+    Operon::Vector<bool> Certain;           // false iff this variable's dependency path hits an unsupported op
 };
 
 // Gradient of tree's output w.r.t. each distinct input variable's value.
-// `coeff` (optional) supplies live weights for Optimize==true Variable
-// nodes, since — unlike every other Deriv() leaf case — this one bakes a
-// numeric weight into the dag at build time rather than resolving it later.
+// `Certain[k]` is scoped to `Variables[k]`: it is false only when an
+// unsupported symbolic differentiation rule appears on a path that actually
+// depends on that variable (not merely elsewhere in the tree). `coeff`
+// (optional) supplies live weights for Optimize==true Variable nodes, since
+// — unlike every other Deriv() leaf case — this one bakes a numeric weight
+// into the dag at build time rather than resolving it later.
 OPERON_EXPORT auto BuildVariableGradientDag(
     Tree const& tree, Operon::Span<Operon::Scalar const> coeff = {}
 ) -> VariableGradientDag;
