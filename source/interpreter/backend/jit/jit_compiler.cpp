@@ -669,6 +669,8 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
     auto result = std::make_unique<CompileMeta>();
     result->rtJac = &rt;
     result->jacFn = fnPtr;
+    result->nVars = static_cast<int>(varOrder.size());
+    result->nConsts = nConsts;
     return result;
     } catch (std::exception const&) {
         return nullptr;
