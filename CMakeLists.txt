@@ -69,6 +69,7 @@ add_library(
     source/interpreter/affine_evaluator.cpp
     source/interpreter/interpreter.cpp
     source/interpreter/interval_evaluator.cpp
+    source/interpreter/range_tightening.cpp
     source/operators/creator/creator.cpp
     source/operators/creator/balanced.cpp
     source/operators/creator/koza.cpp

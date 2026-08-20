@@ -26,6 +26,8 @@ add_executable(operon_test
     source/implementation/backend.cpp
     source/implementation/autodiff.cpp
     source/implementation/tree_diff.cpp
+    source/implementation/range_tightening.cpp
+    source/implementation/feynman_benchmarks.cpp
     source/implementation/crossover.cpp
     source/implementation/crowding_distance.cpp
     source/implementation/details.cpp

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 
@@ -287,9 +288,21 @@ void RegisterBuiltinSymbolicDerivs()
     static_cast<void>(registered);
 }
 
+// Only the leaf cases inspect Kind; every structural case threads target
+// through unchanged, shared between both differentiation modes.
+struct DerivTarget {
+    enum class Kind : std::uint8_t { Coefficient, VariableValue };
+    Kind kind;
+    std::size_t index{};    // valid when kind == Coefficient
+    Operon::Hash hash{};    // valid when kind == VariableValue
+    // VariableValue mode: node i's live weight (coeff-derived if Optimize),
+    // empty means use orig[i].Value directly.
+    Operon::Span<Operon::Scalar const> effectiveValues{};
+};
+
 // Forward declaration for mutual recursion.
 auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
-           std::size_t i, std::size_t targetC) -> std::size_t;
+           std::size_t i, DerivTarget const& target) -> std::size_t;
 
 // Collect child indices of orig[i] into a small vector.
 auto ChildIndices(Nodes const& orig, std::size_t i) -> Operon::Vector<std::size_t> {
@@ -301,25 +314,38 @@ auto ChildIndices(Nodes const& orig, std::size_t i) -> Operon::Vector<std::size_
     return cs;
 }
 
-// Compute the symbolic derivative of orig[i] w.r.t. constant at index targetC.
+// Compute the symbolic derivative of orig[i] w.r.t. `target` (either a
+// single coefficient's own node index, or every occurrence of a Variable's
+// identity hash - see DerivTarget).
 // Returns the dag index of the result expression, or Zero to signal "zero".
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
-           std::size_t i, std::size_t targetC) -> std::size_t {
+           std::size_t i, DerivTarget const& target) -> std::size_t {
     auto const& n = orig[i];
 
     // --- leaves ---
     if (n.IsConstant()) {
-        return i == targetC ? GetConst(dag, memo, h, Scalar{1}) : Zero;
+        if (target.kind == DerivTarget::Kind::Coefficient && i == target.index) {
+            return GetConst(dag, memo, h, Scalar{1});
+        }
+        return Zero;
     }
     if (n.IsVariable()) {
-        // d(w * X_i)/dw = X_i when differentiating w.r.t. this node's own weight.
-        if (n.Optimize && i == targetC) { return GetVar(dag, memo, h, orig[i], i); }
+        if (target.kind == DerivTarget::Kind::Coefficient) {
+            // d(w * X_i)/dw = X_i
+            if (n.Optimize && i == target.index) { return GetVar(dag, memo, h, orig[i], i); }
+            return Zero;
+        }
+        // d(w * X)/dX = w; not GetVar (that's d(w*x)/dw's answer)
+        if (n.HashValue == target.hash) {
+            auto const w = target.effectiveValues.empty() ? n.Value : target.effectiveValues[i];
+            return GetConst(dag, memo, h, w);
+        }
         return Zero;
     }
     if (n.IsRef()) {
         // Ref is a structural alias; forward the derivative to its target.
-        return Deriv(orig, dag, memo, h, orig[i].RefTo, targetC);
+        return Deriv(orig, dag, memo, h, orig[i].RefTo, target);
     }
 
     // Every Function node's forward evaluation multiplies its op result by
@@ -351,7 +377,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     if (n.IsAddition()) {
         Operon::Vector<std::size_t> terms;
         for (auto c : children) {
-            auto dc = Deriv(orig, dag, memo, h, c, targetC);
+            auto dc = Deriv(orig, dag, memo, h, c, target);
             if (dc != Zero) { terms.push_back(dc); }
         }
         return applyWeight(AddTerms(dag, memo, h, terms));
@@ -361,7 +387,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     if (n.IsMultiplication()) {
         Operon::Vector<std::size_t> terms;
         for (std::size_t m = 0; m < arity; ++m) {
-            auto dm = Deriv(orig, dag, memo, h, children[m], targetC);
+            auto dm = Deriv(orig, dag, memo, h, children[m], target);
             if (dm == Zero) { continue; }
             // product of all other children (references into the original tree)
             std::size_t prod = Zero;
@@ -380,7 +406,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     if (n.IsSubtraction()) {
         if (arity == 1) {
             // Unary minus: -a. d(-a)/dc = -da
-            auto dj = Deriv(orig, dag, memo, h, children[0], targetC);
+            auto dj = Deriv(orig, dag, memo, h, children[0], target);
             if (dj == Zero) { return Zero; }
             auto neg1 = GetConst(dag, memo, h, Scalar{-1});
             return applyWeight(MakeBinary(dag, memo, h, BuiltinOp::Mul, neg1, dj));
@@ -391,7 +417,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         Operon::Vector<std::size_t> pos;
         Operon::Vector<std::size_t> neg;
         for (std::size_t m = 0; m < arity; ++m) {
-            auto dm = Deriv(orig, dag, memo, h, children[m], targetC);
+            auto dm = Deriv(orig, dag, memo, h, children[m], target);
             if (dm == Zero) { continue; }
             if (m == 0) { pos.push_back(dm); } else { neg.push_back(dm); }
         }
@@ -410,7 +436,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     if (n.IsDivision()) {
         if (arity == 1) {
             // 1/j: d(1/j)/dc = -dj / j^2
-            auto dj = Deriv(orig, dag, memo, h, children[0], targetC);
+            auto dj = Deriv(orig, dag, memo, h, children[0], target);
             if (dj == Zero) { return Zero; }
             auto j      = children[0];
             auto j2     = MakeBinary(dag, memo, h, BuiltinOp::Mul, j, j);
@@ -422,8 +448,8 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
             // a/b: d = (da*b - a*db) / b^2
             auto j  = children[0]; // numerator (nearer)
             auto k  = children[1]; // denominator (farther)
-            auto dj = Deriv(orig, dag, memo, h, j, targetC);
-            auto dk = Deriv(orig, dag, memo, h, k, targetC);
+            auto dj = Deriv(orig, dag, memo, h, j, target);
+            auto dk = Deriv(orig, dag, memo, h, k, target);
             if (dj == Zero && dk == Zero) { return Zero; }
             // When only the numerator depends on x, simplify da/b directly.
             // Avoids (da*b)/b^2 which produces 0*Inf=NaN when b=Inf.
@@ -453,8 +479,8 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     if (n.IsPow()) {
         auto j  = children[0]; // base (nearer)
         auto k  = children[1]; // exponent (farther)
-        auto dj = Deriv(orig, dag, memo, h, j, targetC);
-        auto dk = Deriv(orig, dag, memo, h, k, targetC);
+        auto dj = Deriv(orig, dag, memo, h, j, target);
+        auto dk = Deriv(orig, dag, memo, h, k, target);
         if (dj == Zero && dk == Zero) { return Zero; }
         // Fresh, unweighted j^k, recomputed from children.
         auto powJK = MakeBinary(dag, memo, h, BuiltinOp::Pow, j, k);
@@ -490,8 +516,8 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
         if (rule != nullptr) {
             auto j  = children[0]; // nearer
             auto k  = children[1]; // farther
-            auto dj = Deriv(orig, dag, memo, h, j, targetC);
-            auto dk = Deriv(orig, dag, memo, h, k, targetC);
+            auto dj = Deriv(orig, dag, memo, h, j, target);
+            auto dk = Deriv(orig, dag, memo, h, k, target);
             if (dj == Zero && dk == Zero) { return Zero; }
             auto [fpj, fpk] = (*rule)(dag, memo, h, i, j, k);
             Operon::Vector<std::size_t> terms;
@@ -508,7 +534,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     // --- unary nodes ---
     if (arity == 1) {
         auto j  = children[0];
-        auto dj = Deriv(orig, dag, memo, h, j, targetC);
+        auto dj = Deriv(orig, dag, memo, h, j, target);
         if (dj == Zero) { return Zero; }
 
         // Look up this operation's derivative rule (see
@@ -558,10 +584,70 @@ auto DifferentiateFirstOrder(
 
     roots.resize(constants.size(), Zero);
     for (std::size_t ci = 0; ci < constants.size(); ++ci) {
-        roots[ci] = Deriv(orig, dag, memo, h, n - 1, constants[ci]);
+        DerivTarget const target{.kind = DerivTarget::Kind::Coefficient, .index = constants[ci]};
+        roots[ci] = Deriv(orig, dag, memo, h, n - 1, target);
     }
 
     return constants;
+}
+
+// DifferentiateFirstOrder's analog for BuildVariableGradientDag: collects
+// distinct Variable hashes (not per-instance) and differentiates once per
+// distinct hash.
+auto DifferentiateVariableGradient(
+    Tree const& tree, Nodes& dag, Memo& memo, Hashes& h,
+    Operon::Vector<Operon::Hash>& variables, Operon::Vector<std::size_t>& roots,
+    Operon::Span<Operon::Scalar const> coeff
+) -> void
+{
+    RegisterBuiltinSymbolicDerivs();
+
+    auto const& orig = tree.Nodes();
+    auto const n     = orig.size();
+
+    dag = orig;
+    dag.reserve(n * 8);
+
+    memo.clear();
+    h.clear();
+    h.reserve(n * 8);
+    for (std::size_t i = 0; i < n; ++i) {
+        h.push_back(static_cast<uint64_t>(i));
+    }
+
+    variables.clear();
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!orig[i].IsVariable()) { continue; }
+        if (std::ranges::find(variables, orig[i].HashValue) == variables.end()) {
+            variables.push_back(orig[i].HashValue);
+        }
+    }
+
+    // Precompute each node's live weight from coeff, matching how
+    // IntervalEvaluator/Interpreter consume it (Optimize==true nodes in order).
+    Operon::Vector<Operon::Scalar> effectiveValues;
+    if (!coeff.empty()) {
+        effectiveValues.resize(n);
+        std::size_t ci = 0;
+        for (std::size_t i = 0; i < n; ++i) {
+            if (orig[i].Optimize) {
+                EXPECT(ci < coeff.size());
+                effectiveValues[i] = coeff[ci++];
+            } else {
+                effectiveValues[i] = orig[i].Value;
+            }
+        }
+    }
+
+    roots.resize(variables.size(), Zero);
+    for (std::size_t vi = 0; vi < variables.size(); ++vi) {
+        DerivTarget const target{
+            .kind = DerivTarget::Kind::VariableValue,
+            .hash = variables[vi],
+            .effectiveValues = effectiveValues,
+        };
+        roots[vi] = Deriv(orig, dag, memo, h, n - 1, target);
+    }
 }
 
 } // anonymous namespace
@@ -667,13 +753,23 @@ auto BuildHessianDag(Tree const& tree) -> HessianDag {
     for (std::size_t i = 0; i < p; ++i) {
         if (result.JacobianRoots[i] == Zero) { continue; }
         for (std::size_t j = i; j < p; ++j) {
+            DerivTarget const target{.kind = DerivTarget::Kind::Coefficient, .index = constants[j]};
             result.HessianRoots[result.UpperIdx(i, j)] =
                 Deriv(snapshot, result.Nodes, memo, h,
-                      result.JacobianRoots[i], constants[j]);
+                      result.JacobianRoots[i], target);
         }
     }
 
     return result;
+}
+
+auto BuildVariableGradientDag(Tree const& tree, Operon::Span<Operon::Scalar const> coeff) -> VariableGradientDag {
+    VariableGradientDag dag;
+    Memo memo;
+    Hashes h;
+    DifferentiateVariableGradient(tree, dag.Nodes, memo, h, dag.Variables, dag.Roots, coeff);
+    dag.OriginalSize = tree.Nodes().size();
+    return dag;
 }
 
 } // namespace Operon
