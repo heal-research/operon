@@ -342,4 +342,19 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]") //
     }
 }
 
+TEST_CASE("BTC reaches snapped Arithmetic targets with irregularity", "[operators]")
+{
+    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    pset.Disable(Node(NodeType::Variable));
+
+    constexpr size_t targetLength = 99;
+    for (auto bias : { 0.0, 0.5, 1.0 }) {
+        BalancedTreeCreator const btc(&pset, {}, bias, targetLength);
+        for (size_t seed = 0; seed < 100; ++seed) {
+            RandomGenerator random(seed);
+            CHECK(btc(random, targetLength, 1, 100).Length() == targetLength);
+        }
+    }
+}
+
 } // namespace Operon::Test

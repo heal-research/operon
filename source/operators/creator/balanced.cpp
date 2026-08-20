@@ -57,7 +57,12 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
 
     tuples.emplace_back(root, 1, 1);
 
+    // Remaining-slots counter: decrements as each pending slot is filled,
+    // increments by each new child's arity.
     size_t openSlots = root.Arity;
+    // Total committed node count so far, used to cap a child's arity against
+    // the remaining length budget.
+    size_t committed = root.Arity + 1;
 
     std::bernoulli_distribution sampleIrregular(irregularityBias_);
 
@@ -66,9 +71,10 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         auto childDepth = nodeDepth + 1;
         std::get<2>(tuples[i]) = tuples.size();
         for (int j = 0; std::cmp_less(j , node.Arity); ++j) {
-            maxArity = openSlots - tuples.size() > 1 && sampleIrregular(random)
-                ? 0
-                : std::min(maxFunctionArity, targetLen - openSlots - 1);
+            // minArity/maxArity recomputed fresh per child, not left sticky.
+            auto candidateMax = std::min(maxFunctionArity, targetLen - committed);
+            minArity = std::min(minFunctionArity, candidateMax);
+            maxArity = openSlots > 1 && sampleIrregular(random) ? 0 : candidateMax;
 
             // fall back to a leaf node if the desired arity is not achievable with the current primitive set
             if (maxArity < minFunctionArity) {
@@ -78,6 +84,9 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
             auto child = pset->SampleRandomSymbol(random, minArity, maxArity);
             InitNode(child, variables, random);
             tuples.emplace_back(child, childDepth, 0);
+
+            openSlots -= 1;
+            committed += child.Arity;
             openSlots += child.Arity;
         }
     }
