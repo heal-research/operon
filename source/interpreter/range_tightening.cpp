@@ -70,6 +70,17 @@ auto RangeCache::ComputeKey(
 ) const -> Operon::Hash
 {
     auto h = zobrist_->ComputeHash(tree);
+    // Zobrist::ComputeHash intentionally excludes Node::Value (it hashes
+    // structure/identity only). coeff below only carries Optimize==true
+    // values, so a non-optimized node's baked-in Value (composed-function
+    // constants, fixed variable/function weights) must be folded in here,
+    // or two structurally-identical trees differing only in such a value
+    // collide on the same key and return each other's stale interval.
+    for (auto const& n : tree.Nodes()) {
+        if (!n.Optimize) {
+            h = MixHash(h, std::bit_cast<std::uint64_t>(static_cast<double>(n.Value)));
+        }
+    }
     for (auto v : coeff) {
         h = MixHash(h, std::bit_cast<std::uint64_t>(static_cast<double>(v)));
     }
