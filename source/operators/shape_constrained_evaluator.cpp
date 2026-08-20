@@ -300,13 +300,17 @@ auto IsFiniteBound(BoundResult const& b) -> bool
 //
 // Only fires on the (relatively rare) already-uncertified path, so the
 // exponential blowup with depth is bounded to cases that were already
-// failing outright, not a per-call tax on the common case. Still measured
-// as a net wall-clock LOSS on both problems tested so far (2026-08-09):
-// most uncertified cases turn out to be genuinely non-finite over every
-// sub-box, not just the whole one, so the exponential retry cost is rarely
-// repaid. Opt-in only (default off) until a broader problem sweep shows a
-// net win somewhere -- see OPERON_SHAPE_BOUND_STATS's bisection-attempted
-// vs bisection-rescued counters to judge the trade-off on a given problem.
+// failing outright, not a per-call tax on the common case. An earlier
+// 2026-08-09 sweep measured this as a net wall-clock LOSS on both problems
+// tested, but that run picked the widest split axis from the evaluator's
+// full domain map instead of the tree's own variables (fixed 2026-08-20)
+// -- it was almost always bisecting an axis the tree doesn't even
+// reference, so that result doesn't actually say anything about whether
+// bisection helps and needs to be re-measured against the fixed axis
+// selection. Opt-in only (default off) until a problem sweep against the
+// corrected logic shows a net win -- see OPERON_SHAPE_BOUND_STATS's
+// bisection-attempted vs bisection-rescued counters to judge the trade-off
+// on a given problem.
 auto BisectionMaxDepth() -> int
 {
     static int const depth = [] {
