@@ -17,7 +17,6 @@ auto MakeJitObjects(
     [[maybe_unused]] Operon::Problem&              problem,
     [[maybe_unused]] Operon::ScalarDispatch const& dtable,
     [[maybe_unused]] std::string const&            objective,
-    [[maybe_unused]] bool                          linearScaling,
     [[maybe_unused]] int                           jitMaxLength,
     [[maybe_unused]] std::size_t                   jitMinVisits,
     [[maybe_unused]] int                           maxLength,
@@ -29,8 +28,9 @@ auto MakeJitObjects(
     return JitObjects{.Evaluator = nullptr, .OptimizerJacEval = nullptr, .Optimizer = nullptr, .Zobrist = nullptr, .Report = [](){}, .Error = true};
 #else
     auto [metric, supportsLinearScale] = Operon::ParseErrorMetric(objective);
+    (void)supportsLinearScale;
     auto j = Operon::JIT::MakeJitObjects(
-        jitMode, problem, dtable, *metric, linearScaling && supportsLinearScale,
+        jitMode, problem, dtable, *metric,
         maxLength, jitMaxLength, jitMinVisits, seed, cacheMaxAge);
     return JitObjects{
         .Evaluator      = std::move(j.Evaluator),

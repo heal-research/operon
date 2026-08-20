@@ -2,15 +2,18 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <array>
 #include <limits>
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
 #include "operon/core/types.hpp"
 #include "operon/operators/evaluator.hpp"
+#include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/local_search.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
@@ -107,7 +110,8 @@ public:
 TEST_CASE("ScoreIndividual evaluates optimized coefficients before non-Lamarckian restore", "[evaluator]")
 {
     EvaluatorFixture fix;
-    Evaluator<EvaluatorFixture::DTable> evaluator{&fix.problem, &fix.dtable, MSE{}, /*linearScaling=*/false};
+    fix.problem.SetLinearScalingEnabled(false);
+    Evaluator<EvaluatorFixture::DTable> evaluator{&fix.problem, &fix.dtable, MSE{}};
     FixedCoefficientOptimizer optimizer{&fix.problem};
     CoefficientOptimizer coeffOptimizer{&optimizer};
     Operon::Vector<Operon::Scalar> buf(fix.problem.TrainingRange().Size());
@@ -248,18 +252,21 @@ TEST_CASE("Gaussian per-sample sigma", "[likelihood]")
 // ──────────────────────────────────────────────────────────────────────────────
 // MDL evaluator
 // ──────────────────────────────────────────────────────────────────────────────
-TEST_CASE("MDL evaluator", "[evaluator]")
+TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
 {
     EvaluatorFixture fix;
     using DTable = EvaluatorFixture::DTable;
 
-    SECTION("Gaussian / profiled sigma: finite positive result") {
+    SECTION("Gaussian / profiled sigma: finite result") {
         MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
-        CHECK(result[0] > 0);
+        // With Problem linear scaling enabled, this fixture's 0.1-weight tree
+        // fits the target almost exactly after scaling (scale ~= 10), so the
+        // profiled NLL/MDL can be negative. The regression guard is finiteness,
+        // not positivity of the old raw-tree score.
     }
 
     SECTION("Gaussian / fixed sigma: finite positive result") {
@@ -310,6 +317,49 @@ TEST_CASE("MDL evaluator", "[evaluator]")
         CHECK(std::isfinite(oversizedResult[0]));
         CHECK(oversizedResult[0] == exactResult[0]);
     }
+
+    SECTION("Gaussian / profiled sigma: evaluator MDL matches scaled Pareto export pattern") {
+        MinimumDescriptionLengthEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+        std::vector<Operon::Scalar> buf(EvaluatorFixture::Nrow);
+        auto const result = ev(fix.rng, ind, buf);
+        REQUIRE(result.size() == 1);
+
+        auto const trainingRange = fix.problem.TrainingRange();
+        Operon::Interpreter<Operon::Scalar, DTable> const interp{&fix.dtable, &fix.ds, &ind.Genotype};
+        auto const coeffs = ind.Genotype.GetCoefficients();
+        auto estimTrain = interp.Evaluate(coeffs, trainingRange);
+
+        auto scale = Operon::Scalar{1};
+        auto const scaling = Operon::FitLinearScaling(ind.Genotype, fix.problem, fix.dtable, trainingRange);
+        REQUIRE(scaling);
+        CHECK(scaling->Scale != Catch::Approx(1.0)); // this is a real non-identity scaling regression
+        scale = static_cast<Operon::Scalar>(scaling->Scale);
+        scaling->ApplyInPlace(Operon::Span<Operon::Scalar>{estimTrain});
+
+        auto const targetTrain = fix.problem.TargetValues(trainingRange);
+        auto ssr = double{0};
+        for (std::size_t i = 0; i < estimTrain.size(); ++i) {
+            auto const err = static_cast<double>(estimTrain[i]) - static_cast<double>(targetTrain[i]);
+            ssr += err * err;
+        }
+        auto const sigma = std::max(static_cast<Operon::Scalar>(std::sqrt(ssr / static_cast<double>(estimTrain.size()))),
+                                    std::numeric_limits<Operon::Scalar>::epsilon());
+        auto const sigmaArr = std::array<Operon::Scalar, 1>{sigma};
+        auto const nll = static_cast<double>(GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(
+            {estimTrain.data(), estimTrain.size()}, targetTrain, {sigmaArr.data(), sigmaArr.size()}));
+
+        auto jac = interp.JacRev(coeffs, trainingRange);
+        jac *= scale; // same scaled-Jacobian step used by pareto_front.cpp's MDL export
+        auto const fisherMatrix = GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(
+            {estimTrain.data(), estimTrain.size()},
+            {jac.data(), static_cast<std::size_t>(jac.size())},
+            {sigmaArr.data(), sigmaArr.size()});
+        auto const expected = Operon::MinimumDescriptionLength(ind.Genotype, coeffs, fisherMatrix.diagonal().array(), nll);
+
+        CHECK(result[0] == Catch::Approx(expected));
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -320,13 +370,14 @@ TEST_CASE("FBF evaluator", "[evaluator]")
     EvaluatorFixture fix;
     using DTable = EvaluatorFixture::DTable;
 
-    SECTION("Gaussian / profiled sigma: finite positive result") {
+    SECTION("Gaussian / profiled sigma: finite result") {
         FractionalBayesFactorEvaluator<DTable, GaussianLikelihood<Operon::Scalar>> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         auto const result = ev(fix.rng, ind);
         REQUIRE(result.size() == 1);
         CHECK(std::isfinite(result[0]));
-        CHECK(result[0] > 0);
+        // Same scaled near-exact fit as the MDL fixture above: the profiled
+        // likelihood term can make FBF negative, so only finiteness is asserted.
     }
 
     SECTION("Gaussian / fixed sigma: finite positive result") {
@@ -506,9 +557,10 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
     SECTION("No weights: result matches unweighted evaluator") {
         auto ds = makeDataset();
         auto problem = makeProblem(&ds);
+        problem->SetLinearScalingEnabled(false);
         auto ind = makeInd(ds, 0.5F); // imperfect: predicts 0.5 * X1
 
-        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, false};
+        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}};
         auto r1 = ev(rng, ind);
         REQUIRE(r1.size() == 1);
         CHECK(std::isfinite(r1[0]));
@@ -525,9 +577,10 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
     SECTION("Uniform weights equal unweighted result") {
         auto ds = makeDataset();
         auto problem = makeProblem(&ds);
+        problem->SetLinearScalingEnabled(false);
         auto ind = makeInd(ds, 0.7F); // imperfect
 
-        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, false};
+        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}};
         auto unweighted = ev(rng, ind)[0];
 
         std::vector<Operon::Scalar> w(N, 1.0F);
@@ -542,9 +595,10 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
         data(0, 1) = 1000.0F; // inject outlier before dataset copies the array
         auto ds = makeDataset();
         auto problem = makeProblem(&ds);
+        problem->SetLinearScalingEnabled(false);
         auto perfect = makeInd(ds, 1.0F); // predicts X1 exactly (residual != 0 at row 0)
 
-        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, false};
+        Evaluator<DTable> ev{problem.get(), &dtable, MSE{}};
 
         // without weights: MSE is dominated by the outlier
         auto mseUnweighted = ev(rng, perfect)[0];
@@ -586,7 +640,7 @@ TEST_CASE("Weighted evaluator", "[evaluator]")
             auto ds = Operon::Dataset(gsl::not_null{d.data()}, N, 2);
             auto problem = makeProblem(&ds);
             auto ind = makeInd(ds, 1.0F);
-            Evaluator<DTable> ev{problem.get(), &dtable, MSE{}, /*linearScaling=*/true};
+            Evaluator<DTable> ev{problem.get(), &dtable, MSE{}};
             std::vector<Operon::Scalar> w(N, 0.0F);
             std::fill(w.begin(), w.begin() + N/2, 1.0F); // weight only the first half
             ds.SetWeights(w);
@@ -617,8 +671,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree); // X1+X2+X3, always finite
         DTable dtable;
 
-        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true};
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0};
+        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/1.0};
 
         auto r1 = baseline(fix.rng, ind)[0];
         auto r2 = skipMode(fix.rng, ind)[0];
@@ -632,11 +686,11 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true};
+        Evaluator<DTable> baseline{&fix.problem, &dtable, MSE{}};
         auto rBaseline = baseline(fix.rng, ind)[0];
         CHECK_THAT(static_cast<double>(rBaseline), Catch::Matchers::WithinRel(static_cast<double>(EvaluatorBase::ErrMax), 1e-5));
 
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
         auto rSkip = skipMode(fix.rng, ind)[0];
         CHECK(std::isfinite(rSkip));
         CHECK(rSkip < EvaluatorBase::ErrMax);
@@ -648,8 +702,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> lowPenalty{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-        Evaluator<DTable> highPenalty{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/10.0};
+        Evaluator<DTable> lowPenalty{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> highPenalty{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/10.0};
 
         auto rLow = lowPenalty(fix.rng, ind)[0];
         auto rHigh = highPenalty(fix.rng, ind)[0];
@@ -664,7 +718,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, NMSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, NMSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto r = skipMode(fix.rng, ind)[0];
         CHECK(std::isfinite(r));
         CHECK(r < EvaluatorBase::ErrMax);
@@ -680,8 +734,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         // exact nonFinite count is back-derived: fraction =
         // (rHi - rLo) / (weightHi - weightLo); with log(X1) on X1~U(-1,1),
         // fraction should be ~0.5 (X1 <= 0 -> NaN), so count ~ Nrow/2.
-        Evaluator<DTable> loPen{&fix.problem, &dtable, NMSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-        Evaluator<DTable> hiPen{&fix.problem, &dtable, NMSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> loPen{&fix.problem, &dtable, NMSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, NMSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto rLo = loPen(fix.rng, ind)[0];
         auto rHi = hiPen(fix.rng, ind)[0];
         CHECK(std::isfinite(rLo));
@@ -713,8 +767,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> loPen{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-        Evaluator<DTable> hiPen{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> loPen{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto rLo = loPen(fix.rng, ind)[0];
         auto rHi = hiPen(fix.rng, ind)[0];
         CHECK(std::isfinite(rLo));
@@ -744,8 +798,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto const nTotal = static_cast<double>(fix.problem.TrainingRange().Size());
 
         for (auto metric : std::initializer_list<ErrorMetric>{RMSE{}, MAE{}}) {
-            Evaluator<DTable> loPen{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-            Evaluator<DTable> hiPen{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+            Evaluator<DTable> loPen{&fix.problem, &dtable, metric, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+            Evaluator<DTable> hiPen{&fix.problem, &dtable, metric, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
             auto rLo = loPen(fix.rng, ind)[0];
             auto rHi = hiPen(fix.rng, ind)[0];
             CHECK(std::isfinite(rLo));
@@ -765,8 +819,8 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> loPen{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
-        Evaluator<DTable> hiPen{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> loPen{&fix.problem, &dtable, SSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> hiPen{&fix.problem, &dtable, SSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto rLo = loPen(fix.rng, ind)[0];
         auto rHi = hiPen(fix.rng, ind)[0];
         CHECK(std::isfinite(rLo));
@@ -790,7 +844,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         DTable dtable;
 
         for (auto metric : std::initializer_list<ErrorMetric>{SSE{}, RMSE{}, MAE{}}) {
-            Evaluator<DTable> skipMode{&fix.problem, &dtable, metric, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+            Evaluator<DTable> skipMode{&fix.problem, &dtable, metric, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
             auto r = skipMode(fix.rng, ind)[0];
             CHECK(std::isfinite(r));
             CHECK(r < EvaluatorBase::ErrMax);
@@ -803,7 +857,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, SSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, SSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.0};
         auto r = skipMode(fix.rng, ind)[0];
         CHECK(r == EvaluatorBase::ErrMax);
     }
@@ -815,7 +869,7 @@ TEST_CASE("skipNonFinite_ evaluator mode", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(t);
         DTable dtable;
 
-        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*linearScaling=*/true, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
+        Evaluator<DTable> skipMode{&fix.problem, &dtable, MSE{}, /*skipNonFinite=*/true, /*nonFinitePenaltyWeight=*/0.5};
         auto r = skipMode(fix.rng, ind)[0];
         CHECK(std::isfinite(r));
         CHECK(r < EvaluatorBase::ErrMax);
@@ -859,7 +913,8 @@ TEST_CASE("Evaluator<DTable>: oversized buffer matches exact-size buffer", "[eva
     }
 
     SECTION("Scaling off") {
-        Evaluator<DTable> const ev{&fix.problem, &fix.dtable, MSE{}, /*linearScaling=*/false};
+        fix.problem.SetLinearScalingEnabled(false);
+        Evaluator<DTable> const ev{&fix.problem, &fix.dtable, MSE{}};
 
         std::vector<Operon::Scalar> exactBuf(EvaluatorFixture::Nrow);
         auto const exactResult = ev(fix.rng, ind, exactBuf);
@@ -902,6 +957,77 @@ TEST_CASE("Evaluator<DTable>: oversized buffer matches exact-size buffer", "[eva
         CHECK(std::isfinite(oversizedResult[0]));
         CHECK(oversizedResult[0] == exactResult[0]);
     }
+}
+
+TEST_CASE("BIC and AIC honor Problem linear scaling flag", "[evaluator][information-criteria]")
+{
+    EvaluatorFixture fix;
+    using DTable = EvaluatorFixture::DTable;
+
+    auto tree = InfixParser::Parse("X1", *fix.problem.GetDataset());
+    for (auto& node : tree.Nodes()) {
+        if (node.IsVariable()) { node.Value = static_cast<Operon::Scalar>(0.1); }
+    }
+    auto ind = EvaluatorFixture::MakeIndividual(tree);
+
+    BayesianInformationCriterionEvaluator<DTable> const bic{&fix.problem, &fix.dtable};
+    AkaikeInformationCriterionEvaluator<DTable> const aic{&fix.problem, &fix.dtable};
+
+    fix.problem.SetLinearScalingEnabled(true);
+    auto const bicScaled = bic(fix.rng, ind)[0];
+    auto const aicScaled = aic(fix.rng, ind)[0];
+
+    fix.problem.SetLinearScalingEnabled(false);
+    auto const bicUnscaled = bic(fix.rng, ind)[0];
+    auto const aicUnscaled = aic(fix.rng, ind)[0];
+
+    REQUIRE(std::isfinite(bicScaled));
+    REQUIRE(std::isfinite(bicUnscaled));
+    REQUIRE(std::isfinite(aicScaled));
+    REQUIRE(std::isfinite(aicUnscaled));
+    CHECK(bicScaled != bicUnscaled);
+    CHECK(aicScaled != aicUnscaled);
+}
+
+TEST_CASE("Problem linear scaling flag toggles Evaluator behavior", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    Operon::Evaluator<EvaluatorFixture::DTable> ev{&fix.problem, &fix.dtable, Operon::MSE{}};
+    auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
+
+    fix.problem.SetLinearScalingEnabled(true);
+    auto const scaled = ev(fix.rng, ind)[0];
+
+    fix.problem.SetLinearScalingEnabled(false);
+    auto const raw = ev(fix.rng, ind)[0];
+
+    REQUIRE(std::isfinite(scaled));
+    REQUIRE(std::isfinite(raw));
+    CHECK(scaled != raw);
+    CHECK(scaled < raw);
+}
+
+TEST_CASE("FitLinearScaling span overload agrees with FitLeastSquares and omits non-finite rows", "[evaluator]")
+{
+    std::vector<Operon::Scalar> estimated{1, 2, 3, 4};
+    std::vector<Operon::Scalar> target{3, 5, 7, 9};
+    auto const scaling = Operon::FitLinearScaling(estimated, target, {}, /*omitNonFinite=*/false);
+    auto const legacy = Operon::FitLeastSquares(estimated, target);
+    CHECK(scaling.Scale == legacy.first);
+    CHECK(scaling.Offset == legacy.second);
+
+    std::vector<Operon::Scalar> withNonFiniteEstimated{1, std::numeric_limits<Operon::Scalar>::quiet_NaN(), 2, std::numeric_limits<Operon::Scalar>::infinity(), 3};
+    std::vector<Operon::Scalar> withNonFiniteTarget{3, 100, 5, 100, 7};
+    auto const omitted = Operon::FitLinearScaling(withNonFiniteEstimated, withNonFiniteTarget, {}, /*omitNonFinite=*/true);
+
+    std::vector<Operon::Scalar> finiteEstimated{1, 2, 3};
+    std::vector<Operon::Scalar> finiteTarget{3, 5, 7};
+    auto const manual = Operon::FitLinearScaling(finiteEstimated, finiteTarget, {}, /*omitNonFinite=*/false);
+
+    CHECK(omitted.Scale == Catch::Approx(manual.Scale));
+    CHECK(omitted.Offset == Catch::Approx(manual.Offset));
+    CHECK(omitted.Scale == Catch::Approx(2.0));
+    CHECK(omitted.Offset == Catch::Approx(1.0));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

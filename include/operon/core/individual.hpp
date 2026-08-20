@@ -92,6 +92,51 @@ struct CrowdedComparison {
 
 using ComparisonCallback = std::function<bool(Individual const&, Individual const&)>;
 
+// Feasibility-first comparator: a feasible individual always precedes an
+// infeasible one, regardless of fitness; individuals with equal
+// feasibility defer to `Fallback` (default: single-objective on
+// objective 0). This is the constrained-dominance alternative to
+// ShapeConstrainedEvaluator's own worst-value-substitution gate: the
+// gate reproduces Kronberger et al. 2021's Algorithm 1 exactly (a
+// rejected individual's fitness is replaced, not given an extra
+// objective), this is for callers who instead want feasibility treated
+// as a first-class ordering criterion. The two are independent and can
+// be combined (see operon_gp.cpp, which does).
+//
+// `IsFeasible` is intentionally a predicate over the genotype, not a
+// Fitness-vector read: EvaluatorBase::Evaluate() takes `Individual
+// const&` and returns only a fitness vector, so a wrapping evaluator
+// like ShapeConstrainedEvaluator has no channel to tag an Individual as
+// infeasible other than the fitness values themselves -- and a
+// worst-value fitness substitution isn't reliably distinguishable from a
+// genuinely bad score. This struct itself does no caching -- it's a
+// thin, trivial wrapper matching the other comparators in this header.
+// Repeated predicate calls are cheap only when the caller supplies a
+// caching predicate (for example ShapeConstrainedEvaluator::Feasible(),
+// whose cache is populated by Prepare() and Evaluate()); non-caching
+// predicates may recompute on each comparison.
+struct FeasibilityFirstComparison {
+    using FeasibilityPredicate = std::function<bool(Tree const&)>;
+
+    explicit FeasibilityFirstComparison(FeasibilityPredicate isFeasible, ComparisonCallback fallback = SingleObjectiveComparison{})
+        : isFeasible_(std::move(isFeasible))
+        , fallback_(std::move(fallback))
+    {
+    }
+
+    auto operator()(Individual const& lhs, Individual const& rhs, Operon::Scalar /*eps*/ = 0) const -> bool
+    {
+        auto const lf = isFeasible_(lhs.Genotype);
+        auto const rf = isFeasible_(rhs.Genotype);
+        if (lf != rf) { return lf; } // feasible (true) precedes infeasible (false)
+        return fallback_(lhs, rhs);
+    }
+
+private:
+    FeasibilityPredicate isFeasible_;
+    ComparisonCallback fallback_;
+};
+
 } // namespace Operon
 
 #endif

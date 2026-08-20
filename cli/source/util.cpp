@@ -199,6 +199,11 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("checkpoint-file", "Path for checkpoint output (BEVE binary format)", cxxopts::value<std::string>()->default_value("checkpoint.beve"))
         ("resume", "Resume a previous run from this checkpoint file", cxxopts::value<std::string>())
         ("probes-config", R"(Path to a JSON config file describing per-generation instrumentation probes to run, e.g. {"probes":[{"type":"cache_hit_rate","every":1}],"sink":{"type":"jsonl","path":"metrics.jsonl"}})", cxxopts::value<std::string>())
+        ("shape-constraints-config", R"(Path to a JSON config file describing shape constraints (function/derivative sign or value bounds over a domain box) to reject infeasible individuals during fitness evaluation, e.g. {"domains":{"x":[0.1,15]},"constraints":[{"op":"derivative","variable":"x","order":1,"sign":-1}]})", cxxopts::value<std::string>())
+        ("shape-enforcement", "Comma-separated shape-constraint enforcement modes: hard-reject, penalty, extra-objective, feasibility-first (default with constraints: GP hard-reject,feasibility-first; NSGA2 hard-reject)", cxxopts::value<std::string>())
+        ("shape-penalty-weight", "Penalty weight applied to summed shape-constraint violation in penalty mode (finite, non-negative)", cxxopts::value<double>()->default_value("1.0"))
+        ("shape-unknown-violation", "Violation magnitude assigned to each uncertified shape constraint in penalty/extra-objective modes (finite, non-negative)", cxxopts::value<double>()->default_value("1.0"))
+        ("shape-worst-value", "Fitness value assigned by hard-reject shape enforcement to infeasible individuals (finite)", cxxopts::value<double>()->default_value("1.0"))
         ("debug", "Debug mode (more information displayed)")
         ("help", "Print help")
         ("version", "Print version and program information");
