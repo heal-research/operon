@@ -327,6 +327,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                     auto const unknownViolation = result["shape-unknown-violation"].as<double>();
                     shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                         &problem, &dtable, *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
+                    shapeViolationStorage->SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
                 }
                 comp = Operon::FeasibilityFirstComparison(
                     [ptr = shapeViolationStorage.get()](Operon::Tree const& t) { return ptr->Measure(t).Feasible; });
