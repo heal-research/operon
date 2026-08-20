@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -203,7 +204,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         range = Operon::Range{a, b};
     }
 
-    int constexpr defaultPrecision{6};
+    int constexpr defaultPrecision{std::numeric_limits<Operon::Scalar>::max_digits10};
     if (result["debug"].as<bool>()) {
         fmt::print("\nInput string:\n{}\n", infix);
         fmt::print("Parsed tree:\n{}\n", Operon::InfixFormatter::Format(model, ds, defaultPrecision));
