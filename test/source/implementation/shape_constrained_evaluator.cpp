@@ -416,12 +416,15 @@ TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-conta
     CHECK_FALSE(sce.Feasible(tree));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - falls back to interval bounds for constant integer powers", "[shape-constraints]")
+TEST_CASE("ShapeConstrainedEvaluator - certifies constant integer powers of a negative base", "[shape-constraints]")
 {
-    // AffineEvaluator represents both operands as affine forms. Its general
-    // affine-base/affine-exponent operation rejects a negative base before it
-    // discovers that the exponent is the constant integer 2. IntervalEvaluator
-    // handles the mathematically valid power directly.
+    // A fully constant subtree (degenerate base AND exponent) dispatches
+    // AffineEvaluator's Pow rule to pow(ctx, base, Scalar exponent), whose
+    // terms_.empty() branch allows a negative base for an integer exponent
+    // via plain std::pow -- unlike the general affine-affine overload, which
+    // unconditionally rejects any negative base. IntervalEvaluator handles
+    // the same case directly and would also certify this if affine somehow
+    // regressed back to rejecting it.
     Fixture fx;
     auto tree = InfixParser::Parse("(-0.91) ^ 2", fx.ds);
 
