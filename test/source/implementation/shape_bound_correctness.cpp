@@ -223,15 +223,16 @@ auto BisectedAffine(
         }
         AE eval(&tree, dm);
         auto const iv = [&]() -> Interval {
-            // log/sqrt/etc. domain errors return a NaN-poisoned affine_form
-            // (see affine_form::invalid()) rather than throwing, but
-            // affine_form::inv() is a documented exception to that: it still
-            // throws for any sub-box whose denominator interval contains
-            // zero (affine's inv is stricter than interval's). Either way
-            // the failure must be excluded from the `|` union below rather
-            // than unioned in / propagated out, or it silently corrupts (or
-            // aborts) the WHOLE bisected result even when the sibling
-            // sub-box is sound.
+            // pappus's inv/log/sqrt/etc. domain errors return a NaN-poisoned
+            // affine_form (see affine_form::invalid()) as of pappus a0a1789,
+            // rather than throwing -- the NaN case below handles that. The
+            // try/catch is defense-in-depth against a pappus build that
+            // predates that fix (e.g. Windows CI's separate vcpkg registry
+            // pin, which still lags it) reintroducing the old throw. Either
+            // way the failure must be excluded from the `|` union below
+            // rather than unioned in / propagated out, or it silently
+            // corrupts (or aborts) the WHOLE bisected result even when the
+            // sibling sub-box is sound.
             try {
                 auto r = eval.Evaluate(tree.GetCoefficients());
                 auto result = r.to_interval();
