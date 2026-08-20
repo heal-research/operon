@@ -29,11 +29,15 @@ TEST_CASE("BTC creation throughput", "[performance]")
     auto inputs = ds.VariableHashes();
 
     BalancedTreeCreator creator{&pset, inputs, /* bias= */ 0.0, maxl};
+    ProbabilisticTreeCreator ptc2{&pset, inputs, /* bias= */ 0.0, maxl};
     std::uniform_int_distribution<size_t> dist(1, maxl);
 
     nb::Bench bench;
     bench.run("btc", [&]() -> Tree {
         return creator(rd, dist(rd), 0, maxd);
+    });
+    bench.run("ptc2", [&]() -> Tree {
+        return ptc2(rd, dist(rd), 0, maxd);
     });
 
     // Just verify it produces valid trees
