@@ -55,6 +55,27 @@ void RegisterAffineBuiltins()
             if (b.radius() != Scalar{0}) {
                 return Affine(ctx.state, pappus::ops::pow<Scalar>(a.to_interval(), b.to_interval()));
             }
+            // Fully constant subtree (degenerate base AND exponent): dispatch
+            // through pow(ctx, base, Scalar exponent), whose terms_.empty()
+            // branch detects an integer exponent and allows a negative base
+            // via plain std::pow -- unlike the general affine-affine overload
+            // (pow(ctx, a, b) with b still an Affine), which unconditionally
+            // rejects any negative base regardless of the exponent's value.
+            // Mirrors IntervalEvaluator's Pow rule's identical special case.
+            //
+            // Deliberately NOT widened to a non-degenerate base (radius != 0)
+            // with a negative-valued domain: that routes into pow(T
+            // exponent)'s CHEBYSHEV/MINRANGE approximation for a negative
+            // base, which a shape-bound-correctness B2 regression (deeper
+            // bisection producing a WIDER union than shallower -- Jackson_2_11,
+            // ((-0.834647) * y) ^ 2 with y's domain always negative through
+            // that subtree, never crossing zero) showed is not reliably
+            // monotone under this evaluator's use across box refinement.
+            // Keep the affine-affine rejection + interval fallback for that
+            // case until that's root-caused.
+            if (a.radius() == Scalar{0}) {
+                return pappus::ops::pow<Scalar>(ctx, a, b.center());
+            }
             return pappus::ops::pow<Scalar>(ctx, a, b);
         });
         binary.Register(Operon::Hash(BuiltinOp::Aq), [](Context const& ctx, Affine const& a, Affine const& b) {
