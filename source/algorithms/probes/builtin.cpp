@@ -11,6 +11,7 @@
 #include "operon/algorithms/probes/diversity.hpp"
 #include "operon/algorithms/probes/fitness_stats.hpp"
 #include "operon/algorithms/probes/population_trace.hpp"
+#include "operon/algorithms/probes/shape_feasibility.hpp"
 #include "operon/core/constants.hpp"
 
 namespace Operon {
@@ -33,6 +34,10 @@ auto RegisterBuiltinProbes(ProbeRegistry& registry) -> void
 
     registry.Register("fitness_stats", [](ProbeParams const& /*params*/) -> std::unique_ptr<GenerationProbe> {
         return std::make_unique<FitnessStatsProbe>();
+    });
+
+    registry.Register("shape_feasibility", [](ProbeParams const& /*params*/) -> std::unique_ptr<GenerationProbe> {
+        return std::make_unique<ShapeFeasibilityProbe>();
     });
 
     registry.Register("structural_diversity", [](ProbeParams const& params) -> std::unique_ptr<GenerationProbe> {
