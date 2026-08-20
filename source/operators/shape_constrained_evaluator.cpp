@@ -322,12 +322,20 @@ auto BisectedDomainBound(Tree const& tree, AffineEvaluator::DomainMap const& dom
     auto direct = TryAffineBoundDirect(tree, subAe, mode);
     if (depth <= 0 || IsFiniteBound(direct)) { return direct; }
 
+    // `domains` is the evaluator's full domain map (every problem input),
+    // not just the variables `tree` actually references -- widening the
+    // search to unused axes would burn the depth budget splitting a box
+    // dimension that can never affect this tree's bound. Restrict the
+    // widest-axis pick to hashes tree actually contains.
     Operon::Hash widest{};
     Operon::Scalar widestDiam{-1};
     bool any = false;
-    for (auto const& [h, dom] : domains) {
-        auto const diam = dom.second - dom.first;
-        if (diam > widestDiam) { widestDiam = diam; widest = h; any = true; }
+    for (auto const& n : tree.Nodes()) {
+        if (!n.IsVariable()) { continue; }
+        auto const it = domains.find(n.HashValue);
+        if (it == domains.end()) { continue; }
+        auto const diam = it->second.second - it->second.first;
+        if (diam > widestDiam) { widestDiam = diam; widest = n.HashValue; any = true; }
     }
     if (!any || widestDiam <= Operon::Scalar{0}) { return direct; }
 
@@ -366,10 +374,19 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode mode) 
 
     if (UseTightenRangeFallback()) {
         if (boundStats) { ++GlobalBoundPathStats().tightenRangeAttempted; }
-        auto tr = TightenRange(tree, ae.Domains(), tree.GetCoefficients());
-        if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
-            if (boundStats) { ++GlobalBoundPathStats().tightenRangeRescued; }
-            return tr;
+        // TightenRange runs IntervalEvaluator internally, which throws for an
+        // op hash with no registered interval rule -- unlike every other path
+        // in this file, it isn't pre-adapted to BoundResult's exception-free
+        // contract, so wrap it here rather than let it escape into the
+        // caller's worker-thread evaluation loop.
+        try {
+            auto tr = TightenRange(tree, ae.Domains(), tree.GetCoefficients());
+            if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
+                if (boundStats) { ++GlobalBoundPathStats().tightenRangeRescued; }
+                return tr;
+            }
+        } catch (std::exception const&) {
+            // fall through to the bisection fallback (or the uncertified direct bound)
         }
     }
 
