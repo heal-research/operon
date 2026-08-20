@@ -25,3 +25,4 @@ endfunction()
 
 add_example(empty_example)
 add_example(custom_primitives)
+add_example(range_tightening_validation)
