@@ -295,6 +295,13 @@ auto main(int argc, char** argv) -> int
         if (!shapeConstraints && result.count("shape-enforcement") != 0) {
             throw std::invalid_argument("--shape-enforcement requires --shape-constraints-config");
         }
+        // --shape-constraints-config domain bounds are raw feature-space values,
+        // resolved into the constraint evaluators here (before --standardize runs
+        // below). Combining the two would silently certify constraints against
+        // the wrong coordinate system, so reject it rather than mis-certify.
+        if (shapeConstraints && result["standardize"].as<bool>()) {
+            throw std::invalid_argument("--shape-constraints-config domains are raw feature-space bounds and are not currently transformed for --standardize; use one or the other");
+        }
 
         Operon::ShapeConstraintEnforcement shapeEnforcement{Operon::ShapeConstraintEnforcement::None};
         std::unique_ptr<Operon::ShapeViolationEvaluator> shapePenaltyStorage;

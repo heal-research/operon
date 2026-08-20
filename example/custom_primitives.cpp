@@ -190,7 +190,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     fmt::print("\nBest model (MSE={:.6f}, length={}):\n  {}\n",
         best->Fitness[0],
         best->Genotype.Length(),
-        Operon::InfixFormatter::Format(best->Genotype, dataset, 6));
+        Operon::InfixFormatter::Format(best->Genotype, dataset, std::numeric_limits<Operon::Scalar>::max_digits10));
 
     return 0;
 }
