@@ -53,6 +53,11 @@ auto VariableIndex(VariableGradientDag const& dag, Operon::Hash variable) -> std
     return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
 }
 
+// The only point in this file that crosses into AffineEvaluator. Domain
+// violations return an `invalid()` NaN-poisoned form; the finiteness check
+// below catches those. This try/catch adapts rare structural throws (e.g.
+// forms from different affine_context instances) to these expected-based
+// internals, so the rest of this file never needs a try/catch.
 // The affine+interval intersection path, unchanged from before -- extracted
 // so TryAffineBound (below) can retry it over bisected sub-boxes when it
 // fails on the whole domain.
@@ -158,6 +163,8 @@ auto IsFiniteBound(BoundResult const& b) -> bool
 // pick from the tree's own variables, not the evaluator's full domain map).
 auto BisectedDomainBound(Tree const& tree, AffineEvaluator::DomainMap const& domains, int depth, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
+    // Each sub-box evaluator owns a separate noise counter. Combine sub-box
+    // results only as intervals; never combine their affine forms directly.
     AffineEvaluator subAe(&tree, domains);
     auto direct = TryAffineBoundDirect(tree, subAe, mode, opts);
     if (depth <= 0 || IsFiniteBound(direct)) { return direct; }

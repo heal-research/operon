@@ -122,9 +122,9 @@ OPERON_EXPORT auto HasBinaryInterval(Operon::Hash hash) -> bool;
 // This empty result propagates silently through subsequent operations (e.g.
 // exp(empty()) = empty()) and is returned from Evaluate() without throwing.
 // The caller must check `result.is_empty()` if domain validity matters.
-// This differs from AffineEvaluator, which throws std::invalid_argument for
-// the same out-of-domain inputs. See the pappus handoff doc for the rationale:
-// "interval and affine do not have identical domain semantics".
+// This differs from AffineEvaluator, which returns an `invalid()`
+// NaN-poisoned form for the same out-of-domain inputs. See the pappus handoff
+// doc for the rationale: "interval and affine do not have identical domain semantics".
 class IntervalEvaluator {
 public:
     using Scalar = Operon::Scalar;
