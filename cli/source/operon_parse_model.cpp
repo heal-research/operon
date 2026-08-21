@@ -16,10 +16,12 @@
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
+#include "reporter.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/linear_scaling.hpp"
-#include "reporter.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
+#include "shape_constraints_config.hpp"
 
 #include <cxxopts.hpp>
 #include <scn/scan.h>
@@ -45,6 +47,7 @@ namespace {
             ("optimizer", "Optimizer for model coefficients (lm, lbfgs, sgd)", cxxopts::value<std::string>()->default_value("lm"))
             ("likelihood", "Optimizer loss function (gaussian, poisson)", cxxopts::value<std::string>()->default_value("gaussian"))
             ("iterations", "Optimizer iterations (0 disables refitting; reported stats are the model's own coefficients as given)", cxxopts::value<int>()->default_value("0"))
+            ("shape-constraints-config", "Path to a JSON shape-constraints config; when set with --target, also prints affine-certified feasibility for the parsed model", cxxopts::value<std::string>())
             ("debug", "Show some debugging information", cxxopts::value<bool>()->default_value("false"))
             ("format", "Format string (see https://fmt.dev/latest/syntax.html)", cxxopts::value<std::string>()->default_value(":>#8.4g"))
             ("help", "Print help");
@@ -132,6 +135,7 @@ namespace {
         problem.SetTrainingRange(range);
         problem.SetTestRange(range);
         problem.SetTarget(result["target"].as<std::string>());
+        problem.SetDefaultInputs();
         Operon::RandomGenerator rng{0};
 
         // Optionally refit model's coefficients (--iterations > 0) before
@@ -180,8 +184,26 @@ namespace {
         };
         Operon::Reporter<void>::PrintStats(stats, /*printHeader=*/true);
 
+        if (result.contains("shape-constraints-config")) {
+            auto constraints = Operon::LoadShapeConstraints(result["shape-constraints-config"].as<std::string>());
+            if (!constraints) { throw std::runtime_error("empty shape-constraints config path"); }
+            Operon::Evaluator<Operon::ScalarDispatch> eval{&problem, &dtable, Operon::NMSE{}};
+            Operon::ShapeConstrainedEvaluator shapeEval{&eval, &dtable, *constraints};
+            auto const summary = shapeEval.Measure(model);
+            fmt::print("shape_feasible {} shape_violation {}\n", summary.Feasible, summary.Violation);
+            for (std::size_t i = 0; i < summary.Measurements.size(); ++i) {
+                auto const& m = summary.Measurements[i];
+                fmt::print("shape_measurement {} certified {} violation {}", i, m.Certified, m.Violation);
+                if (m.Bound) { fmt::print(" bound [{}:{}]", m.Bound->first, m.Bound->second); }
+                fmt::print("\n");
+            }
+        }
+
         if (opt->Iterations() > 0) {
             auto const& diag = Operon::Diagnostics(summary);
+            if (summary.has_value()) {
+                fmt::print("optimized_model {}\n", Operon::InfixFormatter::Format(model, ds, std::numeric_limits<Operon::Scalar>::max_digits10));
+            }
             fmt::print("optimization summary:\n");
             fmt::print("status: {}\n", summary.has_value());
             fmt::print("initial cost: {}\n", diag.InitialCost);

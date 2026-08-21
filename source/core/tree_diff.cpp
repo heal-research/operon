@@ -357,7 +357,7 @@ auto Deriv(Nodes const& orig, Nodes& dag, Memo& memo, Hashes& h,
     // registries) all compute the *unweighted* local derivative — this
     // wrapper applies the node's own weight once at each branch's return,
     // mirroring that same uniform step instead of leaving it to each rule.
-    auto const w = n.Value;
+    auto const w = target.effectiveValues.empty() ? n.Value : target.effectiveValues[i];
     auto applyWeight = [&](std::size_t x) -> std::size_t {
         // w == 0 short-circuits to Zero rather than emitting Mul(0, x): d(0*f)/dc
         // is exactly 0 regardless of x, but x can still evaluate to Inf at a

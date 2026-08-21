@@ -54,6 +54,7 @@ add_executable(operon_test
     source/implementation/selection.cpp
     source/implementation/serialization.cpp
     source/implementation/shape_constrained_evaluator.cpp
+    source/implementation/shape_bound_correctness.cpp
     ../cli/source/shape_constraints_config.cpp
     source/implementation/standard_library.cpp
     source/performance/autodiff.cpp

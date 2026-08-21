@@ -60,5 +60,5 @@ endfunction()
 
 add_operon_cli(operon_gp source/probes_config.cpp source/shape_constraints_config.cpp)
 add_operon_cli(operon_nsgp source/probes_config.cpp source/shape_constraints_config.cpp)
-add_operon_cli(operon_parse_model)
+add_operon_cli(operon_parse_model source/shape_constraints_config.cpp)
 add_operon_cli(operon_enum)

@@ -23,6 +23,7 @@ namespace Operon {
 //     "probes": [
 //       { "type": "population_trace", "every": 5, "params": { "path": "pop.beve" } },
 //       { "type": "cache_hit_rate", "every": 1 },
+//       { "type": "shape_feasibility", "every": 1 },
 //       { "type": "structural_diversity", "every": 10, "params": { "hash_mode": "strict" } }
 //     ],
 //     "sink": { "type": "jsonl", "path": "metrics.jsonl" }

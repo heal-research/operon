@@ -56,8 +56,45 @@ struct ShapeConstraintPolicy {
     Operon::Scalar PenaltyWeight{1};
 };
 
+// Which arithmetic backend(s) TryAffineBound uses to bound a constraint's
+// tree/derivative over its domain box. `Combined` is the default and the
+// only mode with any published measurement behind it so far: affine,
+// intersected with plain interval whenever both succeed (see
+// TryAffineBoundDirect's comment for why that intersection is sound).
+// `IntervalOnly`/`AffineOnly` exist for isolating each backend's actual
+// contribution to feasibility/NMSE outcomes -- prompted by an earlier
+// finding that affine rarely decides the `Combined` intersection in
+// practice (see intersectLoFromAffine/intersectLoFromInterval under
+// OPERON_SHAPE_BOUND_STATS=1), which raised the question of whether it's
+// pulling its weight at all. `AffineOnly` still falls back to interval for
+// cases affine structurally can't represent (a zero-crossing denominator,
+// a non-integer-exponent domain check) -- those are representability
+// gaps, not the tightness contribution the intersection step measures, so
+// removing them would conflate two different questions.
+enum class ShapeBoundMode : unsigned {
+    Combined = 0U,
+    IntervalOnly = 1U,
+    AffineOnly = 2U,
+};
+
+// Tuning knobs for the affine/interval bound machinery. Defaults match
+// this file's previous behavior exactly.
+struct ShapeBoundOptions {
+    // Affine-mode fallback: max bisection depth when the direct
+    // affine/interval intersection fails on the whole domain. 0 disables it.
+    int AffineBisectionMaxDepth{0};
+    // Flags an affine bound as uncertified when the float32 rounding-error
+    // floor implied by the largest intermediate center exceeds this many
+    // times the final radius.
+    Operon::Scalar AffineIllConditionedThreshold{4};
+    // Opt-in TightenRange rescue path for bounds the direct/bisection paths
+    // couldn't certify.
+    bool UseTightenRangeFallback{false};
+};
+
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
+[[nodiscard]] OPERON_EXPORT auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode;
 
 // Wraps an inner EvaluatorBase (typically an NMSE-with-linear-scaling
 // Evaluator, matching Kronberger et al. 2021's own fitness setup) with the
@@ -106,6 +143,12 @@ public:
 
     [[nodiscard]] auto WorstValue() const noexcept -> double { return worstValue_; }
     void SetWorstValue(double value) { worstValue_ = value; }
+
+    [[nodiscard]] auto BoundMode() const noexcept -> ShapeBoundMode { return boundMode_; }
+    void SetBoundMode(ShapeBoundMode mode) noexcept { boundMode_ = mode; }
+
+    [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
+    void SetBoundOptions(ShapeBoundOptions options) noexcept { boundOptions_ = options; }
 
     // The tf::Executor Prepare() uses to parallelize its population-wide
     // Feasible() pre-warm -- the SAME executor the caller's GP/NSGA2 loop
@@ -193,6 +236,8 @@ private:
     Operon::Vector<Operon::Hash> constraintVarHash_;
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     double worstValue_{1.0};
+    ShapeBoundMode boundMode_{ShapeBoundMode::Combined};
+    ShapeBoundOptions boundOptions_{};
     // Non-owning; set via SetExecutor(). nullptr means Prepare() runs
     // sequentially -- see Prepare()'s doc comment.
     tf::Executor* taskExecutor_{nullptr};
@@ -214,6 +259,10 @@ public:
 
     [[nodiscard]] auto Weight() const noexcept -> Operon::Scalar { return weight_; }
     [[nodiscard]] auto UnknownViolation() const noexcept -> Operon::Scalar { return unknownViolation_; }
+    [[nodiscard]] auto BoundMode() const noexcept -> ShapeBoundMode { return boundMode_; }
+    void SetBoundMode(ShapeBoundMode mode) noexcept { boundMode_ = mode; }
+    [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
+    void SetBoundOptions(ShapeBoundOptions options) noexcept { boundOptions_ = options; }
     [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar;
     [[nodiscard]] auto Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary;
 
@@ -233,6 +282,8 @@ private:
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     Operon::Scalar weight_{1};
     Operon::Scalar unknownViolation_{1};
+    ShapeBoundMode boundMode_{ShapeBoundMode::Combined};
+    ShapeBoundOptions boundOptions_{};
     tf::Executor* taskExecutor_{nullptr};
 
     struct MeasurementData {
