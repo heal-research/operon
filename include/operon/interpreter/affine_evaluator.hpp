@@ -98,12 +98,18 @@ OPERON_EXPORT auto HasBinaryAffine(Operon::Hash hash) -> bool;
 // domain. Mirrors `IntervalEvaluator` but every `affine_form` shares one
 // `pappus::ops::affine_context<Operon::Scalar>` owned by this evaluator.
 //
-// Domain-error policy: unlike interval arithmetic, `affine_form::inv()` throws
-// when the form's interval contains zero (affine forms cannot represent
-// unbounded values). Similarly, `log()`, `log1p()`, and `sqrt()` throw
-// std::invalid_argument for out-of-domain inputs. This evaluator lets such
-// exceptions propagate -- the caller decides whether to catch or treat as a
-// hard failure.
+// Domain-error policy: `affine_form::inv()`, `log()`, `log1p()`, and `sqrt()`
+// all return `invalid()` -- a NaN-poisoned form (see `affine_form::invalid()`)
+// -- for an out-of-domain input (e.g. `inv()` over an interval containing
+// zero; affine forms cannot represent unbounded values), rather than
+// throwing. NaN propagates through downstream arithmetic automatically, so
+// callers only need to check `to_interval()`/`isfinite()` once at the end.
+// A caller does not need a try/catch for these specific domain errors, but
+// one is still worth keeping around calls into this evaluator: a small
+// number of pappus operations remain throwing for genuine programmer-error
+// invariants (e.g. combining affine forms from different `affine_context`
+// instances), not reachable from ordinary tree evaluation but not
+// impossible to trigger by construction error either.
 //
 // This differs from IntervalEvaluator, where out-of-domain operations return
 // `interval::empty()` (NaN bounds) silently. See the pappus handoff doc:
@@ -290,8 +296,9 @@ public:
                                          : subFold(i), v);
                     break;
                 case Operon::Hash(BuiltinOp::Div):
-                    // May throw if the denominator form contains zero (affine
-                    // inv is stricter than interval inv).
+                    // Returns invalid() (NaN-poisoned), not a throw, if the
+                    // denominator form contains zero (affine inv is stricter
+                    // than interval inv).
                     emit(node.Arity == 1 ? pappus::ops::inv<Scalar>(ctx_, primal_[i - 1])
                                          : divFold(i), v);
                     break;
