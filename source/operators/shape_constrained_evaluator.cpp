@@ -118,13 +118,10 @@ auto VariableIndex(VariableGradientDag const& dag, Operon::Hash variable) -> std
     return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
 }
 
-// The only point in this file that crosses into AffineEvaluator, which is
-// pre-existing code that throws by design (domain violations, e.g.
-// dividing by a zero-containing interval; ops with no registered affine
-// rule) rather than returning an expected/empty value the way
-// IntervalEvaluator does. Converting AffineEvaluator itself to
-// tl::expected is a separate, larger change (deferred); this is the one
-// place that adapts its exceptions to this file's own expected-based
+// The only point in this file that crosses into AffineEvaluator. Domain
+// violations return an `invalid()` NaN-poisoned form; the finiteness check
+// below catches those. This try/catch adapts rare structural throws (e.g.
+// forms from different affine_context instances) to these expected-based
 // internals, so the rest of this file never needs a try/catch.
 // k: flag a bound as uncertified when the float32 rounding-error floor
 // implied by the largest intermediate center exceeds k * the final radius.
@@ -322,6 +319,8 @@ auto BisectionMaxDepth() -> int
 
 auto BisectedDomainBound(Tree const& tree, AffineEvaluator::DomainMap const& domains, int depth, ShapeBoundMode mode) -> BoundResult
 {
+    // Each sub-box evaluator owns a separate noise counter. Combine sub-box
+    // results only as intervals; never combine their affine forms directly.
     AffineEvaluator subAe(&tree, domains);
     auto direct = TryAffineBoundDirect(tree, subAe, mode);
     if (depth <= 0 || IsFiniteBound(direct)) { return direct; }
