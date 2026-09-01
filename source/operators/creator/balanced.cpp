@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <cstddef>
 #include <algorithm>
+#include <cstddef>
 #include <random>
 #include <tuple>
 #include <utility>
@@ -38,17 +38,59 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     auto const& variables = GetVariables();
 
     auto const requestedLen = targetLen;
-    targetLen = AchievableLength(targetLen);
-
+    auto const completable = pset->ReachableLengths(requestedLen);
+    while (!(*completable)[targetLen - 1]) {
+        --targetLen;
+    }
     using U = std::tuple<Node, size_t, size_t>;
 
     std::vector<U> tuples;
     tuples.reserve(targetLen);
 
+    auto sampleCompletable = [&](size_t max, size_t remaining) -> Node {
+        auto total = 0.0;
+        for (auto const& [_, primitive] : pset->Primitives()) {
+            auto const& [node, frequency, minArity, maxArity] = primitive;
+            if (node.IsLeaf() || !node.IsEnabled || frequency == 0 || minArity > max) { continue; }
+            auto const upper = std::min(maxArity, max);
+            auto const count = upper - minArity + 1;
+            for (size_t arity = minArity; arity <= std::min(upper, remaining); ++arity) {
+                if ((*completable)[remaining - arity]) {
+                    total += static_cast<double>(frequency) / static_cast<double>(count);
+                }
+            }
+        }
+
+        EXPECT(total > 0.0);
+        auto selected = std::uniform_real_distribution<double>(0.0, total)(random);
+        for (auto const& [_, primitive] : pset->Primitives()) {
+            auto const& [node, frequency, minArity, maxArity] = primitive;
+            if (node.IsLeaf() || !node.IsEnabled || frequency == 0 || minArity > max) { continue; }
+            auto const upper = std::min(maxArity, max);
+            auto const weight = static_cast<double>(frequency) / static_cast<double>(upper - minArity + 1);
+            for (size_t arity = minArity; arity <= std::min(upper, remaining); ++arity) {
+                if (!(*completable)[remaining - arity]) { continue; }
+                if (selected < weight) {
+                    auto result = node;
+                    result.Arity = static_cast<uint16_t>(arity);
+                    return result;
+                }
+                selected -= weight;
+            }
+        }
+        UNREACHABLE();
+    };
+
     auto maxArity = std::min(maxFunctionArity, targetLen - 1);
     auto minArity = std::min(minFunctionArity, maxArity); // -1 because we start with a root
 
-    auto root = pset->SampleRandomSymbol(random, minArity, maxArity);
+    if (maxArity == 0) {
+        auto root = pset->SampleRandomSymbol(random, 0, 0);
+        InitNode(root, variables, random);
+        return Tree({ root }).UpdateNodes();
+    }
+
+    auto root = sampleCompletable(maxArity, targetLen - 1);
     InitNode(root, variables, random);
 
     if (root.IsLeaf()) {
@@ -71,23 +113,23 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         auto childDepth = nodeDepth + 1;
         std::get<2>(tuples[i]) = tuples.size();
         for (int j = 0; std::cmp_less(j , node.Arity); ++j) {
-            // minArity/maxArity recomputed fresh per child, not left sticky.
             auto candidateMax = std::min(maxFunctionArity, targetLen - committed);
-            minArity = std::min(minFunctionArity, candidateMax);
-            maxArity = openSlots > 1 && sampleIrregular(random) ? 0 : candidateMax;
-
-            // fall back to a leaf node if the desired arity is not achievable with the current primitive set
-            if (maxArity < minFunctionArity) {
+            auto const remaining = targetLen - committed;
+            if (candidateMax < minFunctionArity || (openSlots > 1 && sampleIrregular(random))) {
                 minArity = maxArity = 0;
+                auto child = pset->SampleRandomSymbol(random, minArity, maxArity);
+                InitNode(child, variables, random);
+                tuples.emplace_back(child, childDepth, 0);
+            } else {
+                auto child = sampleCompletable(candidateMax, remaining);
+                InitNode(child, variables, random);
+                tuples.emplace_back(child, childDepth, 0);
             }
 
-            auto child = pset->SampleRandomSymbol(random, minArity, maxArity);
-            InitNode(child, variables, random);
-            tuples.emplace_back(child, childDepth, 0);
-
             openSlots -= 1;
-            committed += child.Arity;
-            openSlots += child.Arity;
+            auto const childArity = std::get<0>(tuples.back()).Arity;
+            committed += childArity;
+            openSlots += childArity;
         }
     }
 
@@ -106,6 +148,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     };
     add(tuples.front(), add);
     auto tree = Tree(postfix).UpdateNodes();
+    ENSURE(tree.Nodes().size() == targetLen);
     ENSURE(tree.Nodes().size() <= requestedLen);
     return tree;
 }

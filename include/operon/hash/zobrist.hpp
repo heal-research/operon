@@ -150,12 +150,15 @@ public:
         } else {
             // Combine the node's own identity hash with its tree position,
             // rather than a table lookup - see the comment on table_ above
-            // for why. No per-instance salt is needed: nothing in this
-            // codebase compares or merges hash values across different
-            // Zobrist instances (each owns its own private cache), so there's
-            // no cross-instance independence property to preserve here.
+            // for why. Ref nodes additionally encode their target: two DAGs
+            // with the same node sequence but different RefTo values compute
+            // different functions and must never share a cache entry.
             std::array<Hash, 2> const buf{ n.HashValue, static_cast<Hash>(pos) };
             h = Operon::Hasher{}(reinterpret_cast<uint8_t const*>(buf.data()), sizeof(buf)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+            if (n.IsRef()) {
+                auto const target = static_cast<Hash>(n.RefTo);
+                h ^= target + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
+            }
         }
         if (n.Optimize) {
             h ^= table_[OptimizeRow(), pos];
