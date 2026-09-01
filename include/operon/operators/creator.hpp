@@ -34,14 +34,11 @@ struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, siz
     [[nodiscard]] auto GetVariables() const -> Operon::Span<Operon::Hash const> { return variables_; }
     auto SetVariables(Operon::Span<Operon::Hash const> variables) { variables_ = std::vector<Operon::Hash>(variables.begin(), variables.end()); }
 
+protected:
     // Returns the largest tree length <= targetLen achievable with the current
     // pset. Uses the precomputed snap-down table when targetLen <= maxLength_
     // (O(1) lookup, no allocation). Falls back to pset->AchievableLength otherwise.
     [[nodiscard]] auto AchievableLength(size_t targetLen) const -> size_t;
-
-    // Returns whether targetLen is exactly achievable with the current pset.
-    // Uses the same precomputed table as AchievableLength when possible.
-    [[nodiscard]] auto IsAchievableLength(size_t targetLen) const -> bool;
 
 private:
     auto BuildAchievable() -> void;
@@ -53,9 +50,9 @@ private:
 };
 
 // This tree creator expands breadth-wise using a "horizon" of open expansion slots.
-// It always returns its snapped target length. Its minDepth and maxDepth arguments
-// are advisory: enforcing either can make that length impossible at high bias.
-// Use PTC2 for a hard maximum depth; PTC2 can then return a shorter tree.
+// It always returns its snapped target length. It ignores minDepth and maxDepth:
+// enforcing either can make that length impossible at high bias. Use PTC2 for a
+// hard maximum depth; PTC2 can then return a shorter tree.
 class OPERON_EXPORT BalancedTreeCreator final : public CreatorBase {
 public:
     BalancedTreeCreator(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, double bias, size_t maxLength)
