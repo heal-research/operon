@@ -104,6 +104,23 @@ TEST_CASE("Zobrist - commuted variables yield different hashes", "[zobrist]")
     REQUIRE(cache.ComputeHash(treeXY) != cache.ComputeHash(treeYX));
 }
 
+TEST_CASE("Zobrist - reference targets affect the hash", "[zobrist]")
+{
+    auto [ds, inputs, pset] = MakeSetup();
+    Operon::RandomGenerator rng(Seed);
+    Zobrist const cache(rng, MaxLength, inputs);
+
+    auto const x1 = ds.GetVariable("X1").value().Hash;
+    auto const x2 = ds.GetVariable("X2").value().Hash;
+    auto x = Node(NodeType::Variable, x1);
+    auto y = Node(NodeType::Variable, x2);
+    auto add = Node::Function(static_cast<Hash>(BuiltinOp::Add), 2);
+    auto const refX = Tree({ x, y, Node::Ref(0), add }).UpdateNodes();
+    auto const refY = Tree({ x, y, Node::Ref(1), add }).UpdateNodes();
+
+    CHECK(cache.ComputeHash(refX) != cache.ComputeHash(refY));
+}
+
 TEST_CASE("Zobrist - TryGet returns false on miss", "[zobrist]")
 {
     auto [ds, inputs, pset] = MakeSetup();

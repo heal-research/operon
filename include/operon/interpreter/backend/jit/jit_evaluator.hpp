@@ -51,7 +51,8 @@ public:
 // pointers differ per call.  Column pointers are rebuilt from the tree at
 // call time (VarOrder) — no per-entry varOrder storage needed.
 //
-// Thread-safe: uses gtl::parallel_flat_hash_map_m internally.
+// Thread-safe for concurrent evaluation and compilation. ClearCache() and
+// configuration changes require all evaluations using this instance to stop.
 // AVX2 is attempted first; falls back to the scalar path on older CPUs.
 class OPERON_EXPORT JitEvaluator final : public EvaluatorBase {
 public:
@@ -73,6 +74,8 @@ public:
     [[nodiscard]] auto CacheMisses() const -> std::size_t { return misses_.load(); }
 
     void ResetCounters(); // not thread-safe; call only when no evaluations are in flight
+    // Releases cached code. Call only when no returned CompileMeta pointer is
+    // executing or otherwise retained.
     void ClearCache();
 
     void SetMaxLength(int maxLength) { maxLength_ = maxLength; }
