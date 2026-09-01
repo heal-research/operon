@@ -17,12 +17,13 @@ namespace Operon {
 class Tree;
 class PrimitiveSet;
 
-// the creator builds a new tree using the existing pset and allowed inputs
+// Builds a tree from (targetLen, minDepth, maxDepth). Depth parameters are
+// creator-specific: Grow honors both; PTC2 enforces maxDepth but ignores
+// minDepth and may undershoot targetLen; BTC preserves target length and
+// ignores both depth values.
 struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
-    // maxLength: upper bound for the precomputed achievability table.
-    // Pass the same value as the GP run's maximum tree length to avoid
-    // per-call DP allocation.  Pass 0 to disable precomputation and fall
-    // back to a stateless per-call DP in PrimitiveSet::AchievableLength.
+    // maxLength is retained for source compatibility; reachability is cached by
+    // the PrimitiveSet shared with all creators.
     CreatorBase(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, size_t maxLength);
 
     [[nodiscard]] auto GetPrimitiveSet() const -> PrimitiveSet const* { return pset_.get(); }
@@ -32,23 +33,19 @@ struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, siz
     auto SetVariables(Operon::Span<Operon::Hash const> variables) { variables_ = std::vector<Operon::Hash>(variables.begin(), variables.end()); }
 
 protected:
-    // Returns the largest tree length <= targetLen achievable with the current
-    // pset. Uses the precomputed snap-down table when targetLen <= maxLength_
-    // (O(1) lookup, no allocation). Falls back to pset->AchievableLength otherwise.
+    // Returns the largest tree length <= targetLen reachable with the current
+    // PrimitiveSet configuration.
     [[nodiscard]] auto AchievableLength(size_t targetLen) const -> size_t;
 
 private:
-    auto BuildAchievable() -> void;
-
     gsl::not_null<PrimitiveSet const*> pset_;
     std::vector<Operon::Hash>          variables_;
-    std::vector<size_t>                snap_;      // snap_[i] = largest achievable length <= i+1
-    size_t                             maxLength_; // size of snap_ table (0 = disabled)
 };
 
-// this tree creator expands bread-wise using a "horizon" of open expansion slots
-// at the end the breadth sequence of nodes is converted to a postfix sequence
-// if the depth is not limiting, the target length is guaranteed to be reached
+// This tree creator expands breadth-wise using a "horizon" of open expansion slots.
+// It always returns its snapped target length. It ignores minDepth and maxDepth:
+// enforcing either can make that length impossible at high bias. Use PTC2 for a
+// hard maximum depth; PTC2 can then return a shorter tree.
 class OPERON_EXPORT BalancedTreeCreator final : public CreatorBase {
 public:
     BalancedTreeCreator(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, double bias, size_t maxLength)

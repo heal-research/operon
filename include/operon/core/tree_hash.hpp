@@ -27,7 +27,7 @@ namespace Operon::detail {
 // valueHash before the same boost-style combine as before -- no collision
 // regression vs the prior per-node 4-byte XXH64 (which was never injective on
 // more than a 32-bit input anyway).
-inline auto HashTreeForMemo(Tree const& tree) -> Operon::Hash
+inline auto HashTreeForMemo(Tree const& tree, Operon::Hash variant = 0) -> Operon::Hash
 {
     Operon::Hash h{};
     for (auto const& n : tree.Nodes()) {
@@ -36,6 +36,13 @@ inline auto HashTreeForMemo(Tree const& tree) -> Operon::Hash
         valueHash *= 0x9e3779b97f4a7c15ULL;
         auto const nodeHash = n.HashValue ^ (valueHash + 0x9e3779b97f4a7c15ULL + (n.HashValue << 6U) + (n.HashValue >> 2U));
         h ^= nodeHash + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
+        if (n.IsRef()) {
+            auto const target = static_cast<Operon::Hash>(n.RefTo);
+            h ^= target + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
+        }
+    }
+    if (variant != 0) {
+        h ^= variant + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
     }
     return h;
 }

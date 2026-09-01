@@ -6,7 +6,10 @@
 #define OPERON_PSET_HPP
 
 #include <fmt/format.h>
+#include <atomic>
 #include <stdexcept>
+#include <mutex>
+#include <memory>
 
 #include "contracts.hpp"
 #include "node.hpp"
@@ -23,7 +26,15 @@ class PrimitiveSet {
     enum { NODE = 0, FREQUENCY = 1, MINARITY = 2, MAXARITY = 3}; // for accessing tuple elements more easily
 
     Operon::Map<Operon::Hash, Primitive> pset_;
+    mutable std::mutex reachableMutex_;
+#if defined(__cpp_lib_atomic_shared_ptr)
+    mutable std::atomic<std::shared_ptr<std::vector<bool> const>> reachable_;
+#else
+    mutable std::shared_ptr<std::vector<bool> const> reachable_;
+#endif
+    mutable std::atomic_bool reachableDirty_ { true };
 
+    void InvalidateReachability() noexcept { reachableDirty_.store(true, std::memory_order_release); }
     template<typename Self>
     [[nodiscard]] auto GetPrimitive(this Self& self, Operon::Hash hash) -> decltype(auto) {
         auto it = self.pset_.find(hash);
@@ -37,9 +48,12 @@ public:
     static constexpr PrimitiveSetConfig Arithmetic = NodeType::Constant | NodeType::Variable | BuiltinOp::Add | BuiltinOp::Sub | BuiltinOp::Mul | BuiltinOp::Div;
     static constexpr PrimitiveSetConfig TypeCoherent = Arithmetic | BuiltinOp::Pow | BuiltinOp::Exp | BuiltinOp::Log | BuiltinOp::Sin | BuiltinOp::Cos | BuiltinOp::Square;
     static constexpr PrimitiveSetConfig Full = TypeCoherent | BuiltinOp::Aq | BuiltinOp::Tan | BuiltinOp::Tanh | BuiltinOp::Sqrt | BuiltinOp::Cbrt;
-
-
     PrimitiveSet() = default;
+    OPERON_EXPORT PrimitiveSet(PrimitiveSet const& other);
+    OPERON_EXPORT PrimitiveSet(PrimitiveSet&& other) noexcept;
+    OPERON_EXPORT auto operator=(PrimitiveSet const& other) -> PrimitiveSet&;
+    OPERON_EXPORT auto operator=(PrimitiveSet&& other) noexcept -> PrimitiveSet&;
+
 
     explicit PrimitiveSet(PrimitiveSetConfig config)
     {
@@ -51,6 +65,7 @@ public:
     auto AddPrimitive(Operon::Node node, size_t frequency, size_t minArity, size_t maxArity) -> bool
     {
         auto [_, ok] = pset_.insert({ node.HashValue, Primitive { node, frequency, minArity, maxArity } });
+        if (ok) { InvalidateReachability(); }
         return ok;
     }
 
@@ -61,9 +76,15 @@ public:
         return AddPrimitive(Node::Function(hash, arity), frequency, arity, arity);
     }
 
-    void RemovePrimitive(Operon::Node node) { pset_.erase(node.HashValue); }
+    void RemovePrimitive(Operon::Node node)
+    {
+        if (pset_.erase(node.HashValue) != 0) { InvalidateReachability(); }
+    }
 
-    void RemovePrimitive(Operon::Hash hash) { pset_.erase(hash); }
+    void RemovePrimitive(Operon::Hash hash)
+    {
+        if (pset_.erase(hash) != 0) { InvalidateReachability(); }
+    }
 
     OPERON_EXPORT void SetConfig(PrimitiveSetConfig config);
 
@@ -99,7 +120,10 @@ public:
     void SetFrequency(Operon::Hash hash, size_t frequency)
     {
         auto& p = GetPrimitive(hash);
-        std::get<FREQUENCY>(p) = frequency;
+        if (std::get<FREQUENCY>(p) != frequency) {
+            std::get<FREQUENCY>(p) = frequency;
+            InvalidateReachability();
+        }
     }
 
     [[nodiscard]] auto Contains(Operon::Hash hash) const -> bool { return pset_.contains(hash); }
@@ -113,7 +137,10 @@ public:
     void SetEnabled(Operon::Hash hash, bool enabled)
     {
         auto& p = GetPrimitive(hash);
-        std::get<NODE>(p).IsEnabled = enabled;
+        if (std::get<NODE>(p).IsEnabled != enabled) {
+            std::get<NODE>(p).IsEnabled = enabled;
+            InvalidateReachability();
+        }
     }
 
     void Enable(Operon::Hash hash)
@@ -126,15 +153,18 @@ public:
         SetEnabled(hash, /*enabled=*/false);
     }
 
-    // Returns the largest tree length <= targetLen that is achievable with the
-    // current primitive set. A length n is achievable if n == 1 (a single leaf,
-    // assuming the pset has at least one enabled terminal) or (n-1) can be
-    // expressed as a sum of available function arities.
+    // Returns whether each length in [1, maxLength] is achievable with the
+    // current enabled function arities. The table is rebuilt lazily after a
+    // pset mutation and shared by all creators using this PrimitiveSet.
+    // Configure the PrimitiveSet before concurrent tree construction; mutation
+    // concurrent with cache reads is not supported.
+    [[nodiscard]] OPERON_EXPORT auto ReachableLengths(size_t maxLength) const -> std::shared_ptr<std::vector<bool> const>;
+
+    // Returns the largest tree length <= targetLen achievable with the current
+    // pset. A length n is achievable if n == 1 (a single leaf, assuming the
+    // pset has at least one enabled terminal) or (n-1) can be expressed as a
+    // sum of available function arities.
     // Precondition: the pset must have at least one enabled terminal symbol.
-    // This is used by tree creators to snap an impossible requested length down
-    // to the nearest valid one, so they never return a tree larger than requested.
-    // Cost: O(|pset| + targetLen * |distinct arities|) per call — negligible for
-    // typical GP parameters (maxLength <= 200, |pset| <= 30).
     [[nodiscard]] OPERON_EXPORT auto AchievableLength(size_t targetLen) const -> size_t;
 
     [[nodiscard]] auto FunctionArityLimits() const -> std::pair<size_t, size_t>
@@ -155,7 +185,10 @@ public:
     {
         EXPECT(minArity <= MaximumArity(hash));
         auto& p = GetPrimitive(hash);
-        std::get<MINARITY>(p) = minArity;
+        if (std::get<MINARITY>(p) != minArity) {
+            std::get<MINARITY>(p) = minArity;
+            InvalidateReachability();
+        }
     }
 
     [[nodiscard]] auto MinimumArity(Operon::Hash hash) const -> size_t
@@ -168,7 +201,10 @@ public:
     {
         EXPECT(maxArity >= MinimumArity(hash));
         auto& p = GetPrimitive(hash);
-        std::get<MAXARITY>(p) = maxArity;
+        if (std::get<MAXARITY>(p) != maxArity) {
+            std::get<MAXARITY>(p) = maxArity;
+            InvalidateReachability();
+        }
     }
 
     [[nodiscard]] auto MaximumArity(Operon::Hash hash) const -> size_t
@@ -187,8 +223,11 @@ public:
     {
         EXPECT(maxArity >= minArity);
         auto& p = GetPrimitive(hash);
-        std::get<MINARITY>(p) = minArity;
-        std::get<MAXARITY>(p) = maxArity;
+        if (std::get<MINARITY>(p) != minArity || std::get<MAXARITY>(p) != maxArity) {
+            std::get<MINARITY>(p) = minArity;
+            std::get<MAXARITY>(p) = maxArity;
+            InvalidateReachability();
+        }
     }
 
     // convenience overloads

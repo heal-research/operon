@@ -17,6 +17,7 @@
 #include "operon/core/problem.hpp"
 #include "operon/core/constraint.hpp"
 #include "operon/core/tree_diff.hpp"
+#include "operon/core/tree_hash.hpp"
 #include "operon/interpreter/affine_evaluator.hpp"
 #include "operon/interpreter/interval_evaluator.hpp"
 #include "operon/operators/evaluator.hpp"
@@ -201,6 +202,23 @@ TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constrai
     Operon::ShapeConstrainedEvaluator narrow(&fx.nmse, &fx.dtable, cs);
     CHECK_FALSE(narrow.Feasible(fx.tree));
 }
+
+TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraints]")
+{
+    Fixture fx;
+    auto const x1 = fx.ds.GetVariable("X1").value().Hash;
+    auto const x2 = fx.ds.GetVariable("X2").value().Hash;
+    auto x = Node(NodeType::Variable, x1);
+    auto y = Node(NodeType::Variable, x2);
+    auto add = Node::Function(static_cast<Hash>(BuiltinOp::Add), 2);
+    auto const refX = Tree({ x, y, Node::Ref(0), add }).UpdateNodes();
+    auto const refY = Tree({ x, y, Node::Ref(1), add }).UpdateNodes();
+
+    CHECK(detail::HashTreeForMemo(refX) != detail::HashTreeForMemo(refY));
+    CHECK(detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Combined))
+          != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::IntervalOnly)));
+}
+
 
 TEST_CASE("ShapeConstrainedEvaluator - negative linear scale flips derivative constraints", "[shape-constraints]")
 {

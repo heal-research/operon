@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <random>
+#include <future>
 
 #include "../operon_test.hpp"
 
@@ -236,9 +237,142 @@ TEST_CASE("PTC2 creator respects maxDepth", "[operators]")
     }
 }
 
+TEST_CASE("BTC preserves attainable lengths across irregularity biases", "[operators]")
+{
+    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    pset.Disable(Node(NodeType::Variable));
+
+    constexpr size_t maxLength = 99;
+    for (auto bias : { 0.0, 0.5, 1.0 }) {
+        BalancedTreeCreator const btc(&pset, {}, bias, maxLength);
+        for (size_t target = 1; target <= maxLength; ++target) {
+            auto const expected = target % 2 == 0 ? target - 1 : target;
+            for (size_t seed = 0; seed < 10; ++seed) {
+                RandomGenerator random(seed);
+                CHECK(btc(random, target, 1, 1000).Length() == expected);
+            }
+        }
+    }
+}
+
+TEST_CASE("BTC irregularity bias deepens trees", "[operators]")
+{
+    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    pset.Disable(Node(NodeType::Variable));
+
+    constexpr size_t targetLength = 99;
+    auto sumDepths = [&](double bias) {
+        BalancedTreeCreator const btc(&pset, {}, bias, targetLength);
+        size_t total{};
+        for (size_t seed = 0; seed < 100; ++seed) {
+            RandomGenerator random(seed);
+            total += btc(random, targetLength, 1, 1000).Depth();
+        }
+        return total;
+    };
+
+    auto const regularDepth = sumDepths(0.0);
+    auto const intermediateDepth = sumDepths(0.5);
+    auto const irregularDepth = sumDepths(1.0);
+    CHECK(regularDepth < intermediateDepth);
+    CHECK(intermediateDepth < irregularDepth);
+}
+
+TEST_CASE("BTC depth arguments preserve its seeded output", "[operators]")
+{
+    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    pset.Disable(Node(NodeType::Variable));
+    BalancedTreeCreator const btc(&pset, {}, /* bias= */ 1.0, 99);
+
+    for (size_t target : { size_t{1}, size_t{17}, size_t{99} }) {
+        RandomGenerator unrestricted(42);
+        RandomGenerator constrained(42);
+        auto const baseline = btc(unrestricted, target, 1, 1000);
+        auto const advisory = btc(constrained, target, 50, 1);
+
+        CHECK(advisory.Length() == baseline.Length());
+        CHECK(advisory.Depth() == baseline.Depth());
+        CHECK(advisory.Hash(HashMode::Strict).HashValue() == baseline.Hash(HashMode::Strict).HashValue());
+    }
+}
+
+TEST_CASE("BTC reaches gapped-arity snapped targets at every bias", "[operators]")
+{
+    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    BalancedTreeCreator btc(&pset, {}, /* bias= */ 0.5, /* maxLength= */ 99);
+
+    // Reconfigure after creator construction: the creator must not use its
+    // stale precomputed arity table when it fills the remaining slots.
+    pset.SetConfig(BuiltinOp::Add | NodeType::Constant);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 5);
+
+    constexpr size_t maxLength = 99;
+    for (auto bias : { 0.0, 0.5, 1.0 }) {
+        btc.SetBias(bias);
+        for (size_t target = 1; target <= maxLength; ++target) {
+            auto const expected = target == 2 ? size_t{1} : target;
+            for (size_t seed = 0; seed < 10; ++seed) {
+                RandomGenerator random(seed);
+                CHECK(btc(random, target, 1, 1000).Length() == expected);
+            }
+        }
+    }
+}
+
+
+TEST_CASE("PrimitiveSet reachability cache invalidates on arity changes", "[operators]")
+{
+    PrimitiveSet pset;
+    pset.SetConfig(BuiltinOp::Add | NodeType::Constant);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 2);
+
+    auto const binary = pset.ReachableLengths(6);
+    CHECK((*binary)[0]);
+    CHECK_FALSE((*binary)[1]);
+    CHECK((*binary)[2]);
+    CHECK_FALSE((*binary)[3]);
+
+    auto const retainedBinary = binary;
+
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 3);
+    auto const binaryOrTernary = pset.ReachableLengths(6);
+    CHECK((*retainedBinary)[2]);
+    CHECK_FALSE((*retainedBinary)[3]);
+    CHECK((*binaryOrTernary)[3]);
+
+    pset.SetFrequency(Util::MakeOp<BuiltinOp::Add>(), 0);
+    auto const terminalsOnly = pset.ReachableLengths(6);
+    CHECK((*terminalsOnly)[0]);
+    for (size_t i = 1; i < terminalsOnly->size(); ++i) {
+        CHECK_FALSE((*terminalsOnly)[i]);
+    }
+
+}
+
+TEST_CASE("PrimitiveSet publishes reachability cache snapshots safely", "[operators]")
+{
+    PrimitiveSet pset;
+    pset.SetConfig(BuiltinOp::Add | NodeType::Constant);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 5);
+
+    std::vector<std::future<bool>> readers;
+    readers.reserve(16);
+    for (size_t i = 0; i < readers.capacity(); ++i) {
+        readers.emplace_back(std::async(std::launch::async, [&pset] {
+            for (size_t n = 1; n <= 100; ++n) {
+                auto const reachable = pset.ReachableLengths(n);
+                if (reachable->size() < n || !(*reachable)[0]) { return false; }
+            }
+            return true;
+        }));
+    }
+    for (auto& reader : readers) {
+        CHECK(reader.get());
+    }
+}
+
 TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
-    // A thin subclass that exposes the protected AchievableLength method.
     struct TestCreator final : public CreatorBase {
         TestCreator(PrimitiveSet const* pset, size_t maxLen)
             : CreatorBase(pset, {}, maxLen) {}
@@ -342,19 +476,5 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]") //
     }
 }
 
-TEST_CASE("BTC reaches snapped Arithmetic targets with irregularity", "[operators]")
-{
-    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
-    pset.Disable(Node(NodeType::Variable));
-
-    constexpr size_t targetLength = 99;
-    for (auto bias : { 0.0, 0.5, 1.0 }) {
-        BalancedTreeCreator const btc(&pset, {}, bias, targetLength);
-        for (size_t seed = 0; seed < 100; ++seed) {
-            RandomGenerator random(seed);
-            CHECK(btc(random, targetLength, 1, 100).Length() == targetLength);
-        }
-    }
-}
 
 } // namespace Operon::Test
