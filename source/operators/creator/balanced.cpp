@@ -106,6 +106,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     };
     add(tuples.front(), add);
     auto tree = Tree(postfix).UpdateNodes();
+    ENSURE(tree.Nodes().size() == targetLen);
     ENSURE(tree.Nodes().size() <= requestedLen);
     return tree;
 }
