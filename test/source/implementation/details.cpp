@@ -105,6 +105,19 @@ TEST_CASE("Problem target selection refreshes default inputs", "[core]")
     CHECK(problem.GetInputs() == std::vector<Operon::Hash>{x1});
 }
 
+TEST_CASE("Tree rejects mismatched coefficient spans", "[core]")
+{
+    Node c1(NodeType::Constant); c1.Optimize = true;
+    Node c2(NodeType::Constant); c2.Optimize = true;
+    Tree tree({c1, c2, Util::MakeOp<BuiltinOp::Add>()});
+    tree.UpdateNodes();
+
+    std::vector<Operon::Scalar> const shortCoefficients{1.0F};
+    std::vector<Operon::Scalar> const longCoefficients{1.0F, 2.0F, 3.0F};
+    CHECK_THROWS_AS(tree.SetCoefficients(shortCoefficients), std::invalid_argument);
+    CHECK_THROWS_AS(tree.SetCoefficients(longCoefficients), std::invalid_argument);
+}
+
 TEST_CASE("Dataset loading and access", "[core]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
