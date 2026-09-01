@@ -295,15 +295,19 @@ TEST_CASE("BTC depth arguments preserve its seeded output", "[operators]")
     }
 }
 
-TEST_CASE("BTC reaches nonmultiple-arity snapped targets at every bias", "[operators]")
+TEST_CASE("BTC reaches gapped-arity snapped targets at every bias", "[operators]")
 {
-    PrimitiveSet pset;
+    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    BalancedTreeCreator btc(&pset, {}, /* bias= */ 0.5, /* maxLength= */ 99);
+
+    // Reconfigure after creator construction: the creator must not use its
+    // stale precomputed arity table when it fills the remaining slots.
     pset.SetConfig(BuiltinOp::Add | NodeType::Constant);
-    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 3);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 5);
 
     constexpr size_t maxLength = 99;
     for (auto bias : { 0.0, 0.5, 1.0 }) {
-        BalancedTreeCreator const btc(&pset, {}, bias, maxLength);
+        btc.SetBias(bias);
         for (size_t target = 1; target <= maxLength; ++target) {
             auto const expected = target == 2 ? size_t{1} : target;
             for (size_t seed = 0; seed < 10; ++seed) {
