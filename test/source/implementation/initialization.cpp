@@ -236,6 +236,84 @@ TEST_CASE("PTC2 creator respects maxDepth", "[operators]")
     }
 }
 
+TEST_CASE("BTC preserves attainable lengths across irregularity biases", "[operators]")
+{
+    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    pset.Disable(Node(NodeType::Variable));
+
+    constexpr size_t maxLength = 99;
+    for (auto bias : { 0.0, 0.5, 1.0 }) {
+        BalancedTreeCreator const btc(&pset, {}, bias, maxLength);
+        for (size_t target = 1; target <= maxLength; ++target) {
+            auto const expected = target % 2 == 0 ? target - 1 : target;
+            for (size_t seed = 0; seed < 10; ++seed) {
+                RandomGenerator random(seed);
+                CHECK(btc(random, target, 1, 1000).Length() == expected);
+            }
+        }
+    }
+}
+
+TEST_CASE("BTC irregularity bias deepens trees", "[operators]")
+{
+    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    pset.Disable(Node(NodeType::Variable));
+
+    constexpr size_t targetLength = 99;
+    auto sumDepths = [&](double bias) {
+        BalancedTreeCreator const btc(&pset, {}, bias, targetLength);
+        size_t total{};
+        for (size_t seed = 0; seed < 100; ++seed) {
+            RandomGenerator random(seed);
+            total += btc(random, targetLength, 1, 1000).Depth();
+        }
+        return total;
+    };
+
+    auto const regularDepth = sumDepths(0.0);
+    auto const intermediateDepth = sumDepths(0.5);
+    auto const irregularDepth = sumDepths(1.0);
+    CHECK(regularDepth < intermediateDepth);
+    CHECK(intermediateDepth < irregularDepth);
+}
+
+TEST_CASE("BTC depth arguments preserve its seeded output", "[operators]")
+{
+    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
+    pset.Disable(Node(NodeType::Variable));
+    BalancedTreeCreator const btc(&pset, {}, /* bias= */ 1.0, 99);
+
+    for (size_t target : { size_t{1}, size_t{17}, size_t{99} }) {
+        RandomGenerator unrestricted(42);
+        RandomGenerator constrained(42);
+        auto const baseline = btc(unrestricted, target, 1, 1000);
+        auto const advisory = btc(constrained, target, 50, 1);
+
+        CHECK(advisory.Length() == baseline.Length());
+        CHECK(advisory.Depth() == baseline.Depth());
+        CHECK(advisory.Hash(HashMode::Strict).HashValue() == baseline.Hash(HashMode::Strict).HashValue());
+    }
+}
+
+TEST_CASE("BTC reaches mixed-arity snapped targets at every bias", "[operators]")
+{
+    PrimitiveSet pset;
+    pset.SetConfig(BuiltinOp::Sin | BuiltinOp::Add | NodeType::Constant);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Sin>(), 1, 1);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 2);
+
+    constexpr size_t maxLength = 99;
+    for (auto bias : { 0.0, 0.5, 1.0 }) {
+        BalancedTreeCreator const btc(&pset, {}, bias, maxLength);
+        for (size_t target = 1; target <= maxLength; ++target) {
+            for (size_t seed = 0; seed < 10; ++seed) {
+                RandomGenerator random(seed);
+                CHECK(btc(random, target, 1, 1000).Length() == target);
+            }
+        }
+    }
+}
+
 TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
     // A thin subclass that exposes the protected AchievableLength method.
