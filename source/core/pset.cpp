@@ -34,7 +34,11 @@ PrimitiveSet::PrimitiveSet(PrimitiveSet&& other) noexcept
 auto PrimitiveSet::operator=(PrimitiveSet const& other) -> PrimitiveSet&
 {
     pset_ = other.pset_;
+#if defined(__cpp_lib_atomic_shared_ptr)
     reachable_.store(nullptr, std::memory_order_relaxed);
+#else
+    reachable_.reset();
+#endif
     reachableDirty_.store(true, std::memory_order_release);
     return *this;
 }
@@ -42,7 +46,11 @@ auto PrimitiveSet::operator=(PrimitiveSet const& other) -> PrimitiveSet&
 auto PrimitiveSet::operator=(PrimitiveSet&& other) noexcept -> PrimitiveSet&
 {
     pset_ = std::move(other.pset_);
+#if defined(__cpp_lib_atomic_shared_ptr)
     reachable_.store(nullptr, std::memory_order_relaxed);
+#else
+    reachable_.reset();
+#endif
     reachableDirty_.store(true, std::memory_order_release);
     return *this;
 }
@@ -70,11 +78,17 @@ void PrimitiveSet::SetConfig(PrimitiveSetConfig config)
 
 auto PrimitiveSet::ReachableLengths(size_t maxLength) const -> std::shared_ptr<std::vector<bool> const>
 {
+#if defined(__cpp_lib_atomic_shared_ptr)
     auto reachable = reachable_.load(std::memory_order_acquire);
     if (!reachableDirty_.load(std::memory_order_acquire) && reachable != nullptr && reachable->size() >= maxLength) { return reachable; }
+#endif
 
     std::lock_guard lock(reachableMutex_);
+#if defined(__cpp_lib_atomic_shared_ptr)
     reachable = reachable_.load(std::memory_order_relaxed);
+#else
+    auto const& reachable = reachable_;
+#endif
     if (!reachableDirty_.load(std::memory_order_relaxed) && reachable != nullptr && reachable->size() >= maxLength) { return reachable; }
 
     auto rebuilt = std::make_shared<std::vector<bool>>(maxLength, false);
@@ -94,9 +108,15 @@ auto PrimitiveSet::ReachableLengths(size_t maxLength) const -> std::shared_ptr<s
             }
         }
     }
+#if defined(__cpp_lib_atomic_shared_ptr)
     reachable_.store(std::shared_ptr<std::vector<bool> const>(std::move(rebuilt)), std::memory_order_release);
     reachableDirty_.store(false, std::memory_order_release);
     return reachable_.load(std::memory_order_acquire);
+#else
+    reachable_ = std::move(rebuilt);
+    reachableDirty_.store(false, std::memory_order_release);
+    return reachable_;
+#endif
 }
 
 auto PrimitiveSet::AchievableLength(size_t targetLen) const -> size_t

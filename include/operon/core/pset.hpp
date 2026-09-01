@@ -27,7 +27,11 @@ class PrimitiveSet {
 
     Operon::Map<Operon::Hash, Primitive> pset_;
     mutable std::mutex reachableMutex_;
+#if defined(__cpp_lib_atomic_shared_ptr)
     mutable std::atomic<std::shared_ptr<std::vector<bool> const>> reachable_;
+#else
+    mutable std::shared_ptr<std::vector<bool> const> reachable_;
+#endif
     mutable std::atomic_bool reachableDirty_ { true };
 
     void InvalidateReachability() noexcept { reachableDirty_.store(true, std::memory_order_release); }
