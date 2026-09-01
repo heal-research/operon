@@ -42,8 +42,8 @@ auto ParseSelector(std::string const& str, ComparisonCallback&& comp) -> std::un
 // Result of parsing a --creator spec ("name:bias:mindepth:maxdepth:maxlength",
 // all but name optional). mindepth/maxdepth/maxlength are UniformTreeInitializer
 // settings, not CreatorBase constructor args (only bias and maxlength are).
-// Grow honors both depth limits; PTC2 honors maxdepth and can undershoot length;
-// BTC preserves snapped length and treats both depth values as advisory.
+// Grow honors both depth limits; PTC2 enforces maxdepth but ignores mindepth and
+// can undershoot length; BTC preserves snapped length and ignores both depths.
 struct CreatorConfig {
     std::unique_ptr<CreatorBase> creator;
     size_t maxLength;

@@ -48,7 +48,22 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     auto maxArity = std::min(maxFunctionArity, targetLen - 1);
     auto minArity = std::min(minFunctionArity, maxArity); // -1 because we start with a root
 
-    auto root = pset->SampleRandomSymbol(random, minArity, maxArity);
+    auto sampleCompletable = [&](size_t max, size_t remaining) -> Node {
+        while (true) {
+            auto node = pset->SampleRandomSymbol(random, minFunctionArity, max);
+            if (IsAchievableLength(remaining - node.Arity + 1)) {
+                return node;
+            }
+        }
+    };
+
+    if (maxArity == 0) {
+        auto root = pset->SampleRandomSymbol(random, 0, 0);
+        InitNode(root, variables, random);
+        return Tree({ root }).UpdateNodes();
+    }
+
+    auto root = sampleCompletable(maxArity, targetLen - 1);
     InitNode(root, variables, random);
 
     if (root.IsLeaf()) {
@@ -71,23 +86,24 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
         auto childDepth = nodeDepth + 1;
         std::get<2>(tuples[i]) = tuples.size();
         for (int j = 0; std::cmp_less(j , node.Arity); ++j) {
-            // minArity/maxArity recomputed fresh per child, not left sticky.
             auto candidateMax = std::min(maxFunctionArity, targetLen - committed);
-            minArity = std::min(minFunctionArity, candidateMax);
-            maxArity = openSlots > 1 && sampleIrregular(random) ? 0 : candidateMax;
-
-            // fall back to a leaf node if the desired arity is not achievable with the current primitive set
-            if (maxArity < minFunctionArity) {
+            auto const remaining = targetLen - committed;
+            auto const canLeaveTerminal = IsAchievableLength(remaining + 1);
+            if (candidateMax < minFunctionArity || (openSlots > 1 && sampleIrregular(random) && canLeaveTerminal)) {
                 minArity = maxArity = 0;
+                auto child = pset->SampleRandomSymbol(random, minArity, maxArity);
+                InitNode(child, variables, random);
+                tuples.emplace_back(child, childDepth, 0);
+            } else {
+                auto child = sampleCompletable(candidateMax, remaining);
+                InitNode(child, variables, random);
+                tuples.emplace_back(child, childDepth, 0);
             }
 
-            auto child = pset->SampleRandomSymbol(random, minArity, maxArity);
-            InitNode(child, variables, random);
-            tuples.emplace_back(child, childDepth, 0);
-
             openSlots -= 1;
-            committed += child.Arity;
-            openSlots += child.Arity;
+            auto const childArity = std::get<0>(tuples.back()).Arity;
+            committed += childArity;
+            openSlots += childArity;
         }
     }
 

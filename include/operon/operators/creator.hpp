@@ -18,8 +18,9 @@ class Tree;
 class PrimitiveSet;
 
 // Builds a tree from (targetLen, minDepth, maxDepth). Depth parameters are
-// creator-specific: Grow honors both; PTC2 honors maxDepth but may undershoot
-// targetLen; BTC preserves target length and treats both as advisory.
+// creator-specific: Grow honors both; PTC2 enforces maxDepth but ignores
+// minDepth and may undershoot targetLen; BTC preserves target length and
+// ignores both depth values.
 struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
     // maxLength: upper bound for the precomputed achievability table.
     // Pass the same value as the GP run's maximum tree length to avoid
@@ -33,11 +34,14 @@ struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, siz
     [[nodiscard]] auto GetVariables() const -> Operon::Span<Operon::Hash const> { return variables_; }
     auto SetVariables(Operon::Span<Operon::Hash const> variables) { variables_ = std::vector<Operon::Hash>(variables.begin(), variables.end()); }
 
-protected:
     // Returns the largest tree length <= targetLen achievable with the current
     // pset. Uses the precomputed snap-down table when targetLen <= maxLength_
     // (O(1) lookup, no allocation). Falls back to pset->AchievableLength otherwise.
     [[nodiscard]] auto AchievableLength(size_t targetLen) const -> size_t;
+
+    // Returns whether targetLen is exactly achievable with the current pset.
+    // Uses the same precomputed table as AchievableLength when possible.
+    [[nodiscard]] auto IsAchievableLength(size_t targetLen) const -> bool;
 
 private:
     auto BuildAchievable() -> void;
