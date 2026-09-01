@@ -11,6 +11,7 @@
 #include <iterator>
 #include <optional>
 #include <vector>
+#include <stdexcept>
 
 #include "operon/core/tree.hpp"
 #include "operon/hash/hash.hpp"
@@ -142,6 +143,9 @@ void Tree::GetCoefficients(std::vector<Operon::Scalar>& out) const
 
 void Tree::SetCoefficients(Operon::Span<Operon::Scalar const> coefficients)
 {
+    if (coefficients.size() != static_cast<size_t>(CoefficientsCount())) {
+        throw std::invalid_argument("coefficient count must match the number of optimizable tree nodes");
+    }
     size_t idx = 0;
     for (auto& s : nodes_) {
         if (s.Optimize) { s.Value = coefficients[idx++]; }
