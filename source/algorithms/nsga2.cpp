@@ -286,9 +286,10 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                 if (generatedOffspring.load(std::memory_order_relaxed) == offspring.size()) { ++Generation(); }
             }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
-                                             Timings() = timer->Timings();
-                                             if (report && std::invoke(report)) { RequestStop(); }
-                                         }).name("report progress");
+                                     if (generatedOffspring.load(std::memory_order_relaxed) != offspring.size()) { return; }
+                                     Timings() = timer->Timings();
+                                     if (report && std::invoke(report)) { RequestStop(); }
+                                 }).name("report progress");
 
             // set-up subflow graph
             prepareGenerator.precede(generateOffspring);
