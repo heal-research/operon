@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm> // for stable_sort, copy_n, max
+#include <atomic> // for atomic_size_t
 #include <chrono> // for steady_clock
 #include <cmath> // for isfinite
 #include <iterator> // for move_iterator, back_inse...
@@ -172,6 +173,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
     auto offspring = Offspring();
     std::vector<Operon::RandomGenerator> savedRngs; // used only on warm resume
     std::vector<std::optional<std::vector<Operon::Scalar>>> originalCoeffs(parents.size());
+    std::atomic_size_t generatedOffspring{};
 
     // Declared here (Run()'s own scope), not inside the "init" task's
     // callable below: a subflow's tasks run after that callable returns, so
@@ -242,6 +244,7 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
         stop, // loop condition
         [&, timer](tf::Subflow& subflow) -> void {
             auto prepareGenerator = subflow.emplace([&]() -> void {
+                                        generatedOffspring = 0;
                                         generator->Prepare(parents);
                                         // Stamp the cache clock with the generation offspring will
                                         // belong to *before* they're evaluated - Generation() itself
@@ -257,24 +260,31 @@ auto NSGA2::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon:
                                                     auto result = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf);
                                                     if (result) {
                                                         offspring[i] = std::move(*result);
+                                                        generatedOffspring.fetch_add(1, std::memory_order_relaxed);
                                                         ENSURE(offspring[i].Genotype.Length() > 0);
                                                         return;
                                                     }
                                                 }
                                             })
                                          .name("generate offspring");
-            auto nonDominatedSort = subflow.emplace([&]() -> void { Sort(individuals); }).name(std::string{SortTaskName});
+            auto nonDominatedSort = subflow.emplace([&]() -> void {
+                if (generatedOffspring.load(std::memory_order_relaxed) != offspring.size()) {
+                    RequestStop();
+                    return;
+                }
+                Sort(individuals);
+            }).name(std::string{SortTaskName});
             // Delegates to the reinserter's actual merge strategy (same call
             // shape as GP, gp.cpp) instead of just truncating a globally
-            // sorted array via ReinserterBase::Sort. This makes the
-            // --reinserter choice (keep-best vs. replace-worst) a real,
-            // meaningful knob for NSGA2 rather than a silently inert one -
-            // note KeepBestReinserter's merge is a positional pairwise
-            // tournament, not a global top-K selection, so this is not
-            // guaranteed to reproduce the old truncation-based selection
-            // byte-for-byte even at default settings.
-            auto reinsert = subflow.emplace([&]() -> void { (*reinserter)(random, parents, offspring); }).name("reinsert");
-            auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
+            // sorted array via ReinserterBase::Sort.
+            auto reinsert = subflow.emplace([&]() -> void {
+                if (generatedOffspring.load(std::memory_order_relaxed) == offspring.size()) {
+                    (*reinserter)(random, parents, offspring);
+                }
+            }).name("reinsert");
+            auto incrementGeneration = subflow.emplace([&]() -> void {
+                if (generatedOffspring.load(std::memory_order_relaxed) == offspring.size()) { ++Generation(); }
+            }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
                                              Timings() = timer->Timings();
                                              if (report && std::invoke(report)) { RequestStop(); }
