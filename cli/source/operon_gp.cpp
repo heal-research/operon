@@ -79,6 +79,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     config.Iterations = result["iterations"].as<size_t>();
     config.CrossoverProbability = result["crossover-probability"].as<Operon::Scalar>();
     config.MutationProbability = result["mutation-probability"].as<Operon::Scalar>();
+    config.LocalSearchProbability = result["local-search-probability"].as<Operon::Scalar>();
+    config.LamarckianProbability = result["lamarckian-probability"].as<Operon::Scalar>();
     config.TimeLimit = result["timelimit"].as<size_t>();
     config.Seed = std::random_device {}();
 
