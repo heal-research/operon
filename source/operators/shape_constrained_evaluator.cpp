@@ -711,7 +711,7 @@ auto ShapeConstrainedEvaluator::Measure(Operon::Tree const& tree, Operon::Scalar
 
 auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
 {
-    auto const hash = Operon::detail::HashTreeForMemo(tree);
+    auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
     ShapeConstraintMeasurementSummary result;
     // LazyEmplace holds this hash's shard lock across the miss branch, so
     // a concurrent caller hashing to the same key blocks on the first
@@ -842,7 +842,7 @@ ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<Operon::Problem c
 
 auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary
 {
-    auto const hash = Operon::detail::HashTreeForMemo(tree);
+    auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
     ShapeConstraintMeasurementSummary result;
     // LazyEmplace holds this hash's shard lock across the miss branch, so
     // a concurrent caller hashing to the same key blocks on the first
