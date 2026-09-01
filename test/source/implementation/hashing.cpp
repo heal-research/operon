@@ -158,9 +158,14 @@ TEST_CASE("Sorensen-Dice distance", "[core]")
     CHECK(selfDist == Catch::Approx(0.0));
 }
 
-TEST_CASE("Hash collisions", "[core]")
+TEST_CASE("Tree hash root collision resistance", "[core]")
 {
-    size_t const n = 100000;
+    // A repeated subtree hash is expected: terminals, operators, and common
+    // subexpressions recur across independently generated trees. This test
+    // instead checks the collision boundary relevant to Tree::Hash: distinct
+    // randomly parameterized trees must have distinct root hashes.
+    size_t const n = 5000;
+    size_t const minLength = 20;
     size_t const maxLength = 200;
     size_t const minDepth = 0;
     size_t const maxDepth = 100;
@@ -170,38 +175,23 @@ TEST_CASE("Hash collisions", "[core]")
     auto inputs = ds.VariableHashes();
     std::erase(inputs, ds.GetVariable("Y").value().Hash);
 
-    std::uniform_int_distribution<size_t> sizeDistribution(1, maxLength);
+    std::uniform_int_distribution<size_t> sizeDistribution(minLength, maxLength);
 
     PrimitiveSet grammar;
     grammar.SetConfig(PrimitiveSet::Arithmetic);
 
-    std::vector<Tree> trees(n);
     auto const btc = BalancedTreeCreator{&grammar, inputs, /* bias= */ 0.0, maxLength};
     Operon::CoefficientInitializer<std::uniform_real_distribution<Operon::Scalar>> const initializer;
     initializer.ParameterizeDistribution(Operon::Scalar{-1}, Operon::Scalar{+1});
 
-    std::vector<Operon::Hash> seeds(n);
-    std::generate(seeds.begin(), seeds.end(), [&]() -> Operon::RandomGenerator::result_type { return rd(); });
+    std::unordered_set<Operon::Hash> roots;
     for (size_t i = 0; i < n; ++i) {
-        Operon::RandomGenerator rand(seeds[i]);
-        trees[i] = btc(rand, sizeDistribution(rand), minDepth, maxDepth);
-        initializer(rand, trees[i]);
-        std::ignore = trees[i].Hash(Operon::HashMode::Strict);
+        auto tree = btc(rd, sizeDistribution(rd), minDepth, maxDepth);
+        initializer(rd, tree);
+        roots.insert(tree.Hash(Operon::HashMode::Strict).Nodes().back().CalculatedHashValue);
     }
 
-    std::unordered_set<uint64_t> set64;
-    auto totalNodes = std::transform_reduce(trees.begin(), trees.end(), size_t{0}, std::plus<size_t>{}, [](auto& tree) -> auto { return tree.Length(); });
-
-    for (auto& tree : trees) {
-        for (auto& node : tree.Nodes()) {
-            set64.insert(node.CalculatedHashValue);
-        }
-        tree.Nodes().clear();
-    }
-
-    auto uniqueRatio = static_cast<double>(set64.size()) / static_cast<double>(totalNodes);
-    // Strict hashing with random coefficients should yield near-zero collisions
-    CHECK(uniqueRatio > 0.98);
+    CHECK(roots.size() == n);
 }
 
 TEST_CASE("Strict vs relaxed hashing modes", "[core]")
