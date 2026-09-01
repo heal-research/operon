@@ -18,6 +18,7 @@
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/dataset.hpp"
+#include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/types.hpp"
 
