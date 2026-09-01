@@ -215,6 +215,8 @@ TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraint
     auto const refY = Tree({ x, y, Node::Ref(1), add }).UpdateNodes();
 
     CHECK(detail::HashTreeForMemo(refX) != detail::HashTreeForMemo(refY));
+    CHECK(detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Combined))
+          != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::IntervalOnly)));
 }
 
 
