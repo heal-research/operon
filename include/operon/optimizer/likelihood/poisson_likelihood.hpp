@@ -101,12 +101,12 @@ template<typename T = Operon::Scalar, bool LogInput = true>
 struct PoissonLoss : public LikelihoodBase<T> {
     static constexpr bool UsesSigma = false;
 
-    // See GaussianLoss::Cost - weights are intentionally ignored here (see
-    // the constructor comment below for why), so this stays unweighted
-    // regardless of what's passed in.
+    // Diagnostic cost reported in OptimizerSummary. It must differ from
+    // operator() only by coefficient-independent constants, so optimizer
+    // acceptance and the Poisson gradient use the same objective.
     template<typename Pred>
-    static auto Cost(Pred const& pred, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> /*weights*/) noexcept -> Operon::Scalar {
-        return static_cast<Operon::Scalar>(0.5 * Operon::SumOfSquaredErrors(pred.begin(), pred.end(), target.begin()));
+    static auto Cost(Pred const& pred, Operon::Span<Operon::Scalar const> target, Operon::Span<Operon::Scalar const> /*weights*/) -> Operon::Scalar {
+        return PoissonLikelihood<T, LogInput>::ComputeLikelihood(pred, target, {});
     }
 
     // `weights` is accepted only so PoissonLoss shares LBFGSOptimizer/SGDOptimizer's
