@@ -36,6 +36,10 @@ inline auto HashTreeForMemo(Tree const& tree) -> Operon::Hash
         valueHash *= 0x9e3779b97f4a7c15ULL;
         auto const nodeHash = n.HashValue ^ (valueHash + 0x9e3779b97f4a7c15ULL + (n.HashValue << 6U) + (n.HashValue >> 2U));
         h ^= nodeHash + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
+        if (n.IsRef()) {
+            auto const target = static_cast<Operon::Hash>(n.RefTo);
+            h ^= target + 0x9e3779b97f4a7c15ULL + (h << 6U) + (h >> 2U);
+        }
     }
     return h;
 }
