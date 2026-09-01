@@ -20,64 +20,94 @@
 #include "operon/core/types.hpp"
 
 namespace Operon {
-    void PrimitiveSet::SetConfig(PrimitiveSetConfig config)
-    {
-        pset_.clear();
 
-        for (size_t i = 0; i < Operon::BuiltinOpCount; ++i) {
-            if (!config.Test(i)) { continue; }
-            auto const op = static_cast<Operon::BuiltinOp>(i);
-            auto const [minArity, maxArity] = StandardLibrary::ArityLimits(op);
-            auto n = Operon::Node::Function(static_cast<Operon::Hash>(op), minArity);
-            pset_[n.HashValue] = { n, 1, minArity, maxArity };
-        }
+PrimitiveSet::PrimitiveSet(PrimitiveSet const& other)
+    : pset_(other.pset_)
+{
+}
 
-        for (auto type : { Operon::NodeType::Constant, Operon::NodeType::Variable, Operon::NodeType::Ref }) {
-            if (!config.Test(Operon::BuiltinOpCount + Operon::NodeTypes::GetIndex(type))) { continue; }
-            Operon::Node n(type);
-            pset_[n.HashValue] = { n, 1, 0, 0 }; // terminals are leaves: arity 0
-        }
+PrimitiveSet::PrimitiveSet(PrimitiveSet&& other) noexcept
+    : pset_(std::move(other.pset_))
+{
+}
 
-        // The shared "any Function present" bit (BuiltinOpCount +
-        // NodeTypes::GetIndex(NodeType::Function)) is intentionally not
-        // actionable here - unlike a BuiltinOp or Constant/Variable/Ref, it
-        // has no single real hash/arity to construct a primitive from
-        // (AddFunction handles that, for a specific user function). It only
-        // exists so Config() can report "a user function is present"
-        // symmetrically with the pre-collapse Dynamic slot.
+auto PrimitiveSet::operator=(PrimitiveSet const& other) -> PrimitiveSet&
+{
+    pset_ = other.pset_;
+    reachable_.store(nullptr, std::memory_order_relaxed);
+    reachableDirty_.store(true, std::memory_order_release);
+    return *this;
+}
+
+auto PrimitiveSet::operator=(PrimitiveSet&& other) noexcept -> PrimitiveSet&
+{
+    pset_ = std::move(other.pset_);
+    reachable_.store(nullptr, std::memory_order_relaxed);
+    reachableDirty_.store(true, std::memory_order_release);
+    return *this;
+}
+
+void PrimitiveSet::SetConfig(PrimitiveSetConfig config)
+{
+    pset_.clear();
+
+    for (size_t i = 0; i < Operon::BuiltinOpCount; ++i) {
+        if (!config.Test(i)) { continue; }
+        auto const op = static_cast<Operon::BuiltinOp>(i);
+        auto const [minArity, maxArity] = StandardLibrary::ArityLimits(op);
+        auto n = Operon::Node::Function(static_cast<Operon::Hash>(op), minArity);
+        pset_[n.HashValue] = { n, 1, minArity, maxArity };
     }
 
-    auto PrimitiveSet::AchievableLength(size_t targetLen) const -> size_t
-    {
-        if (targetLen <= 1) { return 1; }
+    for (auto type : { Operon::NodeType::Constant, Operon::NodeType::Variable, Operon::NodeType::Ref }) {
+        if (!config.Test(Operon::BuiltinOpCount + Operon::NodeTypes::GetIndex(type))) { continue; }
+        Operon::Node n(type);
+        pset_[n.HashValue] = { n, 1, 0, 0 };
+    }
 
-        // Collect all distinct arities from enabled non-leaf primitives.
-        std::vector<size_t> arities;
-        for (auto const& [key, val] : pset_) {
-            auto const& [node, freq, minAr, maxAr] = val;
-            if (node.IsLeaf() || !node.IsEnabled || freq == 0) { continue; }
-            for (auto a = minAr; a <= maxAr; ++a) {
-                if (std::ranges::find(arities, a) == arities.end()) {
-                    arities.push_back(a);
+    InvalidateReachability();
+}
+
+auto PrimitiveSet::ReachableLengths(size_t maxLength) const -> std::shared_ptr<std::vector<bool> const>
+{
+    auto reachable = reachable_.load(std::memory_order_acquire);
+    if (!reachableDirty_.load(std::memory_order_acquire) && reachable != nullptr && reachable->size() >= maxLength) { return reachable; }
+
+    std::lock_guard lock(reachableMutex_);
+    reachable = reachable_.load(std::memory_order_relaxed);
+    if (!reachableDirty_.load(std::memory_order_relaxed) && reachable != nullptr && reachable->size() >= maxLength) { return reachable; }
+
+    auto rebuilt = std::make_shared<std::vector<bool>>(maxLength, false);
+    if (maxLength != 0) {
+        (*rebuilt)[0] = true;
+        for (size_t i = 1; i < maxLength; ++i) {
+            for (auto const& [_, primitive] : pset_) {
+                auto const& [node, frequency, minArity, maxArity] = primitive;
+                if (node.IsLeaf() || !node.IsEnabled || frequency == 0) { continue; }
+                for (size_t arity = minArity; arity <= std::min(maxArity, i); ++arity) {
+                    if ((*rebuilt)[i - arity]) {
+                        (*rebuilt)[i] = true;
+                        break;
+                    }
                 }
+                if ((*rebuilt)[i]) { break; }
             }
         }
-        if (arities.empty()) { return 1; }
-
-        // dp[i] is true if a tree of length (i+1) is achievable.
-        std::vector<bool> dp(targetLen, false);
-        dp[0] = true; // length 1 (single leaf) is always achievable
-        for (size_t i = 1; i < targetLen; ++i) {
-            for (auto a : arities) {
-                if (i >= a && dp[i - a]) { dp[i] = true; break; }
-            }
-        }
-
-        for (auto i = targetLen; i > 0; --i) {
-            if (dp[i - 1]) { return i; }
-        }
-        return 1;
     }
+    reachable_.store(std::shared_ptr<std::vector<bool> const>(std::move(rebuilt)), std::memory_order_release);
+    reachableDirty_.store(false, std::memory_order_release);
+    return reachable_.load(std::memory_order_acquire);
+}
+
+auto PrimitiveSet::AchievableLength(size_t targetLen) const -> size_t
+{
+    if (targetLen <= 1) { return 1; }
+    auto const reachable = ReachableLengths(targetLen);
+    for (auto length = targetLen; length > 0; --length) {
+        if ((*reachable)[length - 1]) { return length; }
+    }
+    return 1;
+}
 
     auto PrimitiveSet::SampleRandomSymbol(Operon::RandomGenerator& random, size_t minArity, size_t maxArity) const -> Node
     {

@@ -22,10 +22,8 @@ class PrimitiveSet;
 // minDepth and may undershoot targetLen; BTC preserves target length and
 // ignores both depth values.
 struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, size_t> {
-    // maxLength: upper bound for the precomputed achievability table.
-    // Pass the same value as the GP run's maximum tree length to avoid
-    // per-call DP allocation.  Pass 0 to disable precomputation and fall
-    // back to a stateless per-call DP in PrimitiveSet::AchievableLength.
+    // maxLength is retained for source compatibility; reachability is cached by
+    // the PrimitiveSet shared with all creators.
     CreatorBase(gsl::not_null<PrimitiveSet const*> pset, std::vector<Operon::Hash> variables, size_t maxLength);
 
     [[nodiscard]] auto GetPrimitiveSet() const -> PrimitiveSet const* { return pset_.get(); }
@@ -35,18 +33,13 @@ struct OPERON_EXPORT CreatorBase : public OperatorBase<Tree, size_t, size_t, siz
     auto SetVariables(Operon::Span<Operon::Hash const> variables) { variables_ = std::vector<Operon::Hash>(variables.begin(), variables.end()); }
 
 protected:
-    // Returns the largest tree length <= targetLen achievable with the current
-    // pset. Uses the precomputed snap-down table when targetLen <= maxLength_
-    // (O(1) lookup, no allocation). Falls back to pset->AchievableLength otherwise.
+    // Returns the largest tree length <= targetLen reachable with the current
+    // PrimitiveSet configuration.
     [[nodiscard]] auto AchievableLength(size_t targetLen) const -> size_t;
 
 private:
-    auto BuildAchievable() -> void;
-
     gsl::not_null<PrimitiveSet const*> pset_;
     std::vector<Operon::Hash>          variables_;
-    std::vector<size_t>                snap_;      // snap_[i] = largest achievable length <= i+1
-    size_t                             maxLength_; // size of snap_ table (0 = disabled)
 };
 
 // This tree creator expands breadth-wise using a "horizon" of open expansion slots.

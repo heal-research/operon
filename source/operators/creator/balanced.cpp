@@ -38,34 +38,14 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
     auto const& variables = GetVariables();
 
     auto const requestedLen = targetLen;
-
+    auto const completable = pset->ReachableLengths(requestedLen);
+    while (!(*completable)[targetLen - 1]) {
+        --targetLen;
+    }
     using U = std::tuple<Node, size_t, size_t>;
 
     std::vector<U> tuples;
     tuples.reserve(targetLen);
-
-    // dp[i] records whether i additional child slots can be filled by enabled
-    // function arities. Build it from the current pset once per tree: creators
-    // may outlive pset reconfiguration, so CreatorBase's cached snap table is
-    // insufficient here.
-    std::vector<bool> completable(requestedLen, false);
-    completable[0] = true;
-    for (size_t i = 1; i < requestedLen; ++i) {
-        for (auto const& [_, primitive] : pset->Primitives()) {
-            auto const& [node, frequency, minArity, maxArity] = primitive;
-            if (node.IsLeaf() || !node.IsEnabled || frequency == 0) { continue; }
-            for (size_t arity = minArity; arity <= std::min(maxArity, i); ++arity) {
-                if (completable[i - arity]) {
-                    completable[i] = true;
-                    break;
-                }
-            }
-            if (completable[i]) { break; }
-        }
-    }
-    while (!completable[targetLen - 1]) {
-        --targetLen;
-    }
 
     auto sampleCompletable = [&](size_t max, size_t remaining) -> Node {
         auto total = 0.0;
@@ -75,7 +55,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
             auto const upper = std::min(maxArity, max);
             auto const count = upper - minArity + 1;
             for (size_t arity = minArity; arity <= std::min(upper, remaining); ++arity) {
-                if (completable[remaining - arity]) {
+                if ((*completable)[remaining - arity]) {
                     total += static_cast<double>(frequency) / static_cast<double>(count);
                 }
             }
@@ -89,7 +69,7 @@ auto BalancedTreeCreator::operator()(Operon::RandomGenerator& random, size_t tar
             auto const upper = std::min(maxArity, max);
             auto const weight = static_cast<double>(frequency) / static_cast<double>(upper - minArity + 1);
             for (size_t arity = minArity; arity <= std::min(upper, remaining); ++arity) {
-                if (!completable[remaining - arity]) { continue; }
+                if (!(*completable)[remaining - arity]) { continue; }
                 if (selected < weight) {
                     auto result = node;
                     result.Arity = static_cast<uint16_t>(arity);
