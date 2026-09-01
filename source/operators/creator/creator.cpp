@@ -82,4 +82,11 @@ auto CreatorBase::AchievableLength(size_t targetLen) const -> size_t
     return pset_->AchievableLength(targetLen);
 }
 
+auto CreatorBase::IsAchievableLength(size_t targetLen) const -> bool
+{
+    if (targetLen <= 1) { return targetLen == 1; }
+    if (targetLen <= snap_.size()) { return snap_[targetLen - 1] == targetLen; }
+    return pset_->AchievableLength(targetLen) == targetLen;
+}
+
 } // namespace Operon

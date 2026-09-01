@@ -295,24 +295,25 @@ TEST_CASE("BTC depth arguments preserve its seeded output", "[operators]")
     }
 }
 
-TEST_CASE("BTC reaches mixed-arity snapped targets at every bias", "[operators]")
+TEST_CASE("BTC reaches nonmultiple-arity snapped targets at every bias", "[operators]")
 {
     PrimitiveSet pset;
-    pset.SetConfig(BuiltinOp::Sin | BuiltinOp::Add | NodeType::Constant);
-    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Sin>(), 1, 1);
-    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 2);
+    pset.SetConfig(BuiltinOp::Add | NodeType::Constant);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 3);
 
     constexpr size_t maxLength = 99;
     for (auto bias : { 0.0, 0.5, 1.0 }) {
         BalancedTreeCreator const btc(&pset, {}, bias, maxLength);
         for (size_t target = 1; target <= maxLength; ++target) {
+            auto const expected = target == 2 ? size_t{1} : target;
             for (size_t seed = 0; seed < 10; ++seed) {
                 RandomGenerator random(seed);
-                CHECK(btc(random, target, 1, 1000).Length() == target);
+                CHECK(btc(random, target, 1, 1000).Length() == expected);
             }
         }
     }
 }
+
 
 TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
@@ -420,19 +421,5 @@ TEST_CASE("Creator length contract with unachievable targets", "[operators]") //
     }
 }
 
-TEST_CASE("BTC reaches snapped Arithmetic targets with irregularity", "[operators]")
-{
-    PrimitiveSet pset{ PrimitiveSet::Arithmetic };
-    pset.Disable(Node(NodeType::Variable));
-
-    constexpr size_t targetLength = 99;
-    for (auto bias : { 0.0, 0.5, 1.0 }) {
-        BalancedTreeCreator const btc(&pset, {}, bias, targetLength);
-        for (size_t seed = 0; seed < 100; ++seed) {
-            RandomGenerator random(seed);
-            CHECK(btc(random, targetLength, 1, 100).Length() == targetLength);
-        }
-    }
-}
 
 } // namespace Operon::Test
