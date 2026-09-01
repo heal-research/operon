@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <random>
+#include <future>
 
 #include "../operon_test.hpp"
 
@@ -319,9 +320,59 @@ TEST_CASE("BTC reaches gapped-arity snapped targets at every bias", "[operators]
 }
 
 
+TEST_CASE("PrimitiveSet reachability cache invalidates on arity changes", "[operators]")
+{
+    PrimitiveSet pset;
+    pset.SetConfig(BuiltinOp::Add | NodeType::Constant);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 2);
+
+    auto const binary = pset.ReachableLengths(6);
+    CHECK((*binary)[0]);
+    CHECK_FALSE((*binary)[1]);
+    CHECK((*binary)[2]);
+    CHECK_FALSE((*binary)[3]);
+
+    auto const retainedBinary = binary;
+
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 3);
+    auto const binaryOrTernary = pset.ReachableLengths(6);
+    CHECK((*retainedBinary)[2]);
+    CHECK_FALSE((*retainedBinary)[3]);
+    CHECK((*binaryOrTernary)[3]);
+
+    pset.SetFrequency(Util::MakeOp<BuiltinOp::Add>(), 0);
+    auto const terminalsOnly = pset.ReachableLengths(6);
+    CHECK((*terminalsOnly)[0]);
+    for (size_t i = 1; i < terminalsOnly->size(); ++i) {
+        CHECK_FALSE((*terminalsOnly)[i]);
+    }
+
+}
+
+TEST_CASE("PrimitiveSet publishes reachability cache snapshots safely", "[operators]")
+{
+    PrimitiveSet pset;
+    pset.SetConfig(BuiltinOp::Add | NodeType::Constant);
+    pset.SetMinMaxArity(Util::MakeOp<BuiltinOp::Add>(), 2, 5);
+
+    std::vector<std::future<bool>> readers;
+    readers.reserve(16);
+    for (size_t i = 0; i < readers.capacity(); ++i) {
+        readers.emplace_back(std::async(std::launch::async, [&pset] {
+            for (size_t n = 1; n <= 100; ++n) {
+                auto const reachable = pset.ReachableLengths(n);
+                if (reachable->size() < n || !(*reachable)[0]) { return false; }
+            }
+            return true;
+        }));
+    }
+    for (auto& reader : readers) {
+        CHECK(reader.get());
+    }
+}
+
 TEST_CASE("AchievableLength snap-down table", "[operators]") // NOLINT(readability-function-cognitive-complexity)
 {
-    // A thin subclass that exposes the protected AchievableLength method.
     struct TestCreator final : public CreatorBase {
         TestCreator(PrimitiveSet const* pset, size_t maxLen)
             : CreatorBase(pset, {}, maxLen) {}
