@@ -18,6 +18,7 @@
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/dataset.hpp"
+#include "operon/core/problem.hpp"
 #include "operon/core/pset.hpp"
 #include "operon/core/types.hpp"
 
@@ -85,6 +86,23 @@ TEST_CASE("Tree coefficients", "[core]")
     auto coeff2 = tree.GetCoefficients();
     CHECK(coeff2[0] == Catch::Approx(1.0F));
     CHECK(coeff2[1] == Catch::Approx(2.0F));
+}
+
+TEST_CASE("Problem target selection refreshes default inputs", "[core]")
+{
+    Operon::Dataset dataset{{"X1", "Y", "X2"}, {{1.0F}, {2.0F}, {3.0F}}};
+    Operon::Problem problem{&dataset};
+
+    problem.SetTarget("Y");
+
+    auto const target = dataset.GetVariable("Y")->Hash;
+    CHECK(std::ranges::find(problem.GetInputs(), target) == problem.GetInputs().end());
+    CHECK(problem.GetInputs().size() == 2);
+
+    auto const x1 = dataset.GetVariable("X1")->Hash;
+    problem.SetInputs(std::vector<Operon::Hash>{x1});
+    problem.SetTarget("X2");
+    CHECK(problem.GetInputs() == std::vector<Operon::Hash>{x1});
 }
 
 TEST_CASE("Dataset loading and access", "[core]")
