@@ -29,7 +29,8 @@ class Problem {
         for (auto const& x : inputs) { (void) GetVariable(x); }
     }
 
-    std::unique_ptr<Dataset> dataset_;
+    std::unique_ptr<Dataset> ownedDataset_;
+    Dataset* dataset_{};
 
     Range training_;
     Range test_;
@@ -39,7 +40,6 @@ class Problem {
     Operon::Variable target_;
     Operon::Set<Operon::Hash> inputs_;
 
-    bool ownership_{true};
 
     // Problem owns the PrimitiveSet, so it represents the problem formulation
     // rather than a bare dataset view; whether the fitted model is
@@ -54,21 +54,16 @@ public:
     auto operator=(Problem&&) -> Problem& = delete;
 
     explicit Problem(std::unique_ptr<Dataset> dataset)
-        : dataset_ { std::move(dataset) }
+        : ownedDataset_ { std::move(dataset) }
+        , dataset_ { ownedDataset_.get() }
     {
         SetDefaultInputs();
     }
 
     explicit Problem(gsl::not_null<Dataset*> dataset)
-        : Problem(std::unique_ptr<Dataset>{dataset})
+        : dataset_ { dataset.get() }
     {
-        ownership_ = false;
-    }
-
-    ~Problem() {
-        if (!ownership_) {
-            std::ignore = dataset_.release();
-        }
+        SetDefaultInputs();
     }
 
     template<typename T>
@@ -130,9 +125,8 @@ public:
     // linear scales for the same individual; the library does not enforce this coupling.
     void SetLinearScalingOmitsNonFinite(bool value) noexcept { linearScalingOmitsNonFinite_ = value; }
 
-    // unique_ptr::get() doesn't propagate constness; conditional_t restores it.
     template<typename Self>
-    [[nodiscard]] auto GetDataset(this Self& self) -> std::conditional_t<std::is_const_v<Self>, Dataset const*, Dataset*> { return self.dataset_.get(); }
+    [[nodiscard]] auto GetDataset(this Self& self) -> std::conditional_t<std::is_const_v<Self>, Dataset const*, Dataset*> { return self.dataset_; }
 
     [[nodiscard]] auto TargetValues() const -> Operon::Span<Operon::Scalar const> { return dataset_->GetValues(target_.Index); }
     [[nodiscard]] auto TargetValues(Operon::Range range) const -> Operon::Span<Operon::Scalar const> {
