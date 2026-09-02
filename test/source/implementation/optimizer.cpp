@@ -112,6 +112,16 @@ TEST_CASE("Gaussian likelihood static methods", "[likelihood]")
     }
 }
 
+TEST_CASE("Poisson optimizer diagnostics use Poisson NLL", "[optimizer][likelihood]")
+{
+    using Loss = PoissonLoss<Operon::Scalar>;
+    std::vector<Operon::Scalar> const prediction{0.0F, std::log(2.0F)};
+    std::vector<Operon::Scalar> const target{1.0F, 3.0F};
+
+    CHECK(Loss::Cost(prediction, target, {})
+        == PoissonLikelihood<Operon::Scalar>::ComputeLikelihood(prediction, target, {}));
+}
+
 TEST_CASE("Parameter optimization", "[optimizer]") // NOLINT(readability-function-cognitive-complexity)
 {
     OptimizerFixture fix;
