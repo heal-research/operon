@@ -42,10 +42,15 @@ set(
 )
 mark_as_advanced(operon_INSTALL_CMAKEDIR)
 
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/install-config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/${package}Config.cmake"
+    @ONLY
+)
+
 install(
-    FILES cmake/install-config.cmake
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/${package}Config.cmake"
     DESTINATION "${operon_INSTALL_CMAKEDIR}"
-    RENAME "${package}Config.cmake"
     COMPONENT operon_Development
 )
 
