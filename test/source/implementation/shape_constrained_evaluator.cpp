@@ -62,7 +62,6 @@ struct Fixture {
         problem.SetTrainingRange({0, Nrow});
         problem.SetTestRange({0, Nrow});
         problem.SetTarget("X3");
-        problem.SetDefaultInputs(); // Problem::SetTarget doesn't refresh GetInputs() on its own -- redo it now that the target is known, matching how the CLI itself sequences this (operon_gp.cpp: SetTarget then SetInputs).
     }
 
     static auto MakeIndividual(Operon::Tree const& t) -> Operon::Individual {
@@ -289,7 +288,6 @@ TEST_CASE("ShapeConstrainedEvaluator - offset shifts identity bound constraints"
     problem.SetTrainingRange({0, nrow});
     problem.SetTestRange({0, nrow});
     problem.SetTarget("X2");
-    problem.SetDefaultInputs();
     Fixture::DTable dtable;
     Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
 
@@ -494,7 +492,6 @@ TEST_CASE("ShapeConstrainedEvaluator - a NaN bound endpoint (Scale==0 times an u
     problem.SetTrainingRange({0, Nrow});
     problem.SetTestRange({0, Nrow});
     problem.SetTarget("X2");
-    problem.SetDefaultInputs();
     problem.SetLinearScalingEnabled(true);
 
     using DTable = DispatchTable<Operon::Scalar>;
@@ -885,7 +882,6 @@ TEST_CASE("SCRATCH pappus-fix false-feasibility repro", "[.][shape-constraints-s
         problem.SetTrainingRange({0, static_cast<std::size_t>(ds.Rows())});
         problem.SetTestRange({0, static_cast<std::size_t>(ds.Rows())});
         problem.SetTarget(target);
-        problem.SetDefaultInputs();
 
         auto path = WriteShapeConfig(label, constraintsJson);
         auto loaded = Operon::LoadShapeConstraints(path.string());
@@ -950,7 +946,6 @@ TEST_CASE("SCRATCH ind333 sign-wrong derivative bound repro", "[.][shape-constra
     problem.SetTrainingRange({0, 100});
     problem.SetTestRange({100, 200});
     problem.SetTarget("y");
-    problem.SetDefaultInputs();
 
     auto const constraintsJson = R"json({"domains": {"n": [0, 1], "alpha": [0, 1], "epsilon": [1, 2], "Ef": [1, 2]}, "constraints": [{"op": "derivative", "variable": "n", "order": 1, "sign": 1}, {"op": "derivative", "variable": "alpha", "order": 1, "sign": 1}, {"op": "derivative", "variable": "epsilon", "order": 1, "sign": 1}, {"op": "derivative", "variable": "Ef", "order": 1, "sign": 1}]})json";
     auto const path = WriteShapeConfig("ind333", constraintsJson);
