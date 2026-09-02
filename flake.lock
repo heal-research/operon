@@ -99,11 +99,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786347833,
-        "narHash": "sha256-h/PYrwkBxICorJOVsk0lwGG/W0Fk2MLBFV9F9xzoiN4=",
+        "lastModified": 1787905527,
+        "narHash": "sha256-PLZwFlEaSwKKRxCEsKzUuSdVS5iTjtbNmtUymhTk1C4=",
         "owner": "foolnotion",
         "repo": "nur-pkg",
-        "rev": "049b418d5bd88485c15e2f5cbac9c4dc63184b00",
+        "rev": "61c807696893954972b52eb8499631f50bbe2943",
         "type": "github"
       },
       "original": {
