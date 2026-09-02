@@ -40,6 +40,7 @@ class Problem {
     Operon::Variable target_;
     Operon::Set<Operon::Hash> inputs_;
 
+    bool defaultInputs_{true};
 
     // Problem owns the PrimitiveSet, so it represents the problem formulation
     // rather than a bare dataset view; whether the fitted model is
@@ -69,6 +70,7 @@ public:
     template<typename T>
     auto SetTarget(T t) {
         target_ = GetVariable<std::remove_cvref_t<T>>(t);
+        if (defaultInputs_) { SetDefaultInputs(); }
     }
 
     auto SetTrainingRange(Operon::Range range) { training_ = range; }
@@ -82,6 +84,7 @@ public:
 
     auto SetInputs(auto const& inputs) {
         ValidateInputs(inputs);
+        defaultInputs_ = false;
         inputs_.clear();
         for (auto const& x : inputs) {
             inputs_.insert(GetVariable(x).Hash);
@@ -94,6 +97,7 @@ public:
 
     // set all variables except the target as inputs
     auto SetDefaultInputs() -> void {
+        defaultInputs_ = true;
         inputs_.clear();
         for (auto const& v : dataset_->GetVariables()) {
             if (v.Hash != target_.Hash) { inputs_.insert(v.Hash); }
