@@ -52,12 +52,13 @@ auto MakeJitObjects(
         jev->SetMaxLength(jitMaxLength);
         jev->SetMinVisits(jitMinVisits);
         out.Report = [jev]() -> void {
-            auto const hits   = jev->CacheHits();
-            auto const misses = jev->CacheMisses();
-            auto const total  = hits + misses;
-            auto const rate   = total > 0U ? 100.0 * static_cast<double>(hits) / static_cast<double>(total) : 0.0;
-            fmt::print(stderr, "jit | cache {:5} | hits {:6} | misses {:6} | hit% {:5.1f}\n",
-                       jev->CacheSize(), hits, misses, rate);
+            auto const hits     = jev->CacheHits();
+            auto const misses   = jev->CacheMisses();
+            auto const compiled = jev->CompileSuccesses();
+            auto const total    = hits + misses;
+            auto const rate     = total > 0U ? 100.0 * static_cast<double>(hits) / static_cast<double>(total) : 0.0;
+            fmt::print(stderr, "jit | cache {:5} | hits {:6} | misses {:6} | compiled {:6} | hit% {:5.1f}\n",
+                       jev->CacheSize(), hits, misses, compiled, rate);
             jev->ResetCounters();
         };
     }
