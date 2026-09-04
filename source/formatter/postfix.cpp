@@ -49,7 +49,25 @@ auto PostfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, st
             break;
         }
         default: {
-            fmt::format_to(std::back_inserter(current), fmt::runtime(s.Name()));
+            // s.Name() is data, not a format string -- fmt::runtime(s.Name())
+            // previously reparsed the function's own display name as a spec,
+            // throwing fmt::format_error for any registered name containing
+            // '{'/'}' (braces are otherwise legal in a registered name; only
+            // empty names and reserved hashes are rejected).
+            fmt::format_to(std::back_inserter(current), "{}", s.Name());
+            if (s.Value != Operon::Scalar{1}) {
+                // Unlike the leaf/variable case above (a single "(w * name)"
+                // token, not real RPN), a function node already has its own
+                // argument tokens preceding it in the stream, so its weight
+                // is represented as genuine trailing RPN: "... name w *"
+                // pushes the weight and multiplies it onto the function's
+                // result, exactly mirroring what the interpreter evaluates.
+                // Omitting this made postfix describe a different model
+                // than the one actually evaluated (weights are real,
+                // evaluated state -- see Tree::AdjustedLength()).
+                auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? " ({{:.{}f}}) *" : " {{:.{}f}} *"), decimalPrecision);
+                fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
+            }
         }
     }
 }
