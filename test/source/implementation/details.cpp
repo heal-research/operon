@@ -104,6 +104,15 @@ TEST_CASE("Tree validation reports postfix invariants", "[core][tree-validation]
         REQUIRE(error);
         CHECK(error->find("terminal") != std::string::npos);
     }
+    SECTION("node type must be known") {
+        auto node = Node::Constant(1);
+        node.Type = static_cast<NodeType>(255);
+        Tree tree({node});
+        auto const error = tree.Validate();
+        REQUIRE(error);
+        CHECK(error->find("NodeType") != std::string::npos);
+    }
+
 
     SECTION("Ref points backward") {
         Tree tree({Node::Ref(0)});
@@ -115,9 +124,27 @@ TEST_CASE("Tree validation reports postfix invariants", "[core][tree-validation]
     SECTION("derived metadata matches the postfix structure") {
         auto tree = valid();
         tree[2].Length = 0;
-        auto const error = tree.Validate();
-        REQUIRE(error);
-        CHECK(error->find("Length") != std::string::npos);
+        auto const lengthError = tree.Validate();
+        REQUIRE(lengthError);
+        CHECK(lengthError->find("Length") != std::string::npos);
+
+        tree = valid();
+        tree[2].Depth = 0;
+        auto const depthError = tree.Validate();
+        REQUIRE(depthError);
+        CHECK(depthError->find("Depth") != std::string::npos);
+
+        tree = valid();
+        tree[1].Parent = 0;
+        auto const parentError = tree.Validate();
+        REQUIRE(parentError);
+        CHECK(parentError->find("Parent") != std::string::npos);
+
+        tree = valid();
+        tree[1].Level = 0;
+        auto const levelError = tree.Validate();
+        REQUIRE(levelError);
+        CHECK(levelError->find("Level") != std::string::npos);
     }
 }
 
