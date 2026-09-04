@@ -81,6 +81,9 @@ auto CrossoverBase::Cross(const Tree& lhs, const Tree& rhs, /* index of subtree 
     auto const& right = rhs.Nodes();
     auto const leftSpan = detail::DescribeSubtree(Operon::Span<Node const>{left}, i);
     auto const rightSpan = detail::DescribeSubtree(Operon::Span<Node const>{right}, j);
+    if (!detail::IsSelfContainedSubtree(Operon::Span<Node const>{right}, rightSpan)) {
+        return lhs;
+    }
     auto nodes = detail::RewriteSubtree(Operon::Span<Node const>{left}, leftSpan,
         Operon::Span<Node const>{right}.subspan(rightSpan.First, rightSpan.Size));
     return Tree(std::move(nodes)).UpdateNodes();

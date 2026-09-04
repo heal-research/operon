@@ -60,6 +60,19 @@ TEST_CASE("Subtree rewrites preserve and rebase backward Refs", "[operators]")
     }
 }
 
+TEST_CASE("Crossover leaves parent unchanged for an external Ref donor", "[operators]")
+{
+    auto const add = Node::Function(Hash(BuiltinOp::Add), 2);
+    auto const mul = Node::Function(Hash(BuiltinOp::Mul), 2);
+    auto lhs = Tree({Node::Constant(2), Node::Constant(3), add}).UpdateNodes();
+    auto rhs = Tree({Node::Constant(4), Node::Ref(0), Node::Constant(5), mul}).UpdateNodes();
+
+    auto const child = CrossoverBase::Cross(lhs, rhs, 2, 1);
+    CHECK(child.Nodes().size() == lhs.Nodes().size());
+    CHECK(child.Nodes()[0].Value == lhs.Nodes()[0].Value);
+    CHECK(child.Nodes().back().HashValue == lhs.Nodes().back().HashValue);
+}
+
 TEST_CASE("Crossover produces valid trees", "[operators]")
 {
     auto ds = Operon::Dataset("./data/Poly-10.csv", true);
