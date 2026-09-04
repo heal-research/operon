@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "operon/core/dispatch.hpp"
 #include "operon/core/types.hpp"
 #include "operon/interpreter/backend/mad_eve/functions.hpp"
 #include "operon/interpreter/backend/mad_eve/derivatives.hpp"
