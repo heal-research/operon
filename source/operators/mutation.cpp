@@ -85,7 +85,7 @@ auto ChangeFunctionMutation::operator()(Operon::RandomGenerator& random, Tree tr
 
 auto ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
-    auto const nodes = tree.Nodes();
+    auto const& nodes = tree.Nodes();
     auto i = std::uniform_int_distribution<size_t>(0, nodes.size() - 1)(random);
     auto const target = detail::DescribeSubtree(Operon::Span<Node const>{nodes}, i);
     auto const oldLen = target.Size;
@@ -179,7 +179,7 @@ auto InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
 
 auto RemoveSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
-    auto const nodes = tree.Nodes();
+    auto const& nodes = tree.Nodes();
     auto i = std::uniform_int_distribution<size_t>(0, nodes.size() - 1)(random);
     auto const target = detail::DescribeSubtree(Operon::Span<Node const>{nodes}, i);
     auto const oldLevel = nodes[i].Level;
