@@ -4,6 +4,7 @@
 #ifndef OPERON_SOLVER_SGD_HPP
 #define OPERON_SOLVER_SGD_HPP
 
+#include "operon/core/contracts.hpp"
 #include "operon/core/types.hpp"
 #include <Eigen/Dense>
 #include <cmath>
