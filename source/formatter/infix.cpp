@@ -121,10 +121,27 @@ auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std:
                 fmt::format_to(std::back_inserter(current), "sqrt(abs(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
                 fmt::format_to(std::back_inserter(current), "))");
-            } else {
+            } else if (s.Arity == 1) {
                 fmt::format_to(std::back_inserter(current), "{}", s.Name());
                 fmt::format_to(std::back_inserter(current), "(");
                 FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
+                fmt::format_to(std::back_inserter(current), ")");
+            } else {
+                // A registered binary/n-ary function (RegisterBinaryFunction/
+                // RegisterNaryFunction) has a user hash outside the built-in
+                // Add..Powabs range, so it falls through to this branch --
+                // formatting only `i - 1` here would silently drop every
+                // argument but the last for Arity > 1. Render every actual
+                // child as a proper call: name(a, b, ...).
+                fmt::format_to(std::back_inserter(current), "{}", s.Name());
+                fmt::format_to(std::back_inserter(current), "(");
+                size_t count = 0;
+                for (auto j : tree.Indices(i)) {
+                    FormatNode(tree, variableNames, j, current, decimalPrecision);
+                    if (++count < s.Arity) {
+                        fmt::format_to(std::back_inserter(current), ", ");
+                    }
+                }
                 fmt::format_to(std::back_inserter(current), ")");
             }
         }

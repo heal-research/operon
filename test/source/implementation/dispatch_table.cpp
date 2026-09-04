@@ -7,6 +7,7 @@
 
 #include "../operon_test.hpp"
 
+#include <algorithm>
 #include <numbers>
 #include <numeric>
 
@@ -445,6 +446,149 @@ TEST_CASE("RegisterFunction - FunctionInfo convenience wrapper", "[interpreter]"
         auto dot = DotFormatter::Format(builtInTree, ds);
         CHECK(dot.find("[label=\"sin\"]") != std::string::npos);
         CHECK(dot.find("0 -> 1") != std::string::npos);
+    }
+}
+
+TEST_CASE("Formatter bugfixes: registered n-ary calls, weighted function nodes, unsafe format strings, empty trees", "[interpreter]")
+{
+    using DT     = Operon::DispatchTable<Operon::Scalar>;
+    using Scalar = Operon::Scalar;
+
+    std::string const x{"x"};
+    Operon::Dataset const ds({x}, {std::vector<Scalar>{0.0}});
+
+    SECTION("InfixFormatter renders every argument of a registered n-ary function") {
+        // Regression for a bug where a registered function whose hash fell
+        // outside the built-in Add..Powabs range (essentially every
+        // user-registered hash, since it is unrelated to BuiltinOp's
+        // ordinals) was routed into the "unary operator" fallback, which
+        // formatted only the LAST child (i - 1) regardless of actual arity
+        // -- silently dropping every other argument.
+        DT dt;
+        Operon::PrimitiveSet pset;
+        Operon::FunctionInfo const info{
+            .Name = "sum3", .Desc = "n-ary sum", .Arity = 3, .Frequency = 1
+        };
+        auto primal = [](auto acc, auto v) -> auto { return acc + v; };
+        Operon::RegisterNaryFunction<DT, Scalar>(dt, pset, info, /*maxArity=*/3, primal);
+        auto const hash = Operon::Hasher{}(info.Name);
+
+        auto dyn = Operon::Node::Function(hash, 3); // sets Arity=Length=3
+        Operon::Tree const tree({
+            Operon::Node::Constant(21.0),
+            Operon::Node::Constant(34.0),
+            Operon::Node::Constant(55.0),
+            dyn,
+        });
+
+        auto formatted = InfixFormatter::Format(tree, ds);
+        CHECK(formatted.find("sum3(") != std::string::npos);
+        CHECK(formatted.find("21") != std::string::npos);
+        CHECK(formatted.find("34") != std::string::npos);
+        CHECK(formatted.find("55") != std::string::npos);
+        CHECK(std::count(formatted.begin(), formatted.end(), ',') == 2);
+    }
+
+    SECTION("TreeFormatter does not throw on a weighted (non-unit Value) function node") {
+        // Regression for a bug where the weighted-function-node branch built
+        // a two-placeholder format string ("{:.Nf} * {}") but only ever
+        // passed s.Value as an argument, throwing fmt::format_error
+        // ("argument not found") for any function node with Value != 1 --
+        // real, reachable state: function-node weights are applied by the
+        // interpreter, not just a leaf/variable concept.
+        DT dt;
+        Operon::PrimitiveSet pset;
+        Operon::FunctionInfo const info{
+            .Name = "cube", .Desc = "", .Arity = 1, .Frequency = 1
+        };
+        auto primal  = [](auto v) -> auto { return v * v * v; };
+        auto dprimal = [](auto v) -> auto { return 3 * v * v; };
+        Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
+        auto const hash = Operon::Hasher{}(info.Name);
+
+        auto dyn = Operon::Node::Function(hash, 1);
+        dyn.Value = 2.5;
+        Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
+
+        std::string formatted;
+        CHECK_NOTHROW(formatted = TreeFormatter::Format(tree, ds));
+        CHECK(formatted.find("2.50") != std::string::npos);
+        CHECK(formatted.find("cube") != std::string::npos);
+    }
+
+    SECTION("DotFormatter includes a weighted function node's weight in its label") {
+        DT dt;
+        Operon::PrimitiveSet pset;
+        Operon::FunctionInfo const info{
+            .Name = "cube", .Desc = "", .Arity = 1, .Frequency = 1
+        };
+        auto primal  = [](auto v) -> auto { return v * v * v; };
+        auto dprimal = [](auto v) -> auto { return 3 * v * v; };
+        Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
+        auto const hash = Operon::Hasher{}(info.Name);
+
+        auto dyn = Operon::Node::Function(hash, 1);
+        dyn.Value = 2.5;
+        Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
+
+        auto dot = DotFormatter::Format(tree, ds);
+        CHECK(dot.find("2.50") != std::string::npos);
+        CHECK(dot.find("cube") != std::string::npos);
+    }
+
+    SECTION("PostfixFormatter represents a weighted function node's weight as valid trailing RPN") {
+        DT dt;
+        Operon::PrimitiveSet pset;
+        Operon::FunctionInfo const info{
+            .Name = "cube", .Desc = "", .Arity = 1, .Frequency = 1
+        };
+        auto primal  = [](auto v) -> auto { return v * v * v; };
+        auto dprimal = [](auto v) -> auto { return 3 * v * v; };
+        Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
+        auto const hash = Operon::Hasher{}(info.Name);
+
+        auto dyn = Operon::Node::Function(hash, 1);
+        dyn.Value = 2.5;
+        Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
+
+        auto postfix = PostfixFormatter::Format(tree, ds);
+        CHECK(postfix == "(1.00 cube 2.50 *) ");
+    }
+
+    SECTION("PostfixFormatter treats a registered function's name as data, not a format string") {
+        // Regression for fmt::format_to(..., fmt::runtime(s.Name())), which
+        // reparsed the function's own display name as a format spec --
+        // registered names are validated only for emptiness/hash
+        // collisions, so '{'/'}' in a name is legal and previously threw.
+        DT dt;
+        Operon::PrimitiveSet pset;
+        Operon::FunctionInfo const info{
+            .Name = "f{brace}", .Desc = "", .Arity = 1, .Frequency = 1
+        };
+        auto primal  = [](auto v) -> auto { return v; };
+        auto dprimal = [](auto) -> auto { return Scalar{1}; };
+        Operon::RegisterUnaryFunction<DT, Scalar>(dt, pset, info, primal, dprimal);
+        auto const hash = Operon::Hasher{}(info.Name);
+
+        auto dyn = Operon::Node::Function(hash, 1);
+        Operon::Tree const tree({ Operon::Node::Constant(1.0), dyn });
+
+        std::string formatted;
+        CHECK_NOTHROW(formatted = PostfixFormatter::Format(tree, ds));
+        CHECK(formatted.find("f{brace}") != std::string::npos);
+    }
+
+    SECTION("Tree/Postfix/Dot formatters do not crash on an empty tree") {
+        Operon::Tree const empty;
+        std::string treeOut;
+        std::string postfixOut;
+        std::string dotOut;
+        CHECK_NOTHROW(treeOut = TreeFormatter::Format(empty, ds));
+        CHECK_NOTHROW(postfixOut = PostfixFormatter::Format(empty, ds));
+        CHECK_NOTHROW(dotOut = DotFormatter::Format(empty, ds));
+        CHECK(treeOut.empty());
+        CHECK(postfixOut.empty());
+        CHECK(dotOut.find("digraph") != std::string::npos);
     }
 }
 
