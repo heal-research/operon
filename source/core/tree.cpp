@@ -71,6 +71,16 @@ auto Tree::Validate() const -> std::optional<std::string>
 
     for (size_t i = 0; i < nodes_.size(); ++i) {
         auto const& node = nodes_[i];
+        switch (node.Type) {
+        case NodeType::Constant:
+        case NodeType::Variable:
+        case NodeType::Ref:
+        case NodeType::Function:
+            break;
+        default:
+            return "node " + std::to_string(i) + ": invalid NodeType "
+                + std::to_string(static_cast<unsigned int>(node.Type));
+        }
         if (node.IsRef() && node.RefTo >= i) {
             return "node " + std::to_string(i) + ": RefTo must point to an earlier node";
         }
