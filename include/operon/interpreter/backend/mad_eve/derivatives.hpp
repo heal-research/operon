@@ -5,6 +5,7 @@
 #ifndef OPERON_BACKEND_MAD_EVE_DERIVATIVES_HPP
 #define OPERON_BACKEND_MAD_EVE_DERIVATIVES_HPP
 
+#include "operon/core/dispatch.hpp"
 #include "operon/core/node.hpp"
 #include "functions.hpp"
 

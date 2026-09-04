@@ -5,6 +5,7 @@
 #ifndef OPERON_SUBTREE_HPP
 #define OPERON_SUBTREE_HPP
 
+#include "contracts.hpp"
 #include "node.hpp"
 
 namespace Operon {
