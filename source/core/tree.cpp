@@ -18,8 +18,14 @@
 #include "operon/core/constants.hpp"
 #include "operon/core/node.hpp"
 #include "operon/core/types.hpp"
+#include "subtree_rewrite.hpp"
 
 namespace Operon {
+auto Tree::Splice(size_t i) const -> Tree
+{
+    auto const span = detail::DescribeSubtree(Operon::Span<Node const>{nodes_}, i);
+    return Tree(detail::CopySubtree(Operon::Span<Node const>{nodes_}, span)).UpdateNodes();
+}
 auto Tree::UpdateNodes() -> Tree&
 {
     if (nodes_.empty()) { return *this; }
