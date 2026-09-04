@@ -91,6 +91,31 @@ add_library(
     source/parser/infix.cpp
 )
 add_library(operon::operon ALIAS operon_operon)
+# Public headers are an explicit target-owned interface. CONFIGURE_DEPENDS
+# keeps the list current when a contributor adds or removes a header without
+# making the installation layout depend on an untracked directory copy.
+file(GLOB_RECURSE operon_installed_headers CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/*.hpp"
+)
+
+# Implementation headers remain installed because the public template headers
+# include them, but users do not include them directly. Keep them out of the
+# standalone-header contract: they are verified through their owning facade.
+set(operon_detail_headers ${operon_installed_headers})
+list(FILTER operon_detail_headers INCLUDE REGEX "/(detail|mad_eve)/")
+set(operon_public_headers ${operon_installed_headers})
+list(FILTER operon_public_headers EXCLUDE REGEX "/(detail|mad_eve)/")
+
+target_sources(operon_operon PUBLIC
+    FILE_SET operon_headers
+    TYPE HEADERS
+    BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    FILES ${operon_public_headers}
+    FILE_SET operon_detail_headers
+    TYPE HEADERS
+    BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    FILES ${operon_detail_headers}
+)
 
 # ---- Required dependencies ----
 find_package(AriaCsvParser REQUIRED)
@@ -315,6 +340,15 @@ target_compile_definitions(operon_operon PUBLIC
     "$<$<BOOL:${USE_SINGLE_PRECISION}>:USE_SINGLE_PRECISION>"
     "$<$<BOOL:${HAVE_ASMJIT}>:HAVE_ASMJIT>"
     )
+
+# The generated export header has no source-tree counterpart. Verify every
+# facade header in developer builds against the target's complete published
+# usage requirements; internal implementation headers are covered by their
+# owning facade, and the generated header is installed explicitly.
+if(operon_DEVELOPER_MODE)
+    set_property(TARGET operon_operon PROPERTY VERIFY_INTERFACE_HEADER_SETS ON)
+    set_property(TARGET operon_operon PROPERTY INTERFACE_HEADER_SETS_TO_VERIFY operon_headers)
+endif()
 
 # ---- Install rules ----
 

@@ -9,6 +9,7 @@
 #include <atomic>
 #include <Eigen/Core>
 
+#include "operon/core/contracts.hpp"
 #include "operon/core/types.hpp"
 
 namespace Operon {
