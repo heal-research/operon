@@ -12,6 +12,7 @@
 #include <type_traits>
 
 #include "operon/operators/creator.hpp"
+#include "../core/subtree_rewrite.hpp"
 #include "operon/operators/initializer.hpp"
 
 namespace Operon {
@@ -84,35 +85,24 @@ auto ChangeFunctionMutation::operator()(Operon::RandomGenerator& random, Tree tr
 
 auto ReplaceSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
-    auto& nodes = tree.Nodes();
-
+    auto const nodes = tree.Nodes();
     auto i = std::uniform_int_distribution<size_t>(0, nodes.size() - 1)(random);
-
-    auto oldLen = nodes[i].Length + 1U;
-    auto oldLevel = nodes[i].Level;
+    auto const target = detail::DescribeSubtree(Operon::Span<Node const>{nodes}, i);
+    auto const oldLen = target.Size;
+    auto const oldLevel = nodes[i].Level;
 
     using Signed = std::make_signed_t<size_t>;
-
-    auto partialLength = nodes.size() - oldLen;
-
+    auto const partialLength = nodes.size() - oldLen;
     auto maxLength = static_cast<Signed>(maxLength_ - partialLength);
     maxLength = std::max(maxLength, Signed { 1 });
-
     auto maxDepth = std::max(tree.Depth(), maxDepth_) - oldLevel + 1;
 
-    auto newLen = std::uniform_int_distribution<Signed>(Signed { 1 }, maxLength)(random);
+    auto const newLen = std::uniform_int_distribution<Signed>(Signed { 1 }, maxLength)(random);
     auto subtree = (*creator_)(random, static_cast<size_t>(newLen), 1, maxDepth);
     (*coefficientInitializer_)(random, subtree);
-
-    Operon::Vector<Node> mutated;
-    mutated.reserve(nodes.size() - oldLen + static_cast<size_t>(newLen));
-
-    using Signed = std::make_signed_t<size_t>;
-    std::copy(nodes.begin(), nodes.begin() + static_cast<Signed>(i - nodes[i].Length), std::back_inserter(mutated));
-    std::copy(subtree.Nodes().begin(), subtree.Nodes().end(), std::back_inserter(mutated));
-    std::copy(nodes.begin() + static_cast<Signed>(i + 1), nodes.end(), std::back_inserter(mutated));
-
-    return Tree(mutated).UpdateNodes();
+    auto rewritten = detail::RewriteSubtree(Operon::Span<Node const>{nodes}, target,
+        Operon::Span<Node const>{subtree.Nodes()});
+    return Tree(std::move(rewritten)).UpdateNodes();
 }
 
 auto RemoveChildMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
@@ -189,33 +179,19 @@ auto InsertSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tre
 
 auto RemoveSubtreeMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
-    auto& nodes = tree.Nodes();
-
+    auto const nodes = tree.Nodes();
     auto i = std::uniform_int_distribution<size_t>(0, nodes.size() - 1)(random);
+    auto const target = detail::DescribeSubtree(Operon::Span<Node const>{nodes}, i);
+    auto const oldLevel = nodes[i].Level;
+    auto const maxDepth = std::max(tree.Depth(), maxDepth_) - oldLevel + 1;
 
-    auto oldLen = nodes[i].Length + 1U;
-    auto oldLevel = nodes[i].Level;
-
-    using Signed = std::make_signed_t<size_t>;
-    auto maxDepth = std::max(tree.Depth(), maxDepth_) - oldLevel + 1;
-
-    // Always replace with the smallest possible subtree, a single terminal -
-    // matching HeuristicLab's RemoveBranchManipulation, which replaces a
-    // random branch with the grammar-minimal alternative at that position
-    // (unlike ReplaceSubtreeMutation's uniformly-random target length).
+    // Always replace with the smallest possible subtree, a single terminal.
     auto subtree = (*creator_)(random, size_t { 1 }, 1, maxDepth);
     (*coefficientInitializer_)(random, subtree);
-
-    Operon::Vector<Node> mutated;
-    mutated.reserve(nodes.size() - oldLen + 1);
-
-    std::copy(nodes.begin(), nodes.begin() + static_cast<Signed>(i - nodes[i].Length), std::back_inserter(mutated));
-    std::copy(subtree.Nodes().begin(), subtree.Nodes().end(), std::back_inserter(mutated));
-    std::copy(nodes.begin() + static_cast<Signed>(i + 1), nodes.end(), std::back_inserter(mutated));
-
-    return Tree(mutated).UpdateNodes();
+    auto rewritten = detail::RewriteSubtree(Operon::Span<Node const>{nodes}, target,
+        Operon::Span<Node const>{subtree.Nodes()});
+    return Tree(std::move(rewritten)).UpdateNodes();
 }
-
 auto ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree tree) const -> Tree
 {
     auto& nodes = tree.Nodes();
@@ -227,45 +203,31 @@ auto ShuffleSubtreesMutation::operator()(Operon::RandomGenerator& random, Tree t
 
     // pick a random function node
     auto idx = std::uniform_int_distribution<std::make_signed_t<size_t>>(1, nFunc)(random);
-
-    // find the function node in the nodes array
     size_t i = 0;
     for (; i < nodes.size(); ++i) {
         if (nodes[i].IsLeaf()) {
             continue;
         }
-
         if (--idx == 0) {
             break;
         }
     }
     auto const& s = nodes[i];
-
-    // the child nodes will be shuffled so we keep them in a buffer
     using Signed = std::make_signed_t<size_t>;
     std::vector<Node> buffer(nodes.begin() + static_cast<Signed>(i) - s.Length, nodes.begin() + static_cast<Signed>(i));
     EXPECT(buffer.size() == s.Length);
-
-    // get child indices relative to buffer
     std::vector<size_t> childIndices(s.Arity);
-
     size_t j = s.Length - 1;
     for (uint16_t k = 0; k < s.Arity; ++k) {
         childIndices[k] = j;
         j -= buffer[j].Length + 1U;
     }
-
-    // shuffle child indices
     std::shuffle(childIndices.begin(), childIndices.end(), random);
-
-    // write back from buffer to nodes in the shuffled order
     auto insertionPoint = nodes.begin() + static_cast<std::make_signed_t<decltype(i)>>(i) - s.Length;
-
     for (auto k : childIndices) {
         std::copy(buffer.begin() + static_cast<Signed>(k) - buffer[k].Length, buffer.begin() + static_cast<Signed>(k) + 1, insertionPoint);
         insertionPoint += buffer[k].Length + 1U;
     }
-
     return tree.UpdateNodes();
 }
 } // namespace Operon
