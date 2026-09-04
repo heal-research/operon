@@ -78,6 +78,19 @@ struct StandardLibrary {
         return { 0, 0 };
     }
 
+    // How a built-in op's infix rendering diverges from plain call syntax,
+    // sourced from the same registry entry ArityLimits reads (see
+    // FormatRule above). Consumed by InfixFormatter so its dispatch table
+    // doesn't duplicate this classification via a second, separately
+    // maintained mapping.
+    [[nodiscard]] static constexpr auto FormattingRule(BuiltinOp op) -> Operon::FormatRule
+    {
+        for (auto const& entry : BuiltinEntries) {
+            if (entry.Op == op) { return entry.Rule; }
+        }
+        return FormatRule::GenericCall;
+    }
+
 private:
     struct BuiltinEntry {
         BuiltinOp Op;

@@ -310,6 +310,13 @@ auto Dataset::GetVariable(Operon::Hash hash) const noexcept -> tl::expected<Vari
     return it->second;
 }
 
+auto Dataset::FindVariableName(Operon::Hash hash) const noexcept -> std::optional<std::string_view>
+{
+    auto it = variables_.find(hash);
+    if (it == variables_.end()) { return std::nullopt; }
+    return std::string_view{it->second.Name};
+}
+
 auto Dataset::GetVariables() const noexcept -> std::vector<Operon::Variable>
 {
     std::vector<Operon::Variable> variables;
