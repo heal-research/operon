@@ -36,10 +36,9 @@ struct SubtreeSpan {
     });
 }
 
-// P4 deliberately accepts only standalone donor trees. A donor reference
-// outside the donor's own contiguous subtree needs a DAG mapping policy, which
-// P5 owns. Existing references to a replaced source subtree remain valid by
-// becoming references to the replacement root.
+// P4 accepts only standalone donor trees: an external donor Ref has no
+// destination-tree mapping until P5. Source references inside target are
+// deleted with target; retained source references are mapped during rewrite.
 [[nodiscard]] inline auto CanRewriteSubtree(Operon::Span<Node const> replacement) -> bool
 {
     return !replacement.empty() && IsSelfContainedSubtree(replacement, { 0U, replacement.size() - 1U, replacement.size() });
