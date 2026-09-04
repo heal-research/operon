@@ -94,3 +94,38 @@ endif()
 
 add_test(NAME operon_test COMMAND operon_test "~[performance]" WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 windows_set_path(operon_test operon::operon)
+
+# ---- Installed-package-consumer contract (package-consumer) ----
+# Exercises the install -> relocate -> find_package(operon CONFIG) -> build
+# -> run path a real external consumer takes, using the package this build
+# just produced. Every step below runs at `ctest` time, not at configure
+# time: only the actual build tree produced by *this* invocation is a valid
+# thing to install from.
+#
+# Only meaningful when operon is being built directly (PROJECT_IS_TOP_LEVEL
+# is FALSE here precisely when test/ has been add_subdirectory()'d from the
+# main operon build -- see cmake/project-is-top-level.cmake). When test/ is
+# instead configured standalone against some pre-existing operon
+# installation, there is no operon build tree in this invocation to install
+# from, so the fixture is skipped.
+if(NOT PROJECT_IS_TOP_LEVEL)
+    set(operon_package_consumer_source_dir "${CMAKE_CURRENT_SOURCE_DIR}/package-consumer")
+    set(operon_package_consumer_work_dir "${CMAKE_BINARY_DIR}/package-consumer")
+
+    add_test(
+        NAME package_consumer
+        COMMAND "${CMAKE_COMMAND}"
+                "-DCMAKE_COMMAND=${CMAKE_COMMAND}"
+                "-DOPERON_MAIN_BUILD_DIR=${CMAKE_BINARY_DIR}"
+                "-DOPERON_CONFIGURATION=$<CONFIG>"
+                "-DOPERON_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+                "-DOPERON_VCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}"
+                "-DOPERON_VCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}"
+                "-DOPERON_MSVC_RUNTIME_LIBRARY=${CMAKE_MSVC_RUNTIME_LIBRARY}"
+                "-DOPERON_STAGE_DIR=${operon_package_consumer_work_dir}/stage"
+                "-DOPERON_RELOCATED_PREFIX=${operon_package_consumer_work_dir}/relocated-prefix"
+                "-DOPERON_CONSUMER_SOURCE_DIR=${operon_package_consumer_source_dir}"
+                "-DOPERON_CONSUMER_BUILD_DIR=${operon_package_consumer_work_dir}/build"
+                -P "${operon_package_consumer_source_dir}/run-consumer-test.cmake"
+    )
+endif()
