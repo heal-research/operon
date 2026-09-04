@@ -75,6 +75,8 @@ foreach(var
     if(DEFINED ${var} AND NOT "${${var}}" STREQUAL "")
         if(var STREQUAL "OPERON_TOOLCHAIN_FILE")
             set(cmake_var CMAKE_TOOLCHAIN_FILE)
+        elseif(var STREQUAL "OPERON_MSVC_RUNTIME_LIBRARY")
+            set(cmake_var CMAKE_MSVC_RUNTIME_LIBRARY)
         else()
             string(REPLACE "OPERON_" "" cmake_var "${var}")
         endif()
