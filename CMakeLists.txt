@@ -59,6 +59,7 @@ add_library(
     source/core/tree_diff.cpp
     source/core/version.cpp
     source/formatter/dot.cpp
+    source/formatter/formatter.cpp
     source/formatter/infix.cpp
     source/formatter/postfix.cpp
     source/formatter/tree.cpp
@@ -104,7 +105,7 @@ find_package(glaze REQUIRED)
 # linking glaze PRIVATE does not upgrade the whole library to C++23; instead
 # we set CXX_STANDARD 23 on serialization.cpp alone via source properties.
 set_target_properties(glaze::glaze PROPERTIES INTERFACE_COMPILE_FEATURES "")
-find_package(fmt REQUIRED)
+find_package(fmt 10 REQUIRED)
 find_package(gtl REQUIRED)
 find_package(lbfgs REQUIRED)
 find_package(libassert REQUIRED)
