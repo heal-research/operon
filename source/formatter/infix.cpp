@@ -4,170 +4,174 @@
 
 #include <fmt/format.h>
 
-#include "operon/core/dataset.hpp"
-#include "operon/formatter/formatter.hpp"
+#include "operon/core/standard_library.hpp"
+#include "detail.hpp"
 
-namespace Operon {
+namespace Operon::Fmt::Detail {
 
-auto InfixFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, size_t i, std::string& current, int decimalPrecision) -> void // NOLINT(readability-function-cognitive-complexity)
+namespace {
+
+void FormatNode(Tree const& tree, NameView const& names, std::size_t i, std::string& current, ValueSpec spec) // NOLINT(readability-function-cognitive-complexity)
 {
-    const auto& s = tree[i];
+    auto const& s = tree[i];
     if (s.IsConstant()) {
-        auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}}})" : "{{:.{}}}"), decimalPrecision);
-        fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
-    } else if (s.IsVariable()) {
-        auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "(({{:.{}}}) * {{}})" : "({{:.{}}} * {{}})"), decimalPrecision);
-        if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
-            fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value, it->second);
-        } else {
-            throw std::runtime_error(fmt::format("A key with hash value {} could not be found in the variable map.\n", s.HashValue));
-        }
-    } else if (s.IsRef()) {
+        AppendValue(current, s.Value, spec);
+        return;
+    }
+    if (s.IsVariable()) {
+        current += "(";
+        AppendValue(current, s.Value, spec);
+        current += " * ";
+        AppendVariableName(current, names, s.HashValue);
+        current += ")";
+        return;
+    }
+    if (s.IsRef()) {
         // Ref is a leaf (Arity == 0) that points backward to a shared
         // subtree via RefTo, not the physically preceding node -- without
         // this case the generic operator fallback below would recurse into
         // `i-1`, silently formatting the wrong subtree for any tree with
         // structural sharing (e.g. a symbolic-derivative DAG).
-        FormatNode(tree, variableNames, s.RefTo, current, decimalPrecision);
-    } else {
-        if (s.Value != 1) {
-            fmt::format_to(std::back_inserter(current), "(");
-            auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}}})" : "{{:.{}}}"), decimalPrecision);
-            fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
-            fmt::format_to(std::back_inserter(current), " * ");
-        }
-        // BuiltinOp's ordinals preserve the same relative order the old
-        // NodeType math-op subset had, so this boundary (Add..Powabs vs.
-        // Abs onward) is still exactly `< Hash(BuiltinOp::Abs)`.
-        if (s.HashValue < Operon::Hash(BuiltinOp::Abs)) // add, sub, mul, div, aq, fmax, fmin, pow
-        {
-            fmt::format_to(std::back_inserter(current), "(");
-            if (s.Arity == 1) {
-                if (s.IsOp<BuiltinOp::Sub>()) {
-                    // subtraction with a single argument is a negation -x
-                    fmt::format_to(std::back_inserter(current), "-");
-                } else if (s.IsOp<BuiltinOp::Div>()) {
-                    // division with a single argument is an inversion 1/x
-                    fmt::format_to(std::back_inserter(current), "1 / ");
-                }
-                FormatNode(tree, variableNames, i-1, current, decimalPrecision);
-            } else if (s.IsOp<BuiltinOp::Pow>()) {
-                // format pow(a,b) as a^b
-                auto j = i - 1;
-                auto k = j - tree[j].Length - 1;
-                FormatNode(tree, variableNames, j, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), " ^ ");
-                FormatNode(tree, variableNames, k, current, decimalPrecision);
-            } else if (s.IsOp<BuiltinOp::Powabs>()) {
-                // format powabs(a,b) as abs(a)^b
-                auto j = i - 1;
-                auto k = j - tree[j].Length - 1;
-                fmt::format_to(std::back_inserter(current), "abs(");
-                FormatNode(tree, variableNames, j, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), ") ^ ");
-                FormatNode(tree, variableNames, k, current, decimalPrecision);
-            } else if (s.IsOp<BuiltinOp::Aq>()) {
-                // format aq(a,b) as a / (1 + b^2)
-                auto j = i - 1;
-                auto k = j - tree[j].Length - 1;
-                FormatNode(tree, variableNames, j, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), " / (sqrt(1 + ");
-                FormatNode(tree, variableNames, k, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), " ^ 2))");
-            } else if (s.IsOp<BuiltinOp::Fmin>()) {
-                auto j = i - 1;
-                auto k = j - tree[j].Length - 1;
-                fmt::format_to(std::back_inserter(current), "min(");
-                FormatNode(tree, variableNames, j, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), ", ");
-                FormatNode(tree, variableNames, k, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), ")");
-            } else if (s.IsOp<BuiltinOp::Fmax>()) {
-                auto j = i - 1;
-                auto k = j - tree[j].Length - 1;
-                fmt::format_to(std::back_inserter(current), "max(");
-                FormatNode(tree, variableNames, j, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), ", ");
-                FormatNode(tree, variableNames, k, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), ")");
-            } else {
-                size_t count = 0;
-                for (auto j : tree.Indices(i)) {
-                    FormatNode(tree, variableNames, j, current, decimalPrecision);
-                    if (++count < s.Arity) {
-                        fmt::format_to(std::back_inserter(current), " {} ", s.Name());
-                    }
+        FormatNode(tree, names, s.RefTo, current, spec);
+        return;
+    }
+
+    // s is a Function node: a built-in math op or a registered
+    // user-defined function, distinguished only by HashValue.
+    // StandardLibrary::FormattingRule(HashValue) is well-defined for any
+    // Hash, built-in or not -- a hash outside the built-in table simply
+    // falls through to its GenericCall default, which is exactly the
+    // right rendering for a registered function.
+    if (s.Value != Operon::Scalar{1}) {
+        current += "(";
+        AppendValue(current, s.Value, spec);
+        current += " * ";
+    }
+
+    switch (Operon::StandardLibrary::FormattingRule(static_cast<Operon::BuiltinOp>(s.HashValue))) {
+    case Operon::FormatRule::Infix: {
+        current += "(";
+        if (s.Arity == 1) {
+            // Sub/Div's fixed-arity registration (see FormatRule::Infix's
+            // declaration) never produces an arity-1 node via ordinary GP
+            // construction, but a manually-built or post-simplification
+            // tree can: unary Sub is negation (-a), unary Div is
+            // inversion (1 / a).
+            if (s.IsOp<Operon::BuiltinOp::Sub>()) { current += "-"; }
+            else if (s.IsOp<Operon::BuiltinOp::Div>()) { current += "1 / "; }
+            FormatNode(tree, names, i - 1, current, spec);
+        } else {
+            std::size_t count = 0;
+            for (auto j : tree.Indices(i)) {
+                FormatNode(tree, names, j, current, spec);
+                if (++count < s.Arity) {
+                    fmt::format_to(std::back_inserter(current), " {} ", s.Name());
                 }
             }
-            fmt::format_to(std::back_inserter(current), ")");
-        } else { // unary operators abs, asin, ... log, exp, sin, etc.
-            if (s.IsOp<BuiltinOp::Square>()) {
-                // format square(a) as a ^ 2
-                fmt::format_to(std::back_inserter(current), "(");
-                FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), " ^ 2)");
-            } else if (s.IsOp<BuiltinOp::Logabs>()) {
-                // format logabs(a) as log(abs(a))
-                fmt::format_to(std::back_inserter(current), "log(abs(");
-                FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), "))");
-            } else if (s.IsOp<BuiltinOp::Log1p>()) {
-                // format log1p(a) as log(a+1)
-                fmt::format_to(std::back_inserter(current), "log(");
-                FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), "+1)");
-            } else if (s.IsOp<BuiltinOp::Sqrtabs>()) {
-                // format sqrtabs(a) as sqrt(abs(a))
-                fmt::format_to(std::back_inserter(current), "sqrt(abs(");
-                FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), "))");
-            } else if (s.Arity == 1) {
-                fmt::format_to(std::back_inserter(current), "{}", s.Name());
-                fmt::format_to(std::back_inserter(current), "(");
-                FormatNode(tree, variableNames, i - 1, current, decimalPrecision);
-                fmt::format_to(std::back_inserter(current), ")");
-            } else {
-                // A registered binary/n-ary function (RegisterBinaryFunction/
-                // RegisterNaryFunction) has a user hash outside the built-in
-                // Add..Powabs range, so it falls through to this branch --
-                // formatting only `i - 1` here would silently drop every
-                // argument but the last for Arity > 1. Render every actual
-                // child as a proper call: name(a, b, ...).
-                fmt::format_to(std::back_inserter(current), "{}", s.Name());
-                fmt::format_to(std::back_inserter(current), "(");
-                size_t count = 0;
-                for (auto j : tree.Indices(i)) {
-                    FormatNode(tree, variableNames, j, current, decimalPrecision);
-                    if (++count < s.Arity) {
-                        fmt::format_to(std::back_inserter(current), ", ");
-                    }
-                }
-                fmt::format_to(std::back_inserter(current), ")");
+        }
+        current += ")";
+        break;
+    }
+    case Operon::FormatRule::PowerNotation: {
+        current += "(";
+        if (s.Arity == 1) { // Square: a ^ 2
+            FormatNode(tree, names, i - 1, current, spec);
+            current += " ^ 2";
+        } else { // Pow: a ^ b
+            auto j = i - 1;
+            auto k = j - tree[j].Length - 1;
+            FormatNode(tree, names, j, current, spec);
+            current += " ^ ";
+            FormatNode(tree, names, k, current, spec);
+        }
+        current += ")";
+        break;
+    }
+    case Operon::FormatRule::MinMaxCall: {
+        auto j = i - 1;
+        auto k = j - tree[j].Length - 1;
+        current += s.IsOp<Operon::BuiltinOp::Fmin>() ? "(min(" : "(max(";
+        FormatNode(tree, names, j, current, spec);
+        current += ", ";
+        FormatNode(tree, names, k, current, spec);
+        current += "))";
+        break;
+    }
+    case Operon::FormatRule::Composite: {
+        if (s.IsOp<Operon::BuiltinOp::Aq>()) {
+            // a / (sqrt(1 + b ^ 2))
+            auto j = i - 1;
+            auto k = j - tree[j].Length - 1;
+            current += "(";
+            FormatNode(tree, names, j, current, spec);
+            current += " / (sqrt(1 + ";
+            FormatNode(tree, names, k, current, spec);
+            current += " ^ 2)))";
+        } else if (s.IsOp<Operon::BuiltinOp::Powabs>()) {
+            // abs(a) ^ b
+            auto j = i - 1;
+            auto k = j - tree[j].Length - 1;
+            current += "(abs(";
+            FormatNode(tree, names, j, current, spec);
+            current += ") ^ ";
+            FormatNode(tree, names, k, current, spec);
+            current += ")";
+        } else if (s.IsOp<Operon::BuiltinOp::Logabs>()) {
+            current += "log(abs(";
+            FormatNode(tree, names, i - 1, current, spec);
+            current += "))";
+        } else if (s.IsOp<Operon::BuiltinOp::Log1p>()) {
+            current += "log(";
+            FormatNode(tree, names, i - 1, current, spec);
+            current += "+1)";
+        } else { // Sqrtabs
+            current += "sqrt(abs(";
+            FormatNode(tree, names, i - 1, current, spec);
+            current += "))";
+        }
+        break;
+    }
+    case Operon::FormatRule::PrefixNegation:
+    case Operon::FormatRule::Inversion:
+        // Never returned by FormattingRule -- Sub/Div always report
+        // FormatRule::Infix (see the enum's own doc comment); the
+        // arity-1 special case is handled inline above. Kept as
+        // exhaustive switch labels rather than a `default:` so a future
+        // FormatRule addition fails to compile here instead of silently
+        // falling through to GenericCall.
+    case Operon::FormatRule::GenericCall: {
+        current += s.Name();
+        current += "(";
+        if (s.Arity == 1) {
+            FormatNode(tree, names, i - 1, current, spec);
+        } else {
+            // A registered binary/n-ary function (RegisterBinaryFunction/
+            // RegisterNaryFunction) reports GenericCall here (its hash is
+            // outside the built-in table) -- render every actual child,
+            // not just the last one.
+            std::size_t count = 0;
+            for (auto j : tree.Indices(i)) {
+                FormatNode(tree, names, j, current, spec);
+                if (++count < s.Arity) { current += ", "; }
             }
         }
-        if (s.Value != 1) {
-            fmt::format_to(std::back_inserter(current), ")");
-        }
+        current += ")";
+        break;
+    }
+    }
+
+    if (s.Value != Operon::Scalar{1}) {
+        current += ")";
     }
 }
 
+} // namespace
 
-
-auto InfixFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
+auto FormatInfix(Tree const& tree, NameView const& names, ValueSpec spec) -> std::string
 {
-    if (tree.Nodes().empty()) { return std::string{}; }
     std::string result;
-    FormatNode(tree, variableNames, tree.Length() - 1, result, decimalPrecision);
-    return { result.begin(), result.end() };
+    FormatNode(tree, names, tree.Length() - 1, result, spec);
+    return result;
 }
 
-auto InfixFormatter::Format(Tree const& tree, Dataset const& dataset, int decimalPrecision) -> std::string
-{
-    Operon::Map<Operon::Hash, std::string> variableNames;
-    for (auto const& var : dataset.GetVariables()) {
-        variableNames.insert({ var.Hash, var.Name });
-    }
-    return Format(tree, variableNames, decimalPrecision);
-}
-
-} // namespace Operon
+} // namespace Operon::Fmt::Detail

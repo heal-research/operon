@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <gsl/pointers>
@@ -112,6 +113,14 @@ public:
     [[nodiscard]] auto GetVariable(std::string const& name) const noexcept -> tl::expected<Variable, DatasetError>;
     [[nodiscard]] auto GetVariable(Operon::Hash hash) const noexcept -> tl::expected<Variable, DatasetError>;
     [[nodiscard]] auto GetVariables() const noexcept -> std::vector<Operon::Variable>;
+
+    // Zero-copy variable-name lookup: a view into this Dataset's own
+    // long-lived storage, valid for the Dataset's lifetime (invalidated
+    // only by a call that mutates variable identity, e.g.
+    // SetVariableNames). Prefer this over GetVariable()/GetVariables()
+    // when only the name is needed -- those copy a Variable (or every
+    // Variable) by value.
+    [[nodiscard]] auto FindVariableName(Operon::Hash hash) const noexcept -> std::optional<std::string_view>;
 
     void SetWeights(Span<Scalar const> w);
     [[nodiscard]] auto Weights() const noexcept -> std::optional<Span<Scalar const>>;

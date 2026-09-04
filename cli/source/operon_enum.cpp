@@ -119,7 +119,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             return EXIT_FAILURE;
         }
         for (auto const& [fitness, tree] : best) {
-            fmt::print("fitness={:.6g}\t{}\n", fitness, Operon::InfixFormatter::Format(tree, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10));
+            fmt::print("fitness={:.6g}\t{:infix:roundtrip}\n", fitness, Operon::Fmt::WithNames{tree, *problem.GetDataset()});
         }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());

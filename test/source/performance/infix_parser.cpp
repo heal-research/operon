@@ -8,6 +8,7 @@
 
 #include "operon/core/pset.hpp"
 #include "operon/formatter/formatter.hpp"
+#include <fmt/format.h>
 #include "operon/operators/creator.hpp"
 #include "operon/parser/infix.hpp"
 
@@ -38,7 +39,7 @@ TEST_CASE("Parser throughput", "[performance]")
     for (auto i = 0; i < nTrees; ++i) {
         auto tree = creator(rng, dist(rng), 0, 10);
         totalNodes += tree.Length();
-        strings.push_back(InfixFormatter::Format(tree, ds, 20));
+        strings.push_back(fmt::format("{:infix:20}", Operon::Fmt::WithNames{tree, ds}));
     }
 
     size_t idx{0};

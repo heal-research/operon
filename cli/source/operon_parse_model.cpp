@@ -202,7 +202,7 @@ namespace {
         if (opt->Iterations() > 0) {
             auto const& diag = Operon::Diagnostics(summary);
             if (summary.has_value()) {
-                fmt::print("optimized_model {}\n", Operon::InfixFormatter::Format(model, ds, std::numeric_limits<Operon::Scalar>::max_digits10));
+                fmt::print("optimized_model {:infix:roundtrip}\n", Operon::Fmt::WithNames{model, ds});
             }
             fmt::print("optimization summary:\n");
             fmt::print("status: {}\n", summary.has_value());
@@ -231,10 +231,9 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         range = Operon::Range{a, b};
     }
 
-    int constexpr defaultPrecision{std::numeric_limits<Operon::Scalar>::max_digits10};
     if (result["debug"].as<bool>()) {
         fmt::print("\nInput string:\n{}\n", infix);
-        fmt::print("Parsed tree:\n{}\n", Operon::InfixFormatter::Format(model, ds, defaultPrecision));
+        fmt::print("Parsed tree:\n{:infix:roundtrip}\n", Operon::Fmt::WithNames{model, ds});
         fmt::print("Data range: {}:{}\n", range.Start(), range.End());
         fmt::print("Scale: {}\n", result["scale"].count() > 0 ? result["scale"].as<std::string>() : std::string("auto"));
     }
