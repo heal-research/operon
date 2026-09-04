@@ -89,7 +89,7 @@ TEST_CASE("Tree JSON round-trip", "[serialization]")
         auto json     = Operon::Serialization::ToJson(original);
         auto restored = Operon::Serialization::TreeFromJson(json);
         REQUIRE(restored);
-        CHECK_FALSE(restored->Validate().has_value());
+        CHECK(restored->Validate());
         CHECK(TreesEqual(original, *restored));
     }
 }
@@ -102,7 +102,7 @@ TEST_CASE("Individual JSON round-trip", "[serialization]")
         auto json     = Operon::Serialization::ToJson(original);
         auto restored = Operon::Serialization::IndividualFromJson(json);
         REQUIRE(restored);
-        CHECK_FALSE(restored->Genotype.Validate().has_value());
+        CHECK(restored->Genotype.Validate());
         CHECK(IndividualsEqual(original, *restored));
     }
 }
@@ -133,7 +133,7 @@ TEST_CASE("Tree BEVE round-trip", "[serialization]")
         auto beve     = Operon::Serialization::ToBeve(original);
         auto restored = Operon::Serialization::TreeFromBeve(beve);
         REQUIRE(restored);
-        CHECK_FALSE(restored->Validate().has_value());
+        CHECK(restored->Validate());
         CHECK(TreesEqual(original, *restored));
     }
 }
@@ -146,7 +146,7 @@ TEST_CASE("Individual BEVE round-trip", "[serialization]")
         auto beve     = Operon::Serialization::ToBeve(original);
         auto restored = Operon::Serialization::IndividualFromBeve(beve);
         REQUIRE(restored);
-        CHECK_FALSE(restored->Genotype.Validate().has_value());
+        CHECK(restored->Genotype.Validate());
         CHECK(IndividualsEqual(original, *restored));
     }
 }

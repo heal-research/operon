@@ -8,16 +8,34 @@
 #include <algorithm>
 #include <cstdint>
 #include <numeric>
-#include <optional>
 #include <string>
 #include <type_traits>
 #include <vector>
+
+#include <tl/expected.hpp>
 
 #include "contracts.hpp"
 #include "subtree.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon {
+enum class TreeValidationError : std::uint8_t {
+    InvalidNodeType,
+    RefNotBackward,
+    FunctionArityZero,
+    TerminalArityNonZero,
+    MissingChildren,
+    ChildSubtreesNotContiguous,
+    ChildSubtreesNotAdjacent,
+    MultipleRoots,
+    RootDoesNotCoverTree,
+    DerivedMetadataOverflow,
+    LengthMismatch,
+    DepthMismatch,
+    ParentMismatch,
+    LevelMismatch,
+};
+
 class OPERON_EXPORT Tree { // NOLINT
 public:
     Tree() = default;
@@ -59,9 +77,10 @@ public:
     // exactly Arity contiguous completed child subtrees. Terminals (including
     // Ref) have zero arity, and RefTo points to an earlier node. Length, Depth,
     // Parent, and Level must equal the metadata derived from that structure.
-    // Empty trees are valid. This opt-in diagnostic API is intentionally not
-    // called by evaluation or search paths.
-    [[nodiscard]] auto Validate() const -> std::optional<std::string>;
+    // Empty trees are valid. This opt-in API is intentionally not called by
+    // evaluation or search paths. Its error value identifies the first failed
+    // invariant without allocating a diagnostic string.
+    [[nodiscard]] auto Validate() const -> tl::expected<void, TreeValidationError>;
     auto Sort() -> Tree&;
     auto Reduce() -> Tree&;
     auto Simplify() -> Tree&;

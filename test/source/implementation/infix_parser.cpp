@@ -40,7 +40,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     parsedTrees.reserve(nTrees);
     std::transform(trees.begin(), trees.end(), std::back_inserter(parsedTrees), [&](const auto& tree) -> auto {
         auto parsed = InfixParser::Parse(fmt::format("{:infix:50}", Operon::Fmt::WithNames{tree, ds}), ds);
-        CHECK_FALSE(parsed.Validate().has_value());
+        CHECK(parsed.Validate());
         return parsed;
     });
 
@@ -88,7 +88,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
         const auto* str = "sin((sqrt(abs(square(sin(((-0.00191) * X6))))) - sqrt(abs(((-0.96224) / (-0.40567))))))";
         auto tree = Operon::InfixParser::Parse(str);
         CHECK(tree.Length() > 0);
-        CHECK_FALSE(tree.Validate().has_value());
+        CHECK(tree.Validate());
     }
 
     SECTION("Arithmetic with constants") {
@@ -113,7 +113,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
         std::string const expr{"aq(3, 5)"};
         auto tree = InfixParser::Parse(expr);
         CHECK(tree.Length() > 0);
-        CHECK_FALSE(tree.Validate().has_value());
+        CHECK(tree.Validate());
     }
 
     SECTION("Multiple additions") {
@@ -126,7 +126,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
         std::vector<Operon::Scalar> const v{0};
         Operon::Dataset const ds({x}, {v});
         auto result = Interpreter<Operon::Scalar, DTable>::Evaluate(tree, ds, Range(0, 1));
-        CHECK_FALSE(tree.Validate().has_value());
+        CHECK(tree.Validate());
         CHECK(result[0] == Catch::Approx(10.0F));
     }
 }
