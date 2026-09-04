@@ -2,16 +2,18 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <cstddef>
-#include <cstdint>
 #include <algorithm>
 #include <cmath>
-#include <numeric>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
+#include <numeric>
 #include <optional>
-#include <vector>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "operon/core/tree.hpp"
 #include "operon/hash/hash.hpp"
@@ -49,6 +51,105 @@ auto Tree::UpdateNodes() -> Tree&
     }
 
     return *this;
+}
+
+auto Tree::Validate() const -> std::optional<std::string>
+{
+    if (nodes_.empty()) { return std::nullopt; }
+
+    struct CompletedSubtree {
+        size_t First;
+        size_t Root;
+        size_t Depth;
+    };
+
+    std::vector<CompletedSubtree> stack;
+    stack.reserve(nodes_.size());
+    std::vector<size_t> parents(nodes_.size());
+    std::vector<size_t> lengths(nodes_.size());
+    std::vector<size_t> depths(nodes_.size());
+
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        auto const& node = nodes_[i];
+        if (node.IsRef() && node.RefTo >= i) {
+            return "node " + std::to_string(i) + ": RefTo must point to an earlier node";
+        }
+
+        if (node.IsFunction() == node.IsLeaf()) {
+            return "node " + std::to_string(i) + ": "
+                + (node.IsFunction() ? "Function must have positive arity" : "terminal must have zero arity");
+        }
+        if (node.IsLeaf()) {
+            depths[i] = 1;
+            stack.push_back({i, i, 1});
+            continue;
+        }
+
+        auto const arity = static_cast<size_t>(node.Arity);
+        if (stack.size() < arity) {
+            return "node " + std::to_string(i) + ": arity " + std::to_string(arity)
+                + " requires that many completed child subtrees, but only " + std::to_string(stack.size()) + " are available";
+        }
+
+        auto const firstChild = stack.size() - arity;
+        auto const first      = stack[firstChild].First;
+        if (firstChild > 0 && stack[firstChild - 1].Root + 1 != first) {
+            return "node " + std::to_string(i) + ": child subtrees do not form a contiguous postfix partition";
+        }
+        if (stack.back().Root + 1 != i) {
+            return "node " + std::to_string(i) + ": child subtrees do not end immediately before their parent";
+        }
+
+        size_t depth{1};
+        for (auto j = firstChild; j < stack.size(); ++j) {
+            parents[stack[j].Root] = i;
+            depth = std::max(depth, stack[j].Depth + 1);
+        }
+        stack.erase(stack.begin() + static_cast<std::ptrdiff_t>(firstChild), stack.end());
+        stack.push_back({first, i, depth});
+        lengths[i] = i - first;
+        depths[i]  = depth;
+    }
+
+    if (stack.size() != 1) {
+        return "tree has " + std::to_string(stack.size()) + " roots; postfix input must contain exactly one root";
+    }
+    if (stack.front().First != 0 || stack.front().Root != nodes_.size() - 1) {
+        return "root does not cover every node in the postfix sequence";
+    }
+
+    std::vector<size_t> levels(nodes_.size());
+    levels.back() = 1;
+    for (size_t i = nodes_.size() - 1; i > 0; --i) {
+        levels[i - 1] = levels[parents[i - 1]] + 1;
+    }
+
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        auto const& node = nodes_[i];
+        if (lengths[i] > std::numeric_limits<uint16_t>::max()
+            || depths[i] > std::numeric_limits<uint16_t>::max()
+            || parents[i] > std::numeric_limits<uint16_t>::max()
+            || levels[i] > std::numeric_limits<uint16_t>::max()) {
+            return "node " + std::to_string(i) + ": derived metadata exceeds uint16_t storage";
+        }
+        if (node.Length != lengths[i]) {
+            return "node " + std::to_string(i) + ": Length is " + std::to_string(node.Length)
+                + ", expected " + std::to_string(lengths[i]);
+        }
+        if (node.Depth != depths[i]) {
+            return "node " + std::to_string(i) + ": Depth is " + std::to_string(node.Depth)
+                + ", expected " + std::to_string(depths[i]);
+        }
+        if (node.Parent != parents[i]) {
+            return "node " + std::to_string(i) + ": Parent is " + std::to_string(node.Parent)
+                + ", expected " + std::to_string(parents[i]);
+        }
+        if (node.Level != levels[i]) {
+            return "node " + std::to_string(i) + ": Level is " + std::to_string(node.Level)
+                + ", expected " + std::to_string(levels[i]);
+        }
+    }
+    return std::nullopt;
 }
 
 auto Tree::Reduce() -> Tree&
