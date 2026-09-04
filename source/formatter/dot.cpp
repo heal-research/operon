@@ -32,6 +32,14 @@ auto DotFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::strin
 
     auto format = [&](auto const& s) -> auto {
         if (s.IsLeaf()) { return formatLeaf(s); }
+        if (s.Value != Operon::Scalar{1}) {
+            // Function-node weights are real, evaluated state (see
+            // Tree::AdjustedLength()/the interpreter's weighted apply) --
+            // omitting them here made the label describe a different
+            // model than the one actually evaluated.
+            auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "(({{:.{}f}}) * {{}})" : "({{:.{}f}} * {{}})"), decimalPrecision);
+            return fmt::format(fmt::runtime(formatString), s.Value, s.Name());
+        }
         return s.Name();
     };
 

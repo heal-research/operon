@@ -34,7 +34,12 @@ auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::
         }
     } else {
         if (s.Value != Operon::Scalar{1}) {
-            auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}"), decimalPrecision);
+            // Only ONE placeholder here (value) -- unlike the IsVariable
+            // branch above, the name is appended separately below, not
+            // via this format string. Reusing the two-placeholder
+            // "{:.Nf} * {}" pattern here previously threw fmt::format_error
+            // ("argument not found") because only s.Value was ever passed.
+            auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}f}}"), decimalPrecision);
             fmt::format_to(std::back_inserter(current), "(");
             fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
             fmt::format_to(std::back_inserter(current), " * ");
@@ -69,6 +74,8 @@ auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::
 
 auto TreeFormatter::Format(Tree const& tree, Dataset const& dataset, int decimalPrecision) -> std::string
 {
+    if (tree.Nodes().empty()) { return std::string{}; }
+
     Operon::Map<Operon::Hash, std::string> variableNames;
     for (auto const& var : dataset.GetVariables()) {
         variableNames.insert({ var.Hash, var.Name });
@@ -81,6 +88,8 @@ auto TreeFormatter::Format(Tree const& tree, Dataset const& dataset, int decimal
 
 auto TreeFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
 {
+    if (tree.Nodes().empty()) { return std::string{}; }
+
     std::string result;
     FormatNode(tree, variableNames, tree.Length() - 1, result, "", /*isLast=*/true, /*initialMarker=*/false, decimalPrecision);
     return result;
