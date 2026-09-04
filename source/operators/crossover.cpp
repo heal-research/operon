@@ -84,8 +84,18 @@ auto CrossoverBase::Cross(const Tree& lhs, const Tree& rhs, /* index of subtree 
     if (!detail::IsSelfContainedSubtree(Operon::Span<Node const>{right}, rightSpan)) {
         return lhs;
     }
-    auto nodes = detail::RewriteSubtree(Operon::Span<Node const>{left}, leftSpan,
-        Operon::Span<Node const>{right}.subspan(rightSpan.First, rightSpan.Size));
+    auto donor = Operon::Span<Node const>{right}.subspan(rightSpan.First, rightSpan.Size);
+    if (std::ranges::any_of(donor, [](Node const& node) { return node.IsRef(); })) {
+        auto normalized = Operon::Vector<Node>(donor.begin(), donor.end());
+        for (auto& node : normalized) {
+            if (node.IsRef()) {
+                node.RefTo = static_cast<uint16_t>(node.RefTo - rightSpan.First);
+            }
+        }
+        auto nodes = detail::RewriteSubtree(Operon::Span<Node const>{left}, leftSpan, normalized);
+        return Tree(std::move(nodes)).UpdateNodes();
+    }
+    auto nodes = detail::RewriteSubtree(Operon::Span<Node const>{left}, leftSpan, donor);
     return Tree(std::move(nodes)).UpdateNodes();
 }
 

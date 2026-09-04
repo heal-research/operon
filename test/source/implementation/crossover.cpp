@@ -73,6 +73,20 @@ TEST_CASE("Crossover leaves parent unchanged for an external Ref donor", "[opera
     CHECK(child.Nodes().back().HashValue == lhs.Nodes().back().HashValue);
 }
 
+TEST_CASE("Crossover rebases a nonzero-offset self-contained Ref donor", "[operators]")
+{
+    auto const add = Node::Function(Hash(BuiltinOp::Add), 2);
+    auto const mul = Node::Function(Hash(BuiltinOp::Mul), 2);
+    auto lhs = Tree({Node::Constant(2), Node::Constant(3), add}).UpdateNodes();
+    auto rhs = Tree({Node::Constant(9), Node::Constant(4), Node::Ref(1), add, mul}).UpdateNodes();
+
+    auto const child = CrossoverBase::Cross(lhs, rhs, 0, 3);
+    CHECK(child.Nodes().size() == 5);
+    CHECK(child.Nodes()[1].IsRef());
+    CHECK(child.Nodes()[1].RefTo == 0);
+    CHECK(child.Nodes().back().Length == 4);
+}
+
 TEST_CASE("Crossover produces valid trees", "[operators]")
 {
     auto ds = Operon::Dataset("./data/Poly-10.csv", true);
