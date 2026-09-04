@@ -69,9 +69,13 @@ public:
 
     auto Evaluate(RandomGenerator& rng, Individual const& ind, Span<Scalar> buf) const -> ReturnType override;
 
-    [[nodiscard]] auto CacheSize()   const -> std::size_t;
-    [[nodiscard]] auto CacheHits()   const -> std::size_t { return hits_.load(); }
-    [[nodiscard]] auto CacheMisses() const -> std::size_t { return misses_.load(); }
+    [[nodiscard]] auto CacheSize() const -> std::size_t;
+    // Counts only lookups that find an already-compiled forward function.
+    [[nodiscard]] auto CacheHits() const -> std::size_t { return cacheHits_.load(); }
+    // Counts JIT-eligible forward lookups with no compiled forward function.
+    [[nodiscard]] auto CacheMisses() const -> std::size_t { return cacheMisses_.load(); }
+    // Counts successful forward compilations initiated by this evaluator.
+    [[nodiscard]] auto CompileSuccesses() const -> std::size_t { return compileSuccesses_.load(); }
 
     void ResetCounters(); // not thread-safe; call only when no evaluations are in flight
     // Releases cached code. Call only when no returned CompileMeta pointer is
@@ -108,8 +112,9 @@ private:
     int         maxLength_{0};
     std::size_t minVisits_{1};
 
-    mutable std::atomic<std::size_t> hits_{0};
-    mutable std::atomic<std::size_t> misses_{0};
+    mutable std::atomic<std::size_t> cacheHits_{0};
+    mutable std::atomic<std::size_t> cacheMisses_{0};
+    mutable std::atomic<std::size_t> compileSuccesses_{0};
     mutable std::atomic<std::size_t> avx2Fails_{0};
     mutable std::atomic<std::size_t> compileFails_{0};
 };

@@ -427,9 +427,18 @@ auto TreeCompiler::CompileAVX2(Operon::Tree const& tree) -> std::unique_ptr<Comp
         }
     }
 
-    CodeHolder code;
+    // Keep the compiler and CodeHolder's soft-reset arena. `reinit()` is
+    // intentionally avoided: with this AsmJit build it can emit stale direct
+    // call relocations; see the [jit][repro] regression test.
+    thread_local CodeHolder code;
+    thread_local Compiler   cc;
+    thread_local bool       initialized = false;
+    if (initialized) {
+        code.reset();
+    }
     code.init(rt.environment(), rt.cpu_features());
-    Compiler cc(&code);
+    code.attach(&cc);
+    initialized = true;
 
     FuncNode* fnNode = cc.add_func(
         FuncSignature::build<void, float*, float const* const*, int32_t, float const*>());
@@ -558,9 +567,17 @@ auto TreeCompiler::CompileJacobian(JacobianDag const& dag) -> std::unique_ptr<Co
         }
     }
 
-    CodeHolder code;
+    // Keep the compiler and CodeHolder's soft-reset arena. See CompileAVX2
+    // for why this uses AsmJit's init()/reset() reuse strategy.
+    thread_local CodeHolder code;
+    thread_local Compiler   cc;
+    thread_local bool       initialized = false;
+    if (initialized) {
+        code.reset();
+    }
     code.init(rt.environment(), rt.cpu_features());
-    Compiler cc(&code);
+    code.attach(&cc);
+    initialized = true;
 
     // void fn(float* const* outs, float const* const* cols, int32_t nRows, float const* consts)
     FuncNode* fnNode = cc.add_func(

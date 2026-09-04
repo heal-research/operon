@@ -42,16 +42,18 @@ auto JitEvaluator::GetOrCompile(Tree const& tree) const -> CompileMeta const*
 
 auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMeta const*
 {
-    if (maxLength_ > 0 && std::cmp_greater(tree.Length(), maxLength_)) { ++misses_; return nullptr; }
+    if (maxLength_ > 0 && std::cmp_greater(tree.Length(), maxLength_)) { return nullptr; }
 
     // Fast path: already compiled.
     CompileMeta const* result{};
     if (zobrist_->JitCache().IfContains(hash, [&](JitEntry const& e) -> void {
             if (e.meta && e.meta->fn) { result = e.meta.get(); }
         }) && result != nullptr) {
-        ++hits_;
+        ++cacheHits_;
         return result;
     }
+
+    ++cacheMisses_;
 
     // Increment visit counter; return nullptr until frequency threshold is met.
     std::size_t visits{};
@@ -59,7 +61,7 @@ auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMet
         [&](JitEntry& e) -> void { visits = ++e.Visits; },
         [&](JitEntry& e) -> void { visits = ++e.Visits; }
     );
-    if (visits < minVisits_) { ++misses_; return nullptr; }
+    if (visits < minVisits_) { return nullptr; }
 
     // Compile outside the map lock so cc.finalize() runs in parallel.
     // AVX2-only: no scalar/SSE fallback attempt (see jit_compiler.hpp) — a
@@ -67,7 +69,12 @@ auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMet
     // asmjit failure) falls straight through to interpreter evaluation via
     // the nullptr compiled result below.
     auto compiled = compiler_.CompileAVX2(tree);
-    if (!compiled) { ++avx2Fails_; ++compileFails_; }
+    if (compiled) {
+        ++compileSuccesses_;
+    } else {
+        ++avx2Fails_;
+        ++compileFails_;
+    }
 
     zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) -> void {
         if (!e.meta) {
@@ -80,7 +87,6 @@ auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMet
         }
         if (e.meta && e.meta->fn) { result = e.meta.get(); }
     });
-    if (result != nullptr) { ++hits_; } else { ++misses_; }
     return result;
 }
 
@@ -203,8 +209,9 @@ void JitEvaluator::ClearCache()
 
 void JitEvaluator::ResetCounters()
 {
-    hits_.store(0);
-    misses_.store(0);
+    cacheHits_.store(0);
+    cacheMisses_.store(0);
+    compileSuccesses_.store(0);
     avx2Fails_.store(0);
     compileFails_.store(0);
 }
