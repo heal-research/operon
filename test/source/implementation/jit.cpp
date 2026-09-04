@@ -316,23 +316,27 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
         CHECK(jitEval.CacheHits() >= 1);
     }
 
-    SECTION("CacheMisses and ResetCounters") {
-        // Length gate forces a miss.
+    SECTION("Cache counters and ResetCounters") {
+        // The length gate rejects the tree before a JIT-cache lookup.
         jitEval.SetMaxLength(1);
 
         auto tree = InfixParser::Parse("X1 * X2 + X3", ds);  // length > 1
         auto const* c = jitEval.GetOrCompile(tree);
         CHECK(c == nullptr);
-        CHECK(jitEval.CacheMisses() >= 1);
-
-        // ResetCounters clears hit/miss/fail counters without touching the cache.
-        jitEval.SetMaxLength(0);
-        auto const* c2 = jitEval.GetOrCompile(tree);  // this will compile and increment hits
-        CHECK(c2 != nullptr);
-
-        jitEval.ResetCounters();
-        CHECK(jitEval.CacheHits()   == 0);
         CHECK(jitEval.CacheMisses() == 0);
+
+        // An eligible first lookup is a cache miss and compiles the entry.
+        jitEval.SetMaxLength(0);
+        auto const* c2 = jitEval.GetOrCompile(tree);
+        CHECK(c2 != nullptr);
+        CHECK(jitEval.CacheMisses() == 1);
+        CHECK(jitEval.CompileSuccesses() == 1);
+
+        // ResetCounters clears metrics without touching the cache.
+        jitEval.ResetCounters();
+        CHECK(jitEval.CacheHits() == 0);
+        CHECK(jitEval.CacheMisses() == 0);
+        CHECK(jitEval.CompileSuccesses() == 0);
         // Cache itself is unaffected — the compiled entry is still there.
         CHECK(jitEval.CacheSize() >= 1);
     }
@@ -1217,6 +1221,48 @@ TEST_CASE("JitLMCostFunction TinySolver convergence", "[jit][lm]")
         INFO("row " << i);
         CHECK(predVec[i] == Catch::Approx(y[i]).epsilon(1e-3F));
     }
+}
+
+TEST_CASE("JIT compiler CodeHolder reuse replay", "[jit][repro]")
+{
+    auto ds    = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range{0, 201};
+
+    JIT::JitRuntimePool compilerPool;
+    JIT::TreeCompiler compiler{&compilerPool};
+    if (!compiler.HasAVX2()) { SKIP("AVX2 not available"); }
+
+    auto first = InfixParser::Parse(
+        "((((((-5) * X4) + 1) - sin(2)) * (((2 * X5) - ((-3) * X3)) + ((-1) / (1 * X3)))) + ((((3 * X8) / 4) / (2 - ((-4) * X8))) / ((3 - ((-5) * X9)) + sin((0 * X8)))))",
+        ds);
+    auto second = InfixParser::Parse(
+        "sin((((((((2 * X10) * (0 * X1)) + sin(((-4) * X2))) + ((0 * X8) + ((-5) * X8))) * ((((-2) * X7) + ((-3) * X3)) / (3 * 0))) - sin(sin((1 + 2)))) - sin(sin(sin(((-1) / (2 * X10)))))))",
+        ds);
+
+    auto firstCompiled = compiler.CompileAVX2(first);
+    REQUIRE(firstCompiled != nullptr);
+    REQUIRE(firstCompiled->fn != nullptr);
+    auto firstResult = EvalCompiled(*firstCompiled, first, ds, range);
+
+    auto secondCompiled = compiler.CompileAVX2(second);
+    REQUIRE(secondCompiled != nullptr);
+    REQUIRE(secondCompiled->fn != nullptr);
+    auto secondResult = EvalCompiled(*secondCompiled, second, ds, range);
+
+    auto secondReference = EvalRef(second, ds, range);
+    REQUIRE(secondResult.size() == secondReference.size());
+    for (std::size_t i = 0; i < secondResult.size(); ++i) {
+        INFO("row " << i << ": ref=" << secondReference[i] << " avx2=" << secondResult[i]);
+        if (std::isnan(secondReference[i])) {
+            CHECK(std::isnan(secondResult[i]));
+        } else if (std::isinf(secondReference[i])) {
+            CHECK(std::isinf(secondResult[i]));
+            CHECK((secondReference[i] > 0) == (secondResult[i] > 0));
+        } else {
+            CHECK(secondResult[i] == Catch::Approx(secondReference[i]).epsilon(Tol));
+        }
+    }
+    REQUIRE_FALSE(firstResult.empty());
 }
 
 } // namespace Operon::Test
