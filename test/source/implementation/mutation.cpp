@@ -44,6 +44,7 @@ TEST_CASE("InsertSubtreeMutation produces valid tree", "[operators]")
 
     CHECK(child.Length() > 0);
     CHECK(child.Length() <= 2 * targetLen);
+    CHECK_FALSE(child.Validate().has_value());
 }
 
 TEST_CASE("RemoveSubtreeMutation replaces a random subtree with the grammar-minimal terminal", "[operators]")
@@ -78,6 +79,7 @@ TEST_CASE("RemoveSubtreeMutation replaces a random subtree with the grammar-mini
         auto child = mut(random, tree);
         CHECK(child.Length() > 0);
         CHECK(child.Length() <= originalLength);
+        CHECK_FALSE(child.Validate().has_value());
     }
 }
 
@@ -130,6 +132,7 @@ TEST_CASE("Mutation tree stays within bounds", "[operators]")
         auto child = mut(random, tree);
         CHECK(child.Length() > 0);
         CHECK(child.Length() <= static_cast<size_t>(maxLength));
+        CHECK_FALSE(child.Validate().has_value());
     }
 }
 
@@ -161,6 +164,7 @@ TEST_CASE("ReplaceSubtreeMutation via PTC2 respects maxDepth", "[operators]")
     for (int i = 0; i < 5000; ++i) {
         tree = mut(random, std::move(tree));
         CHECK(tree.Depth() <= maxDepth);
+        CHECK_FALSE(tree.Validate().has_value());
     }
 }
 

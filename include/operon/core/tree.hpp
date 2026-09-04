@@ -7,9 +7,11 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <vector>
 #include <numeric>
+#include <optional>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 #include "contracts.hpp"
 #include "subtree.hpp"
@@ -51,6 +53,15 @@ public:
     }
 
     auto UpdateNodes() -> Tree&;
+
+    // Validates the postfix tree representation without using Subtree traversal.
+    // A non-empty tree has one root at the final node; every Function consumes
+    // exactly Arity contiguous completed child subtrees. Terminals (including
+    // Ref) have zero arity, and RefTo points to an earlier node. Length, Depth,
+    // Parent, and Level must equal the metadata derived from that structure.
+    // Empty trees are valid. This opt-in diagnostic API is intentionally not
+    // called by evaluation or search paths.
+    [[nodiscard]] auto Validate() const -> std::optional<std::string>;
     auto Sort() -> Tree&;
     auto Reduce() -> Tree&;
     auto Simplify() -> Tree&;

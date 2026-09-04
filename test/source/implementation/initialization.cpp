@@ -117,6 +117,7 @@ TEST_CASE("GROW creator", "[operators]") // NOLINT(readability-function-cognitiv
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
             CHECK(tree.Length() <= maxLength + 10); // allow some slack for tree construction
+            CHECK_FALSE(tree.Validate().has_value());
         }
     }
 
@@ -156,6 +157,7 @@ TEST_CASE("BTC creator", "[operators]")
         auto trees = GenerateTrees(random, btc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
+            CHECK_FALSE(tree.Validate().has_value());
         }
     }
 
@@ -197,6 +199,7 @@ TEST_CASE("PTC2 creator", "[operators]")
         auto trees = GenerateTrees(random, ptc, lengths, maxDepth);
         for (auto const& tree : trees) {
             CHECK(tree.Length() > 0);
+            CHECK_FALSE(tree.Validate().has_value());
         }
     }
 }
@@ -222,6 +225,7 @@ TEST_CASE("PTC2 creator respects maxDepth", "[operators]")
                 auto const tree = ptc(random, targetLen, 1, maxDepth);
                 CHECK(tree.Length() <= targetLen);
                 CHECK(tree.Depth() <= maxDepth);
+                CHECK_FALSE(tree.Validate().has_value());
             }
         }
     }
