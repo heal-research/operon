@@ -8,6 +8,7 @@
 #include "../operon_test.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/formatter/formatter.hpp"
+#include <fmt/format.h>
 #include "operon/core/pset.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/parser/infix.hpp"
@@ -38,7 +39,7 @@ TEST_CASE("Parser roundtrip correctness", "[parser]")
     Operon::Vector<Operon::Tree> parsedTrees;
     parsedTrees.reserve(nTrees);
     std::transform(trees.begin(), trees.end(), std::back_inserter(parsedTrees), [&](const auto& tree) -> auto {
-        return InfixParser::Parse(InfixFormatter::Format(tree, ds, 50), ds);
+        return InfixParser::Parse(fmt::format("{:infix:50}", Operon::Fmt::WithNames{tree, ds}), ds);
     });
 
     Range range{0, 1};
@@ -98,7 +99,7 @@ TEST_CASE("Parse specific expressions", "[parser]")
         t.UpdateNodes();
 
         Dataset const ds("./data/Poly-10.csv", true);
-        auto s1 = InfixFormatter::Format(t, ds, 5);
+        auto s1 = fmt::format("{:infix:5}", Operon::Fmt::WithNames{t, ds});
         auto t2 = InfixParser::Parse(s1);
 
         // Roundtrip: same number of nodes
@@ -147,7 +148,7 @@ TEST_CASE("Formatter output", "[parser]")
 
         for (int i = 0; i < 100; ++i) {
             auto tree = btc(rng, 20, 1, 10);
-            auto s = InfixFormatter::Format(tree, ds, 5);
+            auto s = fmt::format("{:infix:5}", Operon::Fmt::WithNames{tree, ds});
             CHECK(validateString(s));
         }
     }
@@ -177,7 +178,7 @@ TEST_CASE("Formatter output", "[parser]")
         Operon::Tree tree({nx, ny, mul, refX, add});
         tree.UpdateNodes();
 
-        auto const s = InfixFormatter::Format(tree, names, 3);
+        auto const s = fmt::format("{:infix:3}", Operon::Fmt::WithNames{tree, names});
         CHECK(s.find('y') != std::string::npos); // from x*y
         // Formatted string must reference x twice (once from x*y, once from
         // ref(x)) -- a formatter that follows i-1 instead of RefTo would
@@ -220,7 +221,7 @@ TEST_CASE("Formatter output", "[parser]")
         };
 
         SECTION("PostfixFormatter replays the referenced subtree's tokens") {
-            auto const s = PostfixFormatter::Format(tree, names, 2);
+            auto const s = fmt::format("{:postfix:2}", Operon::Fmt::WithNames{tree, names});
             // x*y contributes one "x", ref(x) must replay x's token again --
             // a formatter following i-1 instead of RefTo would instead
             // duplicate the "y" (or mul) token and never emit a second x.
@@ -229,18 +230,45 @@ TEST_CASE("Formatter output", "[parser]")
         }
 
         SECTION("TreeFormatter nests the referenced subtree under the Ref leaf") {
-            auto const s = TreeFormatter::Format(tree, names, 2);
+            auto const s = fmt::format("{:tree:2}", Operon::Fmt::WithNames{tree, names});
             CHECK(countOccurrences(s, "x D:") == 2);
         }
 
         SECTION("DotFormatter points edges at the shared node, not a duplicate/dangling Ref box") {
-            auto const s = DotFormatter::Format(tree, names, 2);
-            CHECK_NOTHROW(DotFormatter::Format(tree, names, 2));
+            auto const s = fmt::format("{:dot:2}", Operon::Fmt::WithNames{tree, names});
+            CHECK_NOTHROW(fmt::format("{:dot:2}", Operon::Fmt::WithNames{tree, names}));
             CHECK(s.find("3 [label=") == std::string::npos); // no box for the Ref node itself
             CHECK(s.find("0 -> 4") != std::string::npos); // nx -> add, resolved through the Ref
             CHECK(s.find("3 ->") == std::string::npos);
             CHECK(s.find("-> 3") == std::string::npos);
         }
+    }
+
+    SECTION("Bare Tree (no WithNames) falls back to deterministic X_<hash> variable labels") {
+        Operon::Dataset const ds2({"x", "y"}, {{2.0F}, {3.0F}});
+        auto const hx = ds2.GetVariable("x").value().Hash;
+
+        Operon::Node nx(NodeType::Variable);
+        nx.HashValue = hx;
+        nx.Value = 1;
+        Operon::Tree tree({nx});
+        tree.UpdateNodes();
+
+        // fmt::formatter<Operon::Tree> (no Dataset/map supplied) must not
+        // throw -- a Tree does not itself own variable names, so this is
+        // diagnostic-only fallback labeling, not an error condition.
+        std::string bare;
+        CHECK_NOTHROW(bare = fmt::format("{}", tree));
+        CHECK(bare.find(fmt::format("X_{:016x}", hx)) != std::string::npos);
+
+        // Deterministic: the same hash gets the same fallback label on a
+        // second, independent format call.
+        CHECK(fmt::format("{}", tree) == bare);
+
+        // Every mode accepts the bare-Tree form.
+        CHECK_NOTHROW(fmt::format("{:postfix}", tree));
+        CHECK_NOTHROW(fmt::format("{:tree}", tree));
+        CHECK_NOTHROW(fmt::format("{:dot}", tree));
     }
 }
 

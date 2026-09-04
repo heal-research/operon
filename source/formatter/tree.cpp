@@ -4,12 +4,14 @@
 
 #include <fmt/format.h>
 
-#include "operon/core/dataset.hpp"
-#include "operon/formatter/formatter.hpp"
+#include "detail.hpp"
 
-namespace Operon {
+namespace Operon::Fmt::Detail {
 
-auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::string> variableNames, size_t i, std::string& current, std::string indent, bool isLast, bool initialMarker, int decimalPrecision) -> void
+namespace {
+
+void FormatNode(Tree const& tree, NameView const& names, std::size_t i, std::string& current,
+                 std::string indent, bool isLast, bool initialMarker, ValueSpec spec)
 {
     std::string const last{"└── "};
     std::string const notLast{"├── "};
@@ -20,33 +22,22 @@ auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::
         current += isLast ? last : notLast;
     }
 
-    const auto& s = tree[i];
+    auto const& s = tree[i];
     if (s.IsConstant()) {
-        auto formatString = fmt::format("{{:.{}f}}", decimalPrecision);
-        fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
+        AppendValue(current, s.Value, spec);
     } else if (s.IsVariable()) {
-        auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}}) * {{}}" : "{{:.{}f}} * {{}}"), decimalPrecision);
-
-        if (auto it = variableNames.find(s.HashValue); it != variableNames.end()) {
-            fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value, it->second);
-        } else {
-            throw std::runtime_error(fmt::format("A variable with hash value {} could not be found in the dataset.\n", s.HashValue));
-        }
+        AppendValue(current, s.Value, spec);
+        current += " * ";
+        AppendVariableName(current, names, s.HashValue);
     } else {
         if (s.Value != Operon::Scalar{1}) {
-            // Only ONE placeholder here (value) -- unlike the IsVariable
-            // branch above, the name is appended separately below, not
-            // via this format string. Reusing the two-placeholder
-            // "{:.Nf} * {}" pattern here previously threw fmt::format_error
-            // ("argument not found") because only s.Value was ever passed.
-            auto formatString = fmt::format(fmt::runtime(s.Value < 0 ? "({{:.{}f}})" : "{{:.{}f}}"), decimalPrecision);
-            fmt::format_to(std::back_inserter(current), "(");
-            fmt::format_to(std::back_inserter(current), fmt::runtime(formatString), s.Value);
-            fmt::format_to(std::back_inserter(current), " * ");
-            fmt::format_to(std::back_inserter(current), "{}", s.Name());
-            fmt::format_to(std::back_inserter(current), ")");
+            current += "(";
+            AppendValue(current, s.Value, spec);
+            current += " * ";
+            current += s.Name();
+            current += ")";
         } else {
-            fmt::format_to(std::back_inserter(current), "{}", s.Name());
+            current += s.Name();
         }
     }
     fmt::format_to(std::back_inserter(current), " D:{} L:{} N:{}\n", s.Depth, s.Level, s.Length + 1);
@@ -62,37 +53,23 @@ auto TreeFormatter::FormatNode(Tree const& tree, Operon::Map<Operon::Hash, std::
     if (s.IsRef()) {
         // Ref has no children of its own -- nest the shared subtree's
         // diagram directly under it so it's visible rather than eliding it.
-        FormatNode(tree, variableNames, s.RefTo, current, indent, /*isLast=*/true, /*initialMarker=*/true, decimalPrecision);
+        FormatNode(tree, names, s.RefTo, current, indent, /*isLast=*/true, /*initialMarker=*/true, spec);
         return;
     }
 
-    size_t count = 0;
+    std::size_t count = 0;
     for (auto j : tree.Indices(i)) {
-        FormatNode(tree, variableNames, j, current, indent, ++count == s.Arity, /*initialMarker=*/true, decimalPrecision);
+        FormatNode(tree, names, j, current, indent, ++count == s.Arity, /*initialMarker=*/true, spec);
     }
 }
 
-auto TreeFormatter::Format(Tree const& tree, Dataset const& dataset, int decimalPrecision) -> std::string
+} // namespace
+
+auto FormatTreeDiagram(Tree const& tree, NameView const& names, ValueSpec spec) -> std::string
 {
-    if (tree.Nodes().empty()) { return std::string{}; }
-
-    Operon::Map<Operon::Hash, std::string> variableNames;
-    for (auto const& var : dataset.GetVariables()) {
-        variableNames.insert({ var.Hash, var.Name });
-    }
-
     std::string result;
-    FormatNode(tree, variableNames, tree.Length() - 1, result, "", /*isLast=*/true, /*initialMarker=*/false, decimalPrecision);
+    FormatNode(tree, names, tree.Length() - 1, result, "", /*isLast=*/true, /*initialMarker=*/false, spec);
     return result;
 }
 
-auto TreeFormatter::Format(Tree const& tree, Operon::Map<Operon::Hash, std::string> const& variableNames, int decimalPrecision) -> std::string
-{
-    if (tree.Nodes().empty()) { return std::string{}; }
-
-    std::string result;
-    FormatNode(tree, variableNames, tree.Length() - 1, result, "", /*isLast=*/true, /*initialMarker=*/false, decimalPrecision);
-    return result;
-}
-
-} // namespace Operon
+} // namespace Operon::Fmt::Detail

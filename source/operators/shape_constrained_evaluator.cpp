@@ -782,7 +782,7 @@ auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) cons
         std::ignore = Feasible(pop[i].Genotype); // populates the ordinary cache as a side effect
 
         if (dump) {
-            auto const infix = Operon::InfixFormatter::Format(pop[i].Genotype, *GetProblem()->GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10);
+            auto const infix = fmt::format("{:infix:roundtrip}", Operon::Fmt::WithNames{pop[i].Genotype, *GetProblem()->GetDataset()});
             // Constraints are checked against the SCALED model (Scale*f+Offset),
             // not the raw subtree -- TransformBound applies this same fit to the
             // bound rather than baking it into the tree (see MeasureConstraints).

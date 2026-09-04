@@ -472,7 +472,7 @@ auto main(int argc, char** argv) -> int
                                                  : shapePenaltyStorage->Measure(best.Genotype).Feasible;
             fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
         }
-        fmt::print("{}\n", Operon::InfixFormatter::Format(best.Genotype, *problem.GetDataset(), std::numeric_limits<Operon::Scalar>::max_digits10));
+        fmt::print("{:infix:roundtrip}\n", Operon::Fmt::WithNames{best.Genotype, *problem.GetDataset()});
         if (result.contains("pareto-front")) {
             Operon::WriteParetoFront(result["pareto-front"].as<std::string>(), gp.Individuals(), dtable, problem);
         }
