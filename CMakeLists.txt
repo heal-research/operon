@@ -95,16 +95,17 @@ add_library(operon::operon ALIAS operon_operon)
 # keeps the list current when a contributor adds or removes a header without
 # making the installation layout depend on an untracked directory copy.
 file(GLOB_RECURSE operon_installed_headers CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/operon/*.hpp"
 )
 
-# Implementation headers remain installed because the public template headers
-# include them, but users do not include them directly. Keep them out of the
-# standalone-header contract: they are verified through their owning facade.
+# Implementation and vendored headers remain installed because public template
+# headers include them, but users do not include them directly. Keep them out
+# of the standalone-header contract: their owning facade covers them instead.
 set(operon_detail_headers ${operon_installed_headers})
-list(FILTER operon_detail_headers INCLUDE REGEX "/(detail|mad_eve)/")
+list(FILTER operon_detail_headers INCLUDE REGEX "/(ceres|detail|backend/(eigen|eve|mad_eve|plain))/")
 set(operon_public_headers ${operon_installed_headers})
-list(FILTER operon_public_headers EXCLUDE REGEX "/(detail|mad_eve)/")
+list(FILTER operon_public_headers EXCLUDE REGEX "/(ceres|detail|backend/(eigen|eve|mad_eve|plain))/")
 
 target_sources(operon_operon PUBLIC
     FILE_SET operon_headers
