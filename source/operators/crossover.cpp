@@ -77,8 +77,8 @@ auto CrossoverBase::SelectRandomBranch(Operon::RandomGenerator& random, Tree con
 
 auto CrossoverBase::Cross(const Tree& lhs, const Tree& rhs, /* index of subtree 1 */ size_t i, /* index of subtree 2 */ size_t j) -> Tree
 {
-    auto const left = lhs.Nodes();
-    auto const right = rhs.Nodes();
+    auto const& left = lhs.Nodes();
+    auto const& right = rhs.Nodes();
     auto const leftSpan = detail::DescribeSubtree(Operon::Span<Node const>{left}, i);
     auto const rightSpan = detail::DescribeSubtree(Operon::Span<Node const>{right}, j);
     auto nodes = detail::RewriteSubtree(Operon::Span<Node const>{left}, leftSpan,
