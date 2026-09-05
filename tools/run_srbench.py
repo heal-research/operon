@@ -106,7 +106,11 @@ def canonical_args(args: list[str], cwd: Path) -> tuple[list[str], dict[str, Any
         elif not eq and name in VALUE_OPTIONS: i += 1; value = args[i]
         elif not eq and name in BOOL_OPTIONS and i + 1 < len(args) and args[i + 1].lower() in {"true", "false"}: i += 1; value = args[i]
         if name in PATH_OPTIONS or name in OUTPUT_PATH_OPTIONS: value = str((cwd / value).resolve())
-        out.append(f"--{name}={str(value).lower()}" if name in BOOL_OPTIONS else f"--{name}={value}"); i += 1
+        if name in BOOL_OPTIONS:
+            out.append(f"--{name}" if vals[name] else f"--{name}=false")
+        else:
+            out.append(f"--{name}={value}")
+        i += 1
     effective = dict(VALUE_DEFAULTS)
     effective.update({k: v for k, v in vals.items() if k not in BOOL_OPTIONS})
     for k in BOOL_OPTIONS: effective[k] = vals.get(k, BOOL_DEFAULTS[k])
@@ -212,8 +216,11 @@ def main() -> int:
         if not math.isfinite(parsed.timeout) or parsed.timeout <= 0: raise ValueError("--timeout must be finite and positive")
         cwd = Path.cwd().resolve(); binary = parsed.binary.resolve()
         if not binary.is_file(): raise ValueError(f"operon_gp binary is not a file: {binary}")
-        gp_args = argv[split + 1:]; canonical, opts = canonical_args(gp_args, cwd)
-        if EXTERNAL_OUTPUT_OPTIONS & set(opts): raise ValueError("checkpoint, pareto-front, and probes-config outputs are not supported by replay wrapper")
+        gp_args = argv[split + 1:]
+        explicit_opts = parse_args(gp_args)
+        canonical, opts = canonical_args(gp_args, cwd)
+        if EXTERNAL_OUTPUT_OPTIONS & set(explicit_opts):
+            raise ValueError("checkpoint, pareto-front, and probes-config outputs are not supported by replay wrapper")
         if "dataset" not in opts or "seed" not in opts: raise ValueError("replayable runs require explicit --dataset and --seed")
         try: seed = int(opts["seed"])
         except (TypeError, ValueError): raise ValueError("--seed must be an integer")
@@ -261,8 +268,15 @@ def main() -> int:
         if snapshot(lock)["sha256"] != lock_snap["sha256"]: raise RuntimeError("dependency lock mutated during run")
         executable = {**binary_snap, "staged_sha256": staged_bin_snap["sha256"], "path": str(binary)}
         inputs = sorted(({k: v for k, v in item.items() if k != "staged_path"} for item in input_snaps), key=lambda x: x["option"])
+        metrics = report["metrics"]
         manifest = {"$schema": SCHEMA + "/manifest", "schema_version": 2, "replay_comparison": REPLAY_COMPARISON, "invocation": {"argv": [str(binary), *canonical], "machine_report_option": "--report-json <private-staging-path>"}, "inputs": inputs, "effective_configuration": opts, "implementation": {"name": "Operon", "version_output": version_out, "executable": executable}, "dependency_lock": lock_snap, "compiler": None, "cpu": cpu_identity(), "resource_budget": {"wrapper_timeout_seconds": parsed.timeout, "evaluations": opts.get("evaluations"), "timelimit": opts.get("timelimit"), "status": "completed"}, "seed": seed, "result_schema": SCHEMA + "/results"}
-        (stage / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+        manifest_path = stage / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+        results = {"$schema": SCHEMA + "/results", "schema_version": 2, "srbench_compatibility": False,
+                   "dataset": dataset.stem, "algorithm": "Operon-GP", "params": {"canonical_argv": canonical},
+                   "random_state": seed, "time_time": metrics["elapsed_seconds"], "symbolic_model": report["symbolic_model"],
+                   "tree_node_count": report["tree_node_count"], "metrics": metrics,
+                   "operon": {"manifest": "manifest.json"}, "manifest_sha256": sha256(manifest_path)}
         (stage / "results.json").write_text(json.dumps(results, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
         (stage / "stdout.txt").write_text(proc_out); (stage / "stderr.txt").write_text(proc_err)
         # Reserve destination atomically; mkdir fails without touching a prior
