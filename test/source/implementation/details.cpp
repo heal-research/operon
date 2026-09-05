@@ -244,6 +244,10 @@ TEST_CASE("Dataset loading and access", "[core]")
         auto result = ds.GetVariable("Y");
         CHECK(result.has_value());
     }
+
+    SECTION("Missing variable lookup") {
+        CHECK_FALSE(ds.GetVariable("does-not-exist"));
+    }
 }
 
 TEST_CASE("PrimitiveSet configuration", "[core]")
