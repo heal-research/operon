@@ -11,7 +11,6 @@
 #include <vector>
 
 #include <gsl/pointers>
-#include <tl/expected.hpp>
 
 #include "operon/operon_export.hpp"
 #include "contracts.hpp"
@@ -21,9 +20,6 @@
 
 namespace Operon {
 
-enum class DatasetError : std::uint8_t {
-    VariableNotFound = 0,
-};
 
 class OPERON_EXPORT Dataset {
 public:
@@ -110,8 +106,8 @@ public:
     [[nodiscard]] auto GetPaddedValues(std::string const& name) const noexcept -> Scalar const*;
     [[nodiscard]] auto GetPaddedValues(Variable const& var) const noexcept -> Scalar const* { return GetPaddedValues(var.Hash); }
 
-    [[nodiscard]] auto GetVariable(std::string const& name) const noexcept -> tl::expected<Variable, DatasetError>;
-    [[nodiscard]] auto GetVariable(Operon::Hash hash) const noexcept -> tl::expected<Variable, DatasetError>;
+    [[nodiscard]] auto GetVariable(std::string const& name) const noexcept -> std::optional<Variable>;
+    [[nodiscard]] auto GetVariable(Operon::Hash hash) const noexcept -> std::optional<Variable>;
     [[nodiscard]] auto GetVariables() const noexcept -> std::vector<Operon::Variable>;
 
     // Zero-copy variable-name lookup: a view into this Dataset's own
