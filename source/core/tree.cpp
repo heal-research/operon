@@ -201,30 +201,31 @@ auto Tree::Sort() -> Tree&
     Operon::Vector<size_t> children;
     children.reserve(nodes_.size());
 
-    auto start = nodes_.begin();
-
-    for (size_t i = 0; i < nodes_.size(); ++i) {
-        auto& s = nodes_[i];
+    for (size_t i = 0; i < sorted.size(); ++i) {
+        auto& s = sorted[i];
 
         if (s.IsLeaf()) {
             continue;
         }
 
-        auto arity = s.Arity;
-        auto size = s.Length;
+        auto const arity = s.Arity;
+        auto const size = s.Length;
 
         if (s.IsCommutative()) {
             if (arity == size) {
-                std::stable_sort(start + i - size, start + i); // NOLINT
+                std::stable_sort(sorted.begin() + i - size, sorted.begin() + i); // NOLINT
             } else {
-                std::ranges::copy(Indices(i), std::back_inserter(children));
-                std::stable_sort(children.begin(), children.end(), [&](auto a, auto b) -> auto { return nodes_[a] < nodes_[b]; }); // sort child indices
+                std::ranges::copy(Tree::Indices(sorted, i), std::back_inserter(children));
+                std::stable_sort(children.begin(), children.end(), [&](auto a, auto b) -> auto { return sorted[a] < sorted[b]; }); // sort child indices
 
-                auto pos = sorted.begin() + i - size; // NOLINT
+                auto const first = i - size;
+                Operon::Vector<Operon::Node> buffer(sorted.begin() + static_cast<int64_t>(first), sorted.begin() + static_cast<int64_t>(i));
+                auto destination = sorted.begin() + static_cast<int64_t>(first);
                 for (auto j : children) {
-                    auto& c = nodes_[j];
-                    std::copy_n(start + static_cast<int64_t>(j) - c.Length, c.Length + 1, pos);
-                    pos += c.Length + 1;
+                    auto const& c = sorted[j];
+                    auto const childFirst = j - c.Length;
+                    std::copy_n(buffer.begin() + static_cast<int64_t>(childFirst - first), c.Length + 1, destination);
+                    destination += c.Length + 1;
                 }
                 children.clear();
             }
