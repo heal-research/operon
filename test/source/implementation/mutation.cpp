@@ -134,7 +134,9 @@ TEST_CASE("Sort leaves malformed out-of-range Refs untouched", "[operators]")
         tree.Sort();
 
         CHECK(Fixture(tree) == before);
-        CHECK(tree.Validate().error() == TreeValidationError::RefNotBackward);
+        auto const validation = tree.Validate();
+        REQUIRE_FALSE(validation);
+        CHECK(validation.error() == TreeValidationError::RefNotBackward);
     }
 }
 
