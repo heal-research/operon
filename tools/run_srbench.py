@@ -1,180 +1,172 @@
 #!/usr/bin/env python3
-"""Run one replayable Operon tree-GP benchmark and write immutable SRBench results.
+"""Run one replayable Operon GP benchmark.
 
-The output directory is created exclusively and contains `manifest.json` and
-`results.json`.  `results.json` deliberately retains the field names used by
-SRBench's experiment/optimize_model.py: dataset, algorithm, params,
-random_state, time_time, symbolic_model, mse_{train,test}, mae_{train,test},
-r2_{train,test}, and model_size.  The nested `operon` object links those
-comparison fields to the complete replay provenance in `manifest.json`.
-
-The separator `--` is required; everything after it is passed unchanged to
-operon_gp.  The passed command must include `--dataset` and `--seed`, which
-makes the dataset and random stream explicit in the recorded invocation.
+The wrapper consumes operon_gp's versioned ``--report-json`` report, rather
+than scraping human terminal output.  Output is published atomically only
+after the child exits successfully and report validation has completed.
+Results are Operon-specific schema v2: ``tree_node_count`` is the raw Operon
+genotype length and is *not* SRBench model complexity.
 """
 from __future__ import annotations
-
-import argparse
-import csv
-import hashlib
-import json
-import os
+import argparse, hashlib, json, math, os, platform, re, shutil, signal, subprocess, sys, tempfile, time
 from pathlib import Path
-import platform
-import re
-import subprocess
-import sys
-import time
 from typing import Any
 
-SCHEMA = "https://operon.dev/schemas/srbench-run/v1"
-
+SCHEMA = "https://operon.dev/schemas/srbench-run/v2"
+SINGLETONS = {
+    "dataset", "seed", "train", "test", "target", "inputs", "objective", "jit",
+    "shuffle", "standardize", "linear-scaling", "skip-nonfinite", "population-size", "pool-size",
+    "generations", "evaluations", "iterations", "timelimit", "threads", "maxlength", "maxdepth",
+    "creator", "creator-mindepth", "creator-maxdepth", "crossover-probability", "crossover-internal-probability",
+    "mutation-probability", "local-search-probability", "lamarckian-probability", "symbolic", "transposition-cache",
+    "cache-max-age", "female-selector", "male-selector", "offspring-generator", "reinserter", "mutators", "elitism",
+    "enable-symbols", "disable-symbols", "report-json", "probes-config", "shape-constraints-config", "shape-enforcement",
+    "shape-penalty-weight", "shape-unknown-violation", "shape-worst-value", "shape-bound-mode",
+}
+VALUE_OPTIONS = SINGLETONS - {"shuffle", "standardize", "linear-scaling", "skip-nonfinite", "symbolic", "transposition-cache"}
+PATH_OPTIONS = {"dataset", "shape-constraints-config", "probes-config", "checkpoint-file", "resume", "pareto-front"}
 
 def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for block in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""): h.update(block)
+    return h.hexdigest()
 
+def finite(value: Any, name: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)):
+        raise ValueError(f"machine report field {name!r} must be finite")
+    return float(value)
 
-def option_value(arguments: list[str], name: str) -> str | None:
-    prefix = name + "="
-    for index, argument in enumerate(arguments):
-        if argument.startswith(prefix):
-            return argument[len(prefix):]
-        if argument == name and index + 1 < len(arguments):
-            return arguments[index + 1]
-    return None
+def parse_args(args: list[str]) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if token == "--": raise ValueError("unexpected '--' in GP arguments")
+        if not token.startswith("--"): raise ValueError(f"unexpected positional GP argument {token!r}")
+        name, eq, value = token[2:].partition("=")
+        if name not in SINGLETONS and name not in {"probes-config"}:
+            i += 1; continue
+        if name in values: raise ValueError(f"duplicate singleton GP option --{name}")
+        if not eq:
+            if name in VALUE_OPTIONS:
+                if i + 1 >= len(args) or args[i + 1].startswith("--"):
+                    raise ValueError(f"option --{name} requires a value")
+                i += 1; value = args[i]
+            else: value = True
+        values[name] = value
+        i += 1
+    return values
 
+def canonical_args(args: list[str], cwd: Path) -> tuple[list[str], dict[str, Any]]:
+    vals = parse_args(args)
+    out: list[str] = []
+    i = 0
+    while i < len(args):
+        token = args[i]; name, eq, value = token[2:].partition("=") if token.startswith("--") else ("", "", "")
+        if name in PATH_OPTIONS:
+            if not eq:
+                i += 1; value = args[i]
+            resolved = str((cwd / value).resolve())
+            out.append(f"--{name}={resolved}")
+        elif name in SINGLETONS or name == "probes-config":
+            if not eq and name in VALUE_OPTIONS:
+                i += 1; value = args[i]
+            out.append(f"--{name}={value}" if eq or name in VALUE_OPTIONS else f"--{name}")
+        else: out.append(token)
+        i += 1
+    return out, vals
 
 def cpu_identity() -> dict[str, Any]:
-    identity: dict[str, Any] = {"architecture": platform.machine(), "processor": platform.processor()}
-    cpuinfo = Path("/proc/cpuinfo")
-    if cpuinfo.exists():
-        text = cpuinfo.read_text()
-        model = re.search(r"^model name\s*: (.+)$", text, re.MULTILINE)
-        flags = re.search(r"^flags\s*: (.+)$", text, re.MULTILINE)
-        if model:
-            identity["model"] = model.group(1)
-        if flags:
-            identity["features"] = flags.group(1).split()
-    return identity
-
-
-def parse_gp_output(stdout: str) -> tuple[dict[str, float], str]:
-    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
-    header_index = next((i for i, line in enumerate(lines) if "iteration" in line.split() and "r2_tr" in line.split()), None)
-    if header_index is None:
-        raise ValueError("operon_gp output did not contain its metrics table")
-    fields = lines[header_index].split()
-    rows: list[dict[str, float]] = []
-    for line in lines[header_index + 1:]:
-        values = line.split()
-        if len(values) != len(fields):
-            break
-        try:
-            rows.append(dict(zip(fields, map(float, values), strict=True)))
-        except ValueError:
-            break
-    if not rows:
-        raise ValueError("operon_gp metrics table did not contain a data row")
-    model_lines = lines[header_index + 1 + len(rows):]
-    if not model_lines:
-        raise ValueError("operon_gp did not print a final symbolic model")
-    return rows[-1], model_lines[-1]
-
-
-def write_exclusive(path: Path, payload: dict[str, Any]) -> None:
-    with path.open("x", encoding="utf-8") as destination:
-        json.dump(payload, destination, indent=2, sort_keys=True)
-        destination.write("\n")
-
+    result: dict[str, Any] = {"architecture": platform.machine(), "processor": platform.processor()}
+    p = Path("/proc/cpuinfo")
+    if p.exists():
+        text = p.read_text(errors="replace")
+        for key, field in (("model name", "model"), ("flags", "features")):
+            m = re.search(rf"^{re.escape(key)}\s*:\s*(.+)$", text, re.MULTILINE)
+            if m: result[field] = m.group(1).split() if field == "features" else m.group(1)
+    return result
+def validate_report(report: Any) -> dict[str, Any]:
+    if not isinstance(report, dict) or report.get("report_kind") != "operon_gp" or report.get("schema_version") != 1:
+        raise ValueError("machine report has unsupported kind or schema version")
+    metrics = report.get("metrics")
+    if not isinstance(metrics, dict): raise ValueError("machine report lacks metrics object")
+    for k, v in metrics.items():
+        if isinstance(v, float): finite(v, k)
+    required = {"r2_train", "r2_test", "mae_train", "mae_test", "mse_train", "mse_test", "best_fitness", "elapsed_seconds"}
+    missing = required - metrics.keys()
+    if missing: raise ValueError(f"machine report missing fields: {', '.join(sorted(missing))}")
+    return report
 
 def main() -> int:
     argv = sys.argv[1:]
-    if "--" not in argv:
-        raise SystemExit("error: use '--' before operon_gp arguments")
-    separator = argv.index("--")
+    if "--" not in argv: raise SystemExit("error: use '--' before operon_gp arguments")
+    split = argv.index("--")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("binary", type=Path, help="path to operon_gp")
-    parser.add_argument("--output", required=True, type=Path, help="new immutable output directory")
-    parsed = parser.parse_args(argv[:separator])
-    gp_args = argv[separator + 1:]
-
-    dataset_arg = option_value(gp_args, "--dataset")
-    seed_arg = option_value(gp_args, "--seed")
-    if dataset_arg is None or seed_arg is None:
-        raise SystemExit("error: replayable runs require explicit --dataset and --seed after '--'")
+    parser.add_argument("binary", type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--timeout", type=float, default=3600.0, help="finite wrapper timeout in seconds")
+    parsed = parser.parse_args(argv[:split]); gp_args = argv[split + 1:]
+    if not math.isfinite(parsed.timeout) or parsed.timeout <= 0: raise SystemExit("error: --timeout must be finite and positive")
+    cwd = Path.cwd().resolve(); binary = parsed.binary.resolve()
+    if not binary.is_file(): raise SystemExit(f"error: operon_gp binary is not a file: {binary}")
+    canonical, opts = canonical_args(gp_args, cwd)
+    if "dataset" not in opts or "seed" not in opts: raise SystemExit("error: replayable runs require explicit --dataset and --seed")
+    try: seed = int(opts["seed"])
+    except (TypeError, ValueError): raise SystemExit("error: --seed must be an integer")
+    budget = opts.get("evaluations", 0); limit = opts.get("timelimit", 2**64 - 1)
+    try: budget_finite = int(budget) > 0; limit_finite = int(limit) < 2**64 - 1 and int(limit) > 0
+    except (TypeError, ValueError): budget_finite = limit_finite = False
+    if not budget_finite and not limit_finite: raise SystemExit("error: require a finite positive --evaluations or --timelimit")
+    dataset = Path(str(opts["dataset"])).resolve()
+    if not dataset.is_file(): raise SystemExit(f"error: dataset is not a file: {dataset}")
+    output = parsed.output.resolve()
+    if output.exists(): raise SystemExit(f"error: immutable output already exists: {output}")
+    parent = output.parent; parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=f".{output.name}.", dir=parent))
+    report_path = stage / "machine-report.json"
+    # report path is wrapper-owned and cannot be overridden by duplicate CLI input.
+    command = [str(binary), *gp_args, "--report-json", str(report_path)]
+    started = time.monotonic()
     try:
-        seed = int(seed_arg)
-    except ValueError as error:
-        raise SystemExit(f"error: --seed must be an integer: {error}") from error
-    dataset = Path(dataset_arg).resolve()
-    if not dataset.is_file():
-        raise SystemExit(f"error: dataset is not a file: {dataset}")
-    binary = parsed.binary.resolve()
-    if not binary.is_file():
-        raise SystemExit(f"error: operon_gp binary is not a file: {binary}")
-    try:
-        parsed.output.mkdir(mode=0o755)
-    except FileExistsError as error:
-        raise SystemExit(f"error: immutable output directory already exists: {parsed.output}") from error
+        proc = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                start_new_session=True)
+        try: stdout, stderr = proc.communicate(timeout=parsed.timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGTERM)
+            try: stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL); stdout, stderr = proc.communicate()
+            raise RuntimeError(f"operon_gp exceeded wrapper timeout of {parsed.timeout:g}s")
+        if proc.returncode != 0: raise RuntimeError(f"operon_gp exited with status {proc.returncode}: {stderr.strip()}")
+        if not report_path.is_file(): raise RuntimeError("operon_gp did not produce --report-json")
+        try: report = validate_report(json.loads(report_path.read_text()))
+        except (json.JSONDecodeError, ValueError) as e: raise RuntimeError(f"invalid machine report: {e}") from e
+        (stage / "stdout.txt").write_text(stdout); (stage / "stderr.txt").write_text(stderr)
+        version_run = subprocess.run([str(binary), "--version"], cwd=cwd, capture_output=True, text=True, check=False)
+        version = version_run.stdout + version_run.stderr
+        inputs = []
+        for key in PATH_OPTIONS:
+            if key in opts:
+                p = Path(str(opts[key])).resolve()
+                if p.is_file(): inputs.append({"option": f"--{key}", "path": str(p), "sha256": sha256(p), "size": p.stat().st_size})
+        stat = binary.stat()
+        manifest = {
+            "$schema": SCHEMA + "/manifest", "schema_version": 2,
+            "invocation": {"argv": [str(binary), *canonical], "cwd": str(cwd), "machine_report_option": "--report-json <private-staging-path>"},
+            "inputs": sorted(inputs, key=lambda x: x["option"]),
+            "effective_configuration": {k: opts[k] for k in sorted(opts)},
+            "implementation": {"name": "Operon", "version_output": version, "executable": {"path": str(binary), "size": stat.st_size, "sha256": sha256(binary)}},
+            "dependency_lock": {"path": str((cwd / "flake.lock").resolve()), "sha256": sha256(cwd / "flake.lock")} if (cwd / "flake.lock").is_file() else None,
+            "compiler": None, "cpu": cpu_identity(), "resource_budget": {"wrapper_timeout_seconds": parsed.timeout, "evaluations": budget if budget_finite else None, "timelimit": limit if limit_finite else None, "status": "completed"},
+            "dataset": {"path": str(dataset), "sha256": sha256(dataset), "size": dataset.stat().st_size}, "seed": seed, "result_schema": SCHEMA + "/results",
+        }
+        metrics = report["metrics"]
+        results = {"$schema": SCHEMA + "/results", "schema_version": 2, "schema_description": "Operon-specific record; tree_node_count is genotype length, not SRBench model complexity.", "srbench_compatibility": False, "dataset": dataset.stem, "algorithm": "Operon-GP", "params": {"canonical_argv": canonical}, "random_state": seed, "time_time": finite(metrics["elapsed_seconds"], "elapsed_seconds"), "symbolic_model": report["symbolic_model"], "tree_node_count": report["tree_node_count"], "metrics": metrics, "operon": {"manifest": "manifest.json"}}
+        for payload, name in ((manifest, "manifest.json"), (results, "results.json")):
+            with (stage / name).open("w", encoding="utf-8") as f: json.dump(payload, f, indent=2, sort_keys=True, allow_nan=False); f.write("\n")
+        os.replace(stage, output); print(output / "results.json"); return 0
+    except (OSError, RuntimeError, ValueError) as e:
+        shutil.rmtree(stage, ignore_errors=True); print(f"error: {e}", file=sys.stderr); return 1
 
-    started = time.time()
-    completed = subprocess.run([str(binary), *gp_args], capture_output=True, text=True, check=False)
-    (parsed.output / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
-    (parsed.output / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
-    if completed.returncode != 0:
-        raise SystemExit(f"error: operon_gp exited with status {completed.returncode}; see {parsed.output}/stderr.txt")
-    metrics, model = parse_gp_output(completed.stdout)
-    version = subprocess.run([str(binary), "--version"], capture_output=True, text=True, check=True).stdout.strip()
-    revision = re.search(r"operon rev\. (\S+)", version)
-    repository = Path(__file__).resolve().parents[1]
-    lock = repository / "flake.lock"
-    elapsed = time.time() - started
-
-    manifest = {
-        "$schema": SCHEMA + "/manifest",
-        "schema_version": 1,
-        "schema_description": "Immutable replay provenance. Hashes are lowercase SHA-256; ranges use Operon's half-open start:end syntax.",
-        "implementation": {"name": "Operon", "revision": revision.group(1) if revision else "unknown", "version": version},
-        "dependency_lock": {"path": "flake.lock", "sha256": sha256(lock)} if lock.is_file() else None,
-        "compiler": {"identity": version.splitlines()[-1] if version else "unknown"},
-        "cpu": cpu_identity(),
-        "seed": seed,
-        "dataset": {"path": dataset.name, "sha256": sha256(dataset)},
-        "primitive_set": {"enable_symbols": option_value(gp_args, "--enable-symbols"), "disable_symbols": option_value(gp_args, "--disable-symbols")},
-        "algorithm": {"name": "operon_gp", "configuration": gp_args},
-        "evaluator": {"objective": option_value(gp_args, "--objective") or "r2", "jit": option_value(gp_args, "--jit") or ""},
-        "budget": {key: option_value(gp_args, "--" + key) for key in ("generations", "evaluations", "timelimit", "population-size", "pool-size", "iterations", "threads")},
-        "result_schema": SCHEMA + "/results",
-    }
-    results = {
-        "$schema": SCHEMA + "/results",
-        "schema_version": 1,
-        "schema_description": "SRBench-compatible comparison record; train/test metrics are evaluated by Operon on its configured ranges.",
-        "dataset": dataset.stem,
-        "algorithm": "Operon-GP",
-        "params": {"operon_gp_arguments": gp_args},
-        "random_state": seed,
-        "time_time": elapsed,
-        "grid_time": 0.0,
-        "symbolic_model": model,
-        "mse_train": metrics["mse_tr"],
-        "mse_test": metrics["mse_te"],
-        "mae_train": metrics["mae_tr"],
-        "mae_test": metrics["mae_te"],
-        "r2_train": metrics["r2_tr"],
-        "r2_test": metrics["r2_te"],
-        "model_size": int(metrics["best_len"]),
-        "operon": {"manifest": "manifest.json", "best_fitness": metrics["best_fit"], "evaluator_calls": int(metrics["eval_cnt"]), "elapsed_seconds": metrics["elapsed"]},
-    }
-    write_exclusive(parsed.output / "manifest.json", manifest)
-    write_exclusive(parsed.output / "results.json", results)
-    print(parsed.output / "results.json")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == "__main__": raise SystemExit(main())
