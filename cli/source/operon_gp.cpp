@@ -68,6 +68,7 @@ auto MakeCoeffAndMutation(bool symbolic)
 auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 {
     auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
+    opts.add_options()("report-json", "Write a versioned lossless machine-readable report to this path", cxxopts::value<std::string>());
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);
 
     // parse and set default values
