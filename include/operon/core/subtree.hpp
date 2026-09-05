@@ -13,19 +13,20 @@
 
 #include "contracts.hpp"
 #include "node.hpp"
+
 namespace Operon {
 // A non-owning view over a subtree that exposes its direct children in postfix order.
-template<typename T>
-requires std::is_same_v<Node, T> || std::is_same_v<Node const, T>
+template <typename T>
+    requires std::is_same_v<Node, T> || std::is_same_v<Node const, T>
 struct Subtree {
     struct Sentinel {};
-    template<bool ReturnIndices>
+    template <bool ReturnIndices>
     class ChildRange;
 
-    template<bool ReturnIndices>
+    template <bool ReturnIndices>
     class EnumerateRange;
 
-    template<bool ReturnIndices>
+    template <bool ReturnIndices>
     class SubtreeIterator {
     public:
         using value_type = std::conditional_t<ReturnIndices, std::size_t, std::remove_const_t<T>>; // NOLINT
@@ -39,7 +40,7 @@ struct Subtree {
         auto operator++() -> SubtreeIterator&
         {
             ++position_;
-            if (position_ < nodes_[parent_].Arity) {
+            if (position_ < arity_) {
                 child_ -= nodes_[child_].Length + 1;
             }
             return *this;
@@ -47,15 +48,18 @@ struct Subtree {
 
         auto operator++(int) -> SubtreeIterator
         {
-            auto copy{*this};
+            auto copy { *this };
             ++(*this);
             return copy;
         }
 
         [[nodiscard]] auto operator*() const -> reference
         {
-            if constexpr (ReturnIndices) { return child_; }
-            else { return nodes_[child_]; }
+            if constexpr (ReturnIndices) {
+                return child_;
+            } else {
+                return nodes_[child_];
+            }
         }
 
         friend auto operator==(SubtreeIterator const& lhs, SubtreeIterator const& rhs) -> bool
@@ -69,7 +73,7 @@ struct Subtree {
 
         friend auto operator==(SubtreeIterator const& iterator, Sentinel /*unused*/) -> bool
         {
-            return iterator.position_ == iterator.nodes_[iterator.parent_].Arity;
+            return iterator.position_ >= iterator.arity_;
         }
 
         friend auto operator==(Sentinel sentinel, SubtreeIterator const& iterator) -> bool { return iterator == sentinel; }
@@ -78,35 +82,40 @@ struct Subtree {
         friend class ChildRange<ReturnIndices>;
 
         SubtreeIterator(Operon::Span<T> nodes, std::size_t parent)
-            : nodes_(nodes), parent_(parent), child_(nodes[parent].Arity == 0 ? parent : parent - 1)
+            : nodes_(nodes)
+            , parent_(parent)
+            , child_(nodes[parent].Arity == 0 ? parent : parent - 1)
+            , arity_(nodes[parent].Arity)
         {
         }
 
-        Operon::Span<T> nodes_{};
-        std::size_t parent_{};
-        std::size_t child_{};
-        std::size_t position_{};
+        Operon::Span<T> nodes_ {};
+        std::size_t parent_ {};
+        std::size_t child_ {};
+        std::size_t position_ {};
+        std::size_t arity_ {};
     };
 
-    template<bool ReturnIndices>
+    template <bool ReturnIndices>
     class ChildRange {
     public:
-        [[nodiscard]] auto begin() const -> SubtreeIterator<ReturnIndices> { return {nodes_, parent_}; }
+        [[nodiscard]] auto begin() const -> SubtreeIterator<ReturnIndices> { return { nodes_, parent_ }; }
         [[nodiscard]] auto end() const -> Sentinel { return {}; }
 
     private:
         friend struct Subtree;
 
         ChildRange(Operon::Span<T> nodes, std::size_t parent)
-            : nodes_(nodes), parent_(parent)
+            : nodes_(nodes)
+            , parent_(parent)
         {
         }
 
-        Operon::Span<T> nodes_{};
-        std::size_t parent_{};
+        Operon::Span<T> nodes_ {};
+        std::size_t parent_ {};
     };
 
-    template<bool ReturnIndices>
+    template <bool ReturnIndices>
     class Enumerator {
     public:
         using Iterator = SubtreeIterator<ReturnIndices>;
@@ -127,12 +136,12 @@ struct Subtree {
 
         auto operator++(int) -> Enumerator
         {
-            auto copy{*this};
+            auto copy { *this };
             ++(*this);
             return copy;
         }
 
-        [[nodiscard]] auto operator*() const -> reference { return {index_, *iterator_}; }
+        [[nodiscard]] auto operator*() const -> reference { return { index_, *iterator_ }; }
 
         friend auto operator==(Enumerator const& lhs, Enumerator const& rhs) -> bool
         {
@@ -150,26 +159,27 @@ struct Subtree {
         {
         }
 
-        Iterator iterator_{};
-        std::size_t index_{};
+        Iterator iterator_ {};
+        std::size_t index_ {};
     };
 
-    template<bool ReturnIndices>
+    template <bool ReturnIndices>
     class EnumerateRange {
     public:
-        [[nodiscard]] auto begin() const -> Enumerator<ReturnIndices> { return Enumerator<ReturnIndices>{ChildRange<ReturnIndices>{nodes_, parent_}.begin()}; }
+        [[nodiscard]] auto begin() const -> Enumerator<ReturnIndices> { return Enumerator<ReturnIndices> { ChildRange<ReturnIndices> { nodes_, parent_ }.begin() }; }
         [[nodiscard]] auto end() const -> Sentinel { return {}; }
 
     private:
         friend struct Subtree;
 
         EnumerateRange(Operon::Span<T> nodes, std::size_t parent)
-            : nodes_(nodes), parent_(parent)
+            : nodes_(nodes)
+            , parent_(parent)
         {
         }
 
-        Operon::Span<T> nodes_{};
-        std::size_t parent_{};
+        Operon::Span<T> nodes_ {};
+        std::size_t parent_ {};
     };
 
     using IndexIterator = SubtreeIterator<true>;
@@ -178,16 +188,17 @@ struct Subtree {
     using NodeRange = ChildRange<false>;
 
     Subtree(Operon::Span<T> nodes, std::size_t parent)
-        : nodes_(nodes), parent_(parent)
+        : nodes_(nodes)
+        , parent_(parent)
     {
         EXPECT(parent < nodes_.size());
     }
 
-    [[nodiscard]] auto Indices() const -> IndexRange { return {nodes_, parent_}; }
-    [[nodiscard]] auto EnumerateIndices() const -> EnumerateRange<true> { return {nodes_, parent_}; }
+    [[nodiscard]] auto Indices() const -> IndexRange { return { nodes_, parent_ }; }
+    [[nodiscard]] auto EnumerateIndices() const -> EnumerateRange<true> { return { nodes_, parent_ }; }
 
-    [[nodiscard]] auto Nodes() const -> NodeRange { return {nodes_, parent_}; }
-    [[nodiscard]] auto EnumerateNodes() const -> EnumerateRange<false> { return {nodes_, parent_}; }
+    [[nodiscard]] auto Nodes() const -> NodeRange { return { nodes_, parent_ }; }
+    [[nodiscard]] auto EnumerateNodes() const -> EnumerateRange<false> { return { nodes_, parent_ }; }
 
 private:
     Operon::Span<T> nodes_;
@@ -195,6 +206,4 @@ private:
 };
 
 } // namespace Operon
-
-
 #endif
