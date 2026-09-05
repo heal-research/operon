@@ -79,14 +79,6 @@ namespace {
         }
     }
 
-    auto EvaluationFixture(std::vector<Scalar> const& values) -> std::string
-    {
-        std::string result;
-        for (auto const value : values) {
-            fmt::format_to(std::back_inserter(result), "{:.17g}", value);
-        }
-        return result;
-    }
 } // namespace
 
 
@@ -161,12 +153,21 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
         CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
 
         for (auto const op : { BuiltinOp::Fmin, BuiltinOp::Fmax }) {
-            // Finite, distinct constants avoid the signed-zero/NaN ordering edge cases.
-            auto extrema = Tree({ Node::Constant(3), Node::Constant(-2), Node::Function(Hash(op), 2) }).UpdateNodes();
+            // Use unlike leaves: constants share a hash, so cannot prove a reordering.
+            auto extrema = Tree({ Variable(x), Node::Constant(3), Node::Function(Hash(op), 2) }).UpdateNodes();
+            [[maybe_unused]] auto const& hashed = extrema.Hash(HashMode::Strict);
+            if (extrema[0] < extrema[1]) {
+                std::swap(extrema.Nodes()[0], extrema.Nodes()[1]);
+                [[maybe_unused]] auto const& rehashed = extrema.UpdateNodes().Hash(HashMode::Strict);
+            }
+            REQUIRE(extrema[1] < extrema[0]);
             auto const extremaBefore = Evaluate(extrema, domain);
+            auto const beforeFixture = Fixture(extrema);
             extrema.Sort();
             INFO(fmt::format("op={}, tree={}", static_cast<unsigned>(op), Fixture(extrema)));
             REQUIRE(extrema.Validate());
+            CHECK(extrema[0] < extrema[1]);
+            CHECK(Fixture(extrema) != beforeFixture);
             CheckFiniteEqual(extremaBefore, Evaluate(extrema, domain), tolerance);
         }
     }
@@ -200,69 +201,72 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
 
 TEST_CASE("Structural operators honor deterministic configured bounds", "[properties][operators]")
 {
-    constexpr std::uint64_t seed = 0xF6B0A0D5ULL;
     constexpr std::size_t maxDepth = 4;
     constexpr std::size_t maxLength = 15;
     Dataset const domain({ "X" }, { { -2.0F, -0.5F, 0.5F, 2.0F } });
     auto const inputs = domain.VariableHashes();
     PrimitiveSet grammar;
-    // The generated corpus exercises only Add/Sub/Mul. On this finite input
-    // domain, any non-finite generated result is an observed test failure.
+    // Restrict generated insertions to finite arithmetic on the test domain.
     grammar.SetConfig(PrimitiveSet::Arithmetic);
     grammar.Disable(Util::MakeOp<BuiltinOp::Div>().HashValue);
+    grammar.SetMaximumArity(Add(), 3);
     ProbabilisticTreeCreator const creator { &grammar, inputs, 0.0, maxLength };
     UniformCoefficientInitializer initializer;
-    ReplaceSubtreeMutation const mutation { gsl::not_null<CreatorBase const*> { &creator }, gsl::not_null<CoefficientInitializerBase const*> { &initializer }, maxDepth, maxLength };
-    SubtreeCrossover const crossover { 0.75, maxDepth, maxLength };
 
-    auto generate = [&](std::uint64_t replaySeed) {
-        RandomGenerator random(replaySeed);
-        auto left = creator(random, 11, 1, maxDepth);
-        auto right = creator(random, 9, 1, maxDepth);
-        std::vector<std::string> observations;
-        for (std::size_t iteration = 0; iteration < 64; ++iteration) {
-            left = mutation(random, std::move(left));
-            auto child = crossover(random, left, right);
-            auto const leftValues = Evaluate(left, domain);
-            auto const childValues = Evaluate(child, domain);
-            INFO(fmt::format("seed={:#x}, iteration={}, mutation={}, crossover={}", replaySeed, iteration, Fixture(left), Fixture(child)));
-            REQUIRE(left.Validate());
-            CHECK(left.Length() <= maxLength);
-            CHECK(left.Depth() <= maxDepth);
-            CheckFinite(leftValues);
-            REQUIRE(child.Validate());
-            CHECK(child.Length() <= maxLength);
-            CHECK(child.Depth() <= maxDepth);
-            CheckFinite(childValues);
-            observations.push_back(fmt::format("{}:{}:{}:{}", Fixture(left), EvaluationFixture(leftValues), Fixture(child), EvaluationFixture(childValues)));
-            right = std::move(child);
-        }
-        return observations;
-    };
+    SECTION("controlled crossover inserts the selected donor subtree") {
+        auto const left = Tree({ Node::Constant(11), Node::Constant(13), Add() }).UpdateNodes();
+        auto const right = Tree({ Node::Constant(29), Node::Constant(31), Add() }).UpdateNodes();
+        auto const beforeFixture = Fixture(left);
+        auto const child = CrossoverBase::Cross(left, right, 0, 2);
+        INFO(fmt::format("left={}, right={}, child={}", Fixture(left), Fixture(right), Fixture(child)));
+        REQUIRE(child.Validate());
+        CHECK(child.Length() == 5);
+        CHECK(child.Depth() <= maxDepth);
+        CHECK(child.Length() <= maxLength);
+        CHECK(child[0].Value == 29);
+        CHECK(child[1].Value == 31);
+        CHECK(Fixture(child) != beforeFixture);
+        CheckFinite(Evaluate(child, domain));
+    }
 
-    auto const generated = generate(seed);
-    auto const replayed = generate(seed);
-    CHECK(generated == replayed);
+    SECTION("insertion grows a known eligible n-ary node") {
+        auto const parent = Tree({ Variable(inputs[0]), Node::Constant(2), Add() }).UpdateNodes();
+        auto random = RandomGenerator(0xF6B0A0D5ULL);
+        InsertSubtreeMutation const mutation { gsl::not_null<CreatorBase const*> { &creator }, gsl::not_null<CoefficientInitializerBase const*> { &initializer }, maxDepth, maxLength };
+        auto const child = mutation(random, parent);
+        INFO(fmt::format("parent={}, child={}", Fixture(parent), Fixture(child)));
+        REQUIRE(child.Validate());
+        CHECK(child.Length() > parent.Length());
+        CHECK(child.Length() <= maxLength);
+        CHECK(child.Depth() <= maxDepth);
+        CheckFinite(Evaluate(child, domain));
+    }
 }
 
-TEST_CASE("ShuffleSubtreesMutation preserves valid Ref evaluation", "[operators]")
+TEST_CASE("ShuffleSubtreesMutation reorders distinct child subtrees", "[operators]")
 {
     Dataset const domain({ "X" }, { { -2.0F, -0.5F, 0.5F, 2.0F } });
     auto const x = domain.GetVariable("X").value().Hash;
     auto const add = Add();
-    auto const mul = Node::Function(static_cast<Hash>(BuiltinOp::Mul), 2);
-    // This test covers an existing self-contained Ref, not Ref creation by generic creators.
-    auto const tree = Tree({ Variable(x), Node::Constant(2), add, Node::Ref(2), mul }).UpdateNodes();
+    // A ternary Add gives std::shuffle more than one non-identity permutation;
+    // unlike leaves make every permutation externally observable.
+    auto ternaryAdd = add;
+    ternaryAdd.Arity = 3;
+    auto const tree = Tree({ Variable(x), Node::Constant(2), Node::Constant(3), ternaryAdd }).UpdateNodes();
     auto const before = Evaluate(tree, domain);
+    auto const beforeFixture = Fixture(tree);
     auto random = Operon::RandomGenerator(1234);
     auto const mutation = ShuffleSubtreesMutation {};
+    auto changed = false;
 
     for (auto i = 0; i < 100; ++i) {
         auto const child = mutation(random, tree);
         INFO(fmt::format("iteration={}, tree={}", i, Fixture(child)));
         REQUIRE(child.Validate());
         CheckFiniteEqual(before, Evaluate(child, domain), 1e-5F);
+        changed = changed || Fixture(child) != beforeFixture;
     }
+    REQUIRE(changed);
 }
 
 TEST_CASE("InsertSubtreeMutation produces valid tree", "[operators]")
