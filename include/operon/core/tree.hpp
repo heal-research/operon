@@ -7,15 +7,35 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <vector>
 #include <numeric>
+#include <string>
 #include <type_traits>
+#include <vector>
+
+#include <tl/expected.hpp>
 
 #include "contracts.hpp"
 #include "subtree.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon {
+enum class TreeValidationError : std::uint8_t {
+    InvalidNodeType,
+    RefNotBackward,
+    FunctionArityZero,
+    TerminalArityNonZero,
+    MissingChildren,
+    ChildSubtreesNotContiguous,
+    ChildSubtreesNotAdjacent,
+    MultipleRoots,
+    RootDoesNotCoverTree,
+    DerivedMetadataOverflow,
+    LengthMismatch,
+    DepthMismatch,
+    ParentMismatch,
+    LevelMismatch,
+};
+
 class OPERON_EXPORT Tree { // NOLINT
 public:
     Tree() = default;
@@ -51,6 +71,16 @@ public:
     }
 
     auto UpdateNodes() -> Tree&;
+
+    // Validates the postfix tree representation without using Subtree traversal.
+    // A non-empty tree has one root at the final node; every Function consumes
+    // exactly Arity contiguous completed child subtrees. Terminals (including
+    // Ref) have zero arity, and RefTo points to an earlier node. Length, Depth,
+    // Parent, and Level must equal the metadata derived from that structure.
+    // Empty trees are valid. This opt-in API is intentionally not called by
+    // evaluation or search paths. Its error value identifies the first failed
+    // invariant without allocating a diagnostic string.
+    [[nodiscard]] auto Validate() const -> tl::expected<void, TreeValidationError>;
     auto Sort() -> Tree&;
     auto Reduce() -> Tree&;
     auto Simplify() -> Tree&;
