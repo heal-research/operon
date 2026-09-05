@@ -53,7 +53,7 @@ TEST_CASE("Subtree rewrites preserve and rebase backward Refs", "[operators]")
         CHECK_THROWS_AS(external.Splice(3), std::invalid_argument);
     }
 
-    SECTION("external donor Refs are rejected before P5") {
+    SECTION("external donor Refs are rejected") {
         auto source = Tree({Node::Constant(2), Node::Constant(3), add}).UpdateNodes();
         Operon::Vector<Node> donor{Node::Constant(4), Node::Ref(3), add};
         CHECK_THROWS_AS(detail::RewriteSubtree(source.Nodes(), detail::DescribeSubtree(source.Nodes(), 0), donor), std::invalid_argument);

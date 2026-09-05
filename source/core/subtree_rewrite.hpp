@@ -36,9 +36,7 @@ struct SubtreeSpan {
     });
 }
 
-// P4 accepts only standalone donor trees: an external donor Ref has no
-// destination-tree mapping until P5. Source references inside target are
-// deleted with target; retained source references are mapped during rewrite.
+// Replacement and copied subtrees must not reference nodes outside their span.
 [[nodiscard]] inline auto CanRewriteSubtree(Operon::Span<Node const> replacement) -> bool
 {
     return !replacement.empty() && IsSelfContainedSubtree(replacement, { 0U, replacement.size() - 1U, replacement.size() });
@@ -48,7 +46,7 @@ struct SubtreeSpan {
     Operon::Span<Node const> replacement) -> Operon::Vector<Node>
 {
     if (!CanRewriteSubtree(replacement)) {
-        throw std::invalid_argument("replacement subtree has external Ref targets; P5 mapping policy is required");
+        throw std::invalid_argument("replacement subtree has external Ref targets");
     }
 
     Operon::Vector<Node> rewritten;
@@ -83,7 +81,7 @@ struct SubtreeSpan {
 [[nodiscard]] inline auto CopySubtree(Operon::Span<Node const> source, SubtreeSpan target) -> Operon::Vector<Node>
 {
     if (!IsSelfContainedSubtree(source, target)) {
-        throw std::invalid_argument("cannot splice a subtree with external Ref targets; P5 mapping policy is required");
+        throw std::invalid_argument("cannot splice a subtree with external Ref targets");
     }
     Operon::Vector<Node> copy(source.begin() + static_cast<std::ptrdiff_t>(target.First),
         source.begin() + static_cast<std::ptrdiff_t>(target.Root) + 1);
