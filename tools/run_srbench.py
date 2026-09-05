@@ -31,11 +31,18 @@ VALUE_DEFAULTS = {
     "checkpoint-interval": "0", "checkpoint-file": "checkpoint.beve", "nonfinite-penalty-weight": "1.0",
     "shape-penalty-weight": "1.0", "shape-unknown-violation": "1.0", "shape-worst-value": "1.0", "shape-bound-mode": "combined",
 }
-VALUE_OPTIONS = set(VALUE_DEFAULTS) | {"dataset", "train", "test", "target", "inputs", "enable-symbols", "disable-symbols", "pareto-front", "resume", "probes-config", "shape-constraints-config", "elitism"}
+VALUE_OPTIONS = set(VALUE_DEFAULTS) | {"dataset", "train", "test", "target", "inputs", "enable-symbols", "disable-symbols", "pareto-front", "resume", "probes-config", "shape-constraints-config", "shape-enforcement", "elitism"}
 ALL_OPTIONS = set(VALUE_OPTIONS) | BOOL_OPTIONS
 PATH_OPTIONS = {"dataset", "shape-constraints-config", "probes-config", "resume"}
 OUTPUT_PATH_OPTIONS = {"checkpoint-file", "pareto-front"}
+EXTERNAL_OUTPUT_OPTIONS = OUTPUT_PATH_OPTIONS | {"probes-config"}
 OBSERVATIONAL_RESULT_FIELDS = {"time_time", "metrics.elapsed_seconds", "metrics.optimizer_seconds"}
+BOOL_DEFAULTS = {"shuffle": False, "standardize": False, "linear-scaling": True, "skip-nonfinite": False, "symbolic": False, "transposition-cache": False, "show-primitives": False, "debug": False}
+
+
+def _bool_value(value: str, name: str) -> bool:
+    if value.lower() not in {"true", "false"}: raise ValueError(f"--{name} expects true or false")
+    return value.lower() == "true"
 
 
 def sha256(path: Path) -> str:
@@ -77,13 +84,15 @@ def parse_args(args: list[str]) -> dict[str, Any]:
         if name == "report-json": raise ValueError("--report-json is wrapper-owned and must not be supplied")
         if name not in ALL_OPTIONS: raise ValueError(f"unknown operon_gp option --{name}")
         if name in values: raise ValueError(f"duplicate singleton GP option --{name}")
-        if not eq:
-            if name == "jit": value = "all"
-            elif name in VALUE_OPTIONS:
-                if i + 1 >= len(args) or args[i + 1].startswith("--"): raise ValueError(f"option --{name} requires a value")
-                i += 1; value = args[i]
-            else: value = True
-        elif name in BOOL_OPTIONS: raise ValueError(f"boolean option --{name} does not take a value")
+        if eq:
+            if name in BOOL_OPTIONS: value = _bool_value(value, name)
+        elif name == "jit": value = "all"
+        elif name in VALUE_OPTIONS:
+            if i + 1 >= len(args) or args[i + 1] == "--": raise ValueError(f"option --{name} requires a value")
+            i += 1; value = args[i]
+        elif i + 1 < len(args) and args[i + 1].lower() in {"true", "false"}:
+            i += 1; value = _bool_value(args[i], name)
+        else: value = True
         values[name] = value
         i += 1
     return values
@@ -95,14 +104,17 @@ def canonical_args(args: list[str], cwd: Path) -> tuple[list[str], dict[str, Any
         token = args[i]; name, eq, value = token[2:].partition("=")
         if not eq and name == "jit": value = "all"
         elif not eq and name in VALUE_OPTIONS: i += 1; value = args[i]
+        elif not eq and name in BOOL_OPTIONS and i + 1 < len(args) and args[i + 1].lower() in {"true", "false"}: i += 1; value = args[i]
         if name in PATH_OPTIONS or name in OUTPUT_PATH_OPTIONS: value = str((cwd / value).resolve())
-        out.append(f"--{name}" if name in BOOL_OPTIONS else f"--{name}={value}"); i += 1
+        out.append(f"--{name}={str(value).lower()}" if name in BOOL_OPTIONS else f"--{name}={value}"); i += 1
     effective = dict(VALUE_DEFAULTS)
     effective.update({k: v for k, v in vals.items() if k not in BOOL_OPTIONS})
-    for k in BOOL_OPTIONS: effective[k] = bool(vals.get(k, False if k != "linear-scaling" else True))
+    for k in BOOL_OPTIONS: effective[k] = vals.get(k, BOOL_DEFAULTS[k])
     effective["jit"] = vals.get("jit", VALUE_DEFAULTS["jit"])
     effective["canonical_argv"] = out
     return out, effective
+
+
 
 
 def cpu_identity() -> dict[str, Any]:
@@ -135,24 +147,40 @@ def validate_report(report: Any) -> dict[str, Any]:
     return report
 
 
+def _artifact_root(path: Path) -> Path:
+    path = path.resolve()
+    if path.is_file():
+        if path.name != "manifest.json": raise ValueError("--replay-manifest must name manifest.json or an artifact directory")
+        return path.parent
+    return path
+
+
 def _manifest_and_results(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    root = _artifact_root(root)
     manifest = _json_strict(root / "manifest.json"); results = _json_strict(root / "results.json")
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2: raise ValueError("invalid manifest schema")
-    if not isinstance(results, dict) or results.get("schema_version") != 2: raise ValueError("invalid results schema")
+    manifest_keys = {"$schema", "schema_version", "replay_comparison", "invocation", "inputs", "effective_configuration", "implementation", "dependency_lock", "compiler", "cpu", "resource_budget", "seed", "result_schema"}
+    result_keys = {"$schema", "schema_version", "srbench_compatibility", "dataset", "algorithm", "params", "random_state", "time_time", "symbolic_model", "tree_node_count", "metrics", "operon", "manifest_sha256"}
+    if not isinstance(manifest, dict) or set(manifest) != manifest_keys or manifest.get("schema_version") != 2: raise ValueError("invalid or incomplete manifest schema")
+    if not isinstance(results, dict) or set(results) != result_keys or results.get("schema_version") != 2: raise ValueError("invalid or incomplete results schema")
+    if not isinstance(manifest["$schema"], str) or not isinstance(manifest["replay_comparison"], dict): raise ValueError("invalid manifest identity fields")
+    if not isinstance(manifest["inputs"], list) or not isinstance(manifest["effective_configuration"], dict) or not isinstance(manifest["implementation"], dict) or not isinstance(manifest["resource_budget"], dict) or not isinstance(manifest["seed"], int) or isinstance(manifest["seed"], bool): raise ValueError("invalid manifest field types")
+    if not isinstance(results["$schema"], str) or not isinstance(results["srbench_compatibility"], bool) or not isinstance(results["dataset"], str) or not isinstance(results["algorithm"], str) or not isinstance(results["params"], dict) or not isinstance(results["random_state"], int) or isinstance(results["random_state"], bool) or not isinstance(results["time_time"], (int, float)) or isinstance(results["time_time"], bool) or not isinstance(results["operon"], dict): raise ValueError("invalid result field types")
+    if not isinstance(manifest["dependency_lock"], dict) or not manifest["dependency_lock"].get("sha256"): raise ValueError("artifact lacks required dependency lock identity")
+    if not isinstance(results["manifest_sha256"], str) or results["manifest_sha256"] != sha256(root / "manifest.json"): raise ValueError("results are not bound to manifest bytes")
+    validate_report({"report_kind": "operon_gp", "schema_version": 1, "symbolic_model": results["symbolic_model"], "tree_node_count": results["tree_node_count"], "seed": results["random_state"], "metrics": results["metrics"]})
     return manifest, results
 
 
 def compare_artifacts(first: Path, second: Path) -> None:
     ma, ra = _manifest_and_results(first); mb, rb = _manifest_and_results(second)
-    # Validate both independently, and reject artifact-supplied comparison policies.
     for m in (ma, mb):
         if m.get("replay_comparison") != REPLAY_COMPARISON: raise ValueError("artifact contains unsupported replay policy")
     for path in ("implementation", "inputs", "dependency_lock", "effective_configuration", "seed", "resource_budget"):
-        if ma.get(path) != mb.get(path): raise ValueError(f"replay mismatch in manifest field {path}")
-    deterministic_a = {k: v for k, v in ra.items() if k not in {"time_time"}}
-    deterministic_b = {k: v for k, v in rb.items() if k not in {"time_time"}}
+        if ma[path] != mb[path]: raise ValueError(f"replay mismatch in manifest field {path}")
+    deterministic_a = dict(ra); deterministic_b = dict(rb)
     for path in OBSERVATIONAL_RESULT_FIELDS:
-        if path.startswith("metrics."): deterministic_a["metrics"].pop(path.split(".")[1], None); deterministic_b["metrics"].pop(path.split(".")[1], None)
+        if path == "time_time": deterministic_a.pop(path); deterministic_b.pop(path)
+        else: deterministic_a["metrics"].pop(path.split(".")[1]); deterministic_b["metrics"].pop(path.split(".")[1])
     if deterministic_a != deterministic_b: raise ValueError("replay mismatch in deterministic result fields")
 
 
@@ -185,32 +213,43 @@ def main() -> int:
         cwd = Path.cwd().resolve(); binary = parsed.binary.resolve()
         if not binary.is_file(): raise ValueError(f"operon_gp binary is not a file: {binary}")
         gp_args = argv[split + 1:]; canonical, opts = canonical_args(gp_args, cwd)
+        if EXTERNAL_OUTPUT_OPTIONS & set(opts): raise ValueError("checkpoint, pareto-front, and probes-config outputs are not supported by replay wrapper")
         if "dataset" not in opts or "seed" not in opts: raise ValueError("replayable runs require explicit --dataset and --seed")
         try: seed = int(opts["seed"])
         except (TypeError, ValueError): raise ValueError("--seed must be an integer")
-        if int(opts.get("evaluations", 0)) <= 0 and int(opts.get("timelimit", 2**64 - 1)) >= 2**64 - 1: raise ValueError("require a finite positive --evaluations or --timelimit")
-        output = parsed.output.resolve()
-        if output.exists(): raise ValueError(f"immutable output already exists: {output}")
+        output = parsed.output.resolve(); output.parent.mkdir(parents=True, exist_ok=True)
         dataset = Path(str(opts["dataset"])).resolve()
-        if not dataset.is_file(): raise ValueError(f"dataset is not a file: {dataset}")
-        lock = cwd / "flake.lock"; lock_snap = snapshot(lock) if lock.is_file() else None
-        binary_snap = snapshot(binary)
-        stage = Path(tempfile.mkdtemp(prefix=f".{output.name}.", dir=output.parent)); staged_bin = stage / binary.name; shutil.copyfile(binary, staged_bin); staged_bin.chmod(binary.stat().st_mode | stat.S_IXUSR)
-        input_snaps: list[dict[str, Any]] = []; staged_args = list(gp_args)
+        lock = cwd / "flake.lock"
+        if not lock.is_file(): raise ValueError("replayable runs require flake.lock")
+        lock_snap = snapshot(lock); binary_snap = snapshot(binary)
+        stage = Path(tempfile.mkdtemp(prefix=f".{output.name}.", dir=output.parent))
+        staged_bin = stage / binary.name; shutil.copyfile(binary, staged_bin); staged_bin.chmod(binary.stat().st_mode | stat.S_IXUSR)
+        staged_bin_snap = snapshot(staged_bin)
+        if staged_bin_snap["sha256"] != binary_snap["sha256"]: raise RuntimeError("executable changed while staging")
+        input_snaps: list[dict[str, Any]] = []; staged_by_original: dict[str, str] = {}
         for key in PATH_OPTIONS:
             if key not in opts: continue
             original = Path(str(opts[key])).resolve()
             if not original.is_file(): raise ValueError(f"input is not a file: {original}")
             snap = snapshot(original); staged = stage / (key + "-" + original.name); shutil.copyfile(original, staged); staged.chmod(stat.S_IRUSR | stat.S_IRGRP)
-            input_snaps.append({"option": "--" + key, **snap, "staged_path": str(staged)})
-            for j, token in enumerate(staged_args):
-                if token == str(original) or (j and staged_args[j-1] == "--" + key): staged_args[j] = str(staged)
-                elif token == "--" + key + "=" + str(original): staged_args[j] = "--" + key + "=" + str(staged)
-        # Version is obtained from exactly the immutable staged executable, bounded.
+            staged_snap = snapshot(staged)
+            if staged_snap["sha256"] != snap["sha256"]: raise RuntimeError(f"input changed while staging: {original}")
+            input_snaps.append({"option": "--" + key, **snap, "staged_path": str(staged), "staged_sha256": staged_snap["sha256"]}); staged_by_original[str(original)] = str(staged)
+        staged_args = list(gp_args); j = 0
+        while j < len(staged_args):
+            name, eq, value = staged_args[j][2:].partition("=")
+            if name in BOOL_OPTIONS and not eq:
+                if j + 1 < len(staged_args) and staged_args[j + 1].lower() in {"true", "false"}: j += 1
+                staged_args[j] = f"--{name}={str(opts[name]).lower()}"
+            elif name in PATH_OPTIONS and not eq:
+                j += 1; staged_args[j] = staged_by_original.get(str((cwd / staged_args[j]).resolve()), staged_args[j])
+            elif name in PATH_OPTIONS and eq:
+                staged_args[j] = f"--{name}=" + staged_by_original.get(str((cwd / value).resolve()), value)
+            j += 1
         version_out, version_err, version_rc = _run_bounded([str(staged_bin), "--version"], cwd=stage, timeout=min(parsed.timeout, 30.0))
         if version_rc != 0: raise ValueError(f"operon_gp --version failed: {version_err.strip()}")
         report_path = stage / "machine-report.json"
-        proc_out, proc_err, rc = _run_bounded([str(staged_bin), *staged_args, "--report-json", str(report_path)], cwd=cwd, timeout=parsed.timeout)
+        proc_out, proc_err, rc = _run_bounded([str(staged_bin), *staged_args, "--report-json", str(report_path)], cwd=stage, timeout=parsed.timeout)
         if rc != 0: raise RuntimeError(f"operon_gp exited with status {rc}: {proc_err.strip()}")
         if not report_path.is_file(): raise RuntimeError("operon_gp did not produce --report-json")
         report = validate_report(_json_strict(report_path))
@@ -218,17 +257,34 @@ def main() -> int:
         for item in input_snaps:
             now = snapshot(Path(item["path"]))
             if now["sha256"] != item["sha256"] or now["size"] != item["size"]: raise RuntimeError(f"input mutated during run: {item['path']}")
-        if lock_snap and (sha256(lock) != lock_snap["sha256"] or lock.stat().st_size != lock_snap["size"]): raise RuntimeError("dependency lock mutated during run")
-        output.parent.mkdir(parents=True, exist_ok=True)
-        executable = snapshot(binary)
+        if snapshot(binary)["sha256"] != binary_snap["sha256"]: raise RuntimeError("executable mutated during run")
+        if snapshot(lock)["sha256"] != lock_snap["sha256"]: raise RuntimeError("dependency lock mutated during run")
+        executable = {**binary_snap, "staged_sha256": staged_bin_snap["sha256"], "path": str(binary)}
         inputs = sorted(({k: v for k, v in item.items() if k != "staged_path"} for item in input_snaps), key=lambda x: x["option"])
         manifest = {"$schema": SCHEMA + "/manifest", "schema_version": 2, "replay_comparison": REPLAY_COMPARISON, "invocation": {"argv": [str(binary), *canonical], "machine_report_option": "--report-json <private-staging-path>"}, "inputs": inputs, "effective_configuration": opts, "implementation": {"name": "Operon", "version_output": version_out, "executable": executable}, "dependency_lock": lock_snap, "compiler": None, "cpu": cpu_identity(), "resource_budget": {"wrapper_timeout_seconds": parsed.timeout, "evaluations": opts.get("evaluations"), "timelimit": opts.get("timelimit"), "status": "completed"}, "seed": seed, "result_schema": SCHEMA + "/results"}
-        metrics = report["metrics"]
-        results = {"$schema": SCHEMA + "/results", "schema_version": 2, "srbench_compatibility": False, "dataset": dataset.stem, "algorithm": "Operon-GP", "params": {"canonical_argv": canonical}, "random_state": seed, "time_time": metrics["elapsed_seconds"], "symbolic_model": report["symbolic_model"], "tree_node_count": report["tree_node_count"], "metrics": metrics, "operon": {"manifest": "manifest.json"}}
+        (stage / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+        (stage / "results.json").write_text(json.dumps(results, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
         (stage / "stdout.txt").write_text(proc_out); (stage / "stderr.txt").write_text(proc_err)
-        for payload, name in ((manifest, "manifest.json"), (results, "results.json")):
-            with (stage / name).open("w", encoding="utf-8") as f: json.dump(payload, f, indent=2, sort_keys=True, allow_nan=False); f.write("\n")
-        os.replace(stage, output); print(output / "results.json"); return 0
+        # Reserve destination atomically; mkdir fails without touching a prior
+        # artifact.  Hard-link files into it so no replacement is possible.
+        output.mkdir()
+        linked: list[tuple[Path, int]] = []
+        try:
+            for item in stage.iterdir():
+                destination = output / item.name
+                os.link(item, destination)
+                linked.append((destination, item.stat().st_ino))
+                item.unlink()
+            stage.rmdir()
+        except Exception:
+            for destination, inode in linked:
+                try:
+                    if destination.stat().st_ino == inode: destination.unlink()
+                except OSError: pass
+            try: output.rmdir()
+            except OSError: pass
+            raise
+        print(output / "results.json"); return 0
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError, KeyError, OverflowError) as e:
         if 'stage' in locals(): shutil.rmtree(stage, ignore_errors=True)
         print(f"error: {e}", file=sys.stderr); return 1
