@@ -13,6 +13,11 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "https://operon.dev/schemas/srbench-run/v2"
+REPLAY_COMPARISON = {
+    "required_equal": ["symbolic_model", "tree_node_count", "metrics.r2_train", "metrics.r2_test", "metrics.mae_train", "metrics.mae_test", "metrics.mse_train", "metrics.mse_test", "metrics.nmse_train", "metrics.nmse_test", "metrics.best_fitness", "metrics.evaluator_calls", "metrics.result_evaluations", "params.canonical_argv", "random_state", "operon.manifest", "manifest.provenance"],
+    "observational_excluded": ["time_time", "metrics.elapsed_seconds", "metrics.optimizer_seconds"],
+    "note": "Replay equality requires model, loss metrics, effective configuration/budget, and provenance equality. Wall-clock and optimizer timing are observational and excluded because they vary between otherwise identical runs."
+}
 SINGLETONS = {
     "dataset", "seed", "train", "test", "target", "inputs", "objective", "jit",
     "shuffle", "standardize", "linear-scaling", "skip-nonfinite", "population-size", "pool-size",
@@ -98,15 +103,37 @@ def validate_report(report: Any) -> dict[str, Any]:
     if missing: raise ValueError(f"machine report missing fields: {', '.join(sorted(missing))}")
     return report
 
+def compare_artifacts(first: Path, second: Path) -> None:
+    """Validate deterministic replay fields, excluding declared timing fields."""
+    a, b = (json.loads((p / "results.json").read_text()) for p in (first, second))
+    policy = json.loads((first / "manifest.json").read_text())["replay_comparison"]
+    for path in policy["required_equal"]:
+        if path == "manifest.provenance": continue
+        left = a; right = b
+        for component in path.split("."):
+            left = left[component]; right = right[component]
+        if left != right: raise ValueError(f"replay mismatch in required field {path}")
+    if policy["observational_excluded"] != ["time_time", "metrics.elapsed_seconds", "metrics.optimizer_seconds"]:
+        raise ValueError("unsupported replay comparison policy")
+
 def main() -> int:
     argv = sys.argv[1:]
-    if "--" not in argv: raise SystemExit("error: use '--' before operon_gp arguments")
-    split = argv.index("--")
+    split = argv.index("--") if "--" in argv else len(argv)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("binary", type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("binary", type=Path, nargs="?")
+    parser.add_argument("--output", required=False, type=Path)
     parser.add_argument("--timeout", type=float, default=3600.0, help="finite wrapper timeout in seconds")
-    parsed = parser.parse_args(argv[:split]); gp_args = argv[split + 1:]
+    parser.add_argument("--replay-manifest", type=Path, help="compare this artifact with --against-artifact")
+    parser.add_argument("--against-artifact", type=Path, help="second artifact for --replay-manifest comparison")
+    parsed = parser.parse_args(argv[:split] if "--" in argv else argv)
+    if parsed.replay_manifest:
+        if not parsed.against_artifact: raise SystemExit("error: --replay-manifest requires --against-artifact")
+        try: compare_artifacts(parsed.replay_manifest.resolve(), parsed.against_artifact.resolve())
+        except (OSError, KeyError, ValueError, json.JSONDecodeError) as e: raise SystemExit(f"error: replay comparison failed: {e}")
+        print("replay comparison passed (timing fields excluded by manifest policy)"); return 0
+    if "--" not in argv: raise SystemExit("error: use '--' before operon_gp arguments")
+    if parsed.binary is None or parsed.output is None: raise SystemExit("error: binary and --output are required")
+    gp_args = argv[split + 1:]
     if not math.isfinite(parsed.timeout) or parsed.timeout <= 0: raise SystemExit("error: --timeout must be finite and positive")
     cwd = Path.cwd().resolve(); binary = parsed.binary.resolve()
     if not binary.is_file(): raise SystemExit(f"error: operon_gp binary is not a file: {binary}")
@@ -153,9 +180,10 @@ def main() -> int:
         stat = binary.stat()
         manifest = {
             "$schema": SCHEMA + "/manifest", "schema_version": 2,
+            "schema_description": "Replay provenance; timing fields are observational and not replay-equality claims.",
+            "replay_comparison": REPLAY_COMPARISON,
             "invocation": {"argv": [str(binary), *canonical], "cwd": str(cwd), "machine_report_option": "--report-json <private-staging-path>"},
-            "inputs": sorted(inputs, key=lambda x: x["option"]),
-            "effective_configuration": {k: opts[k] for k in sorted(opts)},
+            "inputs": sorted(inputs, key=lambda x: x["option"]), "effective_configuration": {k: opts[k] for k in sorted(opts)},
             "implementation": {"name": "Operon", "version_output": version, "executable": {"path": str(binary), "size": stat.st_size, "sha256": sha256(binary)}},
             "dependency_lock": {"path": str((cwd / "flake.lock").resolve()), "sha256": sha256(cwd / "flake.lock")} if (cwd / "flake.lock").is_file() else None,
             "compiler": None, "cpu": cpu_identity(), "resource_budget": {"wrapper_timeout_seconds": parsed.timeout, "evaluations": budget if budget_finite else None, "timelimit": limit if limit_finite else None, "status": "completed"},
