@@ -10,7 +10,6 @@
 #include <fmt/format.h>
 #include <string>
 #include <vector>
-
 #include "../operon_test.hpp"
 
 #include "../../../source/core/subtree_rewrite.hpp"
@@ -63,14 +62,30 @@ namespace {
         return Interpreter<Scalar, DTable>::Evaluate(tree, dataset, Range{0, dataset.Rows<std::size_t>()});
     }
 
+    void CheckFinite(std::vector<Scalar> const& values)
+    {
+        for (auto const value : values) {
+            REQUIRE(std::isfinite(value));
+        }
+    }
+
     void CheckFiniteEqual(std::vector<Scalar> const& before, std::vector<Scalar> const& after, Scalar tolerance)
     {
         REQUIRE(before.size() == after.size());
+        CheckFinite(before);
+        CheckFinite(after);
         for (std::size_t row = 0; row < before.size(); ++row) {
-            REQUIRE(std::isfinite(before[row]));
-            REQUIRE(std::isfinite(after[row]));
             CHECK(std::abs(before[row] - after[row]) <= tolerance);
         }
+    }
+
+    auto EvaluationFixture(std::vector<Scalar> const& values) -> std::string
+    {
+        std::string result;
+        for (auto const value : values) {
+            fmt::format_to(std::back_inserter(result), "{:.17g}", value);
+        }
+        return result;
     }
 } // namespace
 
@@ -104,28 +119,32 @@ TEST_CASE("Mapped subtree segments preserve Ref safety", "[operators]")
 TEST_CASE("Mapped subtree segments reject out-of-range Refs", "[operators]")
 {
     // The postfix shape is valid, but RefTo is intentionally outside the raw
-    // source span. Permuting identity segments must reject it without indexing
-    // destinations out of bounds.
+    // source span. This verifies the post-fix rejection contract; without a
+    // sanitizer it cannot deterministically diagnose the prior out-of-bounds access.
     auto nodes = Operon::Vector<Node> { Node::Constant(1), Node::Ref(99), Add() };
     auto const identity = Operon::Vector<detail::PermutationSegment> { { 0, nodes.size() } };
     CHECK_FALSE(detail::PermuteSegments(nodes, identity));
+
+    // RefTo equal to the source size is the first invalid index; reject it as
+    // well so the guard is pinned as >= rather than merely >.
+    auto boundary = Operon::Vector<Node> { Node::Constant(1), Node::Ref(3), Add() };
+    auto const boundaryIdentity = Operon::Vector<detail::PermutationSegment> { { 0, boundary.size() } };
+    CHECK_FALSE(detail::PermuteSegments(boundary, boundaryIdentity));
 }
 
-TEST_CASE("Tree transforms preserve deterministic finite-domain properties", "[properties][tree-transforms]")
+TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-transforms]")
 {
-    constexpr std::uint64_t seed = 0xF62026ULL;
     constexpr Scalar tolerance = 1e-5F;
-    // Domain deliberately excludes zero and +/-1: it avoids invalid identities
-    // such as 0^0 and division by zero. Non-finite output is a failure, never
-    // silently compared or special-cased.
-    Dataset const domain({ "X", "Y" }, { { -2.0F, -0.5F, 0.5F, 2.0F }, { 0.0F, 0.0F, 0.0F, 0.0F } });
+    // A single finite input column keeps the evaluation contract explicit:
+    // every tree in this corpus must produce finite output for every row.
+    Dataset const domain({ "X" }, { { -2.0F, -0.5F, 0.5F, 2.0F } });
     auto const x = domain.GetVariable("X").value().Hash;
 
     SECTION("UpdateNodes is metadata-idempotent") {
         auto tree = Tree({ Variable(x), Node::Constant(2), Add(), Node::Ref(2), Node::Function(Hash(BuiltinOp::Mul), 2) }).UpdateNodes();
         auto const once = tree.Nodes();
         tree.UpdateNodes();
-        INFO(fmt::format("seed={:#x}, tree={}", seed, Fixture(tree)));
+        INFO(fmt::format("tree={}", Fixture(tree)));
         REQUIRE(tree.Validate());
         REQUIRE(tree.Nodes().size() == once.size());
         for (std::size_t index = 0; index < once.size(); ++index) {
@@ -133,29 +152,48 @@ TEST_CASE("Tree transforms preserve deterministic finite-domain properties", "[p
         }
     }
 
-    SECTION("Sort preserves finite commutative evaluation") {
+    SECTION("Sort preserves finite commutative evaluation, including extrema") {
         auto tree = Tree({ Variable(x), Node::Constant(3), Add(), Node::Constant(2), Node::Function(Hash(BuiltinOp::Mul), 2) }).UpdateNodes();
         auto const before = Evaluate(tree, domain);
-        std::ignore = tree.Hash(HashMode::Strict);
         tree.Sort();
-        INFO(fmt::format("seed={:#x}, tree={}", seed, Fixture(tree)));
+        INFO(fmt::format("tree={}", Fixture(tree)));
         REQUIRE(tree.Validate());
         CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
 
-        // Fmin/Fmax only rearrange finite, distinct constants, where their
-        // commutativity is bit-exact and no signed-zero/NaN IEEE edge applies.
-        auto extrema = Tree({ Node::Constant(-2), Node::Constant(3), Node::Function(Hash(BuiltinOp::Fmax), 2) }).UpdateNodes();
-        std::ignore = extrema.Hash(HashMode::Strict);
-        CHECK(std::bit_cast<std::uint32_t>(extrema.Nodes()[0].Value) == std::bit_cast<std::uint32_t>(Scalar{-2}));
-        CHECK(std::bit_cast<std::uint32_t>(extrema.Nodes()[1].Value) == std::bit_cast<std::uint32_t>(Scalar{3}));
+        for (auto const op : { BuiltinOp::Fmin, BuiltinOp::Fmax }) {
+            // Finite, distinct constants avoid the signed-zero/NaN ordering edge cases.
+            auto extrema = Tree({ Node::Constant(3), Node::Constant(-2), Node::Function(Hash(op), 2) }).UpdateNodes();
+            auto const extremaBefore = Evaluate(extrema, domain);
+            extrema.Sort();
+            INFO(fmt::format("op={}, tree={}", static_cast<unsigned>(op), Fixture(extrema)));
+            REQUIRE(extrema.Validate());
+            CheckFiniteEqual(extremaBefore, Evaluate(extrema, domain), tolerance);
+        }
     }
 
-    SECTION("Reduce then Simplify preserves finite evaluation") {
-        auto tree = Tree({ Variable(x), Node::Constant(2), Add(), Node::Constant(3), Add(), Node::Constant(1), Node::Function(Hash(BuiltinOp::Mul), 2) }).UpdateNodes();
+    SECTION("Reduce flattens nested addition without changing evaluation") {
+        auto tree = Tree({ Variable(x), Node::Constant(2), Add(), Node::Constant(3), Add() }).UpdateNodes();
         auto const before = Evaluate(tree, domain);
-        tree.Reduce().Simplify();
-        INFO(fmt::format("seed={:#x}, tree={}", seed, Fixture(tree)));
+        auto const beforeFixture = Fixture(tree);
+        auto const beforeLength = tree.Length();
+        tree.Reduce();
+        INFO(fmt::format("tree={}", Fixture(tree)));
         REQUIRE(tree.Validate());
+        CHECK(tree.Length() < beforeLength);
+        CHECK(Fixture(tree) != beforeFixture);
+        CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
+    }
+
+    SECTION("Simplify removes multiplicative identity without changing evaluation") {
+        auto tree = Tree({ Variable(x), Node::Constant(1), Node::Function(Hash(BuiltinOp::Mul), 2) }).UpdateNodes();
+        auto const before = Evaluate(tree, domain);
+        auto const beforeFixture = Fixture(tree);
+        tree.Simplify();
+        INFO(fmt::format("tree={}", Fixture(tree)));
+        REQUIRE(tree.Validate());
+        REQUIRE(tree.Length() == 1);
+        CHECK(tree[0].IsVariable());
+        CHECK(Fixture(tree) != beforeFixture);
         CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
     }
 }
@@ -165,44 +203,65 @@ TEST_CASE("Structural operators honor deterministic configured bounds", "[proper
     constexpr std::uint64_t seed = 0xF6B0A0D5ULL;
     constexpr std::size_t maxDepth = 4;
     constexpr std::size_t maxLength = 15;
-    Dataset const domain({ "X", "Y" }, { { -2.0F, -0.5F, 0.5F, 2.0F }, { 0.0F, 0.0F, 0.0F, 0.0F } });
-    auto inputs = domain.VariableHashes();
-    std::erase(inputs, domain.GetVariable("Y").value().Hash);
+    Dataset const domain({ "X" }, { { -2.0F, -0.5F, 0.5F, 2.0F } });
+    auto const inputs = domain.VariableHashes();
     PrimitiveSet grammar;
+    // The generated corpus exercises only Add/Sub/Mul. On this finite input
+    // domain, any non-finite generated result is an observed test failure.
     grammar.SetConfig(PrimitiveSet::Arithmetic);
+    grammar.Disable(Util::MakeOp<BuiltinOp::Div>().HashValue);
     ProbabilisticTreeCreator const creator { &grammar, inputs, 0.0, maxLength };
     UniformCoefficientInitializer initializer;
-    RandomGenerator random(seed);
     ReplaceSubtreeMutation const mutation { gsl::not_null<CreatorBase const*> { &creator }, gsl::not_null<CoefficientInitializerBase const*> { &initializer }, maxDepth, maxLength };
     SubtreeCrossover const crossover { 0.75, maxDepth, maxLength };
 
-    auto left = creator(random, 11, 1, maxDepth);
-    auto right = creator(random, 9, 1, maxDepth);
-    for (std::size_t iteration = 0; iteration < 64; ++iteration) {
-        left = mutation(random, std::move(left));
-        auto child = crossover(random, left, right);
-        INFO(fmt::format("seed={:#x}, iteration={}, mutation={}, crossover={}", seed, iteration, Fixture(left), Fixture(child)));
-        REQUIRE(left.Validate());
-        CHECK(left.Length() <= maxLength);
-        CHECK(left.Depth() <= maxDepth);
-        REQUIRE(child.Validate());
-        CHECK(child.Length() <= maxLength);
-        CHECK(child.Depth() <= maxDepth);
-        right = std::move(child);
-    }
+    auto generate = [&](std::uint64_t replaySeed) {
+        RandomGenerator random(replaySeed);
+        auto left = creator(random, 11, 1, maxDepth);
+        auto right = creator(random, 9, 1, maxDepth);
+        std::vector<std::string> observations;
+        for (std::size_t iteration = 0; iteration < 64; ++iteration) {
+            left = mutation(random, std::move(left));
+            auto child = crossover(random, left, right);
+            auto const leftValues = Evaluate(left, domain);
+            auto const childValues = Evaluate(child, domain);
+            INFO(fmt::format("seed={:#x}, iteration={}, mutation={}, crossover={}", replaySeed, iteration, Fixture(left), Fixture(child)));
+            REQUIRE(left.Validate());
+            CHECK(left.Length() <= maxLength);
+            CHECK(left.Depth() <= maxDepth);
+            CheckFinite(leftValues);
+            REQUIRE(child.Validate());
+            CHECK(child.Length() <= maxLength);
+            CHECK(child.Depth() <= maxDepth);
+            CheckFinite(childValues);
+            observations.push_back(fmt::format("{}:{}:{}:{}", Fixture(left), EvaluationFixture(leftValues), Fixture(child), EvaluationFixture(childValues)));
+            right = std::move(child);
+        }
+        return observations;
+    };
+
+    auto const generated = generate(seed);
+    auto const replayed = generate(seed);
+    CHECK(generated == replayed);
 }
 
-TEST_CASE("ShuffleSubtreesMutation preserves Ref validity", "[operators]")
+TEST_CASE("ShuffleSubtreesMutation preserves valid Ref evaluation", "[operators]")
 {
+    Dataset const domain({ "X" }, { { -2.0F, -0.5F, 0.5F, 2.0F } });
+    auto const x = domain.GetVariable("X").value().Hash;
     auto const add = Add();
     auto const mul = Node::Function(static_cast<Hash>(BuiltinOp::Mul), 2);
-    auto const tree = Tree({ Node::Constant(1), Node::Constant(2), add, Node::Ref(2), mul }).UpdateNodes();
+    // This test covers an existing self-contained Ref, not Ref creation by generic creators.
+    auto const tree = Tree({ Variable(x), Node::Constant(2), add, Node::Ref(2), mul }).UpdateNodes();
+    auto const before = Evaluate(tree, domain);
     auto random = Operon::RandomGenerator(1234);
     auto const mutation = ShuffleSubtreesMutation {};
 
     for (auto i = 0; i < 100; ++i) {
         auto const child = mutation(random, tree);
-        CHECK(child.Validate());
+        INFO(fmt::format("iteration={}, tree={}", i, Fixture(child)));
+        REQUIRE(child.Validate());
+        CheckFiniteEqual(before, Evaluate(child, domain), 1e-5F);
     }
 }
 
