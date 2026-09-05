@@ -206,6 +206,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("shape-worst-value", "Fitness value assigned by hard-reject shape enforcement to infeasible individuals (finite)", cxxopts::value<double>()->default_value("1.0"))
         ("shape-bound-mode", "Arithmetic backend for shape-constraint bound computation: combined (affine intersected with interval, default), interval-only, affine-only", cxxopts::value<std::string>()->default_value("combined"))
         ("debug", "Debug mode (more information displayed)")
+        ("report-json", "Write a versioned lossless machine-readable report to this path", cxxopts::value<std::string>())
         ("help", "Print help")
         ("version", "Print version and program information");
     return opts;
