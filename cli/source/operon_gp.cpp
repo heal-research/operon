@@ -68,6 +68,7 @@ auto MakeCoeffAndMutation(bool symbolic)
 auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 {
     auto opts = Operon::InitOptions("operon_gp", "Genetic programming symbolic regression");
+    opts.add_options()("report-json", "Write a versioned lossless machine-readable report to this path", cxxopts::value<std::string>());
     auto result = Operon::ParseOptions(std::move(opts), argc, argv);
 
     // parse and set default values
@@ -393,7 +394,12 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                                                            : shapeViolationStorage->Measure(best.Genotype).Feasible;
             fmt::print(stderr, "shape-constraints: final model is {}\n", feasible ? "feasible" : "INFEASIBLE (not certified over the domain box)");
         }
-        fmt::print("{:infix:roundtrip}\n", Operon::Fmt::WithNames{best.Genotype, *problem.GetDataset()});
+        auto const model = fmt::format("{:infix:roundtrip}", Operon::Fmt::WithNames{best.Genotype, *problem.GetDataset()});
+        fmt::print("{}\n", model);
+        if (result.contains("report-json")) {
+            reporter.SetSymbolicModel(model);
+            Operon::WriteMachineReport(reporter.GetMachineReport(), result["report-json"].as<std::string>());
+        }
     } catch (std::exception& e) {
         fmt::print(stderr, "error: {}\n", e.what());
         return EXIT_FAILURE;

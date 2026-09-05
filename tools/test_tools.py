@@ -1,3 +1,37 @@
+"""Unit tests for run_operon.py and the replayable SRBench wrapper."""
+import importlib.util
+import sys
+import textwrap
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent))
+RUN_SR = importlib.util.spec_from_file_location("run_srbench", Path(__file__).parent / "run_srbench.py")
+run_srbench = importlib.util.module_from_spec(RUN_SR)
+RUN_SR.loader.exec_module(run_srbench)
+
+def test_srbench_rejects_duplicate_and_implicit_value():
+    with pytest.raises(ValueError, match="duplicate"):
+        run_srbench.parse_args(["--seed=1", "--seed=2"])
+    with pytest.raises(ValueError, match="requires a value"):
+        run_srbench.parse_args(["--dataset"])
+
+def test_srbench_canonicalizes_paths_and_flags(tmp_path):
+    path = tmp_path / "data.csv"; path.write_text("x,y\n1,2\n")
+    args, values = run_srbench.canonical_args(["--dataset", str(path), "--shuffle", "--seed", "4"], tmp_path)
+    assert args == [f"--dataset={path}", "--shuffle", "--seed=4"]
+    assert values["shuffle"] is True
+
+def test_srbench_report_rejects_nonfinite_and_malformed():
+    with pytest.raises(ValueError, match="unsupported"):
+        run_srbench.validate_report({})
+    report = {"report_kind":"operon_gp", "schema_version":1, "symbolic_model":"x", "tree_node_count":1,
+              "metrics":{"r2_train": float("nan")}}
+    with pytest.raises(ValueError, match="non-finite"):
+        run_srbench.validate_report(report)
 """Unit tests for run_operon.py and _optuna.py."""
 import sys
 import textwrap

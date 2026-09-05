@@ -4,10 +4,50 @@
 #ifndef OPERON_CLI_REPORTER_HPP
 #define OPERON_CLI_REPORTER_HPP
 
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <stdexcept>
 #include <fmt/format.h>
 #include <operon/algorithms/ga_base.hpp>
 #include <operon/algorithms/phase_timer.hpp>
 #include <operon/operators/linear_scaling.hpp>
+#include <functional>
+#include <string>
+#include <cstdint>
+#include <taskflow/taskflow.hpp>
+#include <glaze/glaze.hpp>
+
+// Versioned machine-readable report. This is deliberately Operon-specific;
+// tree_node_count is not SRBench's model-complexity definition.
+namespace Operon {
+struct MachineMetrics {
+    double r2_train{}; double r2_test{}; double mae_train{}; double mae_test{};
+    double nmse_train{}; double nmse_test{}; double mse_train{}; double mse_test{};
+    double best_fitness{}; double average_fitness{}; double average_tree_node_count{};
+    double elapsed_seconds{}; std::uint64_t evaluator_calls{};
+    std::uint64_t result_evaluations{}; std::uint64_t jacobian_evaluations{}; double optimizer_seconds{};
+};
+struct MachineReport {
+    std::string report_kind{"operon_gp"}; int schema_version{1}; std::string symbolic_model{};
+    std::uint64_t tree_node_count{}; std::uint64_t seed{}; MachineMetrics metrics{};
+};
+}
+template <> struct glz::meta<Operon::MachineMetrics> {
+    using T = Operon::MachineMetrics;
+    static constexpr auto value = glz::object("r2_train", &T::r2_train, "r2_test", &T::r2_test,
+        "mae_train", &T::mae_train, "mae_test", &T::mae_test, "nmse_train", &T::nmse_train, "nmse_test", &T::nmse_test,
+        "mse_train", &T::mse_train, "mse_test", &T::mse_test, "best_fitness", &T::best_fitness,
+        "average_fitness", &T::average_fitness, "average_tree_node_count", &T::average_tree_node_count,
+        "elapsed_seconds", &T::elapsed_seconds, "evaluator_calls", &T::evaluator_calls,
+        "result_evaluations", &T::result_evaluations, "jacobian_evaluations", &T::jacobian_evaluations,
+        "optimizer_seconds", &T::optimizer_seconds);
+};
+template <> struct glz::meta<Operon::MachineReport> {
+    using T = Operon::MachineReport;
+    static constexpr auto value = glz::object("report_kind", &T::report_kind, "schema_version", &T::schema_version,
+        "symbolic_model", &T::symbolic_model, "tree_node_count", &T::tree_node_count, "seed", &T::seed, "metrics", &T::metrics);
+};
 
 #include <functional>
 #include <string>
@@ -15,7 +55,31 @@
 
 namespace Operon {
 
+inline auto WriteMachineReport(MachineReport const& report, std::filesystem::path const& path) -> void {
+    auto finite = [](double value) { return std::isfinite(value); };
+    auto const& m = report.metrics;
+    if (!finite(m.r2_train) || !finite(m.r2_test) || !finite(m.mae_train) || !finite(m.mae_test) ||
+        !finite(m.nmse_train) || !finite(m.nmse_test) || !finite(m.mse_train) || !finite(m.mse_test) ||
+        !finite(m.best_fitness) || !finite(m.average_fitness) || !finite(m.average_tree_node_count) ||
+        !finite(m.elapsed_seconds) || !finite(m.optimizer_seconds)) {
+        throw std::runtime_error("machine report contains non-finite metric");
+    }
+    auto encoded = glz::write_json(report);
+    if (!encoded) { throw std::runtime_error("machine report JSON serialization failed"); }
+    auto tmp = path;
+    tmp += ".tmp-" + std::to_string(static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+    if (!out) { throw std::runtime_error("could not open machine report temporary file"); }
+    out << *encoded << '\n';
+    out.close();
+    if (!out) { std::filesystem::remove(tmp); throw std::runtime_error("could not write machine report"); }
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) { std::filesystem::remove(tmp); throw std::runtime_error("could not publish machine report: " + ec.message()); }
+}
+
 using ModelSelectorFn = std::function<Individual(Span<Individual const>)>;
+
 
 template<typename Evaluator>
 class Reporter {
@@ -111,6 +175,8 @@ public:
 
         double r2Train{};
         double r2Test{};
+        double mseTrain{};
+        double mseTest{};
         double nmseTrain{};
         double nmseTest{};
         double maeTrain{};
@@ -121,10 +187,10 @@ public:
             // negate the R2 because this is an internal fitness measure (minimization) which we here repurpose
             r2Train = -Operon::R2{}(estimatedTrain, targetTrain);
             r2Test = -Operon::R2{}(estimatedTest, targetTest);
-
+            mseTrain = Operon::MSE{}(estimatedTrain, targetTrain);
+            mseTest = Operon::MSE{}(estimatedTest, targetTest);
             nmseTrain = Operon::NMSE{}(estimatedTrain, targetTrain);
             nmseTest = Operon::NMSE{}(estimatedTest, targetTest);
-
             maeTrain = Operon::MAE{}(estimatedTrain, targetTrain);
             maeTest = Operon::MAE{}(estimatedTest, targetTest);
         }).name("calc stats");
@@ -163,6 +229,8 @@ public:
             T{ "mae_te", maeTest, format },
             T{ "nmse_tr", nmseTrain, format },
             T{ "nmse_te", nmseTest, format },
+            T{ "mse_tr", mseTrain, format },
+            T{ "mse_te", mseTest, format },
             T{ "best_fit", best_[idx], format },
             T{ "avg_fit", avgQuality, format },
             T{ "best_len", best_.Genotype.Length(), format },
@@ -175,8 +243,21 @@ public:
             T{ "sort_ms", [&]{ auto const& t = gp.Timings(); auto it = t.find(std::string{SortTaskName}); return it != t.end() ? it->second * 1e3 : 0.0; }(), format },
             T{ "elapsed", gp.Elapsed(), ":>"},
         };
+        latest_.seed = config.Seed;
+        latest_.tree_node_count = best_.Genotype.Length();
+        latest_.symbolic_model.clear();
+        latest_.metrics = MachineMetrics{r2Train, r2Test, maeTrain, maeTest, nmseTrain, nmseTest,
+            mseTrain, mseTest, best_[idx], avgQuality, avgLength, gp.Elapsed(),
+            static_cast<std::uint64_t>(callCount), static_cast<std::uint64_t>(resEval),
+            static_cast<std::uint64_t>(jacEval), cfTime / 1e6};
         PrintStats({ stats.begin(), stats.end() }, gp.Generation() == 0);
     }
+
+    auto SetSymbolicModel(std::string model) const -> void { latest_.symbolic_model = std::move(model); }
+    auto GetMachineReport() const -> MachineReport const& { return latest_; }
+
+private:
+    mutable MachineReport latest_{};
 };
 } // namespace Operon
 
