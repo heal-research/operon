@@ -16,6 +16,25 @@ VALID = {"report_kind": "operon_gp", "schema_version": 1, "symbolic_model": "x",
                      "result_evaluations": 1, "jacobian_evaluations": 1, "optimizer_seconds": 0.01}}
 
 
+def _fake_binary(root, report=VALID):
+    fake = root / "fake.py"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json,sys\n"
+        "if '--version' in sys.argv: print('fake-1'); sys.exit(0)\n"
+        "path=sys.argv[sys.argv.index('--report-json')+1]\n"
+        f"open(path, 'w').write({json.dumps(report)!r})\n"
+    )
+    fake.chmod(0o755)
+    (root / "flake.lock").write_text("{}\n")
+    return fake
+
+def _run_wrapper(root, output, fake, data, *extra):
+    cmd = [sys.executable, str(run_srbench.__file__), "--output", str(output), str(fake), "--",
+           "--dataset", str(data), "--seed", "1", "--evaluations", "1", *extra]
+    return subprocess.run(cmd, capture_output=True, text=True, cwd=root)
+
+
 class WrapperTests(unittest.TestCase):
     def test_malformed_and_nonfinite_reports(self):
         with self.assertRaisesRegex(ValueError, "unsupported"):
@@ -64,6 +83,52 @@ class WrapperTests(unittest.TestCase):
             fake = root / "slow.py"; fake.write_text("#!/usr/bin/env python3\nimport time\ntime.sleep(10)\n"); fake.chmod(0o755)
             out = root / "artifact"; cmd = [sys.executable, str(run_srbench.__file__), "--timeout", "0.1", "--output", str(out), str(fake), "--", "--dataset", str(data), "--seed", "1", "--evaluations", "1"]
             self.assertNotEqual(subprocess.run(cmd, capture_output=True).returncode, 0); self.assertFalse(out.exists())
+
+    def test_attached_staging_and_nested_parent(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); data = root / "data.csv"; data.write_text("x,y\n1,2\n")
+            output = root / "nested" / "deep" / "artifact"; fake = _fake_binary(root)
+            result = _run_wrapper(root, output, fake, data)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((output / "results.json").is_file())
+            self.assertEqual(run_srbench._json_strict(output / "results.json")["manifest_sha256"], run_srbench.sha256(output / "manifest.json"))
+
+    def test_sink_rejection_and_no_overwrite(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); data = root / "data.csv"; data.write_text("x,y\n1,2\n"); fake = _fake_binary(root)
+            output = root / "artifact"; output.write_text("sentinel")
+            result = _run_wrapper(root, output, fake, data)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(output.read_text(), "sentinel")
+
+    def test_strict_binding_rejects_tampered_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); data = root / "data.csv"; data.write_text("x,y\n1,2\n"); fake = _fake_binary(root); output = root / "artifact"
+            result = _run_wrapper(root, output, fake, data)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest = output / "manifest.json"; manifest.write_text(manifest.read_text() + " ")
+            with self.assertRaisesRegex(ValueError, "bound"):
+                run_srbench._manifest_and_results(output)
+
+    def test_manifest_path_replay(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); data = root / "data.csv"; data.write_text("x,y\n1,2\n"); fake = _fake_binary(root)
+            first = root / "first"; second = root / "second"
+            self.assertEqual(_run_wrapper(root, first, fake, data).returncode, 0)
+            self.assertEqual(_run_wrapper(root, second, fake, data).returncode, 0)
+            cmd = [sys.executable, str(run_srbench.__file__), "--replay-manifest", str(first / "manifest.json"), "--against-artifact", str(second)]
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_strict_artifact_schema_comparator(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td); data = root / "data.csv"; data.write_text("x,y\n1,2\n"); fake = _fake_binary(root); output = root / "artifact"
+            result = _run_wrapper(root, output, fake, data)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            results_path = output / "results.json"; payload = run_srbench._json_strict(results_path); payload["unexpected"] = True
+            results_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "schema"):
+                run_srbench._manifest_and_results(output)
 
 
 if __name__ == "__main__": unittest.main()
