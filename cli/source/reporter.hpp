@@ -8,7 +8,6 @@
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
-#include <unistd.h>
 #include <fmt/format.h>
 #include <operon/algorithms/ga_base.hpp>
 #include <operon/algorithms/phase_timer.hpp>
@@ -68,7 +67,7 @@ inline auto WriteMachineReport(MachineReport const& report, std::filesystem::pat
     auto encoded = glz::write_json(report);
     if (!encoded) { throw std::runtime_error("machine report JSON serialization failed"); }
     auto tmp = path;
-    tmp += ".tmp-" + std::to_string(static_cast<unsigned long long>(::getpid()));
+    tmp += ".tmp-" + std::to_string(static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
     if (!out) { throw std::runtime_error("could not open machine report temporary file"); }
     out << *encoded << '\n';
