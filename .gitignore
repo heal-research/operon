@@ -20,6 +20,7 @@ scratch/
 tools/__pycache__/
 tools/results/
 tools/*.py
+!tools/run_srbench.py
 tools/*.sh
 tools/*.yaml
 tools/*.txt
