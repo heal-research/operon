@@ -145,6 +145,9 @@ struct PermutationSegment {
         if (!node.IsRef()) {
             continue;
         }
+        if (node.RefTo >= destinations.size()) {
+            return std::nullopt;
+        }
         auto const target = destinations[node.RefTo];
         if (target >= i) {
             return std::nullopt;
