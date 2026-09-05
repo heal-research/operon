@@ -6,6 +6,7 @@
 
 #include "operon/core/contracts.hpp"
 #include "operon/operators/crossover.hpp"
+#include "../core/subtree_rewrite.hpp"
 #include "operon/random/random.hpp"
 
 namespace Operon {
@@ -78,15 +79,24 @@ auto CrossoverBase::Cross(const Tree& lhs, const Tree& rhs, /* index of subtree 
 {
     auto const& left = lhs.Nodes();
     auto const& right = rhs.Nodes();
-    Operon::Vector<Node> nodes;
-    using Signed = std::make_signed_t<size_t>;
-    nodes.reserve(right[j].Length - left[i].Length + left.size());
-    std::copy_n(left.begin(), i - left[i].Length, back_inserter(nodes));
-    std::copy_n(right.begin() + static_cast<Signed>(j) - right[j].Length, right[j].Length + 1, back_inserter(nodes));
-    std::copy_n(left.begin() + static_cast<Signed>(i) + 1, left.size() - (i + 1), back_inserter(nodes));
-
-    auto child = Tree(nodes).UpdateNodes();
-    return child;
+    auto const leftSpan = detail::DescribeSubtree(Operon::Span<Node const>{left}, i);
+    auto const rightSpan = detail::DescribeSubtree(Operon::Span<Node const>{right}, j);
+    if (!detail::IsSelfContainedSubtree(Operon::Span<Node const>{right}, rightSpan)) {
+        return lhs;
+    }
+    auto donor = Operon::Span<Node const>{right}.subspan(rightSpan.First, rightSpan.Size);
+    if (std::ranges::any_of(donor, [](Node const& node) { return node.IsRef(); })) {
+        auto normalized = Operon::Vector<Node>(donor.begin(), donor.end());
+        for (auto& node : normalized) {
+            if (node.IsRef()) {
+                node.RefTo = static_cast<uint16_t>(node.RefTo - rightSpan.First);
+            }
+        }
+        auto nodes = detail::RewriteSubtree(Operon::Span<Node const>{left}, leftSpan, normalized);
+        return Tree(std::move(nodes)).UpdateNodes();
+    }
+    auto nodes = detail::RewriteSubtree(Operon::Span<Node const>{left}, leftSpan, donor);
+    return Tree(std::move(nodes)).UpdateNodes();
 }
 
 auto SubtreeCrossover::operator()(Operon::RandomGenerator& random, const Tree& lhs, const Tree& rhs) const -> Tree
