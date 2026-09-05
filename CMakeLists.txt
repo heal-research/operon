@@ -286,7 +286,7 @@ target_link_libraries(operon_operon PUBLIC
     vstat::vstat
     std::mdspan
     pappus::pappus # required by IntervalEvaluator/AffineEvaluator
-    tl::expected # required by public Tree::Validate/FitOutcome APIs
+    tl::expected # Dataset::GetVariable returns tl::expected in the public dataset.hpp header
 )
 
 target_link_libraries(operon_operon PRIVATE
