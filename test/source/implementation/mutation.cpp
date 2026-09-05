@@ -171,6 +171,49 @@ TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-trans
             CheckFiniteEqual(extremaBefore, Evaluate(extrema, domain), tolerance);
         }
     }
+    SECTION("Sort snapshots unequal child spans before reordering") {
+        auto tree = Tree({ Node::Constant(1), Node::Constant(9), Node::Constant(4), Add(), Add() }).UpdateNodes();
+        [[maybe_unused]] auto const& hashed = tree.Hash(HashMode::Strict);
+        auto const before = Evaluate(tree, domain);
+
+        tree.Sort();
+
+        INFO(fmt::format("tree={}", Fixture(tree)));
+        REQUIRE(tree.Validate());
+        REQUIRE(tree.Length() == 5);
+        CHECK(tree[2].IsFunction());
+        CHECK(tree[3].IsConstant());
+        CHECK(tree[3].Value == 1);
+        CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
+    }
+
+    SECTION("Sort remaps self-contained Ref subtrees") {
+        auto tree = Tree({ Node::Constant(1), Node::Constant(5), Node::Ref(1), Node::Function(Hash(BuiltinOp::Mul), 2), Add() }).UpdateNodes();
+        [[maybe_unused]] auto const& hashed = tree.Hash(HashMode::Strict);
+        auto const before = Evaluate(tree, domain);
+
+        tree.Sort();
+
+        INFO(fmt::format("tree={}", Fixture(tree)));
+        REQUIRE(tree.Validate());
+        REQUIRE(tree[1].IsRef());
+        CHECK(tree[1].RefTo == 0);
+        CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
+    }
+
+    SECTION("Sort leaves a cross-subtree forward Ref order unchanged") {
+        auto tree = Tree({ Node::Constant(5), Node::Ref(0), Add() }).UpdateNodes();
+        [[maybe_unused]] auto const& hashed = tree.Hash(HashMode::Strict);
+        auto const before = Evaluate(tree, domain);
+        auto const beforeFixture = Fixture(tree);
+
+        tree.Sort();
+
+        INFO(fmt::format("tree={}", Fixture(tree)));
+        REQUIRE(tree.Validate());
+        CHECK(Fixture(tree) == beforeFixture);
+        CheckFiniteEqual(before, Evaluate(tree, domain), tolerance);
+    }
 
     SECTION("Reduce flattens nested addition without changing evaluation") {
         auto tree = Tree({ Variable(x), Node::Constant(2), Add(), Node::Constant(3), Add() }).UpdateNodes();
@@ -213,7 +256,7 @@ TEST_CASE("Structural operators honor deterministic configured bounds", "[proper
     ProbabilisticTreeCreator const creator { &grammar, inputs, 0.0, maxLength };
     UniformCoefficientInitializer initializer;
 
-    SECTION("controlled crossover inserts the selected donor subtree") {
+    SECTION("direct crossover inserts the selected donor subtree") {
         auto const left = Tree({ Node::Constant(11), Node::Constant(13), Add() }).UpdateNodes();
         auto const right = Tree({ Node::Constant(29), Node::Constant(31), Add() }).UpdateNodes();
         auto const beforeFixture = Fixture(left);
@@ -221,12 +264,35 @@ TEST_CASE("Structural operators honor deterministic configured bounds", "[proper
         INFO(fmt::format("left={}, right={}, child={}", Fixture(left), Fixture(right), Fixture(child)));
         REQUIRE(child.Validate());
         CHECK(child.Length() == 5);
-        CHECK(child.Depth() <= maxDepth);
-        CHECK(child.Length() <= maxLength);
         CHECK(child[0].Value == 29);
         CHECK(child[1].Value == 31);
         CHECK(Fixture(child) != beforeFixture);
         CheckFinite(Evaluate(child, domain));
+    }
+    SECTION("configured crossover rejects oversized and overdeep donors") {
+        auto const left = Tree({ Node::Constant(11), Node::Constant(13), Add() }).UpdateNodes();
+        auto const right = Tree({ Node::Constant(1), Node::Constant(2), Add(), Node::Constant(3), Add(), Node::Constant(4), Add() }).UpdateNodes();
+        auto const invalidDonor = right.Splice(right.Length() - 1U);
+        REQUIRE(invalidDonor.Depth() > 2);
+        REQUIRE(invalidDonor.Length() > 3);
+        auto const unconstrained = CrossoverBase::Cross(left, right, 0, right.Length() - 1U);
+        REQUIRE(unconstrained.Depth() > 2);
+        REQUIRE(unconstrained.Length() > 3);
+        auto const beforeFixture = Fixture(left);
+        SubtreeCrossover const crossover { 1.0, 2, 3 };
+        auto random = RandomGenerator(0x5EEDU);
+        auto crossed = false;
+
+        for (size_t i = 0; i < 64; ++i) {
+            auto const child = crossover(random, left, right);
+            INFO(fmt::format("iteration={}, child={}", i, Fixture(child)));
+            REQUIRE(child.Validate());
+            CHECK(child.Depth() <= 2);
+            CHECK(child.Length() <= 3);
+            CheckFinite(Evaluate(child, domain));
+            crossed = crossed || Fixture(child) != beforeFixture;
+        }
+        REQUIRE(crossed);
     }
 
     SECTION("insertion grows a known eligible n-ary node") {
