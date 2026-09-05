@@ -126,12 +126,16 @@ TEST_CASE("Mapped subtree segments reject out-of-range Refs", "[operators]")
 
 TEST_CASE("Sort leaves malformed out-of-range Refs untouched", "[operators]")
 {
-    auto tree = Tree({ Node::Constant(1), Node::Ref(99), Add() }).UpdateNodes();
-    auto const before = Fixture(tree);
+    for (auto const refTo : { uint16_t{3}, uint16_t{99} }) {
+        auto tree = Tree({ Node::Constant(1), Node::Ref(refTo), Add() }).UpdateNodes();
+        auto const before = Fixture(tree);
 
-    tree.Sort();
+        REQUIRE_FALSE(tree.Validate());
+        tree.Sort();
 
-    CHECK(Fixture(tree) == before);
+        CHECK(Fixture(tree) == before);
+        CHECK(tree.Validate().error() == TreeValidationError::RefNotBackward);
+    }
 }
 
 TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-transforms]")
