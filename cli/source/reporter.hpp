@@ -17,6 +17,7 @@ namespace Operon {
 
 using ModelSelectorFn = std::function<Individual(Span<Individual const>)>;
 
+
 template<typename Evaluator>
 class Reporter {
     gsl::not_null<Evaluator const*> evaluator_;
@@ -111,6 +112,8 @@ public:
 
         double r2Train{};
         double r2Test{};
+        double mseTrain{};
+        double mseTest{};
         double nmseTrain{};
         double nmseTest{};
         double maeTrain{};
@@ -121,10 +124,10 @@ public:
             // negate the R2 because this is an internal fitness measure (minimization) which we here repurpose
             r2Train = -Operon::R2{}(estimatedTrain, targetTrain);
             r2Test = -Operon::R2{}(estimatedTest, targetTest);
-
+            mseTrain = Operon::MSE{}(estimatedTrain, targetTrain);
+            mseTest = Operon::MSE{}(estimatedTest, targetTest);
             nmseTrain = Operon::NMSE{}(estimatedTrain, targetTrain);
             nmseTest = Operon::NMSE{}(estimatedTest, targetTest);
-
             maeTrain = Operon::MAE{}(estimatedTrain, targetTrain);
             maeTest = Operon::MAE{}(estimatedTest, targetTest);
         }).name("calc stats");
@@ -163,6 +166,8 @@ public:
             T{ "mae_te", maeTest, format },
             T{ "nmse_tr", nmseTrain, format },
             T{ "nmse_te", nmseTest, format },
+            T{ "mse_tr", mseTrain, format },
+            T{ "mse_te", mseTest, format },
             T{ "best_fit", best_[idx], format },
             T{ "avg_fit", avgQuality, format },
             T{ "best_len", best_.Genotype.Length(), format },
