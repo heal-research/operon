@@ -21,7 +21,7 @@
 
 namespace Operon {
 // crossover takes two parent trees and returns a child
-struct CrossoverBase : public OperatorBase<Tree, const Tree&, const Tree&> {
+struct OPERON_EXPORT CrossoverBase : public OperatorBase<Tree, const Tree&, const Tree&> {
     using Limits = std::pair<std::size_t, std::size_t>;
     static auto FindCompatibleSwapLocations(Operon::RandomGenerator& random, Tree const& lhs, Tree const& rhs, size_t maxDepth, size_t maxLength, double internalProbability = 1.0) -> std::pair<size_t, size_t>;
     static auto SelectRandomBranch(Operon::RandomGenerator& random, Tree const& tree, double internalProb, Limits length, Limits level, Limits depth) -> size_t;

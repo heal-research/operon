@@ -90,12 +90,7 @@ public:
     [[nodiscard]] auto Hash(Operon::HashMode mode) const -> Tree const&;
 
     // splice a subtree rooted at node with index i as a new tree
-    [[nodiscard]] auto Splice(size_t i) const -> Tree {
-        EXPECT(i < Length());
-        auto const& n = nodes_[i];
-        auto it = nodes_.begin() + static_cast<int64_t>(i);
-        return Tree({it - n.Length, it + 1}).UpdateNodes();
-    }
+    [[nodiscard]] auto Splice(size_t i) const -> Tree;
 
     void SetEnabled(size_t i, bool enabled)
     {
