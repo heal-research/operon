@@ -195,39 +195,86 @@ auto Tree::Reduce() -> Tree&
 // - this method assumes node hashes are computed, usually it is preceded by a call to tree.Hash()
 auto Tree::Sort() -> Tree&
 {
-    // preallocate memory to reduce fragmentation
-    Operon::Vector<Operon::Node> sorted = nodes_;
+    // Each entry identifies the original node currently held at its position.
+    // Refs retain their original target while children are rearranged, then are
+    // rewritten once from this final old-to-new mapping.
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        if (nodes_[i].IsRef() && nodes_[i].RefTo >= i) {
+            return *this;
+        }
+    }
 
-    Operon::Vector<size_t> children;
+    Operon::Vector<Operon::Node> sorted = nodes_;
+    Operon::Vector<size_t> origins(sorted.size());
+    std::iota(origins.begin(), origins.end(), size_t{0});
+
+    Operon::Vector<size_t> destinations(sorted.size());
+    std::iota(destinations.begin(), destinations.end(), size_t{0});
+
+    struct ChildSpan {
+        Operon::Node Root;
+        size_t First;
+        size_t Size;
+    };
+    Operon::Vector<ChildSpan> children;
     children.reserve(nodes_.size());
 
-    auto start = nodes_.begin();
-
-    for (size_t i = 0; i < nodes_.size(); ++i) {
-        auto& s = nodes_[i];
-
-        if (s.IsLeaf()) {
+    for (size_t i = 0; i < sorted.size(); ++i) {
+        auto const& parent = sorted[i];
+        if (parent.IsLeaf() || !parent.IsCommutative()) {
             continue;
         }
 
-        auto arity = s.Arity;
-        auto size = s.Length;
-
-        if (s.IsCommutative()) {
-            if (arity == size) {
-                std::stable_sort(start + i - size, start + i); // NOLINT
-            } else {
-                std::ranges::copy(Indices(i), std::back_inserter(children));
-                std::stable_sort(children.begin(), children.end(), [&](auto a, auto b) -> auto { return nodes_[a] < nodes_[b]; }); // sort child indices
-
-                auto pos = sorted.begin() + i - size; // NOLINT
-                for (auto j : children) {
-                    auto& c = nodes_[j];
-                    std::copy_n(start + static_cast<int64_t>(j) - c.Length, c.Length + 1, pos);
-                    pos += c.Length + 1;
-                }
-                children.clear();
+        auto const first = i - parent.Length;
+        if (parent.Arity == parent.Length) {
+            for (size_t j = first; j < i; ++j) {
+                children.push_back({ sorted[j], j, 1U });
             }
+        } else {
+            for (auto const j : Tree::Indices(sorted, i)) {
+                auto const size = static_cast<size_t>(sorted[j].Length) + 1U;
+                children.push_back({ sorted[j], j + 1U - size, size });
+            }
+        }
+        std::stable_sort(children.begin(), children.end(), [](ChildSpan const& lhs, ChildSpan const& rhs) {
+            return lhs.Root < rhs.Root;
+        });
+
+        Operon::Vector<Operon::Node> const buffer(sorted.begin() + static_cast<std::ptrdiff_t>(first), sorted.begin() + static_cast<std::ptrdiff_t>(i));
+        Operon::Vector<size_t> const sourceOrigins(origins.begin() + static_cast<std::ptrdiff_t>(first), origins.begin() + static_cast<std::ptrdiff_t>(i));
+        Operon::Vector<Operon::Node> reordered;
+        Operon::Vector<size_t> reorderedOrigins;
+        reordered.reserve(buffer.size());
+        reorderedOrigins.reserve(sourceOrigins.size());
+
+        for (auto const& child : children) {
+            auto const offset = child.First - first;
+            std::copy_n(buffer.begin() + static_cast<std::ptrdiff_t>(offset), static_cast<std::ptrdiff_t>(child.Size), std::back_inserter(reordered));
+            std::copy_n(sourceOrigins.begin() + static_cast<std::ptrdiff_t>(offset), static_cast<std::ptrdiff_t>(child.Size), std::back_inserter(reorderedOrigins));
+        }
+
+        for (size_t j = 0; j < reorderedOrigins.size(); ++j) {
+            destinations[reorderedOrigins[j]] = first + j;
+        }
+        auto const preservesRefs = std::ranges::all_of(reordered, [&](Node const& node) {
+            return !node.IsRef() || destinations[node.RefTo] < first + static_cast<size_t>(&node - reordered.data());
+        });
+        if (!preservesRefs) {
+            for (size_t j = 0; j < sourceOrigins.size(); ++j) {
+                destinations[sourceOrigins[j]] = first + j;
+            }
+            children.clear();
+            continue;
+        }
+
+        std::ranges::copy(reordered, sorted.begin() + static_cast<std::ptrdiff_t>(first));
+        std::ranges::copy(reorderedOrigins, origins.begin() + static_cast<std::ptrdiff_t>(first));
+        children.clear();
+    }
+
+    for (size_t i = 0; i < sorted.size(); ++i) {
+        if (sorted[i].IsRef()) {
+            sorted[i].RefTo = static_cast<uint16_t>(destinations[sorted[i].RefTo]);
         }
     }
     nodes_.swap(sorted);
