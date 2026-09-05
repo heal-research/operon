@@ -2,16 +2,18 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
-#include <cstddef>
-#include <cstdint>
 #include <algorithm>
 #include <cmath>
-#include <numeric>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
+#include <limits>
+#include <numeric>
 #include <optional>
-#include <vector>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "operon/core/tree.hpp"
 #include "operon/hash/hash.hpp"
@@ -49,6 +51,110 @@ auto Tree::UpdateNodes() -> Tree&
     }
 
     return *this;
+}
+
+auto Tree::Validate() const -> tl::expected<void, TreeValidationError>
+{
+    if (nodes_.empty()) { return {}; }
+
+    struct CompletedSubtree {
+        size_t First;
+        size_t Root;
+        size_t Depth;
+    };
+
+    std::vector<CompletedSubtree> stack;
+    stack.reserve(nodes_.size());
+    std::vector<size_t> parents(nodes_.size());
+    std::vector<size_t> lengths(nodes_.size());
+    std::vector<size_t> depths(nodes_.size());
+
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        auto const& node = nodes_[i];
+        switch (node.Type) {
+        case NodeType::Constant:
+        case NodeType::Variable:
+        case NodeType::Ref:
+        case NodeType::Function:
+            break;
+        default:
+            return tl::make_unexpected(TreeValidationError::InvalidNodeType);
+        }
+        if (node.IsRef() && node.RefTo >= i) {
+            return tl::make_unexpected(TreeValidationError::RefNotBackward);
+        }
+
+        if (node.IsFunction() == node.IsLeaf()) {
+            return tl::make_unexpected(node.IsFunction()
+                ? TreeValidationError::FunctionArityZero
+                : TreeValidationError::TerminalArityNonZero);
+        }
+        if (node.IsLeaf()) {
+            depths[i] = 1;
+            stack.push_back({i, i, 1});
+            continue;
+        }
+
+        auto const arity = static_cast<size_t>(node.Arity);
+        if (stack.size() < arity) {
+            return tl::make_unexpected(TreeValidationError::MissingChildren);
+        }
+
+        auto const firstChild = stack.size() - arity;
+        auto const first      = stack[firstChild].First;
+        if (firstChild > 0 && stack[firstChild - 1].Root + 1 != first) {
+            return tl::make_unexpected(TreeValidationError::ChildSubtreesNotContiguous);
+        }
+        if (stack.back().Root + 1 != i) {
+            return tl::make_unexpected(TreeValidationError::ChildSubtreesNotAdjacent);
+        }
+
+        size_t depth{1};
+        for (auto j = firstChild; j < stack.size(); ++j) {
+            parents[stack[j].Root] = i;
+            depth = std::max(depth, stack[j].Depth + 1);
+        }
+        stack.erase(stack.begin() + static_cast<std::ptrdiff_t>(firstChild), stack.end());
+        stack.push_back({first, i, depth});
+        lengths[i] = i - first;
+        depths[i]  = depth;
+    }
+
+    if (stack.size() != 1) {
+        return tl::make_unexpected(TreeValidationError::MultipleRoots);
+    }
+    if (stack.front().First != 0 || stack.front().Root != nodes_.size() - 1) {
+        return tl::make_unexpected(TreeValidationError::RootDoesNotCoverTree);
+    }
+
+    std::vector<size_t> levels(nodes_.size());
+    levels.back() = 1;
+    for (size_t i = nodes_.size() - 1; i > 0; --i) {
+        levels[i - 1] = levels[parents[i - 1]] + 1;
+    }
+
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        auto const& node = nodes_[i];
+        if (lengths[i] > std::numeric_limits<uint16_t>::max()
+            || depths[i] > std::numeric_limits<uint16_t>::max()
+            || parents[i] > std::numeric_limits<uint16_t>::max()
+            || levels[i] > std::numeric_limits<uint16_t>::max()) {
+            return tl::make_unexpected(TreeValidationError::DerivedMetadataOverflow);
+        }
+        if (node.Length != lengths[i]) {
+            return tl::make_unexpected(TreeValidationError::LengthMismatch);
+        }
+        if (node.Depth != depths[i]) {
+            return tl::make_unexpected(TreeValidationError::DepthMismatch);
+        }
+        if (node.Parent != parents[i]) {
+            return tl::make_unexpected(TreeValidationError::ParentMismatch);
+        }
+        if (node.Level != levels[i]) {
+            return tl::make_unexpected(TreeValidationError::LevelMismatch);
+        }
+    }
+    return {};
 }
 
 auto Tree::Reduce() -> Tree&

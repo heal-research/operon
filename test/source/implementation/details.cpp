@@ -67,6 +67,107 @@ TEST_CASE("Tree construction and access", "[core]")
     }
 }
 
+TEST_CASE("Tree validation reports postfix invariants", "[core][tree-validation]")
+{
+    auto const valid = []() {
+        Node x(NodeType::Variable);
+        x.HashValue = x.CalculatedHashValue = 1;
+        Node y(NodeType::Variable);
+        y.HashValue = y.CalculatedHashValue = 2;
+        return Tree({x, y, Util::MakeOp<BuiltinOp::Add>(), Node::Ref(2), Util::MakeOp<BuiltinOp::Mul>()}).UpdateNodes();
+    };
+
+    SECTION("ordinary and empty trees are valid") {
+        CHECK(Tree{}.Validate());
+        CHECK(valid().Validate());
+    }
+
+    SECTION("function arity cannot consume missing children") {
+        Tree tree({Util::MakeOp<BuiltinOp::Add>()});
+        auto const result = tree.Validate();
+        REQUIRE_FALSE(result);
+        CHECK(result.error() == TreeValidationError::MissingChildren);
+    }
+
+    SECTION("postfix input has exactly one root") {
+        Tree tree({Node::Constant(1), Node::Constant(2)});
+        auto const result = tree.Validate();
+        REQUIRE_FALSE(result);
+        CHECK(result.error() == TreeValidationError::MultipleRoots);
+    }
+
+    SECTION("terminals have zero arity") {
+        auto leaf = Node::Constant(1);
+        leaf.Arity = 1;
+        Tree tree({leaf});
+        auto const result = tree.Validate();
+        REQUIRE_FALSE(result);
+        CHECK(result.error() == TreeValidationError::TerminalArityNonZero);
+    }
+
+    SECTION("node type must be known") {
+        auto node = Node::Constant(1);
+        node.Type = static_cast<NodeType>(255);
+        Tree tree({node});
+        auto const result = tree.Validate();
+        REQUIRE_FALSE(result);
+        CHECK(result.error() == TreeValidationError::InvalidNodeType);
+    }
+
+    SECTION("Ref points backward") {
+        Tree tree({Node::Ref(0)});
+        auto const result = tree.Validate();
+        REQUIRE_FALSE(result);
+        CHECK(result.error() == TreeValidationError::RefNotBackward);
+    }
+
+    SECTION("derived metadata matches the postfix structure") {
+        auto tree = valid();
+        tree[2].Length = 0;
+        auto const lengthResult = tree.Validate();
+        REQUIRE_FALSE(lengthResult);
+        CHECK(lengthResult.error() == TreeValidationError::LengthMismatch);
+
+        tree = valid();
+        tree[2].Depth = 0;
+        auto const depthResult = tree.Validate();
+        REQUIRE_FALSE(depthResult);
+        CHECK(depthResult.error() == TreeValidationError::DepthMismatch);
+
+        tree = valid();
+        tree[1].Parent = 0;
+        auto const parentResult = tree.Validate();
+        REQUIRE_FALSE(parentResult);
+        CHECK(parentResult.error() == TreeValidationError::ParentMismatch);
+
+        tree = valid();
+        tree[1].Level = 0;
+        auto const levelResult = tree.Validate();
+        REQUIRE_FALSE(levelResult);
+        CHECK(levelResult.error() == TreeValidationError::LevelMismatch);
+    }
+}
+
+TEST_CASE("Tree::UpdateNodes is idempotent under validation", "[core][tree-validation]")
+{
+    Node x(NodeType::Variable);
+    x.HashValue = x.CalculatedHashValue = 1;
+    Node y(NodeType::Variable);
+    y.HashValue = y.CalculatedHashValue = 2;
+    auto tree = Tree({x, y, Util::MakeOp<BuiltinOp::Add>(), Node::Ref(2), Util::MakeOp<BuiltinOp::Mul>()}).UpdateNodes();
+    auto const once = tree.Nodes();
+
+    tree.UpdateNodes();
+    REQUIRE(tree.Validate());
+    REQUIRE(tree.Length() == once.size());
+    for (size_t i = 0; i < tree.Length(); ++i) {
+        CHECK(tree[i].Length == once[i].Length);
+        CHECK(tree[i].Depth == once[i].Depth);
+        CHECK(tree[i].Parent == once[i].Parent);
+        CHECK(tree[i].Level == once[i].Level);
+    }
+}
+
 TEST_CASE("Tree coefficients", "[core]")
 {
     Node c1(NodeType::Constant); c1.Value = 3.14F; c1.Optimize = true;
@@ -171,6 +272,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
     SECTION("constant folding: Add(2, 3) -> Const(5)") {
         Operon::Vector<Node> ns{ Const(2), Const(3), Util::MakeOp<BuiltinOp::Add>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        CHECK(tree.Validate());
         REQUIRE(tree.Length() == 1);
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(5.0));
@@ -179,6 +281,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
     SECTION("constant folding: Mul(2, 3) -> Const(6)") {
         Operon::Vector<Node> ns{ Const(2), Const(3), Util::MakeOp<BuiltinOp::Mul>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        CHECK(tree.Validate());
         REQUIRE(tree.Length() == 1);
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(6.0));
@@ -188,6 +291,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         // [Const(2), Const(3), Mul, Const(4), Add]
         Operon::Vector<Node> ns{ Const(2), Const(3), Util::MakeOp<BuiltinOp::Mul>(), Const(4), Util::MakeOp<BuiltinOp::Add>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        CHECK(tree.Validate());
         REQUIRE(tree.Length() == 1);
         REQUIRE(tree[0].IsConstant());
         CHECK(tree[0].Value == Catch::Approx(10.0));
@@ -196,6 +300,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
     SECTION("identity: x + 0 -> x") {
         Operon::Vector<Node> ns{ Const(0), Var(), Util::MakeOp<BuiltinOp::Add>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        CHECK(tree.Validate());
         REQUIRE(tree.Length() == 1);
         CHECK(tree[0].IsVariable());
     }
@@ -376,6 +481,7 @@ TEST_CASE("Tree::Simplify", "[core][simplify]")
         // Var+Const(5).
         Operon::Vector<Node> ns{ Var(), Const(2), Const(3), Util::MakeOp<BuiltinOp::Add>(), Util::MakeOp<BuiltinOp::Add>() };
         auto tree = Tree(std::move(ns)).UpdateNodes().Simplify();
+        CHECK(tree.Validate());
         REQUIRE(tree.Length() == 3);
         CHECK(tree[0].IsVariable());
         REQUIRE(tree[1].IsConstant());

@@ -41,6 +41,7 @@ TEST_CASE("Crossover produces valid trees", "[operators]")
         auto child = cx(rng, p1, p2);
 
         CHECK(child.Length() > 0);
+        CHECK(child.Validate());
     }
 
     SECTION("Child size is within bounds") {
@@ -60,6 +61,7 @@ TEST_CASE("Crossover produces valid trees", "[operators]")
             auto p2 = dist(rng);
             auto child = cx(rng, trees[p1], trees[p2]);
             CHECK(child.Length() <= maxLength);
+            CHECK(child.Validate());
         }
     }
 }
