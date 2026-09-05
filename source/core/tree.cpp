@@ -198,6 +198,12 @@ auto Tree::Sort() -> Tree&
     // Each entry identifies the original node currently held at its position.
     // Refs retain their original target while children are rearranged, then are
     // rewritten once from this final old-to-new mapping.
+    if (std::ranges::any_of(nodes_, [size = nodes_.size()](Node const& node) {
+            return node.IsRef() && node.RefTo >= size;
+        })) {
+        return *this;
+    }
+
     Operon::Vector<Operon::Node> sorted = nodes_;
     Operon::Vector<size_t> origins(sorted.size());
     std::iota(origins.begin(), origins.end(), size_t{0});
