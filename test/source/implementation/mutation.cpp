@@ -124,6 +124,16 @@ TEST_CASE("Mapped subtree segments reject out-of-range Refs", "[operators]")
     CHECK_FALSE(detail::PermuteSegments(boundary, boundaryIdentity));
 }
 
+TEST_CASE("Sort leaves malformed out-of-range Refs untouched", "[operators]")
+{
+    auto tree = Tree({ Node::Constant(1), Node::Ref(99), Add() }).UpdateNodes();
+    auto const before = Fixture(tree);
+
+    tree.Sort();
+
+    CHECK(Fixture(tree) == before);
+}
+
 TEST_CASE("Tree transforms preserve finite evaluation", "[properties][tree-transforms]")
 {
     constexpr Scalar tolerance = 1e-5F;
