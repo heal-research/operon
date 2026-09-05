@@ -27,17 +27,26 @@ TEST_CASE("Mapped subtree segments preserve Ref safety", "[operators]")
 {
     auto nodes = Operon::Vector<Node> { Node::Constant(1), Node::Constant(2), Add(), Node::Ref(2), Add() };
 
-    auto const unchangedSegments = Operon::Vector<detail::SourceSegment> { { 0, 3 }, { 3, 1 }, { 4, 1 } };
-    auto const unchanged = detail::RewriteSegments(nodes, unchangedSegments);
-    REQUIRE(unchanged[3].IsRef());
-    CHECK(unchanged[3].RefTo == 2);
-    CHECK(Tree(unchanged).UpdateNodes().Validate());
+    auto const unchangedSegments = Operon::Vector<detail::PermutationSegment> { { 0, 3 }, { 3, 1 }, { 4, 1 } };
+    auto const unchanged = detail::PermuteSegments(nodes, unchangedSegments);
+    REQUIRE(unchanged);
+    CHECK((*unchanged)[3].IsRef());
+    CHECK((*unchanged)[3].RefTo == 2);
+    CHECK(Tree(*unchanged).UpdateNodes().Validate());
 
-    auto const reorderedSegments = Operon::Vector<detail::SourceSegment> { { 3, 1 }, { 0, 3 }, { 4, 1 } };
-    CHECK_THROWS_AS(detail::RewriteSegments(nodes, reorderedSegments), std::invalid_argument);
+    auto const selfContained = Operon::Vector<Node> { Node::Constant(1), Node::Ref(0), Node::Function(static_cast<Hash>(BuiltinOp::Mul), 2), Node::Constant(2), Add() };
+    auto const reorderedSegments = Operon::Vector<detail::PermutationSegment> { { 3, 1 }, { 0, 3 }, { 4, 1 } };
+    auto const reordered = detail::PermuteSegments(selfContained, reorderedSegments);
+    REQUIRE(reordered);
+    CHECK((*reordered)[2].IsRef());
+    CHECK((*reordered)[2].RefTo == 1);
+    CHECK(Tree(*reordered).UpdateNodes().Validate());
 
-    auto const incompleteSegments = Operon::Vector<detail::SourceSegment> { { 0, 3 }, { 4, 1 } };
-    CHECK_THROWS_AS(detail::RewriteSegments(nodes, incompleteSegments), std::invalid_argument);
+    auto const incompleteSegments = Operon::Vector<detail::PermutationSegment> { { 0, 3 }, { 4, 1 } };
+    CHECK_FALSE(detail::PermuteSegments(nodes, incompleteSegments));
+
+    auto const malformedSegments = Operon::Vector<detail::PermutationSegment> { { 0, 1 }, { 2, 1 }, { 1, 1 } };
+    CHECK_FALSE(detail::PermuteSegments(Operon::Vector<Node> { Node::Constant(1), Node::Constant(2), Add() }, malformedSegments));
 }
 
 TEST_CASE("ShuffleSubtreesMutation preserves Ref validity", "[operators]")

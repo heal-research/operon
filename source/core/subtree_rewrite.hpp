@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
+#include <optional>
 #include <stdexcept>
 
 #include "operon/core/contracts.hpp"
@@ -93,12 +94,25 @@ struct SubtreeSpan {
     return copy;
 }
 
-struct SourceSegment {
+struct PermutationSegment {
     std::size_t First;
     std::size_t Size;
 };
 
-[[nodiscard]] inline auto RewriteSegments(Operon::Span<Node const> source, Operon::Span<SourceSegment const> segments) -> Operon::Vector<Node>
+[[nodiscard]] inline auto HasValidPostfixStructure(Operon::Span<Node const> nodes) -> bool
+{
+    std::size_t completed {};
+    for (auto const& node : nodes) {
+        if (node.Arity > completed) {
+            return false;
+        }
+        completed -= node.Arity;
+        ++completed;
+    }
+    return completed == 1;
+}
+
+[[nodiscard]] inline auto PermuteSegments(Operon::Span<Node const> source, Operon::Span<PermutationSegment const> segments) -> std::optional<Operon::Vector<Node>>
 {
     Operon::Vector<std::size_t> destinations(source.size(), source.size());
     std::size_t size {};
@@ -108,7 +122,7 @@ struct SourceSegment {
         size += segment.Size;
     }
     if (size != source.size()) {
-        throw std::invalid_argument("source segments do not cover the tree");
+        return std::nullopt;
     }
 
     Operon::Vector<Node> rewritten;
@@ -116,11 +130,14 @@ struct SourceSegment {
     for (auto const segment : segments) {
         for (std::size_t old = segment.First; old < segment.First + segment.Size; ++old) {
             if (destinations[old] != source.size()) {
-                throw std::invalid_argument("source segment appears more than once");
+                return std::nullopt;
             }
             destinations[old] = rewritten.size();
             rewritten.push_back(source[old]);
         }
+    }
+    if (!HasValidPostfixStructure(rewritten)) {
+        return std::nullopt;
     }
 
     for (std::size_t i = 0; i < rewritten.size(); ++i) {
@@ -128,18 +145,14 @@ struct SourceSegment {
         if (!node.IsRef()) {
             continue;
         }
-        if (node.RefTo >= destinations.size() || destinations[node.RefTo] == source.size()) {
-            throw std::invalid_argument("rewritten tree omits a Ref target");
-        }
         auto const target = destinations[node.RefTo];
         if (target >= i) {
-            throw std::invalid_argument("rewritten Ref target is not backward");
+            return std::nullopt;
         }
         node.RefTo = static_cast<uint16_t>(target);
     }
     return rewritten;
 }
-
 } // namespace Operon::detail
 
 #endif
