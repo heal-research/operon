@@ -275,6 +275,9 @@ public:
     }
 
     auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
+    [[nodiscard]] auto Error() const noexcept -> ErrorMetric const& { return error_; }
+    [[nodiscard]] auto SkipsNonFinite() const noexcept -> bool { return skipNonFinite_; }
+    [[nodiscard]] auto HasLinearScaling() const noexcept -> bool { return UsesLinearScaling(); }
 
     auto
     Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;

@@ -54,35 +54,32 @@ public:
     auto SetCache(Zobrist* cache) const { cache_ = cache; }
     [[nodiscard]] auto Cache() const -> Zobrist* { return cache_; }
 
-    auto Generate(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf, RecombinationResult& res) const -> void {
+    // Structural-only extension seam for generation-level scoring. It consumes
+    // exactly the same selection/crossover/mutation randomness as Generate,
+    // but deliberately does not touch caches, local search, or fitness.
+    auto GenerateUnscored(Operon::RandomGenerator& random, double pCrossover, double pMutation, RecombinationResult& res) const -> void {
         auto pop = FemaleSelector()->Population();
         if (!res.Parent1) { res.Parent1 = pop[ (*FemaleSelector())(random) ]; }
         if (!res.Parent2) { res.Parent2 = pop[ (*MaleSelector())(random) ]; }
 
         res.Child = Individual{Evaluator()->ObjectiveCount()};
         using BernoulliTrial = std::bernoulli_distribution;
-
         res.Child->Genotype = BernoulliTrial{pCrossover}(random)
             ? (*Crossover())(random, res.Parent1->Genotype, res.Parent2->Genotype)
             : res.Parent1->Genotype;
-
         if (BernoulliTrial{pMutation}(random)) {
             res.Child->Genotype = (*Mutator())(random, std::move(res.Child->Genotype));
         }
+    }
 
-        auto evaluate = [&]() {
-            ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf);
-        };
-
+    auto Generate(Operon::RandomGenerator& random, double pCrossover, double pMutation, double pLocal, double pLamarck, Operon::Span<Operon::Scalar> buf, RecombinationResult& res) const -> void {
+        GenerateUnscored(random, pCrossover, pMutation, res);
+        auto evaluate = [&]() { ScoreIndividual(random, *res.Child, *Evaluator(), coeffOptimizer_, pLocal, pLamarck, buf); };
         if (cache_ != nullptr) {
             auto const hash = cache_->ComputeHash(res.Child->Genotype);
             Operon::Vector<Operon::Scalar> cached(Evaluator()->ObjectiveCount());
-            if (cache_->TryGet(hash, cached)) {
-                res.Child->Fitness = cached;
-            } else {
-                evaluate();
-                cache_->Insert(hash, res.Child->Fitness);
-            }
+            if (cache_->TryGet(hash, cached)) { res.Child->Fitness = cached; }
+            else { evaluate(); cache_->Insert(hash, res.Child->Fitness); }
         } else {
             evaluate();
         }

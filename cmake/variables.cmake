@@ -19,6 +19,8 @@ if(PROJECT_IS_TOP_LEVEL)
   option(USE_SINGLE_PRECISION ${USE_SINGLE_PRECISION_DESCRIPTION}  ON)
   option(USE_ASMJIT           ${USE_ASMJIT_DESCRIPTION}          ON)
   option(MATH_BACKEND         ${MATH_BACKEND_DESCRIPTION}        "Eve")
+  option(OPERON_ENABLE_HIP "Build the optional HIP coefficient-optimization backend" OFF)
+  option(OPERON_ENABLE_SYCL "Build the optional SYCL coefficient-optimization backend" OFF)
 
   # provide a summary of configured options
   include(FeatureSummary)

@@ -84,6 +84,7 @@ add_library(
     source/operators/generator/os.cpp
     source/operators/generator/poly.cpp
     source/operators/local_search.cpp
+    source/operators/population_scorer.cpp
     source/operators/mutation.cpp
     source/operators/shape_constrained_evaluator.cpp
     source/operators/non_dominated_sorter/ndsort.cpp
@@ -191,6 +192,46 @@ if (USE_ASMJIT)
     endif()
 endif()
 
+if (OPERON_ENABLE_HIP)
+    if (NOT USE_SINGLE_PRECISION)
+        message(FATAL_ERROR "OPERON_ENABLE_HIP requires USE_SINGLE_PRECISION=ON")
+    endif()
+    enable_language(HIP)
+    add_library(operon_hip_kernel STATIC source/interpreter/backend/hip/runtime.hip)
+    target_include_directories(operon_hip_kernel PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    target_compile_features(operon_hip_kernel PRIVATE cxx_std_23)
+
+    add_library(operon_hip STATIC source/interpreter/backend/hip/hip_context.cpp)
+    add_library(operon::hip ALIAS operon_hip)
+    target_link_libraries(operon_hip PUBLIC operon::operon PRIVATE operon_hip_kernel)
+    target_compile_definitions(operon_hip PUBLIC OPERON_HAVE_HIP)
+    target_compile_features(operon_hip PUBLIC cxx_std_23)
+endif()
+
+
+if (OPERON_ENABLE_SYCL)
+    if (NOT USE_SINGLE_PRECISION)
+        message(FATAL_ERROR "OPERON_ENABLE_SYCL requires USE_SINGLE_PRECISION=ON")
+    endif()
+    find_package(AdaptiveCpp CONFIG REQUIRED)
+    set(OPERON_ADAPTIVECPP_OMP_INCLUDE "" CACHE PATH "Directory containing omp.h for AdaptiveCpp's OpenMP runtime")
+    set(OPERON_ADAPTIVECPP_OMP_LIBRARY "" CACHE FILEPATH "libomp used by AdaptiveCpp's OpenMP runtime")
+    find_path(OPERON_ADAPTIVECPP_OMP_INCLUDE omp.h HINTS "${OPERON_ADAPTIVECPP_OMP_INCLUDE}" "$ENV{CMAKE_INCLUDE_PATH}" REQUIRED)
+    find_library(OPERON_ADAPTIVECPP_OMP_LIBRARY omp HINTS "${OPERON_ADAPTIVECPP_OMP_LIBRARY}" "$ENV{CMAKE_LIBRARY_PATH}" REQUIRED)
+    find_library(OPERON_ADAPTIVECPP_HIP_LIBRARY amdhip64 HINTS "$ENV{ROCM_PATH}/lib" REQUIRED)
+    add_library(operon_sycl_kernel STATIC source/interpreter/backend/sycl/sycl_kernel.cpp)
+    target_include_directories(operon_sycl_kernel PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    target_include_directories(operon_sycl_kernel PRIVATE "${OPERON_ADAPTIVECPP_OMP_INCLUDE}")
+    target_link_libraries(operon_sycl_kernel PUBLIC "${OPERON_ADAPTIVECPP_HIP_LIBRARY}" PRIVATE "${OPERON_ADAPTIVECPP_OMP_LIBRARY}")
+    add_sycl_to_target(TARGET operon_sycl_kernel SOURCES source/interpreter/backend/sycl/sycl_kernel.cpp)
+
+    add_library(operon_sycl STATIC source/interpreter/backend/sycl/sycl_context.cpp)
+    target_include_directories(operon_sycl PRIVATE "${OPERON_ADAPTIVECPP_OMP_INCLUDE}")
+    target_link_libraries(operon_sycl PUBLIC AdaptiveCpp::acpp-rt operon::operon "${OPERON_ADAPTIVECPP_OMP_LIBRARY}" PRIVATE operon_sycl_kernel)
+    add_library(operon::sycl ALIAS operon_sycl)
+    target_compile_definitions(operon_sycl PUBLIC OPERON_HAVE_SYCL)
+    target_compile_features(operon_sycl PUBLIC cxx_std_23)
+endif()
 
 if (USE_JEMALLOC)
     find_package(PkgConfig)

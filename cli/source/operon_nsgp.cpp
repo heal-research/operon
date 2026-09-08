@@ -32,10 +32,17 @@
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
+#include "operon/operators/population_scorer.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
+#if defined(OPERON_HAVE_HIP)
+#include "operon/optimizer/hip_context.hpp"
+#endif
+#if defined(OPERON_HAVE_SYCL)
+#include "operon/optimizer/sycl_context.hpp"
+#endif
 
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
@@ -382,13 +389,38 @@ auto main(int argc, char** argv) -> int
         auto maleSelector = Operon::ParseSelector(result["male-selector"].as<std::string>(), comp);
         Operon::CoefficientOptimizer cOpt { optimizer.get() };
 
+        auto const localSearchBackend = result["local-search-backend"].as<std::string>();
+        std::unique_ptr<Operon::PopulationLocalSearchBackend> populationLocalSearch;
+        if (localSearchBackend == "cpu") {
+        } else if (localSearchBackend == "hip") {
+#if defined(OPERON_HAVE_HIP)
+            populationLocalSearch = std::make_unique<Operon::PopulationOptimization::Hip::Context>();
+#else
+            throw std::invalid_argument("--local-search-backend hip requires an OPERON_ENABLE_HIP build");
+#endif
+        } else if (localSearchBackend == "sycl") {
+#if defined(OPERON_HAVE_SYCL)
+            populationLocalSearch = std::make_unique<Operon::PopulationOptimization::Sycl::Context>();
+#else
+            throw std::invalid_argument("--local-search-backend sycl requires an OPERON_ENABLE_SYCL build");
+#endif
+        } else {
+            throw std::invalid_argument(fmt::format("unknown --local-search-backend '{}'", localSearchBackend));
+        }
+        config.PopulationLocalSearch = populationLocalSearch.get();
+
+        auto const populationScorerBackend = result["population-scorer"].as<std::string>();
+        if (populationScorerBackend != "cpu") {
+            throw std::invalid_argument("--population-scorer hip is currently supported only by operon_gp");
+        }
+
         auto generator = Operon::ParseGenerator(result["offspring-generator"].as<std::string>(), *activeEvaluator, crossover, mutator, *femaleSelector, *maleSelector, &cOpt);
         // Default 0: NSGA2 had no elitism before this option existed, so an
         // unspecified --elitism preserves that. Opt in explicitly to enable it.
         auto const eliteCount = result.count("elitism") ? result["elitism"].as<size_t>() : size_t{0};
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), comp, eliteCount);
-
         Operon::RandomGenerator random(config.Seed);
+
         if (result["shuffle"].as<bool>()) {
             problem.GetDataset()->Shuffle(random);
         }

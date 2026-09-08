@@ -13,6 +13,11 @@
     vdt.url = "github:foolnotion/vdt/master";
     pappus.url = "github:heal-research/pappus";
 
+    # Isolated ROCm/LLVM 20 toolchain for AdaptiveCpp HIP execution. This
+    # predates nixpkgs' ROCm LLVM 22 migration, which AdaptiveCpp 25.x cannot
+    # compile against. Kept separate from the normal development pin.
+    nixpkgs-rocm.url = "github:nixos/nixpkgs/5f83595ff1ea7e10ae0e7d01cc233d19f6dd5ae1";
+
     # make everything follow nixpkgs
     foolnotion.inputs.nixpkgs.follows = "nixpkgs";
     lbfgs.inputs.nixpkgs.follows = "nixpkgs";
@@ -43,6 +48,7 @@
       self,
       flake-parts,
       nixpkgs,
+      nixpkgs-rocm,
       foolnotion,
       fluky,
       infix-parser,
@@ -81,6 +87,7 @@
                 vdt = vdt.packages.${system}.default;
                 vstat = vstat.packages.${system}.default;
                 pappus = pappus.packages.${system}.default;
+                adaptivecpp-rocm = prev.adaptivecpp.override { rocmSupport = true; };
               })
             ];
           };
@@ -102,6 +109,22 @@
           operonShared = mkOperon { enableShared = true; };
           operonStatic = mkOperon { enableShared = false; };
           operon = operonShared;
+          pkgs-rocm = import nixpkgs-rocm {
+            inherit system;
+            config.allowUnfree = true;
+          };
+          adaptivecppWithRocm = (pkgs-rocm.adaptivecppWithRocm.override {
+            llvmPackages_18 = pkgs-rocm.llvmPackages_20;
+          }).overrideAttrs (old: {
+            # ROCm 7.1's HIPRTC bitcode linker is unreliable; AdaptiveCpp's
+            # clangJitLink subprocess path is deterministic instead.
+            postPatch = (old.postPatch or "") + ''
+              substituteInPlace include/hipSYCL/glue/generic/hiplike/hiplike_kernel_launcher.hpp \
+                --replace-fail "static_range<__acpp_warp_size>" "static_range<64>"
+            '';
+            cmakeFlags = old.cmakeFlags ++ [ "-DHIPRTC_LIBRARY=" ];
+            hardeningDisable = [ "all" ];
+          });
         in
         rec {
           packages = {
@@ -163,6 +186,38 @@
               ))
             ];
           };
+          devShells.hip-rocm = stdenv.mkDerivation {
+            name = "operon-hip-rocm";
+            nativeBuildInputs = operon.nativeBuildInputs;
+            buildInputs = operon.buildInputs ++ operon.propagatedBuildInputs ++ [ pkgs.rocmPackages.clr ];
+          };
+
+          # AdaptiveCpp invokes its own LLVM-20 clang for device compilation;
+          # retain the normal project compiler for host translation units.
+          devShells.sycl-rocm = stdenv.mkDerivation {
+            name = "operon-sycl-rocm";
+            nativeBuildInputs = operon.nativeBuildInputs ++ [ adaptivecppWithRocm pkgs.llvmPackages_21.clang ];
+            buildInputs = operon.buildInputs ++ operon.propagatedBuildInputs ++ [
+              adaptivecppWithRocm
+              pkgs-rocm.rocmPackages.rocprofiler
+            ];
+            shellHook = ''
+              export NIX_HARDENING_ENABLE=""
+              export CXXFLAGS="${pkgs.lib.concatMapStringsSep " " (p: "-isystem ${p}/include") (operon.propagatedBuildInputs ++ operon.buildInputs)}"
+              export ROCM_PATH=${adaptivecppWithRocm.rocmMerged}
+              export PATH=${pkgs-rocm.rocmPackages."rocm-toolchain"}/bin:${pkgs-rocm.rocmPackages.rocprofiler}/bin:$PATH
+              export CC=${pkgs.llvmPackages_21.clang}/bin/clang
+              export CXX=${pkgs.llvmPackages_21.clang}/bin/clang++
+              export ACPP_TARGETS="hip:gfx1201"
+            '';
+          };
+          # HIP and SYCL builds use the same workload. Compare only after a
+          # GPU-capable AdaptiveCpp build is available:
+          # cmake -S . -B build-hip -DOPERON_ENABLE_HIP=ON -DUSE_SINGLE_PRECISION=ON
+          # cmake -S . -B build-sycl-rocm -DOPERON_ENABLE_SYCL=ON -DUSE_SINGLE_PRECISION=ON
+          # ./build-{hip,sycl-rocm}/cli/operon_gp --dataset data/PopulationLocalSearch.csv
+          #   --train 0:24 --target Y --inputs X1,X2,X3 --local-search-backend {hip,sycl}
+
 
           devShells.default = stdenv.mkDerivation {
             name = "operon";

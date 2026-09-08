@@ -278,6 +278,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-rocm": {
+      "locked": {
+        "lastModified": 1772343763,
+        "narHash": "sha256-74glekCzo0Q1zvV/ufZ8dEAFK5E8Yx0wDYPw+ULyvOg=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "5f83595ff1ea7e10ae0e7d01cc233d19f6dd5ae1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "5f83595ff1ea7e10ae0e7d01cc233d19f6dd5ae1",
+        "type": "github"
+      }
+    },
     "pappus": {
       "inputs": {
         "aaflib": "aaflib",
@@ -314,6 +330,7 @@
         "lbfgs": "lbfgs",
         "ndsort": "ndsort",
         "nixpkgs": "nixpkgs",
+        "nixpkgs-rocm": "nixpkgs-rocm",
         "pappus": "pappus",
         "vdt": "vdt",
         "vstat": "vstat"

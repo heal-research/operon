@@ -61,6 +61,8 @@ add_executable(operon_test
     source/performance/creator.cpp
     source/performance/distance.cpp
     source/performance/evaluation.cpp
+    source/performance/accelerator_evaluation.cpp
+    source/performance/accelerator_optimizer.cpp
     source/performance/infix_parser.cpp
     source/performance/nondominatedsort.cpp
     source/performance/primitives.cpp
@@ -74,6 +76,12 @@ add_executable(operon_test
     source/implementation/composed_function.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
+if(OPERON_ENABLE_HIP)
+    target_link_libraries(operon_test PRIVATE operon::hip)
+endif()
+if(OPERON_ENABLE_SYCL)
+    target_link_libraries(operon_test PRIVATE operon::sycl)
+endif()
 if(vdt_FOUND)
     target_link_libraries(operon_test PRIVATE vdt::vdt)
     target_compile_definitions(operon_test PRIVATE OPERON_HAVE_VDT)

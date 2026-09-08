@@ -28,6 +28,7 @@
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
+#include "operon/operators/population_scorer.hpp"
 #include "operon/operators/selector.hpp"
 
 namespace Operon::Test {
@@ -222,6 +223,36 @@ TEST_CASE("ReportCallback returning false lets the run reach the configured gene
 
     CHECK(f.Gp.Generation() == f.Config.Generations);
     CHECK(calls == 2); // one report from init, one from the single generation's body
+}
+
+TEST_CASE("GP CPU population scorer reaches configured generations", "[algorithms][population-scorer]")
+{
+    GaBaseFixture f;
+    Operon::CpuPopulationOffspringScorer scorer;
+    f.Config.PopulationScorer = &scorer;
+    Operon::GeneticProgrammingAlgorithm gp{f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &f.Generator, &f.Reinserter};
+    Operon::RandomGenerator rng{42};
+    gp.Run(rng, {}, /*threads=*/1);
+    CHECK(gp.Generation() == f.Config.Generations);
+    for (auto const& individual : gp.Parents()) {
+        REQUIRE(individual.Fitness.size() == 1);
+        CHECK(std::isfinite(individual.Fitness.front()));
+    }
+}
+
+TEST_CASE("NSGA2 CPU population scorer reaches configured generations", "[algorithms][population-scorer]")
+{
+    GaBaseFixture f;
+    Operon::CpuPopulationOffspringScorer scorer;
+    f.Config.PopulationScorer = &scorer;
+    Operon::NSGA2 nsga{f.Config, &f.Problem, &f.TreeInit, &f.CoeffInit, &f.Generator, &f.Reinserter, &f.Sorter};
+    Operon::RandomGenerator rng{42};
+    nsga.Run(rng, {}, /*threads=*/1);
+    CHECK(nsga.Generation() == f.Config.Generations);
+    for (auto const& individual : nsga.Parents()) {
+        REQUIRE(individual.Fitness.size() == 1);
+        CHECK(std::isfinite(individual.Fitness.front()));
+    }
 }
 
 TEST_CASE("NSGA2: ReportCallback returning true stops the run before the next generation", "[algorithms]")

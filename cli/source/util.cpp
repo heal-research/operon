@@ -185,6 +185,8 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("enable-symbols", "Comma-separated list of enabled symbols ("+symbols+")", cxxopts::value<std::string>())
         ("local-search-probability", "Probability for local search", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
         ("lamarckian-probability", "Probability that the local search improvements are saved back into the chromosome", cxxopts::value<Operon::Scalar>()->default_value("1.0"))
+        ("local-search-backend", "Local-search backend: cpu (default), hip (requires OPERON_ENABLE_HIP), or sycl (requires OPERON_ENABLE_SYCL); accelerator batching is currently used for the initial population", cxxopts::value<std::string>()->default_value("cpu"))
+        ("population-scorer", "Generation-level scorer: cpu (default) or hip (operon_gp with OPERON_ENABLE_HIP; supports plain SSE/MSE/NMSE/RMSE without linear scaling or --skip-nonfinite)", cxxopts::value<std::string>()->default_value("cpu"))
         ("disable-symbols", "Comma-separated list of disabled symbols ("+symbols+")", cxxopts::value<std::string>())
         ("symbolic", "Operate in symbolic mode - no coefficient tuning or coefficient mutation", cxxopts::value<bool>()->default_value("false"))
         ("show-primitives", "Display the primitive set used by the algorithm")

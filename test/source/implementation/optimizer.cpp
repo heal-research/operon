@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <catch2/catch_test_macros.hpp>
+#include <exception>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "operon/core/dataset.hpp"
@@ -10,8 +11,18 @@
 #include "operon/operators/local_search.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
+#include "operon/interpreter/interpreter.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
+#if defined(OPERON_HAVE_HIP)
+#include "operon/optimizer/hip_context.hpp"
+#include "operon/optimizer/population_encoding.hpp"
+#include "operon/operators/evaluator.hpp"
+#endif
+#if defined(OPERON_HAVE_SYCL)
+#include "operon/optimizer/sycl_context.hpp"
+#include "operon/optimizer/population_encoding.hpp"
+#endif
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
 #if defined(HAVE_ASMJIT)
@@ -640,6 +651,288 @@ TEST_CASE("PoissonLoss respects a non-zero training range start", "[optimizer]")
         CHECK_THAT(static_cast<double>(grad0(i)), Catch::Matchers::WithinRel(static_cast<double>(gradPad(i)), 1e-5));
     }
 }
+
+#if defined(OPERON_HAVE_HIP)
+TEST_CASE("HIP population local search preserves the delivery contract", "[optimizer][hip][population-local-search]")
+{
+    OptimizerFixture fix;
+    std::vector<Operon::Individual> population(2, Operon::Individual{1});
+    population[0].Genotype = fix.tree;
+    population[1].Genotype = fix.tree;
+    auto const alternateCoefficients = std::vector<Operon::Scalar>{0.2F, 0.2F, 0.2F};
+    population[1].Genotype.SetCoefficients(alternateCoefficients);
+    auto const selected = std::vector<std::size_t>{1, 0};
+    auto encoded = Operon::PopulationOptimization::EncodePopulation(population, selected);
+    REQUIRE(encoded.has_value());
+
+    auto const variables = fix.problem.GetInputs();
+    std::vector<Operon::Scalar> columns;
+    columns.reserve(variables.size() * OptimizerFixture::Nrow);
+    for (auto const hash : variables) {
+        auto const values = fix.ds.GetValues(hash);
+        columns.insert(columns.end(), values.begin(), values.end());
+    }
+
+    Operon::PopulationOptimization::Hip::Context hip;
+    REQUIRE(hip.Supports(fix.tree, variables));
+    auto const result = hip.Optimize(*encoded, variables, columns, variables.size(), OptimizerFixture::Nrow,
+                                     fix.problem.TargetValues(fix.problem.TrainingRange()), {}, 8);
+
+    REQUIRE(result.Status.size() == selected.size());
+    REQUIRE(result.InitialCosts.size() == selected.size());
+    REQUIRE(result.FinalCosts.size() == selected.size());
+    REQUIRE(result.Iterations.size() == selected.size());
+    REQUIRE(result.AcceptedSteps.size() == selected.size());
+    REQUIRE(result.Coefficients.size() == encoded->Coefficients.size());
+    for (auto i = std::size_t{}; i < selected.size(); ++i) {
+        CHECK(result.Status[i] == Operon::PopulationLocalSearchStatus::Improved);
+        CHECK(std::isfinite(result.InitialCosts[i]));
+        CHECK(std::isfinite(result.FinalCosts[i]));
+        CHECK(result.FinalCosts[i] < result.InitialCosts[i]);
+        auto const& tree = encoded->Trees[i];
+        for (auto const coefficient : std::span{result.Coefficients}.subspan(tree.CoefficientOffset, tree.CoefficientCount)) {
+            CHECK_THAT(coefficient, Catch::Matchers::WithinAbs(1.0F, 0.01F));
+        }
+    }
+}
+
+TEST_CASE("HIP resident population preserves topology and updates coefficients", "[optimizer][hip][resident]")
+{
+    OptimizerFixture fix;
+    std::vector<Operon::Individual> population(1, Operon::Individual{1});
+    population.front().Genotype = fix.tree;
+    auto encoded = Operon::PopulationOptimization::EncodePopulation(population, std::vector<std::size_t>{0});
+    REQUIRE(encoded.has_value());
+    auto const variables = fix.problem.GetInputs();
+    std::vector<Operon::Scalar> columns;
+    for (auto const hash : variables) {
+        auto const values = fix.ds.GetValues(hash);
+        columns.insert(columns.end(), values.begin(), values.end());
+    }
+    Operon::PopulationOptimization::Hip::Context hip;
+    hip.Upload(*encoded, variables);
+    auto const initial = hip.EvaluateResident(columns, variables.size(), OptimizerFixture::Nrow);
+    auto updated = encoded->Coefficients;
+    std::fill(updated.begin(), updated.end(), Operon::Scalar{1});
+    hip.UpdateCoefficients(updated);
+    auto const resident = hip.EvaluateResident(columns, variables.size(), OptimizerFixture::Nrow);
+    auto const explicitResult = hip.Evaluate(columns, variables.size(), OptimizerFixture::Nrow, updated);
+    REQUIRE(resident.size() == explicitResult.size());
+    CHECK(resident != initial);
+    for (std::size_t row = 0; row < resident.size(); ++row) {
+        CHECK_THAT(resident[row], Catch::Matchers::WithinAbs(explicitResult[row], 1e-5F));
+    }
+    auto const optimized = hip.OptimizeGaussian(columns, variables.size(), OptimizerFixture::Nrow,
+                                                fix.problem.TargetValues(fix.problem.TrainingRange()), {}, 8);
+    auto const optimizedResident = hip.EvaluateResident(columns, variables.size(), OptimizerFixture::Nrow);
+    auto const optimizedExplicit = hip.Evaluate(columns, variables.size(), OptimizerFixture::Nrow, optimized.Coefficients);
+    REQUIRE(optimizedResident.size() == optimizedExplicit.size());
+    for (std::size_t row = 0; row < optimizedResident.size(); ++row) {
+        CHECK_THAT(optimizedResident[row], Catch::Matchers::WithinAbs(optimizedExplicit[row], 1e-5F));
+    }
+}
+
+TEST_CASE("HIP Gaussian population scorer matches scalar evaluation", "[optimizer][hip][population-scorer]")
+{
+    OptimizerFixture fix;
+    Operon::PopulationOptimization::Hip::Context context;
+    fix.problem.SetLinearScalingEnabled(false);
+    Operon::Evaluator<OptimizerFixture::DTable> evaluator{&fix.problem, &fix.dtable, Operon::MSE{}};
+    Operon::PopulationOptimization::Hip::GaussianPopulationOffspringScorer scorer{context};
+    std::vector<Operon::Individual> candidates(1, Operon::Individual{1});
+    candidates.front().Genotype = fix.tree;
+    std::vector<Operon::RandomGenerator> random;
+    random.emplace_back(1234);
+    std::vector<Operon::Vector<Operon::Scalar>> scratch(1);
+    scorer.Score(candidates, random, evaluator, nullptr, 0.0, 1.0, scratch);
+
+    std::vector<Operon::Scalar> scalarScratch(OptimizerFixture::Nrow);
+    Operon::Individual expected{1};
+    expected.Genotype = fix.tree;
+    Operon::RandomGenerator scalarRandom{1234};
+    Operon::ScoreIndividual(scalarRandom, expected, evaluator, nullptr, 0.0, 1.0, scalarScratch);
+    REQUIRE(candidates.front().Fitness.size() == 1);
+    CHECK_THAT(candidates.front().Fitness.front(), Catch::Matchers::WithinAbs(expected.Fitness.front(), 1e-5F));
+}
+
+TEST_CASE("HIP Gaussian costs match scalar reduction across tiled row boundaries", "[optimizer][hip][population-scorer]")
+{
+    constexpr auto TreeCount = std::size_t{2};
+    for (auto const rows : {std::size_t{4096}, std::size_t{4097}}) {
+        DYNAMIC_SECTION("rows=" << rows) {
+            std::vector<Operon::Scalar> x1(rows);
+            std::vector<Operon::Scalar> x2(rows);
+            std::vector<Operon::Scalar> target(rows);
+            std::vector<Operon::Scalar> weights(rows);
+            for (auto row = std::size_t{}; row < rows; ++row) {
+                x1[row] = static_cast<Operon::Scalar>(row % 13) * 0.1F;
+                x2[row] = static_cast<Operon::Scalar>(row % 17) * -0.05F;
+                target[row] = x1[row] + x2[row];
+                weights[row] = row % 3 == 0 ? 0.25F : 1.0F;
+            }
+            Operon::Dataset dataset{std::vector<std::vector<Operon::Scalar>>{x1, x2, target}};
+            auto tree = InfixParser::Parse("X1 + X2", dataset);
+            for (auto& node : tree.Nodes()) {
+                if (node.IsVariable()) { node.Value = 0.1F; }
+            }
+            std::vector<Operon::Individual> population(TreeCount, Operon::Individual{1});
+            for (auto& individual : population) { individual.Genotype = tree; }
+            auto encoded = Operon::PopulationOptimization::EncodePopulation(population, std::vector<std::size_t>{0, 1});
+            REQUIRE(encoded.has_value());
+
+            std::vector<Operon::Scalar> columns;
+            columns.reserve(rows * 2);
+            columns.insert(columns.end(), x1.begin(), x1.end());
+            columns.insert(columns.end(), x2.begin(), x2.end());
+            Operon::PopulationOptimization::Hip::Context hip;
+            hip.Upload(*encoded, std::array{dataset.GetVariable("X1")->Hash, dataset.GetVariable("X2")->Hash});
+            auto const [costs, valid] = hip.GaussianCosts(columns, 2, rows, target, weights);
+            REQUIRE(costs.size() == TreeCount);
+            REQUIRE(valid == std::vector<uint8_t>(TreeCount, 1));
+
+            Operon::Scalar expected{};
+            for (auto row = std::size_t{}; row < rows; ++row) {
+                auto const residual = 0.9F * (x1[row] + x2[row]);
+                expected += 0.5F * weights[row] * residual * residual;
+            }
+            for (auto const cost : costs) { CHECK_THAT(cost, Catch::Matchers::WithinRel(expected, 1e-5F)); }
+        }
+    }
+}
+
+TEST_CASE("HIP local search replays the shared corpus", "[optimizer][hip][population-local-search][corpus]")
+{
+    Operon::Dataset dataset{"./data/PopulationLocalSearch.csv", /*hasHeader=*/true};
+    Operon::Problem problem{&dataset};
+    problem.SetTarget("Y");
+    problem.SetInputs(std::vector<std::string>{"X1", "X2", "X3"});
+    problem.SetTrainingRange({0, dataset.Rows<std::size_t>()});
+    problem.SetLinearScalingEnabled(false);
+
+    auto tree = InfixParser::Parse("X1 + X2 + X3", dataset);
+    for (auto& node : tree.Nodes()) {
+        if (node.IsVariable()) { node.Value = 0.1F; }
+    }
+    std::vector<Operon::Individual> population(1, Operon::Individual{1});
+    population.front().Genotype = tree;
+    auto const selected = std::vector<std::size_t>{0};
+    auto encoded = Operon::PopulationOptimization::EncodePopulation(population, selected);
+    REQUIRE(encoded.has_value());
+
+    auto const variables = problem.GetInputs();
+    std::vector<Operon::Scalar> columns;
+    columns.reserve(variables.size() * problem.TrainingRange().Size());
+    for (auto const hash : variables) {
+        auto const values = dataset.GetValues(hash);
+        columns.insert(columns.end(), values.begin(), values.end());
+    }
+
+    Operon::PopulationOptimization::Hip::Context hip;
+    auto const result = hip.Optimize(*encoded, variables, columns, variables.size(), problem.TrainingRange().Size(),
+                                     problem.TargetValues(problem.TrainingRange()), {}, 8);
+    REQUIRE(result.Status == std::vector{Operon::PopulationLocalSearchStatus::Improved});
+    REQUIRE(result.InitialCosts.size() == 1);
+    REQUIRE(result.FinalCosts.size() == 1);
+    CHECK(result.FinalCosts.front() < result.InitialCosts.front());
+}
+#endif
+
+#if defined(OPERON_HAVE_SYCL)
+TEST_CASE("SYCL local search replays the shared corpus", "[optimizer][sycl][population-local-search][corpus]")
+{
+    Operon::Dataset dataset{"./data/PopulationLocalSearch.csv", /*hasHeader=*/true};
+    Operon::Problem problem{&dataset};
+    problem.SetTarget("Y");
+    problem.SetInputs(std::vector<std::string>{"X1", "X2", "X3"});
+    problem.SetTrainingRange({0, dataset.Rows<std::size_t>()});
+    problem.SetLinearScalingEnabled(false);
+
+    auto tree = InfixParser::Parse("X1 + X2 + X3", dataset);
+    for (auto& node : tree.Nodes()) {
+        if (node.IsVariable()) { node.Value = 0.1F; }
+    }
+    std::vector<Operon::Individual> population(1, Operon::Individual{1});
+    population.front().Genotype = tree;
+    auto const selected = std::vector<std::size_t>{0};
+    auto encoded = Operon::PopulationOptimization::EncodePopulation(population, selected);
+    REQUIRE(encoded.has_value());
+
+    auto const variables = problem.GetInputs();
+    std::vector<Operon::Scalar> columns;
+    columns.reserve(variables.size() * problem.TrainingRange().Size());
+    for (auto const hash : variables) {
+        auto const values = dataset.GetValues(hash);
+        columns.insert(columns.end(), values.begin(), values.end());
+    }
+
+    try {
+        Operon::PopulationOptimization::Sycl::Context sycl;
+        REQUIRE(sycl.Supports(tree, variables));
+        auto const result = sycl.Optimize(*encoded, variables, columns, variables.size(), problem.TrainingRange().Size(),
+                                          problem.TargetValues(problem.TrainingRange()), {}, 8);
+        REQUIRE(result.Status == std::vector{Operon::PopulationLocalSearchStatus::Improved});
+        REQUIRE(result.InitialCosts.size() == 1);
+        REQUIRE(result.FinalCosts.size() == 1);
+        CHECK(result.FinalCosts.front() < result.InitialCosts.front());
+    } catch (std::exception const& error) {
+        if (std::string_view{error.what()} == "No matching device") { SKIP("requires a SYCL GPU device"); }
+        throw;
+    }
+}
+#endif
+#if defined(OPERON_HAVE_HIP) || defined(OPERON_HAVE_SYCL)
+TEST_CASE("Accelerator population evaluation matches the shared corpus", "[optimizer][population-evaluation]")
+{
+    Operon::Dataset dataset{"./data/PopulationLocalSearch.csv", /*hasHeader=*/true};
+    Operon::Problem problem{&dataset};
+    problem.SetTarget("Y");
+    problem.SetInputs(std::vector<std::string>{"X1", "X2", "X3"});
+    problem.SetTrainingRange({0, dataset.Rows<std::size_t>()});
+
+    auto tree = InfixParser::Parse("X1 + X2 + X3", dataset);
+    for (auto& node : tree.Nodes()) {
+        if (node.IsVariable()) { node.Value = 0.1F; }
+    }
+    std::vector<Operon::Individual> population(1, Operon::Individual{1});
+    population.front().Genotype = tree;
+    auto encoded = Operon::PopulationOptimization::EncodePopulation(population, std::vector<std::size_t>{0});
+    REQUIRE(encoded.has_value());
+
+    auto const variables = problem.GetInputs();
+    std::vector<Operon::Scalar> columns;
+    columns.reserve(variables.size() * problem.TrainingRange().Size());
+    for (auto const hash : variables) {
+        auto const values = dataset.GetValues(hash);
+        columns.insert(columns.end(), values.begin(), values.end());
+    }
+    Operon::ScalarDispatch dtable;
+    Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch> interpreter{&dtable, &dataset, &tree};
+    auto const expected = interpreter.Evaluate(tree.GetCoefficients(), problem.TrainingRange());
+
+#if defined(OPERON_HAVE_HIP)
+    SECTION("HIP") {
+        Operon::PopulationOptimization::Hip::Context hip;
+        hip.Upload(*encoded, variables);
+        auto const output = hip.Evaluate(columns, variables.size(), problem.TrainingRange().Size(), encoded->Coefficients);
+        REQUIRE(output.size() == expected.size());
+        for (std::size_t row = 0; row < output.size(); ++row) {
+            CHECK_THAT(output[row], Catch::Matchers::WithinAbs(expected[row], 1e-5F));
+        }
+    }
+#endif
+#if defined(OPERON_HAVE_SYCL)
+    SECTION("SYCL") {
+        Operon::PopulationOptimization::Sycl::Context sycl;
+        sycl.Upload(*encoded, variables);
+        auto const output = sycl.Evaluate(columns, variables.size(), problem.TrainingRange().Size(), encoded->Coefficients);
+        REQUIRE(output.size() == expected.size());
+        for (std::size_t row = 0; row < output.size(); ++row) {
+            CHECK_THAT(output[row], Catch::Matchers::WithinAbs(expected[row], 1e-5F));
+        }
+    }
+#endif
+}
+#endif
 
 TEST_CASE("SGD update rules", "[optimizer]")
 {

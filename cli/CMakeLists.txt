@@ -34,6 +34,12 @@ function(add_operon_cli NAME)
     )
 
     target_link_libraries(${NAME} PRIVATE operon::operon cxxopts::cxxopts scn::scn glaze::glaze)
+    if (OPERON_ENABLE_HIP)
+        target_link_libraries(${NAME} PRIVATE operon::hip)
+    endif()
+    if (OPERON_ENABLE_SYCL)
+        target_link_libraries(${NAME} PRIVATE operon::sycl)
+    endif()
     target_compile_features(${NAME} PRIVATE cxx_std_23)
     set_target_properties(${NAME} PROPERTIES
         CXX_VISIBILITY_PRESET hidden

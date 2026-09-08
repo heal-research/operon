@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: Copyright 2019-2025 Heal Research
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
+#include "operon/operators/population_scorer.hpp"
+
 #include <algorithm> // for max
 #include <chrono> // for steady_clock
 #include <cstddef> // for size_t
@@ -23,6 +25,7 @@
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/reinserter.hpp"
+#include "operon/operators/local_search.hpp"
 
 namespace Operon {
 auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGenerator& random, Operon::ReportCallback report, bool warmStart) -> void
@@ -120,10 +123,17 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                 // eval) so that an evaluator snapshotting the population in
                 // Prepare() (e.g. DiversityEvaluator) sees post-optimization
                 // genotypes rather than the raw initial ones.
-                auto localSearch = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
-                                       originalCoeffs[i] = LocalSearch(rngs[i], parents[i], *evaluator, generator->Optimizer(), config.LocalSearchProbability, config.LamarckianProbability);
-                                    })
-                                .name("local search on initial population");
+                auto localSearch = subflow.emplace([&]() -> void {
+                    if (auto* backend = config.PopulationLocalSearch) {
+                        LocalSearchPopulation(parents, rngs, *evaluator, generator->Optimizer(), config.LocalSearchProbability,
+                                              config.LamarckianProbability, *backend, static_cast<uint32_t>(config.Iterations), originalCoeffs);
+                        return;
+                    }
+                    for (size_t i = 0; i < parents.size(); ++i) {
+                        originalCoeffs[i] = LocalSearch(rngs[i], parents[i], *evaluator, generator->Optimizer(), config.LocalSearchProbability, config.LamarckianProbability);
+                    }
+                })
+                .name("local search on initial population");
                 auto restoreCoeffs = subflow.for_each_index(size_t { 0 }, parents.size(), size_t { 1 }, [&](size_t i) -> void {
                                         if (originalCoeffs[i]) { parents[i].Genotype.SetCoefficients(*originalCoeffs[i]); }
                                     })
@@ -154,6 +164,12 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                                 slots[executor.this_worker_id()].resize(trainSize);
                                                 auto buf = Operon::Span<Operon::Scalar>(slots[executor.this_worker_id()]);
                                                 while (!stop()) {
+                                                    if (config.PopulationScorer != nullptr) {
+                                                        RecombinationResult result;
+                                                        generator->GenerateUnscored(rngs[i], config.CrossoverProbability, config.MutationProbability, result);
+                                                        offspring[i] = std::move(*result.Child);
+                                                        return;
+                                                    }
                                                     if (auto result = (*generator)(rngs[i], config.CrossoverProbability, config.MutationProbability, config.LocalSearchProbability, config.LamarckianProbability, buf); result.has_value()) {
                                                         offspring[i] = std::move(result.value());
                                                         return;
@@ -161,16 +177,53 @@ auto GeneticProgrammingAlgorithm::Run(tf::Executor& executor, Operon::RandomGene
                                                 }
                                             })
                                          .name("generate offspring");
+            auto scoreOffspring = subflow.emplace([&]() -> void {
+                if (config.PopulationScorer == nullptr) { return; }
+                std::vector<std::size_t> misses;
+                std::vector<Operon::Individual> candidates;
+                std::vector<Operon::RandomGenerator> candidateRng;
+                std::vector<Operon::Vector<Operon::Scalar>> scratch;
+                misses.reserve(offspring.size());
+                candidates.reserve(offspring.size());
+                candidateRng.reserve(offspring.size());
+                scratch.resize(offspring.size());
+                for (std::size_t i = 0; i < offspring.size(); ++i) {
+                    if (auto* cache = generator->Cache()) {
+                        auto const hash = cache->ComputeHash(offspring[i].Genotype);
+                        Operon::Vector<Operon::Scalar> cached(evaluator->ObjectiveCount());
+                        if (cache->TryGet(hash, cached)) {
+                            offspring[i].Fitness = std::move(cached);
+                            continue;
+                        }
+                    }
+                    misses.push_back(i);
+                    candidates.push_back(std::move(offspring[i]));
+                    candidateRng.push_back(rngs[i]);
+                }
+                if (candidates.empty()) { return; }
+                scratch.resize(candidates.size());
+                config.PopulationScorer->Score(candidates, candidateRng, *evaluator, generator->Optimizer(),
+                                               config.LocalSearchProbability, config.LamarckianProbability, scratch);
+                for (std::size_t j = 0; j < misses.size(); ++j) {
+                    auto const i = misses[j];
+                    rngs[i] = candidateRng[j];
+                    offspring[i] = std::move(candidates[j]);
+                    if (auto* cache = generator->Cache()) {
+                        cache->Insert(cache->ComputeHash(offspring[i].Genotype), offspring[i].Fitness);
+                    }
+                }
+            }).name("score offspring batch");
             auto reinsert = subflow.emplace([&]() -> void { (*reinserter)(random, Parents(), offspring); }).name("reinsert");
             auto incrementGeneration = subflow.emplace([&]() -> void { ++Generation(); }).name("increment generation");
             auto reportProgress = subflow.emplace([&, timer]() -> void {
-                                             Timings() = timer->Timings();
-                                             if (report && std::invoke(report)) { RequestStop(); }
-                                         }).name("report progress");
+                                     Timings() = timer->Timings();
+                                     if (report && std::invoke(report)) { RequestStop(); }
+                                 }).name("report progress");
 
             // set-up subflow graph
             prepareGenerator.precede(generateOffspring);
-            generateOffspring.precede(reinsert);
+            generateOffspring.precede(scoreOffspring);
+            scoreOffspring.precede(reinsert);
             reinsert.precede(incrementGeneration);
             incrementGeneration.precede(reportProgress);
         }, // loop body (evolutionary main loop)

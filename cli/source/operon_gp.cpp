@@ -28,9 +28,16 @@
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/reinserter.hpp"
+#include "operon/operators/population_scorer.hpp"
 #include "operon/operators/selector.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/optimizer/optimizer.hpp"
+#if defined(OPERON_HAVE_HIP)
+#include "operon/optimizer/hip_context.hpp"
+#endif
+#if defined(OPERON_HAVE_SYCL)
+#include "operon/optimizer/sycl_context.hpp"
+#endif
 
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
@@ -305,6 +312,47 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
         Operon::CoefficientOptimizer const cOpt { optimizer.get() };
 
+        auto const localSearchBackend = result["local-search-backend"].as<std::string>();
+        std::unique_ptr<Operon::PopulationLocalSearchBackend> populationLocalSearch;
+        if (localSearchBackend == "cpu") {
+        } else if (localSearchBackend == "hip") {
+#if defined(OPERON_HAVE_HIP)
+            populationLocalSearch = std::make_unique<Operon::PopulationOptimization::Hip::Context>();
+#else
+            throw std::invalid_argument("--local-search-backend hip requires an OPERON_ENABLE_HIP build");
+#endif
+        } else if (localSearchBackend == "sycl") {
+#if defined(OPERON_HAVE_SYCL)
+            populationLocalSearch = std::make_unique<Operon::PopulationOptimization::Sycl::Context>();
+#else
+            throw std::invalid_argument("--local-search-backend sycl requires an OPERON_ENABLE_SYCL build");
+#endif
+        } else {
+            throw std::invalid_argument(fmt::format("unknown --local-search-backend '{}'", localSearchBackend));
+        }
+        config.PopulationLocalSearch = populationLocalSearch.get();
+
+        auto const populationScorerBackend = result["population-scorer"].as<std::string>();
+        std::unique_ptr<Operon::PopulationOffspringScorer> populationScorer;
+        if (populationScorerBackend == "cpu") {
+        } else if (populationScorerBackend == "hip") {
+#if defined(OPERON_HAVE_HIP)
+            if (activeEvaluator != evaluator.get()) {
+                throw std::invalid_argument("--population-scorer hip requires the plain scalar evaluator");
+            }
+            auto* hipContext = dynamic_cast<Operon::PopulationOptimization::Hip::Context*>(populationLocalSearch.get());
+            if (hipContext == nullptr) {
+                throw std::invalid_argument("--population-scorer hip requires --local-search-backend hip");
+            }
+            populationScorer = std::make_unique<Operon::PopulationOptimization::Hip::GaussianPopulationOffspringScorer>(*hipContext);
+#else
+            throw std::invalid_argument("--population-scorer hip requires an OPERON_ENABLE_HIP build");
+#endif
+        } else {
+            throw std::invalid_argument(fmt::format("unknown --population-scorer '{}'", populationScorerBackend));
+        }
+        config.PopulationScorer = populationScorer.get();
+
         EXPECT(problem.TrainingRange().Size() > 0);
 
         // Single-objective comparison on objective 0 (matches the
@@ -346,8 +394,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         // ReinserterBase - see reinserter.hpp).
         auto const eliteCount = result.count("elitism") ? result["elitism"].as<size_t>() : size_t{1};
         auto reinserter = Operon::ParseReinserter(result["reinserter"].as<std::string>(), Operon::ComparisonCallback{comp}, eliteCount);
-
         Operon::RandomGenerator random(config.Seed);
+
         if (result["shuffle"].as<bool>()) { problem.GetDataset()->Shuffle(random); }
         if (result["standardize"].as<bool>()) { problem.StandardizeData(problem.TrainingRange()); }
 

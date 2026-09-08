@@ -10,6 +10,7 @@
 #include <taskflow/taskflow.hpp>
 #include <thread>
 #include <utility>
+#include <chrono>
 #include <vstat/vstat.hpp>
 
 #include "../operon_test.hpp"
@@ -23,12 +24,12 @@
 #include "operon/operators/crossover.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/generator.hpp"
+#include "operon/optimizer/optimizer.hpp"
 #include "operon/operators/initializer.hpp"
 #include "operon/operators/mutation.hpp"
 #include "operon/operators/non_dominated_sorter.hpp"
 #include "operon/operators/reinserter.hpp"
 #include "operon/operators/selector.hpp"
-#include "operon/optimizer/optimizer.hpp"
 #ifdef HAVE_ASMJIT
 #include "operon/hash/zobrist.hpp"
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"

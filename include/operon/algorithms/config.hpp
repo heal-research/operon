@@ -10,6 +10,8 @@
 namespace Operon {
 
 class Zobrist; // forward declaration — include operon/hash/zobrist.hpp to use
+class PopulationLocalSearchBackend;
+class PopulationOffspringScorer;
 
 struct GeneticAlgorithmConfig {
     size_t Generations; // generation limit
@@ -25,6 +27,8 @@ struct GeneticAlgorithmConfig {
     double LamarckianProbability{1.0};
     double Epsilon{0};     // used when comparing fitness values
     Zobrist* Cache{nullptr}; // optional transposition cache; null = disabled
+    PopulationLocalSearchBackend* PopulationLocalSearch{nullptr}; // optional accelerator-backed initial-population local search
+    PopulationOffspringScorer* PopulationScorer{nullptr}; // optional generation-level offspring scoring extension
 };
 } // namespace Operon
 
