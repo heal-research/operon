@@ -200,6 +200,18 @@ auto BisectedDomainBound(Tree const& tree, AffineEvaluator::DomainMap const& dom
     return Interval(std::min(left->inf(), right->inf()), std::max(left->sup(), right->sup()));
 }
 
+// Opt-in (default off, opts.UseTightenRangeFallback), independent of
+// bisection. TightenRange's own soundness gate passes (2026-08-09 fix to
+// the mean-value-form overflow bug), but a targeted 2026-09-12 probe (3
+// problems x 5 reps, see operon-publications' shape-constraints-
+// reproduction/TIGHTENRANGE_RESCUE_FINDING.md) measured its rescue rate
+// here at 2 of 1,113,643 attempts (0.00018%), versus bisection's 26,455 of
+// 839,666 (3.15%) on the same cells: TightenRange degrades to the
+// already-failing naive bound on exactly the pathological derivative-slice
+// trees this rescue role invokes it on. Kept opt-in (not removed) since
+// it's real, tested infrastructure that costs nothing when unset, but do
+// not expect it to help in this role -- bisection is the effective rescue
+// mechanism here.
 auto TryAffineBound(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
     auto direct = TryAffineBoundDirect(tree, ae, mode, opts);
