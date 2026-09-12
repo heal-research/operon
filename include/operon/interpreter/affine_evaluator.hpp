@@ -183,6 +183,24 @@ public:
         maxAbsCenter_ = Scalar{0};
         std::size_t ci = 0;
 
+        // Repeated occurrences of the same Variable node hash (a plain leaf,
+        // not a structurally-shared Ref) must resolve to the SAME noise
+        // symbol -- that shared symbol is the entire mechanism affine
+        // arithmetic uses to cancel a dependency-problem case like x - x.
+        // Without this cache, each occurrence independently called
+        // pappus::ops::variable() and got a fresh, uncorrelated noise index
+        // (verified: two independent variable() calls over the same domain
+        // give x1 - x2 a nonzero enclosure, same as if x1, x2 were
+        // unrelated). Cache the unscaled base form per Evaluate() call (not
+        // across calls -- a fresh set of symbols per Evaluate() is what
+        // keeps separate Evaluate() calls' uncertainties independent, per
+        // the counter-growth comment above); emit() below copies it, so
+        // per-occurrence coefficient scaling (`v`, e.g. distinct weights on
+        // 2*x vs 3*x) never mutates the cached entry, only the copy pushed
+        // to primal_ -- the shared noise-symbol index survives the copy and
+        // the scale unchanged.
+        variableCache_.clear();
+
         // Add/Mul: identity-seeded folds — no spurious affine_form copy.
         auto const addFold = [&](std::size_t i) {
             auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar{0});
@@ -266,14 +284,23 @@ public:
                 // Constant bakes `v` into the form directly — no `* v` scale.
                 emit(pappus::ops::constant<Scalar>(ctx_, v), Scalar{1});
             } else if (node.Type == NodeType::Variable) {
-                auto it = domains_.find(node.HashValue);
-                if (it == domains_.end()) {
-                    throw std::runtime_error(fmt::format(
-                        "AffineEvaluator: no domain bound for variable hash {}",
-                        node.HashValue));
+                auto cacheIt = variableCache_.find(node.HashValue);
+                if (cacheIt == variableCache_.end()) {
+                    auto it = domains_.find(node.HashValue);
+                    if (it == domains_.end()) {
+                        throw std::runtime_error(fmt::format(
+                            "AffineEvaluator: no domain bound for variable hash {}",
+                            node.HashValue));
+                    }
+                    auto const& [lo, hi] = it->second;
+                    cacheIt = variableCache_.emplace(node.HashValue,
+                        pappus::ops::variable<Scalar>(ctx_, lo, hi)).first;
                 }
-                auto const& [lo, hi] = it->second;
-                emit(pappus::ops::variable<Scalar>(ctx_, lo, hi), v);
+                // emit() copies this into its staging slot before scaling by
+                // `v`, so distinct per-occurrence coefficients never mutate
+                // the cached base form -- only the shared noise-symbol index
+                // is what must survive unchanged across occurrences.
+                emit(cacheIt->second, v);
             } else if (node.Type == NodeType::Ref) {
                 EXPECT(static_cast<std::size_t>(node.RefTo) < primal_.size());
                 // Ref ignores `v` by design (its coefficient is baked in);
@@ -341,6 +368,12 @@ private:
     DomainMap domains_;
     mutable Context ctx_; // shared by all forms; counter grows monotonically
     mutable std::vector<Affine> primal_; // reused across Evaluate calls
+    // Per-Evaluate() cache of each Variable node hash's base (unscaled)
+    // affine form -- shares one noise symbol across every occurrence of the
+    // same variable within a single Evaluate() call. Cleared at the start
+    // of every Evaluate() call, so it does not affect the cross-call
+    // independence the noise-symbol counter's monotonic growth relies on.
+    mutable Operon::Map<Operon::Hash, Affine> variableCache_;
     mutable Scalar maxAbsCenter_{0}; // largest |center()| over the last Evaluate()
 };
 
