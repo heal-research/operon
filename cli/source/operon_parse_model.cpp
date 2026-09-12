@@ -3,8 +3,10 @@
 // SPDX-FileCopyrightText: Copyright 2025-present Bogdan Burlacu and contributors
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 
 
@@ -12,12 +14,15 @@
 #include "operon/core/types.hpp"
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
+#include "operon/core/tree_diff.hpp"
 #include "operon/formatter/formatter.hpp"
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/parser/infix.hpp"
 #include "reporter.hpp"
 #include "operon/interpreter/interpreter.hpp"
+#include "operon/interpreter/interval_evaluator.hpp"
+#include "operon/interpreter/range_tightening.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
@@ -48,6 +53,8 @@ namespace {
             ("likelihood", "Optimizer loss function (gaussian, poisson)", cxxopts::value<std::string>()->default_value("gaussian"))
             ("iterations", "Optimizer iterations (0 disables refitting; reported stats are the model's own coefficients as given)", cxxopts::value<int>()->default_value("0"))
             ("shape-constraints-config", "Path to a JSON shape-constraints config; when set with --target, also prints affine-certified feasibility for the parsed model", cxxopts::value<std::string>())
+            ("shape-bound-mode", "Arithmetic backend for the printed naive bound: combined (default), interval-only, affine-only", cxxopts::value<std::string>()->default_value("combined"))
+            ("tighten-range", "With --shape-constraints-config, also print TightenRange's mean-value-form bound alongside the naive one, per constraint", cxxopts::value<bool>()->default_value("false"))
             ("debug", "Show some debugging information", cxxopts::value<bool>()->default_value("false"))
             ("format", "Format string (see https://fmt.dev/latest/syntax.html)", cxxopts::value<std::string>()->default_value(":>#8.4g"))
             ("help", "Print help");
@@ -120,6 +127,62 @@ namespace {
                        : std::pair{Operon::Scalar{1}, Operon::Scalar{0}};
     }
 
+    // Duplicated from shape_constrained_evaluator.cpp's anonymous-namespace
+    // helper of the same name (same Ref-node-DAG-slicing idiom as the
+    // tree_diff tests) -- not exported from that translation unit, and this
+    // is a ~6-line utility, so a local copy is cheaper than exporting a
+    // private implementation detail across a module boundary for one caller.
+    constexpr std::size_t kNoGrad = std::numeric_limits<std::size_t>::max();
+
+    auto SliceToTree(Operon::VariableGradientDag const& dag, std::size_t root) -> std::optional<Operon::Tree>
+    {
+        if (root == kNoGrad) { return std::nullopt; }
+        Operon::Vector<Operon::Node> sliced(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
+        Operon::Tree t(std::move(sliced));
+        t.UpdateNodes();
+        return t;
+    }
+
+    auto VariableIndex(Operon::VariableGradientDag const& dag, Operon::Hash variable) -> std::optional<std::size_t>
+    {
+        auto it = std::ranges::find(dag.Variables, variable);
+        if (it == dag.Variables.end()) { return std::nullopt; }
+        return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
+    }
+
+    // The same per-constraint tree ShapeConstrainedEvaluator::BoundFor (in
+    // shape_constrained_evaluator.cpp, also private) would bound -- Identity
+    // is the model itself, First-/SecondDerivative slice a gradient dag built
+    // via BuildVariableGradientDag. Returns nullopt when the derivative is
+    // identically zero or uncertifiable, mirroring that function's [0,0] /
+    // error handling, since this caller only wants a bound to print, not a
+    // certification decision.
+    auto ConstraintTreeFor(Operon::ShapeConstraint const& c, Operon::Tree const& model, Operon::Hash variable) -> std::optional<Operon::Tree>
+    {
+        if (c.Op == Operon::ShapeConstraintOp::Identity) { return model; }
+        auto dag1 = Operon::BuildVariableGradientDag(model, model.GetCoefficients());
+        auto const i1 = VariableIndex(dag1, variable);
+        if (!i1 || !dag1.Certain[*i1]) { return std::nullopt; }
+        auto d1 = SliceToTree(dag1, dag1.Roots[*i1]);
+        if (c.Op == Operon::ShapeConstraintOp::FirstDerivative || !d1) { return d1; }
+        auto dag2 = Operon::BuildVariableGradientDag(*d1, d1->GetCoefficients());
+        auto const i2 = VariableIndex(dag2, variable);
+        if (!i2 || !dag2.Certain[*i2]) { return std::nullopt; }
+        return SliceToTree(dag2, dag2.Roots[*i2]);
+    }
+
+    auto BuildDomainMap(Operon::ShapeConstraintSet const& constraints, Operon::Dataset const& ds)
+        -> Operon::IntervalEvaluator::DomainMap
+    {
+        Operon::IntervalEvaluator::DomainMap domains;
+        for (auto const& [name, bound] : constraints.Domains) {
+            auto v = ds.GetVariable(name);
+            if (!v) { throw std::invalid_argument(fmt::format("domain references unknown variable '{}'", name)); }
+            domains.insert_or_assign(v->Hash, bound);
+        }
+        return domains;
+    }
+
     auto PrintTargetAnalysis(
         cxxopts::ParseResult const& result,
         Operon::Dataset& ds,
@@ -189,12 +252,31 @@ namespace {
             if (!constraints) { throw std::runtime_error("empty shape-constraints config path"); }
             Operon::Evaluator<Operon::ScalarDispatch> eval{&problem, &dtable, Operon::NMSE{}};
             Operon::ShapeConstrainedEvaluator shapeEval{&eval, &dtable, *constraints};
+            shapeEval.SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
             auto const summary = shapeEval.Measure(model);
             fmt::print("shape_feasible {} shape_violation {}\n", summary.Feasible, summary.Violation);
+
+            bool const tighten = result["tighten-range"].as<bool>();
+            Operon::IntervalEvaluator::DomainMap const domains = tighten ? BuildDomainMap(*constraints, ds) : Operon::IntervalEvaluator::DomainMap{};
             for (std::size_t i = 0; i < summary.Measurements.size(); ++i) {
                 auto const& m = summary.Measurements[i];
                 fmt::print("shape_measurement {} certified {} violation {}", i, m.Certified, m.Violation);
                 if (m.Bound) { fmt::print(" bound [{}:{}]", m.Bound->first, m.Bound->second); }
+                if (tighten) {
+                    auto const& c = constraints->Constraints[i];
+                    auto const variable = c.Op == Operon::ShapeConstraintOp::Identity
+                        ? Operon::Hash{} : ds.GetVariable(c.Variable)->Hash;
+                    if (auto ctree = ConstraintTreeFor(c, model, variable)) {
+                        auto const tr = Operon::TightenRange(*ctree, domains, ctree->GetCoefficients());
+                        if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
+                            fmt::print(" tightened [{}:{}]", tr.inf(), tr.sup());
+                        } else {
+                            fmt::print(" tightened non-finite");
+                        }
+                    } else {
+                        fmt::print(" tightened n/a (identically-zero or uncertifiable derivative)");
+                    }
+                }
                 fmt::print("\n");
             }
         }
