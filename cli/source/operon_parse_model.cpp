@@ -267,7 +267,17 @@ namespace {
                     auto const variable = c.Op == Operon::ShapeConstraintOp::Identity
                         ? Operon::Hash{} : ds.GetVariable(c.Variable)->Hash;
                     if (auto ctree = ConstraintTreeFor(c, model, variable)) {
-                        auto const tr = Operon::TightenRange(*ctree, domains, ctree->GetCoefficients());
+                        auto tr = Operon::TightenRange(*ctree, domains, ctree->GetCoefficients());
+                        // Measure()'s m.Bound is the scaled bound (TransformBound
+                        // applies the same fitted linear scaling used to check
+                        // feasibility); apply the identical transform here or the
+                        // two columns compare different quantities.
+                        if (auto const scaling = Operon::FitLinearScaling(model, problem, dtable, range)) {
+                            auto const [lo, hi] = c.Op == Operon::ShapeConstraintOp::Identity
+                                ? scaling->ApplyToValueInterval(tr.inf(), tr.sup())
+                                : scaling->ApplyToDerivativeInterval(tr.inf(), tr.sup());
+                            tr = Operon::IntervalEvaluator::Interval(lo, hi);
+                        }
                         if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
                             fmt::print(" tightened [{}:{}]", tr.inf(), tr.sup());
                         } else {
