@@ -389,14 +389,17 @@ public:
                     ++collapseCount_;
                     // Fresh, independent noise symbol -- see design doc "Why
                     // this is sound." `ivl` already has `v` applied above
-                    // (exactly once), so no double-scaling here. Resetting
-                    // localMax_[i] to just the replacement's own center is
-                    // deliberate, not a bug: the replacement is a genuinely
-                    // fresh, sound value with none of the discarded form's
-                    // residual numerical risk, so nothing downstream needs
-                    // to remember the pre-collapse history.
+                    // (exactly once), so no double-scaling here. Preserve
+                    // (not overwrite) localMax_[i]: keep the discarded
+                    // candidate form's own history conservatively so any
+                    // ancestor's own certification still sees it via
+                    // seedFromChild, even though the replacement itself
+                    // carries no residual risk of its own -- a pure
+                    // max-with, never a decrease, can only make a future
+                    // ancestor's certification more cautious, never less
+                    // sound.
                     a = Affine(ctx_.state, ivl);
-                    localMax_[i] = std::fabs(a.center());
+                    localMax_[i] = std::max(localMax_[i], std::fabs(a.center()));
                 }
             }
 
