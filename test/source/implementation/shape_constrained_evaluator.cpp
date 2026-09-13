@@ -202,29 +202,23 @@ TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constrai
     CHECK_FALSE(narrow.Feasible(fx.tree));
 }
 
-TEST_CASE("ParseShapeBoundMode parses every CLI token including interval-only-bisected", "[shape-constraints]")
+TEST_CASE("ParseShapeBoundMode parses flags and rejects invalid combinations", "[shape-constraints]")
 {
     CHECK(Operon::ParseShapeBoundMode("combined") == ShapeBoundMode::Combined);
-    CHECK(Operon::ParseShapeBoundMode("interval-only") == ShapeBoundMode::IntervalOnly);
-    CHECK(Operon::ParseShapeBoundMode("affine-only") == ShapeBoundMode::AffineOnly);
-    CHECK(Operon::ParseShapeBoundMode("interval-only-bisected") == ShapeBoundMode::IntervalOnlyBisected);
+    CHECK(Operon::ParseShapeBoundMode("interval") == ShapeBoundMode::Interval);
+    CHECK(Operon::ParseShapeBoundMode("affine") == ShapeBoundMode::Affine);
+    CHECK(Operon::ParseShapeBoundMode("interval,bisected") == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
     CHECK_THROWS_AS(Operon::ParseShapeBoundMode("not-a-mode"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("interval,affine"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("affine,bisected"), std::invalid_argument);
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - IntervalOnlyBisected tightens a dependency-problem bound over IntervalOnly", "[shape-constraints]")
+TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-problem bound", "[shape-constraints]")
 {
-    // f(X1) = (X1 - 1) * (X1 - 1) over [0, 10]: true range is [0, 81]
-    // (minimum 0 at the interior point X1=1, maximum 81 at X1=10).
-    // Plain interval multiplication does not recognize both operands are
-    // the same sub-expression, so it computes the general 4-corner-product
-    // bound over (X1-1) in [-1, 9]: min/max of {(-1)(-1), (-1)(9), (9)(-1),
-    // (9)(9)} = [-9, 81] -- strictly wider than the true range on the
-    // lower side. This is the classical interval-arithmetic dependency
-    // problem; bisecting the domain shrinks each sub-box's own
-    // multiplication error and should narrow the overestimate without any
-    // affine correlation tracking. See operon-publications/papers/
-    // interval-range-tightening/interval-only-bisection-finding.md for the
-    // reviewed empirical result this mode is built on.
+    // f(X1) = (X1 - 1) * (X1 - 1) over [0, 10]: true range [0, 81], naive
+    // interval multiplication overestimates to [-9, 81] (dependency
+    // problem). Bisection should narrow the overestimate.
     constexpr auto nrow = std::size_t{5};
     constexpr auto ncol = std::size_t{2};
     Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
@@ -250,13 +244,13 @@ TEST_CASE("ShapeConstrainedEvaluator - IntervalOnlyBisected tightens a dependenc
 
     Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
 
-    shapeEval.SetBoundMode(ShapeBoundMode::IntervalOnly);
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
     auto const plain = shapeEval.Measure(tree);
     REQUIRE(plain.Measurements.size() == 1);
     REQUIRE(plain.Measurements[0].Bound.has_value());
     auto const [plo, phi] = *plain.Measurements[0].Bound;
 
-    shapeEval.SetBoundMode(ShapeBoundMode::IntervalOnlyBisected);
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
     auto const bisected = shapeEval.Measure(tree);
     REQUIRE(bisected.Measurements.size() == 1);
     REQUIRE(bisected.Measurements[0].Bound.has_value());
@@ -290,9 +284,9 @@ TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraint
 
     CHECK(detail::HashTreeForMemo(refX) != detail::HashTreeForMemo(refY));
     CHECK(detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Combined))
-          != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::IntervalOnly)));
-    CHECK(detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::IntervalOnly))
-          != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::IntervalOnlyBisected)));
+          != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Interval)));
+    CHECK(detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Interval))
+          != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Interval | ShapeBoundMode::Bisected)));
 }
 
 

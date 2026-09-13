@@ -56,47 +56,37 @@ struct ShapeConstraintPolicy {
     Operon::Scalar PenaltyWeight{1};
 };
 
-// Which arithmetic backend(s) TryAffineBound uses to bound a constraint's
-// tree/derivative over its domain box. `Combined` is the default and the
-// only mode with any published measurement behind it so far: affine,
-// intersected with plain interval whenever both succeed (see
-// TryAffineBoundDirect's comment for why that intersection is sound).
-// `IntervalOnly`/`AffineOnly` exist for isolating each backend's actual
-// contribution to feasibility/NMSE outcomes -- prompted by an earlier
-// finding that affine rarely decides the `Combined` intersection in
-// practice, which raised the question of whether it's
-// pulling its weight at all. `AffineOnly` still falls back to interval for
-// cases affine structurally can't represent (a zero-crossing denominator,
-// a non-integer-exponent domain check) -- those are representability
-// gaps, not the tightness contribution the intersection step measures, so
-// removing them would conflate two different questions.
-//
-// `IntervalOnlyBisected` recursively bisects the domain along the tree's
-// own widest-referenced axis and unions per-sub-box IntervalEvaluator
-// results -- the classical remedy for plain interval arithmetic's
-// dependency problem, using no affine arithmetic at all. Measured
-// (200-real-model corpus, reviewed twice) to beat `Combined` outright:
-// 149W/26T/3L at bisection depth 12, already 119W/38T/18L at depth 3 --
-// see operon-publications/papers/interval-range-tightening/
-// interval-only-bisection-finding.md for the full empirical result and
-// review history. Bisection depth is a construction-time knob
-// (opts.BisectionDepth, default 3, chosen to match this build's actual
-// eve::wide<Operon::Scalar> SIMD width once a future batched-evaluation
-// path exists -- currently scalar, one IntervalEvaluator call per
-// sub-box).
+// Backend(s) TryAffineBound uses to bound a constraint. Combined (default)
+// intersects affine and interval. Interval/Affine isolate one backend.
+// Bisected recursively bisects the domain and unions per-sub-box results;
+// currently only supported combined with Interval.
 enum class ShapeBoundMode : unsigned {
     Combined = 0U,
-    IntervalOnly = 1U,
-    AffineOnly = 2U,
-    IntervalOnlyBisected = 3U,
+    Interval = 1U << 0U,
+    Affine = 1U << 1U,
+    Bisected = 1U << 2U,
 };
+
+[[nodiscard]] constexpr auto operator|(ShapeBoundMode lhs, ShapeBoundMode rhs) noexcept -> ShapeBoundMode
+{
+    return static_cast<ShapeBoundMode>(static_cast<unsigned>(lhs) | static_cast<unsigned>(rhs));
+}
+
+[[nodiscard]] constexpr auto operator&(ShapeBoundMode lhs, ShapeBoundMode rhs) noexcept -> ShapeBoundMode
+{
+    return static_cast<ShapeBoundMode>(static_cast<unsigned>(lhs) & static_cast<unsigned>(rhs));
+}
+
+[[nodiscard]] constexpr auto HasFlag(ShapeBoundMode value, ShapeBoundMode flag) noexcept -> bool
+{
+    return (value & flag) != ShapeBoundMode::Combined;
+}
 
 // Tuning knobs for the affine/interval bound machinery. Defaults match
 // this file's previous behavior exactly.
 struct ShapeBoundOptions {
-    // Interval-only bisection (ShapeBoundMode::IntervalOnlyBisected):
-    // 2^BisectionDepth uniform sub-boxes along the tree's widest-referenced
-    // axis.
+    // Interval-only bisection (ShapeBoundMode::Bisected): 2^BisectionDepth
+    // uniform sub-boxes along the tree's widest-referenced axis.
     int BisectionDepth{3};
     // Affine-mode fallback: max bisection depth when the direct
     // affine/interval intersection fails on the whole domain. 0 disables it.
