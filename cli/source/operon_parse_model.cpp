@@ -262,6 +262,12 @@ namespace {
             bool const tighten = result["tighten-range"].as<bool>();
             bool const sampleCheck = result.contains("sample-check");
             Operon::IntervalEvaluator::DomainMap const domains = (tighten || sampleCheck) ? BuildDomainMap(*constraints, ds) : Operon::IntervalEvaluator::DomainMap{};
+            // Shared across both tighten and sample-check: m.Bound is the
+            // scaled bound (TransformBound applies the same fitted linear
+            // scaling used to check feasibility), so any raw-tree quantity
+            // compared against it must go through the identical transform
+            // or the two columns compare different quantities.
+            std::optional<Operon::LinearScaling> const scaling = (tighten || sampleCheck) ? Operon::FitLinearScaling(model, problem, dtable, range) : std::nullopt;
             std::size_t const nSamples = sampleCheck ? result["sample-check"].as<std::size_t>() : 0;
             Operon::RandomGenerator sampleRng{0};
             // Fixed sample columns built once from the constraints' declared
@@ -296,14 +302,10 @@ namespace {
                     ctreeStorage = ConstraintTreeFor(c, model, variable);
                 }
                 if (tighten) {
-                    auto const& c = constraints->Constraints[i];
                     if (auto const& ctree = ctreeStorage) {
                         auto tr = Operon::TightenRange(*ctree, domains, ctree->GetCoefficients());
-                        // Measure()'s m.Bound is the scaled bound (TransformBound
-                        // applies the same fitted linear scaling used to check
-                        // feasibility); apply the identical transform here or the
-                        // two columns compare different quantities.
-                        if (auto const scaling = Operon::FitLinearScaling(model, problem, dtable, range)) {
+                        if (scaling) {
+                            auto const& c = constraints->Constraints[i];
                             auto const [lo, hi] = c.Op == Operon::ShapeConstraintOp::Identity
                                 ? scaling->ApplyToValueInterval(tr.inf(), tr.sup())
                                 : scaling->ApplyToDerivativeInterval(tr.inf(), tr.sup());
@@ -322,18 +324,33 @@ namespace {
                     if (auto const& ctree = ctreeStorage) {
                         using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
                         auto vals = Interpreter::Evaluate(*ctree, *sampleDs, sampleRange);
-                        auto const [mn, mx] = std::ranges::minmax_element(vals);
-                        // NaN-poisoned samples (out-of-domain evaluations, e.g.
-                        // log/sqrt of a negative box draw) must not silently
-                        // widen or corrupt the observed range via ordinary <
-                        // comparisons -- report them explicitly instead.
                         auto const nNonFinite = std::ranges::count_if(vals, [](auto v) { return !std::isfinite(v); });
                         if (nNonFinite == static_cast<std::ptrdiff_t>(vals.size())) {
                             fmt::print(" sampled all-non-finite (n={})", nSamples);
-                        } else if (nNonFinite > 0) {
-                            fmt::print(" sampled [{}:{}] (n={}, {} non-finite excluded)", *mn, *mx, nSamples, nNonFinite);
                         } else {
-                            fmt::print(" sampled [{}:{}] (n={})", *mn, *mx, nSamples);
+                            auto const [mn, mx] = std::ranges::minmax(
+                                vals | std::views::filter([](auto v) { return std::isfinite(v); }));
+                            // Sampled values come from the raw (unscaled)
+                            // constraint tree, same as TightenRange's `tr`
+                            // above -- apply the identical linear-scaling
+                            // transform so this compares in the same units
+                            // as `bound` (m.Bound, always scaled). Without
+                            // this the reported range looks unsound against
+                            // a scaled model even though nothing is wrong.
+                            double slo = mn;
+                            double shi = mx;
+                            if (scaling) {
+                                auto const& c = constraints->Constraints[i];
+                                auto const [lo, hi] = c.Op == Operon::ShapeConstraintOp::Identity
+                                    ? scaling->ApplyToValueInterval(slo, shi)
+                                    : scaling->ApplyToDerivativeInterval(slo, shi);
+                                slo = lo; shi = hi;
+                            }
+                            if (nNonFinite > 0) {
+                                fmt::print(" sampled [{}:{}] (n={}, {} non-finite excluded)", slo, shi, nSamples, nNonFinite);
+                            } else {
+                                fmt::print(" sampled [{}:{}] (n={})", slo, shi, nSamples);
+                            }
                         }
                     } else {
                         fmt::print(" sampled n/a (identically-zero or uncertifiable derivative)");
