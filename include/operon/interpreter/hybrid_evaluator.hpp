@@ -19,6 +19,28 @@
 // Explicitly NOT production code. Not wired into ShapeConstrainedEvaluator,
 // ShapeBoundMode, or any CLI flag. Exists to measure root-level tightness
 // impact on real trees before deciding whether to build this for real.
+//
+// Revision history (this file has been through two rounds of implementation
+// review, both finding real bugs in the first draft -- kept here since it's
+// directly relevant to trusting this file's own correctness):
+// - localMax_ (the per-subtree ill-conditioning tracker) did not propagate
+//   from children into parents -- a fold/unary/binary op only tracked its
+//   own accumulator's center, never read a child's already-computed
+//   localMax_. A child with a catastrophic intermediate that later
+//   cancelled down to a small final center could hide that history from
+//   every ancestor's own certification check. Fixed: every op now seeds
+//   localMax_[i] from every child's localMax_[j] before/while folding.
+// - The node weight `v` was applied to the affine value `a` uniformly
+//   after the dispatch switch, but only to `ivl` inside the four hardcoded
+//   n-ary fold cases (Add/Mul/Sub/Div/Fmin/Fmax) -- the unary/binary
+//   registry dispatch path (exp, sin, sqrt, user-defined ops, ...) never
+//   applied `v` to `ivl` at all. Any weighted registry-op node had its
+//   collapse decision comparing a weighted affine width against an
+//   unweighted interval width, and a triggered collapse built a fresh
+//   affine form from the wrong (unweighted) interval. Fixed: `v` is now
+//   applied to both `a` and `ivl` in exactly one place, after computing
+//   both as raw (unweighted) op results -- removed from every individual
+//   case body.
 #ifndef OPERON_HYBRID_EVALUATOR_HPP
 #define OPERON_HYBRID_EVALUATOR_HPP
 
@@ -72,7 +94,9 @@ public:
     static auto IllConditionedThreshold() -> Scalar {
         static auto const threshold = [] {
             auto const* env = std::getenv("OPERON_HYBRID_ILL_THRESHOLD");
-            return env ? static_cast<Scalar>(std::atof(env)) : Scalar{4};
+            if (!env) { return Scalar{4}; }
+            auto v = static_cast<Scalar>(std::atof(env));
+            return (std::isfinite(v) && v > Scalar{0}) ? v : Scalar{4};
         }();
         return threshold;
     }
@@ -83,7 +107,9 @@ public:
     static auto CollapseMargin() -> Scalar {
         static auto const margin = [] {
             auto const* env = std::getenv("OPERON_HYBRID_COLLAPSE_MARGIN");
-            return env ? static_cast<Scalar>(std::atof(env)) : Scalar{0};
+            if (!env) { return Scalar{0}; }
+            auto v = static_cast<Scalar>(std::atof(env));
+            return (std::isfinite(v) && v >= Scalar{0} && v < Scalar{1}) ? v : Scalar{0};
         }();
         return margin;
     }
@@ -113,12 +139,13 @@ public:
         internalCount_ = 0;
         std::size_t ci = 0;
 
-        // NOTE on n-ary folds below: duplicated per-backend, deliberately --
-        // see design doc "Mechanics": a merged walker needs its own dispatch,
-        // not a thin wrapper. Each affine fold step tracks localMax_[i] like
-        // the fixed AffineEvaluator's fold-tracking does for MaxAbsCenter,
-        // but scoped to THIS node's own subtree (max of its own center and
-        // its children's already-computed localMax_), not the whole tree.
+        // Seed node i's localMax_ from child j's already-computed localMax_ --
+        // must run for every child before/while folding, so a node's
+        // ill-conditioning history correctly reflects everything in its own
+        // subtree, not just its own accumulator's center. See file header.
+        auto seedFromChild = [&](std::size_t i, std::size_t j) {
+            localMax_[i] = std::max(localMax_[i], localMax_[j]);
+        };
         auto trackLocal = [&](std::size_t i, Affine const& f) {
             localMax_[i] = std::max(localMax_[i], std::fabs(f.center()));
         };
@@ -126,6 +153,7 @@ public:
         auto const aAddFold = [&](std::size_t i) {
             auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar{0});
             for (auto j : Tree::Indices(nodes, i)) {
+                seedFromChild(i, j);
                 acc = pappus::ops::add<Scalar>(ctx_, acc, aprimal_[j]);
                 trackLocal(i, acc);
             }
@@ -134,6 +162,7 @@ public:
         auto const aMulFold = [&](std::size_t i) {
             auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar{1});
             for (auto j : Tree::Indices(nodes, i)) {
+                seedFromChild(i, j);
                 acc = pappus::ops::mul<Scalar>(ctx_, acc, aprimal_[j]);
                 trackLocal(i, acc);
             }
@@ -142,6 +171,7 @@ public:
         auto const aSubFold = [&](std::size_t i) {
             std::optional<Affine> acc;
             for (auto j : Tree::Indices(nodes, i)) {
+                seedFromChild(i, j);
                 if (!acc) { acc = aprimal_[j]; } else { acc = pappus::ops::sub<Scalar>(ctx_, *acc, aprimal_[j]); }
                 trackLocal(i, *acc);
             }
@@ -151,6 +181,7 @@ public:
         auto const aDivFold = [&](std::size_t i) {
             std::optional<Affine> acc;
             for (auto j : Tree::Indices(nodes, i)) {
+                seedFromChild(i, j);
                 if (!acc) { acc = aprimal_[j]; } else { acc = pappus::ops::div<Scalar>(ctx_, *acc, aprimal_[j]); }
                 trackLocal(i, *acc);
             }
@@ -160,6 +191,7 @@ public:
         auto const aMinFold = [&](std::size_t i) {
             std::optional<Affine> acc;
             for (auto j : Tree::Indices(nodes, i)) {
+                seedFromChild(i, j);
                 if (!acc) { acc = aprimal_[j]; } else { acc = pappus::ops::min<Scalar>(ctx_, *acc, aprimal_[j]); }
                 trackLocal(i, *acc);
             }
@@ -169,6 +201,7 @@ public:
         auto const aMaxFold = [&](std::size_t i) {
             std::optional<Affine> acc;
             for (auto j : Tree::Indices(nodes, i)) {
+                seedFromChild(i, j);
                 if (!acc) { acc = aprimal_[j]; } else { acc = pappus::ops::max<Scalar>(ctx_, *acc, aprimal_[j]); }
                 trackLocal(i, *acc);
             }
@@ -226,8 +259,12 @@ public:
             bool isLeafOrRef = false;
 
             if (node.Type == NodeType::Constant) {
+                // Constant bakes v into the value directly (matches both
+                // AffineEvaluator/IntervalEvaluator's own convention) -- no
+                // separate weight-apply step for this case.
                 a = pappus::ops::constant<Scalar>(ctx_, v);
                 ivl = pappus::ops::constant<Scalar>(v);
+                localMax_[i] = std::fabs(v);
                 isLeafOrRef = true;
             } else if (node.Type == NodeType::Variable) {
                 auto it = domains_.find(node.HashValue);
@@ -251,26 +288,44 @@ public:
                 localMax_[i] = localMax_[node.RefTo];
                 isLeafOrRef = true;
             } else {
+                // Every case below computes RAW (unweighted) a/ivl and seeds
+                // localMax_ from children; `v` is applied to both uniformly
+                // in exactly one place after the switch (see file header --
+                // this used to be per-case and inconsistent between the two
+                // backends).
                 switch (node.HashValue) {
-                case Operon::Hash(BuiltinOp::Add): a = aAddFold(i); ivl = iAddFold(i) * v; break;
-                case Operon::Hash(BuiltinOp::Mul): a = aMulFold(i); ivl = iMulFold(i) * v; break;
+                case Operon::Hash(BuiltinOp::Add): a = aAddFold(i); ivl = iAddFold(i); break;
+                case Operon::Hash(BuiltinOp::Mul): a = aMulFold(i); ivl = iMulFold(i); break;
                 case Operon::Hash(BuiltinOp::Sub):
-                    a = (node.Arity == 1 ? -aprimal_[i - 1] : aSubFold(i));
-                    ivl = (node.Arity == 1 ? pappus::ops::neg<Scalar>(iprimal_[i - 1]) : iSubFold(i)) * v;
-                    if (node.Arity == 1) { trackLocal(i, a); }
+                    if (node.Arity == 1) {
+                        seedFromChild(i, i - 1);
+                        a = -aprimal_[i - 1];
+                        ivl = pappus::ops::neg<Scalar>(iprimal_[i - 1]);
+                        trackLocal(i, a);
+                    } else {
+                        a = aSubFold(i);
+                        ivl = iSubFold(i);
+                    }
                     break;
                 case Operon::Hash(BuiltinOp::Div):
-                    a = (node.Arity == 1 ? aprimal_[i - 1].inv() : aDivFold(i));
-                    ivl = (node.Arity == 1 ? pappus::ops::inv<Scalar>(iprimal_[i - 1]) : iDivFold(i)) * v;
-                    if (node.Arity == 1) { trackLocal(i, a); }
+                    if (node.Arity == 1) {
+                        seedFromChild(i, i - 1);
+                        a = aprimal_[i - 1].inv();
+                        ivl = pappus::ops::inv<Scalar>(iprimal_[i - 1]);
+                        trackLocal(i, a);
+                    } else {
+                        a = aDivFold(i);
+                        ivl = iDivFold(i);
+                    }
                     break;
-                case Operon::Hash(BuiltinOp::Fmin): a = aMinFold(i); ivl = iMinFold(i) * v; break;
-                case Operon::Hash(BuiltinOp::Fmax): a = aMaxFold(i); ivl = iMaxFold(i) * v; break;
+                case Operon::Hash(BuiltinOp::Fmin): a = aMinFold(i); ivl = iMinFold(i); break;
+                case Operon::Hash(BuiltinOp::Fmax): a = aMaxFold(i); ivl = iMaxFold(i); break;
                 default:
                     if (node.Arity == 1) {
                         auto const* aunary = AffineUnaryRules().TryGet(node.HashValue);
                         auto const* iunary = IntervalUnaryRules().TryGet(node.HashValue);
                         if (aunary && iunary) {
+                            seedFromChild(i, i - 1);
                             a = (*aunary)(ctx_, aprimal_[i - 1]);
                             ivl = (*iunary)(iprimal_[i - 1]);
                             trackLocal(i, a);
@@ -282,6 +337,8 @@ public:
                         auto const* abinary = AffineBinaryRules().TryGet(node.HashValue);
                         auto const* ibinary = IntervalBinaryRules().TryGet(node.HashValue);
                         if (abinary && ibinary) {
+                            seedFromChild(i, j);
+                            seedFromChild(i, k);
                             a = (*abinary)(ctx_, aprimal_[j], aprimal_[k]);
                             ivl = (*ibinary)(iprimal_[j], iprimal_[k]);
                             trackLocal(i, a);
@@ -290,10 +347,9 @@ public:
                     }
                     throw std::runtime_error(fmt::format("HybridEvaluator: node kind `{}` not yet mapped", node.Name()));
                 }
-                if (node.Arity != 1 || (node.HashValue != Operon::Hash(BuiltinOp::Sub) && node.HashValue != Operon::Hash(BuiltinOp::Div))) {
-                    trackLocal(i, a);
-                }
-                if (v != Scalar{1}) { a *= v; localMax_[i] = std::max(localMax_[i], std::fabs(a.center())); }
+                if (v != Scalar{1}) { a *= v; }
+                ivl = ivl * v;
+                localMax_[i] = std::max(localMax_[i], std::fabs(a.center()));
             }
 
             if (!isLeafOrRef) {
@@ -332,9 +388,13 @@ public:
                 if (shouldCollapse) {
                     ++collapseCount_;
                     // Fresh, independent noise symbol -- see design doc "Why
-                    // this is sound." `ivl` already has `v` applied (both
-                    // backends apply node weight post-op, see interval/affine
-                    // evaluators), so no double-scaling here.
+                    // this is sound." `ivl` already has `v` applied above
+                    // (exactly once), so no double-scaling here. Resetting
+                    // localMax_[i] to just the replacement's own center is
+                    // deliberate, not a bug: the replacement is a genuinely
+                    // fresh, sound value with none of the discarded form's
+                    // residual numerical risk, so nothing downstream needs
+                    // to remember the pre-collapse history.
                     a = Affine(ctx_.state, ivl);
                     localMax_[i] = std::fabs(a.center());
                 }
