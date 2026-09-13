@@ -202,15 +202,29 @@ public:
         variableCache_.clear();
 
         // Add/Mul: identity-seeded folds — no spurious affine_form copy.
+        // Every accumulation step's center is tracked into maxAbsCenter_,
+        // not just the fold's final result -- an n-ary node's intermediate
+        // accumulator can carry a much larger |center()| than either its
+        // final result or any single child (e.g. a long multiplication
+        // chain that later gets divided back down), and the ill-
+        // conditioned-fallback guard in ShapeConstrainedEvaluator relies on
+        // MaxAbsCenter() having seen the true worst intermediate, not just
+        // each node's own settled value.
         auto const addFold = [&](std::size_t i) {
             auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar{0});
-            for (auto j : Tree::Indices(nodes, i)) { acc = pappus::ops::add<Scalar>(ctx_, acc, primal_[j]); }
+            for (auto j : Tree::Indices(nodes, i)) {
+                acc = pappus::ops::add<Scalar>(ctx_, acc, primal_[j]);
+                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc.center()));
+            }
             EXPECT(nodes[i].Arity > 0);
             return acc;
         };
         auto const mulFold = [&](std::size_t i) {
             auto acc = pappus::ops::constant<Scalar>(ctx_, Scalar{1});
-            for (auto j : Tree::Indices(nodes, i)) { acc = pappus::ops::mul<Scalar>(ctx_, acc, primal_[j]); }
+            for (auto j : Tree::Indices(nodes, i)) {
+                acc = pappus::ops::mul<Scalar>(ctx_, acc, primal_[j]);
+                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc.center()));
+            }
             EXPECT(nodes[i].Arity > 0);
             return acc;
         };
@@ -220,6 +234,7 @@ public:
             for (auto j : Tree::Indices(nodes, i)) {
                 if (!acc) { acc = primal_[j]; }
                 else      { acc = pappus::ops::sub<Scalar>(ctx_, *acc, primal_[j]); }
+                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
             }
             EXPECT(acc.has_value()); // arity > 0 — malformed tree otherwise
             return std::move(*acc);
@@ -229,6 +244,7 @@ public:
             for (auto j : Tree::Indices(nodes, i)) {
                 if (!acc) { acc = primal_[j]; }
                 else      { acc = pappus::ops::div<Scalar>(ctx_, *acc, primal_[j]); }
+                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
             }
             EXPECT(acc.has_value()); // arity > 0 — malformed tree otherwise
             return std::move(*acc);
@@ -240,6 +256,7 @@ public:
             for (auto j : Tree::Indices(nodes, i)) {
                 if (!acc) { acc = primal_[j]; }
                 else      { acc = pappus::ops::min<Scalar>(ctx_, *acc, primal_[j]); }
+                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
             }
             EXPECT(acc.has_value());
             return std::move(*acc);
@@ -249,6 +266,7 @@ public:
             for (auto j : Tree::Indices(nodes, i)) {
                 if (!acc) { acc = primal_[j]; }
                 else      { acc = pappus::ops::max<Scalar>(ctx_, *acc, primal_[j]); }
+                maxAbsCenter_ = std::max(maxAbsCenter_, std::fabs(acc->center()));
             }
             EXPECT(acc.has_value());
             return std::move(*acc);
