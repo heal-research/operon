@@ -6,11 +6,12 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <fstream>
 #include <optional>
 #include <string>
 
-
-#include "operon/core/dataset.hpp"
+#include "operon/core/serialization.hpp"
+#include "operon/random/random.hpp"
 #include "operon/core/types.hpp"
 #include "operon/core/dispatch.hpp"
 #include "operon/core/problem.hpp"
@@ -55,6 +56,8 @@ namespace {
             ("shape-constraints-config", "Path to a JSON shape-constraints config; when set with --target, also prints affine-certified feasibility for the parsed model", cxxopts::value<std::string>())
             ("shape-bound-mode", "Arithmetic backend for the printed naive bound: combined (default), interval-only, affine-only", cxxopts::value<std::string>()->default_value("combined"))
             ("tighten-range", "With --shape-constraints-config, also print TightenRange's mean-value-form bound alongside the naive one, per constraint", cxxopts::value<bool>()->default_value("false"))
+            ("sample-check", "With --shape-constraints-config, also Monte-Carlo sample N points from the domain box per constraint and print the observed [min:max], as an independent soundness cross-check on the printed bound", cxxopts::value<std::size_t>())
+            ("dump-tree-json", "Write the parsed model tree (exact structure, via Operon::Serialization::ToJson) to this path before any other processing", cxxopts::value<std::string>())
             ("debug", "Show some debugging information", cxxopts::value<bool>()->default_value("false"))
             ("format", "Format string (see https://fmt.dev/latest/syntax.html)", cxxopts::value<std::string>()->default_value(":>#8.4g"))
             ("help", "Print help");
@@ -257,16 +260,44 @@ namespace {
             fmt::print("shape_feasible {} shape_violation {}\n", summary.Feasible, summary.Violation);
 
             bool const tighten = result["tighten-range"].as<bool>();
-            Operon::IntervalEvaluator::DomainMap const domains = tighten ? BuildDomainMap(*constraints, ds) : Operon::IntervalEvaluator::DomainMap{};
+            bool const sampleCheck = result.contains("sample-check");
+            Operon::IntervalEvaluator::DomainMap const domains = (tighten || sampleCheck) ? BuildDomainMap(*constraints, ds) : Operon::IntervalEvaluator::DomainMap{};
+            std::size_t const nSamples = sampleCheck ? result["sample-check"].as<std::size_t>() : 0;
+            Operon::RandomGenerator sampleRng{0};
+            // Fixed sample columns built once from the constraints' declared
+            // domain box (not per-constraint) -- every constraint tree only
+            // ever references a subset of these variables, so one shared
+            // sample matrix is reused across constraints and evaluated
+            // against whichever sliced tree ConstraintTreeFor returns.
+            std::vector<std::string> sampleNames;
+            std::vector<std::vector<Operon::Scalar>> sampleCols;
+            if (sampleCheck) {
+                sampleNames.reserve(constraints->Domains.size());
+                sampleCols.reserve(constraints->Domains.size());
+                for (auto const& [name, bound] : constraints->Domains) {
+                    sampleNames.push_back(name);
+                    std::vector<Operon::Scalar> col(nSamples);
+                    for (auto& v : col) { v = Operon::Random::Uniform(sampleRng, bound.first, bound.second); }
+                    sampleCols.push_back(std::move(col));
+                }
+            }
+            std::optional<Operon::Dataset> sampleDs;
+            if (sampleCheck) { sampleDs.emplace(sampleNames, sampleCols); }
+            Operon::Range const sampleRange{0, nSamples};
             for (std::size_t i = 0; i < summary.Measurements.size(); ++i) {
                 auto const& m = summary.Measurements[i];
                 fmt::print("shape_measurement {} certified {} violation {}", i, m.Certified, m.Violation);
                 if (m.Bound) { fmt::print(" bound [{}:{}]", m.Bound->first, m.Bound->second); }
-                if (tighten) {
+                std::optional<Operon::Tree> ctreeStorage;
+                if (tighten || sampleCheck) {
                     auto const& c = constraints->Constraints[i];
                     auto const variable = c.Op == Operon::ShapeConstraintOp::Identity
                         ? Operon::Hash{} : ds.GetVariable(c.Variable)->Hash;
-                    if (auto ctree = ConstraintTreeFor(c, model, variable)) {
+                    ctreeStorage = ConstraintTreeFor(c, model, variable);
+                }
+                if (tighten) {
+                    auto const& c = constraints->Constraints[i];
+                    if (auto const& ctree = ctreeStorage) {
                         auto tr = Operon::TightenRange(*ctree, domains, ctree->GetCoefficients());
                         // Measure()'s m.Bound is the scaled bound (TransformBound
                         // applies the same fitted linear scaling used to check
@@ -285,6 +316,27 @@ namespace {
                         }
                     } else {
                         fmt::print(" tightened n/a (identically-zero or uncertifiable derivative)");
+                    }
+                }
+                if (sampleCheck) {
+                    if (auto const& ctree = ctreeStorage) {
+                        using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
+                        auto vals = Interpreter::Evaluate(*ctree, *sampleDs, sampleRange);
+                        auto const [mn, mx] = std::ranges::minmax_element(vals);
+                        // NaN-poisoned samples (out-of-domain evaluations, e.g.
+                        // log/sqrt of a negative box draw) must not silently
+                        // widen or corrupt the observed range via ordinary <
+                        // comparisons -- report them explicitly instead.
+                        auto const nNonFinite = std::ranges::count_if(vals, [](auto v) { return !std::isfinite(v); });
+                        if (nNonFinite == static_cast<std::ptrdiff_t>(vals.size())) {
+                            fmt::print(" sampled all-non-finite (n={})", nSamples);
+                        } else if (nNonFinite > 0) {
+                            fmt::print(" sampled [{}:{}] (n={}, {} non-finite excluded)", *mn, *mx, nSamples, nNonFinite);
+                        } else {
+                            fmt::print(" sampled [{}:{}] (n={})", *mn, *mx, nSamples);
+                        }
+                    } else {
+                        fmt::print(" sampled n/a (identically-zero or uncertifiable derivative)");
                     }
                 }
                 fmt::print("\n");
@@ -313,6 +365,16 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     Operon::Dataset ds(result["dataset"].as<std::string>(), /*hasHeader=*/true);
     auto infix = result.unmatched().front();
     auto model = Operon::InfixParser::Parse(infix, ds);
+
+    if (result.contains("dump-tree-json")) {
+        auto const path = result["dump-tree-json"].as<std::string>();
+        std::ofstream out(path);
+        out << Operon::Serialization::ToJson(model);
+        if (!out) {
+            fmt::print(stderr, "error: failed to write tree JSON to '{}'\n", path);
+            return EXIT_FAILURE;
+        }
+    }
 
     Operon::ScalarDispatch const dtable;
     Operon::Range range{0, ds.Rows<std::size_t>()};
