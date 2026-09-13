@@ -62,3 +62,8 @@ add_operon_cli(operon_gp source/probes_config.cpp source/shape_constraints_confi
 add_operon_cli(operon_nsgp source/probes_config.cpp source/shape_constraints_config.cpp)
 add_operon_cli(operon_parse_model source/shape_constraints_config.cpp)
 add_operon_cli(operon_enum)
+
+# THROWAWAY: hybrid per-node collapse root-tightness pilot.
+add_executable(hybrid_pilot source/hybrid_pilot.cpp)
+target_link_libraries(hybrid_pilot PRIVATE operon::operon)
+target_compile_features(hybrid_pilot PRIVATE cxx_std_23)
