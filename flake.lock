@@ -292,11 +292,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786267162,
-        "narHash": "sha256-ziLfTox3stgDwebig1nEih3FtzjPPEGAmuuC6n/z5Ss=",
+        "lastModified": 1789306148,
+        "narHash": "sha256-3DuLfQlU8Z72PGxwf0U3f7AuiWVWC/1eQ/Bcrdm9bAg=",
         "owner": "heal-research",
         "repo": "pappus",
-        "rev": "a0a17896d0ece0519b12ef65f551bd792fde2f8a",
+        "rev": "ea5b83816625ffdefad406832127bab5039bf5ca",
         "type": "github"
       },
       "original": {
