@@ -71,10 +71,25 @@ struct ShapeConstraintPolicy {
 // a non-integer-exponent domain check) -- those are representability
 // gaps, not the tightness contribution the intersection step measures, so
 // removing them would conflate two different questions.
+//
+// `IntervalOnlyBisected` recursively bisects the domain along the tree's
+// own widest-referenced axis and unions per-sub-box IntervalEvaluator
+// results -- the classical remedy for plain interval arithmetic's
+// dependency problem, using no affine arithmetic at all. Measured
+// (200-real-model corpus, reviewed twice) to beat `Combined` outright:
+// 149W/26T/3L at bisection depth 12, already 119W/38T/18L at depth 3 --
+// see operon-publications/papers/interval-range-tightening/
+// interval-only-bisection-finding.md for the full empirical result and
+// review history. Bisection depth is fixed at construction time via
+// `OPERON_SHAPE_INTERVAL_BISECTION_DEPTH` (default 3, chosen to match
+// this build's actual eve::wide<Operon::Scalar> SIMD width once a future
+// batched-evaluation path exists -- currently scalar, one
+// IntervalEvaluator call per sub-box).
 enum class ShapeBoundMode : unsigned {
     Combined = 0U,
     IntervalOnly = 1U,
     AffineOnly = 2U,
+    IntervalOnlyBisected = 3U,
 };
 
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
