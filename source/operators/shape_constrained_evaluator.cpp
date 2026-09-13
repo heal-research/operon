@@ -150,43 +150,20 @@ auto IsFiniteBound(BoundResult const& b) -> bool
     return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
 }
 
-// Bisection depth for ShapeBoundMode::IntervalOnlyBisected. Default 3 is
-// the reviewed empirical sweet spot on this codebase's actual build target
-// (`-march=x86-64-v3`, i.e. AVX2, no AVX-512): with the default
-// Operon::Scalar=float, eve::wide<float> on this target has 8 lanes, and
-// depth 3 (exactly 8 leaves) is the shallowest depth that fully occupies
-// one such vector with zero wasted lanes once a batched-evaluation path
-// exists. Already wins 119W/38T/18L against ShapeBoundMode::Combined on
-// the reviewed 200-real-model corpus at this depth (see
-// operon-publications/papers/interval-range-tightening/
-// interval-only-bisection-finding.md), capturing ~80% of depth 12's
-// eventual win margin at 1/512th the leaf count. Currently scalar (one
-// IntervalEvaluator call per sub-box, 2^depth total) -- SIMD batching
-// would need IntervalEvaluator to become generic over its scalar type,
-// which it is not today; see the same finding doc's SIMD-batching
-// scoping notes.
-auto IntervalOnlyBisectionDepth() -> int
+// Default matches eve::wide<Operon::Scalar>'s lane count.
+auto IntervalBisectionDepth() -> int
 {
     static int const depth = [] {
         auto const* env = std::getenv("OPERON_SHAPE_INTERVAL_BISECTION_DEPTH");
-        return env ? std::atoi(env) : 3;
+        return env ? std::atoi(env) : static_cast<int>(eve::wide<Operon::Scalar>::size());
     }();
     return depth;
 }
 
-// Pure interval-only domain bisection: no affine arithmetic anywhere.
-// Recursively picks the tree's own widest-referenced variable axis
-// (restricted to hashes the tree actually contains, same reasoning as
-// BisectedDomainBound below -- widening to unused axes would burn depth
-// splitting a dimension that can't affect this tree's bound), splits it
-// at its midpoint, recurses on both halves, and takes the hull -- sound
-// by construction (a union of sound sub-box enclosures is itself a sound
-// enclosure of the whole box), the classical remedy for plain interval
-// arithmetic's dependency problem. Falls back to this level's own direct
-// bound if either child fails (mirrors BisectedDomainBound's own
-// fallback), never returning an outright-invalid result while a coarser
-// valid one exists at this level.
-auto BisectedIntervalOnlyBound(Tree const& tree, IntervalEvaluator::DomainMap const& dom, int depth) -> BoundResult
+// Interval-only domain bisection: recursively splits the tree's widest
+// referenced axis, unions per-sub-box IntervalEvaluator results. Falls
+// back to this level's direct bound if either child fails.
+auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator::DomainMap const& dom, int depth) -> BoundResult
 {
     auto const directBound = [&]() -> BoundResult {
         try {
@@ -218,8 +195,8 @@ auto BisectedIntervalOnlyBound(Tree const& tree, IntervalEvaluator::DomainMap co
     loDom[widest].second = mid;
     hiDom[widest].first = mid;
 
-    auto left = BisectedIntervalOnlyBound(tree, loDom, depth - 1);
-    auto right = BisectedIntervalOnlyBound(tree, hiDom, depth - 1);
+    auto left = BisectedIntervalBound(tree, loDom, depth - 1);
+    auto right = BisectedIntervalBound(tree, hiDom, depth - 1);
     if (!IsFiniteBound(left) || !IsFiniteBound(right)) { return directBound(); }
     return Interval(std::min(left->inf(), right->inf()), std::max(left->sup(), right->sup()));
 }
@@ -249,9 +226,11 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode 
         }
     };
 
-    if (mode == ShapeBoundMode::IntervalOnly) { return IntervalBound(); }
-    if (mode == ShapeBoundMode::IntervalOnlyBisected) {
-        return BisectedIntervalOnlyBound(tree, IntervalEvaluator::DomainMap{ae.Domains()}, IntervalOnlyBisectionDepth());
+    if (HasFlag(mode, ShapeBoundMode::Interval)) {
+        if (HasFlag(mode, ShapeBoundMode::Bisected)) {
+            return BisectedIntervalBound(tree, IntervalEvaluator::DomainMap{ae.Domains()}, IntervalBisectionDepth());
+        }
+        return IntervalBound();
     }
 
     try {
@@ -315,7 +294,7 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode 
         // result would mean one of the two is unsound, not that the
         // intersection is empty -- fall back to the affine bound alone
         // rather than construct an inverted interval).
-        if (mode == ShapeBoundMode::AffineOnly) {
+        if (HasFlag(mode, ShapeBoundMode::Affine)) {
             if (boundStats) { ++GlobalBoundPathStats().affineDirect; }
             return bound;
         }
@@ -747,11 +726,32 @@ auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
 
 auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode
 {
-    if (str == "combined") { return ShapeBoundMode::Combined; }
-    if (str == "interval-only") { return ShapeBoundMode::IntervalOnly; }
-    if (str == "affine-only") { return ShapeBoundMode::AffineOnly; }
-    if (str == "interval-only-bisected") { return ShapeBoundMode::IntervalOnlyBisected; }
-    throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode argument '{}'", str));
+    auto result = ShapeBoundMode::Combined;
+    std::size_t pos = 0;
+    while (pos <= str.size()) {
+        auto const next = str.find(',', pos);
+        auto const token = str.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
+        if (token == "combined") {
+            // no bits to set
+        } else if (token == "interval") {
+            result = result | ShapeBoundMode::Interval;
+        } else if (token == "affine") {
+            result = result | ShapeBoundMode::Affine;
+        } else if (token == "bisected") {
+            result = result | ShapeBoundMode::Bisected;
+        } else {
+            throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode argument '{}'", token));
+        }
+        if (next == std::string::npos) { break; }
+        pos = next + 1;
+    }
+    if (HasFlag(result, ShapeBoundMode::Interval) && HasFlag(result, ShapeBoundMode::Affine)) {
+        throw std::invalid_argument("shape-bound-mode: interval and affine are mutually exclusive");
+    }
+    if (HasFlag(result, ShapeBoundMode::Bisected) && !HasFlag(result, ShapeBoundMode::Interval)) {
+        throw std::invalid_argument("shape-bound-mode: bisected is only supported combined with interval");
+    }
+    return result;
 }
 
 auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>

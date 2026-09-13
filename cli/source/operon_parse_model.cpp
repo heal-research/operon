@@ -54,7 +54,7 @@ namespace {
             ("likelihood", "Optimizer loss function (gaussian, poisson)", cxxopts::value<std::string>()->default_value("gaussian"))
             ("iterations", "Optimizer iterations (0 disables refitting; reported stats are the model's own coefficients as given)", cxxopts::value<int>()->default_value("0"))
             ("shape-constraints-config", "Path to a JSON shape-constraints config; when set with --target, also prints affine-certified feasibility for the parsed model", cxxopts::value<std::string>())
-            ("shape-bound-mode", "Arithmetic backend for the printed naive bound: combined (default), interval-only, affine-only, interval-only-bisected", cxxopts::value<std::string>()->default_value("combined"))
+            ("shape-bound-mode", "Comma-separated bound backend flags: combined (default), interval, affine, bisected (only with interval)", cxxopts::value<std::string>()->default_value("combined"))
             ("tighten-range", "With --shape-constraints-config, also print TightenRange's mean-value-form bound alongside the naive one, per constraint", cxxopts::value<bool>()->default_value("false"))
             ("sample-check", "With --shape-constraints-config, also Monte-Carlo sample N points from the domain box per constraint and print the observed [min:max], as an independent soundness cross-check on the printed bound", cxxopts::value<std::size_t>())
             ("dump-tree-json", "Write the parsed model tree (exact structure, via Operon::Serialization::ToJson) to this path before any other processing", cxxopts::value<std::string>())
