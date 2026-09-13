@@ -813,6 +813,16 @@ namespace detail {
             }
             return std::move(*acc);
         };
+        // Skip the scale entirely when v == 1 (exact in IEEE) -- matches
+        // AffineEvaluator::emit's identical fast path. Not just a
+        // redundant-copy avoidance: for the affine Policy, Value::operator*
+        // copies then runs operator*=, which loops every term (now with
+        // FMA-based exact error tracking) even though a v==1 scale changes
+        // nothing -- skipping it is a real savings on every unscaled
+        // body-internal node, not merely cosmetic.
+        auto const scaleBy = [](Value val, Scalar s) -> Value {
+            return s == Scalar{1} ? std::move(val) : val * s;
+        };
 
         for (std::size_t i = 0; i < n; ++i) {
             auto const& node = bodyNodes[i];
@@ -828,21 +838,21 @@ namespace detail {
                 // lookup — same object-reuse principle as the affine-
                 // correlation fix (Fix 1).
                 auto const pIdx = static_cast<std::size_t>(node.HashValue - Operon::BuiltinOpCount);
-                primal.push_back(*args[pIdx] * v);
+                primal.push_back(scaleBy(*args[pIdx], v));
             } else if (node.IsRef()) {
                 primal.push_back(primal[node.RefTo]);
             } else {
                 switch (node.HashValue) {
-                case Operon::Hash(Operon::BuiltinOp::Add): primal.push_back(addFold(i) * v); break;
-                case Operon::Hash(Operon::BuiltinOp::Mul): primal.push_back(mulFold(i) * v); break;
+                case Operon::Hash(Operon::BuiltinOp::Add): primal.push_back(scaleBy(addFold(i), v)); break;
+                case Operon::Hash(Operon::BuiltinOp::Mul): primal.push_back(scaleBy(mulFold(i), v)); break;
                 case Operon::Hash(Operon::BuiltinOp::Sub):
-                    primal.push_back((node.Arity == 1 ? Policy::Neg(ctx, primal[i - 1]) : subFold(i)) * v);
+                    primal.push_back(scaleBy(node.Arity == 1 ? Policy::Neg(ctx, primal[i - 1]) : subFold(i), v));
                     break;
                 case Operon::Hash(Operon::BuiltinOp::Div):
-                    primal.push_back((node.Arity == 1 ? Policy::Inv(ctx, primal[i - 1]) : divFold(i)) * v);
+                    primal.push_back(scaleBy(node.Arity == 1 ? Policy::Inv(ctx, primal[i - 1]) : divFold(i), v));
                     break;
-                case Operon::Hash(Operon::BuiltinOp::Fmin): primal.push_back(minFold(i) * v); break;
-                case Operon::Hash(Operon::BuiltinOp::Fmax): primal.push_back(maxFold(i) * v); break;
+                case Operon::Hash(Operon::BuiltinOp::Fmin): primal.push_back(scaleBy(minFold(i), v)); break;
+                case Operon::Hash(Operon::BuiltinOp::Fmax): primal.push_back(scaleBy(maxFold(i), v)); break;
                 default:
                     // Mirrors the base evaluator's own miss behavior exactly
                     // (still throws on a miss, unchanged from today) — today
@@ -854,14 +864,14 @@ namespace detail {
                     // sequencing right.
                     if (node.Arity == 1) {
                         if (auto const* unary = Policy::UnaryRules().TryGet(node.HashValue)) {
-                            primal.push_back(Policy::CallUnary(ctx, *unary, primal[i - 1]) * v);
+                            primal.push_back(scaleBy(Policy::CallUnary(ctx, *unary, primal[i - 1]), v));
                             break;
                         }
                     } else if (node.Arity == 2) {
                         auto const j = i - 1;
                         auto const k = j - (bodyNodes[j].Length + 1);
                         if (auto const* binary = Policy::BinaryRules().TryGet(node.HashValue)) {
-                            primal.push_back(Policy::CallBinary(ctx, *binary, primal[j], primal[k]) * v);
+                            primal.push_back(scaleBy(Policy::CallBinary(ctx, *binary, primal[j], primal[k]), v));
                             break;
                         }
                     }
