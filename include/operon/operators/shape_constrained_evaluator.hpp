@@ -102,6 +102,12 @@ struct ShapeBoundOptions {
 
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
+// Rejects Interval+Affine together, or Bisected without Interval. Shared by
+// ParseShapeBoundMode and both SetBoundMode setters below so a
+// programmatically-constructed mode is held to the same contract as a
+// string-parsed one -- constructing ShapeBoundMode values directly (not
+// through the parser) previously bypassed this check entirely.
+[[nodiscard]] OPERON_EXPORT auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode;
 
 // Wraps an inner EvaluatorBase (typically an NMSE-with-linear-scaling
@@ -153,7 +159,9 @@ public:
     void SetWorstValue(double value) { worstValue_ = value; }
 
     [[nodiscard]] auto BoundMode() const noexcept -> ShapeBoundMode { return boundMode_; }
-    void SetBoundMode(ShapeBoundMode mode) noexcept { boundMode_ = mode; }
+    // Throws std::invalid_argument if `mode` fails ValidateShapeBoundMode
+    // (e.g. Bisected without Interval) -- see that function's comment.
+    void SetBoundMode(ShapeBoundMode mode);
 
     [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
     void SetBoundOptions(ShapeBoundOptions options) noexcept { boundOptions_ = options; }
@@ -268,7 +276,8 @@ public:
     [[nodiscard]] auto Weight() const noexcept -> Operon::Scalar { return weight_; }
     [[nodiscard]] auto UnknownViolation() const noexcept -> Operon::Scalar { return unknownViolation_; }
     [[nodiscard]] auto BoundMode() const noexcept -> ShapeBoundMode { return boundMode_; }
-    void SetBoundMode(ShapeBoundMode mode) noexcept { boundMode_ = mode; }
+    // See ShapeConstrainedEvaluator::SetBoundMode -- same validation contract.
+    void SetBoundMode(ShapeBoundMode mode);
     [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
     void SetBoundOptions(ShapeBoundOptions options) noexcept { boundOptions_ = options; }
     [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar;

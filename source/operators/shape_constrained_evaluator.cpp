@@ -518,6 +518,17 @@ auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
     return result;
 }
 
+auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>
+{
+    if (HasFlag(mode, ShapeBoundMode::Interval) && HasFlag(mode, ShapeBoundMode::Affine)) {
+        return "shape-bound-mode: interval and affine are mutually exclusive";
+    }
+    if (HasFlag(mode, ShapeBoundMode::Bisected) && !HasFlag(mode, ShapeBoundMode::Interval)) {
+        return "shape-bound-mode: bisected is only supported combined with interval";
+    }
+    return std::nullopt;
+}
+
 auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode
 {
     auto result = ShapeBoundMode::Combined;
@@ -539,11 +550,8 @@ auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode
         if (next == std::string::npos) { break; }
         pos = next + 1;
     }
-    if (HasFlag(result, ShapeBoundMode::Interval) && HasFlag(result, ShapeBoundMode::Affine)) {
-        throw std::invalid_argument("shape-bound-mode: interval and affine are mutually exclusive");
-    }
-    if (HasFlag(result, ShapeBoundMode::Bisected) && !HasFlag(result, ShapeBoundMode::Interval)) {
-        throw std::invalid_argument("shape-bound-mode: bisected is only supported combined with interval");
+    if (auto err = ValidateShapeBoundMode(result)) {
+        throw std::invalid_argument(*err);
     }
     return result;
 }
@@ -627,6 +635,13 @@ auto ShapeConstrainedEvaluator::Evaluate(Operon::RandomGenerator& rng, Individua
     return (*evaluator_)(rng, ind, buf);
 }
 
+auto ShapeConstrainedEvaluator::SetBoundMode(ShapeBoundMode mode) -> void
+{
+    if (auto err = ValidateShapeBoundMode(mode)) { throw std::invalid_argument(*err); }
+    boundMode_ = mode;
+}
+
+
 ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<Operon::Problem const*> problem,
     gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints,
     Operon::Scalar weight, Operon::Scalar unknownViolation)
@@ -677,6 +692,12 @@ auto ShapeViolationEvaluator::Evaluate(Operon::RandomGenerator& /*rng*/, Individ
 {
     ++CallCount;
     return ReturnType{static_cast<Operon::Scalar>(weight_ * RawViolation(ind.Genotype))};
+}
+
+auto ShapeViolationEvaluator::SetBoundMode(ShapeBoundMode mode) -> void
+{
+    if (auto err = ValidateShapeBoundMode(mode)) { throw std::invalid_argument(*err); }
+    boundMode_ = mode;
 }
 
 } // namespace Operon
