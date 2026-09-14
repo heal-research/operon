@@ -706,9 +706,9 @@ namespace detail {
         using Ctx    = NoAffineContext;
         static constexpr std::string_view Kind = "interval";
 
-        static void RegisterBuiltins() { Operon::RegisterIntervalBuiltins(); }
-        static auto UnaryRules() -> Operon::IntervalUnaryRegistry const& { return Operon::IntervalUnaryRules(); }
-        static auto BinaryRules() -> Operon::IntervalBinaryRegistry const& { return Operon::IntervalBinaryRules(); }
+        static void RegisterBuiltins() { Operon::RegisterIntervalBuiltins<Scalar>(); }
+        static auto UnaryRules() -> Operon::IntervalUnaryRegistry<Scalar> const& { return Operon::IntervalUnaryRules<Scalar>(); }
+        static auto BinaryRules() -> Operon::IntervalBinaryRegistry<Scalar> const& { return Operon::IntervalBinaryRules<Scalar>(); }
 
         static auto MakeConst(Ctx const& /*ctx*/, Scalar v) -> Value { return pappus::ops::constant<Scalar>(v); }
         static auto Add(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::add<Scalar>(a, b); }
@@ -719,8 +719,8 @@ namespace detail {
         static auto Max(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(a, b); }
         static auto Neg(Ctx const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
         static auto Inv(Ctx const& /*ctx*/, Value const& a) -> Value { return pappus::ops::inv<Scalar>(a); }
-        static auto CallUnary(Ctx const& /*ctx*/, IntervalUnaryFn const& fn, Value const& a) -> Value { return fn(a); }
-        static auto CallBinary(Ctx const& /*ctx*/, IntervalBinaryFn const& fn, Value const& a, Value const& b) -> Value { return fn(a, b); }
+        static auto CallUnary(Ctx const& /*ctx*/, IntervalUnaryFn<Scalar> const& fn, Value const& a) -> Value { return fn(a); }
+        static auto CallBinary(Ctx const& /*ctx*/, IntervalBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> Value { return fn(a, b); }
     };
 
     struct AffinePolicy {
@@ -887,7 +887,7 @@ namespace detail {
 // Builds an IntervalUnaryFn for an *arity-1* composed function, pluggable
 // directly into RegisterUnaryInterval — see detail::EvaluateComposedBody
 // for the shared per-node dispatch.
-inline auto MakeComposedIntervalUnaryFn(Tree const& body) -> IntervalUnaryFn
+inline auto MakeComposedIntervalUnaryFn(Tree const& body) -> IntervalUnaryFn<Operon::Scalar>
 {
     auto const& bodyNodes = body.Nodes();
     return [bodyNodes](pappus::interval<Operon::Scalar> const& arg) -> pappus::interval<Operon::Scalar> {
@@ -902,7 +902,7 @@ inline auto MakeComposedIntervalUnaryFn(Tree const& body) -> IntervalUnaryFn
 // param[0] — same reversal BindArgIndices/MakeComposedBinarySymbolicDerivRule
 // already established (Tree::Indices enumerates nearest-first, the reverse
 // of textual/formal-parameter order).
-inline auto MakeComposedIntervalBinaryFn(Tree const& body) -> IntervalBinaryFn
+inline auto MakeComposedIntervalBinaryFn(Tree const& body) -> IntervalBinaryFn<Operon::Scalar>
 {
     auto const& bodyNodes = body.Nodes();
     return [bodyNodes](pappus::interval<Operon::Scalar> const& argJ, pappus::interval<Operon::Scalar> const& argK)
@@ -1011,7 +1011,7 @@ void RegisterComposedFunction(
     // this function was first written.
     if (dt.Contains(hash) || pset.Contains(hash)
         || HasUnarySymbolicDeriv(hash) || HasBinarySymbolicDeriv(hash)
-        || HasUnaryInterval(hash) || HasBinaryInterval(hash)
+        || HasUnaryInterval<Operon::Scalar>(hash) || HasBinaryInterval<Operon::Scalar>(hash)
         || HasUnaryAffine(hash) || HasBinaryAffine(hash)) {
         throw std::invalid_argument(fmt::format(
             "RegisterComposedFunction: '{}' is already registered", info.Name));
@@ -1041,11 +1041,11 @@ void RegisterComposedFunction(
     // bounding of a tree containing one does not.
     if (arity == 1) {
         RegisterUnarySymbolicDeriv(hash, MakeComposedUnarySymbolicDerivRule(body));
-        RegisterUnaryInterval(hash, MakeComposedIntervalUnaryFn(body));
+        RegisterUnaryInterval<Operon::Scalar>(hash, MakeComposedIntervalUnaryFn(body));
         RegisterUnaryAffine(hash, MakeComposedAffineUnaryFn(body));
     } else if (arity == 2) {
         RegisterBinarySymbolicDeriv(hash, MakeComposedBinarySymbolicDerivRule(body));
-        RegisterBinaryInterval(hash, MakeComposedIntervalBinaryFn(body));
+        RegisterBinaryInterval<Operon::Scalar>(hash, MakeComposedIntervalBinaryFn(body));
         RegisterBinaryAffine(hash, MakeComposedAffineBinaryFn(body));
     }
 

@@ -42,12 +42,15 @@ namespace Operon {
 
 // Registered interval callbacks for unary/binary built-in or user-defined
 // functions, keyed by Node::HashValue. Exported `.cpp`-backed singletons
-// (see interval_evaluator.cpp), matching the ownership model tree_diff.cpp's
-// SymbolicDerivRegistry and jit_compiler.cpp's JitCodegenRegistry already
-// use — no registry parameter needs to thread through IntervalEvaluator's
-// constructor or Evaluate(). All writes (built-in registration below, plus
-// any user calls to RegisterUnaryInterval/RegisterBinaryInterval) happen
-// before Evaluate() is first called from a GP worker thread, so the plain
+// (see interval_evaluator.cpp, explicitly instantiated for `Operon::Scalar`
+// -- one instance per T, guaranteed shared across shared-library
+// boundaries the way the previous non-template exported functions were),
+// matching the ownership model tree_diff.cpp's SymbolicDerivRegistry and
+// jit_compiler.cpp's JitCodegenRegistry already use — no registry
+// parameter needs to thread through IntervalEvaluator's constructor or
+// Evaluate(). All writes (built-in registration below, plus any user
+// calls to RegisterUnaryInterval/RegisterBinaryInterval) happen before
+// Evaluate() is first called from a GP worker thread, so the plain
 // (non-locking) Operon::Map HashRegistry already uses is sufficient — no
 // sharded-lock map type needed, same read-only-after-setup contract
 // DispatchTable relies on.
@@ -56,11 +59,11 @@ namespace Operon {
 // PAPPUS_DEFINE_UNARY_OP macro generating three overloads per op): interval
 // calls never take a context, unlike affine's context-threaded finalize
 // overload (see affine_evaluator.hpp).
-using IntervalUnaryFn  = std::function<pappus::interval<Operon::Scalar>(pappus::interval<Operon::Scalar> const&)>;
-using IntervalBinaryFn = std::function<pappus::interval<Operon::Scalar>(pappus::interval<Operon::Scalar> const&, pappus::interval<Operon::Scalar> const&)>;
+template<typename T> using IntervalUnaryFn  = std::function<pappus::interval<T>(pappus::interval<T> const&)>;
+template<typename T> using IntervalBinaryFn = std::function<pappus::interval<T>(pappus::interval<T> const&, pappus::interval<T> const&)>;
 
-using IntervalUnaryRegistry  = HashRegistry<IntervalUnaryFn>;
-using IntervalBinaryRegistry = HashRegistry<IntervalBinaryFn>;
+template<typename T> using IntervalUnaryRegistry  = HashRegistry<IntervalUnaryFn<T>>;
+template<typename T> using IntervalBinaryRegistry = HashRegistry<IntervalBinaryFn<T>>;
 
 // Direct registry access — needed by tests that assert on registration
 // state. Prefer RegisterUnaryInterval/RegisterBinaryInterval for registering
@@ -68,8 +71,16 @@ using IntervalBinaryRegistry = HashRegistry<IntervalBinaryFn>;
 // the built-in lazy-init those functions trigger first, reopening the
 // ordering hazard they exist to close (a user hash colliding with a built-in
 // would be silently accepted instead of throwing immediately).
-OPERON_EXPORT auto IntervalUnaryRules() -> IntervalUnaryRegistry&;
-OPERON_EXPORT auto IntervalBinaryRules() -> IntervalBinaryRegistry&;
+//
+// Declared as templates, defined and explicitly instantiated per T in
+// interval_evaluator.cpp (currently just `Operon::Scalar`) rather than as
+// header-only templates: a header-only definition would give each shared
+// library its own separate singleton instance for the same T, breaking
+// the single-registry guarantee user-defined rules depend on across
+// operon/pyoperon/CLI. Add a new explicit instantiation there before
+// using a new T (e.g. `eve::wide<Operon::Scalar>` for SIMD batching).
+template<typename T> auto IntervalUnaryRules() -> IntervalUnaryRegistry<T>&;
+template<typename T> auto IntervalBinaryRules() -> IntervalBinaryRegistry<T>&;
 
 // Registers the built-in unary/binary interval rules exactly once, mirroring
 // StandardLibrary::RegisterNames()'s lazy-static-lambda-once pattern. A free
@@ -80,7 +91,7 @@ OPERON_EXPORT auto IntervalBinaryRules() -> IntervalBinaryRegistry&;
 // at the user's own call site instead of being accepted now and only
 // discovered (as a confusing, differently-hashed throw) the first time
 // Evaluate() runs.
-OPERON_EXPORT void RegisterIntervalBuiltins();
+template<typename T> void RegisterIntervalBuiltins();
 
 // Register an interval callback for a unary function (built-in or
 // user-defined), keyed by the same hash the function's Node::HashValue
@@ -90,27 +101,42 @@ OPERON_EXPORT void RegisterIntervalBuiltins();
 // today. Throws if `hash` is already registered (write-once) — including
 // when `hash` collides with a built-in, since RegisterIntervalBuiltins()
 // above always runs first.
-OPERON_EXPORT void RegisterUnaryInterval(Operon::Hash hash, IntervalUnaryFn fn);
+template<typename T> void RegisterUnaryInterval(Operon::Hash hash, IntervalUnaryFn<T> fn);
 
 // Register an interval callback for a binary function. See
 // RegisterUnaryInterval for the miss-behavior and built-in-collision notes.
-OPERON_EXPORT void RegisterBinaryInterval(Operon::Hash hash, IntervalBinaryFn fn);
+template<typename T> void RegisterBinaryInterval(Operon::Hash hash, IntervalBinaryFn<T> fn);
 
 // Query whether an interval callback is registered for `hash` (built-in or
 // user-defined), forcing built-in registration first. Mainly useful for
 // coverage checks (e.g. asserting every BuiltinOp is either registered here
 // or deliberately excluded as a structural n-ary case handled directly in
 // IntervalEvaluator::Evaluate()). Mirrors HasUnaryJitCodegen/HasBinaryJitCodegen.
-OPERON_EXPORT auto HasUnaryInterval(Operon::Hash hash) -> bool;
-OPERON_EXPORT auto HasBinaryInterval(Operon::Hash hash) -> bool;
+template<typename T> auto HasUnaryInterval(Operon::Hash hash) -> bool;
+template<typename T> auto HasBinaryInterval(Operon::Hash hash) -> bool;
+
+extern template auto IntervalUnaryRules<Operon::Scalar>() -> IntervalUnaryRegistry<Operon::Scalar>&;
+extern template auto IntervalBinaryRules<Operon::Scalar>() -> IntervalBinaryRegistry<Operon::Scalar>&;
+extern template void RegisterIntervalBuiltins<Operon::Scalar>();
+extern template void RegisterUnaryInterval<Operon::Scalar>(Operon::Hash, IntervalUnaryFn<Operon::Scalar>);
+extern template void RegisterBinaryInterval<Operon::Scalar>(Operon::Hash, IntervalBinaryFn<Operon::Scalar>);
+extern template auto HasUnaryInterval<Operon::Scalar>(Operon::Hash) -> bool;
+extern template auto HasBinaryInterval<Operon::Scalar>(Operon::Hash) -> bool;
 
 // Forward rigorous bounds for an Operon tree over a single input domain.
 //
 // Walks the tree in post-order (the same order used by the Operon interpreter)
-// and computes a `pappus::interval<Operon::Scalar>` enclosure for each node.
-// Variables are bound to a user-supplied domain map keyed by `Node::HashValue`;
+// and computes a `pappus::interval<T>` enclosure for each node. Variables
+// are bound to a user-supplied domain map keyed by `Node::HashValue`;
 // constants and node weights come from the coefficient span (mirroring
 // `Tree::GetCoefficients()` / `Node::Optimize`).
+//
+// Templated on the scalar type T (default `Operon::Scalar`), matching
+// `Interpreter<T = Operon::Scalar, DTable = ScalarDispatch>`'s convention.
+// Only `T = Operon::Scalar` is usable today: the registry-backed ops
+// (RegisterIntervalBuiltins and friends, above) are only instantiated for
+// it. A new T (e.g. `eve::wide<Operon::Scalar>` for SIMD batching) needs
+// a matching explicit instantiation added in interval_evaluator.cpp first.
 //
 // Batch size is 1: one evaluation produces one interval enclosure for the whole
 // domain. This is intentional -- interval/affine arithmetic are single-value
@@ -125,12 +151,14 @@ OPERON_EXPORT auto HasBinaryInterval(Operon::Hash hash) -> bool;
 // This differs from AffineEvaluator, which returns an `invalid()`
 // NaN-poisoned form for the same out-of-domain inputs. See the pappus handoff
 // doc for the rationale: "interval and affine do not have identical domain semantics".
+template<typename T = Operon::Scalar>
 class IntervalEvaluator {
 public:
-    using Scalar = Operon::Scalar;
+    using Scalar = T;
     using Interval = pappus::interval<Scalar>;
     // (lower, upper) bound for a variable identified by its hash.
     using Domain = std::pair<Scalar, Scalar>;
+
     using DomainMap = Operon::Map<Operon::Hash, Domain>;
 
     IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap domains)
@@ -144,7 +172,7 @@ public:
     // `Node::Optimize == true`, consumed in node order.
     [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Interval
     {
-        RegisterIntervalBuiltins();
+        RegisterIntervalBuiltins<Scalar>();
 
         auto const& nodes = tree_->Nodes();
         auto const n = nodes.size();
@@ -275,12 +303,12 @@ public:
                     // reading unrelated primal_ entries or dropping operands
                     // beyond the first two.
                     if (node.Arity == 1) {
-                        if (auto const* unary = IntervalUnaryRules().TryGet(node.HashValue)) {
+                        if (auto const* unary = IntervalUnaryRules<Scalar>().TryGet(node.HashValue)) {
                             primal_[i] = (*unary)(primal_[i - 1]) * v;
                             break;
                         }
                     } else if (node.Arity == 2) {
-                        if (auto const* binary = IntervalBinaryRules().TryGet(node.HashValue)) {
+                        if (auto const* binary = IntervalBinaryRules<Scalar>().TryGet(node.HashValue)) {
                             auto const j = static_cast<std::size_t>(i - 1);
                             auto const k = j - (nodes[j].Length + 1);
                             primal_[i] = (*binary)(primal_[j], primal_[k]) * v;

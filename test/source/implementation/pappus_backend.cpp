@@ -21,7 +21,7 @@ namespace Operon::Test {
 
 namespace {
     using S = Operon::Scalar;
-    using IE = IntervalEvaluator;
+    using IE = IntervalEvaluator<S>;
     using AE = AffineEvaluator;
 
     // Build a variable node with a given hash and weight.

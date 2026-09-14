@@ -30,7 +30,7 @@
 namespace Operon::Test {
 
 using S  = Operon::Scalar;
-using IE = IntervalEvaluator;
+using IE = IntervalEvaluator<S>;
 using AE = AffineEvaluator;
 
 // ---------------------------------------------------------------------------

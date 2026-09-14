@@ -116,7 +116,7 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode 
     // interval evaluator, which can conservatively represent those cases.
     auto const IntervalBound = [&]() -> BoundResult {
         try {
-            IntervalEvaluator ie(&tree, IntervalEvaluator::DomainMap{ae.Domains()});
+            IntervalEvaluator<Operon::Scalar> ie(&tree, IntervalEvaluator<Operon::Scalar>::DomainMap{ae.Domains()});
             return ie.Evaluate(tree.GetCoefficients());
         } catch (std::exception const& e) {
             return tl::unexpected(std::string(e.what()));

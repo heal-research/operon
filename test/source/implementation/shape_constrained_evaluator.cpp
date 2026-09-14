@@ -1148,7 +1148,7 @@ TEST_CASE("SCRATCH ind431/ind450 affine-vs-interval bound comparison", "[.][shap
         Operon::AffineEvaluator ae(&dtree, domains);
         auto const affineRaw = ae.Evaluate(dtree.GetCoefficients()).to_interval();
 
-        Operon::IntervalEvaluator ie(&dtree, Operon::IntervalEvaluator::DomainMap{domains});
+        Operon::IntervalEvaluator<Operon::Scalar> ie(&dtree, Operon::IntervalEvaluator<Operon::Scalar>::DomainMap{domains});
         auto const intervalRaw = ie.Evaluate(dtree.GetCoefficients());
 
         // Apply the scale factor manually (matches TransformBound's
