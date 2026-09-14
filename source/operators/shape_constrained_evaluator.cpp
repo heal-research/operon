@@ -111,24 +111,29 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
         Operon::Scalar const lo = dom.at(widest).first;
         Operon::Scalar const h = widestDiam / Operon::Scalar(nLeaves);
 
-        // Every axis except `widest` is broadcast to every lane (same bound
-        // regardless of which leaf); `widest` is overwritten per batch below.
-        IntervalEvaluator<WScalar>::DomainMap wdom;
-        wdom.reserve(dom.size());
-        for (auto const& [hash, bound] : dom) {
-            wdom.emplace(hash, IntervalEvaluator<WScalar>::Domain{ WScalar(bound.first), WScalar(bound.second) });
-        }
         auto const coeff = tree.GetCoefficients();
-
         auto acc = IntervalEvaluator<WScalar>::Interval::empty();
         WScalar const hw(h);
         WScalar const infw(lo);
         int k = 0;
         for (; k + WSize <= nLeaves; k += WSize) {
+            // Fresh map each batch (not mutated in place) -- avoids relying on
+            // in-place-assignment semantics for a SIMD-typed hash map value.
+            IntervalEvaluator<WScalar>::DomainMap wdom;
+            wdom.reserve(dom.size());
+            for (auto const& [hash, bound] : dom) {
+                if (hash == widest) { continue; }
+                wdom.emplace(hash, IntervalEvaluator<WScalar>::Domain{ WScalar(bound.first), WScalar(bound.second) });
+            }
             WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
-            wdom[widest] = { infw + idx * hw, infw + (idx + WScalar(Operon::Scalar{1})) * hw };
+            WScalar const leafLo = infw + idx * hw;
+            WScalar const leafHi = infw + (idx + WScalar(Operon::Scalar{1})) * hw;
+            wdom.emplace(widest, IntervalEvaluator<WScalar>::Domain{ leafLo, leafHi });
+            std::fprintf(stderr, "[bisect-debug] batch k=%d leafLo0=%.9g leafHi0=%.9g\n", k, leafLo.get(0), leafHi.get(0));
             IntervalEvaluator<WScalar> wie(&tree, wdom);
-            acc |= wie.Evaluate(coeff);
+            auto const seg = wie.Evaluate(coeff);
+            std::fprintf(stderr, "[bisect-debug] batch k=%d seg.inf0=%.9g seg.sup0=%.9g\n", k, seg.inf().get(0), seg.sup().get(0));
+            acc |= seg;
         }
 
         std::optional<Interval> result;
