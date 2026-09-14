@@ -230,6 +230,7 @@ TEST_CASE("SetBoundMode rejects invalid combinations the same way ParseShapeBoun
     CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Bisected), std::invalid_argument);
     CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Affine | ShapeBoundMode::Bisected), std::invalid_argument);
     CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Affine), std::invalid_argument);
+    CHECK_THROWS_AS(sce.SetBoundMode(static_cast<ShapeBoundMode>(1U << 3U)), std::invalid_argument);
     CHECK_NOTHROW(sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
     CHECK(sce.BoundMode() == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
 
@@ -294,6 +295,45 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-p
     // And it must actually do something on this dependency-problem
     // example, not silently no-op.
     CHECK((blo > plo || bhi < phi));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - bisected interval accepts a model naive interval wrongly rejects", "[shape-constraints]")
+{
+    // Same dependency-problem tree as the tightening test above: f(X1) =
+    // (X1-1)*(X1-1) over [0,10], true range [0,81]. Naive interval
+    // multiplication overestimates the lower bound to -9. A constraint
+    // requiring the value stay >= -1 is therefore wrongly rejected under
+    // Interval alone, even though the true range [0,81] satisfies it --
+    // this is the mode's actual motivating use case (a feasibility
+    // decision flipping), not just a narrower reported bound width.
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{2};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i);
+        data(static_cast<Eigen::Index>(i), 1) = data(static_cast<Eigen::Index>(i), 0);
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto tree = InfixParser::Parse("(X1 - 1) * (X1 - 1)", ds);
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X2");
+    problem.SetLinearScalingEnabled(false);
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{0}, Operon::Scalar{10}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1}, Operon::Scalar{1000}}});
+
+    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
+    CHECK_FALSE(shapeEval.Feasible(tree));
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    CHECK(shapeEval.Feasible(tree));
 }
 
 TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraints]")
