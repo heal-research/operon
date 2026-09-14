@@ -132,13 +132,22 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
             std::fprintf(stderr, "[bisect-debug] batch k=%d leafLo0=%.9g leafHi0=%.9g\n", k, leafLo.get(0), leafHi.get(0));
             IntervalEvaluator<WScalar> wie(&tree, wdom);
             auto const seg = wie.Evaluate(coeff);
-            std::fprintf(stderr, "[bisect-debug] batch k=%d seg.inf0=%.9g seg.sup0=%.9g\n", k, seg.inf().get(0), seg.sup().get(0));
+            std::fprintf(stderr, "[bisect-debug] batch k=%d seg lanes: [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g]\n", k,
+                seg.inf().get(0), seg.sup().get(0), seg.inf().get(1), seg.sup().get(1),
+                seg.inf().get(2), seg.sup().get(2), seg.inf().get(3), seg.sup().get(3));
             acc |= seg;
+            std::fprintf(stderr, "[bisect-debug] batch k=%d acc  lanes: [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g]\n", k,
+                acc.inf().get(0), acc.sup().get(0), acc.inf().get(1), acc.sup().get(1),
+                acc.inf().get(2), acc.sup().get(2), acc.inf().get(3), acc.sup().get(3));
         }
 
         std::optional<Interval> result;
-        if (k > 0) { result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup())); }
-
+        if (k > 0) {
+            std::fprintf(stderr, "[bisect-debug] final acc lanes: [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g]\n",
+                acc.inf().get(0), acc.sup().get(0), acc.inf().get(1), acc.sup().get(1),
+                acc.inf().get(2), acc.sup().get(2), acc.inf().get(3), acc.sup().get(3));
+            result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup()));
+        }
         // Scalar tail for any leaves that didn't fill a full wide batch.
         auto tailDom = dom;
         for (; k < nLeaves; ++k) {
