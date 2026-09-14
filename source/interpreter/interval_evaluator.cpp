@@ -102,4 +102,8 @@ template void OPERON_EXPORT RegisterBinaryInterval<Operon::Scalar>(Operon::Hash,
 template auto OPERON_EXPORT HasUnaryInterval<Operon::Scalar>(Operon::Hash) -> bool;
 template auto OPERON_EXPORT HasBinaryInterval<Operon::Scalar>(Operon::Hash) -> bool;
 
+template auto OPERON_EXPORT IntervalUnaryRules<eve::wide<Operon::Scalar>>() -> IntervalUnaryRegistry<eve::wide<Operon::Scalar>>&;
+template auto OPERON_EXPORT IntervalBinaryRules<eve::wide<Operon::Scalar>>() -> IntervalBinaryRegistry<eve::wide<Operon::Scalar>>&;
+template void OPERON_EXPORT RegisterIntervalBuiltins<eve::wide<Operon::Scalar>>();
+
 } // namespace Operon

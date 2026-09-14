@@ -123,6 +123,10 @@ extern template void RegisterBinaryInterval<Operon::Scalar>(Operon::Hash, Interv
 extern template auto HasUnaryInterval<Operon::Scalar>(Operon::Hash) -> bool;
 extern template auto HasBinaryInterval<Operon::Scalar>(Operon::Hash) -> bool;
 
+extern template auto IntervalUnaryRules<eve::wide<Operon::Scalar>>() -> IntervalUnaryRegistry<eve::wide<Operon::Scalar>>&;
+extern template auto IntervalBinaryRules<eve::wide<Operon::Scalar>>() -> IntervalBinaryRegistry<eve::wide<Operon::Scalar>>&;
+extern template void RegisterIntervalBuiltins<eve::wide<Operon::Scalar>>();
+
 // Forward rigorous bounds for an Operon tree over a single input domain.
 //
 // Walks the tree in post-order (the same order used by the Operon interpreter)
@@ -169,8 +173,13 @@ public:
 
     // Evaluate the tree over the supplied domains. `coeff` follows the same
     // convention as `Interpreter::Evaluate`: one entry per node with
-    // `Node::Optimize == true`, consumed in node order.
-    [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Interval
+    // `Node::Optimize == true`, consumed in node order. Always
+    // `Operon::Scalar`-typed regardless of T (matches what
+    // `Tree::GetCoefficients()` returns) -- broadcast to `Scalar` per node
+    // below, so a caller batching several sub-boxes into one `T =
+    // eve::wide<Operon::Scalar>` evaluation doesn't need to pre-materialize
+    // a wide-typed coefficient vector first.
+    [[nodiscard]] auto Evaluate(Operon::Span<Operon::Scalar const> coeff) const -> Interval
     {
         RegisterIntervalBuiltins<Scalar>();
 
