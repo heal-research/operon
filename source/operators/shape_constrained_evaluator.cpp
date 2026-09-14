@@ -58,6 +58,7 @@ auto VariableIndex(VariableGradientDag const& dag, Operon::Hash variable) -> std
 // below catches those. This try/catch adapts rare structural throws (e.g.
 // forms from different affine_context instances) to these expected-based
 // internals, so the rest of this file never needs a try/catch.
+
 auto IsFiniteBound(BoundResult const& b) -> bool
 {
     return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
