@@ -51,7 +51,11 @@ void RegisterIntervalBuiltins()
         binary.Register(Operon::Hash(BuiltinOp::Pow), [](Interval const& a, Interval const& b) {
             // degenerate exponent: dispatch through pow(interval, Scalar), which
             // detects an integer exponent and avoids restricting the base to >= 0
-            if (b.inf() == b.sup()) { return pappus::ops::pow<T>(a, b.inf()); }
+            if constexpr (eve::value<T>) {
+                if (eve::all(b.inf() == b.sup())) { return pappus::ops::pow<T>(a, b.inf()); }
+            } else {
+                if (b.inf() == b.sup()) { return pappus::ops::pow<T>(a, b.inf()); }
+            }
             return pappus::ops::pow<T>(a, b);
         });
         binary.Register(Operon::Hash(BuiltinOp::Aq), [](Interval const& a, Interval const& b) {
