@@ -126,28 +126,14 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
                 wdom.emplace(hash, IntervalEvaluator<WScalar>::Domain{ WScalar(bound.first), WScalar(bound.second) });
             }
             WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
-            WScalar const leafLo = infw + idx * hw;
-            WScalar const leafHi = infw + (idx + WScalar(Operon::Scalar{1})) * hw;
-            wdom.emplace(widest, IntervalEvaluator<WScalar>::Domain{ leafLo, leafHi });
-            std::fprintf(stderr, "[bisect-debug] batch k=%d leafLo0=%.9g leafHi0=%.9g\n", k, leafLo.get(0), leafHi.get(0));
+            wdom.emplace(widest, IntervalEvaluator<WScalar>::Domain{ infw + idx * hw, infw + (idx + WScalar(Operon::Scalar{1})) * hw });
             IntervalEvaluator<WScalar> wie(&tree, wdom);
-            auto const seg = wie.Evaluate(coeff);
-            std::fprintf(stderr, "[bisect-debug] batch k=%d seg lanes: [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g]\n", k,
-                seg.inf().get(0), seg.sup().get(0), seg.inf().get(1), seg.sup().get(1),
-                seg.inf().get(2), seg.sup().get(2), seg.inf().get(3), seg.sup().get(3));
-            acc |= seg;
-            std::fprintf(stderr, "[bisect-debug] batch k=%d acc  lanes: [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g]\n", k,
-                acc.inf().get(0), acc.sup().get(0), acc.inf().get(1), acc.sup().get(1),
-                acc.inf().get(2), acc.sup().get(2), acc.inf().get(3), acc.sup().get(3));
+            acc |= wie.Evaluate(coeff);
         }
 
         std::optional<Interval> result;
-        if (k > 0) {
-            std::fprintf(stderr, "[bisect-debug] final acc lanes: [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g] [%.6g,%.6g]\n",
-                acc.inf().get(0), acc.sup().get(0), acc.inf().get(1), acc.sup().get(1),
-                acc.inf().get(2), acc.sup().get(2), acc.inf().get(3), acc.sup().get(3));
-            result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup()));
-        }
+        if (k > 0) { result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup())); }
+
         // Scalar tail for any leaves that didn't fill a full wide batch.
         auto tailDom = dom;
         for (; k < nLeaves; ++k) {
@@ -157,15 +143,9 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
             result = result ? Interval(std::min(result->inf(), seg.inf()), std::max(result->sup(), seg.sup())) : seg;
         }
 
-        if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) {
-            std::fprintf(stderr, "[bisect-debug] non-finite fallback: result=%s WSize=%d nLeaves=%d\n",
-                result ? fmt::format("[{:.9g},{:.9g}]", result->inf(), result->sup()).c_str() : "nullopt", WSize, nLeaves);
-            return directBound();
-        }
-        std::fprintf(stderr, "[bisect-debug] ok: result=[%.9g,%.9g] WSize=%d nLeaves=%d\n", result->inf(), result->sup(), WSize, nLeaves);
+        if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) { return directBound(); }
         return *result;
-    } catch (std::exception const& e) {
-        std::fprintf(stderr, "[bisect-debug] exception: %s\n", e.what());
+    } catch (std::exception const&) {
         return directBound();
     }
 }
