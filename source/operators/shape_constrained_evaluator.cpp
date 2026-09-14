@@ -64,11 +64,25 @@ auto IsFiniteBound(BoundResult const& b) -> bool
 }
 
 
-// Interval-only domain bisection: recursively splits the tree's widest
-// referenced axis, unions per-sub-box IntervalEvaluator results. Falls
-// back to this level's direct bound if either child fails.
+
+// Interval-only domain bisection, SIMD-batched: picks the tree's single
+// widest referenced axis, splits it into 2^depth uniform sub-intervals, and
+// evaluates them eve::cardinal_v<wide<Operon::Scalar>> at a time through
+// IntervalEvaluator<wide<Operon::Scalar>> -- one wide Evaluate() call per
+// batch instead of one scalar Evaluate() call per leaf. Mirrors pappus's
+// batch_evaluate_ia: affine-in-i wide index arithmetic for the packed
+// sub-interval endpoints, lane-wise union via interval<wide<T>>::operator|=,
+// single horizontal reduce (eve::minimum/eve::maximum) at the end, scalar
+// tail for any remainder below a full lane width. Falls back to the
+// whole-box direct bound if the axis can't be split, or if the union isn't
+// finite -- an unbounded slice (e.g. 1/x straddling the split axis) would
+// otherwise poison the reported bound with [-inf, inf] even though the
+// un-split direct evaluation over the whole box is already sound.
 auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
 {
+    using WScalar = eve::wide<Operon::Scalar>;
+    constexpr int WSize = static_cast<int>(eve::cardinal_v<WScalar>);
+
     auto const directBound = [&]() -> BoundResult {
         try {
             IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
@@ -92,17 +106,48 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
     }
     if (!any || widestDiam <= Operon::Scalar{0}) { return directBound(); }
 
-    auto loDom = dom;
-    auto hiDom = dom;
-    auto const [lo, hi] = dom.at(widest);
-    auto const mid = lo + (hi - lo) / Operon::Scalar{2};
-    loDom[widest].second = mid;
-    hiDom[widest].first = mid;
+    try {
+        int const nLeaves = 1 << depth;
+        Operon::Scalar const lo = dom.at(widest).first;
+        Operon::Scalar const h = widestDiam / Operon::Scalar(nLeaves);
 
-    auto left = BisectedIntervalBound(tree, loDom, depth - 1);
-    auto right = BisectedIntervalBound(tree, hiDom, depth - 1);
-    if (!IsFiniteBound(left) || !IsFiniteBound(right)) { return directBound(); }
-    return Interval(std::min(left->inf(), right->inf()), std::max(left->sup(), right->sup()));
+        // Every axis except `widest` is broadcast to every lane (same bound
+        // regardless of which leaf); `widest` is overwritten per batch below.
+        IntervalEvaluator<WScalar>::DomainMap wdom;
+        wdom.reserve(dom.size());
+        for (auto const& [hash, bound] : dom) {
+            wdom.emplace(hash, IntervalEvaluator<WScalar>::Domain{ WScalar(bound.first), WScalar(bound.second) });
+        }
+        auto const coeff = tree.GetCoefficients();
+
+        auto acc = IntervalEvaluator<WScalar>::Interval::empty();
+        WScalar const hw(h);
+        WScalar const infw(lo);
+        int k = 0;
+        for (; k + WSize <= nLeaves; k += WSize) {
+            WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
+            wdom[widest] = { infw + idx * hw, infw + (idx + WScalar(Operon::Scalar{1})) * hw };
+            IntervalEvaluator<WScalar> wie(&tree, wdom);
+            acc |= wie.Evaluate(coeff);
+        }
+
+        std::optional<Interval> result;
+        if (k > 0) { result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup())); }
+
+        // Scalar tail for any leaves that didn't fill a full wide batch.
+        auto tailDom = dom;
+        for (; k < nLeaves; ++k) {
+            tailDom[widest] = { lo + Operon::Scalar(k) * h, lo + Operon::Scalar(k + 1) * h };
+            IntervalEvaluator<Operon::Scalar> ie(&tree, tailDom);
+            auto const seg = ie.Evaluate(coeff);
+            result = result ? Interval(std::min(result->inf(), seg.inf()), std::max(result->sup(), seg.sup())) : seg;
+        }
+
+        if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) { return directBound(); }
+        return *result;
+    } catch (std::exception const&) {
+        return directBound();
+    }
 }
 
 // The affine+interval intersection path, unchanged from before -- extracted
