@@ -30,7 +30,7 @@ namespace {
 
 constexpr std::size_t NoGrad = std::numeric_limits<std::size_t>::max();
 
-using Interval = AffineEvaluator::Interval;
+using Interval = AffineEvaluator<Operon::Scalar>::Interval;
 using BoundResult = tl::expected<Interval, std::string>;
 
 // Slices a VariableGradientDag root into a standalone Tree (same Ref-node
@@ -67,11 +67,11 @@ auto IsFiniteBound(BoundResult const& b) -> bool
 // Interval-only domain bisection: recursively splits the tree's widest
 // referenced axis, unions per-sub-box IntervalEvaluator results. Falls
 // back to this level's direct bound if either child fails.
-auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator::DomainMap const& dom, int depth) -> BoundResult
+auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
 {
     auto const directBound = [&]() -> BoundResult {
         try {
-            IntervalEvaluator ie(&tree, dom);
+            IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
             return ie.Evaluate(tree.GetCoefficients());
         } catch (std::exception const& e) {
             return tl::unexpected(std::string(e.what()));
@@ -108,7 +108,7 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator::DomainMap const&
 // The affine+interval intersection path, unchanged from before -- extracted
 // so TryAffineBound (below) can retry it over bisected sub-boxes when it
 // fails on the whole domain.
-auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
+auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
     // Affine forms cannot represent every interval enclosure. In particular,
     // a zero-crossing denominator is unbounded and a variable exponent may
@@ -125,7 +125,7 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode 
 
     if (HasFlag(mode, ShapeBoundMode::Interval)) {
         if (HasFlag(mode, ShapeBoundMode::Bisected)) {
-            return BisectedIntervalBound(tree, IntervalEvaluator::DomainMap{ae.Domains()}, opts.BisectionDepth);
+            return BisectedIntervalBound(tree, IntervalEvaluator<Operon::Scalar>::DomainMap{ae.Domains()}, opts.BisectionDepth);
         }
         return IntervalBound();
     }
@@ -208,11 +208,11 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode 
 // (default off, opts.AffineBisectionMaxDepth) until a problem sweep shows a
 // net win against the corrected widest-axis selection (fixed 2026-08-20 to
 // pick from the tree's own variables, not the evaluator's full domain map).
-auto BisectedDomainBound(Tree const& tree, AffineEvaluator::DomainMap const& domains, int depth, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
+auto BisectedDomainBound(Tree const& tree, AffineEvaluator<Operon::Scalar>::DomainMap const& domains, int depth, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
     // Each sub-box evaluator owns a separate noise counter. Combine sub-box
     // results only as intervals; never combine their affine forms directly.
-    AffineEvaluator subAe(&tree, domains);
+    AffineEvaluator<Operon::Scalar> subAe(&tree, domains);
     auto direct = TryAffineBoundDirect(tree, subAe, mode, opts);
     if (depth <= 0 || IsFiniteBound(direct)) { return direct; }
 
@@ -259,7 +259,7 @@ auto BisectedDomainBound(Tree const& tree, AffineEvaluator::DomainMap const& dom
 // it's real, tested infrastructure that costs nothing when unset, but do
 // not expect it to help in this role -- bisection is the effective rescue
 // mechanism here.
-auto TryAffineBound(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
+auto TryAffineBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
     auto direct = TryAffineBoundDirect(tree, ae, mode, opts);
     if (IsFiniteBound(direct)) { return direct; }
@@ -303,7 +303,7 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode mode, 
 // common case). SecondDerivative still builds its own dag2 from the sliced
 // first-derivative tree `d1`, which IS variable-specific.
 auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
-              AffineEvaluator& ae,
+              AffineEvaluator<Operon::Scalar>& ae,
               VariableGradientDag const& dag1, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
     if (op == ShapeConstraintOp::Identity) { return TryAffineBound(tree, ae, mode, opts); }
@@ -405,7 +405,7 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
     // tree for identity, the sliced derivative trees for the derivatives);
     // ctx_ keeps a single monotonic noise-symbol counter, which is sound --
     // the bounds are consumed as intervals independently of each other.
-    AffineEvaluator ae(&tree, domainsByHash);
+    AffineEvaluator<Operon::Scalar> ae(&tree, domainsByHash);
     // Built on first use by BoundFor; shared across every derivative
     // constraint in this bound set (see BoundFor's comment). Identity
     // constraints never touch it, so it is lazily constructed only when a

@@ -22,7 +22,7 @@ namespace Operon::Test {
 namespace {
     using S = Operon::Scalar;
     using IE = IntervalEvaluator<S>;
-    using AE = AffineEvaluator;
+    using AE = AffineEvaluator<S>;
 
     // Build a variable node with a given hash and weight.
     auto Var(Operon::Hash h, double weight = 1.0) -> Operon::Node

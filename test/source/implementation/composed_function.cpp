@@ -397,7 +397,7 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
         // affine_form object (same symbols) that node0 itself carries.
         auto body = InfixParser::ParseFunctionBody("x", std::vector<std::string>{"x"});
         auto composedNode = MakeComposedNode("identityAffine", 1);
-        Operon::RegisterUnaryAffine(composedNode.HashValue, Operon::MakeComposedAffineUnaryFn(body));
+        Operon::RegisterUnaryAffine<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedAffineUnaryFn(body));
 
         Operon::Node vx(Operon::NodeType::Variable);
         vx.HashValue = vx.CalculatedHashValue = xHash;
@@ -409,8 +409,8 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
         Operon::Vector<Operon::Node> nodes{vx, ref, composedNode, subNode};
         Operon::Tree tree{nodes};
 
-        Operon::AffineEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
-        Operon::AffineEvaluator eval(&tree, domains);
+        Operon::AffineEvaluator<Operon::Scalar>::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::AffineEvaluator<Operon::Scalar> eval(&tree, domains);
         auto result = eval.Evaluate({});
         auto const iv = result.to_interval();
         CHECK(iv.inf() == Catch::Approx(0.0).margin(1e-4));
@@ -631,7 +631,7 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
         // underlying affine form.
         auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"});
         auto composedNode = MakeComposedNode("sameAffineBinary", 2);
-        Operon::RegisterBinaryAffine(composedNode.HashValue, Operon::MakeComposedAffineBinaryFn(body));
+        Operon::RegisterBinaryAffine<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedAffineBinaryFn(body));
 
         Operon::Node vx(Operon::NodeType::Variable);
         vx.HashValue = vx.CalculatedHashValue = xHash;
@@ -643,8 +643,8 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
         Operon::Vector<Operon::Node> nodes{vx, refFar, refNear, composedNode};
         Operon::Tree tree{nodes};
 
-        Operon::AffineEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
-        Operon::AffineEvaluator eval(&tree, domains);
+        Operon::AffineEvaluator<Operon::Scalar>::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::AffineEvaluator<Operon::Scalar> eval(&tree, domains);
         auto result = eval.Evaluate({});
         auto const iv = result.to_interval();
         CHECK(iv.inf() == Catch::Approx(0.0).margin(1e-4));

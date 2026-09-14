@@ -89,8 +89,8 @@ TEST_CASE("Cross-registry coverage: interval/affine registries", "[registry][cov
 
         bool const inInterval = Operon::HasUnaryInterval<Operon::Scalar>(hash)
             || Operon::HasBinaryInterval<Operon::Scalar>(hash);
-        bool const inAffine = Operon::HasUnaryAffine(hash)
-            || Operon::HasBinaryAffine(hash);
+        bool const inAffine = Operon::HasUnaryAffine<Operon::Scalar>(hash)
+            || Operon::HasBinaryAffine<Operon::Scalar>(hash);
 
         INFO("op: " << OpName(op));
         CHECK(inInterval == !expectAbsent);
@@ -186,8 +186,8 @@ TEST_CASE("RegisterUnaryInterval/RegisterUnaryAffine: colliding with a built-in 
         Operon::RegisterUnaryInterval<Operon::Scalar>(logHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) { return v; }),
         std::invalid_argument);
     CHECK_THROWS_AS(
-        Operon::RegisterUnaryAffine(logHash,
-            [](Operon::AffineEvaluator::Context const&, Operon::AffineEvaluator::Affine const& v) { return v; }),
+        Operon::RegisterUnaryAffine<Operon::Scalar>(logHash,
+            [](Operon::AffineEvaluator<Operon::Scalar>::Context const&, Operon::AffineEvaluator<Operon::Scalar>::Affine const& v) { return v; }),
         std::invalid_argument);
 }
 
@@ -242,7 +242,7 @@ TEST_CASE("IntervalEvaluator/AffineEvaluator: unmapped op throws at Evaluate()",
     Operon::IntervalEvaluator<Operon::Scalar>::DomainMap noDomains;
 
     CHECK_THROWS_AS(IntervalEvaluator<Operon::Scalar>(&tree, noDomains).Evaluate({}), std::runtime_error);
-    CHECK_THROWS_AS(AffineEvaluator(&tree, noDomains).Evaluate({}), std::runtime_error);
+    CHECK_THROWS_AS(AffineEvaluator<Operon::Scalar>(&tree, noDomains).Evaluate({}), std::runtime_error);
 }
 
 #ifdef HAVE_ASMJIT

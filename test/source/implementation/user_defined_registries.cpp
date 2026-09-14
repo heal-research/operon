@@ -107,17 +107,17 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     // affine_context that allocated its epsilon terms) — but its friend
     // `operator/(T, affine_form const&)` exists precisely to avoid needing
     // one here, so the ctx parameter genuinely goes unused for this rule.
-    RegisterUnaryAffine(hash,
-        [](AffineEvaluator::Context const&, AffineEvaluator::Affine const& v) {
+    RegisterUnaryAffine<Scalar>(hash,
+        [](AffineEvaluator<Scalar>::Context const&, AffineEvaluator<Scalar>::Affine const& v) {
             return Scalar{1} / v;
         });
     {
         auto varHash = Operon::Hash{ 2 };
         Node var(NodeType::Variable, varHash); var.Value = 1.0F;
         auto afTree = Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
-        AffineEvaluator::DomainMap dm;
+        AffineEvaluator<Scalar>::DomainMap dm;
         dm[varHash] = { Scalar{ 1 }, Scalar{ 4 } };
-        AffineEvaluator afEval(&afTree, std::move(dm));
+        AffineEvaluator<Scalar> afEval(&afTree, std::move(dm));
         auto af = afEval.Evaluate(afTree.GetCoefficients());
         auto ivFromAffine = af.to_interval();
         CHECK(ivFromAffine.inf() <= 0.25 + 1e-2);
