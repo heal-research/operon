@@ -214,6 +214,31 @@ TEST_CASE("ParseShapeBoundMode parses flags and rejects invalid combinations", "
     CHECK_THROWS_AS(Operon::ParseShapeBoundMode("affine,bisected"), std::invalid_argument);
 }
 
+TEST_CASE("SetBoundMode rejects invalid combinations the same way ParseShapeBoundMode does", "[shape-constraints]")
+{
+    // A programmatically-constructed ShapeBoundMode bypasses the string
+    // parser entirely -- SetBoundMode must enforce the same invariants
+    // (via ValidateShapeBoundMode) rather than silently accepting a mode
+    // whose Bisected flag then gets ignored downstream.
+    Fixture fx;
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-100}, Operon::Scalar{100}}});
+
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Bisected), std::invalid_argument);
+    CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Affine | ShapeBoundMode::Bisected), std::invalid_argument);
+    CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Affine), std::invalid_argument);
+    CHECK_NOTHROW(sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK(sce.BoundMode() == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+
+    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
+    CHECK_THROWS_AS(sve.SetBoundMode(ShapeBoundMode::Bisected), std::invalid_argument);
+    CHECK_NOTHROW(sve.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK(sve.BoundMode() == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+}
+
 TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-problem bound", "[shape-constraints]")
 {
     // f(X1) = (X1 - 1) * (X1 - 1) over [0, 10]: true range [0, 81], naive
