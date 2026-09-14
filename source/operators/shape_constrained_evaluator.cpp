@@ -150,12 +150,17 @@ auto IsFiniteBound(BoundResult const& b) -> bool
     return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
 }
 
-// Default matches eve::wide<Operon::Scalar>'s lane count.
+// Fixed default, not derived from SIMD width: depth is recursion levels,
+// not leaf count (2^depth leaves), so tying it to hardware lane count
+// would square the leaf count on a wider target instead of scaling with
+// it. Revisit once BisectedIntervalBound actually batches leaves through
+// wide<T> evaluation -- only then does a width-derived leaf count mean
+// anything.
 auto IntervalBisectionDepth() -> int
 {
     static int const depth = [] {
         auto const* env = std::getenv("OPERON_SHAPE_INTERVAL_BISECTION_DEPTH");
-        return env ? std::atoi(env) : static_cast<int>(eve::wide<Operon::Scalar>::size());
+        return env ? std::atoi(env) : 3;
     }();
     return depth;
 }
