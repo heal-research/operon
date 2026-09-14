@@ -86,7 +86,13 @@ enum class ShapeBoundMode : unsigned {
 // this file's previous behavior exactly.
 struct ShapeBoundOptions {
     // Interval-only bisection (ShapeBoundMode::Bisected): 2^BisectionDepth
-    // uniform sub-boxes along the tree's widest-referenced axis.
+    // uniform sub-boxes along the tree's widest-referenced axis. Fixed
+    // default, not derived from SIMD width: depth is recursion levels, not
+    // leaf count (2^depth leaves), so tying it to hardware lane count would
+    // square the leaf count on a wider target instead of scaling with it.
+    // Revisit once BisectedIntervalBound actually batches leaves through
+    // wide<T> evaluation -- only then does a width-derived leaf count mean
+    // anything.
     int BisectionDepth{3};
     // Affine-mode fallback: max bisection depth when the direct
     // affine/interval intersection fails on the whole domain. 0 disables it.

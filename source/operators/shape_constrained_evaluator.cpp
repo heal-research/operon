@@ -63,6 +63,7 @@ auto IsFiniteBound(BoundResult const& b) -> bool
     return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
 }
 
+
 // Interval-only domain bisection: recursively splits the tree's widest
 // referenced axis, unions per-sub-box IntervalEvaluator results. Falls
 // back to this level's direct bound if either child fails.
