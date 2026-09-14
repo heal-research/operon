@@ -202,6 +202,140 @@ TEST_CASE("ShapeConstrainedEvaluator - value bound constraint", "[shape-constrai
     CHECK_FALSE(narrow.Feasible(fx.tree));
 }
 
+TEST_CASE("ParseShapeBoundMode parses flags and rejects invalid combinations", "[shape-constraints]")
+{
+    CHECK(Operon::ParseShapeBoundMode("combined") == ShapeBoundMode::Combined);
+    CHECK(Operon::ParseShapeBoundMode("interval") == ShapeBoundMode::Interval);
+    CHECK(Operon::ParseShapeBoundMode("affine") == ShapeBoundMode::Affine);
+    CHECK(Operon::ParseShapeBoundMode("interval,bisected") == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("not-a-mode"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("interval,affine"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("bisected"), std::invalid_argument);
+    CHECK_THROWS_AS(Operon::ParseShapeBoundMode("affine,bisected"), std::invalid_argument);
+}
+
+TEST_CASE("SetBoundMode rejects invalid combinations the same way ParseShapeBoundMode does", "[shape-constraints]")
+{
+    // A programmatically-constructed ShapeBoundMode bypasses the string
+    // parser entirely -- SetBoundMode must enforce the same invariants
+    // (via ValidateShapeBoundMode) rather than silently accepting a mode
+    // whose Bisected flag then gets ignored downstream.
+    Fixture fx;
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-100}, Operon::Scalar{100}}});
+
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Bisected), std::invalid_argument);
+    CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Affine | ShapeBoundMode::Bisected), std::invalid_argument);
+    CHECK_THROWS_AS(sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Affine), std::invalid_argument);
+    CHECK_THROWS_AS(sce.SetBoundMode(static_cast<ShapeBoundMode>(1U << 3U)), std::invalid_argument);
+    CHECK_NOTHROW(sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK(sce.BoundMode() == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+
+    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
+    CHECK_THROWS_AS(sve.SetBoundMode(ShapeBoundMode::Bisected), std::invalid_argument);
+    CHECK_NOTHROW(sve.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+    CHECK(sve.BoundMode() == (ShapeBoundMode::Interval | ShapeBoundMode::Bisected));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-problem bound", "[shape-constraints]")
+{
+    // f(X1) = (X1 - 1) * (X1 - 1) over [0, 10]: true range [0, 81], naive
+    // interval multiplication overestimates to [-9, 81] (dependency
+    // problem). Bisection should narrow the overestimate.
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{2};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i);
+        data(static_cast<Eigen::Index>(i), 1) = data(static_cast<Eigen::Index>(i), 0);
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto tree = InfixParser::Parse("(X1 - 1) * (X1 - 1)", ds);
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X2");
+    problem.SetLinearScalingEnabled(false); // compare raw tree bounds directly, no fitted scale/offset
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{0}, Operon::Scalar{10}});
+    // Permissive bound: this test compares the reported raw bound widths,
+    // not feasibility, so the constraint itself must never reject.
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1000}, Operon::Scalar{1000}}});
+
+    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
+    auto const plain = shapeEval.Measure(tree);
+    REQUIRE(plain.Measurements.size() == 1);
+    REQUIRE(plain.Measurements[0].Bound.has_value());
+    auto const [plo, phi] = *plain.Measurements[0].Bound;
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    auto const bisected = shapeEval.Measure(tree);
+    REQUIRE(bisected.Measurements.size() == 1);
+    REQUIRE(bisected.Measurements[0].Bound.has_value());
+    auto const [blo, bhi] = *bisected.Measurements[0].Bound;
+
+    // Both must soundly contain the true analytical range.
+    CHECK(plo <= Operon::Scalar{0});
+    CHECK(phi >= Operon::Scalar{81});
+    CHECK(blo <= Operon::Scalar{0});
+    CHECK(bhi >= Operon::Scalar{81});
+
+    // Bisection is a union of sound sub-box enclosures over the same
+    // domain: it can only tighten or match the direct bound, never widen.
+    CHECK(blo >= plo);
+    CHECK(bhi <= phi);
+    // And it must actually do something on this dependency-problem
+    // example, not silently no-op.
+    CHECK((blo > plo || bhi < phi));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - bisected interval accepts a model naive interval wrongly rejects", "[shape-constraints]")
+{
+    // Same dependency-problem tree as the tightening test above: f(X1) =
+    // (X1-1)*(X1-1) over [0,10], true range [0,81]. Naive interval
+    // multiplication overestimates the lower bound to -9. A constraint
+    // requiring the value stay >= -1 is therefore wrongly rejected under
+    // Interval alone, even though the true range [0,81] satisfies it --
+    // this is the mode's actual motivating use case (a feasibility
+    // decision flipping), not just a narrower reported bound width.
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{2};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i);
+        data(static_cast<Eigen::Index>(i), 1) = data(static_cast<Eigen::Index>(i), 0);
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto tree = InfixParser::Parse("(X1 - 1) * (X1 - 1)", ds);
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X2");
+    problem.SetLinearScalingEnabled(false);
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{0}, Operon::Scalar{10}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1}, Operon::Scalar{1000}}});
+
+    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
+    CHECK_FALSE(shapeEval.Feasible(tree));
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    CHECK(shapeEval.Feasible(tree));
+}
+
 TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraints]")
 {
     Fixture fx;
@@ -215,7 +349,9 @@ TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraint
 
     CHECK(detail::HashTreeForMemo(refX) != detail::HashTreeForMemo(refY));
     CHECK(detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Combined))
-          != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::IntervalOnly)));
+          != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Interval)));
+    CHECK(detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Interval))
+          != detail::HashTreeForMemo(refX, static_cast<Hash>(ShapeBoundMode::Interval | ShapeBoundMode::Bisected)));
 }
 
 
