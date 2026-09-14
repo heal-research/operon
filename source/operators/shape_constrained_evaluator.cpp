@@ -145,6 +145,67 @@ auto ShapeAffineIllConditionedThreshold() -> Operon::Scalar
     return threshold;
 }
 
+auto IsFiniteBound(BoundResult const& b) -> bool
+{
+    return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
+}
+
+// Fixed default, not derived from SIMD width: depth is recursion levels,
+// not leaf count (2^depth leaves), so tying it to hardware lane count
+// would square the leaf count on a wider target instead of scaling with
+// it. Revisit once BisectedIntervalBound actually batches leaves through
+// wide<T> evaluation -- only then does a width-derived leaf count mean
+// anything.
+auto IntervalBisectionDepth() -> int
+{
+    static int const depth = [] {
+        auto const* env = std::getenv("OPERON_SHAPE_INTERVAL_BISECTION_DEPTH");
+        return env ? std::atoi(env) : 3;
+    }();
+    return depth;
+}
+
+// Interval-only domain bisection: recursively splits the tree's widest
+// referenced axis, unions per-sub-box IntervalEvaluator results. Falls
+// back to this level's direct bound if either child fails.
+auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator::DomainMap const& dom, int depth) -> BoundResult
+{
+    auto const directBound = [&]() -> BoundResult {
+        try {
+            IntervalEvaluator ie(&tree, dom);
+            return ie.Evaluate(tree.GetCoefficients());
+        } catch (std::exception const& e) {
+            return tl::unexpected(std::string(e.what()));
+        }
+    };
+
+    if (depth <= 0) { return directBound(); }
+
+    Operon::Hash widest{};
+    Operon::Scalar widestDiam{-1};
+    bool any = false;
+    for (auto const& n : tree.Nodes()) {
+        if (!n.IsVariable()) { continue; }
+        auto const it = dom.find(n.HashValue);
+        if (it == dom.end()) { continue; }
+        auto const diam = it->second.second - it->second.first;
+        if (diam > widestDiam) { widestDiam = diam; widest = n.HashValue; any = true; }
+    }
+    if (!any || widestDiam <= Operon::Scalar{0}) { return directBound(); }
+
+    auto loDom = dom;
+    auto hiDom = dom;
+    auto const [lo, hi] = dom.at(widest);
+    auto const mid = lo + (hi - lo) / Operon::Scalar{2};
+    loDom[widest].second = mid;
+    hiDom[widest].first = mid;
+
+    auto left = BisectedIntervalBound(tree, loDom, depth - 1);
+    auto right = BisectedIntervalBound(tree, hiDom, depth - 1);
+    if (!IsFiniteBound(left) || !IsFiniteBound(right)) { return directBound(); }
+    return Interval(std::min(left->inf(), right->inf()), std::max(left->sup(), right->sup()));
+}
+
 // The affine+interval intersection path, unchanged from before -- extracted
 // so TryAffineBound (below) can retry it over bisected sub-boxes when it
 // fails on the whole domain.
@@ -170,7 +231,12 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode 
         }
     };
 
-    if (mode == ShapeBoundMode::IntervalOnly) { return IntervalBound(); }
+    if (HasFlag(mode, ShapeBoundMode::Interval)) {
+        if (HasFlag(mode, ShapeBoundMode::Bisected)) {
+            return BisectedIntervalBound(tree, IntervalEvaluator::DomainMap{ae.Domains()}, IntervalBisectionDepth());
+        }
+        return IntervalBound();
+    }
 
     try {
         ae.SetTree(&tree);
@@ -233,7 +299,7 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode 
         // result would mean one of the two is unsound, not that the
         // intersection is empty -- fall back to the affine bound alone
         // rather than construct an inverted interval).
-        if (mode == ShapeBoundMode::AffineOnly) {
+        if (HasFlag(mode, ShapeBoundMode::Affine)) {
             if (boundStats) { ++GlobalBoundPathStats().affineDirect; }
             return bound;
         }
@@ -275,11 +341,6 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator& ae, ShapeBoundMode 
         if (bound) { return bound; }
         return tl::unexpected(fmt::format("affine evaluation failed: {}; interval fallback failed: {}", e.what(), bound.error()));
     }
-}
-
-auto IsFiniteBound(BoundResult const& b) -> bool
-{
-    return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
 }
 
 // Bounded-depth domain bisection, used only as a last resort when
@@ -668,12 +729,47 @@ auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
     return result;
 }
 
+auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>
+{
+    auto const raw = static_cast<unsigned>(mode);
+    auto const known = static_cast<unsigned>(ShapeBoundMode::Interval)
+        | static_cast<unsigned>(ShapeBoundMode::Affine)
+        | static_cast<unsigned>(ShapeBoundMode::Bisected);
+    if ((raw & ~known) != 0U) { return "shape-bound-mode contains unknown bits"; }
+    if (HasFlag(mode, ShapeBoundMode::Interval) && HasFlag(mode, ShapeBoundMode::Affine)) {
+        return "shape-bound-mode: interval and affine are mutually exclusive";
+    }
+    if (HasFlag(mode, ShapeBoundMode::Bisected) && !HasFlag(mode, ShapeBoundMode::Interval)) {
+        return "shape-bound-mode: bisected is only supported combined with interval";
+    }
+    return std::nullopt;
+}
+
 auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode
 {
-    if (str == "combined") { return ShapeBoundMode::Combined; }
-    if (str == "interval-only") { return ShapeBoundMode::IntervalOnly; }
-    if (str == "affine-only") { return ShapeBoundMode::AffineOnly; }
-    throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode argument '{}'", str));
+    auto result = ShapeBoundMode::Combined;
+    std::size_t pos = 0;
+    while (pos <= str.size()) {
+        auto const next = str.find(',', pos);
+        auto const token = str.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
+        if (token == "combined") {
+            // no bits to set
+        } else if (token == "interval") {
+            result = result | ShapeBoundMode::Interval;
+        } else if (token == "affine") {
+            result = result | ShapeBoundMode::Affine;
+        } else if (token == "bisected") {
+            result = result | ShapeBoundMode::Bisected;
+        } else {
+            throw std::invalid_argument(fmt::format("unable to parse shape-bound-mode argument '{}'", token));
+        }
+        if (next == std::string::npos) { break; }
+        pos = next + 1;
+    }
+    if (auto err = ValidateShapeBoundMode(result)) {
+        throw std::invalid_argument(*err);
+    }
+    return result;
 }
 
 auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>
@@ -833,6 +929,12 @@ auto ShapeConstrainedEvaluator::Evaluate(Operon::RandomGenerator& rng, Individua
     return (*evaluator_)(rng, ind, buf);
 }
 
+auto ShapeConstrainedEvaluator::SetBoundMode(ShapeBoundMode mode) -> void
+{
+    if (auto err = ValidateShapeBoundMode(mode)) { throw std::invalid_argument(*err); }
+    boundMode_ = mode;
+}
+
 ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<Operon::Problem const*> problem,
     gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints,
     Operon::Scalar weight, Operon::Scalar unknownViolation)
@@ -883,6 +985,12 @@ auto ShapeViolationEvaluator::Evaluate(Operon::RandomGenerator& /*rng*/, Individ
 {
     ++CallCount;
     return ReturnType{static_cast<Operon::Scalar>(weight_ * RawViolation(ind.Genotype))};
+}
+
+auto ShapeViolationEvaluator::SetBoundMode(ShapeBoundMode mode) -> void
+{
+    if (auto err = ValidateShapeBoundMode(mode)) { throw std::invalid_argument(*err); }
+    boundMode_ = mode;
 }
 
 } // namespace Operon

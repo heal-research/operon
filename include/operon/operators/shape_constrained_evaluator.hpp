@@ -56,29 +56,40 @@ struct ShapeConstraintPolicy {
     Operon::Scalar PenaltyWeight{1};
 };
 
-// Which arithmetic backend(s) TryAffineBound uses to bound a constraint's
-// tree/derivative over its domain box. `Combined` is the default and the
-// only mode with any published measurement behind it so far: affine,
-// intersected with plain interval whenever both succeed (see
-// TryAffineBoundDirect's comment for why that intersection is sound).
-// `IntervalOnly`/`AffineOnly` exist for isolating each backend's actual
-// contribution to feasibility/NMSE outcomes -- prompted by an earlier
-// finding that affine rarely decides the `Combined` intersection in
-// practice (see intersectLoFromAffine/intersectLoFromInterval under
-// OPERON_SHAPE_BOUND_STATS=1), which raised the question of whether it's
-// pulling its weight at all. `AffineOnly` still falls back to interval for
-// cases affine structurally can't represent (a zero-crossing denominator,
-// a non-integer-exponent domain check) -- those are representability
-// gaps, not the tightness contribution the intersection step measures, so
-// removing them would conflate two different questions.
+// Backend(s) TryAffineBound uses to bound a constraint. Combined (default)
+// intersects affine and interval. Interval/Affine isolate one backend.
+// Bisected recursively bisects the domain and unions per-sub-box results;
+// currently only supported combined with Interval.
 enum class ShapeBoundMode : unsigned {
     Combined = 0U,
-    IntervalOnly = 1U,
-    AffineOnly = 2U,
+    Interval = 1U << 0U,
+    Affine = 1U << 1U,
+    Bisected = 1U << 2U,
 };
+
+[[nodiscard]] constexpr auto operator|(ShapeBoundMode lhs, ShapeBoundMode rhs) noexcept -> ShapeBoundMode
+{
+    return static_cast<ShapeBoundMode>(static_cast<unsigned>(lhs) | static_cast<unsigned>(rhs));
+}
+
+[[nodiscard]] constexpr auto operator&(ShapeBoundMode lhs, ShapeBoundMode rhs) noexcept -> ShapeBoundMode
+{
+    return static_cast<ShapeBoundMode>(static_cast<unsigned>(lhs) & static_cast<unsigned>(rhs));
+}
+
+[[nodiscard]] constexpr auto HasFlag(ShapeBoundMode value, ShapeBoundMode flag) noexcept -> bool
+{
+    return (value & flag) != ShapeBoundMode::Combined;
+}
 
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
+// Rejects Interval+Affine together, or Bisected without Interval. Shared by
+// ParseShapeBoundMode and both SetBoundMode setters below so a
+// programmatically-constructed mode is held to the same contract as a
+// string-parsed one -- constructing ShapeBoundMode values directly (not
+// through the parser) previously bypassed this check entirely.
+[[nodiscard]] OPERON_EXPORT auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode;
 
 // Wraps an inner EvaluatorBase (typically an NMSE-with-linear-scaling
@@ -130,7 +141,9 @@ public:
     void SetWorstValue(double value) { worstValue_ = value; }
 
     [[nodiscard]] auto BoundMode() const noexcept -> ShapeBoundMode { return boundMode_; }
-    void SetBoundMode(ShapeBoundMode mode) noexcept { boundMode_ = mode; }
+    // Throws std::invalid_argument if `mode` fails ValidateShapeBoundMode
+    // (e.g. Bisected without Interval) -- see that function's comment.
+    void SetBoundMode(ShapeBoundMode mode);
 
     // The tf::Executor Prepare() uses to parallelize its population-wide
     // Feasible() pre-warm -- the SAME executor the caller's GP/NSGA2 loop
@@ -241,7 +254,8 @@ public:
     [[nodiscard]] auto Weight() const noexcept -> Operon::Scalar { return weight_; }
     [[nodiscard]] auto UnknownViolation() const noexcept -> Operon::Scalar { return unknownViolation_; }
     [[nodiscard]] auto BoundMode() const noexcept -> ShapeBoundMode { return boundMode_; }
-    void SetBoundMode(ShapeBoundMode mode) noexcept { boundMode_ = mode; }
+    // See ShapeConstrainedEvaluator::SetBoundMode -- same validation contract.
+    void SetBoundMode(ShapeBoundMode mode);
     [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar;
     [[nodiscard]] auto Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary;
 
