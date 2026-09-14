@@ -330,6 +330,74 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, Shape
     return IsFiniteBound(bisected) ? bisected : direct;
 }
 
+// Interval-only fast path: TryAffineBoundDirect's `HasFlag(mode, Interval)`
+// branch never touches ae's affine capabilities (SetTree/Evaluate), only
+// `ae.Domains()` -- so building a full AffineEvaluator (and copying its
+// DomainMap) purely to discard the affine half was measured at ~70ns of
+// fully wasted work per Measure() call (~24% of the whole call for a small
+// tree). Takes the plain interval domain map directly instead.
+//
+// Drops the (opt-in, off-by-default, rarely-triggered) BisectedDomainBound
+// rescue: that mechanism builds its own AffineEvaluator per sub-box and
+// exists specifically to rescue affine-mode failures -- invoking it here
+// would silently reintroduce the exact per-call AffineEvaluator cost this
+// function exists to avoid, for a rescue that doesn't conceptually belong
+// to interval-only mode anyway (BisectedIntervalBound already has its own
+// interval-native fallback via directBound()). TightenRange's fallback is
+// kept -- it only ever needed the domain map too.
+auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
+{
+    auto const IntervalBound = [&]() -> BoundResult {
+        try {
+            IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
+            return ie.Evaluate(tree.GetCoefficients());
+        } catch (std::exception const& e) {
+            return tl::unexpected(std::string(e.what()));
+        }
+    };
+
+    auto direct = HasFlag(mode, ShapeBoundMode::Bisected)
+        ? BisectedIntervalBound(tree, dom, opts.BisectionDepth)
+        : IntervalBound();
+    if (IsFiniteBound(direct)) { return direct; }
+
+    if (opts.UseTightenRangeFallback) {
+        try {
+            auto tr = TightenRange(tree, dom, tree.GetCoefficients());
+            if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) { return tr; }
+        } catch (std::exception const&) {
+            // fall through to the uncertified direct bound
+        }
+    }
+    return direct;
+}
+
+// Mirrors BoundFor exactly, but for TryIntervalBound's lighter domain map
+// instead of AffineEvaluator&. See BoundFor's comment for the derivative
+// slicing rationale (identical here).
+auto BoundForInterval(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
+                       IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
+                       VariableGradientDag const& dag1, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
+{
+    if (op == ShapeConstraintOp::Identity) { return TryIntervalBound(tree, dom, mode, opts); }
+
+    auto const i1 = VariableIndex(dag1, variable);
+    if (!i1) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
+    if (!dag1.Certain[*i1]) { return tl::unexpected("variable derivative involves an op with no differentiation rule"); }
+    auto d1 = SliceToTree(dag1, dag1.Roots[*i1]);
+    if (op == ShapeConstraintOp::FirstDerivative) {
+        return d1 ? TryIntervalBound(*d1, dom, mode, opts) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
+    }
+
+    if (!d1) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
+    auto dag2 = BuildVariableGradientDag(*d1, d1->GetCoefficients());
+    auto const i2 = VariableIndex(dag2, variable);
+    if (!i2) { return BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0})); }
+    if (!dag2.Certain[*i2]) { return tl::unexpected("variable derivative involves an op with no differentiation rule"); }
+    auto d2 = SliceToTree(dag2, dag2.Roots[*i2]);
+    return d2 ? TryIntervalBound(*d2, dom, mode, opts) : BoundResult(Interval(Operon::Scalar{0}, Operon::Scalar{0}));
+}
+
 // The bound for one constraint's Op: the tree itself for Identity, or the
 // (possibly twice-)differentiated tree for First-/SecondDerivative — an
 // identically-zero derivative bounds to the degenerate interval [0, 0]
@@ -443,30 +511,22 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
 {
     ShapeConstraintMeasurementSummary summary;
     summary.Measurements.reserve(constraints.Constraints.size());
-    // One AffineEvaluator shared across every bound in this set: skip
-    // re-copying the DomainMap and re-growing primal_ capacity for each
-    // constraint (typical Friction config = identity + two first-derivative
-    // constraints, so 3x savings on those costs per individual per cache
-    // miss). SetTree() retargets it at each constraint's slice (the original
-    // tree for identity, the sliced derivative trees for the derivatives);
-    // ctx_ keeps a single monotonic noise-symbol counter, which is sound --
-    // the bounds are consumed as intervals independently of each other.
-    AffineEvaluator<Operon::Scalar> ae(&tree, domainsByHash);
-    // Built on first use by BoundFor; shared across every derivative
-    // constraint in this bound set (see BoundFor's comment). Identity
-    // constraints never touch it, so it is lazily constructed only when a
-    // bound set actually contains a derivative constraint.
+
+    // Built on first use by BoundFor/BoundForInterval; shared across every
+    // derivative constraint in this bound set (see BoundFor's comment).
+    // Identity constraints never touch it, so it is lazily constructed only
+    // when a bound set actually contains a derivative constraint.
     std::optional<VariableGradientDag> dag1;
     auto const SharedDag1 = [&]() -> VariableGradientDag const& {
         if (!dag1) { dag1.emplace(BuildVariableGradientDag(tree, tree.GetCoefficients())); }
         return *dag1;
     };
-    for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
+
+    // Applies one constraint's raw bound to `summary`, shared by both the
+    // interval-only and affine/combined loops below.
+    auto const Apply = [&](std::size_t i, BoundResult const& bound) {
         auto const& c = constraints.Constraints[i];
         ShapeConstraintMeasurement m;
-        auto const bound = c.Op == ShapeConstraintOp::Identity
-            ? TryAffineBound(tree, ae, mode, opts)
-            : BoundFor(c.Op, tree, constraintVarHash[i], ae, SharedDag1(), mode, opts);
         if (!bound) {
             m.Certified = false;
             m.Violation = unknownViolation;
@@ -489,6 +549,40 @@ auto MeasureConstraints(ShapeConstraintSet const& constraints, Operon::Vector<Op
         if (!m.Certified || m.Violation != Operon::Scalar{0}) { summary.Feasible = false; }
         summary.Violation += m.Violation;
         summary.Measurements.push_back(m);
+    };
+
+    // Interval-only mode (with or without Bisected) never touches
+    // AffineEvaluator's actual affine machinery -- skip constructing it and
+    // the DomainMap copy it costs (see TryIntervalBound's comment), sharing
+    // the lighter interval domain map across every constraint in this set
+    // instead (same amortization AffineEvaluator gave affine mode).
+    if (HasFlag(mode, ShapeBoundMode::Interval)) {
+        IntervalEvaluator<Operon::Scalar>::DomainMap const dom{domainsByHash};
+        for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
+            auto const& c = constraints.Constraints[i];
+            auto const bound = c.Op == ShapeConstraintOp::Identity
+                ? TryIntervalBound(tree, dom, mode, opts)
+                : BoundForInterval(c.Op, tree, constraintVarHash[i], dom, SharedDag1(), mode, opts);
+            Apply(i, bound);
+        }
+        return summary;
+    }
+
+    // One AffineEvaluator shared across every bound in this set: skip
+    // re-copying the DomainMap and re-growing primal_ capacity for each
+    // constraint (typical Friction config = identity + two first-derivative
+    // constraints, so 3x savings on those costs per individual per cache
+    // miss). SetTree() retargets it at each constraint's slice (the original
+    // tree for identity, the sliced derivative trees for the derivatives);
+    // ctx_ keeps a single monotonic noise-symbol counter, which is sound --
+    // the bounds are consumed as intervals independently of each other.
+    AffineEvaluator<Operon::Scalar> ae(&tree, domainsByHash);
+    for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
+        auto const& c = constraints.Constraints[i];
+        auto const bound = c.Op == ShapeConstraintOp::Identity
+            ? TryAffineBound(tree, ae, mode, opts)
+            : BoundFor(c.Op, tree, constraintVarHash[i], ae, SharedDag1(), mode, opts);
+        Apply(i, bound);
     }
     return summary;
 }
