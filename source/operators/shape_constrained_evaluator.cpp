@@ -143,9 +143,15 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
             result = result ? Interval(std::min(result->inf(), seg.inf()), std::max(result->sup(), seg.sup())) : seg;
         }
 
-        if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) { return directBound(); }
+        if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) {
+            std::fprintf(stderr, "[bisect-debug] non-finite fallback: result=%s WSize=%d nLeaves=%d\n",
+                result ? fmt::format("[{:.9g},{:.9g}]", result->inf(), result->sup()).c_str() : "nullopt", WSize, nLeaves);
+            return directBound();
+        }
+        std::fprintf(stderr, "[bisect-debug] ok: result=[%.9g,%.9g] WSize=%d nLeaves=%d\n", result->inf(), result->sup(), WSize, nLeaves);
         return *result;
-    } catch (std::exception const&) {
+    } catch (std::exception const& e) {
+        std::fprintf(stderr, "[bisect-debug] exception: %s\n", e.what());
         return directBound();
     }
 }
