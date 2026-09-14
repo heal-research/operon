@@ -726,6 +726,11 @@ auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
 
 auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>
 {
+    auto const raw = static_cast<unsigned>(mode);
+    auto const known = static_cast<unsigned>(ShapeBoundMode::Interval)
+        | static_cast<unsigned>(ShapeBoundMode::Affine)
+        | static_cast<unsigned>(ShapeBoundMode::Bisected);
+    if ((raw & ~known) != 0U) { return "shape-bound-mode contains unknown bits"; }
     if (HasFlag(mode, ShapeBoundMode::Interval) && HasFlag(mode, ShapeBoundMode::Affine)) {
         return "shape-bound-mode: interval and affine are mutually exclusive";
     }
@@ -924,7 +929,6 @@ auto ShapeConstrainedEvaluator::SetBoundMode(ShapeBoundMode mode) -> void
     if (auto err = ValidateShapeBoundMode(mode)) { throw std::invalid_argument(*err); }
     boundMode_ = mode;
 }
-
 
 ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<Operon::Problem const*> problem,
     gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints,
