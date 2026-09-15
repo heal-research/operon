@@ -90,28 +90,40 @@ namespace {
         return result;
     }
 
-    auto ParseOptimizer(Operon::ScalarDispatch const* dtable, Operon::Problem const* problem, std::string const& optimizer, std::string const& likelihood) {
-        std::unique_ptr<Operon::OptimizerBase> opt;
-
+    auto ParseOptimizer(Operon::ScalarDispatch const* dtable, Operon::Problem const* problem,
+                        std::string const& optimizer, std::string const& likelihood)
+        -> Operon::Cli::Result<std::unique_ptr<Operon::OptimizerBase>>
+    {
         if (optimizer == "lm") {
             // Eigen backend, matching operon_gp/operon_nsgp/operon_enum
             // (all hardcode OptimizerType::Eigen) - not the class template's
             // own default (Tiny), so "lm" means the same thing everywhere.
-            opt = std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch, Operon::OptimizerType::Eigen>>(dtable, problem);
-        } else if (optimizer == "lbfgs") {
+            return std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch, Operon::OptimizerType::Eigen>>(dtable, problem);
+        }
+        if (optimizer == "lbfgs") {
             if (likelihood == "gaussian") {
-                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
-            } else if (likelihood == "poisson") {
-                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
+            }
+            if (likelihood == "poisson") {
+                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
             }
         } else if (optimizer == "sgd") {
             if (likelihood == "gaussian") {
-                opt = std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
-            } else if (likelihood == "poisson") {
-                opt = std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
             }
+            if (likelihood == "poisson") {
+                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
+            }
+        } else {
+            return tl::unexpected(Operon::Cli::Error{
+                Operon::Cli::ErrorCode::Configuration,
+                "optimizer",
+                fmt::format("unknown optimizer '{}'", optimizer)});
         }
-        return opt;
+        return tl::unexpected(Operon::Cli::Error{
+            Operon::Cli::ErrorCode::Configuration,
+            "likelihood",
+            fmt::format("optimizer '{}' does not support likelihood '{}'", optimizer, likelihood)});
     }
 
     auto FitScale(cxxopts::ParseResult const& result,
@@ -225,11 +237,16 @@ namespace {
         // optimized coefficients only take effect once applied back via
         // SetCoefficients, which is what makes this refit actually visible in
         // the stats below, unlike before.
-        auto opt = ParseOptimizer(&dtable, &problem, result["optimizer"].as<std::string>(), result["likelihood"].as<std::string>());
-        opt->SetIterations(result["iterations"].as<int>());
+        auto selectedOptimizer = ParseOptimizer(
+            &dtable, &problem,
+            result["optimizer"].as<std::string>(),
+            result["likelihood"].as<std::string>());
+        if (!selectedOptimizer) { return tl::unexpected(std::move(selectedOptimizer.error())); }
+        auto optimizer = std::move(*selectedOptimizer);
+        optimizer->SetIterations(result["iterations"].as<int>());
         auto summary = Operon::FitOutcome{tl::unexpected(Operon::FitFailure{})};
-        if (opt->Iterations() > 0) {
-            summary = opt->Optimize(rng, model);
+        if (optimizer->Iterations() > 0) {
+            summary = optimizer->Optimize(rng, model);
             if (summary.has_value()) { model.SetCoefficients(summary->FinalParameters); }
         }
 
@@ -371,7 +388,7 @@ namespace {
             }
         }
 
-        if (opt->Iterations() > 0) {
+        if (optimizer->Iterations() > 0) {
             auto const& diag = Operon::Diagnostics(summary);
             if (summary.has_value()) {
                 fmt::print("optimized_model {:infix:roundtrip}\n", Operon::Fmt::WithNames{model, ds});
