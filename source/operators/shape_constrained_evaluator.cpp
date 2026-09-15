@@ -286,12 +286,8 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
     // reject an otherwise valid constant integer power. Fall back to the
     // interval evaluator, which can conservatively represent those cases.
     auto const IntervalBound = [&]() -> BoundResult {
-        try {
-            IntervalEvaluator<Operon::Scalar> ie(&tree, IntervalEvaluator<Operon::Scalar>::DomainMap{ae.Domains()});
-            return ie.Evaluate(tree.GetCoefficients());
-        } catch (std::exception const& e) {
-            return tl::unexpected(std::string(e.what()));
-        }
+        IntervalEvaluator<Operon::Scalar> ie(&tree, IntervalEvaluator<Operon::Scalar>::DomainMap{ae.Domains()});
+        return ie.TryEvaluate(tree.GetCoefficients());
     };
 
     if (HasFlag(mode, ShapeBoundMode::Interval)) {
@@ -301,9 +297,15 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
         return IntervalBound();
     }
 
-    try {
-        ae.SetTree(&tree);
-        auto affine = ae.Evaluate(tree.GetCoefficients());
+    ae.SetTree(&tree);
+    auto affine = ae.TryEvaluate(tree.GetCoefficients());
+    if (!affine) {
+        auto bound = IntervalBound();
+        if (bound) { return bound; }
+        return tl::unexpected(fmt::format(
+            "affine evaluation failed: {}; interval fallback failed: {}",
+            affine.error(), bound.error()));
+    }
         // Catastrophic cancellation can make this float32 enclosure unsound:
         // an intermediate center orders of magnitude larger than the result
         // implies a rounding-error floor exceeding the tracked radius, so the
@@ -317,15 +319,15 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
         // structurally sound, not an underestimate -- comparing floor > k*0 is
         // degenerate (any nonzero floor fires), so only judge forms that track
         // real variable uncertainty.
-        auto const r = affine.radius();
+        auto const r = affine->radius();
         if (r > 0 && impliedErrorFloor > opts.AffineIllConditionedThreshold * r) {
             auto bound = IntervalBound();
             if (bound) { return bound; }
             return tl::unexpected(fmt::format(
                 "ill-conditioned: intermediate magnitude implies rounding error {} exceeds result radius {}; interval fallback failed: {}",
-                impliedErrorFloor, affine.radius(), bound.error()));
+                impliedErrorFloor, affine->radius(), bound.error()));
         }
-        auto const bound = affine.to_interval();
+        auto const bound = affine->to_interval();
         if (!std::isfinite(bound.inf()) || !std::isfinite(bound.sup())) {
             return IntervalBound();
         }
@@ -355,11 +357,6 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
             if (lo <= hi) { return Interval(lo, hi); }
         }
         return bound;
-    } catch (std::exception const& e) {
-        auto bound = IntervalBound();
-        if (bound) { return bound; }
-        return tl::unexpected(fmt::format("affine evaluation failed: {}; interval fallback failed: {}", e.what(), bound.error()));
-    }
 }
 
 // Bounded-depth domain bisection, used only as a last resort when
@@ -475,12 +472,8 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, Shape
 auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
     auto const IntervalBound = [&]() -> BoundResult {
-        try {
-            IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
-            return ie.Evaluate(tree.GetCoefficients());
-        } catch (std::exception const& e) {
-            return tl::unexpected(std::string(e.what()));
-        }
+        IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
+        return ie.TryEvaluate(tree.GetCoefficients());
     };
 
     auto direct = HasFlag(mode, ShapeBoundMode::Bisected)
