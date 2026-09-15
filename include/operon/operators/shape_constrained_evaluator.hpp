@@ -9,22 +9,25 @@
 #include "operon/hash/zobrist.hpp"
 #include "operon/operators/evaluator.hpp"
 #include <optional>
+#include <stdexcept>
 #include <string>
 
-namespace tf { class Executor; } // NOLINT(readability-identifier-naming) -- Taskflow's own namespace
+namespace tf {
+class Executor;
+} // NOLINT(readability-identifier-naming) -- Taskflow's own namespace
 
 namespace Operon {
 
 struct ShapeConstraintMeasurement {
-    bool Certified{false};
-    std::optional<std::pair<Operon::Scalar, Operon::Scalar>> Bound{};
-    Operon::Scalar Violation{0};
+    bool Certified { false };
+    std::optional<std::pair<Operon::Scalar, Operon::Scalar>> Bound {};
+    Operon::Scalar Violation { 0 };
 };
 
 struct ShapeConstraintMeasurementSummary {
-    bool Feasible{true};
-    Operon::Scalar Violation{0};
-    Operon::Vector<ShapeConstraintMeasurement> Measurements{};
+    bool Feasible { true };
+    Operon::Scalar Violation { 0 };
+    Operon::Vector<ShapeConstraintMeasurement> Measurements {};
 };
 
 enum class ShapeConstraintEnforcement : unsigned {
@@ -51,9 +54,9 @@ enum class ShapeConstraintEnforcement : unsigned {
 }
 
 struct ShapeConstraintPolicy {
-    ShapeConstraintEnforcement Enforcement{ShapeConstraintEnforcement::HardReject};
-    Operon::Scalar UnknownViolation{1};
-    Operon::Scalar PenaltyWeight{1};
+    ShapeConstraintEnforcement Enforcement { ShapeConstraintEnforcement::HardReject };
+    Operon::Scalar UnknownViolation { 1 };
+    Operon::Scalar PenaltyWeight { 1 };
 };
 
 // Backend(s) TryAffineBound uses to bound a constraint. Combined (default)
@@ -90,17 +93,17 @@ struct ShapeBoundOptions {
     // default, not derived from SIMD width: depth is recursion levels, not
     // leaf count (2^depth leaves), so tying it to hardware lane count would
     // square the leaf count on a wider target instead of scaling with it.
-    int BisectionDepth{3};
+    int BisectionDepth { 3 };
     // Affine-mode fallback: max bisection depth when the direct
     // affine/interval intersection fails on the whole domain. 0 disables it.
-    int AffineBisectionMaxDepth{0};
+    int AffineBisectionMaxDepth { 0 };
     // Flags an affine bound as uncertified when the float32 rounding-error
     // floor implied by the largest intermediate center exceeds this many
     // times the final radius.
-    Operon::Scalar AffineIllConditionedThreshold{4};
+    Operon::Scalar AffineIllConditionedThreshold { 4 };
     // Opt-in TightenRange rescue path for bounds the direct/bisection paths
     // couldn't certify.
-    bool UseTightenRangeFallback{false};
+    bool UseTightenRangeFallback { false };
 };
 
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
@@ -167,7 +170,13 @@ public:
     void SetBoundMode(ShapeBoundMode mode);
 
     [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
-    void SetBoundOptions(ShapeBoundOptions options) noexcept { boundOptions_ = options; }
+    void SetBoundOptions(ShapeBoundOptions options)
+    {
+        if (options.BisectionDepth < 0 || options.BisectionDepth > 20) {
+            throw std::invalid_argument("BisectionDepth must be in [0, 20]");
+        }
+        boundOptions_ = options;
+    }
 
     // The tf::Executor Prepare() uses to parallelize its population-wide
     // Feasible() pre-warm -- the SAME executor the caller's GP/NSGA2 loop
@@ -242,7 +251,7 @@ public:
     // there just computes and stores the result under this tree's own
     // content hash, same as any other miss).
     [[nodiscard]] auto Feasible(Operon::Tree const& tree) const -> bool;
-    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation = Operon::Scalar{1}) const -> ShapeConstraintMeasurementSummary;
+    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation = Operon::Scalar { 1 }) const -> ShapeConstraintMeasurementSummary;
 
 private:
     gsl::not_null<EvaluatorBase const*> evaluator_;
@@ -254,16 +263,16 @@ private:
     // does string lookups on the hot path.
     Operon::Vector<Operon::Hash> constraintVarHash_;
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
-    double worstValue_{1.0};
-    ShapeBoundMode boundMode_{ShapeBoundMode::Combined};
-    ShapeBoundOptions boundOptions_{};
+    double worstValue_ { 1.0 };
+    ShapeBoundMode boundMode_ { ShapeBoundMode::Combined };
+    ShapeBoundOptions boundOptions_ {};
     // Non-owning; set via SetExecutor(). nullptr means Prepare() runs
     // sequentially -- see Prepare()'s doc comment.
-    tf::Executor* taskExecutor_{nullptr};
-    mutable std::atomic_size_t violations_{0};
+    tf::Executor* taskExecutor_ { nullptr };
+    mutable std::atomic_size_t violations_ { 0 };
 
     struct FeasibleData {
-        ShapeConstraintMeasurementSummary Value{};
+        ShapeConstraintMeasurementSummary Value {};
     };
     mutable ZobristCache<CacheEntry<FeasibleData>> feasibleCache_;
 };
@@ -274,7 +283,7 @@ class OPERON_EXPORT ShapeViolationEvaluator final : public EvaluatorBase {
 public:
     ShapeViolationEvaluator(gsl::not_null<Operon::Problem const*> problem,
         gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints,
-        Operon::Scalar weight = Operon::Scalar{1}, Operon::Scalar unknownViolation = Operon::Scalar{1});
+        Operon::Scalar weight = Operon::Scalar { 1 }, Operon::Scalar unknownViolation = Operon::Scalar { 1 });
 
     [[nodiscard]] auto Weight() const noexcept -> Operon::Scalar { return weight_; }
     [[nodiscard]] auto UnknownViolation() const noexcept -> Operon::Scalar { return unknownViolation_; }
@@ -300,14 +309,14 @@ private:
     ShapeConstraintSet constraints_;
     Operon::Vector<Operon::Hash> constraintVarHash_;
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
-    Operon::Scalar weight_{1};
-    Operon::Scalar unknownViolation_{1};
-    ShapeBoundMode boundMode_{ShapeBoundMode::Combined};
-    ShapeBoundOptions boundOptions_{};
-    tf::Executor* taskExecutor_{nullptr};
+    Operon::Scalar weight_ { 1 };
+    Operon::Scalar unknownViolation_ { 1 };
+    ShapeBoundMode boundMode_ { ShapeBoundMode::Combined };
+    ShapeBoundOptions boundOptions_ {};
+    tf::Executor* taskExecutor_ { nullptr };
 
     struct MeasurementData {
-        ShapeConstraintMeasurementSummary Value{};
+        ShapeConstraintMeasurementSummary Value {};
     };
     mutable ZobristCache<CacheEntry<MeasurementData>> measurementCache_;
 };

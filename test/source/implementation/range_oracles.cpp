@@ -48,7 +48,6 @@ namespace {
         std::vector<Domain> domains;
         Bounds expected;
         S tolerance;
-        std::size_t samplesPerAxis;
     };
 
     [[nodiscard]] auto CorpusPath() -> std::string
@@ -81,10 +80,10 @@ namespace {
             }
             auto const fields = Split(line);
             if (fields.front() == "oracle") {
-                if (fields.size() != 7) {
+                if (fields.size() != 6) {
                     throw std::runtime_error("malformed range oracle record");
                 }
-                oracles.push_back({ fields[1], fields[2], {}, { Number(fields[3]), Number(fields[4]) }, Number(fields[5]), std::stoull(fields[6]) });
+                oracles.push_back({ fields[1], fields[2], {}, { Number(fields[3]), Number(fields[4]) }, Number(fields[5]) });
             } else if (fields.front() == "domain") {
                 if (fields.size() != 5) {
                     throw std::runtime_error("malformed range oracle domain");

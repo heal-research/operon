@@ -78,7 +78,7 @@ add_executable(operon_test
     source/implementation/composed_function.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
-target_compile_definitions(operon_test PRIVATE OPERON_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_compile_definitions(operon_test PRIVATE OPERON_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
 if(vdt_FOUND)
     target_link_libraries(operon_test PRIVATE vdt::vdt)
     target_compile_definitions(operon_test PRIVATE OPERON_HAVE_VDT)
