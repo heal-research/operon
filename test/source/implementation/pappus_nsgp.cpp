@@ -30,8 +30,8 @@
 namespace Operon::Test {
 
 using S  = Operon::Scalar;
-using IE = IntervalEvaluator;
-using AE = AffineEvaluator;
+using IE = IntervalEvaluator<S>;
+using AE = AffineEvaluator<S>;
 
 // ---------------------------------------------------------------------------
 // Phase 9: NSGA2 integration — full evolutionary run, Pareto-front bounds check

@@ -49,7 +49,10 @@ namespace {
 
 using DT = Operon::ScalarDispatch;
 using Interp = Operon::Interpreter<Operon::Scalar, DT>;
-using IE = Operon::IntervalEvaluator;
+// IntervalEvaluator is a template over the scalar type since PR #201
+// (defaulting to Operon::Scalar); IE must name the instantiation, not the
+// template, for IE::DomainMap below to be well-formed.
+using IE = Operon::IntervalEvaluator<Operon::Scalar>;
 
 auto MakeDomains(Operon::Dataset const& ds, Operon::Range range, std::vector<Operon::Hash> const& inputs, float shrink = 1.0F) -> IE::DomainMap
 {

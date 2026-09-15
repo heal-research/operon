@@ -41,29 +41,38 @@ namespace Operon {
 
 // Registered affine callbacks for unary/binary built-in or user-defined
 // functions, keyed by Node::HashValue. Exported `.cpp`-backed singletons
-// (see affine_evaluator.cpp) — see interval_evaluator.hpp's matching comment
-// for the full rationale (no registry parameter threaded through the
-// constructor/Evaluate(), plain non-locking HashRegistry since all writes
-// finish before Evaluate() is first called from a GP worker thread). Only
-// real difference from IntervalUnaryFn/IntervalBinaryFn: every call here
-// takes the shared affine_context first — the context-threaded finalize
-// overload of PAPPUS_DEFINE_UNARY_OP is the only one either evaluator ever
-// calls (the bare affine_form<T>-only overload, without a context, is never
-// used here).
-using AffineUnaryFn  = std::function<pappus::affine_form<Operon::Scalar>(
-    pappus::ops::affine_context<Operon::Scalar> const&, pappus::affine_form<Operon::Scalar> const&)>;
-using AffineBinaryFn = std::function<pappus::affine_form<Operon::Scalar>(
-    pappus::ops::affine_context<Operon::Scalar> const&,
-    pappus::affine_form<Operon::Scalar> const&, pappus::affine_form<Operon::Scalar> const&)>;
+// (see affine_evaluator.cpp, explicitly instantiated for `Operon::Scalar` —
+// one instance per T, guaranteed shared across shared-library boundaries
+// the way the previous non-template exported functions were) — see
+// interval_evaluator.hpp's matching comment for the full rationale (no
+// registry parameter threaded through the constructor/Evaluate(), plain
+// non-locking HashRegistry since all writes finish before Evaluate() is
+// first called from a GP worker thread). Only real difference from
+// IntervalUnaryFn/IntervalBinaryFn: every call here takes the shared
+// affine_context first — the context-threaded finalize overload of
+// PAPPUS_DEFINE_UNARY_OP is the only one either evaluator ever calls (the
+// bare affine_form<T>-only overload, without a context, is never used
+// here).
+template<typename T> using AffineUnaryFn  = std::function<pappus::affine_form<T>(
+    pappus::ops::affine_context<T> const&, pappus::affine_form<T> const&)>;
+template<typename T> using AffineBinaryFn = std::function<pappus::affine_form<T>(
+    pappus::ops::affine_context<T> const&,
+    pappus::affine_form<T> const&, pappus::affine_form<T> const&)>;
 
-using AffineUnaryRegistry  = HashRegistry<AffineUnaryFn>;
-using AffineBinaryRegistry = HashRegistry<AffineBinaryFn>;
+template<typename T> using AffineUnaryRegistry  = HashRegistry<AffineUnaryFn<T>>;
+template<typename T> using AffineBinaryRegistry = HashRegistry<AffineBinaryFn<T>>;
 
 // Direct registry access — see interval_evaluator.hpp's matching comment.
 // Prefer RegisterUnaryAffine/RegisterBinaryAffine over calling .Register()
 // on the registry returned here directly.
-OPERON_EXPORT auto AffineUnaryRules() -> AffineUnaryRegistry&;
-OPERON_EXPORT auto AffineBinaryRules() -> AffineBinaryRegistry&;
+//
+// Declared as templates, defined and explicitly instantiated per T in
+// affine_evaluator.cpp (currently just `Operon::Scalar`) — see
+// interval_evaluator.hpp's matching comment for why (header-only
+// definitions would give each shared library its own separate singleton
+// per T). Add a new explicit instantiation there before using a new T.
+template<typename T> auto AffineUnaryRules() -> AffineUnaryRegistry<T>&;
+template<typename T> auto AffineBinaryRules() -> AffineBinaryRegistry<T>&;
 
 // Registers the built-in unary/binary affine rules exactly once, mirroring
 // interval_evaluator.hpp's RegisterIntervalBuiltins(). A free function (not
@@ -73,7 +82,7 @@ OPERON_EXPORT auto AffineBinaryRules() -> AffineBinaryRegistry&;
 // RegisterIntervalBuiltins() does: a user hash colliding with a built-in
 // should throw immediately at the user's own call site, not later inside
 // Evaluate().
-OPERON_EXPORT void RegisterAffineBuiltins();
+template<typename T> void RegisterAffineBuiltins();
 
 // Register an affine callback for a unary function (built-in or
 // user-defined), keyed by the same hash the function's Node::HashValue
@@ -82,21 +91,36 @@ OPERON_EXPORT void RegisterAffineBuiltins();
 // today. Throws if `hash` is already registered (write-once) — including
 // when `hash` collides with a built-in, since RegisterAffineBuiltins() above
 // always runs first.
-OPERON_EXPORT void RegisterUnaryAffine(Operon::Hash hash, AffineUnaryFn fn);
+template<typename T> void RegisterUnaryAffine(Operon::Hash hash, AffineUnaryFn<T> fn);
 
 // Register an affine callback for a binary function. See
 // RegisterUnaryAffine for the miss-behavior and built-in-collision notes.
-OPERON_EXPORT void RegisterBinaryAffine(Operon::Hash hash, AffineBinaryFn fn);
+template<typename T> void RegisterBinaryAffine(Operon::Hash hash, AffineBinaryFn<T> fn);
 
 // Query whether an affine callback is registered for `hash` (built-in or
 // user-defined), forcing built-in registration first. See
 // HasUnaryInterval/HasBinaryInterval for the coverage-check use case.
-OPERON_EXPORT auto HasUnaryAffine(Operon::Hash hash) -> bool;
-OPERON_EXPORT auto HasBinaryAffine(Operon::Hash hash) -> bool;
+template<typename T> auto HasUnaryAffine(Operon::Hash hash) -> bool;
+template<typename T> auto HasBinaryAffine(Operon::Hash hash) -> bool;
+
+extern template auto AffineUnaryRules<Operon::Scalar>() -> AffineUnaryRegistry<Operon::Scalar>&;
+extern template auto AffineBinaryRules<Operon::Scalar>() -> AffineBinaryRegistry<Operon::Scalar>&;
+extern template void RegisterAffineBuiltins<Operon::Scalar>();
+extern template void RegisterUnaryAffine<Operon::Scalar>(Operon::Hash, AffineUnaryFn<Operon::Scalar>);
+extern template void RegisterBinaryAffine<Operon::Scalar>(Operon::Hash, AffineBinaryFn<Operon::Scalar>);
+extern template auto HasUnaryAffine<Operon::Scalar>(Operon::Hash) -> bool;
+extern template auto HasBinaryAffine<Operon::Scalar>(Operon::Hash) -> bool;
 
 // Forward affine-arithmetic bounds for an Operon tree over a single input
 // domain. Mirrors `IntervalEvaluator` but every `affine_form` shares one
-// `pappus::ops::affine_context<Operon::Scalar>` owned by this evaluator.
+// `pappus::ops::affine_context<T>` owned by this evaluator.
+//
+// Templated on the scalar type T (default `Operon::Scalar`), matching
+// `IntervalEvaluator<T = Operon::Scalar>`'s convention. Only `T =
+// Operon::Scalar` is usable today: the registry-backed ops
+// (RegisterAffineBuiltins and friends, above) are only instantiated for
+// it. A new T needs a matching explicit instantiation added in
+// affine_evaluator.cpp first.
 //
 // Domain-error policy: `affine_form::inv()`, `log()`, `log1p()`, and `sqrt()`
 // all return `invalid()` -- a NaN-poisoned form (see `affine_form::invalid()`)
@@ -120,9 +144,10 @@ OPERON_EXPORT auto HasBinaryAffine(Operon::Hash hash) -> bool;
 // Evaluate() calls are composed, which varies per GP individual. Expose it only
 // as a per-instance constructor argument. Set a finite budget only after
 // profiling confirms term growth is a bottleneck (TermCount() helps measure).
+template<typename T = Operon::Scalar>
 class AffineEvaluator {
 public:
-    using Scalar = Operon::Scalar;
+    using Scalar = T;
     using Affine = pappus::affine_form<Scalar>;
     using Interval = pappus::interval<Scalar>;
     using Domain = std::pair<Scalar, Scalar>;
@@ -170,7 +195,7 @@ public:
         // indices, causing pappus to merge terms from independent evaluations
         // and produce falsely-narrow enclosures.
 
-        RegisterAffineBuiltins();
+        RegisterAffineBuiltins<Scalar>();
 
         auto const& nodes = tree_->Nodes();
         auto const n = nodes.size();
@@ -360,12 +385,12 @@ public:
                     // arity 0 / arity >= 3 must also fall through to the
                     // throw rather than only guarding against 1-vs-2.
                     if (node.Arity == 1) {
-                        if (auto const* unary = AffineUnaryRules().TryGet(node.HashValue)) {
+                        if (auto const* unary = AffineUnaryRules<Scalar>().TryGet(node.HashValue)) {
                             emit((*unary)(ctx_, primal_[i - 1]), v);
                             break;
                         }
                     } else if (node.Arity == 2) {
-                        if (auto const* binary = AffineBinaryRules().TryGet(node.HashValue)) {
+                        if (auto const* binary = AffineBinaryRules<Scalar>().TryGet(node.HashValue)) {
                             auto const j = static_cast<std::size_t>(i - 1);
                             auto const k = j - (nodes[j].Length + 1);
                             emit((*binary)(ctx_, primal_[j], primal_[k]), v);

@@ -31,7 +31,7 @@ namespace Operon {
 // fitness cache uses).
 class OPERON_EXPORT RangeCache {
 public:
-    using Interval = IntervalEvaluator::Interval;
+    using Interval = IntervalEvaluator<Operon::Scalar>::Interval;
 
     explicit RangeCache(Zobrist const& zobrist);
     ~RangeCache();
@@ -47,12 +47,12 @@ public:
     // callers normally don't need to pass this.
     [[nodiscard]] auto TryGet(
         Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
-        IntervalEvaluator::DomainMap const& domains, Interval& out, Operon::Hash variant = 0
+        IntervalEvaluator<Operon::Scalar>::DomainMap const& domains, Interval& out, Operon::Hash variant = 0
     ) const -> bool;
 
     auto Insert(
         Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
-        IntervalEvaluator::DomainMap const& domains, Interval const& val, Operon::Hash variant = 0
+        IntervalEvaluator<Operon::Scalar>::DomainMap const& domains, Interval const& val, Operon::Hash variant = 0
     ) -> void;
 
     [[nodiscard]] auto Size() const -> std::size_t;
@@ -63,7 +63,7 @@ private:
 
     [[nodiscard]] auto ComputeKey(
         Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
-        IntervalEvaluator::DomainMap const& domains, Operon::Hash variant
+        IntervalEvaluator<Operon::Scalar>::DomainMap const& domains, Operon::Hash variant
     ) const -> Operon::Hash;
 
     gsl::not_null<Zobrist const*> zobrist_;
@@ -86,10 +86,10 @@ private:
 // `cache`, if supplied, is consulted first and populated on a miss.
 OPERON_EXPORT auto TightenRange(
     Tree const& tree,
-    IntervalEvaluator::DomainMap const& domains,
+    IntervalEvaluator<Operon::Scalar>::DomainMap const& domains,
     Operon::Span<Operon::Scalar const> coeff,
     RangeCache* cache = nullptr
-) -> IntervalEvaluator::Interval;
+) -> IntervalEvaluator<Operon::Scalar>::Interval;
 
 // Prototype: recursively bisects the domain on the variable whose gradient
 // interval straddles zero the most (sign-ambiguous, where TightenRange is
@@ -105,11 +105,11 @@ OPERON_EXPORT auto TightenRange(
 // sub-box sequences.
 OPERON_EXPORT auto TightenRangeBisected(
     Tree const& tree,
-    IntervalEvaluator::DomainMap domains,
+    IntervalEvaluator<Operon::Scalar>::DomainMap domains,
     Operon::Span<Operon::Scalar const> coeff,
     int maxDepth = 4,
     RangeCache* cache = nullptr
-) -> IntervalEvaluator::Interval;
+) -> IntervalEvaluator<Operon::Scalar>::Interval;
 
 } // namespace Operon
 

@@ -87,10 +87,10 @@ TEST_CASE("Cross-registry coverage: interval/affine registries", "[registry][cov
         auto const hash = static_cast<Operon::Hash>(op);
         bool const expectAbsent = std::ranges::find(deliberatelyAbsent, op) != deliberatelyAbsent.end();
 
-        bool const inInterval = Operon::HasUnaryInterval(hash)
-            || Operon::HasBinaryInterval(hash);
-        bool const inAffine = Operon::HasUnaryAffine(hash)
-            || Operon::HasBinaryAffine(hash);
+        bool const inInterval = Operon::HasUnaryInterval<Operon::Scalar>(hash)
+            || Operon::HasBinaryInterval<Operon::Scalar>(hash);
+        bool const inAffine = Operon::HasUnaryAffine<Operon::Scalar>(hash)
+            || Operon::HasBinaryAffine<Operon::Scalar>(hash);
 
         INFO("op: " << OpName(op));
         CHECK(inInterval == !expectAbsent);
@@ -183,11 +183,11 @@ TEST_CASE("RegisterUnaryInterval/RegisterUnaryAffine: colliding with a built-in 
     auto const logHash = Operon::Hash(BuiltinOp::Log);
 
     CHECK_THROWS_AS(
-        Operon::RegisterUnaryInterval(logHash, [](Operon::IntervalEvaluator::Interval const& v) { return v; }),
+        Operon::RegisterUnaryInterval<Operon::Scalar>(logHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) { return v; }),
         std::invalid_argument);
     CHECK_THROWS_AS(
-        Operon::RegisterUnaryAffine(logHash,
-            [](Operon::AffineEvaluator::Context const&, Operon::AffineEvaluator::Affine const& v) { return v; }),
+        Operon::RegisterUnaryAffine<Operon::Scalar>(logHash,
+            [](Operon::AffineEvaluator<Operon::Scalar>::Context const&, Operon::AffineEvaluator<Operon::Scalar>::Affine const& v) { return v; }),
         std::invalid_argument);
 }
 
@@ -212,21 +212,21 @@ TEST_CASE("IntervalEvaluator: user-registered unary op round-trips and rejects d
     // reference to something with the TEST_CASE's own (shorter) lifetime.
     static bool invoked = false;
     invoked = false;
-    Operon::RegisterUnaryInterval(customHash, [](Operon::IntervalEvaluator::Interval const& v) {
+    Operon::RegisterUnaryInterval<Operon::Scalar>(customHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) {
         invoked = true;
         return v;
     });
-    REQUIRE(Operon::IntervalUnaryRules().Contains(customHash));
+    REQUIRE(Operon::IntervalUnaryRules<Operon::Scalar>().Contains(customHash));
 
     CHECK_THROWS_AS(
-        Operon::RegisterUnaryInterval(customHash, [](Operon::IntervalEvaluator::Interval const& v) { return v; }),
+        Operon::RegisterUnaryInterval<Operon::Scalar>(customHash, [](Operon::IntervalEvaluator<Operon::Scalar>::Interval const& v) { return v; }),
         std::invalid_argument);
 
     auto constNode = Node::Constant(1.0F);
     constNode.Optimize = false;
     Tree const tree = Tree({ constNode, Node::Function(customHash, 1) }).UpdateNodes();
-    Operon::IntervalEvaluator::DomainMap noDomains;
-    static_cast<void>(IntervalEvaluator{&tree, noDomains}.Evaluate({}));
+    Operon::IntervalEvaluator<Operon::Scalar>::DomainMap noDomains;
+    static_cast<void>(IntervalEvaluator<Operon::Scalar>{&tree, noDomains}.Evaluate({}));
     CHECK(invoked);
 }
 
@@ -239,10 +239,10 @@ TEST_CASE("IntervalEvaluator/AffineEvaluator: unmapped op throws at Evaluate()",
     auto constNode = Node::Constant(1.0F);
     constNode.Optimize = false;
     Tree const tree = Tree({ constNode, Node::Function(unmappedHash, 1) }).UpdateNodes();
-    Operon::IntervalEvaluator::DomainMap noDomains;
+    Operon::IntervalEvaluator<Operon::Scalar>::DomainMap noDomains;
 
-    CHECK_THROWS_AS(IntervalEvaluator(&tree, noDomains).Evaluate({}), std::runtime_error);
-    CHECK_THROWS_AS(AffineEvaluator(&tree, noDomains).Evaluate({}), std::runtime_error);
+    CHECK_THROWS_AS(IntervalEvaluator<Operon::Scalar>(&tree, noDomains).Evaluate({}), std::runtime_error);
+    CHECK_THROWS_AS(AffineEvaluator<Operon::Scalar>(&tree, noDomains).Evaluate({}), std::runtime_error);
 }
 
 #ifdef HAVE_ASMJIT

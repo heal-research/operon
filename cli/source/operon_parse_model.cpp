@@ -175,9 +175,9 @@ namespace {
     }
 
     auto BuildDomainMap(Operon::ShapeConstraintSet const& constraints, Operon::Dataset const& ds)
-        -> Operon::IntervalEvaluator::DomainMap
+        -> Operon::IntervalEvaluator<Operon::Scalar>::DomainMap
     {
-        Operon::IntervalEvaluator::DomainMap domains;
+        Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains;
         for (auto const& [name, bound] : constraints.Domains) {
             auto v = ds.GetVariable(name);
             if (!v) { throw std::invalid_argument(fmt::format("domain references unknown variable '{}'", name)); }
@@ -261,7 +261,7 @@ namespace {
 
             bool const tighten = result["tighten-range"].as<bool>();
             bool const sampleCheck = result.contains("sample-check");
-            Operon::IntervalEvaluator::DomainMap const domains = (tighten || sampleCheck) ? BuildDomainMap(*constraints, ds) : Operon::IntervalEvaluator::DomainMap{};
+            Operon::IntervalEvaluator<Operon::Scalar>::DomainMap const domains = (tighten || sampleCheck) ? BuildDomainMap(*constraints, ds) : Operon::IntervalEvaluator<Operon::Scalar>::DomainMap{};
             // Shared across both tighten and sample-check: m.Bound is the
             // scaled bound (TransformBound applies the same fitted linear
             // scaling used to check feasibility), so any raw-tree quantity
@@ -309,7 +309,7 @@ namespace {
                             auto const [lo, hi] = c.Op == Operon::ShapeConstraintOp::Identity
                                 ? scaling->ApplyToValueInterval(tr.inf(), tr.sup())
                                 : scaling->ApplyToDerivativeInterval(tr.inf(), tr.sup());
-                            tr = Operon::IntervalEvaluator::Interval(lo, hi);
+                            tr = Operon::IntervalEvaluator<Operon::Scalar>::Interval(lo, hi);
                         }
                         if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
                             fmt::print(" tightened [{}:{}]", tr.inf(), tr.sup());
