@@ -86,25 +86,20 @@ enum class ShapeBoundMode : unsigned {
 // this file's previous behavior exactly.
 struct ShapeBoundOptions {
     // Interval-only bisection (ShapeBoundMode::Bisected): 2^BisectionDepth
-    // leaves, batched through wide<Operon::Scalar> SIMD evaluation. Each
-    // increment doubles the work; depths >=16 are generally impractical.
-    // depth=3 gives 8 leaves, exactly one AVX2 float batch on this target,
-    // with zero scalar tail.
+    // uniform sub-boxes along the tree's widest-referenced axis. Fixed
+    // default, not derived from SIMD width: depth is recursion levels, not
+    // leaf count (2^depth leaves), so tying it to hardware lane count would
+    // square the leaf count on a wider target instead of scaling with it.
     int BisectionDepth{3};
-    // Affine-mode-only rescue: bisects the domain and re-tries the affine
-    // bound on each half when the direct affine/intersect bound fails.
-    // 0 disables it (default) -- exponential in depth, and only fires on
-    // the already-uncertified path, so it's a real cost only when raised.
+    // Affine-mode fallback: max bisection depth when the direct
+    // affine/interval intersection fails on the whole domain. 0 disables it.
     int AffineBisectionMaxDepth{0};
     // Flags an affine bound as uncertified when the float32 rounding-error
     // floor implied by the largest intermediate center exceeds this many
-    // times the final radius (a pathological cancellation can reach
-    // ~100x; 4 leaves two orders of magnitude of headroom for benign
-    // large-then-small arithmetic while still catching genuine unsoundness).
+    // times the final radius.
     Operon::Scalar AffineIllConditionedThreshold{4};
-    // Affine-mode-only rescue via TightenRange (mean-value form) when the
-    // direct bound fails. Off by default: measured rescue rate on real
-    // shape-constraint problems was negligible next to bisection's.
+    // Opt-in TightenRange rescue path for bounds the direct/bisection paths
+    // couldn't certify.
     bool UseTightenRangeFallback{false};
 };
 
@@ -172,13 +167,7 @@ public:
     void SetBoundMode(ShapeBoundMode mode);
 
     [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
-    // Throws std::invalid_argument if either bisection depth fails
-    // ValidateShapeBoundOptions (negative, or deep enough that the 2^depth
-    // leaf arithmetic stops being exact). Also clears the feasibility
-    // cache: its memo key covers the bound mode but NOT the options, so
-    // entries computed under the previous depths would otherwise keep
-    // answering Feasible() as if those depths were still set.
-    void SetBoundOptions(ShapeBoundOptions options);
+    void SetBoundOptions(ShapeBoundOptions options) noexcept { boundOptions_ = options; }
 
     // The tf::Executor Prepare() uses to parallelize its population-wide
     // Feasible() pre-warm -- the SAME executor the caller's GP/NSGA2 loop
@@ -293,10 +282,7 @@ public:
     // See ShapeConstrainedEvaluator::SetBoundMode -- same validation contract.
     void SetBoundMode(ShapeBoundMode mode);
     [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
-    // See ShapeConstrainedEvaluator::SetBoundOptions -- same validation
-    // contract, and Measure()'s memo key covers the bound mode but not the
-    // options, so the measurement cache is cleared here too.
-    void SetBoundOptions(ShapeBoundOptions options);
+    void SetBoundOptions(ShapeBoundOptions options) noexcept { boundOptions_ = options; }
     [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar;
     [[nodiscard]] auto Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary;
 
