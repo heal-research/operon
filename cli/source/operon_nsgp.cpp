@@ -37,6 +37,7 @@
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
 
+#include "cli_error.hpp"
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
 #include "pareto_front.hpp"
@@ -290,8 +291,10 @@ auto main(int argc, char** argv) -> int
         }, static_cast<Operon::Scalar>(maxLength));
         // Operon::EntropyEvaluator entropyEvaluator(&problem);
 
-        auto shapeConstraints = Operon::LoadShapeConstraints(
+        auto loadedShapeConstraints = Operon::LoadShapeConstraints(
             result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
+        if (!loadedShapeConstraints) { return Operon::Cli::Report(loadedShapeConstraints.error()); }
+        auto shapeConstraints = std::move(*loadedShapeConstraints);
         if (!shapeConstraints && result.count("shape-enforcement") != 0) {
             throw std::invalid_argument("--shape-enforcement requires --shape-constraints-config");
         }

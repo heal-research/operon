@@ -32,6 +32,7 @@
 #include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/optimizer/optimizer.hpp"
 
+#include "cli_error.hpp"
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
 #include "probes_config.hpp"
@@ -245,8 +246,10 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         std::unique_ptr<Operon::ShapeConstrainedEvaluator> shapeConstrainedStorage;
         std::unique_ptr<Operon::ShapeViolationEvaluator> shapeViolationStorage;
         std::unique_ptr<Operon::MultiEvaluator> shapePenaltyAggregateStorage;
-        auto shapeConstraints = Operon::LoadShapeConstraints(
+        auto loadedShapeConstraints = Operon::LoadShapeConstraints(
             result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
+        if (!loadedShapeConstraints) { return Operon::Cli::Report(loadedShapeConstraints.error()); }
+        auto shapeConstraints = std::move(*loadedShapeConstraints);
         if (!shapeConstraints && result.count("shape-enforcement") != 0) {
             throw std::invalid_argument("--shape-enforcement requires --shape-constraints-config");
         }
