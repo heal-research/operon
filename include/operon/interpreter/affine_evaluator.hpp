@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include <tl/expected.hpp>
 
 #include "operon/core/contracts.hpp"
 #include "operon/core/hash_registry.hpp"
@@ -185,7 +186,7 @@ public:
     [[nodiscard]] auto MaxAbsCenter() const noexcept -> Scalar { return maxAbsCenter_; }
 
     // The affine interval enclosure of the root.
-    [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Affine
+    [[nodiscard]] auto TryEvaluate(Operon::Span<Scalar const> coeff) const -> tl::expected<Affine, std::string>
     {
         // The shared noise-symbol counter grows monotonically across Evaluate
         // calls — it is NOT reset. This ensures that forms from different
@@ -199,7 +200,7 @@ public:
 
         auto const& nodes = tree_->Nodes();
         auto const n = nodes.size();
-        if (n == 0) { throw std::runtime_error("AffineEvaluator: empty tree"); }
+        if (n == 0) { return tl::unexpected("AffineEvaluator: empty tree"); }
 
         // affine_form is non-default-constructible (it binds to a context), so
         // we can't resize — clear() preserves capacity and push_back reuses it.
@@ -331,7 +332,7 @@ public:
                 if (cacheIt == variableCache_.end()) {
                     auto it = domains_.find(node.HashValue);
                     if (it == domains_.end()) {
-                        throw std::runtime_error(fmt::format(
+                        return tl::unexpected(fmt::format(
                             "AffineEvaluator: no domain bound for variable hash {}",
                             node.HashValue));
                     }
@@ -397,13 +398,20 @@ public:
                             break;
                         }
                     }
-                    throw std::runtime_error(fmt::format(
+                    return tl::unexpected(fmt::format(
                         "AffineEvaluator: node kind `{}` not yet mapped",
                         node.Name()));
                 }
             }
         }
         return primal_.back();
+    }
+
+    [[nodiscard]] auto Evaluate(Operon::Span<Scalar const> coeff) const -> Affine
+    {
+        auto result = TryEvaluate(coeff);
+        if (!result) { throw std::runtime_error(result.error()); }
+        return std::move(*result);
     }
 
 private:
