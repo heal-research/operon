@@ -28,6 +28,7 @@
 #include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
 #include "shape_constraints_config.hpp"
+#include "cli_error.hpp"
 
 #include <cxxopts.hpp>
 #include <scn/scan.h>
@@ -135,11 +136,11 @@ namespace {
     // tree_diff tests) -- not exported from that translation unit, and this
     // is a ~6-line utility, so a local copy is cheaper than exporting a
     // private implementation detail across a module boundary for one caller.
-    constexpr std::size_t kNoGrad = std::numeric_limits<std::size_t>::max();
+    constexpr std::size_t noGrad = std::numeric_limits<std::size_t>::max();
 
     auto SliceToTree(Operon::VariableGradientDag const& dag, std::size_t root) -> std::optional<Operon::Tree>
     {
-        if (root == kNoGrad) { return std::nullopt; }
+        if (root == noGrad) { return std::nullopt; }
         Operon::Vector<Operon::Node> sliced(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
         Operon::Tree t(std::move(sliced));
         t.UpdateNodes();
@@ -373,7 +374,7 @@ namespace {
     }
 } // namespace
 
-auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
+auto Run(int argc, char** argv) -> int
 {
     auto out = ParseOptions(argc, argv);
     if (!out.has_value()) { return EXIT_FAILURE; }
@@ -381,7 +382,14 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     Operon::Dataset ds(result["dataset"].as<std::string>(), /*hasHeader=*/true);
     auto infix = result.unmatched().front();
-    auto model = Operon::InfixParser::Parse(infix, ds);
+    auto parsed = Operon::InfixParser::TryParse(infix, ds);
+    if (!parsed) {
+        return Operon::Cli::Report({
+            Operon::Cli::ErrorCode::Input,
+            "infix expression",
+            std::move(parsed.error().Message)});
+    }
+    auto model = std::move(*parsed);
 
     if (result.contains("dump-tree-json")) {
         auto const path = result["dump-tree-json"].as<std::string>();
@@ -422,4 +430,13 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     }
 
     return EXIT_SUCCESS;
+}
+
+auto main(int argc, char** argv) -> int
+{
+    auto result = Operon::Cli::Invoke(
+        [&] { return Run(argc, argv); },
+        Operon::Cli::ErrorCode::Runtime,
+        "operon_parse_model");
+    return result ? *result : Operon::Cli::Report(result.error());
 }
