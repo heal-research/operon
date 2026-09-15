@@ -159,7 +159,9 @@ namespace {
         // FractionalBayesFactorEvaluator/LikelihoodEvaluator in evaluator.hpp.
         auto estimatedValues = buf.subspan(0, trainingRange.Size());
         auto coeff = tree.GetCoefficients();
-        interpreter.Evaluate(coeff, trainingRange, estimatedValues);
+        if (!interpreter.TryEvaluate(coeff, trainingRange, estimatedValues)) {
+            return typename EvaluatorBase::ReturnType{EvaluatorBase::ErrMax};
+        }
 
         Operon::Scalar fit{};
         if (skipNonFinite_) [[unlikely]] {

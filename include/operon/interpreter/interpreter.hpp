@@ -115,6 +115,29 @@ struct Interpreter : public InterpreterBase<T> {
         }
     }
 
+    [[nodiscard]] auto TryEvaluate(Operon::Span<T const> coeff, Operon::Range range,
+                                   Operon::Span<T> result) const
+        -> tl::expected<void, InterpreterError>
+    {
+        if (context_.empty() || range_ != range) {
+            auto bound = TryBindTree(range);
+            if (!bound) { return tl::unexpected(std::move(bound.error())); }
+        }
+        UpdateCoefficients(coeff);
+
+        auto const len{ static_cast<int64_t>(range.Size()) };
+        constexpr int64_t S{ BatchSize };
+        auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
+        for (auto row = 0L; row < len; row += S) {
+            ForwardPass(range, row, /*trace=*/false);
+            if (std::ssize(result) == len) {
+                auto const rem = std::min(S, len - row);
+                std::ranges::copy(std::span(ptr, rem), result.data() + row);
+            }
+        }
+        return {};
+    }
+
     auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> Operon::Vector<T> final {
         Operon::Vector<T> res(range.Size());
         this->Evaluate(coeff, range, {res.data(), res.size()});
