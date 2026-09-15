@@ -376,7 +376,10 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         if (warmStart && result.contains("probes-config")) {
             fmt::print(stderr, "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior instrumentation history at any reused output path\n");
         }
-        auto probes = Operon::LoadProbeConfig(result.contains("probes-config") ? result["probes-config"].as<std::string>() : std::string{});
+        auto loadedProbes = Operon::LoadProbeConfig(
+            result.contains("probes-config") ? result["probes-config"].as<std::string>() : std::string{});
+        if (!loadedProbes) { return Operon::Cli::Report(loadedProbes.error()); }
+        auto probes = std::move(*loadedProbes);
         gp.Run(executor, random, [&]() -> bool {
             reporter(executor, gp);
             if (probes) { (*probes)(gp); }
