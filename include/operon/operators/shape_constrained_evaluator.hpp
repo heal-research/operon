@@ -105,6 +105,13 @@ struct ShapeBoundOptions {
     // couldn't certify.
     bool UseTightenRangeFallback { false };
 };
+inline void ValidateShapeBoundOptions(ShapeBoundOptions const& options)
+{
+    if (options.BisectionDepth < 0 || options.BisectionDepth > 20
+        || options.AffineBisectionMaxDepth < 0 || options.AffineBisectionMaxDepth > 20) {
+        throw std::invalid_argument("bisection depths must be in [0, 20]");
+    }
+}
 
 [[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
@@ -172,10 +179,9 @@ public:
     [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
     void SetBoundOptions(ShapeBoundOptions options)
     {
-        if (options.BisectionDepth < 0 || options.BisectionDepth > 20) {
-            throw std::invalid_argument("BisectionDepth must be in [0, 20]");
-        }
+        ValidateShapeBoundOptions(options);
         boundOptions_ = options;
+        feasibleCache_.Clear();
     }
 
     // The tf::Executor Prepare() uses to parallelize its population-wide
@@ -291,7 +297,12 @@ public:
     // See ShapeConstrainedEvaluator::SetBoundMode -- same validation contract.
     void SetBoundMode(ShapeBoundMode mode);
     [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
-    void SetBoundOptions(ShapeBoundOptions options) noexcept { boundOptions_ = options; }
+    void SetBoundOptions(ShapeBoundOptions options)
+    {
+        ValidateShapeBoundOptions(options);
+        boundOptions_ = options;
+        measurementCache_.Clear();
+    }
     [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar;
     [[nodiscard]] auto Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary;
 
