@@ -447,7 +447,7 @@ TEST_CASE("Weighted parameter optimization", "[optimizer]")
 
         REQUIRE(summaryZeroed->FinalParameters.size() == summaryOnes->FinalParameters.size());
         for (auto i = 0UL; i < summaryZeroed->FinalParameters.size(); ++i) {
-            CHECK_THAT(summaryZeroed->FinalParameters[i], Catch::Matchers::WithinRel(summaryOnes->FinalParameters[i], 1e-5F));
+            CHECK_THAT(summaryZeroed->FinalParameters[i], Catch::Matchers::WithinRel(summaryOnes->FinalParameters[i], static_cast<Operon::Scalar>(1e-5)));
         }
         CHECK_THAT(static_cast<double>(summaryZeroed->FinalCost), Catch::Matchers::WithinRel(static_cast<double>(summaryOnes->FinalCost), 1e-5));
     }
