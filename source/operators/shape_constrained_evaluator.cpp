@@ -68,195 +68,21 @@ auto IsFiniteBound(BoundResult const& b) -> bool
     return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
 }
 
-// Upper bound for both bisection-depth knobs, enforced by
-// ValidateShapeBoundOptions: the interval bisection's packed leaf
-// endpoints are computed as lo + idx * fl(diam/2^depth) in
-// Operon::Scalar, which stays exactly representable only while every leaf
-// index up to 2^depth fits the scalar's mantissa -- 24 bits in the
-// tightest supported precision (float). The affine knob's midpoint split
-// is exact at any depth, but its sub-box count grows as 2^depth the same
-// way, so one cap governs both.
-constexpr int MaxBisectionDepth = 24;
 
-// Shared by both SetBoundOptions setters (ShapeConstrainedEvaluator and
-// ShapeViolationEvaluator), mirroring ValidateShapeBoundMode's role for
-// SetBoundMode: a programmatically-constructed options struct is held to
-// the same contract as the documented defaults instead of failing later
-// deep inside the bound machinery.
-auto ValidateShapeBoundOptions(ShapeBoundOptions const& opts) -> std::optional<std::string>
-{
-    if (opts.BisectionDepth < 0 || opts.BisectionDepth > MaxBisectionDepth) {
-        return fmt::format("shape-bound-options: BisectionDepth must be in [0, {}]", MaxBisectionDepth);
-    }
-    if (opts.AffineBisectionMaxDepth < 0 || opts.AffineBisectionMaxDepth > MaxBisectionDepth) {
-        return fmt::format("shape-bound-options: AffineBisectionMaxDepth must be in [0, {}]", MaxBisectionDepth);
-    }
-    return std::nullopt;
-}
 
-// The wide registry intentionally contains built-ins only. Check every
-// structural failure that TryEvaluate can report before creating a wide
-// object, so a composed or scalar-only user rule takes the direct path.
-auto SupportsWideIntervalEvaluation(
-    Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom
-) -> bool
-{
-    using WScalar = eve::wide<Operon::Scalar>;
-    RegisterIntervalBuiltins<WScalar>();
-
-    if (tree.Nodes().empty()) { return false; }
-    for (auto const& node : tree.Nodes()) {
-        if (node.Type == NodeType::Variable && !dom.contains(node.HashValue)) { return false; }
-        if (node.Type != NodeType::Function) { continue; }
-
-        switch (node.HashValue) {
-        case Operon::Hash(BuiltinOp::Add):
-        case Operon::Hash(BuiltinOp::Mul):
-        case Operon::Hash(BuiltinOp::Sub):
-        case Operon::Hash(BuiltinOp::Div):
-        case Operon::Hash(BuiltinOp::Fmin):
-        case Operon::Hash(BuiltinOp::Fmax):
-            continue;
-        case Operon::Hash(BuiltinOp::Abs):
-        case Operon::Hash(BuiltinOp::Acos):
-        case Operon::Hash(BuiltinOp::Asin):
-        case Operon::Hash(BuiltinOp::Atan):
-        case Operon::Hash(BuiltinOp::Cbrt):
-        case Operon::Hash(BuiltinOp::Ceil):
-        case Operon::Hash(BuiltinOp::Cos):
-        case Operon::Hash(BuiltinOp::Cosh):
-        case Operon::Hash(BuiltinOp::Exp):
-        case Operon::Hash(BuiltinOp::Floor):
-        case Operon::Hash(BuiltinOp::Log):
-        case Operon::Hash(BuiltinOp::Logabs):
-        case Operon::Hash(BuiltinOp::Log1p):
-        case Operon::Hash(BuiltinOp::Sin):
-        case Operon::Hash(BuiltinOp::Sinh):
-        case Operon::Hash(BuiltinOp::Sqrt):
-        case Operon::Hash(BuiltinOp::Sqrtabs):
-        case Operon::Hash(BuiltinOp::Tan):
-        case Operon::Hash(BuiltinOp::Tanh):
-        case Operon::Hash(BuiltinOp::Square):
-            if (node.Arity == 1) { continue; }
-            return false;
-        case Operon::Hash(BuiltinOp::Aq):
-        case Operon::Hash(BuiltinOp::Pow):
-        case Operon::Hash(BuiltinOp::Powabs):
-            if (node.Arity == 2) { continue; }
-            return false;
-        default:
-            return false;
-        }
-    }
-    return true;
-}
-
-// Interval-only domain bisection, SIMD-batched: picks the tree's single
-// widest referenced axis, splits it into 2^depth uniform sub-intervals, and
-// evaluates them eve::cardinal_v<wide<Operon::Scalar>> at a time through
-// IntervalEvaluator<wide<Operon::Scalar>>::TryEvaluate() call per batch
-// instead of one scalar evaluation per leaf. Mirrors pappus's
-// batch_evaluate_ia: affine-in-i wide index arithmetic for the packed
-// sub-interval endpoints, lane-wise union via interval<wide<T>>::operator|=,
-// single horizontal reduce (eve::minimum/eve::maximum) at the end, scalar
-// tail for any remainder below a full lane width.
-//
-// The packed sub-interval endpoints form an ENCLOSING partition: each is
-// computed with Pappus's directed-rounding arithmetic, the first leaf's lower
-// endpoint is clamped back up to the box's own inf (it involves no rounding),
-// and the last leaf's upper endpoint is clamped up to the box's own sup.
-// Round-to-nearest evaluation of lo + k*fl(diam/2^depth) can land strictly
-// below the sup at large magnitudes (fl(hi-lo) rounds down), which would leave
-// the top sliver of the domain covered by no leaf at all. The directed lower
-// and upper results overlap at every split point, so the leaves cover
-// [inf, sup].
-//
-// Falls back to the whole-box direct bound if the axis can't be split, if
-// the domain box itself isn't finite, if any evaluated lane or tail leaf is
-// empty (NaN bounds -- an out-of-domain sub-box, e.g. sqrt of an entirely
-// negative slice) or nonfinite (an unbounded slice, e.g. 1/x straddling
-// the split axis), or if preflight finds a tree that the built-in-only wide
-// registry cannot evaluate. In particular, user-defined and composed rules
-// stay on the scalar/direct path. In the empty/nonfinite cases the union
-// over the surviving leaves would NOT be a sound enclosure of the whole box:
-// interval<wide<T>>::operator|= drops empty lanes and the horizontal
-// eve::minimum/eve::maximum reduce drops NaNs, so a poisoned slice would
-// otherwise silently narrow the reported bound instead of widening it.
-// Deliberately noexcept: all ordinary evaluation failures are returned as
-// nullopt, so an SEH unwind can never cross this wide-local frame.
-auto TryWideBisectedIntervalBound(
-    Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
-    Operon::Hash widest, Operon::Scalar widestDiam, int depth
-) noexcept -> std::optional<Interval>
+// Interval-only domain bisection, SIMD-batched: at each level, split the
+// referenced axis whose current cells are widest. This balances a fixed
+// 2^depth leaf budget across dimensions while preserving one global schedule,
+// so every sub-box still follows the same tree and can be evaluated in SIMD.
+// The wide path uses lane-wise union and a single horizontal reduction; a
+// scalar tail handles a partial batch. An unbounded sub-box falls back to the
+// direct whole-box enclosure, which is already sound.
+auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
 {
     using WScalar = eve::wide<Operon::Scalar>;
     constexpr int WSize = static_cast<int>(eve::cardinal_v<WScalar>);
-    auto const domain = dom.find(widest);
-    if (domain == dom.end()) { return std::nullopt; }
-    auto const [lo, hi] = domain->second;
-    if (!std::isfinite(lo) || !std::isfinite(hi)) { return std::nullopt; }
 
-    int const nLeaves = 1 << depth;
-    Operon::Scalar const h = widestDiam / Operon::Scalar(nLeaves);
-    auto const coeff = tree.GetCoefficients();
-    auto acc = IntervalEvaluator<WScalar>::Interval::empty();
-    WScalar const hw(h);
-    WScalar const infw(lo);
-    WScalar const onew(Operon::Scalar{1});
-    WScalar const lastw{Operon::Scalar(nLeaves)};
-    // DomainMap remains scalar-valued. Each lane-specific endpoint is handed
-    // to IntervalEvaluator for one call only, so an EVE wide never enters
-    // container or evaluator-member storage on the affected Windows path.
-    // Built once outside the loop: `dom` already has the correct scalar
-    // domain type, with no per-batch map rebuilding.
-    IntervalEvaluator<WScalar> wie(&tree, dom);
-    int k = 0;
-    for (; k + WSize <= nLeaves; k += WSize) {
-        WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
-        // Match Pappus's batch_evaluate_ia partition, but explicitly direct
-        // both multiplication and addition before clamping the terminal
-        // endpoint to the original domain's sup.
-        auto const lowerOffset = pappus::fp::ropd<pappus::fp::op_mul>(idx, hw);
-        auto const upperOffset = pappus::fp::ropu<pappus::fp::op_mul>(idx + onew, hw);
-        auto leafLo = eve::max(pappus::fp::ropd<pappus::fp::op_add>(infw, lowerOffset), infw);
-        auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(infw, upperOffset);
-        leafHi = eve::if_else(idx + onew == lastw, eve::max(leafHi, WScalar(hi)), leafHi);
-        auto const batch = wie.TryEvaluate(coeff, widest, leafLo, leafHi);
-        if (!batch || !eve::all(eve::is_finite(batch->inf()) && eve::is_finite(batch->sup()))) {
-            return std::nullopt;
-        }
-        acc |= *batch;
-    }
 
-    std::optional<Interval> result;
-    if (k > 0) { result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup())); }
-
-    // Scalar tail for any leaves that didn't fill a full wide batch, using
-    // the same directed arithmetic as the wide path.
-    auto tailDom = dom;
-    for (; k < nLeaves; ++k) {
-        auto const lowerOffset = pappus::fp::ropd<pappus::fp::op_mul>(Operon::Scalar(k), h);
-        auto const upperOffset = pappus::fp::ropu<pappus::fp::op_mul>(Operon::Scalar(k + 1), h);
-        auto leafLo = std::max(pappus::fp::ropd<pappus::fp::op_add>(lo, lowerOffset), lo);
-        auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(lo, upperOffset);
-        if (k + 1 == nLeaves) { leafHi = std::max(leafHi, hi); }
-        tailDom[widest] = { leafLo, leafHi };
-        IntervalEvaluator<Operon::Scalar> ie(&tree, tailDom);
-        auto const seg = ie.TryEvaluate(coeff);
-        if (!seg || !std::isfinite(seg->inf()) || !std::isfinite(seg->sup())) { return std::nullopt; }
-        result = result ? Interval(std::min(result->inf(), seg->inf()), std::max(result->sup(), seg->sup())) : *seg;
-    }
-
-    if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) { return std::nullopt; }
-    return result;
-}
-
-// Interval-only domain bisection, SIMD-batched: picks the tree's single
-// widest referenced axis, splits it into 2^depth uniform sub-intervals, and
-// evaluates them eve::cardinal_v<wide<Operon::Scalar>> at a time. Unsupported
-// scalar-only operations fall back before entering TryWideBisectedIntervalBound.
-auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
-{
     auto const directBound = [&]() -> BoundResult {
         // User-rule exception boundary (see file-top comment).
         try {
@@ -267,22 +93,107 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
         }
     };
 
-    if (depth <= 0 || !SupportsWideIntervalEvaluation(tree, dom)) { return directBound(); }
+    if (depth <= 0) { return directBound(); }
 
-    Operon::Hash widest{};
-    Operon::Scalar widestDiam{-1};
-    bool any = false;
+    std::vector<Operon::Hash> axes;
+    std::vector<Operon::Scalar> widths;
     for (auto const& n : tree.Nodes()) {
-        if (!n.IsVariable()) { continue; }
+        if (!n.IsVariable() || std::ranges::find(axes, n.HashValue) != axes.end()) { continue; }
         auto const it = dom.find(n.HashValue);
         if (it == dom.end()) { continue; }
-        auto const diam = it->second.second - it->second.first;
-        if (diam > widestDiam) { widestDiam = diam; widest = n.HashValue; any = true; }
+        auto const width = it->second.second - it->second.first;
+        if (width <= Operon::Scalar{0}) { continue; }
+        axes.push_back(n.HashValue);
+        widths.push_back(width);
     }
-    if (!any || widestDiam <= Operon::Scalar{0}) { return directBound(); }
+    if (axes.empty()) { return directBound(); }
 
-    auto const bound = TryWideBisectedIntervalBound(tree, dom, widest, widestDiam, depth);
-    return bound ? BoundResult(*bound) : directBound();
+    std::vector<std::size_t> schedule;
+    schedule.reserve(static_cast<std::size_t>(depth));
+    for (int level = 0; level < depth; ++level) {
+        auto selected = std::size_t{0};
+        for (std::size_t axis = 1; axis < axes.size(); ++axis) {
+            if (widths[axis] > widths[selected]) { selected = axis; }
+        }
+        schedule.push_back(selected);
+        widths[selected] /= Operon::Scalar{2};
+    }
+
+    // pappus's wide interval arithmetic is cross-checked against scalar for
+    // one-dimensional uniform segmentation. A multi-axis grid changes the
+    // endpoint pattern per lane; retain scalar evaluation until that wider
+    // pappus operation sequence has its own soundness proof. The schedule and
+    // hull remain identical, and one-axis production bisection keeps the
+    // established SIMD path below.
+    if (axes.size() > 1) {
+        try {
+            int const nLeaves = 1 << depth;
+            std::vector<int> splits(axes.size());
+            for (auto axis : schedule) { ++splits[axis]; }
+            auto const coeff = tree.GetCoefficients();
+            std::optional<Interval> result;
+            for (int k = 0; k < nLeaves; ++k) {
+                auto leafDom = dom;
+                std::vector<int> cells(axes.size());
+                std::vector<int> bits(axes.size());
+                for (std::size_t bit = 0; bit < schedule.size(); ++bit) {
+                    auto const axis = schedule[bit];
+                    cells[axis] |= ((k >> bit) & 1) << bits[axis]++;
+                }
+                for (std::size_t axis = 0; axis < axes.size(); ++axis) {
+                    auto const [lo, hi] = dom.at(axes[axis]);
+                    auto const step = (hi - lo) / Operon::Scalar(std::size_t{1} << splits[axis]);
+                    leafDom[axes[axis]] = { lo + Operon::Scalar(cells[axis]) * step, lo + Operon::Scalar(cells[axis] + 1) * step };
+                }
+                IntervalEvaluator<Operon::Scalar> ie(&tree, leafDom);
+                auto const seg = ie.Evaluate(coeff);
+                result = result ? Interval(std::min(result->inf(), seg.inf()), std::max(result->sup(), seg.sup())) : seg;
+            }
+            return result && std::isfinite(result->inf()) && std::isfinite(result->sup()) ? BoundResult{*result} : directBound();
+        } catch (std::exception const&) {
+            return directBound();
+        }
+    }
+
+    try {
+        int const nLeaves = 1 << depth;
+        auto const widest = axes.front();
+        auto const widestDiam = dom.at(widest).second - dom.at(widest).first;
+        auto const lo = dom.at(widest).first;
+        auto const h = widestDiam / Operon::Scalar(nLeaves);
+        auto const coeff = tree.GetCoefficients();
+        auto acc = IntervalEvaluator<WScalar>::Interval::empty();
+        WScalar const hw(h);
+        WScalar const infw(lo);
+        int k = 0;
+        for (; k + WSize <= nLeaves; k += WSize) {
+            IntervalEvaluator<WScalar>::DomainMap wdom;
+            wdom.reserve(dom.size());
+            for (auto const& [hash, bound] : dom) {
+                if (hash == widest) { continue; }
+                wdom.emplace(hash, IntervalEvaluator<WScalar>::Domain{ WScalar(bound.first), WScalar(bound.second) });
+            }
+            WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
+            wdom.emplace(widest, IntervalEvaluator<WScalar>::Domain{ infw + idx * hw, infw + (idx + WScalar(Operon::Scalar{1})) * hw });
+            IntervalEvaluator<WScalar> wie(&tree, wdom);
+            acc |= wie.Evaluate(coeff);
+        }
+
+        std::optional<Interval> result;
+        if (k > 0) { result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup())); }
+        auto tailDom = dom;
+        for (; k < nLeaves; ++k) {
+            tailDom[widest] = { lo + Operon::Scalar(k) * h, lo + Operon::Scalar(k + 1) * h };
+            IntervalEvaluator<Operon::Scalar> ie(&tree, tailDom);
+            auto const seg = ie.Evaluate(coeff);
+            result = result ? Interval(std::min(result->inf(), seg.inf()), std::max(result->sup(), seg.sup())) : seg;
+        }
+        if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) { return directBound(); }
+        return *result;
+    } catch (std::exception const&) {
+        return directBound();
+    }
+
 }
 
 // The affine+interval intersection path, unchanged from before -- extracted
@@ -374,9 +285,7 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
         // result would mean one of the two is unsound, not that the
         // intersection is empty -- fall back to the affine bound alone
         // rather than construct an inverted interval).
-        if (HasFlag(mode, ShapeBoundMode::Affine)) {
-            return bound;
-        }
+        if (HasFlag(mode, ShapeBoundMode::Affine)) { return bound; }
         if (auto ibound = IntervalBound(); ibound) {
             auto const lo = std::max(bound.inf(), ibound->inf());
             auto const hi = std::min(bound.sup(), ibound->sup());
@@ -401,8 +310,9 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
 // Only fires on the (relatively rare) already-uncertified path, so the
 // exponential blowup with depth is bounded to cases that were already
 // failing outright, not a per-call tax on the common case. Opt-in only
-// (opts.AffineBisectionMaxDepth defaults to 0) until a problem sweep
-// against the corrected logic shows a net win on a given problem.
+// (default off, opts.AffineBisectionMaxDepth) until a problem sweep shows a
+// net win against the corrected widest-axis selection (fixed 2026-08-20 to
+// pick from the tree's own variables, not the evaluator's full domain map).
 auto BisectedDomainBound(Tree const& tree, AffineEvaluator<Operon::Scalar>::DomainMap const& domains, int depth, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
     // Each sub-box evaluator owns a separate noise counter. Combine sub-box
@@ -450,9 +360,9 @@ auto BisectedDomainBound(Tree const& tree, AffineEvaluator<Operon::Scalar>::Doma
 // here at 2 of 1,113,643 attempts (0.00018%), versus bisection's 26,455 of
 // 839,666 (3.15%) on the same cells: TightenRange degrades to the
 // already-failing naive bound on exactly the pathological derivative-slice
-// trees this rescue role invokes it on. Kept (not removed) since it's
-// real, tested infrastructure that costs nothing when unset, but do not
-// expect it to help in this role -- bisection is the effective rescue
+// trees this rescue role invokes it on. Kept opt-in (not removed) since
+// it's real, tested infrastructure that costs nothing when unset, but do
+// not expect it to help in this role -- bisection is the effective rescue
 // mechanism here.
 auto TryAffineBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
@@ -476,8 +386,7 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, Shape
     if (opts.AffineBisectionMaxDepth <= 0) { return direct; }
 
     auto bisected = BisectedDomainBound(tree, ae.Domains(), opts.AffineBisectionMaxDepth, mode, opts);
-    if (IsFiniteBound(bisected)) { return bisected; }
-    return direct;
+    return IsFiniteBound(bisected) ? bisected : direct;
 }
 
 // Interval-only fast path: TryAffineBoundDirect's `HasFlag(mode, Interval)`
@@ -916,6 +825,7 @@ auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) cons
 {
     evaluator_->Prepare(pop);
     feasibleCache_.Clear();
+
     ParallelForPopulation(taskExecutor_, pop, [&](std::size_t i) {
         std::ignore = Feasible(pop[i].Genotype); // populates the cache as a side effect
     });
@@ -935,16 +845,6 @@ auto ShapeConstrainedEvaluator::SetBoundMode(ShapeBoundMode mode) -> void
 {
     if (auto err = ValidateShapeBoundMode(mode)) { throw std::invalid_argument(*err); }
     boundMode_ = mode;
-}
-
-auto ShapeConstrainedEvaluator::SetBoundOptions(ShapeBoundOptions options) -> void
-{
-    if (auto err = ValidateShapeBoundOptions(options)) { throw std::invalid_argument(*err); }
-    boundOptions_ = options;
-    // The memo key Feasible() hashes covers the bound mode but NOT the
-    // options, so entries computed under the previous depths would keep
-    // answering as if those depths were still set.
-    feasibleCache_.Clear();
 }
 
 ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<Operon::Problem const*> problem,
@@ -1003,15 +903,6 @@ auto ShapeViolationEvaluator::SetBoundMode(ShapeBoundMode mode) -> void
 {
     if (auto err = ValidateShapeBoundMode(mode)) { throw std::invalid_argument(*err); }
     boundMode_ = mode;
-}
-
-auto ShapeViolationEvaluator::SetBoundOptions(ShapeBoundOptions options) -> void
-{
-    if (auto err = ValidateShapeBoundOptions(options)) { throw std::invalid_argument(*err); }
-    boundOptions_ = options;
-    // See ShapeConstrainedEvaluator::SetBoundOptions -- Measure()'s memo key
-    // covers the bound mode but not the options.
-    measurementCache_.Clear();
 }
 
 } // namespace Operon

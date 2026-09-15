@@ -753,6 +753,45 @@ TEST_CASE("SetBoundOptions validates bisection depths and invalidates cached mea
     CHECK(static_cast<double>(sve.RawViolation(tree)) == Catch::Approx(0.0).margin(1e-12));
 }
 
+TEST_CASE("ShapeConstrainedEvaluator - balanced bisection resolves multi-axis dependency", "[shape-constraints]")
+{
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{3};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i);
+        data(static_cast<Eigen::Index>(i), 1) = static_cast<Operon::Scalar>(i);
+        data(static_cast<Eigen::Index>(i), 2) = Operon::Scalar{0};
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto tree = InfixParser::Parse("X1 * X2 - X1 * X2", ds);
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X3");
+    problem.SetLinearScalingEnabled(false);
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{0}, Operon::Scalar{10}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{0}, Operon::Scalar{10}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-24}, Operon::Scalar{24}}});
+
+    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    shapeEval.SetBoundOptions({.BisectionDepth = 6});
+    auto const summary = shapeEval.Measure(tree);
+    REQUIRE(summary.Measurements.size() == 1);
+    REQUIRE(summary.Measurements[0].Bound.has_value());
+    auto const [lo, hi] = *summary.Measurements[0].Bound;
+    CHECK(lo <= Operon::Scalar{0});
+    CHECK(hi >= Operon::Scalar{0});
+    CHECK(lo >= Operon::Scalar{-24});
+    CHECK(hi <= Operon::Scalar{24});
+    CHECK(summary.Feasible);
+}
+
 TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraints]")
 {
     Fixture fx;
