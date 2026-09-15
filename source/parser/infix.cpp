@@ -80,17 +80,17 @@ auto ToOperonNode(infix_parser::node const& a) -> Operon::Node
 
 namespace Operon {
 
-auto InfixParser::Parse(std::string_view infix, bool reduce) -> Tree
+auto InfixParser::TryParse(std::string_view infix, bool reduce) -> tl::expected<Tree, InfixParseError>
 {
     auto result = infix_parser::parse(infix);
     if (auto const* err = std::get_if<infix_parser::parse_error>(&result)) {
-        throw std::invalid_argument(fmt::format("parse error at position {}: {}", err->position, err->message));
+        return tl::unexpected(InfixParseError{
+            fmt::format("parse error at position {}: {}", err->position, err->message)});
     }
     auto const& expr = std::get<infix_parser::expression>(result);
 
     Operon::Vector<Operon::Node> nodes;
     nodes.reserve(expr.size());
-
     for (auto const& a : expr) {
         nodes.push_back(ToOperonNode(a));
     }
@@ -101,15 +101,31 @@ auto InfixParser::Parse(std::string_view infix, bool reduce) -> Tree
     return tree;
 }
 
-auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, bool reduce) -> Tree
+auto InfixParser::TryParse(std::string_view infix, Dataset const& dataset, bool reduce) -> tl::expected<Tree, InfixParseError>
 {
-    auto tree = Parse(infix, reduce);
-    for (auto const& node : tree.Nodes()) {
+    auto tree = TryParse(infix, reduce);
+    if (!tree) { return tl::unexpected(tree.error()); }
+    for (auto const& node : tree->Nodes()) {
         if (node.IsVariable() && !dataset.GetVariable(node.HashValue).has_value()) {
-            throw std::invalid_argument(fmt::format("variable with hash {} not found in dataset", node.HashValue));
+            return tl::unexpected(InfixParseError{
+                fmt::format("variable with hash {} not found in dataset", node.HashValue)});
         }
     }
     return tree;
+}
+
+auto InfixParser::Parse(std::string_view infix, bool reduce) -> Tree
+{
+    auto tree = TryParse(infix, reduce);
+    if (!tree) { throw std::invalid_argument(tree.error().Message); }
+    return std::move(*tree);
+}
+
+auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, bool reduce) -> Tree
+{
+    auto tree = TryParse(infix, dataset, reduce);
+    if (!tree) { throw std::invalid_argument(tree.error().Message); }
+    return std::move(*tree);
 }
 
 auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::string const> params) -> Tree

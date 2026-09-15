@@ -28,6 +28,7 @@
 #include "operon/operators/linear_scaling.hpp"
 #include "operon/operators/shape_constrained_evaluator.hpp"
 #include "shape_constraints_config.hpp"
+#include "cli_error.hpp"
 
 #include <cxxopts.hpp>
 #include <scn/scan.h>
@@ -89,28 +90,40 @@ namespace {
         return result;
     }
 
-    auto ParseOptimizer(Operon::ScalarDispatch const* dtable, Operon::Problem const* problem, std::string const& optimizer, std::string const& likelihood) {
-        std::unique_ptr<Operon::OptimizerBase> opt;
-
+    auto ParseOptimizer(Operon::ScalarDispatch const* dtable, Operon::Problem const* problem,
+                        std::string const& optimizer, std::string const& likelihood)
+        -> Operon::Cli::Result<std::unique_ptr<Operon::OptimizerBase>>
+    {
         if (optimizer == "lm") {
             // Eigen backend, matching operon_gp/operon_nsgp/operon_enum
             // (all hardcode OptimizerType::Eigen) - not the class template's
             // own default (Tiny), so "lm" means the same thing everywhere.
-            opt = std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch, Operon::OptimizerType::Eigen>>(dtable, problem);
-        } else if (optimizer == "lbfgs") {
+            return std::make_unique<Operon::LevenbergMarquardtOptimizer<Operon::ScalarDispatch, Operon::OptimizerType::Eigen>>(dtable, problem);
+        }
+        if (optimizer == "lbfgs") {
             if (likelihood == "gaussian") {
-                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
-            } else if (likelihood == "poisson") {
-                opt = std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
+            }
+            if (likelihood == "poisson") {
+                return std::make_unique<Operon::LBFGSOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
             }
         } else if (optimizer == "sgd") {
             if (likelihood == "gaussian") {
-                opt = std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
-            } else if (likelihood == "poisson") {
-                opt = std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
+                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::GaussianLoss<Operon::Scalar>>>(dtable, problem);
             }
+            if (likelihood == "poisson") {
+                return std::make_unique<Operon::SGDOptimizer<Operon::ScalarDispatch, Operon::PoissonLoss<Operon::Scalar>>>(dtable, problem);
+            }
+        } else {
+            return tl::unexpected(Operon::Cli::Error{
+                Operon::Cli::ErrorCode::Configuration,
+                "optimizer",
+                fmt::format("unknown optimizer '{}'", optimizer)});
         }
-        return opt;
+        return tl::unexpected(Operon::Cli::Error{
+            Operon::Cli::ErrorCode::Configuration,
+            "likelihood",
+            fmt::format("optimizer '{}' does not support likelihood '{}'", optimizer, likelihood)});
     }
 
     auto FitScale(cxxopts::ParseResult const& result,
@@ -135,11 +148,11 @@ namespace {
     // tree_diff tests) -- not exported from that translation unit, and this
     // is a ~6-line utility, so a local copy is cheaper than exporting a
     // private implementation detail across a module boundary for one caller.
-    constexpr std::size_t kNoGrad = std::numeric_limits<std::size_t>::max();
+    constexpr std::size_t noGrad = std::numeric_limits<std::size_t>::max();
 
     auto SliceToTree(Operon::VariableGradientDag const& dag, std::size_t root) -> std::optional<Operon::Tree>
     {
-        if (root == kNoGrad) { return std::nullopt; }
+        if (root == noGrad) { return std::nullopt; }
         Operon::Vector<Operon::Node> sliced(dag.Nodes.begin(), dag.Nodes.begin() + static_cast<std::ptrdiff_t>(root) + 1);
         Operon::Tree t(std::move(sliced));
         t.UpdateNodes();
@@ -193,7 +206,7 @@ namespace {
         Operon::ScalarDispatch const& dtable,
         std::string const& format,
         Operon::Tree& model
-    ) -> void
+    ) -> Operon::Cli::Result<void>
     {
         auto tgt = ds.GetValues(result["target"].as<std::string>()).subspan(range.Start(), range.Size());
 
@@ -202,6 +215,18 @@ namespace {
         problem.SetTestRange(range);
         problem.SetTarget(result["target"].as<std::string>());
         problem.SetDefaultInputs();
+        std::optional<Operon::ShapeConstraintSet> constraints;
+        if (result.contains("shape-constraints-config")) {
+            auto loaded = Operon::LoadShapeConstraints(result["shape-constraints-config"].as<std::string>());
+            if (!loaded) { return tl::unexpected(std::move(loaded.error())); }
+            constraints = std::move(*loaded);
+            if (!constraints) {
+                return tl::unexpected(Operon::Cli::Error{
+                    Operon::Cli::ErrorCode::Configuration,
+                    "shape-constraints config",
+                    "empty shape-constraints config path"});
+            }
+        }
         Operon::RandomGenerator rng{0};
 
         // Optionally refit model's coefficients (--iterations > 0) before
@@ -212,11 +237,16 @@ namespace {
         // optimized coefficients only take effect once applied back via
         // SetCoefficients, which is what makes this refit actually visible in
         // the stats below, unlike before.
-        auto opt = ParseOptimizer(&dtable, &problem, result["optimizer"].as<std::string>(), result["likelihood"].as<std::string>());
-        opt->SetIterations(result["iterations"].as<int>());
+        auto selectedOptimizer = ParseOptimizer(
+            &dtable, &problem,
+            result["optimizer"].as<std::string>(),
+            result["likelihood"].as<std::string>());
+        if (!selectedOptimizer) { return tl::unexpected(std::move(selectedOptimizer.error())); }
+        auto optimizer = std::move(*selectedOptimizer);
+        optimizer->SetIterations(result["iterations"].as<int>());
         auto summary = Operon::FitOutcome{tl::unexpected(Operon::FitFailure{})};
-        if (opt->Iterations() > 0) {
-            summary = opt->Optimize(rng, model);
+        if (optimizer->Iterations() > 0) {
+            summary = optimizer->Optimize(rng, model);
             if (summary.has_value()) { model.SetCoefficients(summary->FinalParameters); }
         }
 
@@ -250,9 +280,7 @@ namespace {
         };
         Operon::Reporter<void>::PrintStats(stats, /*printHeader=*/true);
 
-        if (result.contains("shape-constraints-config")) {
-            auto constraints = Operon::LoadShapeConstraints(result["shape-constraints-config"].as<std::string>());
-            if (!constraints) { throw std::runtime_error("empty shape-constraints config path"); }
+        if (constraints) {
             Operon::Evaluator<Operon::ScalarDispatch> eval{&problem, &dtable, Operon::NMSE{}};
             Operon::ShapeConstrainedEvaluator shapeEval{&eval, &dtable, *constraints};
             shapeEval.SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
@@ -360,7 +388,7 @@ namespace {
             }
         }
 
-        if (opt->Iterations() > 0) {
+        if (optimizer->Iterations() > 0) {
             auto const& diag = Operon::Diagnostics(summary);
             if (summary.has_value()) {
                 fmt::print("optimized_model {:infix:roundtrip}\n", Operon::Fmt::WithNames{model, ds});
@@ -370,10 +398,11 @@ namespace {
             fmt::print("initial cost: {}\n", diag.InitialCost);
             fmt::print("final cost: {}\n", diag.FinalCost);
         }
+        return {};
     }
 } // namespace
 
-auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
+auto Run(int argc, char** argv) -> int
 {
     auto out = ParseOptions(argc, argv);
     if (!out.has_value()) { return EXIT_FAILURE; }
@@ -381,7 +410,14 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
 
     Operon::Dataset ds(result["dataset"].as<std::string>(), /*hasHeader=*/true);
     auto infix = result.unmatched().front();
-    auto model = Operon::InfixParser::Parse(infix, ds);
+    auto parsed = Operon::InfixParser::TryParse(infix, ds);
+    if (!parsed) {
+        return Operon::Cli::Report({
+            Operon::Cli::ErrorCode::Input,
+            "infix expression",
+            std::move(parsed.error().Message)});
+    }
+    auto model = std::move(*parsed);
 
     if (result.contains("dump-tree-json")) {
         auto const path = result["dump-tree-json"].as<std::string>();
@@ -410,7 +446,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     }
     std::string const format = result["format"].as<std::string>();
     if (result["target"].count() > 0) {
-        PrintTargetAnalysis(result, ds, range, dtable, format, model);
+        auto analysis = PrintTargetAnalysis(result, ds, range, dtable, format, model);
+        if (!analysis) { return Operon::Cli::Report(analysis.error()); }
     } else {
         using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
         auto est = Interpreter::Evaluate(model, ds, range);
@@ -422,4 +459,13 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     }
 
     return EXIT_SUCCESS;
+}
+
+auto main(int argc, char** argv) -> int
+{
+    auto result = Operon::Cli::Invoke(
+        [&] { return Run(argc, argv); },
+        Operon::Cli::ErrorCode::Runtime,
+        "operon_parse_model");
+    return result ? *result : Operon::Cli::Report(result.error());
 }

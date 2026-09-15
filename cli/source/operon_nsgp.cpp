@@ -37,6 +37,7 @@
 #include "operon/optimizer/optimizer.hpp"
 #include "operon/optimizer/solvers/sgd.hpp"
 
+#include "cli_error.hpp"
 #include "jit_setup.hpp"
 #include "operator_factory.hpp"
 #include "pareto_front.hpp"
@@ -290,8 +291,10 @@ auto main(int argc, char** argv) -> int
         }, static_cast<Operon::Scalar>(maxLength));
         // Operon::EntropyEvaluator entropyEvaluator(&problem);
 
-        auto shapeConstraints = Operon::LoadShapeConstraints(
+        auto loadedShapeConstraints = Operon::LoadShapeConstraints(
             result.contains("shape-constraints-config") ? result["shape-constraints-config"].as<std::string>() : std::string{});
+        if (!loadedShapeConstraints) { return Operon::Cli::Report(loadedShapeConstraints.error()); }
+        auto shapeConstraints = std::move(*loadedShapeConstraints);
         if (!shapeConstraints && result.count("shape-enforcement") != 0) {
             throw std::invalid_argument("--shape-enforcement requires --shape-constraints-config");
         }
@@ -450,7 +453,10 @@ auto main(int argc, char** argv) -> int
         if (warmStart && result.contains("probes-config")) {
             fmt::print(stderr, "warning: --probes-config sinks/traces truncate on start; resuming via --resume discards prior instrumentation history at any reused output path\n");
         }
-        auto probes = Operon::LoadProbeConfig(result.contains("probes-config") ? result["probes-config"].as<std::string>() : std::string{});
+        auto loadedProbes = Operon::LoadProbeConfig(
+            result.contains("probes-config") ? result["probes-config"].as<std::string>() : std::string{});
+        if (!loadedProbes) { return Operon::Cli::Report(loadedProbes.error()); }
+        auto probes = std::move(*loadedProbes);
         gp.Run(executor, random, [&]() -> bool {
             reporter(executor, gp);
             if (probes) { (*probes)(gp); }
