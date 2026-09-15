@@ -66,19 +66,13 @@ auto IsFiniteBound(BoundResult const& b) -> bool
 
 
 
-// Interval-only domain bisection, SIMD-batched: picks the tree's single
-// widest referenced axis, splits it into 2^depth uniform sub-intervals, and
-// evaluates them eve::cardinal_v<wide<Operon::Scalar>> at a time through
-// IntervalEvaluator<wide<Operon::Scalar>> -- one wide Evaluate() call per
-// batch instead of one scalar Evaluate() call per leaf. Mirrors pappus's
-// batch_evaluate_ia: affine-in-i wide index arithmetic for the packed
-// sub-interval endpoints, lane-wise union via interval<wide<T>>::operator|=,
-// single horizontal reduce (eve::minimum/eve::maximum) at the end, scalar
-// tail for any remainder below a full lane width. Falls back to the
-// whole-box direct bound if the axis can't be split, or if the union isn't
-// finite -- an unbounded slice (e.g. 1/x straddling the split axis) would
-// otherwise poison the reported bound with [-inf, inf] even though the
-// un-split direct evaluation over the whole box is already sound.
+// Interval-only domain bisection, SIMD-batched: at each level, split the
+// referenced axis whose current cells are widest. This balances a fixed
+// 2^depth leaf budget across dimensions while preserving one global schedule,
+// so every sub-box still follows the same tree and can be evaluated in SIMD.
+// The wide path uses lane-wise union and a single horizontal reduction; a
+// scalar tail handles a partial batch. An unbounded sub-box falls back to the
+// direct whole-box enclosure, which is already sound.
 auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
 {
     using WScalar = eve::wide<Operon::Scalar>;
@@ -95,31 +89,78 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
 
     if (depth <= 0) { return directBound(); }
 
-    Operon::Hash widest{};
-    Operon::Scalar widestDiam{-1};
-    bool any = false;
+    std::vector<Operon::Hash> axes;
+    std::vector<Operon::Scalar> widths;
     for (auto const& n : tree.Nodes()) {
-        if (!n.IsVariable()) { continue; }
+        if (!n.IsVariable() || std::ranges::find(axes, n.HashValue) != axes.end()) { continue; }
         auto const it = dom.find(n.HashValue);
         if (it == dom.end()) { continue; }
-        auto const diam = it->second.second - it->second.first;
-        if (diam > widestDiam) { widestDiam = diam; widest = n.HashValue; any = true; }
+        auto const width = it->second.second - it->second.first;
+        if (width <= Operon::Scalar{0}) { continue; }
+        axes.push_back(n.HashValue);
+        widths.push_back(width);
     }
-    if (!any || widestDiam <= Operon::Scalar{0}) { return directBound(); }
+    if (axes.empty()) { return directBound(); }
+
+    std::vector<std::size_t> schedule;
+    schedule.reserve(static_cast<std::size_t>(depth));
+    for (int level = 0; level < depth; ++level) {
+        auto selected = std::size_t{0};
+        for (std::size_t axis = 1; axis < axes.size(); ++axis) {
+            if (widths[axis] > widths[selected]) { selected = axis; }
+        }
+        schedule.push_back(selected);
+        widths[selected] /= Operon::Scalar{2};
+    }
+
+    // pappus's wide interval arithmetic is cross-checked against scalar for
+    // one-dimensional uniform segmentation. A multi-axis grid changes the
+    // endpoint pattern per lane; retain scalar evaluation until that wider
+    // pappus operation sequence has its own soundness proof. The schedule and
+    // hull remain identical, and one-axis production bisection keeps the
+    // established SIMD path below.
+    if (axes.size() > 1) {
+        try {
+            int const nLeaves = 1 << depth;
+            std::vector<int> splits(axes.size());
+            for (auto axis : schedule) { ++splits[axis]; }
+            auto const coeff = tree.GetCoefficients();
+            std::optional<Interval> result;
+            for (int k = 0; k < nLeaves; ++k) {
+                auto leafDom = dom;
+                std::vector<int> cells(axes.size());
+                std::vector<int> bits(axes.size());
+                for (std::size_t bit = 0; bit < schedule.size(); ++bit) {
+                    auto const axis = schedule[bit];
+                    cells[axis] |= ((k >> bit) & 1) << bits[axis]++;
+                }
+                for (std::size_t axis = 0; axis < axes.size(); ++axis) {
+                    auto const [lo, hi] = dom.at(axes[axis]);
+                    auto const step = (hi - lo) / Operon::Scalar(std::size_t{1} << splits[axis]);
+                    leafDom[axes[axis]] = { lo + Operon::Scalar(cells[axis]) * step, lo + Operon::Scalar(cells[axis] + 1) * step };
+                }
+                IntervalEvaluator<Operon::Scalar> ie(&tree, leafDom);
+                auto const seg = ie.Evaluate(coeff);
+                result = result ? Interval(std::min(result->inf(), seg.inf()), std::max(result->sup(), seg.sup())) : seg;
+            }
+            return result && std::isfinite(result->inf()) && std::isfinite(result->sup()) ? BoundResult{*result} : directBound();
+        } catch (std::exception const&) {
+            return directBound();
+        }
+    }
 
     try {
         int const nLeaves = 1 << depth;
-        Operon::Scalar const lo = dom.at(widest).first;
-        Operon::Scalar const h = widestDiam / Operon::Scalar(nLeaves);
-
+        auto const widest = axes.front();
+        auto const widestDiam = dom.at(widest).second - dom.at(widest).first;
+        auto const lo = dom.at(widest).first;
+        auto const h = widestDiam / Operon::Scalar(nLeaves);
         auto const coeff = tree.GetCoefficients();
         auto acc = IntervalEvaluator<WScalar>::Interval::empty();
         WScalar const hw(h);
         WScalar const infw(lo);
         int k = 0;
         for (; k + WSize <= nLeaves; k += WSize) {
-            // Fresh map each batch (not mutated in place) -- avoids relying on
-            // in-place-assignment semantics for a SIMD-typed hash map value.
             IntervalEvaluator<WScalar>::DomainMap wdom;
             wdom.reserve(dom.size());
             for (auto const& [hash, bound] : dom) {
@@ -134,8 +175,6 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
 
         std::optional<Interval> result;
         if (k > 0) { result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup())); }
-
-        // Scalar tail for any leaves that didn't fill a full wide batch.
         auto tailDom = dom;
         for (; k < nLeaves; ++k) {
             tailDom[widest] = { lo + Operon::Scalar(k) * h, lo + Operon::Scalar(k + 1) * h };
@@ -143,12 +182,12 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
             auto const seg = ie.Evaluate(coeff);
             result = result ? Interval(std::min(result->inf(), seg.inf()), std::max(result->sup(), seg.sup())) : seg;
         }
-
         if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) { return directBound(); }
         return *result;
     } catch (std::exception const&) {
         return directBound();
     }
+
 }
 
 // The affine+interval intersection path, unchanged from before -- extracted
