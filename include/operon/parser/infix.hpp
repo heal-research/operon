@@ -6,6 +6,7 @@
 #define OPERON_PARSER_HPP
 
 #include <infix-parser/parser.hpp>
+#include <tl/expected.hpp>
 #include <span>
 #include <string>
 #include <string_view>
@@ -15,7 +16,14 @@
 
 namespace Operon {
 
+struct InfixParseError {
+    std::string Message;
+};
+
 struct OPERON_EXPORT InfixParser {
+    static auto TryParse(std::string_view infix, bool reduce = false) -> tl::expected<Tree, InfixParseError>;
+    static auto TryParse(std::string_view infix, Dataset const& dataset, bool reduce = false) -> tl::expected<Tree, InfixParseError>;
+
     static auto Parse(std::string_view infix, bool reduce = false) -> Tree;
     static auto Parse(std::string_view infix, Dataset const& dataset, bool reduce = false) -> Tree;
 
