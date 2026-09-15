@@ -10,6 +10,8 @@
 #include <optional>
 #include <span>
 
+#include <string>
+#include <tl/expected.hpp>
 #include "operon/core/dataset.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
@@ -22,6 +24,22 @@
 namespace Operon {
 
 enum class LikelihoodType : uint8_t { Gaussian, Poisson };
+
+struct InterpreterError {
+    enum class Code {
+        MissingVariable,
+        MissingPrimitive,
+    };
+
+    Code Kind;
+    Operon::Hash Hash;
+    std::string Message;
+};
+
+struct TreeEvaluationError {
+    std::size_t Index;
+    InterpreterError Error;
+};
 
 template<typename T>
 struct InterpreterBase {
@@ -102,11 +120,55 @@ struct Interpreter : public InterpreterBase<T> {
         }
     }
 
+    [[nodiscard]] auto TryEvaluate(Operon::Span<T const> coeff, Operon::Range range,
+                                   Operon::Span<T> result) const
+        -> tl::expected<void, InterpreterError>
+    {
+        if (context_.empty() || range_ != range) {
+            auto bound = TryBindTree(range);
+            if (!bound) { return tl::unexpected(std::move(bound.error())); }
+        }
+        UpdateCoefficients(coeff);
+
+        auto const len{ static_cast<int64_t>(range.Size()) };
+        constexpr int64_t S{ BatchSize };
+        auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
+        for (auto row = 0L; row < len; row += S) {
+            ForwardPass(range, row, /*trace=*/false);
+            if (std::ssize(result) == len) {
+                auto const rem = std::min(S, len - row);
+                std::ranges::copy(std::span(ptr, rem), result.data() + row);
+            }
+        }
+        return {};
+    }
+
     auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> Operon::Vector<T> final {
         Operon::Vector<T> res(range.Size());
         this->Evaluate(coeff, range, {res.data(), res.size()});
         ENSURE(res.size() == range.Size());
         return res;
+    }
+
+    [[nodiscard]] auto TryEvaluate(Operon::Span<T const> coeff, Operon::Range range) const
+        -> tl::expected<Operon::Vector<T>, InterpreterError>
+    {
+        if (context_.empty() || range_ != range) {
+            auto bound = TryBindTree(range);
+            if (!bound) { return tl::unexpected(std::move(bound.error())); }
+        }
+        UpdateCoefficients(coeff);
+
+        Operon::Vector<T> result(range.Size());
+        auto const len{ static_cast<int64_t>(range.Size()) };
+        constexpr int64_t S{ BatchSize };
+        auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
+        for (auto row = 0L; row < len; row += S) {
+            ForwardPass(range, row, /*trace=*/false);
+            auto const rem = std::min(S, len - row);
+            std::ranges::copy(std::span(ptr, rem), result.data() + row);
+        }
+        return result;
     }
 
     auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
@@ -488,34 +550,49 @@ private:
 
     // Full bind: allocate primal_, build context_ with function/derivative pointers
     // and variable data spans. Called once per unique (tree, range) pair.
-    auto BindTree(Operon::Range range) const {
+    auto TryBindTree(Operon::Range range) const -> tl::expected<void, InterpreterError> {
         auto const& nodes = tree_->Nodes();
         auto const nRows  = static_cast<int64_t>(range.Size());
         auto const nNodes = std::ssize(nodes);
+        auto const& dt = dtable_.get();
+
+        // Validate before Dataset::GetValues: that accessor aborts on a missing
+        // hash, which is a recoverable unsupported-tree error at this boundary.
+        for (auto const& n : nodes) {
+            if (n.IsVariable() && !dataset_->GetVariable(n.HashValue)) {
+                return tl::unexpected(InterpreterError{
+                    InterpreterError::Code::MissingVariable, n.HashValue,
+                    fmt::format("missing dataset variable for node {}", n.Name())});
+            }
+            if (!n.IsLeaf() && !dt->template TryGetFunction<T>(n.HashValue)) {
+                return tl::unexpected(InterpreterError{
+                    InterpreterError::Code::MissingPrimitive, n.HashValue,
+                    fmt::format("missing primitive for node {}", n.Name())});
+            }
+        }
 
         constexpr int64_t S{ BatchSize };
         primal_ = Backend::Buffer<T, S>(S, nNodes);
         std::ranges::fill_n(primal_.data(), S * nNodes, T{0});
-
         context_.clear();
         context_.reserve(nNodes);
 
-        auto const& dt = dtable_.get();
         for (int64_t i = 0; i < nNodes; ++i) {
             auto const& n = nodes[i];
             auto variableValues = n.IsVariable()
                 ? std::tuple_element_t<1, Data>(dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data(), nRows)
                 : std::tuple_element_t<1, Data>{};
-            auto nodeFunction   = dt->template TryGetFunction<T>(n.HashValue);
-            auto nodeDerivative = dt->template TryGetDerivative<T>(n.HashValue);
-
-            if (!n.IsLeaf() && !nodeFunction) {
-                throw std::runtime_error(fmt::format("Missing primitive for node {}\n", n.Name()));
-            }
-
-            context_.emplace_back(T{n.Value}, variableValues, nodeFunction, nodeDerivative);
+            context_.emplace_back(T{n.Value}, variableValues,
+                dt->template TryGetFunction<T>(n.HashValue),
+                dt->template TryGetDerivative<T>(n.HashValue));
         }
         range_ = range;
+        return {};
+    }
+
+    auto BindTree(Operon::Range range) const -> void {
+        auto result = TryBindTree(range);
+        if (!result) { throw std::runtime_error(result.error().Message); }
     }
 
     // Cheap update: patch coefficient values in context_ and re-fill constant columns.
@@ -542,7 +619,12 @@ private:
     }
 };
 
-// convenience method to interpret many trees in parallel (mostly useful from the python wrapper)
+// convenience methods to interpret many trees in parallel (mostly useful from
+// the Python wrapper).
+auto OPERON_EXPORT TryEvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, size_t nthread = 0)
+    -> tl::expected<Operon::Vector<Operon::Vector<Operon::Scalar>>, TreeEvaluationError>;
+auto OPERON_EXPORT TryEvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread = 0)
+    -> tl::expected<void, TreeEvaluationError>;
 auto OPERON_EXPORT EvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, size_t nthread = 0) -> Operon::Vector<Operon::Vector<Operon::Scalar>>;
 auto OPERON_EXPORT EvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread = 0) -> void;
 } // namespace Operon
