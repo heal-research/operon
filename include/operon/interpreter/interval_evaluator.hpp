@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 #include <functional>
 #include <gsl/pointers>
+#include <optional>
 #include <stdexcept>
 #include <tl/expected.hpp>
 
@@ -162,8 +163,10 @@ class IntervalEvaluator {
 public:
     using Scalar = T;
     using Interval = pappus::interval<Scalar>;
-    // (lower, upper) bound for a variable identified by its hash.
-    using Domain = std::pair<Scalar, Scalar>;
+    // (lower, upper) bound for a variable identified by its hash. Always
+    // `Operon::Scalar`-typed regardless of T -- see the `DomainMap` note
+    // below for why.
+    using Domain = std::pair<Operon::Scalar, Operon::Scalar>;
 
     using DomainMap = Operon::Map<Operon::Hash, Domain>;
 
@@ -172,6 +175,24 @@ public:
 
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
     [[nodiscard]] auto Domains() const noexcept -> DomainMap const& { return domains_; }
+
+    // Overrides the bound used for a single variable (by hash) with a
+    // `Scalar`-typed (possibly SIMD-wide) value, bypassing `domains_`
+    // entirely for that hash. For `T = eve::wide<Operon::Scalar>` this is
+    // how a caller supplies genuinely lane-distinct per-batch bounds (e.g.
+    // `TryWideBisectedIntervalBound`'s bisected axis) without ever storing
+    // a `T`-typed value inside `DomainMap`: `eve::wide<T>` does not reliably
+    // preserve its own alignment when nested inside `std::pair`/hash-map
+    // storage on this toolchain (a `wide<T,N>` reports `alignof == 32` on
+    // its own, but `std::pair<wide<T,N>, wide<T,N>>` was observed to report
+    // `alignof == 8` -- an aggregate under-reporting its true alignment),
+    // so it must never be boxed into `Domain`/`DomainMap`.
+    void SetLaneOverride(Operon::Hash hash, Scalar lo, Scalar hi)
+    {
+        laneOverride_ = LaneOverride{ hash, lo, hi };
+    }
+
+    void ClearLaneOverride() { laneOverride_.reset(); }
 
     // Evaluate the tree over the supplied domains. `coeff` follows the same
     // convention as `Interpreter::Evaluate`: one entry per node with
@@ -277,13 +298,21 @@ public:
             if (node.Type == NodeType::Constant) {
                 primal_[i] = pappus::ops::constant<Scalar>(v);
             } else if (node.Type == NodeType::Variable) {
-                auto it = domains_.find(node.HashValue);
-                if (it == domains_.end()) {
-                    return tl::unexpected(fmt::format(
-                        "IntervalEvaluator: no domain bound for variable hash {}",
-                        node.HashValue));
+                Scalar lo{};
+                Scalar hi{};
+                if (laneOverride_ && laneOverride_->hash == node.HashValue) {
+                    lo = laneOverride_->lo;
+                    hi = laneOverride_->hi;
+                } else {
+                    auto it = domains_.find(node.HashValue);
+                    if (it == domains_.end()) {
+                        return tl::unexpected(fmt::format(
+                            "IntervalEvaluator: no domain bound for variable hash {}",
+                            node.HashValue));
+                    }
+                    lo = static_cast<Scalar>(it->second.first);
+                    hi = static_cast<Scalar>(it->second.second);
                 }
-                auto const& [lo, hi] = it->second;
                 primal_[i] = pappus::ops::variable<Scalar>(lo, hi) * v;
             } else if (node.Type == NodeType::Ref) {
                 EXPECT(static_cast<std::size_t>(node.RefTo) < i);
@@ -348,8 +377,15 @@ public:
     }
 
 private:
+    struct LaneOverride {
+        Operon::Hash hash;
+        Scalar lo;
+        Scalar hi;
+    };
+
     gsl::not_null<Operon::Tree const*> tree_;
     DomainMap domains_;
+    std::optional<LaneOverride> laneOverride_;
     mutable std::vector<Interval> primal_; // reused across Evaluate calls
 };
 

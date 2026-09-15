@@ -200,16 +200,16 @@ auto TryWideBisectedIntervalBound(
     WScalar const infw(lo);
     WScalar const onew(Operon::Scalar{1});
     WScalar const lastw{Operon::Scalar(nLeaves)};
+    // `DomainMap` is always `Operon::Scalar`-typed (see IntervalEvaluator's
+    // `SetLaneOverride` doc comment): `eve::wide<T>` does not reliably keep
+    // its own alignment once nested inside `std::pair`/hash-map storage on
+    // this toolchain, so the widest (bisected) axis's genuinely per-lane
+    // bound is supplied directly to `wie` per batch instead of being boxed
+    // into the map. Built once outside the loop -- `dom` itself already has
+    // the right (scalar) domain type, no per-batch map to rebuild.
+    IntervalEvaluator<WScalar> wie(&tree, dom);
     int k = 0;
     for (; k + WSize <= nLeaves; k += WSize) {
-        // Fresh map each batch (not mutated in place) -- avoids relying on
-        // in-place-assignment semantics for a SIMD-typed hash map value.
-        IntervalEvaluator<WScalar>::DomainMap wdom;
-        wdom.reserve(dom.size());
-        for (auto const& [hash, bound] : dom) {
-            if (hash == widest) { continue; }
-            wdom.emplace(hash, IntervalEvaluator<WScalar>::Domain{ WScalar(bound.first), WScalar(bound.second) });
-        }
         WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
         // Match Pappus's batch_evaluate_ia partition, but explicitly direct
         // both multiplication and addition before clamping the terminal
@@ -219,8 +219,7 @@ auto TryWideBisectedIntervalBound(
         auto leafLo = eve::max(pappus::fp::ropd<pappus::fp::op_add>(infw, lowerOffset), infw);
         auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(infw, upperOffset);
         leafHi = eve::if_else(idx + onew == lastw, eve::max(leafHi, WScalar(hi)), leafHi);
-        wdom.emplace(widest, IntervalEvaluator<WScalar>::Domain{ leafLo, leafHi });
-        IntervalEvaluator<WScalar> wie(&tree, wdom);
+        wie.SetLaneOverride(widest, leafLo, leafHi);
         auto const batch = wie.TryEvaluate(coeff);
         if (!batch || !eve::all(eve::is_finite(batch->inf()) && eve::is_finite(batch->sup()))) {
             return std::nullopt;
