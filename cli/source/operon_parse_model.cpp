@@ -194,7 +194,7 @@ namespace {
         Operon::ScalarDispatch const& dtable,
         std::string const& format,
         Operon::Tree& model
-    ) -> void
+    ) -> Operon::Cli::Result<void>
     {
         auto tgt = ds.GetValues(result["target"].as<std::string>()).subspan(range.Start(), range.Size());
 
@@ -203,6 +203,18 @@ namespace {
         problem.SetTestRange(range);
         problem.SetTarget(result["target"].as<std::string>());
         problem.SetDefaultInputs();
+        std::optional<Operon::ShapeConstraintSet> constraints;
+        if (result.contains("shape-constraints-config")) {
+            auto loaded = Operon::LoadShapeConstraints(result["shape-constraints-config"].as<std::string>());
+            if (!loaded) { return tl::unexpected(std::move(loaded.error())); }
+            constraints = std::move(*loaded);
+            if (!constraints) {
+                return tl::unexpected(Operon::Cli::Error{
+                    Operon::Cli::ErrorCode::Configuration,
+                    "shape-constraints config",
+                    "empty shape-constraints config path"});
+            }
+        }
         Operon::RandomGenerator rng{0};
 
         // Optionally refit model's coefficients (--iterations > 0) before
@@ -251,9 +263,7 @@ namespace {
         };
         Operon::Reporter<void>::PrintStats(stats, /*printHeader=*/true);
 
-        if (result.contains("shape-constraints-config")) {
-            auto constraints = Operon::LoadShapeConstraints(result["shape-constraints-config"].as<std::string>());
-            if (!constraints) { throw std::runtime_error("empty shape-constraints config path"); }
+        if (constraints) {
             Operon::Evaluator<Operon::ScalarDispatch> eval{&problem, &dtable, Operon::NMSE{}};
             Operon::ShapeConstrainedEvaluator shapeEval{&eval, &dtable, *constraints};
             shapeEval.SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
@@ -371,6 +381,7 @@ namespace {
             fmt::print("initial cost: {}\n", diag.InitialCost);
             fmt::print("final cost: {}\n", diag.FinalCost);
         }
+        return {};
     }
 } // namespace
 
@@ -418,7 +429,8 @@ auto Run(int argc, char** argv) -> int
     }
     std::string const format = result["format"].as<std::string>();
     if (result["target"].count() > 0) {
-        PrintTargetAnalysis(result, ds, range, dtable, format, model);
+        auto analysis = PrintTargetAnalysis(result, ds, range, dtable, format, model);
+        if (!analysis) { return Operon::Cli::Report(analysis.error()); }
     } else {
         using Interpreter = Operon::Interpreter<Operon::Scalar, Operon::ScalarDispatch>;
         auto est = Interpreter::Evaluate(model, ds, range);
