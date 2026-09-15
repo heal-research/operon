@@ -613,19 +613,19 @@ TEST_CASE("Bisected interval falls back to the direct bound when a sub-box is un
 }
 
 
-// User-registered interval rules exist only for
-// IntervalEvaluator<Operon::Scalar> (RegisterUnaryInterval is instantiated
-// for Scalar alone); the wide registry a bisected evaluation consults has
-// built-ins only, so a tree using the user op misses there. The miss must
-// degrade to the scalar whole-box direct bound -- the same result plain
-// Interval mode reports -- not crash, throw out of Measure(), or silently
-// skip the op.
+// User-registered interval rules are scalar-only. The bisection preflight
+// must reject this tree before it creates a wide local or enters the wide
+// evaluator, then return the same whole-box direct bound as plain Interval
+// mode.
 TEST_CASE("Bisected interval takes the scalar path for a user function with no wide rule", "[shape-constraints][bisection]")
 {
     auto const hash = Operon::Hasher{}("bisected_user_recipx");
     RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const& v) {
         return IntervalEvaluator<Scalar>::Interval{Scalar{1}} / v; // recip(x) = 1/x
     });
+    using WScalar = eve::wide<Scalar>;
+    RegisterIntervalBuiltins<WScalar>();
+    CHECK_FALSE(IntervalUnaryRules<WScalar>().Contains(hash));
 
     constexpr auto nrow = std::size_t{5};
     constexpr auto ncol = std::size_t{2};

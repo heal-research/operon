@@ -8,6 +8,8 @@
 #include <functional>
 #include <gsl/pointers>
 #include <stdexcept>
+#include <tl/expected.hpp>
+
 #include <utility>
 #include <vector>
 
@@ -73,12 +75,12 @@ template<typename T> using IntervalBinaryRegistry = HashRegistry<IntervalBinaryF
 // would be silently accepted instead of throwing immediately).
 //
 // Declared as templates, defined and explicitly instantiated per T in
-// interval_evaluator.cpp (currently just `Operon::Scalar`) rather than as
-// header-only templates: a header-only definition would give each shared
-// library its own separate singleton instance for the same T, breaking
-// the single-registry guarantee user-defined rules depend on across
-// operon/pyoperon/CLI. Add a new explicit instantiation there before
-// using a new T (e.g. `eve::wide<Operon::Scalar>` for SIMD batching).
+// interval_evaluator.cpp rather than as header-only templates: a header-only
+// definition would give each shared library its own separate singleton
+// instance for the same T, breaking the single-registry guarantee
+// user-defined rules depend on across operon/pyoperon/CLI. Scalar exposes
+// public user-rule registration; the wide instantiation exists only for the
+// bisection route's built-in rules.
 template<typename T> auto IntervalUnaryRules() -> IntervalUnaryRegistry<T>&;
 template<typename T> auto IntervalBinaryRules() -> IntervalBinaryRegistry<T>&;
 
@@ -137,10 +139,10 @@ extern template void RegisterIntervalBuiltins<eve::wide<Operon::Scalar>>();
 //
 // Templated on the scalar type T (default `Operon::Scalar`), matching
 // `Interpreter<T = Operon::Scalar, DTable = ScalarDispatch>`'s convention.
-// Only `T = Operon::Scalar` is usable today: the registry-backed ops
-// (RegisterIntervalBuiltins and friends, above) are only instantiated for
-// it. A new T (e.g. `eve::wide<Operon::Scalar>` for SIMD batching) needs
-// a matching explicit instantiation added in interval_evaluator.cpp first.
+// Scalar supports built-in and user-registered rules. The explicitly
+// instantiated `eve::wide<Operon::Scalar>` specialization is intentionally
+// limited to built-ins for SIMD bisection; scalar-only rules must use the
+// direct evaluator.
 //
 // Batch size is 1: one evaluation produces one interval enclosure for the whole
 // domain. This is intentional -- interval/affine arithmetic are single-value
@@ -181,11 +183,23 @@ public:
     // a wide-typed coefficient vector first.
     [[nodiscard]] auto Evaluate(Operon::Span<Operon::Scalar const> coeff) const -> Interval
     {
+        auto result = TryEvaluate(coeff);
+        if (!result) { throw std::runtime_error(result.error()); }
+        return std::move(*result);
+    }
+
+    // Non-throwing structural-error boundary for callers that must decide a
+    // fallback without unwinding an active SIMD frame. User callbacks retain
+    // their normal exception contract; the SIMD bisection route preflights
+    // them out and reaches this only for built-in wide rules.
+    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const -> tl::expected<Interval, std::string>
+    {
         RegisterIntervalBuiltins<Scalar>();
 
         auto const& nodes = tree_->Nodes();
         auto const n = nodes.size();
-        if (n == 0) { throw std::runtime_error("IntervalEvaluator: empty tree"); }
+        if (n == 0) { return tl::unexpected("IntervalEvaluator: empty tree"); }
+
 
         primal_.resize(n);
         std::size_t ci = 0;
@@ -265,7 +279,7 @@ public:
             } else if (node.Type == NodeType::Variable) {
                 auto it = domains_.find(node.HashValue);
                 if (it == domains_.end()) {
-                    throw std::runtime_error(fmt::format(
+                    return tl::unexpected(fmt::format(
                         "IntervalEvaluator: no domain bound for variable hash {}",
                         node.HashValue));
                 }
@@ -324,7 +338,7 @@ public:
                             break;
                         }
                     }
-                    throw std::runtime_error(fmt::format(
+                    return tl::unexpected(fmt::format(
                         "IntervalEvaluator: node kind `{}` not yet mapped",
                         node.Name()));
                 }

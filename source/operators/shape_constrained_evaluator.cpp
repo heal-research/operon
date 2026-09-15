@@ -90,11 +90,68 @@ auto ValidateShapeBoundOptions(ShapeBoundOptions const& opts) -> std::optional<s
     return std::nullopt;
 }
 
+// The wide registry intentionally contains built-ins only. Check every
+// structural failure that TryEvaluate can report before creating a wide
+// object, so a composed or scalar-only user rule takes the direct path.
+auto SupportsWideIntervalEvaluation(
+    Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom
+) -> bool
+{
+    using WScalar = eve::wide<Operon::Scalar>;
+    RegisterIntervalBuiltins<WScalar>();
+
+    if (tree.Nodes().empty()) { return false; }
+    for (auto const& node : tree.Nodes()) {
+        if (node.Type == NodeType::Variable && !dom.contains(node.HashValue)) { return false; }
+        if (node.Type != NodeType::Function) { continue; }
+
+        switch (node.HashValue) {
+        case Operon::Hash(BuiltinOp::Add):
+        case Operon::Hash(BuiltinOp::Mul):
+        case Operon::Hash(BuiltinOp::Sub):
+        case Operon::Hash(BuiltinOp::Div):
+        case Operon::Hash(BuiltinOp::Fmin):
+        case Operon::Hash(BuiltinOp::Fmax):
+            continue;
+        case Operon::Hash(BuiltinOp::Abs):
+        case Operon::Hash(BuiltinOp::Acos):
+        case Operon::Hash(BuiltinOp::Asin):
+        case Operon::Hash(BuiltinOp::Atan):
+        case Operon::Hash(BuiltinOp::Cbrt):
+        case Operon::Hash(BuiltinOp::Ceil):
+        case Operon::Hash(BuiltinOp::Cos):
+        case Operon::Hash(BuiltinOp::Cosh):
+        case Operon::Hash(BuiltinOp::Exp):
+        case Operon::Hash(BuiltinOp::Floor):
+        case Operon::Hash(BuiltinOp::Log):
+        case Operon::Hash(BuiltinOp::Logabs):
+        case Operon::Hash(BuiltinOp::Log1p):
+        case Operon::Hash(BuiltinOp::Sin):
+        case Operon::Hash(BuiltinOp::Sinh):
+        case Operon::Hash(BuiltinOp::Sqrt):
+        case Operon::Hash(BuiltinOp::Sqrtabs):
+        case Operon::Hash(BuiltinOp::Tan):
+        case Operon::Hash(BuiltinOp::Tanh):
+        case Operon::Hash(BuiltinOp::Square):
+            if (node.Arity == 1) { continue; }
+            return false;
+        case Operon::Hash(BuiltinOp::Aq):
+        case Operon::Hash(BuiltinOp::Pow):
+        case Operon::Hash(BuiltinOp::Powabs):
+            if (node.Arity == 2) { continue; }
+            return false;
+        default:
+            return false;
+        }
+    }
+    return true;
+}
+
 // Interval-only domain bisection, SIMD-batched: picks the tree's single
 // widest referenced axis, splits it into 2^depth uniform sub-intervals, and
 // evaluates them eve::cardinal_v<wide<Operon::Scalar>> at a time through
-// IntervalEvaluator<wide<Operon::Scalar>> -- one wide Evaluate() call per
-// batch instead of one scalar Evaluate() call per leaf. Mirrors pappus's
+// IntervalEvaluator<wide<Operon::Scalar>>::TryEvaluate() call per batch
+// instead of one scalar evaluation per leaf. Mirrors pappus's
 // batch_evaluate_ia: affine-in-i wide index arithmetic for the packed
 // sub-interval endpoints, lane-wise union via interval<wide<T>>::operator|=,
 // single horizontal reduce (eve::minimum/eve::maximum) at the end, scalar
@@ -114,31 +171,98 @@ auto ValidateShapeBoundOptions(ShapeBoundOptions const& opts) -> std::optional<s
 // the domain box itself isn't finite, if any evaluated lane or tail leaf is
 // empty (NaN bounds -- an out-of-domain sub-box, e.g. sqrt of an entirely
 // negative slice) or nonfinite (an unbounded slice, e.g. 1/x straddling
-// the split axis), or if the tree uses an op the wide registry has no rule
-// for (a user-registered or composed function: those rules are
-// instantiated for IntervalEvaluator<Operon::Scalar> only, so the wide
-// Evaluate() throws and the catch below takes the scalar direct path --
-// retaining the scalar behaviour rather than silently changing bisection
-// semantics). In the empty/nonfinite cases the union over the surviving
-// leaves would NOT be a sound enclosure of the whole box:
-// interval<wide>'s lane-wise union drops empty lanes and the horizontal
+// the split axis), or if preflight finds a tree that the built-in-only wide
+// registry cannot evaluate. In particular, user-defined and composed rules
+// stay on the scalar/direct path. In the empty/nonfinite cases the union
+// over the surviving leaves would NOT be a sound enclosure of the whole box:
+// interval<wide<T>>::operator|= drops empty lanes and the horizontal
 // eve::minimum/eve::maximum reduce drops NaNs, so a poisoned slice would
 // otherwise silently narrow the reported bound instead of widening it.
-auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
+// Deliberately noexcept: all ordinary evaluation failures are returned as
+// nullopt, so an SEH unwind can never cross this wide-local frame.
+auto TryWideBisectedIntervalBound(
+    Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
+    Operon::Hash widest, Operon::Scalar widestDiam, int depth
+) noexcept -> std::optional<Interval>
 {
     using WScalar = eve::wide<Operon::Scalar>;
     constexpr int WSize = static_cast<int>(eve::cardinal_v<WScalar>);
+    auto const domain = dom.find(widest);
+    if (domain == dom.end()) { return std::nullopt; }
+    auto const [lo, hi] = domain->second;
+    if (!std::isfinite(lo) || !std::isfinite(hi)) { return std::nullopt; }
 
-    auto const directBound = [&]() -> BoundResult {
-        try {
-            IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
-            return ie.Evaluate(tree.GetCoefficients());
-        } catch (std::exception const& e) {
-            return tl::unexpected(std::string(e.what()));
+    int const nLeaves = 1 << depth;
+    Operon::Scalar const h = widestDiam / Operon::Scalar(nLeaves);
+    auto const coeff = tree.GetCoefficients();
+    auto acc = IntervalEvaluator<WScalar>::Interval::empty();
+    WScalar const hw(h);
+    WScalar const infw(lo);
+    WScalar const onew(Operon::Scalar{1});
+    WScalar const lastw{Operon::Scalar(nLeaves)};
+    int k = 0;
+    for (; k + WSize <= nLeaves; k += WSize) {
+        // Fresh map each batch (not mutated in place) -- avoids relying on
+        // in-place-assignment semantics for a SIMD-typed hash map value.
+        IntervalEvaluator<WScalar>::DomainMap wdom;
+        wdom.reserve(dom.size());
+        for (auto const& [hash, bound] : dom) {
+            if (hash == widest) { continue; }
+            wdom.emplace(hash, IntervalEvaluator<WScalar>::Domain{ WScalar(bound.first), WScalar(bound.second) });
         }
+        WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
+        // Match Pappus's batch_evaluate_ia partition, but explicitly direct
+        // both multiplication and addition before clamping the terminal
+        // endpoint to the original domain's sup.
+        auto const lowerOffset = pappus::fp::ropd<pappus::fp::op_mul>(idx, hw);
+        auto const upperOffset = pappus::fp::ropu<pappus::fp::op_mul>(idx + onew, hw);
+        auto leafLo = eve::max(pappus::fp::ropd<pappus::fp::op_add>(infw, lowerOffset), infw);
+        auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(infw, upperOffset);
+        leafHi = eve::if_else(idx + onew == lastw, eve::max(leafHi, WScalar(hi)), leafHi);
+        wdom.emplace(widest, IntervalEvaluator<WScalar>::Domain{ leafLo, leafHi });
+        IntervalEvaluator<WScalar> wie(&tree, wdom);
+        auto const batch = wie.TryEvaluate(coeff);
+        if (!batch || !eve::all(eve::is_finite(batch->inf()) && eve::is_finite(batch->sup()))) {
+            return std::nullopt;
+        }
+        acc |= *batch;
+    }
+
+    std::optional<Interval> result;
+    if (k > 0) { result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup())); }
+
+    // Scalar tail for any leaves that didn't fill a full wide batch, using
+    // the same directed arithmetic as the wide path.
+    auto tailDom = dom;
+    for (; k < nLeaves; ++k) {
+        auto const lowerOffset = pappus::fp::ropd<pappus::fp::op_mul>(Operon::Scalar(k), h);
+        auto const upperOffset = pappus::fp::ropu<pappus::fp::op_mul>(Operon::Scalar(k + 1), h);
+        auto leafLo = std::max(pappus::fp::ropd<pappus::fp::op_add>(lo, lowerOffset), lo);
+        auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(lo, upperOffset);
+        if (k + 1 == nLeaves) { leafHi = std::max(leafHi, hi); }
+        tailDom[widest] = { leafLo, leafHi };
+        IntervalEvaluator<Operon::Scalar> ie(&tree, tailDom);
+        auto const seg = ie.TryEvaluate(coeff);
+        if (!seg || !std::isfinite(seg->inf()) || !std::isfinite(seg->sup())) { return std::nullopt; }
+        result = result ? Interval(std::min(result->inf(), seg->inf()), std::max(result->sup(), seg->sup())) : *seg;
+    }
+
+    if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) { return std::nullopt; }
+    return result;
+}
+
+// Interval-only domain bisection, SIMD-batched: picks the tree's single
+// widest referenced axis, splits it into 2^depth uniform sub-intervals, and
+// evaluates them eve::cardinal_v<wide<Operon::Scalar>> at a time. Unsupported
+// scalar-only operations fall back before entering TryWideBisectedIntervalBound.
+auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
+{
+    auto const directBound = [&]() -> BoundResult {
+        IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
+        return ie.TryEvaluate(tree.GetCoefficients());
     };
 
-    if (depth <= 0) { return directBound(); }
+    if (depth <= 0 || !SupportsWideIntervalEvaluation(tree, dom)) { return directBound(); }
 
     Operon::Hash widest{};
     Operon::Scalar widestDiam{-1};
@@ -152,71 +276,8 @@ auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::
     }
     if (!any || widestDiam <= Operon::Scalar{0}) { return directBound(); }
 
-    try {
-        auto const [lo, hi] = dom.at(widest);
-        if (!std::isfinite(lo) || !std::isfinite(hi)) { return directBound(); }
-        int const nLeaves = 1 << depth;
-        Operon::Scalar const h = widestDiam / Operon::Scalar(nLeaves);
-
-        auto const coeff = tree.GetCoefficients();
-        auto acc = IntervalEvaluator<WScalar>::Interval::empty();
-        WScalar const hw(h);
-        WScalar const infw(lo);
-        WScalar const onew(Operon::Scalar{1});
-        WScalar const lastw{Operon::Scalar(nLeaves)};
-        int k = 0;
-        for (; k + WSize <= nLeaves; k += WSize) {
-            // Fresh map each batch (not mutated in place) -- avoids relying on
-            // in-place-assignment semantics for a SIMD-typed hash map value.
-            IntervalEvaluator<WScalar>::DomainMap wdom;
-            wdom.reserve(dom.size());
-            for (auto const& [hash, bound] : dom) {
-                if (hash == widest) { continue; }
-                wdom.emplace(hash, IntervalEvaluator<WScalar>::Domain{ WScalar(bound.first), WScalar(bound.second) });
-            }
-            WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
-            // Match Pappus's batch_evaluate_ia partition, but explicitly
-            // direct both multiplication and addition before clamping the
-            // terminal endpoint to the original domain's sup.
-            auto const lowerOffset = pappus::fp::ropd<pappus::fp::op_mul>(idx, hw);
-            auto const upperOffset = pappus::fp::ropu<pappus::fp::op_mul>(idx + onew, hw);
-            auto leafLo = eve::max(pappus::fp::ropd<pappus::fp::op_add>(infw, lowerOffset), infw);
-            auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(infw, upperOffset);
-            leafHi = eve::if_else(idx + onew == lastw, eve::max(leafHi, WScalar(hi)), leafHi);
-            wdom.emplace(widest, IntervalEvaluator<WScalar>::Domain{ leafLo, leafHi });
-            IntervalEvaluator<WScalar> wie(&tree, wdom);
-            auto const batch = wie.Evaluate(coeff);
-            // Reject empty (NaN-bounds) or nonfinite lanes for the whole
-            // batch rather than letting the lane union / the horizontal
-            // reduce silently drop them (see the function comment).
-            if (!eve::all(eve::is_finite(batch.inf()) && eve::is_finite(batch.sup()))) { return directBound(); }
-            acc |= batch;
-        }
-
-        std::optional<Interval> result;
-        if (k > 0) { result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup())); }
-
-        // Scalar tail for any leaves that didn't fill a full wide batch,
-        // using the same directed arithmetic as the wide path.
-        auto tailDom = dom;
-        for (; k < nLeaves; ++k) {
-            auto const lowerOffset = pappus::fp::ropd<pappus::fp::op_mul>(Operon::Scalar(k), h);
-            auto const upperOffset = pappus::fp::ropu<pappus::fp::op_mul>(Operon::Scalar(k + 1), h);
-            auto leafLo = std::max(pappus::fp::ropd<pappus::fp::op_add>(lo, lowerOffset), lo);
-            auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(lo, upperOffset);
-            if (k + 1 == nLeaves) { leafHi = std::max(leafHi, hi); }
-            tailDom[widest] = { leafLo, leafHi };
-            IntervalEvaluator<Operon::Scalar> ie(&tree, tailDom);
-            auto const seg = ie.Evaluate(coeff);
-            if (!std::isfinite(seg.inf()) || !std::isfinite(seg.sup())) { return directBound(); }
-            result = result ? Interval(std::min(result->inf(), seg.inf()), std::max(result->sup(), seg.sup())) : seg;
-        }
-
-        if (!result || !std::isfinite(result->inf()) || !std::isfinite(result->sup())) { return directBound(); }
-        return *result;
-    } catch (std::exception const&) {
-        return directBound();
-    }
+    auto const bound = TryWideBisectedIntervalBound(tree, dom, widest, widestDiam, depth);
+    return bound ? BoundResult(*bound) : directBound();
 }
 
 // The affine+interval intersection path, unchanged from before -- extracted
