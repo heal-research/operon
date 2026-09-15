@@ -5,12 +5,15 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "operon/core/dataset.hpp"
 #include "operon/core/individual.hpp"
@@ -334,6 +337,405 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval accepts a model naive i
 
     shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
     CHECK(shapeEval.Feasible(tree));
+}
+
+namespace {
+
+// Scalar (non-SIMD) leaf-by-leaf reference for the production
+// wide<T>-batched BisectedIntervalBound: the same widest-axis-pick +
+// uniform-split algorithm, but every leaf evaluated through
+// IntervalEvaluator<Operon::Scalar> in a plain loop. This is the CI-active
+// twin of the soundness cross-check that until now lived only in
+// test/source/performance/shape_bisection.cpp (excluded from ctest via
+// "~[performance]"): the wide-batched production bound and this reference
+// implement the same mathematical bisection and must agree at every depth.
+auto ScalarBisectedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth)
+    -> std::pair<Operon::Scalar, Operon::Scalar>
+{
+    using IE = Operon::IntervalEvaluator<Operon::Scalar>;
+    auto const directBound = [&]() -> std::pair<Operon::Scalar, Operon::Scalar> {
+        IE ie(&tree, dom);
+        auto const iv = ie.Evaluate(tree.GetCoefficients());
+        return {iv.inf(), iv.sup()};
+    };
+    if (depth <= 0) { return directBound(); }
+
+    Operon::Hash widest{};
+    Operon::Scalar widestDiam{-1};
+    bool any = false;
+    for (auto const& n : tree.Nodes()) {
+        if (!n.IsVariable()) { continue; }
+        auto const it = dom.find(n.HashValue);
+        if (it == dom.end()) { continue; }
+        auto const diam = it->second.second - it->second.first;
+        if (diam > widestDiam) { widestDiam = diam; widest = n.HashValue; any = true; }
+    }
+    if (!any || widestDiam <= Operon::Scalar{0}) { return directBound(); }
+
+    int const nLeaves = 1 << depth;
+    auto const lo0 = dom.at(widest).first;
+    auto const h = widestDiam / Operon::Scalar(nLeaves);
+    auto const coeff = tree.GetCoefficients();
+
+    Operon::Scalar resLo = std::numeric_limits<Operon::Scalar>::infinity();
+    Operon::Scalar resHi = -std::numeric_limits<Operon::Scalar>::infinity();
+    auto leafDom = dom;
+    for (int k = 0; k < nLeaves; ++k) {
+        leafDom[widest] = { lo0 + Operon::Scalar(k) * h, lo0 + Operon::Scalar(k + 1) * h };
+        IE ie(&tree, leafDom);
+        auto const seg = ie.Evaluate(coeff);
+        resLo = std::min(resLo, seg.inf());
+        resHi = std::max(resHi, seg.sup());
+    }
+    return {resLo, resHi};
+}
+
+struct BisectionExprCase {
+    std::string name;
+    std::string expr;
+    std::vector<std::pair<std::string, std::pair<Operon::Scalar, Operon::Scalar>>> domains;
+};
+
+// Diverse op mix (same set as the performance sweep): pure dependency-
+// problem arithmetic, trig+pow, division, exp/log -- covers every wide<T>
+// body the SIMD bisection dispatches through, not just one tree shape.
+auto const kBisectionExprCases = std::vector<BisectionExprCase>{
+    { "dependency", "(X1 - 1) * (X1 - 1)", { {"X1", {Operon::Scalar{0}, Operon::Scalar{10}}} } },
+    { "trig_pow",   "sin(X1) + cos(X1) * X1 ^ 2 + X2", { {"X1", {Operon::Scalar{-5}, Operon::Scalar{5}}}, {"X2", {Operon::Scalar{-5}, Operon::Scalar{5}}} } },
+    { "division",   "X1 / (X2 + 3)", { {"X1", {Operon::Scalar{-2}, Operon::Scalar{2}}}, {"X2", {Operon::Scalar{-2}, Operon::Scalar{2}}} } },
+    { "exp_log",    "exp(X1) - log(X2 + 1)", { {"X1", {Operon::Scalar{-2}, Operon::Scalar{2}}}, {"X2", {Operon::Scalar{0.5F}, Operon::Scalar{5}}} } },
+};
+
+} // namespace
+
+// The SIMD-vs-scalar soundness cross-check from the performance sweep,
+// runnable in CI: the production wide<T>-batched bisected bound must match
+// the scalar leaf-by-leaf reference over the same expressions and depths.
+TEST_CASE("Bisected interval bound agrees with a scalar leaf-by-leaf reference", "[shape-constraints][bisection]")
+{
+    for (auto const& ec : kBisectionExprCases) {
+        auto const nvars = ec.domains.size();
+        auto const nrow = std::size_t{5};
+        auto const ncol = nvars + 1;
+        Eigen::Array<Operon::Scalar, -1, -1> data(static_cast<Eigen::Index>(nrow), static_cast<Eigen::Index>(ncol));
+        for (std::size_t i = 0; i < nrow; ++i) {
+            for (std::size_t v = 0; v < nvars; ++v) {
+                auto const [lo, hi] = ec.domains[v].second;
+                data(static_cast<Eigen::Index>(i), static_cast<Eigen::Index>(v)) = lo + (hi - lo) * static_cast<Operon::Scalar>(i) / static_cast<Operon::Scalar>(nrow - 1);
+            }
+            data(static_cast<Eigen::Index>(i), static_cast<Eigen::Index>(ncol - 1)) = Operon::Scalar{0};
+        }
+        Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+        auto tree = Operon::InfixParser::Parse(ec.expr, ds);
+
+        Operon::Problem problem(&ds);
+        problem.SetTrainingRange({0, nrow});
+        problem.SetTestRange({0, nrow});
+        problem.SetTarget("X" + std::to_string(ncol));
+        problem.SetLinearScalingEnabled(false);
+        Fixture::DTable dtable;
+        Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+        Operon::ShapeConstraintSet cs;
+        Operon::IntervalEvaluator<Operon::Scalar>::DomainMap dom;
+        for (auto const& [name, bound] : ec.domains) {
+            cs.Domains.insert_or_assign(name, bound);
+            dom.emplace(ds.GetVariable(name).value().Hash, bound);
+        }
+        cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1e6}, Operon::Scalar{1e6}}});
+
+        Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+        shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+
+        for (int depth = 0; depth <= 6; ++depth) {
+            shapeEval.SetBoundOptions({.BisectionDepth = depth});
+            auto const r = shapeEval.Measure(tree);
+            REQUIRE(r.Measurements.size() == 1);
+            REQUIRE(r.Measurements[0].Bound.has_value());
+            auto const [simdLo, simdHi] = *r.Measurements[0].Bound;
+            auto const [scalarLo, scalarHi] = ScalarBisectedBound(tree, dom, depth);
+            INFO(ec.name << " depth=" << depth << " simd=[" << simdLo << "," << simdHi << "] scalar=[" << scalarLo << "," << scalarHi << "]");
+            CHECK(static_cast<double>(simdLo) == Catch::Approx(static_cast<double>(scalarLo)).margin(1e-3));
+            CHECK(static_cast<double>(simdHi) == Catch::Approx(static_cast<double>(scalarHi)).margin(1e-3));
+        }
+    }
+}
+
+// f(X1) = X1 over [-2^mant, nextafter(2^mant)]: at this magnitude the
+// diameter hi-lo is not exactly representable and rounds DOWN, so the
+// last leaf's sup, computed as fl(lo + 2^depth * fl(diam/2^depth)), lands
+// strictly below the domain's own sup. A round-to-nearest partition then
+// under-covers the box and the reported bound excludes the domain's upper
+// endpoint -- unsound for e.g. a "f <= bound" constraint sat exactly at
+// hi. The bisection must keep the last leaf's sup at or above the real
+// sup. Precision-generic: 2^mant is exactly representable in either float
+// or double Scalar builds while the +1-ULP step and the rounded diameter
+// are not.
+TEST_CASE("Bisected interval endpoints enclose the split domain", "[shape-constraints][bisection]")
+{
+    using S = Operon::Scalar;
+    auto const mant = std::scalbn(S{1}, std::numeric_limits<S>::digits); // 2^24 (float) / 2^53 (double)
+    auto const lo = -mant;
+    auto const hi = std::nextafter(mant, std::numeric_limits<S>::infinity());
+
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{2};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i);
+        data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar{0};
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto tree = InfixParser::Parse("X1", ds);
+
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X2");
+    problem.SetLinearScalingEnabled(false);
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{lo, hi});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{-std::numeric_limits<S>::max(), std::numeric_limits<S>::max()}});
+
+    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    shapeEval.SetBoundOptions({.BisectionDepth = 3});
+
+    auto const r = shapeEval.Measure(tree);
+    REQUIRE(r.Measurements.size() == 1);
+    REQUIRE(r.Measurements[0].Bound.has_value());
+    auto const [blo, bhi] = *r.Measurements[0].Bound;
+    // The union of the leaves must cover the whole input box, in
+    // particular its endpoints -- the identity tree makes the reported
+    // bound exactly the covered interval.
+    CHECK(static_cast<double>(blo) <= static_cast<double>(lo));
+    CHECK(static_cast<double>(bhi) >= static_cast<double>(hi));
+}
+
+// f(X1) = sqrt(X1) + X1 over [-2, 6]: the scalar interval sqrt clamps a
+// zero-straddling box to [0, sup] (direct bound [-2, ~8.45]), but the wide
+// sqrt resolves a lane whose whole sub-box lies below zero to NaN bounds
+// (pappus's documented lane policy). A NaN lane is `is_empty()`, and the
+// lane-wise union used by the SIMD bisection drops it silently -- the
+// bisected bound then covered only [-1, ~8.45], excluding the negative
+// part of the domain the scalar mode still accounts for. A batch with an
+// empty or nonfinite lane must be rejected wholesale and fall back to the
+// whole-box direct bound, matching plain Interval mode exactly.
+TEST_CASE("Bisected interval falls back to the direct bound when a sub-box is out of domain", "[shape-constraints][bisection]")
+{
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{2};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i);
+        data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar{0};
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto tree = InfixParser::Parse("sqrt(X1) + X1", ds);
+
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X2");
+    problem.SetLinearScalingEnabled(false);
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{-2}, Operon::Scalar{6}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1000}, Operon::Scalar{1000}}});
+
+    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
+    auto const plain = shapeEval.Measure(tree);
+    REQUIRE(plain.Measurements.size() == 1);
+    REQUIRE(plain.Measurements[0].Bound.has_value());
+    auto const [plo, phi] = *plain.Measurements[0].Bound;
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    shapeEval.SetBoundOptions({.BisectionDepth = 3});
+    auto const bisected = shapeEval.Measure(tree);
+    REQUIRE(bisected.Measurements.size() == 1);
+    REQUIRE(bisected.Measurements[0].Bound.has_value());
+    auto const [blo, bhi] = *bisected.Measurements[0].Bound;
+
+    INFO("plain=[" << plo << "," << phi << "] bisected=[" << blo << "," << bhi << "]");
+    CHECK(static_cast<double>(blo) == static_cast<double>(plo));
+    CHECK(static_cast<double>(bhi) == static_cast<double>(phi));
+}
+// f(X1) = 1 / X1 over [-2, 6] has a nonfinite direct interval because the
+// denominator spans zero. SIMD bisection produces nonfinite lanes for the
+// slices touching zero; those lanes must force the same direct result rather
+// than being silently omitted from the lane-wise hull.
+TEST_CASE("Bisected interval falls back to the direct bound when a sub-box is unbounded", "[shape-constraints][bisection]")
+{
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{2};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i);
+        data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar{0};
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto tree = InfixParser::Parse("1 / X1", ds);
+
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X2");
+    problem.SetLinearScalingEnabled(false);
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{-2}, Operon::Scalar{6}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1000}, Operon::Scalar{1000}}});
+
+    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
+    auto const plain = shapeEval.Measure(tree);
+    REQUIRE(plain.Measurements.size() == 1);
+    CHECK_FALSE(plain.Measurements[0].Certified);
+    CHECK_FALSE(plain.Feasible);
+    CHECK(plain.Violation == Catch::Approx(1.0));
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    shapeEval.SetBoundOptions({.BisectionDepth = 3});
+    auto const bisected = shapeEval.Measure(tree);
+    REQUIRE(bisected.Measurements.size() == 1);
+    CHECK_FALSE(bisected.Measurements[0].Certified);
+    CHECK_FALSE(bisected.Feasible);
+    CHECK(bisected.Violation == Catch::Approx(plain.Violation));
+}
+
+
+// User-registered interval rules exist only for
+// IntervalEvaluator<Operon::Scalar> (RegisterUnaryInterval is instantiated
+// for Scalar alone); the wide registry a bisected evaluation consults has
+// built-ins only, so a tree using the user op misses there. The miss must
+// degrade to the scalar whole-box direct bound -- the same result plain
+// Interval mode reports -- not crash, throw out of Measure(), or silently
+// skip the op.
+TEST_CASE("Bisected interval takes the scalar path for a user function with no wide rule", "[shape-constraints][bisection]")
+{
+    auto const hash = Operon::Hasher{}("bisected_user_recipx");
+    RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const& v) {
+        return IntervalEvaluator<Scalar>::Interval{Scalar{1}} / v; // recip(x) = 1/x
+    });
+
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{2};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i) + Operon::Scalar{1};
+        data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar{0};
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto varHash = ds.GetVariable("X1").value().Hash;
+    Node var(NodeType::Variable, varHash);
+    var.Value = Operon::Scalar{1};
+    auto tree = Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
+
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X2");
+    problem.SetLinearScalingEnabled(false);
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{4}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-10}, Operon::Scalar{10}}});
+
+    Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval);
+    auto const plain = shapeEval.Measure(tree);
+    REQUIRE(plain.Measurements.size() == 1);
+    REQUIRE(plain.Measurements[0].Bound.has_value());
+    auto const [plo, phi] = *plain.Measurements[0].Bound;
+
+    shapeEval.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    shapeEval.SetBoundOptions({.BisectionDepth = 3});
+    auto const bisected = shapeEval.Measure(tree);
+    REQUIRE(bisected.Measurements.size() == 1);
+    REQUIRE(bisected.Measurements[0].Bound.has_value());
+    auto const [blo, bhi] = *bisected.Measurements[0].Bound;
+
+    // 1/[1,4] = [0.25, 1]
+    CHECK(static_cast<double>(plo) == Catch::Approx(0.25).margin(1e-6));
+    CHECK(static_cast<double>(phi) == Catch::Approx(1.0).margin(1e-6));
+    CHECK(static_cast<double>(blo) == static_cast<double>(plo));
+    CHECK(static_cast<double>(bhi) == static_cast<double>(phi));
+}
+
+// Both bisection-depth knobs are validated by the SetBoundOptions setters
+// of both evaluator classes (mirroring SetBoundMode's contract), and a
+// options change drops the cached feasibility/measurement entries that
+// were computed under the previous depths -- the memo key covers the bound
+// mode but not the options, so a stale cache would keep answering with the
+// old bisection depth's bound.
+TEST_CASE("SetBoundOptions validates bisection depths and invalidates cached measurements", "[shape-constraints]")
+{
+    constexpr auto nrow = std::size_t{5};
+    constexpr auto ncol = std::size_t{2};
+    Eigen::Array<Operon::Scalar, -1, -1> data(nrow, ncol);
+    for (std::size_t i = 0; i < nrow; ++i) {
+        data(static_cast<Eigen::Index>(i), 0) = static_cast<Operon::Scalar>(i);
+        data(static_cast<Eigen::Index>(i), 1) = Operon::Scalar{0};
+    }
+    Operon::Dataset ds(gsl::not_null{data.data()}, nrow, ncol);
+    auto tree = InfixParser::Parse("X1 - X1", ds); // plain interval: [-8, 8]; bisected depth d: [-h, h], h = 8/2^d
+
+    Operon::Problem problem(&ds);
+    problem.SetTrainingRange({0, nrow});
+    problem.SetTestRange({0, nrow});
+    problem.SetTarget("X2");
+    problem.SetLinearScalingEnabled(false);
+    Fixture::DTable dtable;
+    Operon::Evaluator<Fixture::DTable> nmse(&problem, &dtable, Operon::NMSE{});
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{0}, Operon::Scalar{8}});
+    // Satisfied by [-0.25, 0.25] (depth 5), violated by [-1, 1] (depth 3)
+    // and by the naive [-8, 8].
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-25} / Operon::Scalar{100}, Operon::Scalar{25} / Operon::Scalar{100}}});
+
+    Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, cs);
+    Operon::ShapeViolationEvaluator sve(&problem, &dtable, cs);
+
+    // (a) validation, both classes, both knobs.
+    CHECK_THROWS_AS(sce.SetBoundOptions({.BisectionDepth = -1}), std::invalid_argument);
+    CHECK_THROWS_AS(sce.SetBoundOptions({.BisectionDepth = 25}), std::invalid_argument);
+    CHECK_THROWS_AS(sce.SetBoundOptions({.AffineBisectionMaxDepth = -1}), std::invalid_argument);
+    CHECK_THROWS_AS(sce.SetBoundOptions({.AffineBisectionMaxDepth = 25}), std::invalid_argument);
+    CHECK_THROWS_AS(sve.SetBoundOptions({.BisectionDepth = -1}), std::invalid_argument);
+    CHECK_THROWS_AS(sve.SetBoundOptions({.AffineBisectionMaxDepth = 25}), std::invalid_argument);
+    CHECK_NOTHROW(sce.SetBoundOptions({.BisectionDepth = 0}));
+    CHECK_NOTHROW(sce.SetBoundOptions({.BisectionDepth = 24}));
+    CHECK_NOTHROW(sve.SetBoundOptions({.AffineBisectionMaxDepth = 24}));
+    // An options value that failed validation must not have been applied.
+    CHECK(sce.BoundOptions().BisectionDepth == 24);
+
+    // (b) cache invalidation: Feasible()/RawViolation() answers computed
+    // under depth 3 must be recomputed after the depth changes to 5.
+    sce.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+    sve.SetBoundMode(ShapeBoundMode::Interval | ShapeBoundMode::Bisected);
+
+    sce.SetBoundOptions({.BisectionDepth = 3});
+    CHECK_FALSE(sce.Feasible(tree)); // [-1, 1] vs [-0.25, 0.25]
+    sve.SetBoundOptions({.BisectionDepth = 3});
+    CHECK(static_cast<double>(sve.RawViolation(tree)) == Catch::Approx(1.5).margin(1e-6)); // 0.75 + 0.75
+
+    sce.SetBoundOptions({.BisectionDepth = 5});
+    CHECK(sce.Feasible(tree)); // [-0.25, 0.25] -- recomputed, not the stale depth-3 entry
+    sve.SetBoundOptions({.BisectionDepth = 5});
+    CHECK(static_cast<double>(sve.RawViolation(tree)) == Catch::Approx(0.0).margin(1e-12));
 }
 
 TEST_CASE("Shape cache memo key includes a reference target", "[shape-constraints]")
@@ -1065,11 +1467,11 @@ TEST_CASE("SCRATCH pappus-fix false-feasibility repro", "[.][shape-constraints-s
 // certified d/dn in [0, 96.14] (non-negative -> feasible), but 200k random
 // finite-difference samples over the domain box show the true derivative
 // is always negative (empirical range roughly [-268, -0.001]) -- Operon's
-// bound is unsound here, not just conservative. Run with
-// OPERON_SHAPE_DEBUG=1 and this test's tag alone
-// (`-t "[shape-constraints-scratch]"`) to see which of TryAffineBound's
-// three paths (affine-direct / ill-conditioned-fallback / exception-
-// fallback) produced the wrong bound.
+// bound is unsound here, not just conservative. Step through
+// TryAffineBoundDirect/TryAffineBound in a debugger with this test's tag
+// alone (`-t "[shape-constraints-scratch]"`) to see which path (affine-
+// direct / ill-conditioned-fallback / exception-fallback) produced the
+// wrong bound.
 TEST_CASE("SCRATCH ind333 sign-wrong derivative bound repro", "[.][shape-constraints-scratch]")
 {
     // Must be the real training data (not a degenerate stand-in): the
