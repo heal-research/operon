@@ -200,13 +200,16 @@ auto TryWideBisectedIntervalBound(
     WScalar const infw(lo);
     WScalar const onew(Operon::Scalar{1});
     WScalar const lastw{Operon::Scalar(nLeaves)};
-    // `DomainMap` is always `Operon::Scalar`-typed (see IntervalEvaluator's
-    // `SetLaneOverride` doc comment): `eve::wide<T>` does not reliably keep
+    // `DomainMap` is always `Operon::Scalar`-typed, and the evaluator never
+    // stores a wide-typed member (see the call-scoped override overload of
+    // IntervalEvaluator::TryEvaluate): `eve::wide<T>` does not reliably keep
     // its own alignment once nested inside `std::pair`/hash-map storage on
     // this toolchain, so the widest (bisected) axis's genuinely per-lane
-    // bound is supplied directly to `wie` per batch instead of being boxed
-    // into the map. Built once outside the loop -- `dom` itself already has
-    // the right (scalar) domain type, no per-batch map to rebuild.
+    // bound is passed straight into TryEvaluate per batch, staying in these
+    // loop-local `WScalar`s for the duration of the call instead of being
+    // boxed into the map. Built once outside the loop -- `dom` itself
+    // already has the right (scalar) domain type, no per-batch map to
+    // rebuild.
     IntervalEvaluator<WScalar> wie(&tree, dom);
     int k = 0;
     for (; k + WSize <= nLeaves; k += WSize) {
@@ -219,8 +222,7 @@ auto TryWideBisectedIntervalBound(
         auto leafLo = eve::max(pappus::fp::ropd<pappus::fp::op_add>(infw, lowerOffset), infw);
         auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(infw, upperOffset);
         leafHi = eve::if_else(idx + onew == lastw, eve::max(leafHi, WScalar(hi)), leafHi);
-        wie.SetLaneOverride(widest, leafLo, leafHi);
-        auto const batch = wie.TryEvaluate(coeff);
+        auto const batch = wie.TryEvaluate(coeff, widest, leafLo, leafHi);
         if (!batch || !eve::all(eve::is_finite(batch->inf()) && eve::is_finite(batch->sup()))) {
             return std::nullopt;
         }
