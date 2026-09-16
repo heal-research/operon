@@ -364,7 +364,7 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
     SECTION("Interval: logistic(x) encloses within (0,1) for a wide domain") {
         auto body = InfixParser::ParseFunctionBody("1 / (1 + exp(-x))", std::vector<std::string>{"x"});
         auto composedNode = MakeComposedNode("logisticInterval", 1);
-        Operon::RegisterUnaryInterval(composedNode.HashValue, Operon::MakeComposedIntervalUnaryFn(body));
+        Operon::RegisterUnaryInterval<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedIntervalUnaryFn(body));
 
         Operon::Node vx(Operon::NodeType::Variable);
         vx.HashValue = vx.CalculatedHashValue = xHash;
@@ -373,8 +373,8 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
         Operon::Vector<Operon::Node> nodes{vx, composedNode};
         Operon::Tree tree{nodes};
 
-        Operon::IntervalEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
-        Operon::IntervalEvaluator eval(&tree, domains);
+        Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::IntervalEvaluator<Operon::Scalar> eval(&tree, domains);
         auto result = eval.Evaluate({});
         CHECK(result.inf() >= -1e-3);
         CHECK(result.sup() <= 1.0 + 1e-3);
@@ -397,7 +397,7 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
         // affine_form object (same symbols) that node0 itself carries.
         auto body = InfixParser::ParseFunctionBody("x", std::vector<std::string>{"x"});
         auto composedNode = MakeComposedNode("identityAffine", 1);
-        Operon::RegisterUnaryAffine(composedNode.HashValue, Operon::MakeComposedAffineUnaryFn(body));
+        Operon::RegisterUnaryAffine<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedAffineUnaryFn(body));
 
         Operon::Node vx(Operon::NodeType::Variable);
         vx.HashValue = vx.CalculatedHashValue = xHash;
@@ -409,8 +409,8 @@ TEST_CASE("Composed function: unary interval/affine mini-evaluator", "[composed-
         Operon::Vector<Operon::Node> nodes{vx, ref, composedNode, subNode};
         Operon::Tree tree{nodes};
 
-        Operon::AffineEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
-        Operon::AffineEvaluator eval(&tree, domains);
+        Operon::AffineEvaluator<Operon::Scalar>::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::AffineEvaluator<Operon::Scalar> eval(&tree, domains);
         auto result = eval.Evaluate({});
         auto const iv = result.to_interval();
         CHECK(iv.inf() == Catch::Approx(0.0).margin(1e-4));
@@ -600,7 +600,7 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
     SECTION("Interval: a - b, order-sensitive, matches Tree::Indices/param binding") {
         auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"});
         auto composedNode = MakeComposedNode("subIntervalBinary", 2);
-        Operon::RegisterBinaryInterval(composedNode.HashValue, Operon::MakeComposedIntervalBinaryFn(body));
+        Operon::RegisterBinaryInterval<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedIntervalBinaryFn(body));
 
         Operon::Node vx(Operon::NodeType::Variable);
         vx.HashValue = vx.CalculatedHashValue = xHash;
@@ -616,8 +616,8 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
         Operon::Vector<Operon::Node> nodes{vx, vy, composedNode};
         Operon::Tree tree{nodes};
 
-        Operon::IntervalEvaluator::DomainMap domains{{xHash, {0.0F, 5.0F}}, {yHash, {0.0F, 2.0F}}};
-        Operon::IntervalEvaluator eval(&tree, domains);
+        Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains{{xHash, {0.0F, 5.0F}}, {yHash, {0.0F, 2.0F}}};
+        Operon::IntervalEvaluator<Operon::Scalar> eval(&tree, domains);
         auto result = eval.Evaluate({});
         // a - b for a in [0,5], b in [0,2]: [0-2, 5-0] = [-2, 5].
         CHECK(result.inf() == Catch::Approx(-2.0).margin(1e-3));
@@ -631,7 +631,7 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
         // underlying affine form.
         auto body = InfixParser::ParseFunctionBody("a - b", std::vector<std::string>{"a", "b"});
         auto composedNode = MakeComposedNode("sameAffineBinary", 2);
-        Operon::RegisterBinaryAffine(composedNode.HashValue, Operon::MakeComposedAffineBinaryFn(body));
+        Operon::RegisterBinaryAffine<Operon::Scalar>(composedNode.HashValue, Operon::MakeComposedAffineBinaryFn(body));
 
         Operon::Node vx(Operon::NodeType::Variable);
         vx.HashValue = vx.CalculatedHashValue = xHash;
@@ -643,8 +643,8 @@ TEST_CASE("Composed function: binary interval/affine mini-evaluator (arity-2, st
         Operon::Vector<Operon::Node> nodes{vx, refFar, refNear, composedNode};
         Operon::Tree tree{nodes};
 
-        Operon::AffineEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
-        Operon::AffineEvaluator eval(&tree, domains);
+        Operon::AffineEvaluator<Operon::Scalar>::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::AffineEvaluator<Operon::Scalar> eval(&tree, domains);
         auto result = eval.Evaluate({});
         auto const iv = result.to_interval();
         CHECK(iv.inf() == Catch::Approx(0.0).margin(1e-4));
@@ -699,8 +699,8 @@ TEST_CASE("Composed function: RegisterComposedFunction orchestrator (end-to-end)
         CHECK(static_cast<double>(jac[0]) == Catch::Approx(lg * (1.0 - lg)).margin(1e-4));
 
         // Interval bound.
-        Operon::IntervalEvaluator::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
-        Operon::IntervalEvaluator ieval(&tree, domains);
+        Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains{{xHash, {-5.0F, 5.0F}}};
+        Operon::IntervalEvaluator<Operon::Scalar> ieval(&tree, domains);
         auto result = ieval.Evaluate({});
         CHECK(result.inf() >= -1e-3);
         CHECK(result.sup() <= 1.0 + 1e-3);
@@ -839,8 +839,8 @@ TEST_CASE("Usage example: recip(x) = 1/x via RegisterComposedFunction", "[compos
     CHECK(static_cast<double>(jac[0]) == Catch::Approx(-1.0 / (1.3 * 1.3)).margin(1e-4));
 
     // Interval bound: 1/x for x in [1,2] is [0.5, 1].
-    Operon::IntervalEvaluator::DomainMap domains{{xHash, {1.0F, 2.0F}}};
-    Operon::IntervalEvaluator ieval(&tree, domains);
+    Operon::IntervalEvaluator<Operon::Scalar>::DomainMap domains{{xHash, {1.0F, 2.0F}}};
+    Operon::IntervalEvaluator<Operon::Scalar> ieval(&tree, domains);
     auto result = ieval.Evaluate({});
     CHECK(result.inf() == Catch::Approx(0.5).margin(1e-3));
     CHECK(result.sup() == Catch::Approx(1.0).margin(1e-3));

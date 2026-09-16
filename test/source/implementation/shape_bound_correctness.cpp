@@ -89,8 +89,8 @@ namespace Operon::Test {
 namespace {
 
 using S = Operon::Scalar;
-using AE = AffineEvaluator;
-using IE = IntervalEvaluator;
+using AE = AffineEvaluator<S>;
+using IE = IntervalEvaluator<S>;
 using Affine = pappus::affine_form<S>;
 using Interval = pappus::interval<S>;
 using pappus_box = pappus::box<S>;

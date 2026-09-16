@@ -24,7 +24,7 @@ namespace Operon::Test {
 
 namespace {
     using S  = Operon::Scalar;
-    using IE = IntervalEvaluator;
+    using IE = IntervalEvaluator<S>;
 
     auto Var(Operon::Hash h, double weight = 1.0) -> Operon::Node
     {

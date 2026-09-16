@@ -83,8 +83,8 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     CHECK(derivResult[0] == Catch::Approx(-0.25).epsilon(1e-4)); // -1/2^2
 
     // 3. Interval bound propagation — RegisterUnaryInterval.
-    RegisterUnaryInterval(hash, [](IntervalEvaluator::Interval const& v) {
-        return IntervalEvaluator::Interval{ Scalar{1} } / v;
+    RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const& v) {
+        return IntervalEvaluator<Scalar>::Interval{ Scalar{1} } / v;
     });
     {
         // Interval/affine evaluators don't consult a Dataset for hash
@@ -93,9 +93,9 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
         auto varHash = Operon::Hash{ 1 };
         Node var(NodeType::Variable, varHash); var.Value = 1.0F;
         auto ivTree = Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
-        IntervalEvaluator::DomainMap dm;
+        IntervalEvaluator<Scalar>::DomainMap dm;
         dm[varHash] = { Scalar{ 1 }, Scalar{ 4 } };
-        IntervalEvaluator ivEval(&ivTree, std::move(dm));
+        IntervalEvaluator<Scalar> ivEval(&ivTree, std::move(dm));
         auto iv = ivEval.Evaluate(ivTree.GetCoefficients());
         CHECK(iv.inf() <= 0.25 + 1e-4);
         CHECK(iv.sup() + 1e-4 >= 1.0);
@@ -107,17 +107,17 @@ TEST_CASE("User-defined function via registries: recip(x) = 1/x", "[registry][us
     // affine_context that allocated its epsilon terms) — but its friend
     // `operator/(T, affine_form const&)` exists precisely to avoid needing
     // one here, so the ctx parameter genuinely goes unused for this rule.
-    RegisterUnaryAffine(hash,
-        [](AffineEvaluator::Context const&, AffineEvaluator::Affine const& v) {
+    RegisterUnaryAffine<Scalar>(hash,
+        [](AffineEvaluator<Scalar>::Context const&, AffineEvaluator<Scalar>::Affine const& v) {
             return Scalar{1} / v;
         });
     {
         auto varHash = Operon::Hash{ 2 };
         Node var(NodeType::Variable, varHash); var.Value = 1.0F;
         auto afTree = Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
-        AffineEvaluator::DomainMap dm;
+        AffineEvaluator<Scalar>::DomainMap dm;
         dm[varHash] = { Scalar{ 1 }, Scalar{ 4 } };
-        AffineEvaluator afEval(&afTree, std::move(dm));
+        AffineEvaluator<Scalar> afEval(&afTree, std::move(dm));
         auto af = afEval.Evaluate(afTree.GetCoefficients());
         auto ivFromAffine = af.to_interval();
         CHECK(ivFromAffine.inf() <= 0.25 + 1e-2);

@@ -14,7 +14,7 @@ namespace Operon {
 namespace {
     constexpr std::size_t NoGrad = std::numeric_limits<std::size_t>::max();
     using Scalar = Operon::Scalar;
-    using Interval = IntervalEvaluator::Interval;
+    using Interval = IntervalEvaluator<Scalar>::Interval;
 
     // Mirrors Deriv()'s dispatch in tree_diff.cpp; must stay in sync with it.
     auto IsSymbolicallyDifferentiable(Node const& n) -> bool
@@ -38,13 +38,13 @@ namespace {
 
     auto EvaluateGradientColumn(
         VariableGradientDag const& gdag, std::size_t root,
-        IntervalEvaluator::DomainMap const& domains, Operon::Span<Operon::Scalar const> coeff
+        IntervalEvaluator<Scalar>::DomainMap const& domains, Operon::Span<Operon::Scalar const> coeff
     ) -> Interval
     {
         Operon::Vector<Node> subnodes(
             gdag.Nodes.cbegin(), gdag.Nodes.cbegin() + static_cast<std::ptrdiff_t>(root) + 1);
         Tree const gradTree{std::move(subnodes)};
-        return IntervalEvaluator(&gradTree, domains).Evaluate(coeff);
+        return IntervalEvaluator<Scalar>(&gradTree, domains).Evaluate(coeff);
     }
 
     auto MixHash(std::uint64_t a, std::uint64_t b) -> std::uint64_t
@@ -66,7 +66,7 @@ RangeCache::~RangeCache() = default;
 
 auto RangeCache::ComputeKey(
     Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
-    IntervalEvaluator::DomainMap const& domains, Operon::Hash variant
+    IntervalEvaluator<Scalar>::DomainMap const& domains, Operon::Hash variant
 ) const -> Operon::Hash
 {
     auto h = zobrist_->ComputeHash(tree);
@@ -98,7 +98,7 @@ auto RangeCache::ComputeKey(
 
 auto RangeCache::TryGet(
     Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
-    IntervalEvaluator::DomainMap const& domains, Interval& out, Operon::Hash variant
+    IntervalEvaluator<Scalar>::DomainMap const& domains, Interval& out, Operon::Hash variant
 ) const -> bool
 {
     auto const key = ComputeKey(tree, coeff, domains, variant);
@@ -107,7 +107,7 @@ auto RangeCache::TryGet(
 
 auto RangeCache::Insert(
     Tree const& tree, Operon::Span<Operon::Scalar const> coeff,
-    IntervalEvaluator::DomainMap const& domains, Interval const& val, Operon::Hash variant
+    IntervalEvaluator<Scalar>::DomainMap const& domains, Interval const& val, Operon::Hash variant
 ) -> void
 {
     auto const key = ComputeKey(tree, coeff, domains, variant);
@@ -121,7 +121,7 @@ auto RangeCache::Clear() -> void { cache_->Clear(); }
 
 auto TightenRange(
     Tree const& tree,
-    IntervalEvaluator::DomainMap const& domains,
+    IntervalEvaluator<Scalar>::DomainMap const& domains,
     Operon::Span<Operon::Scalar const> coeff,
     RangeCache* cache
 ) -> Interval
@@ -137,7 +137,7 @@ auto TightenRange(
         return result;
     };
 
-    auto const naive = IntervalEvaluator(&tree, domains).Evaluate(coeff);
+    auto const naive = IntervalEvaluator<Scalar>(&tree, domains).Evaluate(coeff);
 
     // A variable can occur multiple times with only some occurrences behind
     // an undifferentiated op (e.g. X + abs(X)); the root would then come
@@ -152,13 +152,13 @@ auto TightenRange(
     if (gdag.Variables.empty()) { return finish(naive); } // no input variables: naive is already exact
 
     // F(m) via a degenerate (lo == hi) domain map, reusing IntervalEvaluator.
-    IntervalEvaluator::DomainMap midpoints;
+    IntervalEvaluator<Scalar>::DomainMap midpoints;
     midpoints.reserve(domains.size());
     for (auto const& [hash, domain] : domains) {
         auto const m = Interval{domain.first, domain.second}.mid();
-        midpoints.insert_or_assign(hash, IntervalEvaluator::Domain{m, m});
+        midpoints.insert_or_assign(hash, IntervalEvaluator<Scalar>::Domain{m, m});
     }
-    auto const fm = IntervalEvaluator(&tree, midpoints).Evaluate(coeff);
+    auto const fm = IntervalEvaluator<Scalar>(&tree, midpoints).Evaluate(coeff);
 
     auto meanValue = fm;
     for (std::size_t k = 0; k < gdag.Variables.size(); ++k) {
@@ -196,10 +196,10 @@ auto TightenRange(
     // corrupted somewhere and the whole tightened bound must be discarded.
     for (auto const& [hash, domain] : domains) {
         auto probe = midpoints;
-        probe[hash] = IntervalEvaluator::Domain{domain.first, domain.first};
-        auto const flo = IntervalEvaluator(&tree, probe).Evaluate(coeff);
-        probe[hash] = IntervalEvaluator::Domain{domain.second, domain.second};
-        auto const fhi = IntervalEvaluator(&tree, probe).Evaluate(coeff);
+        probe[hash] = IntervalEvaluator<Scalar>::Domain{domain.first, domain.first};
+        auto const flo = IntervalEvaluator<Scalar>(&tree, probe).Evaluate(coeff);
+        probe[hash] = IntervalEvaluator<Scalar>::Domain{domain.second, domain.second};
+        auto const fhi = IntervalEvaluator<Scalar>(&tree, probe).Evaluate(coeff);
         if (!meanValue.contains(flo) || !meanValue.contains(fhi)) { return finish(naive); }
     }
 
@@ -208,7 +208,7 @@ auto TightenRange(
 
 auto TightenRangeBisected(
     Tree const& tree,
-    IntervalEvaluator::DomainMap domains,
+    IntervalEvaluator<Scalar>::DomainMap domains,
     Operon::Span<Operon::Scalar const> coeff,
     int maxDepth,
     RangeCache* cache
