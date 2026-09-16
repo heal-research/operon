@@ -175,6 +175,18 @@ public:
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
     [[nodiscard]] auto Domains() const noexcept -> DomainMap const& { return domains_; }
 
+    // Evaluates with a lane-specific override for one variable. The wide
+    // endpoints stay in caller-owned, directly aligned local storage for the
+    // duration of this call; neither DomainMap nor evaluator state stores a
+    // SIMD value. This avoids the affected Windows toolchain's incorrect
+    // alignment when EVE wide values are placed in pair/hash-map storage.
+    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash,
+                                   Scalar const& lo, Scalar const& hi) const
+        -> tl::expected<Interval, std::string>
+    {
+        LaneOverride const override { hash, &lo, &hi };
+        return TryEvaluateImpl(coeff, &override);
+    }
     // Evaluate the tree over the supplied domains. `coeff` follows the same
     // convention as `Interpreter::Evaluate`: one entry per node with
     // `Node::Optimize == true`, consumed in node order. Always
@@ -199,49 +211,15 @@ public:
         return TryEvaluateImpl(coeff, nullptr);
     }
 
-    // Non-throwing structural-error boundary with a call-scoped bound
-    // override: evaluates the tree exactly as TryEvaluate(coeff) above,
-    // but uses `lo`/`hi` (`Scalar`-typed, possibly SIMD-wide) as the bound
-    // for the single variable identified by `hash`, bypassing `domains_`
-    // entirely for that hash and only for the duration of this call. For
-    // `T = eve::wide<Operon::Scalar>` this is how a caller supplies
-    // genuinely lane-distinct per-batch bounds (e.g.
-    // `TryWideBisectedIntervalBound`'s bisected axis) without ever storing
-    // a `T`-typed value inside `DomainMap` or any other aggregate:
-    // `eve::wide<T>` does not reliably preserve its own alignment when
-    // nested inside `std::pair`/hash-map storage on this toolchain (a
-    // `wide<T,N>` reports `alignof == 32` on its own, but
-    // `std::pair<wide<T,N>, wide<T,N>>` was observed to report
-    // `alignof == 8` -- an aggregate under-reporting its true alignment),
-    // so it must never be boxed into `Domain`/`DomainMap` -- nor into a
-    // persistent member of this class, for the same reason. The override
-    // is therefore a parameter, not state: `lo`/`hi` are taken by const
-    // reference and dereferenced only while the call runs, so the wide
-    // endpoints stay in the caller's own directly-aligned local storage
-    // for the duration of the call, and IntervalEvaluator's member layout
-    // never stores a SIMD value.
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash, Scalar const& lo, Scalar const& hi) const -> tl::expected<Interval, std::string>
-    {
-        LaneOverride const laneOverride{ hash, &lo, &hi };
-        return TryEvaluateImpl(coeff, &laneOverride);
-    }
-
 private:
-    // Call-scoped per-variable bound override (see the public
-    // TryEvaluate(coeff, hash, lo, hi) overload). Holds pointers into the
-    // caller's storage rather than `Scalar`s by value, so that no
-    // aggregate tied to this class ever boxes a SIMD value whose alignment
-    // a nested aggregate could under-report.
     struct LaneOverride {
-        Operon::Hash hash;
-        Scalar const* lo;
-        Scalar const* hi;
+        Operon::Hash Hash;
+        Scalar const* Lo;
+        Scalar const* Hi;
     };
 
-    // Body shared by the two TryEvaluate overloads above. `laneOverride`
-    // is null for the plain overload and otherwise points at a
-    // stack-local override that lives only for the duration of the call.
-    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff, LaneOverride const* laneOverride) const -> tl::expected<Interval, std::string>
+    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff, LaneOverride const* laneOverride) const
+        -> tl::expected<Interval, std::string>
     {
         RegisterIntervalBuiltins<Scalar>();
 
@@ -328,9 +306,9 @@ private:
             } else if (node.Type == NodeType::Variable) {
                 Scalar lo{};
                 Scalar hi{};
-                if (laneOverride != nullptr && laneOverride->hash == node.HashValue) {
-                    lo = *laneOverride->lo;
-                    hi = *laneOverride->hi;
+                if (laneOverride != nullptr && laneOverride->Hash == node.HashValue) {
+                    lo = *laneOverride->Lo;
+                    hi = *laneOverride->Hi;
                 } else {
                     auto it = domains_.find(node.HashValue);
                     if (it == domains_.end()) {
