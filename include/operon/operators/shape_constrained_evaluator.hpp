@@ -165,6 +165,10 @@ public:
     void SetBoundMode(ShapeBoundMode mode);
 
     [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
+    // Throws std::invalid_argument if either bisection depth fails ValidateShapeBoundOptions (negative, or deep
+    // enough that the 2^depth leaf arithmetic stops being exact). Also clears the feasibility cache: its memo key
+    // covers the bound mode but NOT the options, so entries computed under the previous depths would otherwise
+    // keep answering Feasible() as if those depths were still set.
     void SetBoundOptions(ShapeBoundOptions options)
     {
         ValidateShapeBoundOptions(options);
@@ -264,6 +268,8 @@ public:
     // See ShapeConstrainedEvaluator::SetBoundMode -- same validation contract.
     void SetBoundMode(ShapeBoundMode mode);
     [[nodiscard]] auto BoundOptions() const noexcept -> ShapeBoundOptions const& { return boundOptions_; }
+    // See ShapeConstrainedEvaluator::SetBoundOptions -- same validation contract, and Measure()'s memo key covers
+    // the bound mode but not the options, so the measurement cache is cleared here too.
     void SetBoundOptions(ShapeBoundOptions options)
     {
         ValidateShapeBoundOptions(options);
