@@ -20,100 +20,45 @@
 #include "operon/core/types.hpp"
 #include "operon/operon_export.hpp"
 
-// pappus headers unconditionally redefine EXPECT/ENSURE (operon defines them
-// as ASSERT wrappers) and rely on a deprecated implicit copy ctor for
-// `interval<T>` (user-provided copy assignment without a copy ctor). Silence
-// both for the pappus includes only; the rest of the TU keeps operon warnings.
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wmacro-redefined"
-#  pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-copy"
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wmacro-redefined"
-#  pragma GCC diagnostic ignored "-Wdeprecated-copy-with-user-provided-copy"
-#endif
 #include <pappus/pappus.hpp>
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic pop
-#endif
 
 namespace Operon {
 
-// Registered interval callbacks for unary/binary built-in or user-defined
-// functions, keyed by Node::HashValue. Exported `.cpp`-backed singletons
-// (see interval_evaluator.cpp, explicitly instantiated for `Operon::Scalar`
-// -- one instance per T, guaranteed shared across shared-library
-// boundaries the way the previous non-template exported functions were),
-// matching the ownership model tree_diff.cpp's SymbolicDerivRegistry and
-// jit_compiler.cpp's JitCodegenRegistry already use — no registry
-// parameter needs to thread through IntervalEvaluator's constructor or
-// Evaluate(). All writes (built-in registration below, plus any user
-// calls to RegisterUnaryInterval/RegisterBinaryInterval) happen before
-// Evaluate() is first called from a GP worker thread, so the plain
-// (non-locking) Operon::Map HashRegistry already uses is sufficient — no
-// sharded-lock map type needed, same read-only-after-setup contract
-// DispatchTable relies on.
-//
-// Only two argument shapes are needed (not three, despite pappus's
-// PAPPUS_DEFINE_UNARY_OP macro generating three overloads per op): interval
-// calls never take a context, unlike affine's context-threaded finalize
-// overload (see affine_evaluator.hpp).
+// Interval callback registries for unary/binary built-in and user-defined
+// functions, keyed by Node::HashValue. Definitions live in
+// interval_evaluator.cpp, explicitly instantiated per T, so all shared
+// libraries share one registry instance.
 template<typename T> using IntervalUnaryFn  = std::function<pappus::interval<T>(pappus::interval<T> const&)>;
 template<typename T> using IntervalBinaryFn = std::function<pappus::interval<T>(pappus::interval<T> const&, pappus::interval<T> const&)>;
 
 template<typename T> using IntervalUnaryRegistry  = HashRegistry<IntervalUnaryFn<T>>;
 template<typename T> using IntervalBinaryRegistry = HashRegistry<IntervalBinaryFn<T>>;
 
-// Direct registry access — needed by tests that assert on registration
-// state. Prefer RegisterUnaryInterval/RegisterBinaryInterval for registering
-// a rule: calling .Register() on the registry returned here directly skips
-// the built-in lazy-init those functions trigger first, reopening the
-// ordering hazard they exist to close (a user hash colliding with a built-in
-// would be silently accepted instead of throwing immediately).
-//
-// Declared as templates, defined and explicitly instantiated per T in
-// interval_evaluator.cpp rather than as header-only templates: a header-only
-// definition would give each shared library its own separate singleton
-// instance for the same T, breaking the single-registry guarantee
-// user-defined rules depend on across operon/pyoperon/CLI. Scalar exposes
-// public user-rule registration; the wide instantiation exists only for the
-// bisection route's built-in rules.
+// Direct registry access, mainly for tests. Prefer
+// RegisterUnaryInterval/RegisterBinaryInterval to register a rule -- calling
+// .Register() here skips built-in lazy-init, so a colliding hash is
+// silently accepted instead of throwing. Explicitly instantiated per T in
+// interval_evaluator.cpp so all shared libraries share one registry.
 template<typename T> auto IntervalUnaryRules() -> IntervalUnaryRegistry<T>&;
 template<typename T> auto IntervalBinaryRules() -> IntervalBinaryRegistry<T>&;
 
-// Registers the built-in unary/binary interval rules exactly once, mirroring
-// StandardLibrary::RegisterNames()'s lazy-static-lambda-once pattern. A free
-// function (not an IntervalEvaluator member) so both
-// IntervalEvaluator::Evaluate() and the public Register{Unary,Binary}Interval()
-// entry points below can call it — the latter must trigger it before
-// writing, so that a user hash colliding with a built-in throws immediately
-// at the user's own call site instead of being accepted now and only
-// discovered (as a confusing, differently-hashed throw) the first time
-// Evaluate() runs.
+// Registers the built-in interval rules exactly once. Free function (not a
+// member) so RegisterUnaryInterval/RegisterBinaryInterval can call it
+// before writing, so a hash colliding with a built-in throws at the
+// caller's own registration site instead of later inside Evaluate().
 template<typename T> void RegisterIntervalBuiltins();
 
-// Register an interval callback for a unary function (built-in or
-// user-defined), keyed by the same hash the function's Node::HashValue
-// carries. A miss at evaluation time is not "not differentiable" the way a
-// missing tree_diff rule is — it means the tree cannot be bounded at all,
-// and IntervalEvaluator::Evaluate() still throws on a miss, unchanged from
-// today. Throws if `hash` is already registered (write-once) — including
-// when `hash` collides with a built-in, since RegisterIntervalBuiltins()
-// above always runs first.
+// Registers an interval callback for a unary function (built-in or
+// user-defined). Throws if `hash` is already registered, including a
+// collision with a built-in.
 template<typename T> void RegisterUnaryInterval(Operon::Hash hash, IntervalUnaryFn<T> fn);
 
-// Register an interval callback for a binary function. See
-// RegisterUnaryInterval for the miss-behavior and built-in-collision notes.
+// Registers an interval callback for a binary function. See
+// RegisterUnaryInterval.
 template<typename T> void RegisterBinaryInterval(Operon::Hash hash, IntervalBinaryFn<T> fn);
 
-// Query whether an interval callback is registered for `hash` (built-in or
-// user-defined), forcing built-in registration first. Mainly useful for
-// coverage checks (e.g. asserting every BuiltinOp is either registered here
-// or deliberately excluded as a structural n-ary case handled directly in
-// IntervalEvaluator::Evaluate()). Mirrors HasUnaryJitCodegen/HasBinaryJitCodegen.
+// Whether an interval callback is registered for `hash`, forcing built-in
+// registration first.
 template<typename T> auto HasUnaryInterval(Operon::Hash hash) -> bool;
 template<typename T> auto HasBinaryInterval(Operon::Hash hash) -> bool;
 
@@ -129,60 +74,54 @@ extern template auto IntervalUnaryRules<eve::wide<Operon::Scalar>>() -> Interval
 extern template auto IntervalBinaryRules<eve::wide<Operon::Scalar>>() -> IntervalBinaryRegistry<eve::wide<Operon::Scalar>>&;
 extern template void RegisterIntervalBuiltins<eve::wide<Operon::Scalar>>();
 
-// Forward rigorous bounds for an Operon tree over a single input domain.
+// Forward interval bounds for a tree over a single input domain. Walks the
+// tree post-order, computing a `pappus::interval<T>` per node; variables
+// are bound via `domains`, constants/weights via `coeff`.
 //
-// Walks the tree in post-order (the same order used by the Operon interpreter)
-// and computes a `pappus::interval<T>` enclosure for each node. Variables
-// are bound to a user-supplied domain map keyed by `Node::HashValue`;
-// constants and node weights come from the coefficient span (mirroring
-// `Tree::GetCoefficients()` / `Node::Optimize`).
+// T defaults to `Operon::Scalar`. The `eve::wide<Operon::Scalar>`
+// instantiation supports built-ins only (SIMD bisection); user-registered
+// rules require the scalar evaluator.
 //
-// Templated on the scalar type T (default `Operon::Scalar`), matching
-// `Interpreter<T = Operon::Scalar, DTable = ScalarDispatch>`'s convention.
-// Scalar supports built-in and user-registered rules. The explicitly
-// instantiated `eve::wide<Operon::Scalar>` specialization is intentionally
-// limited to built-ins for SIMD bisection; scalar-only rules must use the
-// direct evaluator.
-//
-// Batch size is 1: one evaluation produces one interval enclosure for the whole
-// domain. This is intentional -- interval/affine arithmetic are single-value
-// computations, not per-row fitness evaluations.
-//
-// Domain-error policy: operations on out-of-domain inputs (e.g. log of a
-// negative interval, sqrt of a negative interval, log1p of an interval
-// entirely below -1) return `interval::empty()` — a NaN-bounds interval.
-// This empty result propagates silently through subsequent operations (e.g.
-// exp(empty()) = empty()) and is returned from Evaluate() without throwing.
-// The caller must check `result.is_empty()` if domain validity matters.
-// This differs from AffineEvaluator, which returns an `invalid()`
-// NaN-poisoned form for the same out-of-domain inputs. See the pappus handoff
-// doc for the rationale: "interval and affine do not have identical domain semantics".
+// Domain errors (e.g. log of a negative interval) return `interval::empty()`
+// rather than throwing; callers must check `result.is_empty()`.
 template<typename T = Operon::Scalar>
 class IntervalEvaluator {
 public:
     using Scalar = T;
     using Interval = pappus::interval<Scalar>;
-    // (lower, upper) bound for a variable identified by its hash. Always
-    // `Operon::Scalar`-typed regardless of T -- see the `DomainMap` note
-    // below for why.
+    // (lower, upper) bound for a variable, always Operon::Scalar-typed
+    // regardless of T.
     using Domain = std::pair<Operon::Scalar, Operon::Scalar>;
 
     using DomainMap = Operon::Map<Operon::Hash, Domain>;
 
-    IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap domains)
-        : tree_(tree), domains_(std::move(domains)) {}
+    // Compiles hash-keyed bounds into slots indexed by Tree::Nodes().
+    IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap const& domains)
+        : tree_(tree)
+    {
+        auto const& nodes = tree_->Nodes();
+        domainSlots_.reserve(nodes.size());
+        for (auto const& node : nodes) {
+            auto const it = node.Type == NodeType::Variable ? domains.find(node.HashValue) : domains.end();
+            domainSlots_.push_back(it == domains.end() ? DomainSlot{} : DomainSlot{ it->second, true });
+        }
+    }
 
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
-    [[nodiscard]] auto Domains() const noexcept -> DomainMap const& { return domains_; }
 
-    // Evaluate the tree over the supplied domains. `coeff` follows the same
-    // convention as `Interpreter::Evaluate`: one entry per node with
-    // `Node::Optimize == true`, consumed in node order. Always
-    // `Operon::Scalar`-typed regardless of T (matches what
-    // `Tree::GetCoefficients()` returns) -- broadcast to `Scalar` per node
-    // below, so a caller batching several sub-boxes into one `T =
-    // eve::wide<Operon::Scalar>` evaluation doesn't need to pre-materialize
-    // a wide-typed coefficient vector first.
+    // Evaluates with a lane-specific override for one variable. `lo`/`hi`
+    // stay in caller-owned storage for the call's duration; no SIMD value
+    // is ever stored in DomainMap or evaluator state.
+    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash,
+                                   Scalar const& lo, Scalar const& hi) const
+        -> tl::expected<Interval, std::string>
+    {
+        LaneOverride const override { hash, &lo, &hi };
+        return TryEvaluateImpl(coeff, &override);
+    }
+
+    // Evaluates the tree. `coeff` has one entry per node with
+    // `Node::Optimize == true`, in node order, always Operon::Scalar-typed.
     [[nodiscard]] auto Evaluate(Operon::Span<Operon::Scalar const> coeff) const -> Interval
     {
         auto result = TryEvaluate(coeff);
@@ -190,58 +129,22 @@ public:
         return std::move(*result);
     }
 
-    // Non-throwing structural-error boundary for callers that must decide a
-    // fallback without unwinding an active SIMD frame. User callbacks retain
-    // their normal exception contract; the SIMD bisection route preflights
-    // them out and reaches this only for built-in wide rules.
+    // Non-throwing variant for callers that must not unwind an active SIMD
+    // frame.
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const -> tl::expected<Interval, std::string>
     {
         return TryEvaluateImpl(coeff, nullptr);
     }
 
-    // Non-throwing structural-error boundary with a call-scoped bound
-    // override: evaluates the tree exactly as TryEvaluate(coeff) above,
-    // but uses `lo`/`hi` (`Scalar`-typed, possibly SIMD-wide) as the bound
-    // for the single variable identified by `hash`, bypassing `domains_`
-    // entirely for that hash and only for the duration of this call. For
-    // `T = eve::wide<Operon::Scalar>` this is how a caller supplies
-    // genuinely lane-distinct per-batch bounds (e.g.
-    // `TryWideBisectedIntervalBound`'s bisected axis) without ever storing
-    // a `T`-typed value inside `DomainMap` or any other aggregate:
-    // `eve::wide<T>` does not reliably preserve its own alignment when
-    // nested inside `std::pair`/hash-map storage on this toolchain (a
-    // `wide<T,N>` reports `alignof == 32` on its own, but
-    // `std::pair<wide<T,N>, wide<T,N>>` was observed to report
-    // `alignof == 8` -- an aggregate under-reporting its true alignment),
-    // so it must never be boxed into `Domain`/`DomainMap` -- nor into a
-    // persistent member of this class, for the same reason. The override
-    // is therefore a parameter, not state: `lo`/`hi` are taken by const
-    // reference and dereferenced only while the call runs, so the wide
-    // endpoints stay in the caller's own directly-aligned local storage
-    // for the duration of the call, and IntervalEvaluator's member layout
-    // never stores a SIMD value.
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash, Scalar const& lo, Scalar const& hi) const -> tl::expected<Interval, std::string>
-    {
-        LaneOverride const laneOverride{ hash, &lo, &hi };
-        return TryEvaluateImpl(coeff, &laneOverride);
-    }
-
 private:
-    // Call-scoped per-variable bound override (see the public
-    // TryEvaluate(coeff, hash, lo, hi) overload). Holds pointers into the
-    // caller's storage rather than `Scalar`s by value, so that no
-    // aggregate tied to this class ever boxes a SIMD value whose alignment
-    // a nested aggregate could under-report.
     struct LaneOverride {
-        Operon::Hash hash;
-        Scalar const* lo;
-        Scalar const* hi;
+        Operon::Hash Hash;
+        Scalar const* Lo;
+        Scalar const* Hi;
     };
 
-    // Body shared by the two TryEvaluate overloads above. `laneOverride`
-    // is null for the plain overload and otherwise points at a
-    // stack-local override that lives only for the duration of the call.
-    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff, LaneOverride const* laneOverride) const -> tl::expected<Interval, std::string>
+    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff, LaneOverride const* laneOverride) const
+        -> tl::expected<Interval, std::string>
     {
         RegisterIntervalBuiltins<Scalar>();
 
@@ -249,11 +152,10 @@ private:
         auto const n = nodes.size();
         if (n == 0) { return tl::unexpected("IntervalEvaluator: empty tree"); }
 
-
         primal_.resize(n);
         std::size_t ci = 0;
 
-        // Folds over the immediate children of node `i`, reading from `primal_`.
+        // Folds over node i's immediate children, reading from `primal_`.
         auto const addFold = [&](std::size_t i) {
             auto acc = Interval{Scalar{0}};
             for (auto j : Tree::Indices(nodes, i)) { acc = pappus::ops::add<Scalar>(acc, primal_[j]); }
@@ -264,7 +166,7 @@ private:
             for (auto j : Tree::Indices(nodes, i)) { acc = pappus::ops::mul<Scalar>(acc, primal_[j]); }
             return acc;
         };
-        // `first - (rest[0] + rest[1] + ...)` matching Operon's n-ary Sub.
+        // first - (rest[0] + rest[1] + ...), matching Operon's n-ary Sub.
         auto const subFold = [&](std::size_t i) {
             bool first = true;
             auto acc = Interval{Scalar{0}}; // overwritten on first child
@@ -275,7 +177,7 @@ private:
             EXPECT(!first); // arity > 0 — malformed tree otherwise
             return acc;
         };
-        // `first / (rest[0] * rest[1] * ...)` matching Operon's n-ary Div.
+        // first / (rest[0] * rest[1] * ...), matching Operon's n-ary Div.
         auto const divFold = [&](std::size_t i) {
             bool first = true;
             auto acc = Interval{Scalar{1}}; // overwritten on first child
@@ -311,10 +213,8 @@ private:
 
         for (std::size_t i = 0; i < n; ++i) {
             auto const& node = nodes[i];
-            // Per-node weight/value: leaves use it as value (Constant) or weight
-            // (Variable); non-leaves apply it as a post-multiply (matches the
-            // Operon `EvaluateTree` reference). Non-leaf nodes default to
-            // `Optimize == false`, so this is usually 1.0.
+            // Leaves use v as value (Constant) or weight (Variable);
+            // non-leaves apply it as a post-multiply.
             Scalar v;
             if (node.Optimize) {
                 EXPECT(ci < coeff.size());
@@ -328,29 +228,26 @@ private:
             } else if (node.Type == NodeType::Variable) {
                 Scalar lo{};
                 Scalar hi{};
-                if (laneOverride != nullptr && laneOverride->hash == node.HashValue) {
-                    lo = *laneOverride->lo;
-                    hi = *laneOverride->hi;
+                if (laneOverride != nullptr && laneOverride->Hash == node.HashValue) {
+                    lo = *laneOverride->Lo;
+                    hi = *laneOverride->Hi;
                 } else {
-                    auto it = domains_.find(node.HashValue);
-                    if (it == domains_.end()) {
+                    auto const& slot = domainSlots_[i];
+                    if (!slot.Present) {
                         return tl::unexpected(fmt::format(
                             "IntervalEvaluator: no domain bound for variable hash {}",
                             node.HashValue));
                     }
-                    lo = static_cast<Scalar>(it->second.first);
-                    hi = static_cast<Scalar>(it->second.second);
+                    lo = static_cast<Scalar>(slot.Bounds.first);
+                    hi = static_cast<Scalar>(slot.Bounds.second);
                 }
                 primal_[i] = pappus::ops::variable<Scalar>(lo, hi) * v;
             } else if (node.Type == NodeType::Ref) {
                 EXPECT(static_cast<std::size_t>(node.RefTo) < i);
                 primal_[i] = primal_[node.RefTo];
             } else {
-                // Add/Mul/Sub/Div/Fmin/Fmax stay hardcoded: each is a verified
-                // n-ary fold over an arbitrary number of children, not a
-                // single-hash unary/binary registry entry. Every other op —
-                // unary and binary alike — goes through the registry,
-                // built-in or user-defined.
+                // Add/Mul/Sub/Div/Fmin/Fmax are n-ary folds handled directly;
+                // every other op goes through the unary/binary registry.
                 switch (node.HashValue) {
                 case Operon::Hash(BuiltinOp::Add):
                     primal_[i] = addFold(i) * v;
@@ -373,15 +270,9 @@ private:
                     primal_[i] = maxFold(i) * v;
                     break;
                 default:
-                    // Gated on the node's actual arity (exactly 1 for unary,
-                    // exactly 2 for binary) so a hash mistakenly registered
-                    // under the wrong registry falls through to the "not yet
-                    // mapped" throw below, rather than reading a nonexistent
-                    // operand (arity 1 through the binary path), silently
-                    // ignoring one (arity 2 through the unary path), or —
-                    // for arity 0 or arity >= 3 registered as binary —
-                    // reading unrelated primal_ entries or dropping operands
-                    // beyond the first two.
+                    // Gated on arity so a hash registered under the wrong
+                    // registry falls through to the throw below instead of
+                    // reading/dropping the wrong operands.
                     if (node.Arity == 1) {
                         if (auto const* unary = IntervalUnaryRules<Scalar>().TryGet(node.HashValue)) {
                             primal_[i] = (*unary)(primal_[i - 1]) * v;
@@ -404,8 +295,13 @@ private:
         return primal_.back();
     }
 
+    struct DomainSlot {
+        Domain Bounds{};
+        bool Present{false};
+    };
+
     gsl::not_null<Operon::Tree const*> tree_;
-    DomainMap domains_;
+    std::vector<DomainSlot> domainSlots_;
     mutable std::vector<Interval> primal_; // reused across Evaluate calls
 };
 
