@@ -249,6 +249,11 @@ TEST_CASE("Optimizers return typed interpreter errors", "[optimizer][interpreter
         REQUIRE(error != nullptr);
         CHECK(error->Error.Kind == expected);
         CHECK(error->Error.Hash == (expected == InterpreterError::Code::MissingVariable ? missingVariable : missingPrimitive));
+        if constexpr (std::same_as<std::remove_cvref_t<decltype(optimizer)>, LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny>>) {
+            auto const& diag = Diagnostics(outcome);
+            CHECK_FALSE(std::isfinite(diag.InitialCost));
+            CHECK_FALSE(std::isfinite(diag.FinalCost));
+        }
     };
 
     LevenbergMarquardtOptimizer<DTable, OptimizerType::Tiny> tiny { &fix.dtable, &fix.problem };

@@ -54,7 +54,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-
+#include <limits>
 #include "Eigen/Core"
 #include "Eigen/Dense"
 
@@ -255,9 +255,13 @@ class TinySolver {
     ParameterVector& x = *x_and_min;
     summary = Summary();
     summary.iterations = 0;
+    cost_ = std::numeric_limits<Scalar>::quiet_NaN();
 
-    // TODO(sameeragarwal): Deal with failure here.
-    Update(function, x);
+    if (!Update(function, x)) {
+      summary.initial_cost = cost_;
+      summary.final_cost = cost_;
+      return summary;
+    }
     summary.initial_cost = cost_;
     summary.final_cost = cost_;
 
@@ -302,9 +306,10 @@ class TinySolver {
       }
       x_new_ = x + dx_;
 
-      // TODO(keir): Add proper handling of errors from user eval of cost
-      // functions.
-      function(&x_new_[0], &f_x_new_[0], nullptr);
+      if (!function(&x_new_[0], &f_x_new_[0], nullptr)) {
+        summary.final_cost = std::numeric_limits<Scalar>::quiet_NaN();
+        return summary;
+      }
 
       const Scalar cost_change = (2 * cost_ - f_x_new_.squaredNorm());
       // TODO(sameeragarwal): Better more numerically stable evaluation.
@@ -320,8 +325,10 @@ class TinySolver {
         x = x_new_;
         ++summary.iterations;
 
-        // TODO(sameeragarwal): Deal with failure.
-        Update(function, x);
+        if (!Update(function, x)) {
+          summary.final_cost = std::numeric_limits<Scalar>::quiet_NaN();
+          return summary;
+        }
         if (std::abs(cost_change) < options.function_tolerance) {
           summary.status = COST_CHANGE_TOO_SMALL;
           break;
@@ -380,7 +387,7 @@ class TinySolver {
   // Preallocate everything, including temporary storage needed for solving the
   // linear system. This allows reusing the intermediate storage across solves.
   LinearSolver linear_solver_;
-  Scalar cost_;
+  Scalar cost_ { std::numeric_limits<Scalar>::quiet_NaN() };
   ParameterVector dx_, x_new_, g_, jacobi_scaling_, lm_step_;
   ResidualVector residuals_, f_x_new_;
   JacobianMatrix jacobian_;
