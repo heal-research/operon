@@ -137,18 +137,6 @@ public:
         return TryEvaluateImpl(coeff, nullptr);
     }
 
-    // Non-throwing variant with a call-scoped bound override: same as
-    // TryEvaluate(coeff) above, but `lo`/`hi` (possibly SIMD-wide) replace
-    // `domains_`'s bound for the single variable `hash`, for this call only.
-    // `wide<T>` does not reliably preserve its alignment inside
-    // std::pair/hash-map storage on this toolchain, so it must never be
-    // boxed into `Domain`/`DomainMap` or a persistent member -- `lo`/`hi`
-    // are passed by const reference and read only while the call runs.
-    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash, Scalar const& lo, Scalar const& hi) const -> tl::expected<Interval, std::string>
-    {
-        LaneOverride const laneOverride{ hash, &lo, &hi };
-        return TryEvaluateImpl(coeff, &laneOverride);
-    }
 private:
     struct LaneOverride {
         Operon::Hash Hash;

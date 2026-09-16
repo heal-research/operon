@@ -356,17 +356,13 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval accepts a model naive i
 
 namespace {
 
-// Scalar (non-SIMD) leaf-by-leaf reference for the production
-// wide<T>-batched BisectedIntervalBound: for a single referenced axis, the
-// same widest-axis-pick + uniform-split algorithm as the wide<T>-batched
-// path, every leaf evaluated through IntervalEvaluator<Operon::Scalar> in a
-// plain loop -- an independent cross-check of the SIMD path. For more than
-// one referenced axis, production itself evaluates scalar-only (no wide<T>
-// arithmetic has a soundness proof yet for a multi-axis endpoint pattern),
-// so this mirrors production's own balanced greedy-widest-axis schedule
-// leaf-for-leaf; this is the CI-active twin of the soundness cross-check
-// that until now lived only in test/source/performance/shape_bisection.cpp
-// (excluded from ctest via "~[performance]").
+// Scalar (non-SIMD) leaf-by-leaf reference for the production wide<T>-batched BisectedIntervalBound: for a single
+// referenced axis, the same widest-axis-pick + uniform-split algorithm as the wide<T>-batched path, every leaf
+// evaluated through IntervalEvaluator<Operon::Scalar> in a plain loop -- an independent cross-check of the SIMD
+// path. For more than one referenced axis, production itself evaluates scalar-only (no wide<T> arithmetic has a
+// soundness proof yet for a multi-axis endpoint pattern), so this mirrors production's own balanced greedy-widest-
+// axis schedule leaf-for-leaf; this is the CI-active twin of the soundness cross-check that until now lived only
+// in test/source/performance/shape_bisection.cpp (excluded from ctest via "~[performance]").
 auto ScalarBisectedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth)
     -> std::pair<Operon::Scalar, Operon::Scalar>
 {
