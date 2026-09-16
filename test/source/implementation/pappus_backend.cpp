@@ -6,6 +6,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -1034,8 +1035,13 @@ TEST_CASE("Pappus backends: evaluation throughput", "[pappus][performance]")
         nb::doNotOptimizeAway(iev.Evaluate(coeffs));
     });
 
-    // Constructing from an existing map compiles scalar bounds directly into
-    // node slots. Keep the avoided input-map copy visible in this benchmark.
+    IE lazyIev(&tree, std::cref(d));
+    b.run("interval Evaluate (lazy borrowed)", [&]() {
+        nb::doNotOptimizeAway(lazyIev.Evaluate(coeffs));
+    });
+
+    // A borrowed map avoids setup on a one-shot bound, then compiles scalar
+    // slots before the second evaluation. The snapshot path is lifetime-free.
     b.run("interval construct (pre-copied map)", [&]() {
         IE eval(&tree, IE::DomainMap{d});
         nb::doNotOptimizeAway(eval.GetTree());
@@ -1043,6 +1049,14 @@ TEST_CASE("Pappus backends: evaluation throughput", "[pappus][performance]")
     b.run("interval construct (domain snapshot)", [&]() {
         IE eval(&tree, d);
         nb::doNotOptimizeAway(eval.GetTree());
+    });
+    b.run("interval one-shot (lazy borrowed)", [&]() {
+        IE eval(&tree, std::cref(d));
+        nb::doNotOptimizeAway(eval.Evaluate(coeffs));
+    });
+    b.run("interval one-shot (snapshot)", [&]() {
+        IE eval(&tree, d);
+        nb::doNotOptimizeAway(eval.Evaluate(coeffs));
     });
 
     AE aev(&tree, AE::DomainMap{d});
