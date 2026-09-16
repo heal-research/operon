@@ -187,25 +187,47 @@ namespace {
             auto const widest = axes.front();
             auto const widestDiam = dom.at(widest).second - dom.at(widest).first;
             auto const lo = dom.at(widest).first;
+            auto const hi = dom.at(widest).second;
             auto const h = widestDiam / Operon::Scalar(nLeaves);
             auto const coeff = tree.GetCoefficients();
             auto acc = IntervalEvaluator<WScalar>::Interval::empty();
             WScalar const hw(h);
             WScalar const infw(lo);
+            WScalar const onew(Operon::Scalar { 1 });
+            WScalar const lastw { Operon::Scalar(nLeaves) };
+            // `DomainMap` is always `Operon::Scalar`-typed, and the evaluator
+            // never stores a wide-typed member (see the call-scoped override
+            // overload of IntervalEvaluator::TryEvaluate): `eve::wide<T>` does
+            // not reliably keep its own alignment once nested inside
+            // `std::pair`/hash-map storage on this toolchain, so the widest
+            // (bisected) axis's genuinely per-lane bound is passed straight
+            // into TryEvaluate per batch, staying in these loop-local
+            // `WScalar`s for the duration of the call instead of being boxed
+            // into the map. Built once outside the loop -- `dom` itself
+            // already has the right (scalar) domain type, no per-batch map to
+            // rebuild.
+            IntervalEvaluator<WScalar> wie(&tree, dom);
             std::size_t k = 0;
             for (; k + static_cast<std::size_t>(WSize) <= nLeaves; k += static_cast<std::size_t>(WSize)) {
-                IntervalEvaluator<WScalar>::DomainMap wdom;
-                wdom.reserve(dom.size());
-                for (auto const& [hash, bound] : dom) {
-                    if (hash == widest) {
-                        continue;
-                    }
-                    wdom.emplace(hash, IntervalEvaluator<WScalar>::Domain { WScalar(bound.first), WScalar(bound.second) });
-                }
                 WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
-                wdom.emplace(widest, IntervalEvaluator<WScalar>::Domain { pappus::fp::ropd<pappus::fp::op_add>(infw, idx * hw), pappus::fp::ropu<pappus::fp::op_add>(infw, (idx + WScalar(Operon::Scalar { 1 })) * hw) });
-                IntervalEvaluator<WScalar> wie(&tree, wdom);
-                acc |= wie.Evaluate(coeff);
+                // Match Pappus's batch_evaluate_ia partition, but explicitly
+                // direct both multiplication and addition before clamping the
+                // lower endpoint to the original domain's inf and the terminal
+                // endpoint to its sup. A poisoned (empty/nonfinite) lane would
+                // otherwise be dropped by the lane-wise union / horizontal
+                // reduction below and silently narrow the reported bound, so
+                // any failed or nonfinite batch falls back to the sound
+                // direct bound.
+                auto const lowerOffset = pappus::fp::ropd<pappus::fp::op_mul>(idx, hw);
+                auto const upperOffset = pappus::fp::ropu<pappus::fp::op_mul>(idx + onew, hw);
+                auto leafLo = eve::max(pappus::fp::ropd<pappus::fp::op_add>(infw, lowerOffset), infw);
+                auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(infw, upperOffset);
+                leafHi = eve::if_else(idx + onew == lastw, eve::max(leafHi, WScalar(hi)), leafHi);
+                auto const batch = wie.TryEvaluate(coeff, widest, leafLo, leafHi);
+                if (!batch || !eve::all(eve::is_finite(batch->inf()) && eve::is_finite(batch->sup()))) {
+                    return directBound();
+                }
+                acc |= *batch;
             }
 
             std::optional<Interval> result;
@@ -213,11 +235,16 @@ namespace {
                 result = Interval(eve::minimum(acc.inf()), eve::maximum(acc.sup()));
             }
             auto tailDom = dom;
+            // Scalar tail for any leaves that didn't fill a full wide batch,
+            // using the same directed arithmetic and endpoint clamping as the
+            // wide path above.
             for (; k < nLeaves; ++k) {
-                tailDom[widest] = {
-                    pappus::fp::ropd<pappus::fp::op_add>(lo, Operon::Scalar(k) * h),
-                    pappus::fp::ropu<pappus::fp::op_add>(lo, Operon::Scalar(k + 1) * h)
-                };
+                auto const lowerOffset = pappus::fp::ropd<pappus::fp::op_mul>(Operon::Scalar(k), h);
+                auto const upperOffset = pappus::fp::ropu<pappus::fp::op_mul>(Operon::Scalar(k + 1), h);
+                auto leafLo = std::max(pappus::fp::ropd<pappus::fp::op_add>(lo, lowerOffset), lo);
+                auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(lo, upperOffset);
+                if (k + 1 == nLeaves) { leafHi = std::max(leafHi, hi); }
+                tailDom[widest] = { leafLo, leafHi };
                 IntervalEvaluator<Operon::Scalar> ie(&tree, tailDom);
                 auto const seg = ie.Evaluate(coeff);
                 if (seg.is_empty() || !std::isfinite(seg.inf()) || !std::isfinite(seg.sup())) {
