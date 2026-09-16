@@ -171,18 +171,17 @@ public:
 
     // Compiles hash-keyed bounds into slots indexed by Tree::Nodes(). The
     // source map need only outlive construction: evaluation never copies or
-    // probes it.
+    // probes it, and no borrowed-map lifetime contract escapes this call.
     IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap const& domains)
         : tree_(tree)
     {
-        CompileDomains(domains);
+        auto const& nodes = tree_->Nodes();
+        domainSlots_.reserve(nodes.size());
+        for (auto const& node : nodes) {
+            auto const it = node.Type == NodeType::Variable ? domains.find(node.HashValue) : domains.end();
+            domainSlots_.push_back(it == domains.end() ? DomainSlot{} : DomainSlot{ it->second, true });
+        }
     }
-
-    // Borrows an immutable map for the first evaluation only. On a second
-    // evaluation the map is compiled into node slots, eliminating later hash
-    // probes. std::cref makes the lifetime and immutability contract explicit.
-    IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, std::reference_wrapper<DomainMap const> domains)
-        : tree_(tree), borrowedDomains_(&domains.get()) {}
 
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
 
@@ -237,10 +236,6 @@ private:
         auto const& nodes = tree_->Nodes();
         auto const n = nodes.size();
         if (n == 0) { return tl::unexpected("IntervalEvaluator: empty tree"); }
-
-        if (borrowedDomains_ != nullptr && !slotsCompiled_ && evaluations_++ != 0) {
-            CompileDomains(*borrowedDomains_);
-        }
 
 
         primal_.resize(n);
@@ -324,15 +319,6 @@ private:
                 if (laneOverride != nullptr && laneOverride->Hash == node.HashValue) {
                     lo = *laneOverride->Lo;
                     hi = *laneOverride->Hi;
-                } else if (!slotsCompiled_) {
-                    auto const it = borrowedDomains_->find(node.HashValue);
-                    if (it == borrowedDomains_->end()) {
-                        return tl::unexpected(fmt::format(
-                            "IntervalEvaluator: no domain bound for variable hash {}",
-                            node.HashValue));
-                    }
-                    lo = static_cast<Scalar>(it->second.first);
-                    hi = static_cast<Scalar>(it->second.second);
                 } else {
                     auto const& slot = domainSlots_[i];
                     if (!slot.Present) {
@@ -411,23 +397,8 @@ private:
         bool Present{false};
     };
 
-    void CompileDomains(DomainMap const& domains) const
-    {
-        auto const& nodes = tree_->Nodes();
-        domainSlots_.clear();
-        domainSlots_.reserve(nodes.size());
-        for (auto const& node : nodes) {
-            auto const it = node.Type == NodeType::Variable ? domains.find(node.HashValue) : domains.end();
-            domainSlots_.push_back(it == domains.end() ? DomainSlot{} : DomainSlot{ it->second, true });
-        }
-        slotsCompiled_ = true;
-    }
-
     gsl::not_null<Operon::Tree const*> tree_;
-    DomainMap const* borrowedDomains_{nullptr};
-    mutable std::vector<DomainSlot> domainSlots_;
-    mutable bool slotsCompiled_{false};
-    mutable std::size_t evaluations_{0};
+    std::vector<DomainSlot> domainSlots_;
     mutable std::vector<Interval> primal_; // reused across Evaluate calls
 };
 
