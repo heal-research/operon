@@ -205,7 +205,7 @@ auto TryWideBisectedIntervalBound(
     // container or evaluator-member storage on the affected Windows path.
     // Built once outside the loop: `dom` already has the correct scalar
     // domain type, with no per-batch map rebuilding.
-    IntervalEvaluator<WScalar> wie(&tree, std::cref(dom));
+    IntervalEvaluator<WScalar> wie(&tree, dom);
     int k = 0;
     for (; k + WSize <= nLeaves; k += WSize) {
         WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
@@ -237,7 +237,7 @@ auto TryWideBisectedIntervalBound(
         auto leafHi = pappus::fp::ropu<pappus::fp::op_add>(lo, upperOffset);
         if (k + 1 == nLeaves) { leafHi = std::max(leafHi, hi); }
         tailDom[widest] = { leafLo, leafHi };
-        IntervalEvaluator<Operon::Scalar> ie(&tree, std::cref(tailDom));
+        IntervalEvaluator<Operon::Scalar> ie(&tree, tailDom);
         auto const seg = ie.TryEvaluate(coeff);
         if (!seg || !std::isfinite(seg->inf()) || !std::isfinite(seg->sup())) { return std::nullopt; }
         result = result ? Interval(std::min(result->inf(), seg->inf()), std::max(result->sup(), seg->sup())) : *seg;
@@ -254,7 +254,7 @@ auto TryWideBisectedIntervalBound(
 auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
 {
     auto const directBound = [&]() -> BoundResult {
-        IntervalEvaluator<Operon::Scalar> ie(&tree, std::cref(dom));
+        IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
         return ie.TryEvaluate(tree.GetCoefficients());
     };
 
@@ -476,7 +476,7 @@ auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::Domai
 {
     auto const IntervalBound = [&]() -> BoundResult {
         try {
-            IntervalEvaluator<Operon::Scalar> ie(&tree, std::cref(dom));
+            IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
             return ie.Evaluate(tree.GetCoefficients());
         } catch (std::exception const& e) {
             return tl::unexpected(std::string(e.what()));
