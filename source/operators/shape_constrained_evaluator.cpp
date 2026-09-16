@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include <fmt/format.h>
 #include <taskflow/algorithm/for_each.hpp>
@@ -113,10 +114,19 @@ namespace {
         if (axes.empty()) {
             return directBound();
         }
+        // The two bisection paths below have asymmetric per-leaf costs: the
+        // single-axis grid is SIMD-batched through wide<T>, while each
+        // multi-axis leaf copies the domain map, heap-allocates, and evaluates
+        // the tree unbatched (scalar). The shared BisectionDepth option is
+        // validated up to 20 for the batched path; the same ceiling would let
+        // one multi-axis Measure() call reach 2^20 unbatched leaf evaluations,
+        // so the scalar sweep gets its own materially lower cap.
+        constexpr int MaxMultiAxisBisectionDepth = 12;
+        auto const effectiveDepth = axes.size() > 1 ? std::min(depth, MaxMultiAxisBisectionDepth) : depth;
 
         std::vector<std::size_t> schedule;
-        schedule.reserve(static_cast<std::size_t>(depth));
-        for (int level = 0; level < depth; ++level) {
+        schedule.reserve(static_cast<std::size_t>(effectiveDepth));
+        for (int level = 0; level < effectiveDepth; ++level) {
             auto selected = std::size_t { 0 };
             for (std::size_t axis = 1; axis < axes.size(); ++axis) {
                 if (widths[axis] > widths[selected]) {
@@ -135,7 +145,7 @@ namespace {
         // established SIMD path below.
         if (axes.size() > 1) {
             try {
-                auto const nLeaves = std::size_t { 1 } << depth;
+                auto const nLeaves = std::size_t { 1 } << effectiveDepth;
                 std::vector<int> splits(axes.size());
                 for (auto axis : schedule) {
                     ++splits[axis];

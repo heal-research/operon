@@ -93,6 +93,10 @@ struct ShapeBoundOptions {
     // default, not derived from SIMD width: depth is recursion levels, not
     // leaf count (2^depth leaves), so tying it to hardware lane count would
     // square the leaf count on a wider target instead of scaling with it.
+    // Trees referencing more than one variable are bisected over a balanced
+    // multi-axis grid whose leaves are evaluated scalar/unbatched (no wide<T>
+    // batching), so depths above roughly a dozen are impractical for them and
+    // are independently capped inside the evaluator regardless of this value.
     int BisectionDepth { 3 };
     // Affine-mode fallback: max bisection depth when the direct
     // affine/interval intersection fails on the whole domain. 0 disables it.
