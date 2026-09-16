@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 #include <functional>
 #include <gsl/pointers>
+#include <optional>
 #include <stdexcept>
 #include <tl/expected.hpp>
 
@@ -169,11 +170,20 @@ public:
 
     using DomainMap = Operon::Map<Operon::Hash, Domain>;
 
+    // Owns a domain map supplied as a value. Use the reference-wrapper
+    // overload when a caller already owns an immutable map across several
+    // short-lived evaluators.
     IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap domains)
-        : tree_(tree), domains_(std::move(domains)) {}
+        : tree_(tree), ownedDomains_(std::move(domains)), domains_(&*ownedDomains_) {}
+
+    // Borrows domains for this evaluator's lifetime. std::cref makes the
+    // non-owning lifetime contract explicit and avoids copying the hash map
+    // for each interval constraint or bisection batch.
+    IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, std::reference_wrapper<DomainMap const> domains)
+        : tree_(tree), domains_(&domains.get()) {}
 
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
-    [[nodiscard]] auto Domains() const noexcept -> DomainMap const& { return domains_; }
+    [[nodiscard]] auto Domains() const noexcept -> DomainMap const& { return *domains_; }
 
     // Evaluates with a lane-specific override for one variable. The wide
     // endpoints stay in caller-owned, directly aligned local storage for the
@@ -310,8 +320,8 @@ private:
                     lo = *laneOverride->Lo;
                     hi = *laneOverride->Hi;
                 } else {
-                    auto it = domains_.find(node.HashValue);
-                    if (it == domains_.end()) {
+                    auto it = domains_->find(node.HashValue);
+                    if (it == domains_->end()) {
                         return tl::unexpected(fmt::format(
                             "IntervalEvaluator: no domain bound for variable hash {}",
                             node.HashValue));
@@ -383,7 +393,8 @@ private:
     }
 
     gsl::not_null<Operon::Tree const*> tree_;
-    DomainMap domains_;
+    std::optional<DomainMap> ownedDomains_;
+    DomainMap const* domains_;
     mutable std::vector<Interval> primal_; // reused across Evaluate calls
 };
 

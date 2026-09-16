@@ -6,6 +6,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -72,6 +73,18 @@ TEST_CASE("Interval backend: constants and variables", "[pappus][interval]")
         auto const r = eval.Evaluate(tree.GetCoefficients());
         REQUIRE(r.inf() == Catch::Approx(1.0).margin(1e-5));
         REQUIRE(r.sup() == Catch::Approx(3.0).margin(1e-5));
+    }
+
+    SECTION("borrowed domain map reflects its owner") {
+        constexpr Operon::Hash X1{1};
+        auto tree = Operon::Tree({Var(X1)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{1}, S{3}};
+        IE eval(&tree, std::cref(d));
+        d[X1] = {S{2}, S{4}};
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.inf() == Catch::Approx(2.0).margin(1e-5));
+        REQUIRE(r.sup() == Catch::Approx(4.0).margin(1e-5));
     }
 
     SECTION("weighted variable") {
@@ -1020,6 +1033,18 @@ TEST_CASE("Pappus backends: evaluation throughput", "[pappus][performance]")
     IE iev(&tree, IE::DomainMap{d});
     b.run("interval Evaluate", [&]() {
         nb::doNotOptimizeAway(iev.Evaluate(coeffs));
+    });
+
+    // Keep domain ownership visible in the backend benchmark: the borrowed
+    // form is for callers that create many short-lived evaluators over one
+    // immutable box, such as shape-constraint bisection.
+    b.run("interval construct (owned domains)", [&]() {
+        IE eval(&tree, IE::DomainMap{d});
+        nb::doNotOptimizeAway(eval.Domains().size());
+    });
+    b.run("interval construct (borrowed domains)", [&]() {
+        IE eval(&tree, std::cref(d));
+        nb::doNotOptimizeAway(eval.Domains().size());
     });
 
     AE aev(&tree, AE::DomainMap{d});
