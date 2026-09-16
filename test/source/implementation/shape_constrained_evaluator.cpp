@@ -97,55 +97,69 @@ TEST_CASE("LoadShapeConstraints parses the field-based JSON schema", "[shape-con
         ]
     })json");
 
-    auto loaded = Operon::LoadShapeConstraints(path.string());
-    REQUIRE(loaded);
-    REQUIRE(loaded->Domains.size() == 3);
-    CHECK(loaded->Domains.at("X1").first == Catch::Approx(1.0));
-    CHECK(loaded->Domains.at("X2").second == Catch::Approx(5.0));
-    CHECK(loaded->Domains.at("x2").first == Catch::Approx(-2.0));
+    auto result = Operon::LoadShapeConstraints(path.string());
+    REQUIRE(result); // outer Cli::Result: file I/O + JSON parse + schema checks
+    REQUIRE(*result); // inner std::optional: a constraint set was produced
+    auto const& loaded = **result;
+    REQUIRE(loaded.Domains.size() == 3);
+    CHECK(loaded.Domains.at("X1").first == Catch::Approx(1.0));
+    CHECK(loaded.Domains.at("X2").second == Catch::Approx(5.0));
+    CHECK(loaded.Domains.at("x2").first == Catch::Approx(-2.0));
 
-    REQUIRE(loaded->Constraints.size() == 5);
-    CHECK(loaded->Constraints[0].Op == ShapeConstraintOp::Identity);
-    REQUIRE(loaded->Constraints[0].Bound);
-    CHECK(loaded->Constraints[0].Bound->first == Catch::Approx(-4.0));
-    CHECK(loaded->Constraints[1].Op == ShapeConstraintOp::Identity);
-    REQUIRE(loaded->Constraints[1].Sign);
-    CHECK(*loaded->Constraints[1].Sign == 1);
-    CHECK(loaded->Constraints[2].Op == ShapeConstraintOp::FirstDerivative);
-    CHECK(loaded->Constraints[2].Variable == "X1");
-    CHECK(loaded->Constraints[3].Op == ShapeConstraintOp::SecondDerivative);
-    CHECK(loaded->Constraints[3].Variable == "X2");
-    REQUIRE(loaded->Constraints[3].Bound);
-    CHECK(loaded->Constraints[4].Op == ShapeConstraintOp::SecondDerivative);
-    CHECK(loaded->Constraints[4].Variable == "x2"); // unambiguous variable name ending in '2'
+    REQUIRE(loaded.Constraints.size() == 5);
+    CHECK(loaded.Constraints[0].Op == ShapeConstraintOp::Identity);
+    REQUIRE(loaded.Constraints[0].Bound);
+    CHECK(loaded.Constraints[0].Bound->first == Catch::Approx(-4.0));
+    CHECK(loaded.Constraints[1].Op == ShapeConstraintOp::Identity);
+    REQUIRE(loaded.Constraints[1].Sign);
+    CHECK(*loaded.Constraints[1].Sign == 1);
+    CHECK(loaded.Constraints[2].Op == ShapeConstraintOp::FirstDerivative);
+    CHECK(loaded.Constraints[2].Variable == "X1");
+    CHECK(loaded.Constraints[3].Op == ShapeConstraintOp::SecondDerivative);
+    CHECK(loaded.Constraints[3].Variable == "X2");
+    REQUIRE(loaded.Constraints[3].Bound);
+    CHECK(loaded.Constraints[4].Op == ShapeConstraintOp::SecondDerivative);
+    CHECK(loaded.Constraints[4].Variable == "x2"); // unambiguous variable name ending in '2'
 }
 
 TEST_CASE("LoadShapeConstraints handles empty paths and JSON schema errors", "[shape-constraints]")
 {
-    CHECK_FALSE(Operon::LoadShapeConstraints(""));
+    // An empty path means the flag was not given: a successful Result
+    // carrying no constraint set, not an error.
+    auto empty = Operon::LoadShapeConstraints("");
+    REQUIRE(empty);
+    CHECK_FALSE(*empty);
+
     auto const missing = std::filesystem::temp_directory_path() / "operon_shape_constraints_missing_file_this_test_should_not_exist.json";
     std::filesystem::remove(missing);
-    CHECK_THROWS_AS(Operon::LoadShapeConstraints(missing.string()), std::runtime_error);
-    CHECK_THROWS_AS(Operon::LoadShapeConstraints(WriteShapeConfig("malformed", R"json({"domains":)json").string()), std::runtime_error);
+    auto const missingResult = Operon::LoadShapeConstraints(missing.string());
+    CHECK_FALSE(missingResult); // file I/O failures no longer throw
+    CHECK(missingResult.error().Code == Operon::Cli::ErrorCode::Input);
 
-    auto throwsConfig = [](std::string const& name, std::string const& json) {
-        CHECK_THROWS_AS(Operon::LoadShapeConstraints(WriteShapeConfig(name, json).string()), std::runtime_error);
+    auto const malformed = Operon::LoadShapeConstraints(WriteShapeConfig("malformed", R"json({"domains":)json").string());
+    CHECK_FALSE(malformed); // malformed JSON no longer throws
+    CHECK(malformed.error().Code == Operon::Cli::ErrorCode::Configuration);
+
+    auto rejectsConfig = [](std::string const& name, std::string const& json) {
+        auto result = Operon::LoadShapeConstraints(WriteShapeConfig(name, json).string());
+        CHECK_FALSE(result); // schema violations no longer throw
+        CHECK(result.error().Code == Operon::Cli::ErrorCode::Configuration);
     };
 
-    throwsConfig("both_sign_bound", R"json({"constraints":[{"op":"id","sign":1,"bound":[0,1]}]})json");
-    throwsConfig("neither_sign_bound", R"json({"constraints":[{"op":"id"}]})json");
-    throwsConfig("non_integral_sign", R"json({"constraints":[{"op":"id","sign":1.5}]})json");
-    throwsConfig("out_of_range_sign", R"json({"constraints":[{"op":"id","sign":0}]})json");
-    throwsConfig("bad_order", R"json({"constraints":[{"op":"derivative","variable":"X1","order":3,"sign":1}]})json");
-    throwsConfig("non_integral_order", R"json({"constraints":[{"op":"derivative","variable":"X1","order":1.5,"sign":1}]})json");
-    throwsConfig("missing_variable", R"json({"constraints":[{"op":"derivative","order":1,"sign":1}]})json");
-    throwsConfig("missing_order", R"json({"constraints":[{"op":"derivative","variable":"X1","sign":1}]})json");
-    throwsConfig("bad_domain", R"json({"domains":{"X1":[0,1,2]},"constraints":[{"op":"id","sign":1}]})json");
-    throwsConfig("domains_not_object", R"json({"domains":"not an object","constraints":[{"op":"id","sign":1}]})json");
-    throwsConfig("constraints_not_array", R"json({"constraints":{}})json");
-    throwsConfig("constraint_entry_not_object", R"json({"constraints":[7]})json");
-    throwsConfig("bound_not_array", R"json({"constraints":[{"op":"id","bound":7}]})json");
-    throwsConfig("non_string_op", R"json({"constraints":[{"op":7,"sign":1}]})json");
+    rejectsConfig("both_sign_bound", R"json({"constraints":[{"op":"id","sign":1,"bound":[0,1]}]})json");
+    rejectsConfig("neither_sign_bound", R"json({"constraints":[{"op":"id"}]})json");
+    rejectsConfig("non_integral_sign", R"json({"constraints":[{"op":"id","sign":1.5}]})json");
+    rejectsConfig("out_of_range_sign", R"json({"constraints":[{"op":"id","sign":0}]})json");
+    rejectsConfig("bad_order", R"json({"constraints":[{"op":"derivative","variable":"X1","order":3,"sign":1}]})json");
+    rejectsConfig("non_integral_order", R"json({"constraints":[{"op":"derivative","variable":"X1","order":1.5,"sign":1}]})json");
+    rejectsConfig("missing_variable", R"json({"constraints":[{"op":"derivative","order":1,"sign":1}]})json");
+    rejectsConfig("missing_order", R"json({"constraints":[{"op":"derivative","variable":"X1","sign":1}]})json");
+    rejectsConfig("bad_domain", R"json({"domains":{"X1":[0,1,2]},"constraints":[{"op":"id","sign":1}]})json");
+    rejectsConfig("domains_not_object", R"json({"domains":"not an object","constraints":[{"op":"id","sign":1}]})json");
+    rejectsConfig("constraints_not_array", R"json({"constraints":{}})json");
+    rejectsConfig("constraint_entry_not_object", R"json({"constraints":[7]})json");
+    rejectsConfig("bound_not_array", R"json({"constraints":[{"op":"id","bound":7}]})json");
+    rejectsConfig("non_string_op", R"json({"constraints":[{"op":7,"sign":1}]})json");
 }
 
 TEST_CASE("ShapeConstrainedEvaluator - correctly-signed constraints are feasible", "[shape-constraints]")
@@ -1124,8 +1138,10 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
         "domains": { "X1": [1, 5], "X2": [1, 5] },
         "constraints": [ { "op": "derivative", "variable": "X1", "order": 1, "sign": 1 } ]
     })json");
-    auto loaded = Operon::LoadShapeConstraints(path.string());
-    REQUIRE(loaded);
+    auto result = Operon::LoadShapeConstraints(path.string());
+    REQUIRE(result); // outer Cli::Result
+    REQUIRE(*result); // inner std::optional
+    auto const& loaded = **result;
 
     auto requireValid = [](Operon::ShapeConstraintPolicy const& policy, bool isNsga2) {
         if (auto error = Operon::ValidatePolicy(policy, isNsga2)) { throw std::invalid_argument(*error); }
@@ -1135,7 +1151,7 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
     {
         Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("hard-reject"), .UnknownViolation = Operon::Scalar{1}, .PenaltyWeight = Operon::Scalar{1}};
         REQUIRE_NOTHROW(requireValid(policy, false));
-        Operon::ShapeConstrainedEvaluator gated(&fx.nmse, &fx.dtable, *loaded);
+        Operon::ShapeConstrainedEvaluator gated(&fx.nmse, &fx.dtable, loaded);
         CHECK(gated.Feasible(fx.tree));
     }
 
@@ -1147,7 +1163,7 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
             .PenaltyWeight = Operon::Scalar{3},
         };
         REQUIRE_NOTHROW(requireValid(policy, false));
-        Operon::ShapeViolationEvaluator violation(&fx.problem, &fx.dtable, *loaded, policy.PenaltyWeight, policy.UnknownViolation);
+        Operon::ShapeViolationEvaluator violation(&fx.problem, &fx.dtable, loaded, policy.PenaltyWeight, policy.UnknownViolation);
         Operon::MultiEvaluator aggregate(&fx.problem);
         aggregate.Add(&fx.nmse);
         aggregate.Add(&violation);
@@ -1160,7 +1176,7 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
         Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("feasibility-first"), .UnknownViolation = Operon::Scalar{1}, .PenaltyWeight = Operon::Scalar{1}};
         REQUIRE_NOTHROW(requireValid(policy, false));
         fx.problem.SetLinearScalingEnabled(false);
-        Operon::ShapeViolationEvaluator violation(&fx.problem, &fx.dtable, *loaded, Operon::Scalar{1}, policy.UnknownViolation);
+        Operon::ShapeViolationEvaluator violation(&fx.problem, &fx.dtable, loaded, Operon::Scalar{1}, policy.UnknownViolation);
         Operon::FeasibilityFirstComparison comp([&violation](Operon::Tree const& t) { return violation.Measure(t).Feasible; });
         auto feasible = Fixture::MakeIndividual(fx.tree);
         feasible.Fitness = {10.0F};
@@ -1173,7 +1189,7 @@ TEST_CASE("Shape constraint CLI-adjacent composition works for representative en
     {
         Operon::ShapeConstraintPolicy policy{.Enforcement = Operon::ParseShapeEnforcement("extra-objective"), .UnknownViolation = Operon::Scalar{1}, .PenaltyWeight = Operon::Scalar{1}};
         REQUIRE_NOTHROW(requireValid(policy, true));
-        Operon::ShapeViolationEvaluator extra(&fx.problem, &fx.dtable, *loaded, Operon::Scalar{1}, policy.UnknownViolation);
+        Operon::ShapeViolationEvaluator extra(&fx.problem, &fx.dtable, loaded, Operon::Scalar{1}, policy.UnknownViolation);
         Operon::MultiEvaluator objectives(&fx.problem);
         objectives.Add(&fx.nmse);
         objectives.Add(&extra);
@@ -1422,15 +1438,17 @@ TEST_CASE("SCRATCH pappus-fix false-feasibility repro", "[.][shape-constraints-s
         problem.SetTarget(target);
 
         auto path = WriteShapeConfig(label, constraintsJson);
-        auto loaded = Operon::LoadShapeConstraints(path.string());
-        REQUIRE(loaded);
+        auto result = Operon::LoadShapeConstraints(path.string());
+        REQUIRE(result); // outer Cli::Result
+        REQUIRE(*result); // inner std::optional
+        auto const& loaded = **result;
 
         using DTable = DispatchTable<Operon::Scalar>;
         DTable dtable;
         Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE{});
 
         auto tree = InfixParser::Parse(model, ds);
-        Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, *loaded);
+        Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, loaded);
         auto feasible = sce.Feasible(tree);
         WARN(label << " Feasible()=" << feasible << " (expected false -- independent check found a real violation)");
         CHECK_FALSE(feasible);
@@ -1487,8 +1505,10 @@ TEST_CASE("SCRATCH ind333 sign-wrong derivative bound repro", "[.][shape-constra
 
     auto const constraintsJson = R"json({"domains": {"n": [0, 1], "alpha": [0, 1], "epsilon": [1, 2], "Ef": [1, 2]}, "constraints": [{"op": "derivative", "variable": "n", "order": 1, "sign": 1}, {"op": "derivative", "variable": "alpha", "order": 1, "sign": 1}, {"op": "derivative", "variable": "epsilon", "order": 1, "sign": 1}, {"op": "derivative", "variable": "Ef", "order": 1, "sign": 1}]})json";
     auto const path = WriteShapeConfig("ind333", constraintsJson);
-    auto loaded = Operon::LoadShapeConstraints(path.string());
-    REQUIRE(loaded);
+    auto result = Operon::LoadShapeConstraints(path.string());
+    REQUIRE(result); // outer Cli::Result
+    REQUIRE(*result); // inner std::optional
+    auto const& loaded = **result;
 
     auto const model = "(exp((((0.903161883 * n) * (4.700151443 * alpha)) * ((((-4.018970013) * Ef) * (4.741394520 * epsilon)) + (((2.177207947 * n) * (2.639619350 * alpha)) * (((-1.325337768) * Ef) * (1.827161431 * epsilon)))))) + (((-4.018970013) * Ef) * ((0.903161883 * n) * (4.700151443 * alpha))))";
     auto tree = InfixParser::Parse(model, ds);
@@ -1496,7 +1516,7 @@ TEST_CASE("SCRATCH ind333 sign-wrong derivative bound repro", "[.][shape-constra
     using DTable = DispatchTable<Operon::Scalar>;
     DTable dtable;
     Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE{});
-    Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, *loaded);
+    Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, loaded);
     auto const summary = sce.Measure(tree);
     REQUIRE(summary.Measurements.size() == 4);
     auto const& dn = summary.Measurements[0]; // d/dn, sign >= 0 required

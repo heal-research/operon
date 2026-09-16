@@ -336,8 +336,9 @@ auto RunCase(Case const& c) -> bool
     // Measure() too — useful for diagnosis on Cars, where one
     // constraint *does* certify while the others fail).
     auto path = WriteConfig(c.label, c.constraints_json);
-    auto loaded = Operon::LoadShapeConstraints(path.string());
-    REQUIRE(loaded);
+    auto result = Operon::LoadShapeConstraints(path.string());
+    REQUIRE(result); // outer Cli::Result
+    REQUIRE(*result); // inner std::optional
 
     // ---- Diagnostics dump ------------------------------------------------
     WARN("case: " << c.label
@@ -422,7 +423,7 @@ auto RunCase(Case const& c) -> bool
     // violations could be on other constraints. We WARN rather than FAIL
     // on this signal — a definitive B5 verdict needs per-constraint FD
     // sampling (deferred to a v2 of this test).
-    typename Operon::ShapeConstraintSet cs = *loaded;
+    typename Operon::ShapeConstraintSet cs = **result;
     Operon::Dataset dsForProblem = MakeDataset(c.vars);
     Operon::Problem problem(&dsForProblem);
     problem.SetTrainingRange({0, 2});

@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <exception>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 namespace Operon::Cli {
@@ -45,7 +46,12 @@ template<typename F>
 auto Invoke(F&& fn, ErrorCode code, std::string context) -> Result<decltype(fn())>
 {
     try {
-        return std::forward<F>(fn)();
+        if constexpr (std::is_void_v<decltype(fn())>) {
+            std::forward<F>(fn)();
+            return {};
+        } else {
+            return std::forward<F>(fn)();
+        }
     } catch (std::exception const& error) {
         return tl::unexpected(Error{code, std::move(context), error.what()});
     }

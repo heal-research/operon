@@ -131,6 +131,30 @@ TEST_CASE("Parse specific expressions", "[parser]")
     }
 }
 
+TEST_CASE("TryParse reports failures as expected values instead of throwing", "[parser]")
+{
+    SECTION("Malformed syntax returns an unexpected result") {
+        auto const result = Operon::InfixParser::TryParse("1 + * 2");
+        CHECK_FALSE(result);
+        CHECK(result.error().Message.find("parse error at position") != std::string::npos);
+    }
+
+    SECTION("Unknown dataset variable returns an unexpected result") {
+        Operon::Dataset const ds({"x"}, {{1.0F}});
+        auto const result = Operon::InfixParser::TryParse("x + nope", ds);
+        CHECK_FALSE(result);
+        CHECK(result.error().Message.find("not found in dataset") != std::string::npos);
+    }
+
+    SECTION("Valid input yields a tree") {
+        Operon::Dataset const ds({"x"}, {{2.0F}});
+        auto const result = Operon::InfixParser::TryParse("x + 1", ds);
+        REQUIRE(result);
+        CHECK(result->Length() > 0);
+        CHECK(result->Validate());
+    }
+}
+
 TEST_CASE("Formatter output", "[parser]")
 {
     SECTION("Balanced parentheses") {
