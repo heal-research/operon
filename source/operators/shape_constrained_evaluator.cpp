@@ -53,21 +53,15 @@ auto VariableIndex(VariableGradientDag const& dag, Operon::Hash variable) -> std
     return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
 }
 
-// Bound-evaluator domain violations return an `invalid()` NaN-poisoned
-// form (affine) or an `empty()` one (interval); the finiteness check
-// below catches those. TryEvaluate reports its own structural errors
-// (empty tree, missing domain, unmapped node) via tl::unexpected without
-// a throw/catch round trip, but every scalar TryEvaluate call site that
-// can dispatch a user-registered rule still keeps a try/catch boundary:
-// user rules retain their normal exception contract, and pappus throws
-// for structural invariant violations (e.g. forms from different
-// affine_context instances) -- the catches adapt those to these
-// expected-based internals so an unexpected throw degrades to an
-// uncertified bound instead of escaping into a GP worker thread. (The
-// SIMD bisection path needs no such catch: its preflight admits
-// built-in wide rules only, and user rules cannot reach it. TightenRange
-// call sites wrap the throwing Evaluate() API rather than TryEvaluate,
-// so they carry their own local catches.)
+// Domain violations return an `invalid()` NaN-poisoned form (affine) or
+// `empty()` (interval); the finiteness check below catches those.
+// TryEvaluate reports its own structural errors via tl::unexpected, but
+// every scalar call site that can dispatch a user-registered rule keeps
+// a try/catch: a throwing rule (or pappus structural-invariant throw)
+// degrades to an uncertified bound instead of escaping into a GP worker
+// thread. The SIMD bisection path skips this -- it only admits built-in
+// wide rules. TightenRange call sites use the throwing Evaluate() API
+// and carry their own local catches.
 
 auto IsFiniteBound(BoundResult const& b) -> bool
 {
@@ -264,10 +258,7 @@ auto TryWideBisectedIntervalBound(
 auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
 {
     auto const directBound = [&]() -> BoundResult {
-        // Same user-rule exception boundary as the other direct interval
-        // call sites: the wide path above preflights user rules out, but
-        // this scalar fallback does not -- a throwing user rule must
-        // degrade to an uncertified bound, not escape into a worker thread.
+        // User-rule exception boundary (see file-top comment).
         try {
             IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
             return ie.TryEvaluate(tree.GetCoefficients());
@@ -304,11 +295,7 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
     // reject an otherwise valid constant integer power. Fall back to the
     // interval evaluator, which can conservatively represent those cases.
     auto const IntervalBound = [&]() -> BoundResult {
-        // Same contract as the affine call below: TryEvaluate's
-        // tl::unexpected covers its own structural checks, but
-        // user-registered interval rules keep their normal exception
-        // contract -- a throwing rule must degrade to an uncertified bound
-        // here, never escape into a GP worker thread.
+        // User-rule exception boundary (see file-top comment).
         try {
             IntervalEvaluator<Operon::Scalar> ie(&tree, IntervalEvaluator<Operon::Scalar>::DomainMap{ae.Domains()});
             return ie.TryEvaluate(tree.GetCoefficients());
@@ -511,10 +498,7 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, Shape
 auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
     auto const IntervalBound = [&]() -> BoundResult {
-        // Same user-rule exception boundary as TryAffineBoundDirect's
-        // IntervalBound: user-registered interval rules keep their normal
-        // exception contract, so a throwing rule must degrade to an
-        // uncertified bound rather than escape into a GP worker thread.
+        // User-rule exception boundary (see file-top comment).
         try {
             IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
             return ie.TryEvaluate(tree.GetCoefficients());

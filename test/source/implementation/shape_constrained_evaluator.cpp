@@ -973,16 +973,9 @@ TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-conta
 
 TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treated as infeasible, not a crash", "[shape-constraints]")
 {
-    // TryEvaluate adapts only the evaluators' own structural checks (empty
-    // tree, missing domain, unmapped node) to tl::unexpected -- user
-    // registered affine/interval rules keep their normal exception
-    // contract (see IntervalEvaluator::TryEvaluate's doc comment), and
-    // pappus itself throws for structural invariant violations. A rule
-    // that throws must therefore be adapted to an uncertified bound by
-    // this file's TryEvaluate call sites -- same contract as the
-    // domain-error test above, reached through a user callback's throw
-    // instead of a NaN-poisoned form -- and never escape Measure() /
-    // Feasible() into a GP worker thread, where nothing would catch it.
+    // A throwing user-registered rule must degrade to an uncertified
+    // bound (see the file-top comment in shape_constrained_evaluator.cpp),
+    // never escape Measure()/Feasible() into a GP worker thread.
     //
     // Each section registers under its own hash: the registries are
     // process-wide and write-once, and other tests in this binary
