@@ -10,20 +10,21 @@
 #include <optional>
 #include <span>
 
-#include <string>
-#include <tl/expected.hpp>
+#include "derivatives.hpp"
 #include "operon/core/dataset.hpp"
+#include "operon/core/dispatch.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
-#include "operon/core/dispatch.hpp"
 #include "operon/formatter/formatter.hpp"
-#include "derivatives.hpp"
+#include <string>
+#include <tl/expected.hpp>
 
 // #include "tape.hpp"
 
 namespace Operon {
 
-enum class LikelihoodType : uint8_t { Gaussian, Poisson };
+enum class LikelihoodType : uint8_t { Gaussian,
+    Poisson };
 
 struct InterpreterError {
     enum class Code {
@@ -41,7 +42,7 @@ struct TreeEvaluationError {
     InterpreterError Error;
 };
 
-template<typename T>
+template <typename T>
 struct InterpreterBase {
     InterpreterBase() = default;
     InterpreterBase(const InterpreterBase&) = default;
@@ -53,10 +54,14 @@ struct InterpreterBase {
     // evaluate model output
     virtual auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const -> void = 0;
     virtual auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> Operon::Vector<T> = 0;
+    [[nodiscard]] virtual auto TryEvaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const -> tl::expected<void, InterpreterError> = 0;
+    [[nodiscard]] virtual auto TryEvaluate(Operon::Span<T const> coeff, Operon::Range range) const -> tl::expected<Operon::Vector<T>, InterpreterError> = 0;
 
     // evaluate model jacobian in reverse mode
     virtual auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void = 0;
     virtual auto JacRev(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> = 0;
+    [[nodiscard]] virtual auto TryJacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> tl::expected<void, InterpreterError> = 0;
+    [[nodiscard]] virtual auto TryJacRev(Operon::Span<T const> coeff, Operon::Range range) const -> tl::expected<Eigen::Array<T, -1, -1>, InterpreterError> = 0;
 
     // evaluate model jacobian in forward mode
     virtual auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void = 0;
@@ -88,26 +93,29 @@ struct InterpreterBase {
 // per-call `Interpreter` locals in operators/evaluator.hpp and gp.cpp's
 // per-worker scratch slots) rather than one instance shared and reused across
 // threads.
-template<typename T = Operon::Scalar, typename DTable = ScalarDispatch>
-requires DTable::template SupportsType<T>
-struct Interpreter : public InterpreterBase<T> {
+template <typename T = Operon::Scalar, typename DTable = ScalarDispatch>
+    requires DTable::template
+SupportsType<T> struct Interpreter : public InterpreterBase<T> {
     using DispatchTable = DTable;
     static constexpr auto BatchSize = DTable::template BatchSize<T>;
 
     Interpreter(gsl::not_null<DTable const*> dtable, gsl::not_null<Operon::Dataset const*> dataset, gsl::not_null<Operon::Tree const*> tree)
         : dtable_(dtable)
         , dataset_(dataset)
-        , tree_(tree) { }
+        , tree_(tree)
+    {
+    }
 
     auto Primal() const { return primal_; }
     auto Trace() const { return trace_; }
 
-    auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const -> void final {
+    auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const -> void final
+    {
         InitContext(coeff, range);
 
-        auto const len{ static_cast<int64_t>(range.Size()) };
+        auto const len { static_cast<int64_t>(range.Size()) };
 
-        constexpr int64_t S{ BatchSize };
+        constexpr int64_t S { BatchSize };
         auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
 
         for (auto row = 0L; row < len; row += S) {
@@ -121,17 +129,19 @@ struct Interpreter : public InterpreterBase<T> {
     }
 
     [[nodiscard]] auto TryEvaluate(Operon::Span<T const> coeff, Operon::Range range,
-                                   Operon::Span<T> result) const
-        -> tl::expected<void, InterpreterError>
+        Operon::Span<T> result) const
+        -> tl::expected<void, InterpreterError> final
     {
         if (context_.empty() || range_ != range) {
             auto bound = TryBindTree(range);
-            if (!bound) { return tl::unexpected(std::move(bound.error())); }
+            if (!bound) {
+                return tl::unexpected(std::move(bound.error()));
+            }
         }
         UpdateCoefficients(coeff);
 
-        auto const len{ static_cast<int64_t>(range.Size()) };
-        constexpr int64_t S{ BatchSize };
+        auto const len { static_cast<int64_t>(range.Size()) };
+        constexpr int64_t S { BatchSize };
         auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/false);
@@ -143,25 +153,28 @@ struct Interpreter : public InterpreterBase<T> {
         return {};
     }
 
-    auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> Operon::Vector<T> final {
+    auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> Operon::Vector<T> final
+    {
         Operon::Vector<T> res(range.Size());
-        this->Evaluate(coeff, range, {res.data(), res.size()});
+        this->Evaluate(coeff, range, { res.data(), res.size() });
         ENSURE(res.size() == range.Size());
         return res;
     }
 
     [[nodiscard]] auto TryEvaluate(Operon::Span<T const> coeff, Operon::Range range) const
-        -> tl::expected<Operon::Vector<T>, InterpreterError>
+        -> tl::expected<Operon::Vector<T>, InterpreterError> final
     {
         if (context_.empty() || range_ != range) {
             auto bound = TryBindTree(range);
-            if (!bound) { return tl::unexpected(std::move(bound.error())); }
+            if (!bound) {
+                return tl::unexpected(std::move(bound.error()));
+            }
         }
         UpdateCoefficients(coeff);
 
         Operon::Vector<T> result(range.Size());
-        auto const len{ static_cast<int64_t>(range.Size()) };
-        constexpr int64_t S{ BatchSize };
+        auto const len { static_cast<int64_t>(range.Size()) };
+        constexpr int64_t S { BatchSize };
         auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/false);
@@ -171,15 +184,32 @@ struct Interpreter : public InterpreterBase<T> {
         return result;
     }
 
-    auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
-        InitContext(coeff, range);
-        auto const len{ static_cast<int64_t>(range.Size()) };
+    auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final
+    {
+        auto result = TryJacRev(coeff, range, jacobian);
+        if (!result) {
+            throw std::runtime_error(result.error().Message);
+        }
+    }
+
+    [[nodiscard]] auto TryJacRev(Operon::Span<T const> coeff, Operon::Range range,
+        Operon::Span<T> jacobian) const
+        -> tl::expected<void, InterpreterError> final
+    {
+        if (context_.empty() || range_ != range) {
+            auto bound = TryBindTree(range);
+            if (!bound) {
+                return tl::unexpected(std::move(bound.error()));
+            }
+        }
+        UpdateCoefficients(coeff);
+        auto const len { static_cast<int64_t>(range.Size()) };
         auto const& nodes = tree_->Nodes();
         auto const nn { std::ssize(nodes) };
 
-        constexpr int64_t S{ BatchSize };
+        constexpr int64_t S { BatchSize };
         trace_ = Backend::Buffer<T, S>(S, nn);
-        Backend::Fill<T, S>(trace_, nn-1, T{1});
+        Backend::Fill<T, S>(trace_, nn - 1, T { 1 });
 
         std::size_t j = 0;
         auto const cols = BuildColumns([&](std::size_t i) -> std::size_t { return nodes[i].Optimize ? j++ : NoIndex; });
@@ -188,30 +218,43 @@ struct Interpreter : public InterpreterBase<T> {
         // No zero-init needed: each Optimize node maps to a unique column
         // (built via BuildColumns above), so every column is written
         // exactly once (Accumulate=false, plain `=`).
-
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/true);
-            ReverseTraceGeneric<false>(range, row, cols.colOf,
-                [](std::size_t i, auto const& primal, T w) { return primal.col(static_cast<Eigen::Index>(i)) / w; },
-                jac);
+            ReverseTraceGeneric<false>(range, row, cols.colOf, [](std::size_t i, auto const& primal, T w) { return primal.col(static_cast<Eigen::Index>(i)) / w; }, jac);
         }
+        return {};
     }
 
-    auto JacRev(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final {
-        auto const nr{ static_cast<int64_t>(range.Size()) };
+    auto JacRev(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final
+    {
+        auto result = TryJacRev(coeff, range);
+        if (!result) {
+            throw std::runtime_error(result.error().Message);
+        }
+        return std::move(*result);
+    }
+
+    [[nodiscard]] auto TryJacRev(Operon::Span<T const> coeff, Operon::Range range) const
+        -> tl::expected<Eigen::Array<T, -1, -1>, InterpreterError> final
+    {
+        auto const nr { static_cast<int64_t>(range.Size()) };
         Eigen::Array<T, -1, -1> jacobian(nr, coeff.size());
-        JacRev(coeff, range, { jacobian.data(), static_cast<size_t>(jacobian.size()) });
+        auto result = TryJacRev(coeff, range, { jacobian.data(), static_cast<size_t>(jacobian.size()) });
+        if (!result) {
+            return tl::unexpected(std::move(result.error()));
+        }
         return jacobian;
     }
 
-    auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final {
+    auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final
+    {
         InitContext(coeff, range);
         auto const& nodes = tree_->Nodes();
         auto const nNodes = std::ssize(nodes);
-        auto const nRows  = static_cast<int>(range.Size());
+        auto const nRows = static_cast<int>(range.Size());
 
         trace_ = Backend::Buffer<T, BatchSize>(BatchSize, nNodes);
-        Backend::Fill<T, BatchSize>(trace_, nNodes-1, T{1});
+        Backend::Fill<T, BatchSize>(trace_, nNodes - 1, T { 1 });
 
         std::size_t j = 0;
         auto const cols = BuildColumns([&](std::size_t i) -> std::size_t { return nodes[i].Optimize ? j++ : NoIndex; });
@@ -221,13 +264,12 @@ struct Interpreter : public InterpreterBase<T> {
 
         for (int row = 0; row < nRows; row += BatchSize) {
             ForwardPass(range, row, /*trace=*/true);
-            ForwardTraceGeneric<false>(range, row, cols.seeds,
-                [](std::size_t i, auto const& primal, T w) { return primal.col(static_cast<Eigen::Index>(i)) / w; },
-                jac);
+            ForwardTraceGeneric<false>(range, row, cols.seeds, [](std::size_t i, auto const& primal, T w) { return primal.col(static_cast<Eigen::Index>(i)) / w; }, jac);
         }
     }
 
-    auto JacFwd(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final {
+    auto JacFwd(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> final
+    {
         auto const nRows = static_cast<int64_t>(range.Size());
         Eigen::Array<T, -1, -1> jacobian(nRows, coeff.size());
         JacFwd(coeff, range, { jacobian.data(), static_cast<size_t>(jacobian.size()) });
@@ -240,15 +282,16 @@ struct Interpreter : public InterpreterBase<T> {
     // rule. Complements JacRev, which differentiates w.r.t. Node::Optimize
     // coefficients (weights) rather than variable values — same underlying
     // adjoint sweep (ReverseTraceGeneric), different extraction point.
-    auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable, Operon::Span<T> result) const -> void final {
+    auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable, Operon::Span<T> result) const -> void final
+    {
         InitContext(coeff, range);
-        auto const len{ static_cast<int64_t>(range.Size()) };
+        auto const len { static_cast<int64_t>(range.Size()) };
         auto const& nodes = tree_->Nodes();
         auto const nn { std::ssize(nodes) };
 
-        constexpr int64_t S{ BatchSize };
+        constexpr int64_t S { BatchSize };
         trace_ = Backend::Buffer<T, S>(S, nn);
-        Backend::Fill<T, S>(trace_, nn-1, T{1});
+        Backend::Fill<T, S>(trace_, nn - 1, T { 1 });
 
         auto const cols = BuildColumns([&](std::size_t i) -> std::size_t { return (nodes[i].IsVariable() && nodes[i].HashValue == variable) ? 0 : NoIndex; });
 
@@ -257,13 +300,12 @@ struct Interpreter : public InterpreterBase<T> {
 
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/true);
-            ReverseTraceGeneric<true>(range, row, cols.colOf,
-                [](std::size_t /*i*/, auto const& /*primal*/, T w) { return Eigen::Array<T, S, 1>::Constant(w); },
-                jac);
+            ReverseTraceGeneric<true>(range, row, cols.colOf, [](std::size_t /*i*/, auto const& /*primal*/, T w) { return Eigen::Array<T, S, 1>::Constant(w); }, jac);
         }
     }
 
-    auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable) const -> Operon::Vector<T> final {
+    auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable) const -> Operon::Vector<T> final
+    {
         Operon::Vector<T> result(range.Size());
         JacRevVariable(coeff, range, variable, { result.data(), result.size() });
         return result;
@@ -271,14 +313,15 @@ struct Interpreter : public InterpreterBase<T> {
 
     // Forward-mode counterpart to JacRevVariable — same relationship as
     // JacFwd has to JacRev.
-    auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable, Operon::Span<T> result) const -> void final {
+    auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable, Operon::Span<T> result) const -> void final
+    {
         InitContext(coeff, range);
         auto const& nodes = tree_->Nodes();
         auto const nNodes = std::ssize(nodes);
-        auto const nRows  = static_cast<int>(range.Size());
+        auto const nRows = static_cast<int>(range.Size());
 
         trace_ = Backend::Buffer<T, BatchSize>(BatchSize, nNodes);
-        Backend::Fill<T, BatchSize>(trace_, nNodes-1, T{1});
+        Backend::Fill<T, BatchSize>(trace_, nNodes - 1, T { 1 });
 
         auto const cols = BuildColumns([&](std::size_t i) -> std::size_t { return (nodes[i].IsVariable() && nodes[i].HashValue == variable) ? 0 : NoIndex; });
 
@@ -287,13 +330,12 @@ struct Interpreter : public InterpreterBase<T> {
 
         for (int row = 0; row < nRows; row += BatchSize) {
             ForwardPass(range, row, /*trace=*/true);
-            ForwardTraceGeneric<true>(range, row, cols.seeds,
-                [](std::size_t /*i*/, auto const& /*primal*/, T w) { return Eigen::Array<T, BatchSize, 1>::Constant(w); },
-                jac);
+            ForwardTraceGeneric<true>(range, row, cols.seeds, [](std::size_t /*i*/, auto const& /*primal*/, T w) { return Eigen::Array<T, BatchSize, 1>::Constant(w); }, jac);
         }
     }
 
-    auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable) const -> Operon::Vector<T> final {
+    auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable) const -> Operon::Vector<T> final
+    {
         Operon::Vector<T> result(range.Size());
         JacFwdVariable(coeff, range, variable, { result.data(), result.size() });
         return result;
@@ -302,11 +344,11 @@ struct Interpreter : public InterpreterBase<T> {
     // Evaluate the full tree and extract values at multiple node indices.
     // Roots set to SIZE_MAX produce zero columns.
     auto EvaluateRoots(Operon::Span<T const> coeff, Operon::Range range,
-                       Operon::Span<std::size_t const> roots) const -> Eigen::Array<T, -1, -1>
+        Operon::Span<std::size_t const> roots) const -> Eigen::Array<T, -1, -1>
     {
         InitContext(coeff, range);
 
-        auto const len    = static_cast<int64_t>(range.Size());
+        auto const len = static_cast<int64_t>(range.Size());
         auto const nRoots = static_cast<Eigen::Index>(roots.size());
         constexpr int64_t S = BatchSize;
 
@@ -314,7 +356,9 @@ struct Interpreter : public InterpreterBase<T> {
         // batch loop below; NoIndex columns are zeroed explicitly.
         Eigen::Array<T, -1, -1> result(len, nRoots);
         for (Eigen::Index k = 0; k < nRoots; ++k) {
-            if (roots[k] == NoIndex) { result.col(k).setZero(); }
+            if (roots[k] == NoIndex) {
+                result.col(k).setZero();
+            }
         }
 
         auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
@@ -326,7 +370,9 @@ struct Interpreter : public InterpreterBase<T> {
             ForwardPass(range, row, /*trace=*/false);
             auto const rem = std::min(S, len - row);
             for (Eigen::Index k = 0; k < nRoots; ++k) {
-                if (roots[k] == NoIndex) { continue; }
+                if (roots[k] == NoIndex) {
+                    continue;
+                }
                 auto const* src = primal_.data() + (static_cast<int64_t>(roots[k]) * S);
                 std::copy_n(src, rem, result.col(k).data() + row);
             }
@@ -339,23 +385,25 @@ struct Interpreter : public InterpreterBase<T> {
 
     auto GetDispatchTable() const { return dtable_.get(); }
 
-    static auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range) -> Operon::Vector<T> {
+    static auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range) -> Operon::Vector<T>
+    {
         auto coeff = tree.GetCoefficients();
         DTable dt;
-        return Interpreter{&dt, &dataset, &tree}.Evaluate(coeff, range);
+        return Interpreter { &dt, &dataset, &tree }.Evaluate(coeff, range);
     }
 
-    static auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<T const> coeff) -> Operon::Vector<T> {
+    static auto Evaluate(Operon::Tree const& tree, Operon::Dataset const& dataset, Operon::Range const range, Operon::Span<T const> coeff) -> Operon::Vector<T>
+    {
         DTable dt;
-        return Interpreter{&dt, &dataset, &tree}.Evaluate(coeff, range);
+        return Interpreter { &dt, &dataset, &tree }.Evaluate(coeff, range);
     }
 
 private:
     // private members
     using Data = std::tuple<T,
-          std::span<T const>,
-          std::optional<Dispatch::Callable<T, BatchSize> const>,
-          std::optional<Dispatch::CallableDiff<T, BatchSize> const> >;
+        std::span<T const>,
+        std::optional<Dispatch::Callable<T, BatchSize> const>,
+        std::optional<Dispatch::CallableDiff<T, BatchSize> const>>;
 
     gsl::not_null<DTable const*> dtable_;
     gsl::not_null<Operon::Dataset const*> dataset_;
@@ -366,24 +414,27 @@ private:
     mutable Operon::Vector<Data> context_;
     mutable Backend::Buffer<T, BatchSize> primal_;
     mutable Backend::Buffer<T, BatchSize> trace_;
-    mutable Operon::Range range_{};
+    mutable Operon::Range range_ {};
 
     // private methods
-    auto ForwardPass(Operon::Range range, int row, bool trace = false) const -> void {
-        auto const& nodes     = tree_->Nodes();
-        auto const nNodes     = std::ssize(nodes);
+    auto ForwardPass(Operon::Range range, int row, bool trace = false) const -> void
+    {
+        auto const& nodes = tree_->Nodes();
+        auto const nNodes = std::ssize(nodes);
         auto const rangeStart = static_cast<int64_t>(range.Start());
-        auto const rangeSize  = static_cast<int64_t>(range.Size());
-        constexpr int64_t S   = BatchSize;
+        auto const rangeSize = static_cast<int64_t>(range.Size());
+        constexpr int64_t S = BatchSize;
 
         auto rem = std::min(S, rangeSize - row);
         Operon::Range rg(rangeStart + row, rangeStart + row + rem);
 
         // forward pass - compute primal and trace
         for (auto i = 0L; i < nNodes; ++i) {
-            if (nodes[i].IsConstant()) { continue; }
+            if (nodes[i].IsConstant()) {
+                continue;
+            }
 
-            auto const& [ p, v, f, df ] = context_[i];
+            auto const& [p, v, f, df] = context_[i];
             auto* ptr = primal_.data() + (i * S);
 
             if (nodes[i].IsRef()) {
@@ -403,7 +454,7 @@ private:
                 }
 
                 // apply weight after partials are computed
-                //if (p != T{1}) {
+                // if (p != T{1}) {
                 //    std::ranges::transform(std::span(ptr, rem), ptr, [p](auto x) { return x * p; });
                 //}
             }
@@ -430,7 +481,8 @@ private:
     };
 
     template <typename Predicate>
-    auto BuildColumns(Predicate predicate) const -> Columns {
+    auto BuildColumns(Predicate predicate) const -> Columns
+    {
         auto const nNodes = static_cast<std::size_t>(tree_->Nodes().size());
         Columns cols;
         cols.colOf.assign(nNodes, NoIndex);
@@ -455,11 +507,12 @@ private:
     // writes `+=` (the variable case, where multiple nodes/occurrences can
     // share one column — caller must zero-init `jac` first).
     template <bool Accumulate, typename LocalFactor>
-    auto ForwardTraceGeneric(Operon::Range range, int row, Operon::Vector<std::pair<std::size_t, std::size_t>> const& seeds, LocalFactor factor, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
-        auto const rangeSize     = static_cast<int64_t>(range.Size());
-        auto const& nodes        = tree_->Nodes();
-        auto const nNodes        = std::ssize(nodes);
-        constexpr int64_t S      = BatchSize;
+    auto ForwardTraceGeneric(Operon::Range range, int row, Operon::Vector<std::pair<std::size_t, std::size_t>> const& seeds, LocalFactor factor, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void
+    {
+        auto const rangeSize = static_cast<int64_t>(range.Size());
+        auto const& nodes = tree_->Nodes();
+        auto const nNodes = std::ssize(nodes);
+        constexpr int64_t S = BatchSize;
         auto const remainingRows = std::min(S, rangeSize - row);
 
         Eigen::Array<T, S, -1> dot(S, nNodes);
@@ -470,8 +523,8 @@ private:
         for (auto const& [c, col] : seeds) {
             auto const cc = static_cast<int64_t>(c);
 
-            dot.topRows(remainingRows).setConstant(T{0});
-            dot.col(cc).head(remainingRows).setConstant(T{1});
+            dot.topRows(remainingRows).setConstant(T { 0 });
+            dot.col(cc).head(remainingRows).setConstant(T { 1 });
 
             for (auto i = 0; i < nNodes; ++i) {
                 if (nodes[i].IsRef()) {
@@ -479,21 +532,25 @@ private:
                     dot.col(i).head(remainingRows) = dot.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows);
                     continue;
                 }
-                if (nodes[i].IsLeaf()) { continue; }
+                if (nodes[i].IsLeaf()) {
+                    continue;
+                }
                 for (auto x : Tree::Indices(nodes, i)) {
-                    auto j{ static_cast<int64_t>(x) };
+                    auto j { static_cast<int64_t>(x) };
                     // A leaf child other than the seeded node cc has a zero
                     // tangent and can be skipped — except a Ref, which is a
                     // leaf by arity but an alias: its dot was already copied
                     // from its (possibly seeded) target above and must not
                     // be dropped just because j != cc.
-                    if (nodes[j].IsLeaf() && !nodes[j].IsRef() && j != cc) { continue; }
+                    if (nodes[j].IsLeaf() && !nodes[j].IsRef() && j != cc) {
+                        continue;
+                    }
                     dot.col(i).head(remainingRows) += dot.col(j).head(remainingRows) * trace.col(j).head(remainingRows) * std::get<0>(context_[i]);
                 }
             }
 
             auto const w = std::get<0>(context_[c]);
-            auto const contribution = dot.col(nNodes-1).head(remainingRows) * factor(c, primal, w).head(remainingRows);
+            auto const contribution = dot.col(nNodes - 1).head(remainingRows) * factor(c, primal, w).head(remainingRows);
             if constexpr (Accumulate) {
                 jac.col(static_cast<Eigen::Index>(col)).segment(row, remainingRows) += contribution;
             } else {
@@ -510,17 +567,18 @@ private:
     // column) — this is why reverse mode is preferred when there are many
     // targets (JacRev vs JacFwd for coefficients).
     template <bool Accumulate, typename LocalFactor>
-    auto ReverseTraceGeneric(Operon::Range range, int row, Operon::Vector<std::size_t> const& colOf, LocalFactor factor, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void {
-        auto const rangeSize     = static_cast<int64_t>(range.Size());
-        auto const& nodes        = tree_->Nodes();
-        auto const nNodes        = std::ssize(nodes);
-        constexpr int64_t S      = BatchSize;
+    auto ReverseTraceGeneric(Operon::Range range, int row, Operon::Vector<std::size_t> const& colOf, LocalFactor factor, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void
+    {
+        auto const rangeSize = static_cast<int64_t>(range.Size());
+        auto const& nodes = tree_->Nodes();
+        auto const nNodes = std::ssize(nodes);
+        constexpr int64_t S = BatchSize;
         auto const remainingRows = std::min(S, rangeSize - row);
 
         Eigen::Map<Eigen::Array<T, S, -1>> primal(primal_.data(), S, nNodes);
         Eigen::Map<Eigen::Array<T, S, -1>> trace(trace_.data(), S, nNodes);
 
-        for (auto i = nNodes-1; i >= 0L; --i) {
+        for (auto i = nNodes - 1; i >= 0L; --i) {
             auto w = std::get<0>(context_[i]);
 
             if (auto const col = colOf[static_cast<std::size_t>(i)]; col != NoIndex) {
@@ -535,11 +593,12 @@ private:
             if (nodes[i].IsRef()) {
                 EXPECT(static_cast<int64_t>(nodes[i].RefTo) < i); // backward ref: target processed after us in reverse sweep
                 // Accumulate gradient into the referenced node (may be referenced >1 time)
-                trace.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows) +=
-                    trace.col(i).head(remainingRows);
+                trace.col(static_cast<int64_t>(nodes[i].RefTo)).head(remainingRows) += trace.col(i).head(remainingRows);
                 continue;
             }
-            if (nodes[i].IsLeaf()) { continue; }
+            if (nodes[i].IsLeaf()) {
+                continue;
+            }
 
             for (auto j : Tree::Indices(nodes, i)) {
                 auto const x { static_cast<int64_t>(j) };
@@ -548,11 +607,13 @@ private:
         }
     }
 
+public:
     // Full bind: allocate primal_, build context_ with function/derivative pointers
     // and variable data spans. Called once per unique (tree, range) pair.
-    auto TryBindTree(Operon::Range range) const -> tl::expected<void, InterpreterError> {
+    auto TryBindTree(Operon::Range range) const -> tl::expected<void, InterpreterError>
+    {
         auto const& nodes = tree_->Nodes();
-        auto const nRows  = static_cast<int64_t>(range.Size());
+        auto const nRows = static_cast<int64_t>(range.Size());
         auto const nNodes = std::ssize(nodes);
         auto const& dt = dtable_.get();
 
@@ -560,20 +621,20 @@ private:
         // hash, which is a recoverable unsupported-tree error at this boundary.
         for (auto const& n : nodes) {
             if (n.IsVariable() && !dataset_->GetVariable(n.HashValue)) {
-                return tl::unexpected(InterpreterError{
+                return tl::unexpected(InterpreterError {
                     InterpreterError::Code::MissingVariable, n.HashValue,
-                    fmt::format("missing dataset variable for node {}", n.Name())});
+                    fmt::format("missing dataset variable for node {}", n.Name()) });
             }
             if (!n.IsLeaf() && !dt->template TryGetFunction<T>(n.HashValue)) {
-                return tl::unexpected(InterpreterError{
+                return tl::unexpected(InterpreterError {
                     InterpreterError::Code::MissingPrimitive, n.HashValue,
-                    fmt::format("missing primitive for node {}", n.Name())});
+                    fmt::format("missing primitive for node {}", n.Name()) });
             }
         }
 
-        constexpr int64_t S{ BatchSize };
+        constexpr int64_t S { BatchSize };
         primal_ = Backend::Buffer<T, S>(S, nNodes);
-        std::ranges::fill_n(primal_.data(), S * nNodes, T{0});
+        std::ranges::fill_n(primal_.data(), S * nNodes, T { 0 });
         context_.clear();
         context_.reserve(nNodes);
 
@@ -581,8 +642,8 @@ private:
             auto const& n = nodes[i];
             auto variableValues = n.IsVariable()
                 ? std::tuple_element_t<1, Data>(dataset_->GetValues(n.HashValue).subspan(range.Start(), range.Size()).data(), nRows)
-                : std::tuple_element_t<1, Data>{};
-            context_.emplace_back(T{n.Value}, variableValues,
+                : std::tuple_element_t<1, Data> {};
+            context_.emplace_back(T { n.Value }, variableValues,
                 dt->template TryGetFunction<T>(n.HashValue),
                 dt->template TryGetDerivative<T>(n.HashValue));
         }
@@ -590,22 +651,27 @@ private:
         return {};
     }
 
-    auto BindTree(Operon::Range range) const -> void {
+private:
+    auto BindTree(Operon::Range range) const -> void
+    {
         auto result = TryBindTree(range);
-        if (!result) { throw std::runtime_error(result.error().Message); }
+        if (!result) {
+            throw std::runtime_error(result.error().Message);
+        }
     }
 
     // Cheap update: patch coefficient values in context_ and re-fill constant columns.
     // Called on every optimizer step once BindTree has been called for this range.
-    auto UpdateCoefficients(Operon::Span<T const> coeff) const {
+    auto UpdateCoefficients(Operon::Span<T const> coeff) const
+    {
         auto const& nodes = tree_->Nodes();
         auto const nNodes = std::ssize(nodes);
-        constexpr int64_t S{ BatchSize };
+        constexpr int64_t S { BatchSize };
 
         for (int64_t i = 0, j = 0; i < nNodes; ++i) {
             auto const& n = nodes[i];
             if (!coeff.empty() && n.Optimize) {
-                std::get<0>(context_[i]) = T{coeff[j++]};
+                std::get<0>(context_[i]) = T { coeff[j++] };
             }
             if (n.IsConstant()) {
                 Backend::Fill<T, S>(primal_, i, std::get<0>(context_[i]));
@@ -613,8 +679,11 @@ private:
         }
     }
 
-    auto InitContext(Operon::Span<T const> coeff, Operon::Range range) const {
-        if (context_.empty() || range_ != range) { BindTree(range); }
+    auto InitContext(Operon::Span<T const> coeff, Operon::Range range) const
+    {
+        if (context_.empty() || range_ != range) {
+            BindTree(range);
+        }
         UpdateCoefficients(coeff);
     }
 };

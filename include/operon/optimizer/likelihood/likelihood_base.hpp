@@ -5,9 +5,11 @@
 #ifndef OPERON_LIKELIHOOD_BASE_HPP
 #define OPERON_LIKELIHOOD_BASE_HPP
 
-#include <concepts>
 #include <Eigen/Core>
+#include <concepts>
 #include <gsl/pointers>
+#include <limits>
+#include <optional>
 #include <vstat/vstat.hpp>
 
 #include "operon/core/concepts.hpp"
@@ -19,12 +21,11 @@ namespace Operon {
 namespace Concepts {
     // Types satisfying Likelihood that also provide ComputeFisherMatrix.
     // Used by MDL/FBF evaluators and the Levenberg-Marquardt optimizer.
-    template<typename T>
+    template <typename T>
     concept HasFisherMatrix = requires(
         Operon::Span<Operon::Scalar const> x,
         Operon::Span<Operon::Scalar const> y,
-        Operon::Span<Operon::Scalar const> z
-    ) {
+        Operon::Span<Operon::Scalar const> z) {
         { T::ComputeFisherMatrix(x, y, z) } -> std::convertible_to<Eigen::Matrix<Operon::Scalar, -1, -1>>;
     };
 } // namespace Concepts
@@ -34,8 +35,8 @@ struct LikelihoodBase {
     using Scalar = T;
     using Matrix = Eigen::Matrix<Scalar, -1, -1>;
     using Vector = Eigen::Matrix<Scalar, -1, 1>;
-    using Ref    = Eigen::Ref<Vector>;
-    using Cref   = Eigen::Ref<Vector const> const&;
+    using Ref = Eigen::Ref<Vector>;
+    using Cref = Eigen::Ref<Vector const> const&;
 
     using scalar_t = T; // for lbfgs solver NOLINT
 
@@ -54,9 +55,23 @@ struct LikelihoodBase {
     [[nodiscard]] virtual auto JacobianEvaluations() const -> std::size_t = 0;
     [[nodiscard]] virtual auto NumParameters() const -> std::size_t = 0;
     [[nodiscard]] virtual auto NumObservations() const -> std::size_t = 0;
+    [[nodiscard]] auto Error() const -> std::optional<InterpreterError> const& { return error_; }
+
+protected:
+    [[nodiscard]] auto Fail(InterpreterError error, Ref gradient) const noexcept -> Scalar
+    {
+        if (!error_) {
+            error_ = std::move(error);
+        }
+        if (gradient.size() != 0) {
+            gradient.setConstant(std::numeric_limits<Scalar>::quiet_NaN());
+        }
+        return std::numeric_limits<Scalar>::quiet_NaN();
+    }
 
 private:
     gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> interpreter_;
+    mutable std::optional<InterpreterError> error_;
 };
 
 namespace Concepts {
@@ -65,7 +80,7 @@ namespace Concepts {
     // (operator(), FunctionEvaluations, JacobianEvaluations, etc.).
     // Prevents confusing template errors when a static-only *Likelihood struct
     // is mistakenly passed to LBFGSOptimizer or SGDOptimizer.
-    template<typename T>
+    template <typename T>
     concept OptimizerLoss = Likelihood<T> && HasFisherMatrix<T> && std::derived_from<T, LikelihoodBase<typename T::Scalar>>;
 } // namespace Concepts
 

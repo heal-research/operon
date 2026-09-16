@@ -5,14 +5,25 @@
 #ifndef OPERON_LM_COST_FUNCTION_BASE_HPP
 #define OPERON_LM_COST_FUNCTION_BASE_HPP
 
+#include <Eigen/Core>
 #include <algorithm>
 #include <atomic>
-#include <Eigen/Core>
+#include <tl/expected.hpp>
 
 #include "operon/core/contracts.hpp"
 #include "operon/core/types.hpp"
 
 namespace Operon {
+
+struct LMWeightError {
+    enum class Code {
+        SizeMismatch,
+        NegativeValue,
+    };
+
+    Code Kind;
+    std::size_t Index {};
+};
 
 // Standard WLS-via-LM trick: scaling both the residual and its Jacobian row by
 // sqrt(w_i) makes the unweighted LM/GN normal equations solve the weighted
@@ -23,15 +34,32 @@ namespace Operon {
 // span: LMCostFunction/JitLMCostFunction's ctors take the whole-column target/weights
 // (same contract as GaussianLoss/PoissonLoss) and slice once there before calling this
 // - unlike those, LM never mini-batches, so there's exactly one local slice to derive.
+[[nodiscard]] inline auto TryValidateLMWeights(Operon::Span<Operon::Scalar const> weights, std::size_t numResiduals)
+    -> tl::expected<void, LMWeightError>
+{
+    if (!weights.empty() && weights.size() != numResiduals) {
+        return tl::unexpected(LMWeightError { LMWeightError::Code::SizeMismatch });
+    }
+    auto const it = std::ranges::find_if(weights, [](auto weight) { return weight < Operon::Scalar { 0 }; });
+    if (it != weights.end()) {
+        return tl::unexpected(LMWeightError {
+            LMWeightError::Code::NegativeValue,
+            static_cast<std::size_t>(std::distance(weights.begin(), it)),
+        });
+    }
+    return {};
+}
+
 inline void ValidateLMWeights(Operon::Span<Operon::Scalar const> weights, std::size_t numResiduals)
 {
-    EXPECT(weights.empty() || weights.size() == numResiduals);
-    EXPECT(std::all_of(weights.begin(), weights.end(), [](auto w) { return w >= Operon::Scalar{0}; }));
+    EXPECT(TryValidateLMWeights(weights, numResiduals).has_value());
 }
 
 inline void ApplyLMResidualWeights(Operon::Span<Operon::Scalar const> weights, Operon::Scalar* residuals, std::size_t numResiduals)
 {
-    if (weights.empty()) { return; }
+    if (weights.empty()) {
+        return;
+    }
     Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, static_cast<Eigen::Index>(numResiduals));
     Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> w(weights.data(), static_cast<Eigen::Index>(numResiduals));
     x *= w.sqrt();
@@ -39,7 +67,9 @@ inline void ApplyLMResidualWeights(Operon::Span<Operon::Scalar const> weights, O
 
 inline void ApplyLMJacobianWeights(Operon::Span<Operon::Scalar const> weights, Operon::Scalar* jacobian, std::size_t numResiduals, std::size_t numParameters)
 {
-    if (weights.empty()) { return; }
+    if (weights.empty()) {
+        return;
+    }
     Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, -1>> j(jacobian, static_cast<Eigen::Index>(numResiduals), static_cast<Eigen::Index>(numParameters));
     Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> w(weights.data(), static_cast<Eigen::Index>(numResiduals));
     j.array().colwise() *= w.sqrt();
@@ -50,22 +80,24 @@ inline void ApplyLMJacobianWeights(Operon::Span<Operon::Scalar const> weights, O
 // need Derived::Evaluate(parameters, residuals, jacobian), everything else here
 // (the Eigen::Matrix-based overloads, values()/inputs(), call counters) is identical
 // across backends.
-template<typename Derived, int StorageOrder = Eigen::ColMajor>
+template <typename Derived, int StorageOrder = Eigen::ColMajor>
 struct LMCostFunctionBase {
-    static auto constexpr Storage{ StorageOrder };
+    static auto constexpr Storage { StorageOrder };
     using Scalar = Operon::Scalar;
 
     enum {
-        NUM_RESIDUALS = Eigen::Dynamic,  // NOLINT
+        NUM_RESIDUALS = Eigen::Dynamic, // NOLINT
         NUM_PARAMETERS = Eigen::Dynamic, // NOLINT
     };
 
     using JacobianType = Eigen::Matrix<Operon::Scalar, -1, -1>;
-    using QRSolver     = Eigen::ColPivHouseholderQR<JacobianType>;
+    using QRSolver = Eigen::ColPivHouseholderQR<JacobianType>;
 
     explicit LMCostFunctionBase(std::size_t numResiduals, std::size_t numParameters)
-        : numResiduals_{numResiduals}, numParameters_{numParameters}
-    { }
+        : numResiduals_ { numResiduals }
+        , numParameters_ { numParameters }
+    {
+    }
 
     auto operator()(Scalar const* parameters, Scalar* residuals, Scalar* jacobian) const -> bool
     {
@@ -76,20 +108,18 @@ struct LMCostFunctionBase {
     // see: https://gitlab.com/libeigen/eigen/-/blob/master/unsupported/test/NonLinearOptimization.cpp
     auto operator()(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, 1>& residual) const -> int
     {
-        self().Evaluate(input.data(), residual.data(), nullptr);
-        return 0;
+        return self().Evaluate(input.data(), residual.data(), nullptr) ? 0 : -1;
     }
 
     auto df(Eigen::Matrix<Scalar, -1, 1> const& input, Eigen::Matrix<Scalar, -1, -1>& jacobian) const -> int // NOLINT
     {
         static_assert(StorageOrder == Eigen::ColMajor, "Eigen::LevenbergMarquardt requires the Jacobian to be stored in column-major format.");
-        self().Evaluate(input.data(), nullptr, jacobian.data());
-        return 0;
+        return self().Evaluate(input.data(), nullptr, jacobian.data()) ? 0 : -1;
     }
 
     [[nodiscard]] auto NumResiduals() const -> int { return static_cast<int>(numResiduals_); }
     [[nodiscard]] auto NumParameters() const -> int { return static_cast<int>(numParameters_); }
-    [[nodiscard]] auto values() const -> int { return NumResiduals(); }  // NOLINT
+    [[nodiscard]] auto values() const -> int { return NumResiduals(); } // NOLINT
     [[nodiscard]] auto inputs() const -> int { return NumParameters(); } // NOLINT
 
     [[nodiscard]] auto ResidualCalls() const -> std::size_t { return residualCallCount_.load(); }
@@ -101,8 +131,8 @@ protected:
     std::size_t numResiduals_;
     std::size_t numParameters_;
 
-    mutable std::atomic_size_t jacobianCallCount_{0};
-    mutable std::atomic_size_t residualCallCount_{0};
+    mutable std::atomic_size_t jacobianCallCount_ { 0 };
+    mutable std::atomic_size_t residualCallCount_ { 0 };
 };
 
 } // namespace Operon
