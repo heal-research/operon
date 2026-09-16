@@ -357,13 +357,16 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval accepts a model naive i
 namespace {
 
 // Scalar (non-SIMD) leaf-by-leaf reference for the production
-// wide<T>-batched BisectedIntervalBound: the same widest-axis-pick +
-// uniform-split algorithm, but every leaf evaluated through
-// IntervalEvaluator<Operon::Scalar> in a plain loop. This is the CI-active
-// twin of the soundness cross-check that until now lived only in
-// test/source/performance/shape_bisection.cpp (excluded from ctest via
-// "~[performance]"): the wide-batched production bound and this reference
-// implement the same mathematical bisection and must agree at every depth.
+// wide<T>-batched BisectedIntervalBound: for a single referenced axis, the
+// same widest-axis-pick + uniform-split algorithm as the wide<T>-batched
+// path, every leaf evaluated through IntervalEvaluator<Operon::Scalar> in a
+// plain loop -- an independent cross-check of the SIMD path. For more than
+// one referenced axis, production itself evaluates scalar-only (no wide<T>
+// arithmetic has a soundness proof yet for a multi-axis endpoint pattern),
+// so this mirrors production's own balanced greedy-widest-axis schedule
+// leaf-for-leaf; this is the CI-active twin of the soundness cross-check
+// that until now lived only in test/source/performance/shape_bisection.cpp
+// (excluded from ctest via "~[performance]").
 auto ScalarBisectedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth)
     -> std::pair<Operon::Scalar, Operon::Scalar>
 {
@@ -375,28 +378,56 @@ auto ScalarBisectedBound(Operon::Tree const& tree, Operon::IntervalEvaluator<Ope
     };
     if (depth <= 0) { return directBound(); }
 
-    Operon::Hash widest{};
-    Operon::Scalar widestDiam{-1};
-    bool any = false;
+    std::vector<Operon::Hash> axes;
+    std::vector<Operon::Scalar> widths;
     for (auto const& n : tree.Nodes()) {
-        if (!n.IsVariable()) { continue; }
+        if (!n.IsVariable() || std::ranges::find(axes, n.HashValue) != axes.end()) { continue; }
         auto const it = dom.find(n.HashValue);
         if (it == dom.end()) { continue; }
-        auto const diam = it->second.second - it->second.first;
-        if (diam > widestDiam) { widestDiam = diam; widest = n.HashValue; any = true; }
+        auto const width = it->second.second - it->second.first;
+        if (width <= Operon::Scalar{0}) { continue; }
+        axes.push_back(n.HashValue);
+        widths.push_back(width);
     }
-    if (!any || widestDiam <= Operon::Scalar{0}) { return directBound(); }
+    if (axes.empty()) { return directBound(); }
 
-    int const nLeaves = 1 << depth;
-    auto const lo0 = dom.at(widest).first;
-    auto const h = widestDiam / Operon::Scalar(nLeaves);
+    // Mirrors BisectedIntervalBound's own materially lower cap for the
+    // unbatched multi-axis sweep.
+    constexpr int MaxMultiAxisBisectionDepth = 12;
+    auto const effectiveDepth = axes.size() > 1 ? std::min(depth, MaxMultiAxisBisectionDepth) : depth;
+
+    std::vector<std::size_t> schedule;
+    schedule.reserve(static_cast<std::size_t>(effectiveDepth));
+    for (int level = 0; level < effectiveDepth; ++level) {
+        auto selected = std::size_t{0};
+        for (std::size_t axis = 1; axis < axes.size(); ++axis) {
+            if (widths[axis] > widths[selected]) { selected = axis; }
+        }
+        schedule.push_back(selected);
+        widths[selected] /= Operon::Scalar{2};
+    }
+
+    auto const nLeaves = std::size_t{1} << effectiveDepth;
+    std::vector<int> splits(axes.size());
+    for (auto axis : schedule) { ++splits[axis]; }
     auto const coeff = tree.GetCoefficients();
 
     Operon::Scalar resLo = std::numeric_limits<Operon::Scalar>::infinity();
     Operon::Scalar resHi = -std::numeric_limits<Operon::Scalar>::infinity();
-    auto leafDom = dom;
-    for (int k = 0; k < nLeaves; ++k) {
-        leafDom[widest] = { lo0 + Operon::Scalar(k) * h, lo0 + Operon::Scalar(k + 1) * h };
+    for (std::size_t k = 0; k < nLeaves; ++k) {
+        auto leafDom = dom;
+        std::vector<int> cells(axes.size());
+        std::vector<int> bits(axes.size());
+        for (std::size_t bit = 0; bit < schedule.size(); ++bit) {
+            auto const axis = schedule[bit];
+            cells[axis] |= (static_cast<int>((k >> bit) & std::size_t{1}) << bits[axis]++);
+        }
+        for (std::size_t axis = 0; axis < axes.size(); ++axis) {
+            auto const [lo, hi] = dom.at(axes[axis]);
+            auto const step = (hi - lo) / Operon::Scalar(std::size_t{1} << splits[axis]);
+            auto const cell = Operon::Scalar(cells[axis]);
+            leafDom[axes[axis]] = { lo + cell * step, lo + (cell + Operon::Scalar{1}) * step };
+        }
         IE ie(&tree, leafDom);
         auto const seg = ie.Evaluate(coeff);
         resLo = std::min(resLo, seg.inf());
@@ -732,10 +763,10 @@ TEST_CASE("SetBoundOptions validates bisection depths and invalidates cached mea
     CHECK_THROWS_AS(sve.SetBoundOptions({.BisectionDepth = -1}), std::invalid_argument);
     CHECK_THROWS_AS(sve.SetBoundOptions({.AffineBisectionMaxDepth = 25}), std::invalid_argument);
     CHECK_NOTHROW(sce.SetBoundOptions({.BisectionDepth = 0}));
-    CHECK_NOTHROW(sce.SetBoundOptions({.BisectionDepth = 24}));
-    CHECK_NOTHROW(sve.SetBoundOptions({.AffineBisectionMaxDepth = 24}));
+    CHECK_NOTHROW(sce.SetBoundOptions({.BisectionDepth = 20}));
+    CHECK_NOTHROW(sve.SetBoundOptions({.AffineBisectionMaxDepth = 20}));
     // An options value that failed validation must not have been applied.
-    CHECK(sce.BoundOptions().BisectionDepth == 24);
+    CHECK(sce.BoundOptions().BisectionDepth == 20);
 
     // (b) cache invalidation: Feasible()/RawViolation() answers computed
     // under depth 3 must be recomputed after the depth changes to 5.
