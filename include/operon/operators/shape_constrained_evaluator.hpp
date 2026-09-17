@@ -59,10 +59,15 @@ struct ShapeConstraintPolicy {
     Operon::Scalar PenaltyWeight { 1 };
 };
 
-// Backend(s) TryAffineBound uses to bound a constraint. Combined (default)
-// intersects affine and interval. Interval/Affine isolate one backend.
-// Bisected recursively bisects the domain and unions per-sub-box results;
-// currently only supported combined with Interval.
+// Backend(s) TryAffineBound uses to bound a constraint. Interval (default) uses
+// plain interval arithmetic only -- ties or beats Combined on the paper's full
+// matrix (see RESULTS.md) at ~24% less work per Measure() call, with none of
+// affine's ill-conditioned/uncertified failure modes. Combined intersects
+// affine and interval; Affine isolates the affine backend alone (confirmed
+// non-competitive -- kept only so run_bound_mode_ablation*.sh can still
+// reproduce that published cell by name). Bisected recursively bisects the
+// domain and unions per-sub-box results; currently only supported combined
+// with Interval.
 enum class ShapeBoundMode : unsigned {
     Combined = 0U,
     Interval = 1U << 0U,
@@ -199,7 +204,7 @@ private:
     Operon::Vector<Operon::Hash> constraintVarHash_;
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     double worstValue_ { 1.0 };
-    ShapeBoundMode boundMode_ { ShapeBoundMode::Combined };
+    ShapeBoundMode boundMode_ { ShapeBoundMode::Interval };
     ShapeBoundOptions boundOptions_ {};
     // Non-owning; set via SetExecutor(). nullptr means Prepare() runs
     // sequentially -- see Prepare()'s doc comment.
@@ -253,7 +258,7 @@ private:
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     Operon::Scalar weight_ { 1 };
     Operon::Scalar unknownViolation_ { 1 };
-    ShapeBoundMode boundMode_ { ShapeBoundMode::Combined };
+    ShapeBoundMode boundMode_ { ShapeBoundMode::Interval };
     ShapeBoundOptions boundOptions_ {};
     tf::Executor* taskExecutor_ { nullptr };
 

@@ -439,6 +439,12 @@ auto RunCase(Case const& c) -> bool
     DTable dtable;
     Operon::Evaluator<DTable> nmse(&problem, &dtable, Operon::NMSE{});
     Operon::ShapeConstrainedEvaluator sce(&nmse, &dtable, cs);
+    // This file's whole purpose is diagnosing AffineEvaluator's default (a)
+    // enclosure against (b)/(c)/(d) -- pin Combined explicitly so the
+    // affineThrew/affineRaw/illConditionedRatio-derived "reason" strings
+    // below stay accurate regardless of the library's own default, which is
+    // now Interval (see ShapeBoundMode's doc comment).
+    sce.SetBoundMode(ShapeBoundMode::Combined);
     auto const summary = sce.Measure(tree);
 
     for (std::size_t i = 0; i < summary.Measurements.size(); ++i) {
