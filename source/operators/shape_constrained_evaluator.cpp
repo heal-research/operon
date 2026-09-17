@@ -66,6 +66,16 @@ namespace {
         return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
     }
 
+    auto EvaluateIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& domains) -> BoundResult
+    {
+        try {
+            IntervalEvaluator<Operon::Scalar> evaluator(&tree, domains);
+            return evaluator.Evaluate(tree.GetCoefficients());
+        } catch (std::exception const& error) {
+            return tl::unexpected(std::string(error.what()));
+        }
+    }
+
 struct IntervalSubdivisionPlan {
     using DomainMap = IntervalEvaluator<Operon::Scalar>::DomainMap;
 
@@ -267,13 +277,8 @@ struct IntervalSubdivisionPlan {
         // Affine forms cannot represent every interval enclosure. In particular, a zero-crossing denominator is
         // unbounded and a variable exponent may reject an otherwise valid constant integer power. Fall back to
         // the interval evaluator, which can conservatively represent those cases.
-        auto const IntervalBound = [&]() -> BoundResult {
-            try {
-                IntervalEvaluator<Operon::Scalar> ie(&tree, IntervalEvaluator<Operon::Scalar>::DomainMap { ae.Domains() });
-                return ie.Evaluate(tree.GetCoefficients());
-            } catch (std::exception const& e) {
-                return tl::unexpected(std::string(e.what()));
-            }
+        auto const IntervalBound = [&]() {
+            return EvaluateIntervalBound(tree, IntervalEvaluator<Operon::Scalar>::DomainMap { ae.Domains() });
         };
 
         if (HasFlag(mode, ShapeBoundMode::Interval)) {
@@ -436,13 +441,8 @@ struct IntervalSubdivisionPlan {
     // directBound()). TightenRange's fallback is kept -- it only ever needed the domain map too.
     auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
     {
-        auto const IntervalBound = [&]() -> BoundResult {
-            try {
-                IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
-                return ie.Evaluate(tree.GetCoefficients());
-            } catch (std::exception const& e) {
-                return tl::unexpected(std::string(e.what()));
-            }
+        auto const IntervalBound = [&]() {
+            return EvaluateIntervalBound(tree, dom);
         };
 
         auto direct = HasFlag(mode, ShapeBoundMode::Bisected)
