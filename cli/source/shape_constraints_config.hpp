@@ -7,15 +7,15 @@
 #include <optional>
 #include <string>
 
+#include "cli_error.hpp"
 #include "operon/core/constraint.hpp"
 
 namespace Operon {
 
 // Builds a ShapeConstraintSet from a JSON config file (--shape-constraints-config).
-// Returns std::nullopt if `path` is empty (flag not given). Throws
-// std::runtime_error on a missing/unreadable file, malformed JSON, or an
-// entry that isn't well-formed -- same convention as LoadProbeConfig
-// (probes_config.hpp).
+// Returns std::nullopt if `path` is empty (flag not given). File I/O failures
+// return Cli::ErrorCode::Input; malformed JSON and schema violations return
+// Cli::ErrorCode::Configuration.
 //
 // Schema (mirrors operon-publications' shape-constraints-reproduction/
 // problems.yml's `variables`/`constraints` fields directly, so a problem
@@ -34,7 +34,7 @@ namespace Operon {
 // entry must set exactly one of "sign" (+1 non-decreasing/non-negative,
 // -1 non-increasing/non-positive, threshold implicitly 0) or "bound"
 // ([lo, hi] on the selected quantity).
-auto LoadShapeConstraints(std::string const& path) -> std::optional<ShapeConstraintSet>;
+auto LoadShapeConstraints(std::string const& path) -> Cli::Result<std::optional<ShapeConstraintSet>>;
 
 } // namespace Operon
 

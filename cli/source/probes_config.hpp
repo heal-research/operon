@@ -7,16 +7,15 @@
 #include <optional>
 #include <string>
 
+#include "cli_error.hpp"
 #include "operon/algorithms/probes/chain.hpp"
 
 namespace Operon {
 
 // Builds a ProbeChain from a JSON config file (--probes-config). Returns
-// std::nullopt if `path` is empty (flag not given). Throws
-// std::runtime_error on a missing/unreadable file, malformed JSON, or an
-// unrecognized probe/sink type - matches this CLI's existing convention
-// (e.g. ParseEvaluator/ParseGenerator in operator_factory.cpp) of
-// surfacing config errors as exceptions caught by main()'s try/catch.
+// std::nullopt if `path` is empty (flag not given). File I/O failures return
+// Cli::ErrorCode::Input; malformed JSON, schema violations, and invalid probe
+// or sink configuration return Cli::ErrorCode::Configuration.
 //
 // Schema:
 //   {
@@ -37,7 +36,7 @@ namespace Operon {
 // --resume with a --probes-config that reuses the same output paths as
 // the resumed run discards that run's prior instrumentation history -
 // the CLI warns about this at the call site, this isn't handled here.
-auto LoadProbeConfig(std::string const& path) -> std::optional<ProbeChain>;
+auto LoadProbeConfig(std::string const& path) -> Cli::Result<std::optional<ProbeChain>>;
 
 } // namespace Operon
 

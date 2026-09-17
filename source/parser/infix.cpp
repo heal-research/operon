@@ -7,7 +7,6 @@
 #include <array>
 #include <fmt/format.h>
 #include <iterator>
-#include <stdexcept>
 #include <string>
 
 #include "operon/parser/infix.hpp"
@@ -61,7 +60,7 @@ constexpr auto MakeBuiltinOpMap()
 
 constexpr auto node_type_map = MakeBuiltinOpMap();
 
-auto ToOperonNode(infix_parser::node const& a) -> Operon::Node
+auto ToOperonNode(infix_parser::node const& a) -> tl::expected<Operon::Node, Operon::InfixParseError>
 {
     if (a.type == infix_parser::node_type::constant) {
         return Operon::Node::Constant(a.value);
@@ -71,7 +70,8 @@ auto ToOperonNode(infix_parser::node const& a) -> Operon::Node
     }
     auto const op = node_type_map.at(static_cast<std::size_t>(a.type));
     if (op == Operon::NoBuiltinOp) {
-        throw std::runtime_error(fmt::format("unsupported node type: {}", static_cast<int>(a.type)));
+        return tl::unexpected(Operon::InfixParseError{
+            fmt::format("unsupported expression node type: {}", static_cast<int>(a.type))});
     }
     return Operon::Node::Function(static_cast<Operon::Hash>(op), a.arity);
 }
@@ -80,19 +80,21 @@ auto ToOperonNode(infix_parser::node const& a) -> Operon::Node
 
 namespace Operon {
 
-auto InfixParser::Parse(std::string_view infix, bool reduce) -> Tree
+auto InfixParser::TryParse(std::string_view infix, bool reduce) -> tl::expected<Tree, InfixParseError>
 {
     auto result = infix_parser::parse(infix);
     if (auto const* err = std::get_if<infix_parser::parse_error>(&result)) {
-        throw std::invalid_argument(fmt::format("parse error at position {}: {}", err->position, err->message));
+        return tl::unexpected(InfixParseError{
+            fmt::format("parse error at position {}: {}", err->position, err->message)});
     }
     auto const& expr = std::get<infix_parser::expression>(result);
 
     Operon::Vector<Operon::Node> nodes;
     nodes.reserve(expr.size());
-
     for (auto const& a : expr) {
-        nodes.push_back(ToOperonNode(a));
+        auto node = ToOperonNode(a);
+        if (!node) { return tl::unexpected(std::move(node.error())); }
+        nodes.push_back(std::move(*node));
     }
 
     Operon::Tree tree{nodes};
@@ -101,15 +103,31 @@ auto InfixParser::Parse(std::string_view infix, bool reduce) -> Tree
     return tree;
 }
 
-auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, bool reduce) -> Tree
+auto InfixParser::TryParse(std::string_view infix, Dataset const& dataset, bool reduce) -> tl::expected<Tree, InfixParseError>
 {
-    auto tree = Parse(infix, reduce);
-    for (auto const& node : tree.Nodes()) {
+    auto tree = TryParse(infix, reduce);
+    if (!tree) { return tl::unexpected(tree.error()); }
+    for (auto const& node : tree->Nodes()) {
         if (node.IsVariable() && !dataset.GetVariable(node.HashValue).has_value()) {
-            throw std::invalid_argument(fmt::format("variable with hash {} not found in dataset", node.HashValue));
+            return tl::unexpected(InfixParseError{
+                fmt::format("variable with hash {} not found in dataset", node.HashValue)});
         }
     }
     return tree;
+}
+
+auto InfixParser::Parse(std::string_view infix, bool reduce) -> Tree
+{
+    auto tree = TryParse(infix, reduce);
+    if (!tree) { throw std::invalid_argument(tree.error().Message); }
+    return std::move(*tree);
+}
+
+auto InfixParser::Parse(std::string_view infix, Dataset const& dataset, bool reduce) -> Tree
+{
+    auto tree = TryParse(infix, dataset, reduce);
+    if (!tree) { throw std::invalid_argument(tree.error().Message); }
+    return std::move(*tree);
 }
 
 auto InfixParser::ParseFunctionBody(std::string_view infix, std::span<std::string const> params) -> Tree
