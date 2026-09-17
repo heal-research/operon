@@ -53,11 +53,15 @@ auto VariableIndex(VariableGradientDag const& dag, Operon::Hash variable) -> std
     return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
 }
 
-// The only point in this file that crosses into AffineEvaluator. Domain
-// violations return an `invalid()` NaN-poisoned form; the finiteness check
-// below catches those. This try/catch adapts rare structural throws (e.g.
-// forms from different affine_context instances) to these expected-based
-// internals, so the rest of this file never needs a try/catch.
+// Domain violations return an `invalid()` NaN-poisoned form (affine) or
+// `empty()` (interval); the finiteness check below catches those.
+// TryEvaluate reports its own structural errors via tl::unexpected, but
+// every scalar call site that can dispatch a user-registered rule keeps
+// a try/catch: a throwing rule (or pappus structural-invariant throw)
+// degrades to an uncertified bound instead of escaping into a GP worker
+// thread. The SIMD bisection path skips this -- it only admits built-in
+// wide rules. TightenRange call sites use the throwing Evaluate() API
+// and carry their own local catches.
 
 auto IsFiniteBound(BoundResult const& b) -> bool
 {
@@ -200,16 +204,11 @@ auto TryWideBisectedIntervalBound(
     WScalar const infw(lo);
     WScalar const onew(Operon::Scalar{1});
     WScalar const lastw{Operon::Scalar(nLeaves)};
-    // `DomainMap` is always `Operon::Scalar`-typed, and the evaluator never
-    // stores a wide-typed member (see the call-scoped override overload of
-    // IntervalEvaluator::TryEvaluate): `eve::wide<T>` does not reliably keep
-    // its own alignment once nested inside `std::pair`/hash-map storage on
-    // this toolchain, so the widest (bisected) axis's genuinely per-lane
-    // bound is passed straight into TryEvaluate per batch, staying in these
-    // loop-local `WScalar`s for the duration of the call instead of being
-    // boxed into the map. Built once outside the loop -- `dom` itself
-    // already has the right (scalar) domain type, no per-batch map to
-    // rebuild.
+    // DomainMap remains scalar-valued. Each lane-specific endpoint is handed
+    // to IntervalEvaluator for one call only, so an EVE wide never enters
+    // container or evaluator-member storage on the affected Windows path.
+    // Built once outside the loop: `dom` already has the correct scalar
+    // domain type, with no per-batch map rebuilding.
     IntervalEvaluator<WScalar> wie(&tree, dom);
     int k = 0;
     for (; k + WSize <= nLeaves; k += WSize) {
@@ -259,8 +258,13 @@ auto TryWideBisectedIntervalBound(
 auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
 {
     auto const directBound = [&]() -> BoundResult {
-        IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
-        return ie.TryEvaluate(tree.GetCoefficients());
+        // User-rule exception boundary (see file-top comment).
+        try {
+            IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
+            return ie.TryEvaluate(tree.GetCoefficients());
+        } catch (std::exception const& e) {
+            return tl::unexpected(std::string(e.what()));
+        }
     };
 
     if (depth <= 0 || !SupportsWideIntervalEvaluation(tree, dom)) { return directBound(); }
@@ -291,9 +295,10 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
     // reject an otherwise valid constant integer power. Fall back to the
     // interval evaluator, which can conservatively represent those cases.
     auto const IntervalBound = [&]() -> BoundResult {
+        // User-rule exception boundary (see file-top comment).
         try {
             IntervalEvaluator<Operon::Scalar> ie(&tree, IntervalEvaluator<Operon::Scalar>::DomainMap{ae.Domains()});
-            return ie.Evaluate(tree.GetCoefficients());
+            return ie.TryEvaluate(tree.GetCoefficients());
         } catch (std::exception const& e) {
             return tl::unexpected(std::string(e.what()));
         }
@@ -306,9 +311,27 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
         return IntervalBound();
     }
 
-    try {
-        ae.SetTree(&tree);
-        auto affine = ae.Evaluate(tree.GetCoefficients());
+    ae.SetTree(&tree);
+    // TryEvaluate's tl::unexpected covers the intentional error paths
+    // (empty tree, missing domain, unmapped node) with no throw/catch
+    // round trip; the catch below only sees genuinely unexpected throws
+    // (user-registered affine rules, pappus structural invariants), which
+    // then flow through the same interval-fallback handling as any other
+    // affine failure.
+    auto affine = [&]() -> tl::expected<AffineEvaluator<Operon::Scalar>::Affine, std::string> {
+        try {
+            return ae.TryEvaluate(tree.GetCoefficients());
+        } catch (std::exception const& e) {
+            return tl::unexpected(std::string(e.what()));
+        }
+    }();
+    if (!affine) {
+        auto bound = IntervalBound();
+        if (bound) { return bound; }
+        return tl::unexpected(fmt::format(
+            "affine evaluation failed: {}; interval fallback failed: {}",
+            affine.error(), bound.error()));
+    }
         // Catastrophic cancellation can make this float32 enclosure unsound:
         // an intermediate center orders of magnitude larger than the result
         // implies a rounding-error floor exceeding the tracked radius, so the
@@ -322,15 +345,15 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
         // structurally sound, not an underestimate -- comparing floor > k*0 is
         // degenerate (any nonzero floor fires), so only judge forms that track
         // real variable uncertainty.
-        auto const r = affine.radius();
+        auto const r = affine->radius();
         if (r > 0 && impliedErrorFloor > opts.AffineIllConditionedThreshold * r) {
             auto bound = IntervalBound();
             if (bound) { return bound; }
             return tl::unexpected(fmt::format(
                 "ill-conditioned: intermediate magnitude implies rounding error {} exceeds result radius {}; interval fallback failed: {}",
-                impliedErrorFloor, affine.radius(), bound.error()));
+                impliedErrorFloor, affine->radius(), bound.error()));
         }
-        auto const bound = affine.to_interval();
+        auto const bound = affine->to_interval();
         if (!std::isfinite(bound.inf()) || !std::isfinite(bound.sup())) {
             return IntervalBound();
         }
@@ -360,11 +383,6 @@ auto TryAffineBoundDirect(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae,
             if (lo <= hi) { return Interval(lo, hi); }
         }
         return bound;
-    } catch (std::exception const& e) {
-        auto bound = IntervalBound();
-        if (bound) { return bound; }
-        return tl::unexpected(fmt::format("affine evaluation failed: {}; interval fallback failed: {}", e.what(), bound.error()));
-    }
 }
 
 // Bounded-depth domain bisection, used only as a last resort when
@@ -480,9 +498,10 @@ auto TryAffineBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, Shape
 auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
 {
     auto const IntervalBound = [&]() -> BoundResult {
+        // User-rule exception boundary (see file-top comment).
         try {
             IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
-            return ie.Evaluate(tree.GetCoefficients());
+            return ie.TryEvaluate(tree.GetCoefficients());
         } catch (std::exception const& e) {
             return tl::unexpected(std::string(e.what()));
         }

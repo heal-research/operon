@@ -4,31 +4,29 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <stdexcept>
-
 #include "../operon_test.hpp"
 #include "operon/core/dataset.hpp"
 #include "operon/core/types.hpp"
 #include "operon/error_metrics/mean_squared_error.hpp"
 #include "operon/formatter/formatter.hpp"
+#include "operon/interpreter/functions.hpp"
 #include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/creator.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
-#include "operon/interpreter/functions.hpp"
 
 namespace Operon::Test {
 
 TEST_CASE("Evaluation correctness", "[interpreter]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto range = Range{0, ds.Rows<std::size_t>()};
+    auto range = Range { 0, ds.Rows<std::size_t>() };
 
     using DTable = DispatchTable<Operon::Scalar>;
-    auto const x0 = ds.GetValues(int64_t{0});
-    auto const x1 = ds.GetValues(int64_t{1});
-    auto const x2 = ds.GetValues(int64_t{2});
+    auto const x0 = ds.GetValues(int64_t { 0 });
+    auto const x1 = ds.GetValues(int64_t { 1 });
+    auto const x2 = ds.GetValues(int64_t { 2 });
 
     Operon::Vector<size_t> indices(range.Size());
     std::iota(indices.begin(), indices.end(), 0);
@@ -36,44 +34,50 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
     DTable dtable;
     auto const eps = 1e-3;
 
-    SECTION("X1 + X2 + X3") {
+    SECTION("X1 + X2 + X3")
+    {
         auto tree = InfixParser::Parse("X1 + X2 + X3", ds);
         auto coeff = tree.GetCoefficients();
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(coeff, range);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - (x0[i] + x1[i] + x2[i])) < eps; }));
     }
 
-    SECTION("X1 - X2 + X3") {
+    SECTION("X1 - X2 + X3")
+    {
         auto tree = InfixParser::Parse("X1 - X2 + X3", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - (x0[i] - x1[i] + x2[i])) < eps; }));
     }
 
-    SECTION("log(abs(X1))") {
+    SECTION("log(abs(X1))")
+    {
         auto tree = InfixParser::Parse("log(abs(X1))", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(std::all_of(indices.begin(), indices.end(), [&](auto i) -> auto { return std::abs(estimatedValues[i] - std::log(std::abs(x0[i]))) < eps; }));
     }
 
-    SECTION("log of constant") {
+    SECTION("log of constant")
+    {
         auto tree = InfixParser::Parse("log(0.12485691905021667)", ds);
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(std::abs(estimatedValues[0] - std::log(0.12485691905021667)) < eps);
     }
 
-    SECTION("N-ary fmax") {
+    SECTION("N-ary fmax")
+    {
         auto node = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Fmax), 3);
         auto a = Operon::Node::Constant(2);
         auto b = Operon::Node::Constant(3);
         auto c = Operon::Node::Constant(4);
-        auto tree = Operon::Tree({a, b, c, node});
+        auto tree = Operon::Tree({ a, b, c, node });
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(estimatedValues[0] == 4);
     }
 
-    SECTION("Unary sub (negation)") {
+    SECTION("Unary sub (negation)")
+    {
         auto node = Operon::Node::Function(static_cast<Operon::Hash>(Operon::BuiltinOp::Sub), 1);
-        auto tree = Operon::Tree({Operon::Node::Constant(2), node});
+        auto tree = Operon::Tree({ Operon::Node::Constant(2), node });
         auto estimatedValues = Interpreter<Operon::Scalar, DTable>(&dtable, &ds, &tree).Evaluate(tree.GetCoefficients(), range);
         CHECK(estimatedValues[0] == -2);
     }
@@ -82,18 +86,18 @@ TEST_CASE("Evaluation correctness", "[interpreter]")
 TEST_CASE("Batch evaluation", "[interpreter]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto range = Range{0, ds.Rows<std::size_t>()};
+    auto range = Range { 0, ds.Rows<std::size_t>() };
 
-    Operon::Problem problem{&ds};
+    Operon::Problem problem { &ds };
     problem.SetTrainingRange(range);
     problem.SetTestRange(range);
 
-    Operon::PrimitiveSet pset{PrimitiveSet::Arithmetic};
+    Operon::PrimitiveSet pset { PrimitiveSet::Arithmetic };
     constexpr size_t maxLength = 20;
-    Operon::BalancedTreeCreator const creator{&pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength};
+    Operon::BalancedTreeCreator const creator { &pset, ds.VariableHashes(), /* bias= */ 0.0, maxLength };
 
-    Operon::RandomGenerator rng{0};
-    auto constexpr n{10};
+    Operon::RandomGenerator rng { 0 };
+    auto constexpr n { 10 };
 
     Operon::Vector<Operon::Tree> trees;
     Operon::Vector<Operon::Scalar> result(range.Size() * n);
@@ -102,26 +106,49 @@ TEST_CASE("Batch evaluation", "[interpreter]")
     }
 
     // Should not throw
-    REQUIRE_NOTHROW(Operon::EvaluateTrees(trees, &ds, range, {result.data(), result.size()}));
+    REQUIRE_NOTHROW(Operon::EvaluateTrees(trees, &ds, range, { result.data(), result.size() }));
     REQUIRE_NOTHROW(Operon::EvaluateTrees(trees, &ds, range));
 }
 
-TEST_CASE("Batch evaluation propagates task exceptions", "[interpreter]")
+TEST_CASE("Batch evaluation reports typed failures", "[interpreter]")
 {
     auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
-    auto range = Range{0, ds.Rows<std::size_t>()};
+    auto range = Range { 0, ds.Rows<std::size_t>() };
 
-    constexpr auto missingPrimitive = Operon::Hash{0xBADF00D};
+    constexpr auto missingPrimitive = Operon::Hash { 0xBADF00D };
     auto tree = Operon::Tree({
         Operon::Node::Constant(1),
         Operon::Node::Constant(2),
         Operon::Node::Function(missingPrimitive, 2),
     });
-    Operon::Vector<Operon::Tree> trees{tree};
+    Operon::Vector<Operon::Tree> trees { tree };
     Operon::Vector<Operon::Scalar> result(range.Size());
 
-    REQUIRE_THROWS_AS(Operon::EvaluateTrees(trees, &ds, range, {result.data(), result.size()}), std::runtime_error);
-    REQUIRE_THROWS_AS(Operon::EvaluateTrees(trees, &ds, range), std::runtime_error);
+    auto intoBuffer = Operon::TryEvaluateTrees(trees, &ds, range, { result.data(), result.size() });
+    REQUIRE_FALSE(intoBuffer.has_value());
+    CHECK(intoBuffer.error().Index == 0);
+    CHECK(intoBuffer.error().Error.Kind == InterpreterError::Code::MissingPrimitive);
+    CHECK(intoBuffer.error().Error.Hash == missingPrimitive);
+
+    auto allocated = Operon::TryEvaluateTrees(trees, &ds, range);
+    REQUIRE_FALSE(allocated.has_value());
+    CHECK(allocated.error().Index == 0);
+    CHECK(allocated.error().Error.Kind == InterpreterError::Code::MissingPrimitive);
+    CHECK(allocated.error().Error.Hash == missingPrimitive);
+}
+
+TEST_CASE("Batch evaluation validates output size", "[interpreter]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range { 0, ds.Rows<std::size_t>() };
+    auto trees = Operon::Vector<Operon::Tree> { Operon::Tree { Operon::Node::Constant(1) } };
+    Operon::Vector<Operon::Scalar> result(range.Size() - 1);
+
+    auto evaluated = Operon::TryEvaluateTrees(trees, &ds, range, { result.data(), result.size() });
+    REQUIRE_FALSE(evaluated);
+    CHECK(evaluated.error().Error.Kind == InterpreterError::Code::InvalidOutputSize);
+    CHECK(evaluated.error().Error.ExpectedSize == range.Size());
+    CHECK(evaluated.error().Error.ActualSize == result.size());
 }
 
 } // namespace Operon::Test

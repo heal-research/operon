@@ -286,6 +286,7 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-p
     cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1000}, Operon::Scalar{1000}}});
 
     Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+    shapeEval.SetBoundOptions({.BisectionDepth = 4}); // Exceeds one AVX2 float batch; every batch needs fresh lane bounds.
 
     shapeEval.SetBoundMode(ShapeBoundMode::Interval);
     auto const plain = shapeEval.Measure(tree);
@@ -982,6 +983,75 @@ TEST_CASE("ShapeConstrainedEvaluator - domain error (e.g. division by zero-conta
     CHECK_FALSE(measurement.Measurements[0].Certified);
     CHECK(measurement.Measurements[0].Violation == Catch::Approx(1.0));
     CHECK_FALSE(sce.Feasible(tree));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treated as infeasible, not a crash", "[shape-constraints]")
+{
+    // A throwing user-registered rule must degrade to an uncertified
+    // bound (see the file-top comment in shape_constrained_evaluator.cpp),
+    // never escape Measure()/Feasible() into a GP worker thread.
+    //
+    // Each section registers under its own hash: the registries are
+    // process-wide and write-once, and other tests in this binary
+    // register user rules of their own.
+    Fixture fx;
+    fx.problem.SetLinearScalingEnabled(false); // the custom op has no numeric dispatch entry
+    auto const x1 = fx.ds.GetVariable("X1").value().Hash;
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-100}, Operon::Scalar{100}}});
+
+    auto const makeTree = [&](Operon::Hash hash) {
+        Node var(NodeType::Variable, x1);
+        var.Value = Operon::Scalar{1};
+        return Tree({ var, Node::Function(hash, 1) }).UpdateNodes();
+    };
+
+    auto const assertDegradesToUncertified = [&](Operon::ShapeConstrainedEvaluator const& sce, Operon::Tree const& tree) {
+        Operon::ShapeConstraintMeasurementSummary measurement;
+        REQUIRE_NOTHROW(measurement = sce.Measure(tree));
+        REQUIRE(measurement.Measurements.size() == 1);
+        CHECK_FALSE(measurement.Measurements[0].Certified);
+        CHECK(measurement.Measurements[0].Violation == Catch::Approx(1.0)); // unknownViolation default
+        CHECK_FALSE(measurement.Feasible);
+        bool feasible = true;
+        REQUIRE_NOTHROW(feasible = sce.Feasible(tree));
+        CHECK_FALSE(feasible);
+    };
+
+    SECTION("throwing affine rule, combined mode (default): the catch around ae.TryEvaluate degrades it")
+    {
+        auto const hash = Operon::Hasher{}("shape_throw_affine_rule");
+        RegisterUnaryAffine<Scalar>(hash,
+            [](AffineEvaluator<Scalar>::Context const&, AffineEvaluator<Scalar>::Affine const&) -> AffineEvaluator<Scalar>::Affine {
+                throw std::runtime_error("user affine rule failed");
+            });
+        Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+        assertDegradesToUncertified(sce, makeTree(hash));
+    }
+
+    SECTION("throwing interval rule, combined mode (default): the catch around the IntervalBound fallback degrades it")
+    {
+        auto const hash = Operon::Hasher{}("shape_throw_interval_rule_combined");
+        RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const&) -> IntervalEvaluator<Scalar>::Interval {
+            throw std::runtime_error("user interval rule failed");
+        });
+        Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+        assertDegradesToUncertified(sce, makeTree(hash));
+    }
+
+    SECTION("throwing interval rule, interval mode: the catch around TryIntervalBound's own IntervalBound degrades it")
+    {
+        auto const hash = Operon::Hasher{}("shape_throw_interval_rule_interval_mode");
+        RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const&) -> IntervalEvaluator<Scalar>::Interval {
+            throw std::runtime_error("user interval rule failed");
+        });
+        Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+        sce.SetBoundMode(ShapeBoundMode::Interval);
+        assertDegradesToUncertified(sce, makeTree(hash));
+    }
 }
 
 TEST_CASE("ShapeConstrainedEvaluator - certifies constant integer powers of a negative base", "[shape-constraints]")

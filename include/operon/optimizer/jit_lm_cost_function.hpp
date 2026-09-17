@@ -6,12 +6,14 @@
 
 #ifdef HAVE_ASMJIT
 
+#include <algorithm>
+#include <gsl/pointers>
+#include <limits>
+#include <optional>
 #include <vector>
 
-#include <gsl/pointers>
-
-#include "operon/interpreter/interpreter.hpp"
 #include "operon/interpreter/backend/jit/jit_compiler.hpp"
+#include "operon/interpreter/interpreter.hpp"
 #include "operon/optimizer/lm_cost_function_base.hpp"
 
 namespace Operon {
@@ -22,7 +24,7 @@ namespace Operon {
 //
 // colPtrs[i] and jacColPtrs[i] must follow the ordering returned by VarOrder(tree),
 // each already offset to range.Start().
-template<typename T = Operon::Scalar, int StorageOrder = Eigen::ColMajor>
+template <typename T = Operon::Scalar, int StorageOrder = Eigen::ColMajor>
 struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, StorageOrder>, StorageOrder> {
     using Base = LMCostFunctionBase<JitLMCostFunction<T, StorageOrder>, StorageOrder>;
     using Scalar = typename Base::Scalar;
@@ -36,16 +38,16 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
     // for the object's lifetime), so the local range.Size()-sized slice this cost
     // function actually reads is computed once here in the ctor, not per Evaluate().
     JitLMCostFunction(gsl::not_null<InterpreterBase<T> const*> interpreter,
-                      JIT::EvalFn                              fn,
-                      std::vector<float const*>                colPtrs,
-                      Operon::Span<Operon::Scalar const>       target,
-                      Operon::Range                            range,
-                      JIT::EvalJacFn                           jacFn      = nullptr,
-                      std::vector<float const*>                jacColPtrs = {},
-                      int                                      nVars      = -1,
-                      int                                      nConsts    = -1,
-                      Operon::Span<Operon::Scalar const>       weights    = {})
-        : Base{range.Size(), static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount())}
+        JIT::EvalFn fn,
+        std::vector<float const*> colPtrs,
+        Operon::Span<Operon::Scalar const> target,
+        Operon::Range range,
+        JIT::EvalJacFn jacFn = nullptr,
+        std::vector<float const*> jacColPtrs = {},
+        int nVars = -1,
+        int nConsts = -1,
+        Operon::Span<Operon::Scalar const> weights = {})
+        : Base { range.Size(), static_cast<std::size_t>(interpreter->GetTree()->CoefficientsCount()) }
         , interpreter_(interpreter)
         , fn_(fn)
         , colPtrs_(std::move(colPtrs))
@@ -86,39 +88,45 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
     {
         EXPECT(target_.size() == this->numResiduals_);
         EXPECT(parameters != nullptr);
-        Operon::Span<Operon::Scalar const> params{ parameters, this->numParameters_ };
+        Operon::Span<Operon::Scalar const> params { parameters, this->numParameters_ };
 
         auto const nRowsPad = static_cast<int32_t>(nRowsPad_);
 
         if (jacobian != nullptr) {
             ++this->jacobianCallCount_;
             if (jacFn_ != nullptr) {
-                ENSURE(nVars_   < 0 || static_cast<int>(jacColPtrs_.size()) == nVars_);
+                ENSURE(nVars_ < 0 || static_cast<int>(jacColPtrs_.size()) == nVars_);
                 ENSURE(nConsts_ < 0 || static_cast<int>(this->numParameters_) == nConsts_);
                 // Write into padded per-column scratch, then copy valid rows to jacobian.
                 jacFn_(jacOutPtrs_.data(), jacColPtrs_.data(), nRowsPad, parameters);
                 for (std::size_t k = 0; k < this->numParameters_; ++k) {
                     std::copy_n(scratchJac_.data() + k * nRowsPad_, this->numResiduals_,
-                                jacobian + k * static_cast<std::ptrdiff_t>(this->numResiduals_));
+                        jacobian + k * static_cast<std::ptrdiff_t>(this->numResiduals_));
                 }
             } else {
-                Operon::Span<Operon::Scalar> jac{jacobian, this->numResiduals_ * this->numParameters_};
-                interpreter_->JacRev(params, range_, jac);
+                Operon::Span<Operon::Scalar> jac { jacobian, this->numResiduals_ * this->numParameters_ };
+                auto result = interpreter_->TryJacRev(params, range_, jac);
+                if (!result) {
+                    return Fail(std::move(result.error()), jacobian, jac.size());
+                }
             }
             ApplyLMJacobianWeights(weights_, jacobian, this->numResiduals_, this->numParameters_);
         }
 
         if (residuals != nullptr) {
             ++this->residualCallCount_;
-            Operon::Span<Operon::Scalar> res{residuals, this->numResiduals_};
+            Operon::Span<Operon::Scalar> res { residuals, this->numResiduals_ };
             if (fn_ != nullptr) {
-                ENSURE(nVars_   < 0 || static_cast<int>(colPtrs_.size()) == nVars_);
+                ENSURE(nVars_ < 0 || static_cast<int>(colPtrs_.size()) == nVars_);
                 ENSURE(nConsts_ < 0 || static_cast<int>(this->numParameters_) == nConsts_);
                 fn_(scratchResiduals_.data(), colPtrs_.data(), nRowsPad, parameters);
                 std::copy_n(scratchResiduals_.data(), this->numResiduals_, residuals);
             } else {
-                Operon::Span<Operon::Scalar const> params{parameters, this->numParameters_};
-                interpreter_->Evaluate(params, range_, res);
+                Operon::Span<Operon::Scalar const> params { parameters, this->numParameters_ };
+                auto result = interpreter_->TryEvaluate(params, range_, res);
+                if (!result) {
+                    return Fail(std::move(result.error()), residuals, res.size());
+                }
             }
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1>> x(residuals, static_cast<Eigen::Index>(this->numResiduals_));
             Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> y(target_.data(), static_cast<Eigen::Index>(this->numResiduals_));
@@ -128,22 +136,34 @@ struct JitLMCostFunction : public LMCostFunctionBase<JitLMCostFunction<T, Storag
         return true;
     }
 
-private:
-    gsl::not_null<InterpreterBase<T> const*> interpreter_;
-    JIT::EvalFn                              fn_;
-    std::vector<float const*>                colPtrs_;
-    JIT::EvalJacFn                           jacFn_ = nullptr;
-    std::vector<float const*>                jacColPtrs_;
-    Operon::Span<Operon::Scalar const>       target_;
-    Operon::Range const                      range_;   // NOLINT
-    Operon::Span<Operon::Scalar const>       weights_;
-    std::size_t                              nRowsPad_;
-    mutable std::vector<Scalar>              scratchResiduals_;
-    mutable std::vector<Scalar>              scratchJac_;
-    std::vector<float*>                      jacOutPtrs_; // precomputed pointers into scratchJac_, see ctor
+    [[nodiscard]] auto Error() const -> std::optional<InterpreterError> const& { return error_; }
 
-    int                                      nVars_   = -1;
-    int                                      nConsts_ = -1;
+private:
+    auto Fail(InterpreterError error, Scalar* output, std::size_t size) const -> bool
+    {
+        if (!error_) {
+            error_ = std::move(error);
+        }
+        std::fill_n(output, size, std::numeric_limits<Scalar>::quiet_NaN());
+        return false;
+    }
+
+    gsl::not_null<InterpreterBase<T> const*> interpreter_;
+    JIT::EvalFn fn_;
+    std::vector<float const*> colPtrs_;
+    JIT::EvalJacFn jacFn_ = nullptr;
+    std::vector<float const*> jacColPtrs_;
+    Operon::Span<Operon::Scalar const> target_;
+    Operon::Range const range_; // NOLINT
+    Operon::Span<Operon::Scalar const> weights_;
+    std::size_t nRowsPad_;
+    mutable std::vector<Scalar> scratchResiduals_;
+    mutable std::vector<Scalar> scratchJac_;
+    std::vector<float*> jacOutPtrs_; // precomputed pointers into scratchJac_, see ctor
+
+    int nVars_ = -1;
+    int nConsts_ = -1;
+    mutable std::optional<InterpreterError> error_;
 };
 
 } // namespace Operon
