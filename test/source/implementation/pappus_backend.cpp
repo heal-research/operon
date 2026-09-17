@@ -74,6 +74,18 @@ TEST_CASE("Interval backend: constants and variables", "[pappus][interval]")
         REQUIRE(r.sup() == Catch::Approx(3.0).margin(1e-5));
     }
 
+    SECTION("domain map is snapshotted at construction") {
+        constexpr Operon::Hash X1{1};
+        auto tree = Operon::Tree({Var(X1)}).UpdateNodes();
+        auto d = Domains();
+        d[X1] = {S{1}, S{3}};
+        IE eval(&tree, d);
+        d[X1] = {S{2}, S{4}};
+        auto const r = eval.Evaluate(tree.GetCoefficients());
+        REQUIRE(r.inf() == Catch::Approx(1.0).margin(1e-5));
+        REQUIRE(r.sup() == Catch::Approx(3.0).margin(1e-5));
+    }
+
     SECTION("weighted variable") {
         constexpr Operon::Hash X1{1};
         auto tree = Operon::Tree({Var(X1, 2.0)}).UpdateNodes();
@@ -1020,6 +1032,17 @@ TEST_CASE("Pappus backends: evaluation throughput", "[pappus][performance]")
     IE iev(&tree, IE::DomainMap{d});
     b.run("interval Evaluate", [&]() {
         nb::doNotOptimizeAway(iev.Evaluate(coeffs));
+    });
+
+    // Constructing from an existing map compiles scalar bounds directly into
+    // node slots. Keep the avoided input-map copy visible in this benchmark.
+    b.run("interval construct (pre-copied map)", [&]() {
+        IE eval(&tree, IE::DomainMap{d});
+        nb::doNotOptimizeAway(eval.GetTree());
+    });
+    b.run("interval construct (domain snapshot)", [&]() {
+        IE eval(&tree, d);
+        nb::doNotOptimizeAway(eval.GetTree());
     });
 
     AE aev(&tree, AE::DomainMap{d});

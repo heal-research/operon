@@ -86,9 +86,10 @@ enum class ShapeBoundMode : unsigned {
 // this file's previous behavior exactly.
 struct ShapeBoundOptions {
     // Interval-only bisection (ShapeBoundMode::Bisected): 2^BisectionDepth
-    // leaves, batched through wide<Operon::Scalar> SIMD evaluation. depth=3
-    // gives 8 leaves, exactly one AVX2 float batch on this target, zero
-    // scalar tail.
+    // leaves, batched through wide<Operon::Scalar> SIMD evaluation. Each
+    // increment doubles the work; depths >=16 are generally impractical.
+    // depth=3 gives 8 leaves, exactly one AVX2 float batch on this target,
+    // with zero scalar tail.
     int BisectionDepth{3};
     // Affine-mode-only rescue: bisects the domain and re-tries the affine
     // bound on each half when the direct affine/intersect bound fails.

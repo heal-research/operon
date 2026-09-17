@@ -5,10 +5,11 @@
 #ifndef OPERON_OPTIMIZER_HPP
 #define OPERON_OPTIMIZER_HPP
 
+#include <functional>
 #include <gsl/pointers>
 #include <lbfgs/solver.hpp>
 #include <tl/expected.hpp>
-#include <functional>
+#include <variant>
 
 #include "operon/error_metrics/sum_of_squared_errors.hpp"
 
@@ -31,37 +32,57 @@
 
 namespace Operon {
 
-enum class OptimizerType : int { Tiny, Eigen };
+enum class OptimizerType : int { Tiny,
+    Eigen };
 
-// Fields every Optimize() call always produces, whether or not the fit
-// improved on the initial coefficients (FitResult/FitFailure below both
-// carry these - callers that need e.g. FunctionEvaluations regardless of
-// outcome go through Diagnostics(), not a has_value() branch of their own).
+// Fields every Optimize() call always produces. FitResult, FitFailure,
+// FitEvaluationError, and FitConfigurationError all carry them, so callers
+// that need e.g. FunctionEvaluations regardless of outcome use Diagnostics().
 struct FitDiagnostics {
     std::vector<Operon::Scalar> InitialParameters;
     std::vector<Operon::Scalar> FinalParameters;
-    Operon::Scalar InitialCost{};
-    Operon::Scalar FinalCost{};
-    int Iterations{};
-    int FunctionEvaluations{};
-    int JacobianEvaluations{};
+    Operon::Scalar InitialCost {};
+    Operon::Scalar FinalCost {};
+    int Iterations {};
+    int FunctionEvaluations {};
+    int JacobianEvaluations {};
 };
 
-struct FitResult : FitDiagnostics {};   // FinalCost improved on InitialCost
-struct FitFailure : FitDiagnostics {};  // did not improve (incl. non-finite cost)
+struct FitResult : FitDiagnostics {}; // FinalCost improved on InitialCost
+struct FitFailure : FitDiagnostics {}; // valid fit that did not improve (incl. non-finite cost)
+struct FitEvaluationError : FitDiagnostics {
+    InterpreterError Error;
+};
+struct FitConfigurationError : FitDiagnostics {
+    LMWeightError Error;
+};
 
-using FitOutcome = tl::expected<FitResult, FitFailure>;
+using FitError = std::variant<FitFailure, FitEvaluationError, FitConfigurationError>;
+using FitOutcome = tl::expected<FitResult, FitError>;
 
-[[nodiscard]] inline auto Diagnostics(FitOutcome const& outcome) -> FitDiagnostics const& {
-    return outcome.has_value() ? static_cast<FitDiagnostics const&>(*outcome)
-                                : static_cast<FitDiagnostics const&>(outcome.error());
+[[nodiscard]] inline auto Diagnostics(FitOutcome const& outcome) -> FitDiagnostics const&
+{
+    if (outcome) {
+        return *outcome;
+    }
+    return std::visit([](auto const& error) -> FitDiagnostics const& { return error; }, outcome.error());
+}
+
+[[nodiscard]] inline auto EvaluationError(FitOutcome const& outcome) -> FitEvaluationError const*
+{
+    return outcome ? nullptr : std::get_if<FitEvaluationError>(&outcome.error());
+}
+
+[[nodiscard]] inline auto ConfigurationError(FitOutcome const& outcome) -> FitConfigurationError const*
+{
+    return outcome ? nullptr : std::get_if<FitConfigurationError>(&outcome.error());
 }
 
 class OptimizerBase {
-gsl::not_null<Problem const*> problem_;
-// batch size for loss functions (default = 0 -> use entire data range)
-mutable std::size_t batchSize_{0};
-mutable std::size_t iterations_{100}; // NOLINT
+    gsl::not_null<Problem const*> problem_;
+    // batch size for loss functions (default = 0 -> use entire data range)
+    mutable std::size_t batchSize_ { 0 };
+    mutable std::size_t iterations_ { 100 }; // NOLINT
 
 public:
     explicit OptimizerBase(gsl::not_null<Problem const*> problem)
@@ -89,27 +110,45 @@ public:
 };
 
 namespace detail {
-    inline auto CheckSuccess(double initialCost, double finalCost) {
-        constexpr auto CHECK_NAN{true};
-        return Operon::Less<CHECK_NAN>{}(finalCost, initialCost);
+    inline auto CheckSuccess(double initialCost, double finalCost)
+    {
+        constexpr auto CHECK_NAN { true };
+        return Operon::Less<CHECK_NAN> {}(finalCost, initialCost);
     }
 
     // Replaces the near-identical summary-assembly tail block that used to
     // be repeated at the end of every Optimize() override: each override
     // builds one FitDiagnostics via aggregate init, then returns
     // MakeFitOutcome(std::move(diag)) as its last line.
-    inline auto MakeFitOutcome(FitDiagnostics diag) -> FitOutcome {
+    inline auto MakeFitOutcome(FitDiagnostics diag) -> FitOutcome
+    {
         if (CheckSuccess(diag.InitialCost, diag.FinalCost)) {
-            return FitResult{std::move(diag)};
+            return FitResult { std::move(diag) };
         }
-        return tl::unexpected(FitFailure{std::move(diag)});
+        return tl::unexpected(FitFailure { std::move(diag) });
+    }
+    inline auto MakeFitEvaluationError(InterpreterError error, FitDiagnostics diag) -> FitOutcome
+    {
+        FitEvaluationError failure;
+        static_cast<FitDiagnostics&>(failure) = std::move(diag);
+        failure.Error = std::move(error);
+        return tl::unexpected(FitError { std::move(failure) });
+    }
+
+    inline auto MakeFitConfigurationError(LMWeightError error, FitDiagnostics diag) -> FitOutcome
+    {
+        FitConfigurationError failure;
+        static_cast<FitDiagnostics&>(failure) = std::move(diag);
+        failure.Error = error;
+        return tl::unexpected(FitError { std::move(failure) });
     }
 } // namespace detail
 
 template <typename DTable, OptimizerType = OptimizerType::Tiny>
 struct LevenbergMarquardtOptimizer : public OptimizerBase {
     explicit LevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
-        : OptimizerBase{problem}, dtable_{dtable}
+        : OptimizerBase { problem }
+        , dtable_ { dtable }
     {
     }
 
@@ -118,19 +157,24 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         auto const* dtable = this->GetDispatchTable();
         auto const* problem = this->GetProblem();
         auto const* dataset = problem->GetDataset();
-        auto range  = problem->TrainingRange();
+        auto range = problem->TrainingRange();
         auto target = problem->TargetValues();
         auto iterations = this->Iterations();
 
-        auto weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{});
-
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        Operon::LMCostFunction cf{gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter}, target, range, weights};
-        ceres::TinySolver<decltype(cf)> solver;
-
+        auto const weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {});
+        auto const localWeights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
         auto x0 = tree.GetCoefficients();
         FitDiagnostics diag;
         diag.InitialParameters = x0;
+        auto validWeights = TryValidateLMWeights(localWeights, range.Size());
+        if (!validWeights) {
+            diag.FinalParameters = x0;
+            return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
+        }
+
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
+        Operon::LMCostFunction cf { gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter }, target, range, weights };
+        ceres::TinySolver<decltype(cf)> solver;
         auto m0 = Eigen::Map<Eigen::Matrix<Operon::Scalar, Eigen::Dynamic, 1>>(x0.data(), x0.size());
         if (!x0.empty()) {
             // max_num_accepted_steps counts accepted LM steps only, matching
@@ -152,6 +196,9 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         diag.Iterations = solver.summary.iterations;
         diag.FunctionEvaluations = cf.ResidualCalls();
         diag.JacobianEvaluations = cf.JacobianCalls();
+        if (auto const& error = cf.Error(); error) {
+            return detail::MakeFitEvaluationError(*error, std::move(diag));
+        }
         return detail::MakeFitOutcome(std::move(diag));
     }
 
@@ -162,18 +209,20 @@ struct LevenbergMarquardtOptimizer : public OptimizerBase {
         return GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(x, y, w);
     }
 
-    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final
+    {
         return GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(pred, jac, sigma);
     }
 
-    private:
+private:
     gsl::not_null<DTable const*> dtable_;
 };
 
 template <typename DTable>
 struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public OptimizerBase {
     explicit LevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
-        : OptimizerBase{problem}, dtable_{dtable}
+        : OptimizerBase { problem }
+        , dtable_ { dtable }
     {
     }
 
@@ -182,19 +231,24 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         auto const* dtable = this->GetDispatchTable();
         auto const* problem = this->GetProblem();
         auto const* dataset = problem->GetDataset();
-        auto range  = problem->TrainingRange();
+        auto range = problem->TrainingRange();
         auto target = problem->TargetValues();
         auto iterations = this->Iterations();
 
-        auto weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{});
-
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        Operon::LMCostFunction<Operon::Scalar> cf{&interpreter, target, range, weights};
-        Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-
+        auto const weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {});
+        auto const localWeights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
         auto x0 = tree.GetCoefficients();
         FitDiagnostics diag;
         diag.InitialParameters = x0;
+        auto validWeights = TryValidateLMWeights(localWeights, range.Size());
+        if (!validWeights) {
+            diag.FinalParameters = x0;
+            return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
+        }
+
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
+        Operon::LMCostFunction<Operon::Scalar> cf { &interpreter, target, range, weights };
+        Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
         if (!x0.empty()) {
             // `iterations` counts accepted LM steps (lm.iterations()), matching the
             // Tiny/ceres variant's max_num_iterations - it is not itself a function-
@@ -218,7 +272,7 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
                 do {
                     status = lm.minimizeOneStep(m);
                 } while (status == Eigen::LevenbergMarquardtSpace::Running
-                          && lm.iterations() < static_cast<Eigen::Index>(iterations));
+                    && lm.iterations() < static_cast<Eigen::Index>(iterations));
             }
             m0 = m;
         }
@@ -227,340 +281,9 @@ struct LevenbergMarquardtOptimizer<DTable, OptimizerType::Eigen> final : public 
         diag.Iterations = static_cast<int>(lm.iterations());
         diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
         diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
-
-        return detail::MakeFitOutcome(std::move(diag));
-    }
-
-    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
-
-    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar final
-    {
-        return GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(x, y, w);
-    }
-
-    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
-        return GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(pred, jac, sigma);
-    }
-
-    private:
-    gsl::not_null<DTable const*> dtable_;
-};
-
-template<typename DTable, Concepts::OptimizerLoss LossFunction = GaussianLoss<Operon::Scalar>>
-struct LBFGSOptimizer final : public OptimizerBase {
-    LBFGSOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
-        : OptimizerBase{problem}, dtable_{dtable}
-    {
-    }
-
-    [[nodiscard]] auto Optimize(Operon::RandomGenerator& rng, Operon::Tree const& tree) const -> FitOutcome final
-    {
-        auto const* dtable = this->GetDispatchTable();
-        auto const* problem = this->GetProblem();
-        auto const* dataset = problem->GetDataset();
-        auto range  = problem->TrainingRange();
-        auto target = problem->TargetValues(range);
-        auto iterations = this->Iterations();
-        auto batchSize = this->BatchSize();
-        if (batchSize == 0) { batchSize = range.Size(); }
-        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
-
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        // LossFunction batches internally (SelectBatch), so it needs the
-        // whole-dataset target/weights columns (absolute, dataset-row-indexed
-        // - the same indexing it hands the interpreter for any sub-range),
-        // not the range-local `target`/`weights` above (which line up with
-        // `pred` in the single-range `cost` lambda below).
-        LossFunction loss{&rng, &interpreter, problem->TargetValues(), range, batchSize, dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{})};
-
-        auto cost = [&](auto const& coeff) {
-            auto pred = interpreter.Evaluate(coeff, range);
-            // Delegated to LossFunction::Cost (not computed unweighted here
-            // directly) so this stays consistent with what operator() actually
-            // optimizes. Do NOT assume this line is weighted just because
-            // `weights` is passed in - each LossFunction decides for itself
-            // whether to apply it (GaussianLoss::Cost: yes; PoissonLoss::Cost:
-            // no, see its comment) - otherwise the outcome could be judged
-            // against the wrong objective and CoefficientOptimizer
-            // (local_search.cpp) would drop valid weighted gains.
-            //
-            // TODO: Cost is an SSE surrogate for every LossFunction, not each
-            // one's true objective (Poisson::operator() actually optimizes
-            // Poisson NLL) - a pre-existing mismatch, unrelated to weighting,
-            // that should eventually report the real objective per loss type.
-            return LossFunction::Cost(pred, target, weights);
-        };
-
-        auto coeff = tree.GetCoefficients();
-        Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
-
-        lbfgs::solver solver{loss};
-        solver.max_iterations = iterations;
-        solver.max_line_search_iterations = iterations;
-        auto const f0 = cost(coeff);
-        FitDiagnostics diag;
-        diag.InitialParameters = coeff;
-        diag.InitialCost = f0;
-
-        if (auto res = solver.optimize(x0)) {
-            auto xf = res.value();
-            std::copy(xf.begin(), xf.end(), coeff.begin());
+        if (auto const& error = cf.Error(); error) {
+            return detail::MakeFitEvaluationError(*error, std::move(diag));
         }
-
-        diag.FinalParameters = coeff;
-        auto const f1 = cost(coeff);
-        diag.FinalCost = f1;
-        auto const funEvals = loss.FunctionEvaluations();
-        auto const jacEvals = loss.JacobianEvaluations();
-        auto const rangeSize = range.Size();
-        diag.FunctionEvaluations = static_cast<std::size_t>(static_cast<double>(funEvals + jacEvals) * batchSize / rangeSize);
-        diag.JacobianEvaluations = diag.FunctionEvaluations;
-        return detail::MakeFitOutcome(std::move(diag));
-    }
-
-    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
-
-    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar override
-    {
-        return LossFunction::ComputeLikelihood(x, y, w);
-    }
-
-    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
-        return LossFunction::ComputeFisherMatrix(pred, jac, sigma);
-    }
-
-    private:
-    gsl::not_null<DTable const*> dtable_;
-};
-
-template<typename DTable, Concepts::OptimizerLoss LossFunction = GaussianLoss<Operon::Scalar>>
-struct SGDOptimizer final : public OptimizerBase {
-    SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
-        : OptimizerBase{problem}
-        , dtable_{dtable}
-        , update_{std::make_unique<UpdateRule::Constant<Operon::Scalar>>(Operon::Scalar{0.01})}
-    { }
-
-    SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem, UpdateRule::LearningRateUpdateRule const& update)
-        : OptimizerBase{problem}
-        , dtable_{dtable}
-        , update_{update.Clone(0)}
-    { }
-
-    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
-
-    [[nodiscard]] auto Optimize(Operon::RandomGenerator& rng, Operon::Tree const& tree) const -> FitOutcome final
-    {
-        auto const* dtable = this->GetDispatchTable();
-        auto const* problem = this->GetProblem();
-        auto const* dataset = problem->GetDataset();
-        auto range  = problem->TrainingRange();
-        auto target = problem->TargetValues(range);
-        auto iterations = this->Iterations();
-        auto batchSize = this->BatchSize();
-        if (batchSize == 0) { batchSize = range.Size(); }
-        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const>{});
-
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-        // LossFunction batches internally (SelectBatch), so it needs the
-        // whole-dataset target/weights columns (absolute, dataset-row-indexed
-        // - the same indexing it hands the interpreter for any sub-range),
-        // not the range-local `target`/`weights` above (which line up with
-        // `pred` in the single-range `cost` lambda below).
-        LossFunction loss{&rng, &interpreter, problem->TargetValues(), range, batchSize, dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{})};
-
-        auto cost = [&](auto const& coeff) {
-            auto pred = interpreter.Evaluate(coeff, range);
-            // Delegated to LossFunction::Cost (not computed unweighted here
-            // directly) so this stays consistent with what operator() actually
-            // optimizes. Do NOT assume this line is weighted just because
-            // `weights` is passed in - each LossFunction decides for itself
-            // whether to apply it (GaussianLoss::Cost: yes; PoissonLoss::Cost:
-            // no, see its comment) - otherwise the outcome could be judged
-            // against the wrong objective and CoefficientOptimizer
-            // (local_search.cpp) would drop valid weighted gains.
-            //
-            // TODO: Cost is an SSE surrogate for every LossFunction, not each
-            // one's true objective (Poisson::operator() actually optimizes
-            // Poisson NLL) - a pre-existing mismatch, unrelated to weighting,
-            // that should eventually report the real objective per loss type.
-            return LossFunction::Cost(pred, target, weights);
-        };
-
-        auto coeff = tree.GetCoefficients();
-        auto const f0 = cost(coeff);
-        FitDiagnostics diag;
-        diag.InitialParameters = coeff;
-        diag.InitialCost = f0;
-        auto rule = update_->Clone(coeff.size());
-        SGDSolver<LossFunction> solver(&loss, rule.get());
-
-        Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
-        auto x = solver.Optimize(x0, iterations);
-        std::copy(x.begin(), x.end(), coeff.begin());
-        auto const f1 = cost(coeff);
-
-        diag.FinalParameters = coeff;
-        diag.FinalCost = f1;
-        diag.Iterations = solver.Epochs();
-        auto const funEvals = loss.FunctionEvaluations();
-        auto const jacEvals = loss.JacobianEvaluations();
-        auto const rangeSize = range.Size();
-        diag.FunctionEvaluations = static_cast<std::size_t>(static_cast<double>(funEvals + jacEvals) * batchSize / rangeSize);
-        diag.JacobianEvaluations = diag.FunctionEvaluations;
-        return detail::MakeFitOutcome(std::move(diag));
-    }
-
-    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar override
-    {
-        return LossFunction::ComputeLikelihood(x, y, w);
-    }
-
-    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final {
-        return LossFunction::ComputeFisherMatrix(pred, jac, sigma);
-    }
-
-    auto SetUpdateRule(std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update) {
-        update_ = std::move(update);
-    }
-
-    auto UpdateRule() const { return update_.get(); }
-
-    private:
-    gsl::not_null<DTable const*> dtable_;
-    std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update_{nullptr};
-};
-#if defined(HAVE_ASMJIT)
-// LM optimizer backed by a JitEvaluator for compiled residuals and/or Jacobian.
-//
-// JacobianOnly=false (default): JIT-compiles both the forward pass (residuals)
-//   and the Jacobian; falls back to interpreter when compilation fails.
-// JacobianOnly=true: uses the interpreter for residuals; only the Jacobian is
-//   JIT-compiled.  Useful when forward-pass compilation overhead exceeds savings.
-//
-// Pass a JitEvaluator constructed for the same GP run so the code cache is
-// shared between fitness evaluation and coefficient optimisation.
-template <typename DTable, OptimizerType Type = OptimizerType::Tiny, bool JacobianOnly = false>
-struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
-    explicit JitLevenbergMarquardtOptimizer(gsl::not_null<DTable const*>           dtable,
-                                            gsl::not_null<Problem const*>          problem,
-                                            gsl::not_null<JIT::JitEvaluator const*> jitEvaluator)
-        : OptimizerBase{problem}
-        , dtable_{dtable}
-        , jitEval_{jitEvaluator}
-    {}
-
-    [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*rng*/, Operon::Tree const& tree) const -> FitOutcome final
-    {
-        auto const* dtable  = dtable_.get();
-        auto const* problem = this->GetProblem();
-        auto const* dataset = problem->GetDataset();
-        auto const  range   = problem->TrainingRange();
-        auto const  target  = problem->TargetValues();
-        auto const  iters   = this->Iterations();
-        auto const  weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const>{});
-
-        Operon::Interpreter<Operon::Scalar, DTable> interpreter{dtable, dataset, &tree};
-
-        JIT::CompileMeta const* meta = jitEval_->GetOrCompileJacobian(tree);
-        if (!JacobianOnly && (!meta || !meta->fn)) { meta = jitEval_->GetOrCompile(tree); }
-
-        FitDiagnostics diag;
-        auto x0 = tree.GetCoefficients();
-        diag.InitialParameters = x0;
-
-        bool const hasFn    = meta && meta->fn;
-        bool const hasJacFn = meta && meta->jacFn;
-        // In JacobianOnly mode only enter the JIT path when the Jacobian was actually compiled;
-        // falling through to JitLMCostFunction with a null jacFn wastes allocation for nothing.
-        bool const useJitCf = !x0.empty() && (hasFn || (JacobianOnly && hasJacFn));
-
-        if (!useJitCf) {
-            // Pure interpreter fallback — no JIT at all.
-            Operon::LMCostFunction cf{
-                gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
-                target, range, weights};
-            Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-            if (!x0.empty()) {
-                lm.setMaxfev(std::max<Eigen::Index>(
-                    static_cast<Eigen::Index>(iters) * (static_cast<Eigen::Index>(x0.size()) + 1), 1));
-                Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
-                Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
-                Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
-                diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
-                if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
-                    do { status = lm.minimizeOneStep(m); }
-                    while (status == Eigen::LevenbergMarquardtSpace::Running
-                            && lm.iterations() < static_cast<Eigen::Index>(iters));
-                }
-                m0 = m;
-            }
-            diag.FinalParameters       = x0;
-            diag.FinalCost             = lm.fnorm() * lm.fnorm() * 0.5;
-            diag.Iterations            = static_cast<int>(lm.iterations());
-            diag.FunctionEvaluations   = static_cast<int>(cf.ResidualCalls());
-            diag.JacobianEvaluations   = static_cast<int>(cf.JacobianCalls());
-            return detail::MakeFitOutcome(std::move(diag));
-        }
-
-        // Column pointer arrays are rebuilt from the tree (VarOrder is re-derivable;
-        // the fixed Zobrist hash makes it structurally unique per entry).
-        // Both fn and jacFn use the same variable ordering, so one colPtrs suffices.
-        auto const varOrder = JIT::VarOrder(tree);
-        auto const start    = static_cast<std::ptrdiff_t>(range.Start());
-
-        std::vector<float const*> colPtrs;
-        JIT::EvalFn evalFn{};
-        if (hasFn) {
-            evalFn = meta->fn;
-            colPtrs.resize(varOrder.size());
-            for (std::size_t i = 0; i < varOrder.size(); ++i) {
-                colPtrs[i] = dataset->GetPaddedValues(varOrder[i]) + start;
-            }
-        }
-
-        std::vector<float const*> jacColPtrs;
-        JIT::EvalJacFn jacFn{};
-        if (meta && meta->jacFn) {
-            jacFn = meta->jacFn;
-            jacColPtrs.resize(varOrder.size());
-            for (std::size_t i = 0; i < varOrder.size(); ++i) {
-                jacColPtrs[i] = dataset->GetPaddedValues(varOrder[i]) + start;
-            }
-        }
-
-        Operon::JitLMCostFunction cf{
-            gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*>{&interpreter},
-            evalFn,
-            std::move(colPtrs),
-            target, range,
-            jacFn,
-            std::move(jacColPtrs),
-            meta->nVars,
-            meta->nConsts,
-            weights};
-
-        Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
-        lm.setMaxfev(std::max<Eigen::Index>(
-            static_cast<Eigen::Index>(iters) * (static_cast<Eigen::Index>(x0.size()) + 1), 1));
-
-        Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
-        Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
-
-        Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
-        diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
-        if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
-            do { status = lm.minimizeOneStep(m); }
-            while (status == Eigen::LevenbergMarquardtSpace::Running
-                    && lm.iterations() < static_cast<Eigen::Index>(iters));
-        }
-        m0 = m;
-
-        diag.FinalParameters     = x0;
-        diag.FinalCost           = lm.fnorm() * lm.fnorm() * 0.5;
-        diag.Iterations          = static_cast<int>(lm.iterations());
-        diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
-        diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
         return detail::MakeFitOutcome(std::move(diag));
     }
 
@@ -577,7 +300,410 @@ struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
     }
 
 private:
-    gsl::not_null<DTable const*>            dtable_;
+    gsl::not_null<DTable const*> dtable_;
+};
+
+template <typename DTable, Concepts::OptimizerLoss LossFunction = GaussianLoss<Operon::Scalar>>
+struct LBFGSOptimizer final : public OptimizerBase {
+    LBFGSOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
+        : OptimizerBase { problem }
+        , dtable_ { dtable }
+    {
+    }
+
+    [[nodiscard]] auto Optimize(Operon::RandomGenerator& rng, Operon::Tree const& tree) const -> FitOutcome final
+    {
+        auto const* dtable = this->GetDispatchTable();
+        auto const* problem = this->GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto range = problem->TrainingRange();
+        auto target = problem->TargetValues(range);
+        auto iterations = this->Iterations();
+        auto batchSize = this->BatchSize();
+        if (batchSize == 0) {
+            batchSize = range.Size();
+        }
+        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
+
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
+        // LossFunction batches internally (SelectBatch), so it needs the
+        // whole-dataset target/weights columns (absolute, dataset-row-indexed
+        // - the same indexing it hands the interpreter for any sub-range),
+        // not the range-local `target`/`weights` above (which line up with
+        // `pred` in the single-range `cost` lambda below).
+        LossFunction loss { &rng, &interpreter, problem->TargetValues(), range, batchSize, dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {}) };
+
+        auto cost = [&](auto const& coeff) -> tl::expected<Operon::Scalar, InterpreterError> {
+            auto pred = interpreter.TryEvaluate(coeff, range);
+            if (!pred) {
+                return tl::unexpected(std::move(pred.error()));
+            }
+            // Delegated to LossFunction::Cost (not computed unweighted here
+            // directly) so this stays consistent with what operator() actually
+            // optimizes. Do NOT assume this line is weighted just because
+            // `weights` is passed in - each LossFunction decides for itself
+            // whether to apply it (GaussianLoss::Cost: yes; PoissonLoss::Cost:
+            // no, see its comment) - otherwise the outcome could be judged
+            // against the wrong objective and CoefficientOptimizer
+            // (local_search.cpp) would drop valid weighted gains.
+            //
+            // TODO: Cost is an SSE surrogate for every LossFunction, not each
+            // one's true objective (Poisson::operator() actually optimizes
+            // Poisson NLL) - a pre-existing mismatch, unrelated to weighting,
+            // that should eventually report the real objective per loss type.
+            return LossFunction::Cost(*pred, target, weights);
+        };
+
+        auto coeff = tree.GetCoefficients();
+        Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
+        FitDiagnostics diag;
+        diag.InitialParameters = coeff;
+        auto f0 = cost(coeff);
+        if (!f0) {
+            diag.FinalParameters = coeff;
+            return detail::MakeFitEvaluationError(std::move(f0.error()), std::move(diag));
+        }
+        diag.InitialCost = *f0;
+
+        lbfgs::solver solver { loss };
+        solver.max_iterations = iterations;
+        solver.max_line_search_iterations = iterations;
+        auto result = solver.optimize(x0);
+        if (auto const& error = loss.Error(); error) {
+            diag.FinalParameters = coeff;
+            auto const funEvals = loss.FunctionEvaluations();
+            auto const jacEvals = loss.JacobianEvaluations();
+            diag.FunctionEvaluations = static_cast<std::size_t>(static_cast<double>(funEvals + jacEvals) * batchSize / range.Size());
+            diag.JacobianEvaluations = diag.FunctionEvaluations;
+            return detail::MakeFitEvaluationError(*error, std::move(diag));
+        }
+        if (result) {
+            auto xf = result.value();
+            std::copy(xf.begin(), xf.end(), coeff.begin());
+        }
+
+        auto f1 = cost(coeff);
+        if (!f1) {
+            diag.FinalParameters = coeff;
+            return detail::MakeFitEvaluationError(std::move(f1.error()), std::move(diag));
+        }
+        diag.FinalParameters = coeff;
+        diag.FinalCost = *f1;
+        auto const funEvals = loss.FunctionEvaluations();
+        auto const jacEvals = loss.JacobianEvaluations();
+        diag.FunctionEvaluations = static_cast<std::size_t>(static_cast<double>(funEvals + jacEvals) * batchSize / range.Size());
+        diag.JacobianEvaluations = diag.FunctionEvaluations;
+        return detail::MakeFitOutcome(std::move(diag));
+    }
+
+    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
+
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar override
+    {
+        return LossFunction::ComputeLikelihood(x, y, w);
+    }
+
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final
+    {
+        return LossFunction::ComputeFisherMatrix(pred, jac, sigma);
+    }
+
+private:
+    gsl::not_null<DTable const*> dtable_;
+};
+
+template <typename DTable, Concepts::OptimizerLoss LossFunction = GaussianLoss<Operon::Scalar>>
+struct SGDOptimizer final : public OptimizerBase {
+    SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem)
+        : OptimizerBase { problem }
+        , dtable_ { dtable }
+        , update_ { std::make_unique<UpdateRule::Constant<Operon::Scalar>>(Operon::Scalar { 0.01 }) }
+    {
+    }
+
+    SGDOptimizer(gsl::not_null<DTable const*> dtable, gsl::not_null<Problem const*> problem, UpdateRule::LearningRateUpdateRule const& update)
+        : OptimizerBase { problem }
+        , dtable_ { dtable }
+        , update_ { update.Clone(0) }
+    {
+    }
+
+    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
+
+    [[nodiscard]] auto Optimize(Operon::RandomGenerator& rng, Operon::Tree const& tree) const -> FitOutcome final
+    {
+        auto const* dtable = this->GetDispatchTable();
+        auto const* problem = this->GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto range = problem->TrainingRange();
+        auto target = problem->TargetValues(range);
+        auto iterations = this->Iterations();
+        auto batchSize = this->BatchSize();
+        if (batchSize == 0) {
+            batchSize = range.Size();
+        }
+        auto weights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
+
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
+        // LossFunction batches internally (SelectBatch), so it needs the
+        // whole-dataset target/weights columns (absolute, dataset-row-indexed
+        // - the same indexing it hands the interpreter for any sub-range),
+        // not the range-local `target`/`weights` above (which line up with
+        // `pred` in the single-range `cost` lambda below).
+        LossFunction loss { &rng, &interpreter, problem->TargetValues(), range, batchSize, dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {}) };
+
+        auto cost = [&](auto const& coeff) -> tl::expected<Operon::Scalar, InterpreterError> {
+            auto pred = interpreter.TryEvaluate(coeff, range);
+            if (!pred) {
+                return tl::unexpected(std::move(pred.error()));
+            }
+            // Delegated to LossFunction::Cost (not computed unweighted here
+            // directly) so this stays consistent with what operator() actually
+            // optimizes. Do NOT assume this line is weighted just because
+            // `weights` is passed in - each LossFunction decides for itself
+            // whether to apply it (GaussianLoss::Cost: yes; PoissonLoss::Cost:
+            // no, see its comment) - otherwise the outcome could be judged
+            // against the wrong objective and CoefficientOptimizer
+            // (local_search.cpp) would drop valid weighted gains.
+            // TODO: Cost is an SSE surrogate for every LossFunction, not each
+            // one's true objective (Poisson::operator() actually optimizes
+            // Poisson NLL) - a pre-existing mismatch, unrelated to weighting,
+            // that should eventually report the real objective per loss type.
+            return LossFunction::Cost(*pred, target, weights);
+        };
+
+        auto coeff = tree.GetCoefficients();
+        FitDiagnostics diag;
+        diag.InitialParameters = coeff;
+        auto f0 = cost(coeff);
+        if (!f0) {
+            diag.FinalParameters = coeff;
+            return detail::MakeFitEvaluationError(std::move(f0.error()), std::move(diag));
+        }
+        diag.InitialCost = *f0;
+        auto rule = update_->Clone(coeff.size());
+        SGDSolver<LossFunction> solver(&loss, rule.get());
+
+        Eigen::Map<Eigen::Array<Operon::Scalar, -1, 1> const> x0(coeff.data(), std::ssize(coeff));
+        auto x = solver.Optimize(x0, iterations);
+        if (auto const& error = loss.Error(); error) {
+            diag.FinalParameters = coeff;
+            auto const funEvals = loss.FunctionEvaluations();
+            auto const jacEvals = loss.JacobianEvaluations();
+            diag.Iterations = solver.Epochs();
+            diag.FunctionEvaluations = static_cast<std::size_t>(static_cast<double>(funEvals + jacEvals) * batchSize / range.Size());
+            diag.JacobianEvaluations = diag.FunctionEvaluations;
+            return detail::MakeFitEvaluationError(*error, std::move(diag));
+        }
+        std::copy(x.begin(), x.end(), coeff.begin());
+        auto f1 = cost(coeff);
+        if (!f1) {
+            diag.FinalParameters = coeff;
+            return detail::MakeFitEvaluationError(std::move(f1.error()), std::move(diag));
+        }
+
+        diag.FinalParameters = coeff;
+        diag.FinalCost = *f1;
+        diag.Iterations = solver.Epochs();
+        auto const funEvals = loss.FunctionEvaluations();
+        auto const jacEvals = loss.JacobianEvaluations();
+        diag.FunctionEvaluations = static_cast<std::size_t>(static_cast<double>(funEvals + jacEvals) * batchSize / range.Size());
+        diag.JacobianEvaluations = diag.FunctionEvaluations;
+        return detail::MakeFitOutcome(std::move(diag));
+    }
+
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar override
+    {
+        return LossFunction::ComputeLikelihood(x, y, w);
+    }
+
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final
+    {
+        return LossFunction::ComputeFisherMatrix(pred, jac, sigma);
+    }
+
+    auto SetUpdateRule(std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update)
+    {
+        update_ = std::move(update);
+    }
+
+    auto UpdateRule() const { return update_.get(); }
+
+private:
+    gsl::not_null<DTable const*> dtable_;
+    std::unique_ptr<UpdateRule::LearningRateUpdateRule const> update_ { nullptr };
+};
+#if defined(HAVE_ASMJIT)
+// LM optimizer backed by a JitEvaluator for compiled residuals and/or Jacobian.
+//
+// JacobianOnly=false (default): JIT-compiles both the forward pass (residuals)
+//   and the Jacobian; falls back to interpreter when compilation fails.
+// JacobianOnly=true: uses the interpreter for residuals; only the Jacobian is
+//   JIT-compiled.  Useful when forward-pass compilation overhead exceeds savings.
+//
+// Pass a JitEvaluator constructed for the same GP run so the code cache is
+// shared between fitness evaluation and coefficient optimisation.
+template <typename DTable, OptimizerType Type = OptimizerType::Tiny, bool JacobianOnly = false>
+struct JitLevenbergMarquardtOptimizer : public OptimizerBase {
+    explicit JitLevenbergMarquardtOptimizer(gsl::not_null<DTable const*> dtable,
+        gsl::not_null<Problem const*> problem,
+        gsl::not_null<JIT::JitEvaluator const*> jitEvaluator)
+        : OptimizerBase { problem }
+        , dtable_ { dtable }
+        , jitEval_ { jitEvaluator }
+    {
+    }
+
+    [[nodiscard]] auto Optimize(Operon::RandomGenerator& /*rng*/, Operon::Tree const& tree) const -> FitOutcome final
+    {
+        auto const* dtable = dtable_.get();
+        auto const* problem = this->GetProblem();
+        auto const* dataset = problem->GetDataset();
+        auto const range = problem->TrainingRange();
+        auto const target = problem->TargetValues();
+        auto const iters = this->Iterations();
+        auto const weights = dataset->Weights().value_or(Operon::Span<Operon::Scalar const> {});
+
+        Operon::Interpreter<Operon::Scalar, DTable> interpreter { dtable, dataset, &tree };
+        FitDiagnostics diag;
+        auto x0 = tree.GetCoefficients();
+        diag.InitialParameters = x0;
+        auto const localWeights = problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {});
+        auto validWeights = TryValidateLMWeights(localWeights, range.Size());
+        if (!validWeights) {
+            diag.FinalParameters = x0;
+            return detail::MakeFitConfigurationError(validWeights.error(), std::move(diag));
+        }
+        auto bound = interpreter.TryBindTree(range);
+        if (!bound) {
+            diag.FinalParameters = x0;
+            return detail::MakeFitEvaluationError(std::move(bound.error()), std::move(diag));
+        }
+
+        JIT::CompileMeta const* meta = jitEval_->GetOrCompileJacobian(tree);
+        if (!JacobianOnly && (!meta || !meta->fn)) {
+            meta = jitEval_->GetOrCompile(tree);
+        }
+
+        bool const hasFn = meta && meta->fn;
+        bool const hasJacFn = meta && meta->jacFn;
+        // In JacobianOnly mode only enter the JIT path when the Jacobian was actually compiled;
+        // falling through to JitLMCostFunction with a null jacFn wastes allocation for nothing.
+        bool const useJitCf = !x0.empty() && (hasFn || (JacobianOnly && hasJacFn));
+
+        if (!useJitCf) {
+            // Pure interpreter fallback — no JIT at all.
+            Operon::LMCostFunction cf {
+                gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter },
+                target, range, weights
+            };
+            Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
+            if (!x0.empty()) {
+                lm.setMaxfev(std::max<Eigen::Index>(
+                    static_cast<Eigen::Index>(iters) * (static_cast<Eigen::Index>(x0.size()) + 1), 1));
+                Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
+                Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
+                Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
+                diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
+                if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
+                    do {
+                        status = lm.minimizeOneStep(m);
+                    } while (status == Eigen::LevenbergMarquardtSpace::Running
+                        && lm.iterations() < static_cast<Eigen::Index>(iters));
+                }
+                m0 = m;
+            }
+            diag.FinalParameters = x0;
+            diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
+            diag.Iterations = static_cast<int>(lm.iterations());
+            diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
+            diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
+            if (auto const& error = cf.Error(); error) {
+                return detail::MakeFitEvaluationError(*error, std::move(diag));
+            }
+            return detail::MakeFitOutcome(std::move(diag));
+        }
+
+        // Column pointer arrays are rebuilt from the tree (VarOrder is re-derivable;
+        // the fixed Zobrist hash makes it structurally unique per entry).
+        // Both fn and jacFn use the same variable ordering, so one colPtrs suffices.
+        auto const varOrder = JIT::VarOrder(tree);
+        auto const start = static_cast<std::ptrdiff_t>(range.Start());
+
+        std::vector<float const*> colPtrs;
+        JIT::EvalFn evalFn {};
+        if (hasFn) {
+            evalFn = meta->fn;
+            colPtrs.resize(varOrder.size());
+            for (std::size_t i = 0; i < varOrder.size(); ++i) {
+                colPtrs[i] = dataset->GetPaddedValues(varOrder[i]) + start;
+            }
+        }
+
+        std::vector<float const*> jacColPtrs;
+        JIT::EvalJacFn jacFn {};
+        if (meta && meta->jacFn) {
+            jacFn = meta->jacFn;
+            jacColPtrs.resize(varOrder.size());
+            for (std::size_t i = 0; i < varOrder.size(); ++i) {
+                jacColPtrs[i] = dataset->GetPaddedValues(varOrder[i]) + start;
+            }
+        }
+
+        Operon::JitLMCostFunction cf {
+            gsl::not_null<Operon::InterpreterBase<Operon::Scalar> const*> { &interpreter },
+            evalFn,
+            std::move(colPtrs),
+            target, range,
+            jacFn,
+            std::move(jacColPtrs),
+            meta->nVars,
+            meta->nConsts,
+            weights
+        };
+
+        Eigen::LevenbergMarquardt<decltype(cf)> lm(cf);
+        lm.setMaxfev(std::max<Eigen::Index>(
+            static_cast<Eigen::Index>(iters) * (static_cast<Eigen::Index>(x0.size()) + 1), 1));
+
+        Eigen::Map<Eigen::Matrix<Operon::Scalar, -1, 1>> m0(x0.data(), std::ssize(x0));
+        Eigen::Matrix<Operon::Scalar, -1, 1> m = m0;
+
+        Eigen::LevenbergMarquardtSpace::Status status = lm.minimizeInit(m);
+        diag.InitialCost = diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
+        if (status != Eigen::LevenbergMarquardtSpace::ImproperInputParameters) {
+            do {
+                status = lm.minimizeOneStep(m);
+            } while (status == Eigen::LevenbergMarquardtSpace::Running
+                && lm.iterations() < static_cast<Eigen::Index>(iters));
+        }
+        m0 = m;
+
+        diag.FinalParameters = x0;
+        diag.FinalCost = lm.fnorm() * lm.fnorm() * 0.5;
+        diag.Iterations = static_cast<int>(lm.iterations());
+        diag.FunctionEvaluations = static_cast<int>(cf.ResidualCalls());
+        diag.JacobianEvaluations = static_cast<int>(cf.JacobianCalls());
+        if (auto const& error = cf.Error(); error) {
+            return detail::MakeFitEvaluationError(*error, std::move(diag));
+        }
+        return detail::MakeFitOutcome(std::move(diag));
+    }
+
+    auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
+
+    [[nodiscard]] auto ComputeLikelihood(Operon::Span<Operon::Scalar const> x, Operon::Span<Operon::Scalar const> y, Operon::Span<Operon::Scalar const> w) const -> Operon::Scalar final
+    {
+        return GaussianLikelihood<Operon::Scalar>::ComputeLikelihood(x, y, w);
+    }
+
+    [[nodiscard]] auto ComputeFisherMatrix(Operon::Span<Operon::Scalar const> pred, Operon::Span<Operon::Scalar const> jac, Operon::Span<Operon::Scalar const> sigma) const -> Eigen::Matrix<Operon::Scalar, -1, -1> final
+    {
+        return GaussianLikelihood<Operon::Scalar>::ComputeFisherMatrix(pred, jac, sigma);
+    }
+
+private:
+    gsl::not_null<DTable const*> dtable_;
     gsl::not_null<JIT::JitEvaluator const*> jitEval_;
 };
 #endif // HAVE_ASMJIT

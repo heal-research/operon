@@ -272,6 +272,7 @@ TEST_CASE("ShapeConstrainedEvaluator - bisected interval tightens a dependency-p
     cs.Constraints.push_back({.Op = ShapeConstraintOp::Identity, .Variable = "", .Sign = std::nullopt, .Bound = std::pair{Operon::Scalar{-1000}, Operon::Scalar{1000}}});
 
     Operon::ShapeConstrainedEvaluator shapeEval(&nmse, &dtable, cs);
+    shapeEval.SetBoundOptions({.BisectionDepth = 4}); // Exceeds one AVX2 float batch; every batch needs fresh lane bounds.
 
     shapeEval.SetBoundMode(ShapeBoundMode::Interval);
     auto const plain = shapeEval.Measure(tree);

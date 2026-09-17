@@ -200,16 +200,11 @@ auto TryWideBisectedIntervalBound(
     WScalar const infw(lo);
     WScalar const onew(Operon::Scalar{1});
     WScalar const lastw{Operon::Scalar(nLeaves)};
-    // `DomainMap` is always `Operon::Scalar`-typed, and the evaluator never
-    // stores a wide-typed member (see the call-scoped override overload of
-    // IntervalEvaluator::TryEvaluate): `eve::wide<T>` does not reliably keep
-    // its own alignment once nested inside `std::pair`/hash-map storage on
-    // this toolchain, so the widest (bisected) axis's genuinely per-lane
-    // bound is passed straight into TryEvaluate per batch, staying in these
-    // loop-local `WScalar`s for the duration of the call instead of being
-    // boxed into the map. Built once outside the loop -- `dom` itself
-    // already has the right (scalar) domain type, no per-batch map to
-    // rebuild.
+    // DomainMap remains scalar-valued. Each lane-specific endpoint is handed
+    // to IntervalEvaluator for one call only, so an EVE wide never enters
+    // container or evaluator-member storage on the affected Windows path.
+    // Built once outside the loop: `dom` already has the correct scalar
+    // domain type, with no per-batch map rebuilding.
     IntervalEvaluator<WScalar> wie(&tree, dom);
     int k = 0;
     for (; k + WSize <= nLeaves; k += WSize) {
