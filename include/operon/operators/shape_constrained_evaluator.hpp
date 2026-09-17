@@ -85,15 +85,11 @@ enum class ShapeBoundMode : unsigned {
     return (value & flag) != ShapeBoundMode::Combined;
 }
 
-// Tuning knobs for the affine/interval bound machinery. Defaults match
-// this file's previous behavior exactly.
+// Tuning knobs for the affine/interval bound machinery. Defaults match this file's previous behavior exactly.
 struct ShapeBoundOptions {
-    // Interval-only bisection (ShapeBoundMode::Bisected): 2^BisectionDepth uniform sub-boxes along the tree's
-    // widest-referenced axis. Fixed default, not derived from SIMD width: depth is recursion levels, not leaf
-    // count (2^depth leaves), so tying it to hardware lane count would square the leaf count on a wider target
-    // instead of scaling with it. Trees referencing more than one variable are bisected over a balanced
-    // multi-axis grid whose leaves are evaluated scalar/unbatched (no wide<T> batching), so depths above roughly
-    // a dozen are impractical for them and are independently capped inside the evaluator regardless of this value.
+    // Interval-only bisection (ShapeBoundMode::Bisected): 2^BisectionDepth uniform sub-boxes along the widest
+    // referenced axis (leaf count, not recursion levels, hence not tied to SIMD width). Multi-axis trees
+    // bisect over a balanced grid evaluated scalar/unbatched, independently capped well below this value.
     int BisectionDepth { 3 };
     // Affine-mode fallback: max bisection depth when the direct
     // affine/interval intersection fails on the whole domain. 0 disables it.
@@ -124,35 +120,22 @@ inline void ValidateShapeBoundOptions(ShapeBoundOptions const& options)
 [[nodiscard]] OPERON_EXPORT auto ValidateShapeBoundMode(ShapeBoundMode mode) -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeBoundMode(std::string const& str) -> ShapeBoundMode;
 
-// Wraps an inner EvaluatorBase (typically an NMSE-with-linear-scaling Evaluator, matching Kronberger et al. 2021's
-// own fitness setup) with the shape-constraint check from that paper's Algorithm 1 `Evaluate` function: bound the
-// model's output and the requested partial derivatives over the constraint set's domain box via AffineEvaluator
-// (tighter than the paper's own plain interval arithmetic); if any bound proves a constraint can't hold everywhere
-// in the box, every objective gets `WorstValue()` instead of calling the inner evaluator at all — the same "worst
-// possible fitness for an infeasible candidate" rule the paper uses (NMSE's worst case is exactly 1.0 under its
-// own linear scaling convention, hence WorstValue defaulting to 1.0 rather than EvaluatorBase::ErrMax, which is a
-// different, evaluator-agnostic "non-finite" sentinel used elsewhere in this codebase).
+// Wraps an inner EvaluatorBase (typically NMSE-with-linear-scaling) with the shape-constraint check from
+// Kronberger et al. 2021 Algorithm 1: bound the model's output and requested partial derivatives over the
+// constraint set's domain box via AffineEvaluator (tighter than the paper's plain interval arithmetic); if a
+// bound proves a constraint can't hold everywhere in the box, every objective gets WorstValue() instead of
+// calling the inner evaluator. A derivative constraint's bound uses BuildVariableGradientDag (tree_diff.hpp) to
+// get a standalone derivative tree, evaluated the same way as the identity case (see the .cpp).
 //
-// Bound computation for a derivative constraint uses BuildVariableGradientDag (tree_diff.hpp) to get a standalone
-// derivative expression tree for the requested variable, then evaluates that tree's affine enclosure exactly like
-// the "id" case — see the .cpp for the slice-and-wrap-in-a-Tree idiom this shares with the tree_diff tests.
-//
-// This is a pessimistic check in the paper's own sense (Sec. 3.1): a constraint is accepted only if the
-// *enclosure* proves it holds everywhere in the box, so a real conservatism gap (affine/interval overestimation)
-// can reject an actually-feasible model. That's the documented tradeoff, not a bug to work around here.
+// Pessimistic in the paper's own sense (Sec. 3.1): only accepts a constraint the enclosure proves holds
+// everywhere, so overestimation can reject an actually-feasible model. Documented tradeoff, not a bug.
 class OPERON_EXPORT ShapeConstrainedEvaluator final : public EvaluatorBase {
 public:
-    // `constraints`' variable names are resolved against `evaluator`'s own Problem/Dataset once, at construction
-    // -- throws std::invalid_argument if a referenced variable name isn't a column in that dataset, or if a
-    // variable used by a constraint has no entry in `constraints.Domains`.
-    //
-    // `constraints.Domains` must cover every variable that can appear anywhere in a scored tree, not just the
-    // ones named by a constraint's own `Variable` — even a derivative/second-derivative bound's affine evaluation
-    // walks the *whole* original tree internally (see the .cpp: BuildVariableGradientDag's dag always carries the
-    // full original tree as a prefix, so bounding a one-variable derivative still needs domain bounds for every
-    // other variable the tree references). This matches how the paper's own problems specify one shared
-    // input-space box per problem (see operon-publications' shape-constraints-reproduction/problems.yml), not a
-    // per-constraint domain.
+    // `constraints`' variable names are resolved against `evaluator`'s Problem/Dataset once, at construction --
+    // throws std::invalid_argument if a referenced variable isn't a dataset column, or has no `constraints.Domains`
+    // entry. `constraints.Domains` must cover every variable the tree can reference, not just constraint
+    // variables: a derivative bound still walks the whole original tree internally (BuildVariableGradientDag's
+    // dag carries the full tree as a prefix).
     ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase const*> evaluator,
         gsl::not_null<Operon::ScalarDispatch const*> dtable, ShapeConstraintSet constraints);
 
@@ -176,57 +159,32 @@ public:
         feasibleCache_.Clear();
     }
 
-    // The tf::Executor Prepare() uses to parallelize its population-wide Feasible() pre-warm -- the SAME executor
-    // the caller's GP/NSGA2 loop already created (see cli/source/operon_gp.cpp: `tf::Executor executor(threads);`
-    // threaded into both `gp.Run(executor, ...)` and `Reporter::operator()`), not a private one owned by this
-    // class. A private/self-owned executor was tried first and measured to not help (~3x higher CPU, no
-    // wall-clock change on a real run) while needlessly doubling the machine's thread count; reusing the caller's
-    // is both correct (one thread pool, sized once to --threads) and matches this codebase's existing pattern
-    // (see Reporter, which also takes a `tf::Executor&` and calls `executor.corun(...)`, never owns one). Not set
-    // (nullptr) means Prepare() runs its population loop sequentially -- the safe default for any caller (e.g. a
-    // test) that constructs this evaluator without wiring an executor. Named distinctly from `evaluator_` (the
-    // wrapped inner EvaluatorBase) to avoid visual confusion.
+    // The tf::Executor Prepare() uses to parallelize its Feasible() pre-warm across `pop` -- normally the
+    // caller's own GP/NSGA2 executor (see Reporter for the same reuse pattern), not a private one. Unset
+    // (nullptr, default) means Prepare() runs sequentially.
     void SetExecutor(tf::Executor& executor) noexcept { taskExecutor_ = &executor; }
 
-    // Number of individuals rejected by the constraint check so far (paper's Sec. 5.1 "constraint violations"
-    // figure). Accumulates over this evaluator's lifetime, not per-generation — EvaluatorBase::Reset() is
-    // non-virtual and does NOT touch this counter, so a Reset()-and-continue caller (e.g. --resume) will keep
-    // accumulating across the reset rather than starting over.
+    // Individuals rejected by the constraint check so far (paper's Sec. 5.1 "constraint violations" figure).
+    // Accumulates over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
     [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
 
     auto Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
     auto ObjectiveCount() const -> std::size_t override { return evaluator_->ObjectiveCount(); }
 
-    // Delegates to the inner evaluator's own Prepare(), then bulk-computes and caches Feasible() for every
-    // individual in `pop`. The outer GP/NSGA2 loop still schedules this as one non-parallel taskflow task (the
-    // same single-task context DiversityEvaluator::Prepare relies on for its own non-thread-safe population
-    // snapshot, and Reporter also runs from) — Prepare() parallelizes *within* that task by building a local
-    // tf::Taskflow over the population and running it via `taskExecutor_->corun(...)` on the caller's own
-    // executor (see SetExecutor), exactly like Reporter does for its own nested taskflow. corun() (not
-    // run().get()) is required here specifically because Prepare() is itself already running as a task on that
-    // same executor -- run().get() would block a worker thread waiting on a taskflow that needs a free worker to
-    // make progress, a classic nested-executor deadlock risk; corun() has the calling thread join in as a worker
-    // on the nested graph instead of just blocking. feasibleCache_ is already a shard-locked parallel map whose
-    // LazyEmplace serializes same-hash callers, and Feasible()/Measure()/FitLinearScaling only read shared
-    // immutable state (Problem/Dataset/constraints), so concurrent Feasible() calls are safe. The cache is
-    // cleared and rebuilt on every call, so it always reflects `pop` as of the most recent Prepare(). Runs
-    // sequentially if no executor was ever set.
+    // Delegates to the inner evaluator's Prepare(), then bulk-computes and caches Feasible() for every individual
+    // in `pop`, parallelized over `taskExecutor_` (see ParallelForPopulation in the .cpp for the corun()
+    // rationale). Cleared and rebuilt each call, so it always reflects the most recent `pop`.
     auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> override { return evaluator_->Stats(); }
     auto BudgetExhausted() const -> bool override { return evaluator_->BudgetExhausted(); }
 
-    // The same box-bounding check Evaluate() uses internally, exposed standalone so a caller can ask "does this
-    // tree satisfy the constraints" without going through the full scoring path (and without it counting toward
-    // Violations()/CallCount). Note this is NOT the paper's separate Sec. 5.1 post-hoc violation-rate
-    // methodology, which samples concrete points numerically rather than reasoning about the whole domain box at
-    // once — that's a different, point-sampling check a caller would build on top of the ordinary Interpreter,
-    // not this method.
+    // The same box-bounding check Evaluate() uses, exposed standalone so a caller can ask whether a tree
+    // satisfies the constraints without scoring it (and without counting toward Violations()/CallCount). Not
+    // the paper's separate Sec. 5.1 point-sampling violation-rate methodology.
     //
-    // Checks the Prepare()-populated cache first (thread-safe, so this is also safe to call concurrently from
-    // Evaluate() on freshly generated offspring that Prepare() never saw this generation -- a cache miss there
-    // just computes and stores the result under this tree's own content hash, same as any other miss).
+    // Checks the Prepare()-populated cache first; a miss computes and stores the result, safe concurrently.
     [[nodiscard]] auto Feasible(Operon::Tree const& tree) const -> bool;
     [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation = Operon::Scalar { 1 }) const -> ShapeConstraintMeasurementSummary;
 

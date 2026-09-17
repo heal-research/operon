@@ -58,22 +58,17 @@ namespace {
         return static_cast<std::size_t>(std::distance(dag.Variables.begin(), it));
     }
 
-    // The only point in this file that crosses into AffineEvaluator. Domain
-    // violations return an `invalid()` NaN-poisoned form; the finiteness check
-    // below catches those. This try/catch adapts rare structural throws (e.g.
-    // forms from different affine_context instances) to these expected-based
-    // internals, so the rest of this file never needs a try/catch.
+    // True if `b` holds a finite interval -- used to detect NaN/inf enclosures from domain errors or
+    // degenerate affine forms without a try/catch at each call site.
 
     auto IsFiniteBound(BoundResult const& b) -> bool
     {
         return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
     }
 
-    // Interval-only domain bisection, SIMD-batched: at each level, split the referenced axis whose current cells are
-    // widest. This balances a fixed 2^depth leaf budget across dimensions while preserving one global schedule, so
-    // every sub-box still follows the same tree and can be evaluated in SIMD. The wide path uses lane-wise union and
-    // a single horizontal reduction; a scalar tail handles a partial batch. An unbounded sub-box falls back to the
-    // direct whole-box enclosure, which is already sound.
+    // Interval-only domain bisection, SIMD-batched: splits the widest referenced axis at each level, evaluating
+    // all 2^depth sub-boxes as one schedule so they stay SIMD-batchable; a scalar tail handles a partial batch.
+    // Falls back to the direct whole-box enclosure (already sound) on any unbounded or failed sub-box.
     auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
     {
         using WScalar = eve::wide<Operon::Scalar>;
@@ -112,11 +107,8 @@ namespace {
         if (axes.empty()) {
             return directBound();
         }
-        // The two bisection paths below have asymmetric per-leaf costs: the single-axis grid is SIMD-batched through
-        // wide<T>, while each multi-axis leaf copies the domain map, heap-allocates, and evaluates the tree
-        // unbatched (scalar). The shared BisectionDepth option is validated up to 20 for the batched path; the same
-        // ceiling would let one multi-axis Measure() call reach 2^20 unbatched leaf evaluations, so the scalar
-        // sweep gets its own materially lower cap.
+        // The single-axis grid is SIMD-batched via wide<T>; a multi-axis leaf copies the domain map and
+        // evaluates scalar/unbatched, so it gets its own materially lower depth cap than the batched path's 20.
         constexpr int MaxMultiAxisBisectionDepth = 12;
         auto const effectiveDepth = axes.size() > 1 ? std::min(depth, MaxMultiAxisBisectionDepth) : depth;
 
@@ -133,10 +125,8 @@ namespace {
             widths[selected] /= Operon::Scalar { 2 };
         }
 
-        // pappus's wide interval arithmetic is cross-checked against scalar for one-dimensional uniform
-        // segmentation. A multi-axis grid changes the endpoint pattern per lane; retain scalar evaluation until
-        // that wider pappus operation sequence has its own soundness proof. The schedule and hull remain
-        // identical, and one-axis production bisection keeps the established SIMD path below.
+        // pappus's wide interval arithmetic is cross-checked against scalar only for 1D uniform segmentation; a
+        // multi-axis grid changes the per-lane endpoint pattern, so this stays on scalar until that's proven sound.
         if (axes.size() > 1) {
             try {
                 auto const nLeaves = std::size_t { 1 } << effectiveDepth;
@@ -189,22 +179,16 @@ namespace {
             WScalar const infw(lo);
             WScalar const onew(Operon::Scalar { 1 });
             WScalar const lastw { Operon::Scalar(nLeaves) };
-            // `DomainMap` is always `Operon::Scalar`-typed, and the evaluator never stores a wide-typed member
-            // (see the call-scoped override overload of IntervalEvaluator::TryEvaluate): `eve::wide<T>` does not
-            // reliably keep its own alignment once nested inside `std::pair`/hash-map storage on this toolchain,
-            // so the widest (bisected) axis's genuinely per-lane bound is passed straight into TryEvaluate per
-            // batch, staying in these loop-local `WScalar`s for the duration of the call instead of being boxed
-            // into the map. Built once outside the loop -- `dom` itself already has the right (scalar) domain
-            // type, no per-batch map to rebuild.
+            // `eve::wide<T>` doesn't reliably keep its own alignment nested inside `std::pair`/hash-map storage
+            // on this toolchain, so the bisected axis's per-lane bound is passed straight into TryEvaluate per
+            // batch rather than boxed into `dom`.
             IntervalEvaluator<WScalar> wie(&tree, dom);
             std::size_t k = 0;
             for (; k + static_cast<std::size_t>(WSize) <= nLeaves; k += static_cast<std::size_t>(WSize)) {
                 WScalar const idx = eve::iota(eve::as<WScalar>()) + WScalar(Operon::Scalar(k));
-                // Match Pappus's batch_evaluate_ia partition, but explicitly direct both multiplication and
-                // addition before clamping the lower endpoint to the original domain's inf and the terminal
-                // endpoint to its sup. A poisoned (empty/nonfinite) lane would otherwise be dropped by the
-                // lane-wise union / horizontal reduction below and silently narrow the reported bound, so any
-                // failed or nonfinite batch falls back to the sound direct bound.
+                // Matches Pappus's batch_evaluate_ia partition with explicit directed rounding; a poisoned lane
+                // would otherwise be silently dropped by the union/reduction below, so any nonfinite batch
+                // falls back to the sound direct bound instead.
                 auto const lowerOffset = pappus::fp::ropd<pappus::fp::op_mul>(idx, hw);
                 auto const upperOffset = pappus::fp::ropu<pappus::fp::op_mul>(idx + onew, hw);
                 auto leafLo = eve::max(pappus::fp::ropd<pappus::fp::op_add>(infw, lowerOffset), infw);
@@ -273,15 +257,13 @@ namespace {
         try {
             ae.SetTree(&tree);
             auto affine = ae.Evaluate(tree.GetCoefficients());
-            // Catastrophic cancellation can make this float32 enclosure unsound: an intermediate center orders of
-            // magnitude larger than the result implies a rounding-error floor exceeding the tracked radius, so the
-            // true value may fall outside the certified interval. Treat as uncertified (same path as a pow domain
-            // error or a NaN bound) rather than trusting a possibly-wrong interval.
+            // Catastrophic cancellation can make this float32 enclosure unsound: an intermediate center orders
+            // of magnitude larger than the result implies a rounding-error floor exceeding the tracked radius.
+            // Treat as uncertified rather than trusting a possibly-wrong interval.
             constexpr auto eps = std::numeric_limits<Operon::Scalar>::epsilon();
             auto const impliedErrorFloor = ae.MaxAbsCenter() * eps;
-            // A zero radius means the form is an exact constant: every noise symbol cancelled (e.g. a linear
-            // model's derivative, or x - x). That is structurally sound, not an underestimate -- comparing floor >
-            // k*0 is degenerate (any nonzero floor fires), so only judge forms that track real variable uncertainty.
+            // A zero radius means every noise symbol cancelled (e.g. x - x): structurally sound, not an
+            // underestimate, so only judge forms that track real variable uncertainty.
             auto const r = affine.radius();
             if (r > 0 && impliedErrorFloor > opts.AffineIllConditionedThreshold * r) {
                 auto bound = IntervalBound();
@@ -296,17 +278,14 @@ namespace {
             if (!std::isfinite(bound.inf()) || !std::isfinite(bound.sup())) {
                 return IntervalBound();
             }
-            // Affine's linearization of nonlinear ops (each Mul of two affine forms needs its own error term for
-            // the cross-product it can't represent exactly; likewise exp/log) can make it looser than plain
-            // interval arithmetic on the same tree, even though affine is tighter in the common case (a shared
-            // noise symbol lets repeated occurrences of the same variable partially cancel). Confirmed 2026-08-09
-            // (operon-publications shape-constraints-reproduction): chains of correlated coeff*x*coeff*y
-            // multiplications gave affine [-5.15, 7.85] vs plain interval [0, 7.85] for the identical tree and
-            // domain box -- affine sound but needlessly rejecting an actually-feasible model. Both bounds are
-            // sound enclosures of the same quantity, so their intersection is also sound and at least as tight as
-            // either alone; take it whenever the interval fallback itself succeeds and doesn't contradict affine
-            // (a non-overlapping result would mean one of the two is unsound, not that the intersection is empty
-            // -- fall back to the affine bound alone rather than construct an inverted interval).
+            // Affine's linearization of nonlinear ops (each Mul needs its own error term for the cross-product
+            // it can't represent exactly; likewise exp/log) can make it looser than plain interval arithmetic on
+            // the same tree, even though affine is tighter in the common case. Empirically confirmed on
+            // correlated coeff*x*coeff*y chains (operon-publications shape-constraints-reproduction). Both
+            // bounds are sound enclosures of the same quantity, so their intersection is sound and at least as
+            // tight as either alone -- take it whenever the interval fallback succeeds and doesn't contradict
+            // affine (a non-overlapping result means one bound is unsound, not that the intersection is empty --
+            // fall back to the affine bound alone).
             if (HasFlag(mode, ShapeBoundMode::Affine)) {
                 return bound;
             }
@@ -328,19 +307,12 @@ namespace {
     }
 
     // Bounded-depth domain bisection, used only as a last resort when TryAffineBoundDirect fails on the whole
-    // domain box (e.g. log(x) where x's full range straddles zero, but a narrower sub-box's range doesn't). Picks
-    // the widest axis, splits it at its midpoint, recurses on both halves, and takes the hull of the two
-    // sub-results -- sound by construction (a union of sound sub-box enclosures is itself a sound enclosure of the
-    // whole box), same reasoning as pappus's own evaluate_bisected. Deliberately NOT operon's
-    // TightenRange/TightenRangeBisected (the mean-value/Newton-style method) -- that failed a soundness gate on
-    // this exact shape-constraint derivative-slice tree class (see project memory, 2026-08-06 finding), and this
-    // is a different, unrelated mechanism (no gradient/mean-value math involved) not affected by that bug.
-    //
-    // Only fires on the (relatively rare) already-uncertified path, so the exponential blowup with depth is
-    // bounded to cases that were already failing outright, not a per-call tax on the common case. Opt-in only
-    // (default off, opts.AffineBisectionMaxDepth) until a problem sweep shows a net win against the corrected
-    // widest-axis selection (fixed 2026-08-20 to pick from the tree's own variables, not the evaluator's full
-    // domain map).
+    // domain box (e.g. log(x) straddling zero, but a narrower sub-box doesn't). Picks the widest axis, splits it
+    // at its midpoint, recurses on both halves, and takes the hull -- sound by construction, same reasoning as
+    // pappus's own evaluate_bisected. Deliberately NOT TightenRange/TightenRangeBisected: that method failed a
+    // soundness gate on this exact derivative-slice tree class (see project memory). Only fires on the
+    // already-uncertified path, so the exponential blowup with depth only taxes cases that were already
+    // failing outright. Opt-in (opts.AffineBisectionMaxDepth) until a problem sweep shows a net win.
     auto BisectedDomainBound(Tree const& tree, AffineEvaluator<Operon::Scalar>::DomainMap const& domains, int depth, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
     {
         // Each sub-box evaluator owns a separate noise counter. Combine sub-box results only as intervals; never
@@ -351,10 +323,8 @@ namespace {
             return direct;
         }
 
-        // `domains` is the evaluator's full domain map (every problem input), not just the variables `tree`
-        // actually references -- widening the search to unused axes would burn the depth budget splitting a box
-        // dimension that can never affect this tree's bound. Restrict the widest-axis pick to hashes tree
-        // actually contains.
+        // `domains` is the evaluator's full domain map, not just the variables `tree` references -- restrict
+        // the widest-axis pick to hashes the tree actually contains, so the depth budget isn't burned on unused axes.
         Operon::Hash widest {};
         Operon::Scalar widestDiam { -1 };
         bool any = false;
@@ -393,14 +363,11 @@ namespace {
         return Interval(std::min(left->inf(), right->inf()), std::max(left->sup(), right->sup()));
     }
 
-    // Opt-in (default off, opts.UseTightenRangeFallback), independent of bisection. TightenRange's own soundness
-    // gate passes (2026-08-09 fix to the mean-value-form overflow bug), but a targeted 2026-09-12 probe (3
-    // problems x 5 reps, see operon-publications' shape-constraints-reproduction/TIGHTENRANGE_RESCUE_FINDING.md)
-    // measured its rescue rate here at 2 of 1,113,643 attempts (0.00018%), versus bisection's 26,455 of 839,666
-    // (3.15%) on the same cells: TightenRange degrades to the already-failing naive bound on exactly the
-    // pathological derivative-slice trees this rescue role invokes it on. Kept opt-in (not removed) since it's
-    // real, tested infrastructure that costs nothing when unset, but do not expect it to help in this role --
-    // bisection is the effective rescue mechanism here.
+    // Opt-in (default off, opts.UseTightenRangeFallback), independent of bisection. A targeted probe (see
+    // operon-publications shape-constraints-reproduction/TIGHTENRANGE_RESCUE_FINDING.md) measured its rescue
+    // rate here near zero versus bisection's ~3%: TightenRange degrades to the already-failing naive bound on
+    // exactly the pathological derivative-slice trees this rescue role invokes it on. Kept opt-in since it's
+    // real, tested infrastructure that costs nothing when unset, but bisection is the effective mechanism here.
     auto TryAffineBound(Tree const& tree, AffineEvaluator<Operon::Scalar>& ae, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
     {
         auto direct = TryAffineBoundDirect(tree, ae, mode, opts);
@@ -432,16 +399,12 @@ namespace {
     }
 
     // Interval-only fast path: TryAffineBoundDirect's `HasFlag(mode, Interval)` branch never touches ae's affine
-    // capabilities (SetTree/Evaluate), only `ae.Domains()` -- so building a full AffineEvaluator (and copying its
-    // DomainMap) purely to discard the affine half was measured at ~70ns of fully wasted work per Measure() call
-    // (~24% of the whole call for a small tree). Takes the plain interval domain map directly instead.
-    //
-    // Drops the (opt-in, off-by-default, rarely-triggered) BisectedDomainBound rescue: that mechanism builds its
-    // own AffineEvaluator per sub-box and exists specifically to rescue affine-mode failures -- invoking it here
-    // would silently reintroduce the exact per-call AffineEvaluator cost this function exists to avoid, for a
-    // rescue that doesn't conceptually belong to interval-only mode anyway (BisectedIntervalBound already has its
-    // own interval-native fallback via directBound()). TightenRange's fallback is kept -- it only ever needed the
-    // domain map too.
+    // capabilities, only `ae.Domains()` -- building a full AffineEvaluator purely to discard the affine half was
+    // measured at ~24% wasted work per Measure() call on a small tree. Takes the plain interval domain map
+    // directly instead, and skips the (opt-in, rarely-triggered) BisectedDomainBound rescue: that mechanism
+    // builds its own AffineEvaluator per sub-box specifically to rescue affine-mode failures, and would
+    // reintroduce the exact cost this function avoids (BisectedIntervalBound already has its own fallback via
+    // directBound()). TightenRange's fallback is kept -- it only ever needed the domain map too.
     auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
     {
         auto const IntervalBound = [&]() -> BoundResult {
@@ -511,19 +474,14 @@ namespace {
     }
 
     // The bound for one constraint's Op: the tree itself for Identity, or the (possibly twice-)differentiated tree
-    // for First-/SecondDerivative — an identically-zero derivative bounds to the degenerate interval [0, 0] rather
-    // than requiring a special case at every call site.
+    // for First-/SecondDerivative -- an identically-zero derivative bounds to the degenerate interval [0, 0].
+    // `Certain[k] == false` means the derivative dag hit an op with no rule on this variable's path (see
+    // tree_diff.hpp); reported as an error result here, same as any other can't-certify case.
     //
-    // VariableGradientDag::Certain[k] == false means the derivative dag hit an op with no rule on this variable's
-    // dependency path -- Roots[k] then isn't a trustworthy "derivative is zero" claim (see tree_diff.hpp).
-    // Reported as an error result here, same as any other can't-certify case.
-    //
-    // dag1 is the first-order gradient-dag of `tree` (df/d(variables)), built once per bound set by the caller and
-    // shared across every derivative constraint in it: it's a pure function of (tree, coeff) and does not depend
-    // on which variable a given constraint is on. Hoisting it out of here removes a previously-per-constraint
-    // rebuild that was pure redundant work whenever a bound set has more than one derivative constraint (the
-    // common case). SecondDerivative still builds its own dag2 from the sliced first-derivative tree `d1`, which
-    // IS variable-specific.
+    // dag1 is the first-order gradient-dag of `tree`, built once per bound set by the caller and shared across
+    // every derivative constraint in it (pure function of tree/coeff, independent of which variable). dag2
+    // (SecondDerivative) is still built per-call from the sliced first-derivative tree `d1`, which IS
+    // variable-specific.
     auto BoundFor(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
         AffineEvaluator<Operon::Scalar>& ae,
         VariableGradientDag const& dag1, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
@@ -659,10 +617,8 @@ namespace {
                 m.Violation = unknownViolation;
             } else {
                 auto const checkedBound = scaling ? TransformBound(c.Op, *bound, *scaling) : *bound;
-                // A NaN endpoint (e.g. Scale == 0 times an unbounded raw-tree interval, 0 * inf) must not reach
-                // ConstraintViolation: std::max(0, NaN) returns 0 (NaN comparisons are always false), which would
-                // silently certify an uncheckable tree as having zero violation instead of flagging it as
-                // uncertified.
+                // A NaN endpoint (e.g. Scale == 0 times an unbounded interval) must not reach ConstraintViolation:
+                // std::max(0, NaN) returns 0, which would silently certify an uncheckable tree instead of flagging it.
                 if (!std::isfinite(checkedBound.inf()) || !std::isfinite(checkedBound.sup())) {
                     m.Certified = false;
                     m.Violation = unknownViolation;
@@ -679,10 +635,8 @@ namespace {
             summary.Measurements.push_back(m);
         };
 
-        // Interval-only mode (with or without Bisected) never touches AffineEvaluator's actual affine machinery --
-        // skip constructing it and the DomainMap copy it costs (see TryIntervalBound's comment), sharing the
-        // lighter interval domain map across every constraint in this set instead (same amortization
-        // AffineEvaluator gave affine mode).
+        // Interval-only mode (with or without Bisected) never touches AffineEvaluator's affine machinery -- skip
+        // constructing it, sharing the lighter interval domain map across every constraint in this set instead.
         if (HasFlag(mode, ShapeBoundMode::Interval)) {
             IntervalEvaluator<Operon::Scalar>::DomainMap const dom { domainsByHash };
             for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
@@ -695,12 +649,9 @@ namespace {
             return summary;
         }
 
-        // One AffineEvaluator shared across every bound in this set: skip re-copying the DomainMap and re-growing
-        // primal_ capacity for each constraint (typical Friction config = identity + two first-derivative
-        // constraints, so 3x savings on those costs per individual per cache miss). SetTree() retargets it at
-        // each constraint's slice (the original tree for identity, the sliced derivative trees for the
-        // derivatives); ctx_ keeps a single monotonic noise-symbol counter, which is sound -- the bounds are
-        // consumed as intervals independently of each other.
+        // One AffineEvaluator shared across every bound in this set, skipping a per-constraint DomainMap copy
+        // and primal_ regrowth. SetTree() retargets it at each constraint's slice; ctx_'s monotonic noise-symbol
+        // counter stays sound since the bounds are consumed as intervals independently of each other.
         AffineEvaluator<Operon::Scalar> ae(&tree, domainsByHash);
         for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
             auto const& c = constraints.Constraints[i];
@@ -712,18 +663,12 @@ namespace {
         return summary;
     }
 
-    // Runs `f(i)` for i in [0,pop.size()) on `executor` when one was set (via SetExecutor -- the caller's own,
-    // already-sized-to-`--threads` executor, e.g. the one cli/source/operon_gp.cpp threads into both gp.Run() and
-    // Reporter::operator()), else sequentially. Uses executor->corun(...), not run(...).get(): the only caller is
-    // Prepare(), which is itself already running as a task on that same executor (a single non-parallel "prepare
-    // evaluator" task, see gp.cpp/nsga2.cpp), so run().get() would risk a worker blocking on a taskflow that needs
-    // a free worker to progress -- corun() has the calling thread join in as a worker on the nested graph instead,
-    // avoiding that deadlock (same reasoning as Reporter's own executor.corun(tf) call). A private per-instance
-    // Executor was tried first and measured to not help (~3x higher CPU, no wall-clock change on a real
-    // 200-generation run) while needlessly doubling the machine's thread count on top of the caller's own executor
-    // -- reusing the caller's is both correct and matches this codebase's existing pattern. NULL is never passed
-    // for f: the only caller is Prepare(), whose wrapped cache Emplace already serializes same-hash concurrent
-    // callers, so the only shared mutable state here is the cache shards the body writes through.
+    // Runs `f(i)` for i in [0,pop.size()) on `executor` when one was set (the caller's own, already-sized
+    // executor -- see SetExecutor), else sequentially. Uses `executor->corun(...)`, not `run(...).get()`: the
+    // only caller, Prepare(), is itself already running as a task on that same executor, so `run().get()` would
+    // risk a worker blocking on a taskflow that needs a free worker to progress; `corun()` joins the calling
+    // thread in as a worker instead, avoiding that deadlock. A private per-instance Executor was tried and
+    // measured to not help (~3x higher CPU, no wall-clock change) while doubling the thread count.
     template <typename F>
     auto ParallelForPopulation(tf::Executor* executor, Operon::Span<Operon::Individual const> pop, F&& f) -> void
     {
