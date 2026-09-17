@@ -49,12 +49,15 @@ void RegisterIntervalBuiltins()
         unary.Register(Operon::Hash(BuiltinOp::Ceil),    [](Interval const& v) { return pappus::ops::ceil<T>(v); });
 
         binary.Register(Operon::Hash(BuiltinOp::Pow), [](Interval const& a, Interval const& b) {
-            // degenerate exponent: dispatch through pow(interval, Scalar), which
-            // detects an integer exponent and avoids restricting the base to >= 0
-            if constexpr (eve::value<T>) {
-                if (eve::all(b.inf() == b.sup())) { return pappus::ops::pow<T>(a, b.inf()); }
-            } else {
-                if (b.inf() == b.sup()) { return pappus::ops::pow<T>(a, b.inf()); }
+            if constexpr (eve::simd_value<T>) {
+                auto const exponent = b.inf().get(0);
+                if (eve::all(b.inf() == b.sup()) && eve::all(b.inf() == T(exponent))
+                    && std::trunc(exponent) == exponent
+                    && std::abs(static_cast<double>(exponent)) <= std::numeric_limits<int>::max()) {
+                    return a.pow(static_cast<int>(exponent));
+                }
+            } else if (b.inf() == b.sup()) {
+                return pappus::ops::pow<T>(a, b.inf());
             }
             return pappus::ops::pow<T>(a, b);
         });

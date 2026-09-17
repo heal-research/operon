@@ -131,9 +131,6 @@ struct IntervalSubdivisionPlan {
     }
 };
 
-    // Interval-only domain bisection, SIMD-batched: splits the widest referenced axis at each level, evaluating
-    // all 2^depth sub-boxes as one schedule so they stay SIMD-batchable; a scalar tail handles a partial batch.
-    // Falls back to the direct whole-box enclosure (already sound) on any unbounded or failed sub-box.
     auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
     {
         using WScalar = eve::wide<Operon::Scalar>;
@@ -153,12 +150,38 @@ struct IntervalSubdivisionPlan {
 
         if (!plan->SingleAxis()) {
             try {
+                using Pack = pappus::packed_subdomains<Operon::Scalar, WScalar>;
                 auto const coeff = tree.GetCoefficients();
                 auto const nLeaves = std::size_t { 1 } << plan->Depth;
+                pappus::box<Operon::Scalar> domain;
+                domain.reserve(plan->Axes.size());
+                for (auto const axis : plan->Axes) {
+                    auto const [lo, hi] = dom.at(axis);
+                    domain.emplace_back(lo, hi);
+                }
+                pappus::subdivision_plan subdivision(std::move(domain), plan->Schedule);
+                IntervalEvaluator<WScalar> evaluator(&tree, dom);
+                auto acc = IntervalEvaluator<WScalar>::Interval::empty();
+                std::size_t first = 0;
+                Operon::Vector<typename IntervalEvaluator<WScalar>::LaneOverride> overrides(plan->Axes.size());
+                for (; first + Pack::width <= nLeaves; first += Pack::width) {
+                    Pack pack(subdivision, first);
+                    for (std::size_t axis = 0; axis < plan->Axes.size(); ++axis) {
+                        overrides[axis] = { plan->Axes[axis], pack.lower_data(axis), pack.upper_data(axis) };
+                    }
+                    auto const batch = evaluator.TryEvaluate(coeff, overrides);
+                    if (!batch || !eve::all(eve::is_finite(batch->inf()) && eve::is_finite(batch->sup()))) {
+                        return directBound();
+                    }
+                    acc |= *batch;
+                }
                 std::optional<Interval> result;
-                for (std::size_t leaf = 0; leaf < nLeaves; ++leaf) {
-                    IntervalEvaluator<Operon::Scalar> evaluator(&tree, plan->LeafDomains(dom, leaf));
-                    auto const bound = evaluator.TryEvaluate(coeff);
+                if (first != 0) {
+                    result = Interval(eve::reduce(acc.inf(), eve::min), eve::reduce(acc.sup(), eve::max));
+                }
+                for (; first < nLeaves; ++first) {
+                    IntervalEvaluator<Operon::Scalar> tail(&tree, plan->LeafDomains(dom, first));
+                    auto const bound = tail.TryEvaluate(coeff);
                     if (!bound || bound->is_empty() || !std::isfinite(bound->inf()) || !std::isfinite(bound->sup())) {
                         return directBound();
                     }

@@ -109,16 +109,26 @@ public:
 
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
 
-    // Evaluates with a lane-specific override for one variable. `lo`/`hi`
-    // stay in caller-owned storage for the call's duration; no SIMD value
-    // is ever stored in DomainMap or evaluator state.
+    struct LaneOverride {
+        Operon::Hash Hash;
+        Operon::Scalar const* Lo;
+        Operon::Scalar const* Hi;
+    };
+
+    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, std::span<LaneOverride const> overrides) const
+        -> tl::expected<Interval, std::string>
+    {
+        return TryEvaluateImpl(coeff, overrides);
+    }
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash,
                                    Scalar const& lo, Scalar const& hi) const
         -> tl::expected<Interval, std::string>
     {
-        LaneOverride const override { hash, &lo, &hi };
-        return TryEvaluateImpl(coeff, &override);
+        LaneOverride const override { hash, reinterpret_cast<Operon::Scalar const*>(&lo), reinterpret_cast<Operon::Scalar const*>(&hi) };
+        return TryEvaluate(coeff, std::span { &override, 1 });
     }
+
+
 
     // Evaluates the tree. `coeff` has one entry per node with
     // `Node::Optimize == true`, in node order, always Operon::Scalar-typed.
@@ -128,23 +138,13 @@ public:
         if (!result) { throw std::runtime_error(result.error()); }
         return std::move(*result);
     }
-
-    // Non-throwing variant for callers that must not unwind an active SIMD
-    // frame. User callbacks keep their normal exception contract; this path
-    // only reaches built-in wide rules.
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const -> tl::expected<Interval, std::string>
     {
-        return TryEvaluateImpl(coeff, nullptr);
+        return TryEvaluateImpl(coeff, {});
     }
 
 private:
-    struct LaneOverride {
-        Operon::Hash Hash;
-        Scalar const* Lo;
-        Scalar const* Hi;
-    };
-
-    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff, LaneOverride const* laneOverride) const
+    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff, std::span<LaneOverride const> overrides) const
         -> tl::expected<Interval, std::string>
     {
         RegisterIntervalBuiltins<Scalar>();
@@ -229,9 +229,10 @@ private:
             } else if (node.Type == NodeType::Variable) {
                 Scalar lo{};
                 Scalar hi{};
-                if (laneOverride != nullptr && laneOverride->Hash == node.HashValue) {
-                    lo = *laneOverride->Lo;
-                    hi = *laneOverride->Hi;
+                auto const override = std::ranges::find(overrides, node.HashValue, &LaneOverride::Hash);
+                if (override != overrides.end()) {
+                    lo = LoadOverride(override->Lo);
+                    hi = LoadOverride(override->Hi);
                 } else {
                     auto const& slot = domainSlots_[i];
                     if (!slot.Present) {
@@ -296,6 +297,15 @@ private:
         return primal_.back();
     }
 
+    [[nodiscard]] static auto LoadOverride(Operon::Scalar const* value) -> Scalar
+    {
+        if constexpr (std::same_as<Scalar, Operon::Scalar>) {
+            return *value;
+        } else {
+            return eve::load(value, eve::as<Scalar> {});
+        }
+    }
+
     struct DomainSlot {
         Domain Bounds{};
         bool Present{false};
@@ -305,6 +315,7 @@ private:
     std::vector<DomainSlot> domainSlots_;
     mutable std::vector<Interval> primal_; // reused across Evaluate calls
 };
+
 
 } // namespace Operon
 

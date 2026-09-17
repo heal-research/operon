@@ -450,6 +450,50 @@ auto const kBisectionExprCases = std::vector<BisectionExprCase>{
 
 } // namespace
 
+TEST_CASE("Wide interval evaluator preserves packed tree lanes", "[shape-constraints][bisection]")
+{
+    using S = Operon::Scalar;
+    using W = eve::wide<S>;
+    using WI = Operon::IntervalEvaluator<W>;
+    using Pack = pappus::packed_subdomains<S, W>;
+
+    Eigen::Array<S, -1, -1> data(2, 3);
+    data << S{-5}, S{-5}, S{0}, S{5}, S{5}, S{0};
+    Operon::Dataset ds(gsl::not_null{data.data()}, 2, 3);
+    auto tree = Operon::InfixParser::Parse("sin(X1) + cos(X1) * X1 ^ 2 + X2", ds);
+    auto const x1 = ds.GetVariable("X1").value().Hash;
+    auto const x2 = ds.GetVariable("X2").value().Hash;
+    WI::DomainMap domains { {x1, {S{-5}, S{5}}}, {x2, {S{-5}, S{5}}} };
+    pappus::box<S> domain { pappus::interval<S>(-5, 5), pappus::interval<S>(-5, 5) };
+    std::array<std::size_t, 4> schedule { 0, 1, 0, 1 };
+    pappus::subdivision_plan plan(std::move(domain), schedule);
+    Pack pack(plan, 0);
+    Operon::Vector<WI::LaneOverride> overrides {
+        {x1, pack.lower_data(0), pack.upper_data(0)},
+        {x2, pack.lower_data(1), pack.upper_data(1)},
+    };
+    WI evaluator(&tree, domains);
+    auto const packed = evaluator.TryEvaluate(tree.GetCoefficients(), overrides);
+    REQUIRE(packed);
+
+    alignas(W) std::array<S, Pack::width> lower{};
+    alignas(W) std::array<S, Pack::width> upper{};
+    eve::store(packed->inf(), lower.data());
+    eve::store(packed->sup(), upper.data());
+    for (std::size_t lane = 0; lane < pack.valid_lanes(); ++lane) {
+        auto const leaf = plan.leaf(lane);
+        Operon::IntervalEvaluator<S>::DomainMap scalarDomains {
+            {x1, {leaf[0].inf(), leaf[0].sup()}},
+            {x2, {leaf[1].inf(), leaf[1].sup()}},
+        };
+        Operon::IntervalEvaluator<S> scalar(&tree, scalarDomains);
+        auto const expected = scalar.TryEvaluate(tree.GetCoefficients());
+        REQUIRE(expected);
+        CHECK(lower[lane] == Catch::Approx(expected->inf()).margin(1e-4F));
+        CHECK(upper[lane] == Catch::Approx(expected->sup()).margin(1e-4F));
+    }
+}
+
 // The SIMD-vs-scalar soundness cross-check from the performance sweep,
 // runnable in CI: the production wide<T>-batched bisected bound must match
 // the scalar leaf-by-leaf reference over the same expressions and depths.
