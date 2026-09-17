@@ -137,4 +137,18 @@ TEST_CASE("Batch evaluation reports typed failures", "[interpreter]")
     CHECK(allocated.error().Error.Hash == missingPrimitive);
 }
 
+TEST_CASE("Batch evaluation validates output size", "[interpreter]")
+{
+    auto ds = Dataset("./data/Poly-10.csv", /*hasHeader=*/true);
+    auto range = Range { 0, ds.Rows<std::size_t>() };
+    auto trees = Operon::Vector<Operon::Tree> { Operon::Tree { Operon::Node::Constant(1) } };
+    Operon::Vector<Operon::Scalar> result(range.Size() - 1);
+
+    auto evaluated = Operon::TryEvaluateTrees(trees, &ds, range, { result.data(), result.size() });
+    REQUIRE_FALSE(evaluated);
+    CHECK(evaluated.error().Error.Kind == InterpreterError::Code::InvalidOutputSize);
+    CHECK(evaluated.error().Error.ExpectedSize == range.Size());
+    CHECK(evaluated.error().Error.ActualSize == result.size());
+}
+
 } // namespace Operon::Test

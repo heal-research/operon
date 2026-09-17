@@ -35,6 +35,13 @@ namespace Operon {
     auto TryEvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread)
         -> tl::expected<void, TreeEvaluationError>
     {
+        auto const expectedSize = trees.size() * range.Size();
+        if (result.size() != expectedSize) {
+            return tl::unexpected(TreeEvaluationError {
+                trees.size(),
+                InterpreterError { InterpreterError::Code::InvalidOutputSize, {}, expectedSize, result.size() },
+            });
+        }
         if (nthread == 0) { nthread = std::thread::hardware_concurrency(); }
         tf::Executor executor(nthread);
         tf::Taskflow taskflow;
@@ -57,13 +64,13 @@ namespace Operon {
     auto EvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, size_t nthread) -> Operon::Vector<Operon::Vector<Operon::Scalar>>
     {
         auto result = TryEvaluateTrees(trees, dataset, range, nthread);
-        if (!result) { throw std::runtime_error(result.error().Error.Message); }
+        if (!result) { throw std::runtime_error(FormatInterpreterError(result.error().Error)); }
         return std::move(*result);
     }
 
     auto EvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread) -> void
     {
         auto evaluated = TryEvaluateTrees(trees, dataset, range, result, nthread);
-        if (!evaluated) { throw std::runtime_error(evaluated.error().Error.Message); }
+        if (!evaluated) { throw std::runtime_error(FormatInterpreterError(evaluated.error().Error)); }
     }
 } // namespace Operon

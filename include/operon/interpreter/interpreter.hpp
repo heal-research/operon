@@ -30,15 +30,28 @@ struct InterpreterError {
     enum class Code {
         MissingVariable,
         MissingPrimitive,
+        MissingDerivative,
+        InvalidOutputSize,
     };
 
     Code Kind;
-    Operon::Hash Hash;
-    std::string Message;
+    Operon::Hash Hash{};
+    std::size_t ExpectedSize{};
+    std::size_t ActualSize{};
 };
 
+[[nodiscard]] inline auto FormatInterpreterError(InterpreterError const& error) -> std::string {
+    switch (error.Kind) {
+    case InterpreterError::Code::MissingVariable: return fmt::format("missing dataset variable with hash {}", error.Hash);
+    case InterpreterError::Code::MissingPrimitive: return fmt::format("missing primitive with hash {}", error.Hash);
+    case InterpreterError::Code::MissingDerivative: return fmt::format("missing derivative for primitive with hash {}", error.Hash);
+    case InterpreterError::Code::InvalidOutputSize: return fmt::format("invalid output size: expected {}, got {}", error.ExpectedSize, error.ActualSize);
+    }
+    std::unreachable();
+}
+
 struct TreeEvaluationError {
-    std::size_t Index;
+    std::size_t Index{};
     InterpreterError Error;
 };
 
@@ -111,21 +124,8 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
 
     auto Evaluate(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> result) const -> void final
     {
-        InitContext(coeff, range);
-
-        auto const len { static_cast<int64_t>(range.Size()) };
-
-        constexpr int64_t S { BatchSize };
-        auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
-
-        for (auto row = 0L; row < len; row += S) {
-            ForwardPass(range, row, /*trace=*/false);
-
-            if (std::ssize(result) == len) {
-                auto rem = std::min(S, len - row);
-                std::ranges::copy(std::span(ptr, rem), result.data() + row);
-            }
-        }
+        auto evaluated = TryEvaluate(coeff, range, result);
+        if (!evaluated) { throw std::runtime_error(FormatInterpreterError(evaluated.error())); }
     }
 
     [[nodiscard]] auto TryEvaluate(Operon::Span<T const> coeff, Operon::Range range,
@@ -133,10 +133,13 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         -> tl::expected<void, InterpreterError> final
     {
         if (context_.empty() || range_ != range) {
-            auto bound = TryBindTree(range);
+            auto bound = TryBindTree(range, /*requireDerivatives=*/false);
             if (!bound) {
                 return tl::unexpected(std::move(bound.error()));
             }
+        }
+        if (result.size() != range.Size()) {
+            return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidOutputSize, {}, range.Size(), result.size() });
         }
         UpdateCoefficients(coeff);
 
@@ -155,40 +158,26 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
 
     auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> Operon::Vector<T> final
     {
-        Operon::Vector<T> res(range.Size());
-        this->Evaluate(coeff, range, { res.data(), res.size() });
-        ENSURE(res.size() == range.Size());
-        return res;
+        auto evaluated = TryEvaluate(coeff, range);
+        if (!evaluated) { throw std::runtime_error(FormatInterpreterError(evaluated.error())); }
+        return std::move(*evaluated);
     }
 
     [[nodiscard]] auto TryEvaluate(Operon::Span<T const> coeff, Operon::Range range) const
         -> tl::expected<Operon::Vector<T>, InterpreterError> final
     {
-        if (context_.empty() || range_ != range) {
-            auto bound = TryBindTree(range);
-            if (!bound) {
-                return tl::unexpected(std::move(bound.error()));
-            }
-        }
-        UpdateCoefficients(coeff);
-
         Operon::Vector<T> result(range.Size());
-        auto const len { static_cast<int64_t>(range.Size()) };
-        constexpr int64_t S { BatchSize };
-        auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
-        for (auto row = 0L; row < len; row += S) {
-            ForwardPass(range, row, /*trace=*/false);
-            auto const rem = std::min(S, len - row);
-            std::ranges::copy(std::span(ptr, rem), result.data() + row);
-        }
+        auto evaluated = TryEvaluate(coeff, range, { result.data(), result.size() });
+        if (!evaluated) { return tl::unexpected(std::move(evaluated.error())); }
         return result;
     }
+
 
     auto JacRev(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void final
     {
         auto result = TryJacRev(coeff, range, jacobian);
         if (!result) {
-            throw std::runtime_error(result.error().Message);
+            throw std::runtime_error(FormatInterpreterError(result.error()));
         }
     }
 
@@ -196,8 +185,8 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         Operon::Span<T> jacobian) const
         -> tl::expected<void, InterpreterError> final
     {
-        if (context_.empty() || range_ != range) {
-            auto bound = TryBindTree(range);
+        if (context_.empty() || range_ != range || !derivativesBound_) {
+            auto bound = TryBindTree(range, /*requireDerivatives=*/true);
             if (!bound) {
                 return tl::unexpected(std::move(bound.error()));
             }
@@ -229,7 +218,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
     {
         auto result = TryJacRev(coeff, range);
         if (!result) {
-            throw std::runtime_error(result.error().Message);
+            throw std::runtime_error(FormatInterpreterError(result.error()));
         }
         return std::move(*result);
     }
@@ -415,6 +404,7 @@ private:
     mutable Backend::Buffer<T, BatchSize> primal_;
     mutable Backend::Buffer<T, BatchSize> trace_;
     mutable Operon::Range range_ {};
+    mutable bool derivativesBound_ {};
 
     // private methods
     auto ForwardPass(Operon::Range range, int row, bool trace = false) const -> void
@@ -610,7 +600,7 @@ private:
 public:
     // Full bind: allocate primal_, build context_ with function/derivative pointers
     // and variable data spans. Called once per unique (tree, range) pair.
-    auto TryBindTree(Operon::Range range) const -> tl::expected<void, InterpreterError>
+    auto TryBindTree(Operon::Range range, bool requireDerivatives = false) const -> tl::expected<void, InterpreterError>
     {
         auto const& nodes = tree_->Nodes();
         auto const nRows = static_cast<int64_t>(range.Size());
@@ -621,14 +611,13 @@ public:
         // hash, which is a recoverable unsupported-tree error at this boundary.
         for (auto const& n : nodes) {
             if (n.IsVariable() && !dataset_->GetVariable(n.HashValue)) {
-                return tl::unexpected(InterpreterError {
-                    InterpreterError::Code::MissingVariable, n.HashValue,
-                    fmt::format("missing dataset variable for node {}", n.Name()) });
+                return tl::unexpected(InterpreterError { InterpreterError::Code::MissingVariable, n.HashValue });
             }
             if (!n.IsLeaf() && !dt->template TryGetFunction<T>(n.HashValue)) {
-                return tl::unexpected(InterpreterError {
-                    InterpreterError::Code::MissingPrimitive, n.HashValue,
-                    fmt::format("missing primitive for node {}", n.Name()) });
+                return tl::unexpected(InterpreterError { InterpreterError::Code::MissingPrimitive, n.HashValue });
+            }
+            if (requireDerivatives && !n.IsLeaf() && !dt->template TryGetDerivative<T>(n.HashValue)) {
+                return tl::unexpected(InterpreterError { InterpreterError::Code::MissingDerivative, n.HashValue });
             }
         }
 
@@ -647,6 +636,7 @@ public:
                 dt->template TryGetFunction<T>(n.HashValue),
                 dt->template TryGetDerivative<T>(n.HashValue));
         }
+        derivativesBound_ = requireDerivatives;
         range_ = range;
         return {};
     }
@@ -656,7 +646,7 @@ private:
     {
         auto result = TryBindTree(range);
         if (!result) {
-            throw std::runtime_error(result.error().Message);
+            throw std::runtime_error(FormatInterpreterError(result.error()));
         }
     }
 
