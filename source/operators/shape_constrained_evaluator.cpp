@@ -164,8 +164,9 @@ struct IntervalSubdivisionPlan {
                 auto acc = IntervalEvaluator<WScalar>::Interval::empty();
                 std::size_t first = 0;
                 Operon::Vector<typename IntervalEvaluator<WScalar>::LaneOverride> overrides(plan->Axes.size());
+                Pack pack(subdivision, 0);
                 for (; first + Pack::width <= nLeaves; first += Pack::width) {
-                    Pack pack(subdivision, first);
+                    pack.refill(subdivision, first);
                     for (std::size_t axis = 0; axis < plan->Axes.size(); ++axis) {
                         overrides[axis] = { plan->Axes[axis], pack.lower_data(axis), pack.upper_data(axis) };
                     }
