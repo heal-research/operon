@@ -7,7 +7,6 @@
 #include <array>
 #include <fmt/format.h>
 #include <iterator>
-#include <stdexcept>
 #include <string>
 
 #include "operon/parser/infix.hpp"
@@ -61,7 +60,7 @@ constexpr auto MakeBuiltinOpMap()
 
 constexpr auto node_type_map = MakeBuiltinOpMap();
 
-auto ToOperonNode(infix_parser::node const& a) -> Operon::Node
+auto ToOperonNode(infix_parser::node const& a) -> tl::expected<Operon::Node, Operon::InfixParseError>
 {
     if (a.type == infix_parser::node_type::constant) {
         return Operon::Node::Constant(a.value);
@@ -71,7 +70,8 @@ auto ToOperonNode(infix_parser::node const& a) -> Operon::Node
     }
     auto const op = node_type_map.at(static_cast<std::size_t>(a.type));
     if (op == Operon::NoBuiltinOp) {
-        throw std::runtime_error(fmt::format("unsupported node type: {}", static_cast<int>(a.type)));
+        return tl::unexpected(Operon::InfixParseError{
+            fmt::format("unsupported expression node type: {}", static_cast<int>(a.type))});
     }
     return Operon::Node::Function(static_cast<Operon::Hash>(op), a.arity);
 }
@@ -92,7 +92,9 @@ auto InfixParser::TryParse(std::string_view infix, bool reduce) -> tl::expected<
     Operon::Vector<Operon::Node> nodes;
     nodes.reserve(expr.size());
     for (auto const& a : expr) {
-        nodes.push_back(ToOperonNode(a));
+        auto node = ToOperonNode(a);
+        if (!node) { return tl::unexpected(std::move(node.error())); }
+        nodes.push_back(std::move(*node));
     }
 
     Operon::Tree tree{nodes};

@@ -146,6 +146,12 @@ TEST_CASE("TryParse reports failures as expected values instead of throwing", "[
         CHECK(result.error().Message.find("not found in dataset") != std::string::npos);
     }
 
+    SECTION("Unsupported expression nodes return an unexpected result") {
+        auto const result = Operon::InfixParser::TryParse("erf(1)");
+        CHECK_FALSE(result);
+        CHECK(result.error().Message.starts_with("unsupported expression node type:"));
+    }
+
     SECTION("Valid input yields a tree") {
         Operon::Dataset const ds({"x"}, {{2.0F}});
         auto const result = Operon::InfixParser::TryParse("x + 1", ds);
