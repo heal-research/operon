@@ -154,6 +154,31 @@ TEST_CASE("Interval backend: arithmetic", "[pappus][interval]")
     }
 }
 
+TEST_CASE("Interval backend: weighted n-ary subtraction and division", "[pappus][interval]")
+{
+    constexpr Operon::Hash X1{1}, X2{2};
+    IE::DomainMap const domains {{X1, {S{1}, S{2}}}, {X2, {S{3}, S{4}}}};
+
+    SECTION("2 * (X1 - X2 - 5) -> [-16, -12]") {
+        auto sub = Util::MakeOp<Operon::BuiltinOp::Sub>();
+        sub.Arity = 3;
+        sub.Value = S{2};
+        auto const tree = Operon::Tree({Const(5), Var(X2), Var(X1), sub}).UpdateNodes();
+        auto const result = IE(&tree, domains).Evaluate(tree.GetCoefficients());
+
+        REQUIRE(Contains(result, -16.0, -12.0, 1e-5));
+    }
+
+    SECTION("4 * (X1 / 2 / 2) -> [1, 2]") {
+        auto div = Util::MakeOp<Operon::BuiltinOp::Div>();
+        div.Arity = 3;
+        div.Value = S{4};
+        auto const tree = Operon::Tree({Const(2), Const(2), Var(X1), div}).UpdateNodes();
+        auto const result = IE(&tree, domains).Evaluate(tree.GetCoefficients());
+        REQUIRE(Contains(result, 1.0, 2.0, 1e-5));
+    }
+}
+
 TEST_CASE("Interval backend: unary transcendentals", "[pappus][interval]")
 {
     constexpr Operon::Hash X1{1};
