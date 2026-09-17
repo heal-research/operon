@@ -130,7 +130,8 @@ public:
     }
 
     // Non-throwing variant for callers that must not unwind an active SIMD
-    // frame.
+    // frame. User callbacks keep their normal exception contract; this path
+    // only reaches built-in wide rules.
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const -> tl::expected<Interval, std::string>
     {
         return TryEvaluateImpl(coeff, nullptr);

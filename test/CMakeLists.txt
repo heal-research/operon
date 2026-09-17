@@ -29,6 +29,7 @@ add_executable(operon_test
     source/implementation/tree_diff.cpp
     source/implementation/range_tightening.cpp
     source/implementation/feynman_benchmarks.cpp
+    source/implementation/range_oracles.cpp
     source/implementation/crossover.cpp
     source/implementation/crowding_distance.cpp
     source/implementation/details.cpp
@@ -67,6 +68,7 @@ add_executable(operon_test
     source/performance/primitives.cpp
     source/performance/jit_breakeven.cpp
     source/performance/shape_bisection.cpp
+    source/performance/bisection_strategies.cpp
     source/implementation/jit.cpp
     source/implementation/pappus_backend.cpp
     source/implementation/pappus_nsgp.cpp
@@ -76,6 +78,7 @@ add_executable(operon_test
     source/implementation/composed_function.cpp
     )
 target_link_libraries(operon_test PRIVATE operon::operon Catch2::Catch2WithMain scn::scn nanobench::nanobench)
+target_compile_definitions(operon_test PRIVATE OPERON_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
 if(vdt_FOUND)
     target_link_libraries(operon_test PRIVATE vdt::vdt)
     target_compile_definitions(operon_test PRIVATE OPERON_HAVE_VDT)
