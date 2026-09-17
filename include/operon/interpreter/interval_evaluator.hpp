@@ -127,16 +127,29 @@ public:
     // Compiles hash-keyed bounds into slots indexed by Tree::Nodes().
     IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap const& domains)
         : tree_(tree)
+        , domains_(domains)
     {
-        auto const& nodes = tree_->Nodes();
-        domainSlots_.reserve(nodes.size());
-        for (auto const& node : nodes) {
-            auto const it = node.Type == NodeType::Variable ? domains.find(node.HashValue) : domains.end();
-            domainSlots_.push_back(it == domains.end() ? DomainSlot{} : DomainSlot{ it->second, true });
-        }
+        RebuildDomainSlots();
     }
 
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
+    [[nodiscard]] auto Domains() const noexcept -> DomainMap const& { return domains_; }
+
+    // Retargets this evaluator at a different tree, reusing `domains_` (the
+    // same map passed at construction -- every constraint in a
+    // ShapeConstraintSet shares one domain box, only the tree differs
+    // between Identity and a derivative constraint's sliced tree) and this
+    // object's already-grown domainSlots_/primal_ vector capacity. Mirrors
+    // AffineEvaluator::SetTree/Domains -- the interval-only bound path
+    // previously built a fresh IntervalEvaluator (and its domainSlots_
+    // allocation) per constraint per individual; profiling showed that
+    // allocation churn as a real, non-trivial share of shape-constrained
+    // Measure() cost.
+    void SetTree(gsl::not_null<Operon::Tree const*> tree)
+    {
+        tree_ = tree;
+        RebuildDomainSlots();
+    }
 
     // Non-owning lane bounds for one variable. Lo and Hi must remain valid through
     // TryEvaluate; evaluators copy their values and never retain pointers.
@@ -217,12 +230,24 @@ private:
         }
     }
 
+    void RebuildDomainSlots()
+    {
+        auto const& nodes = tree_->Nodes();
+        domainSlots_.clear();
+        domainSlots_.reserve(nodes.size());
+        for (auto const& node : nodes) {
+            auto const it = node.Type == NodeType::Variable ? domains_.find(node.HashValue) : domains_.end();
+            domainSlots_.push_back(it == domains_.end() ? DomainSlot{} : DomainSlot{ it->second, true });
+        }
+    }
+
     struct DomainSlot {
         Domain Bounds{};
         bool Present{false};
     };
 
     gsl::not_null<Operon::Tree const*> tree_;
+    DomainMap domains_;
     std::vector<DomainSlot> domainSlots_;
     mutable std::vector<Interval> primal_; // reused across Evaluate calls
 };

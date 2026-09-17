@@ -439,14 +439,28 @@ struct IntervalSubdivisionPlan {
     // builds its own AffineEvaluator per sub-box specifically to rescue affine-mode failures, and would
     // reintroduce the exact cost this function avoids (BisectedIntervalBound already has its own fallback via
     // directBound()). TightenRange's fallback is kept -- it only ever needed the domain map too.
-    auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
+    // `ie` is shared across every constraint in this bound set (see the
+    // AffineEvaluator-sharing comment two functions up, and
+    // IntervalEvaluator::SetTree's doc comment) -- SetTree retargets it at
+    // `tree` (the identity tree, or a derivative constraint's sliced tree)
+    // instead of constructing a fresh evaluator per call.
+    auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
     {
-        auto const IntervalBound = [&]() {
-            return EvaluateIntervalBound(tree, dom);
+        auto const IntervalBound = [&]() -> BoundResult {
+            try {
+                ie.SetTree(&tree);
+                auto result = ie.TryEvaluate(tree.GetCoefficients());
+                if (!result) {
+                    return tl::unexpected(std::move(result.error()));
+                }
+                return *result;
+            } catch (std::exception const& error) {
+                return tl::unexpected(std::string(error.what()));
+            }
         };
 
         auto direct = HasFlag(mode, ShapeBoundMode::Bisected)
-            ? BisectedIntervalBound(tree, dom, opts.BisectionDepth)
+            ? BisectedIntervalBound(tree, ie.Domains(), opts.BisectionDepth)
             : IntervalBound();
         if (IsFiniteBound(direct)) {
             return direct;
@@ -454,7 +468,7 @@ struct IntervalSubdivisionPlan {
 
         if (opts.UseTightenRangeFallback) {
             try {
-                auto tr = TightenRange(tree, dom, tree.GetCoefficients());
+                auto tr = TightenRange(tree, ie.Domains(), tree.GetCoefficients());
                 if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
                     return tr;
                 }
@@ -465,14 +479,14 @@ struct IntervalSubdivisionPlan {
         return direct;
     }
 
-    // Mirrors BoundFor exactly, but for TryIntervalBound's lighter domain map instead of AffineEvaluator&. See
-    // BoundFor's comment for the derivative slicing rationale (identical here).
+    // Mirrors BoundFor exactly, but for TryIntervalBound's shared IntervalEvaluator instead of AffineEvaluator&.
+    // See BoundFor's comment for the derivative slicing rationale (identical here).
     auto BoundForInterval(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
-        IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
+        IntervalEvaluator<Operon::Scalar>& ie,
         VariableGradientDag const& dag1, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
     {
         if (op == ShapeConstraintOp::Identity) {
-            return TryIntervalBound(tree, dom, mode, opts);
+            return TryIntervalBound(tree, ie, mode, opts);
         }
 
         auto const i1 = VariableIndex(dag1, variable);
@@ -484,7 +498,7 @@ struct IntervalSubdivisionPlan {
         }
         auto d1 = SliceToTree(dag1, dag1.Roots[*i1]);
         if (op == ShapeConstraintOp::FirstDerivative) {
-            return d1 ? TryIntervalBound(*d1, dom, mode, opts) : BoundResult(Interval(Operon::Scalar { 0 }, Operon::Scalar { 0 }));
+            return d1 ? TryIntervalBound(*d1, ie, mode, opts) : BoundResult(Interval(Operon::Scalar { 0 }, Operon::Scalar { 0 }));
         }
 
         if (!d1) {
@@ -499,8 +513,9 @@ struct IntervalSubdivisionPlan {
             return tl::unexpected("variable derivative involves an op with no differentiation rule");
         }
         auto d2 = SliceToTree(dag2, dag2.Roots[*i2]);
-        return d2 ? TryIntervalBound(*d2, dom, mode, opts) : BoundResult(Interval(Operon::Scalar { 0 }, Operon::Scalar { 0 }));
+        return d2 ? TryIntervalBound(*d2, ie, mode, opts) : BoundResult(Interval(Operon::Scalar { 0 }, Operon::Scalar { 0 }));
     }
+
 
     // The bound for one constraint's Op: the tree itself for Identity, or the (possibly twice-)differentiated tree
     // for First-/SecondDerivative -- an identically-zero derivative bounds to the degenerate interval [0, 0].
@@ -665,14 +680,16 @@ struct IntervalSubdivisionPlan {
         };
 
         // Interval-only mode (with or without Bisected) never touches AffineEvaluator's affine machinery -- skip
-        // constructing it, sharing the lighter interval domain map across every constraint in this set instead.
+        // constructing it, sharing one IntervalEvaluator across every constraint in this set instead (same
+        // reasoning as the AffineEvaluator sharing just below: skips a per-constraint domainSlots_/primal_
+        // regrowth that profiling showed as real allocation churn).
         if (HasFlag(mode, ShapeBoundMode::Interval)) {
-            IntervalEvaluator<Operon::Scalar>::DomainMap const dom { domainsByHash };
+            IntervalEvaluator<Operon::Scalar> ie(&tree, domainsByHash);
             for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
                 auto const& c = constraints.Constraints[i];
                 auto const bound = c.Op == ShapeConstraintOp::Identity
-                    ? TryIntervalBound(tree, dom, mode, opts)
-                    : BoundForInterval(c.Op, tree, constraintVarHash[i], dom, SharedDag1(), mode, opts);
+                    ? TryIntervalBound(tree, ie, mode, opts)
+                    : BoundForInterval(c.Op, tree, constraintVarHash[i], ie, SharedDag1(), mode, opts);
                 Apply(i, bound);
             }
             return summary;
