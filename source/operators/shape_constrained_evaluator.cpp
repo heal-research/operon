@@ -66,6 +66,71 @@ namespace {
         return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
     }
 
+struct IntervalSubdivisionPlan {
+    using DomainMap = IntervalEvaluator<Operon::Scalar>::DomainMap;
+
+    Operon::Vector<Operon::Hash> Axes;
+    Operon::Vector<std::size_t> Schedule;
+    Operon::Vector<int> Splits;
+    int Depth{};
+
+    [[nodiscard]] auto SingleAxis() const noexcept -> bool { return Axes.size() == 1; }
+
+    [[nodiscard]] static auto Make(Tree const& tree, DomainMap const& domains, int depth) -> std::optional<IntervalSubdivisionPlan>
+    {
+        if (depth <= 0 || depth > 20) { return std::nullopt; }
+
+        IntervalSubdivisionPlan plan;
+        Operon::Vector<Operon::Scalar> widths;
+        for (auto const& node : tree.Nodes()) {
+            if (!node.IsVariable() || std::ranges::find(plan.Axes, node.HashValue) != plan.Axes.end()) { continue; }
+            auto const it = domains.find(node.HashValue);
+            if (it == domains.end()) { continue; }
+            auto const width = it->second.second - it->second.first;
+            if (width <= Operon::Scalar { 0 }) { continue; }
+            plan.Axes.push_back(node.HashValue);
+            widths.push_back(width);
+        }
+        if (plan.Axes.empty()) { return std::nullopt; }
+
+        constexpr int MaxScalarDepth = 12;
+        plan.Depth = plan.SingleAxis() ? depth : std::min(depth, MaxScalarDepth);
+        plan.Schedule.reserve(static_cast<std::size_t>(plan.Depth));
+        plan.Splits.assign(plan.Axes.size(), 0);
+        for (int level = 0; level < plan.Depth; ++level) {
+            auto selected = std::size_t { 0 };
+            for (std::size_t axis = 1; axis < plan.Axes.size(); ++axis) {
+                if (widths[axis] > widths[selected]) { selected = axis; }
+            }
+            plan.Schedule.push_back(selected);
+            ++plan.Splits[selected];
+            widths[selected] /= Operon::Scalar { 2 };
+        }
+        return plan;
+    }
+
+    [[nodiscard]] auto LeafDomains(DomainMap const& domains, std::size_t leaf) const -> DomainMap
+    {
+        auto result = domains;
+        Operon::Vector<int> cells(Axes.size());
+        Operon::Vector<int> bits(Axes.size());
+        for (std::size_t bit = 0; bit < Schedule.size(); ++bit) {
+            auto const axis = Schedule[bit];
+            cells[axis] |= (static_cast<int>((leaf >> bit) & std::size_t { 1 }) << bits[axis]++);
+        }
+        for (std::size_t axis = 0; axis < Axes.size(); ++axis) {
+            auto const [lo, hi] = domains.at(Axes[axis]);
+            auto const step = (hi - lo) / Operon::Scalar(std::size_t { 1 } << Splits[axis]);
+            auto const cell = Operon::Scalar(cells[axis]);
+            result[Axes[axis]] = {
+                pappus::fp::ropd<pappus::fp::op_add>(lo, cell * step),
+                pappus::fp::ropu<pappus::fp::op_add>(lo, (cell + Operon::Scalar { 1 }) * step)
+            };
+        }
+        return result;
+    }
+};
+
     // Interval-only domain bisection, SIMD-batched: splits the widest referenced axis at each level, evaluating
     // all 2^depth sub-boxes as one schedule so they stay SIMD-batchable; a scalar tail handles a partial batch.
     // Falls back to the direct whole-box enclosure (already sound) on any unbounded or failed sub-box.
@@ -83,82 +148,21 @@ namespace {
             }
         };
 
-        if (depth <= 0 || depth > 20) {
-            return directBound();
-        }
+        auto const plan = IntervalSubdivisionPlan::Make(tree, dom, depth);
+        if (!plan) { return directBound(); }
 
-        std::vector<Operon::Hash> axes;
-        std::vector<Operon::Scalar> widths;
-        for (auto const& n : tree.Nodes()) {
-            if (!n.IsVariable() || std::ranges::find(axes, n.HashValue) != axes.end()) {
-                continue;
-            }
-            auto const it = dom.find(n.HashValue);
-            if (it == dom.end()) {
-                continue;
-            }
-            auto const width = it->second.second - it->second.first;
-            if (width <= Operon::Scalar { 0 }) {
-                continue;
-            }
-            axes.push_back(n.HashValue);
-            widths.push_back(width);
-        }
-        if (axes.empty()) {
-            return directBound();
-        }
-        // The single-axis grid is SIMD-batched via wide<T>; a multi-axis leaf copies the domain map and
-        // evaluates scalar/unbatched, so it gets its own materially lower depth cap than the batched path's 20.
-        constexpr int MaxMultiAxisBisectionDepth = 12;
-        auto const effectiveDepth = axes.size() > 1 ? std::min(depth, MaxMultiAxisBisectionDepth) : depth;
-
-        std::vector<std::size_t> schedule;
-        schedule.reserve(static_cast<std::size_t>(effectiveDepth));
-        for (int level = 0; level < effectiveDepth; ++level) {
-            auto selected = std::size_t { 0 };
-            for (std::size_t axis = 1; axis < axes.size(); ++axis) {
-                if (widths[axis] > widths[selected]) {
-                    selected = axis;
-                }
-            }
-            schedule.push_back(selected);
-            widths[selected] /= Operon::Scalar { 2 };
-        }
-
-        // pappus's wide interval arithmetic is cross-checked against scalar only for 1D uniform segmentation; a
-        // multi-axis grid changes the per-lane endpoint pattern, so this stays on scalar until that's proven sound.
-        if (axes.size() > 1) {
+        if (!plan->SingleAxis()) {
             try {
-                auto const nLeaves = std::size_t { 1 } << effectiveDepth;
-                std::vector<int> splits(axes.size());
-                for (auto axis : schedule) {
-                    ++splits[axis];
-                }
                 auto const coeff = tree.GetCoefficients();
+                auto const nLeaves = std::size_t { 1 } << plan->Depth;
                 std::optional<Interval> result;
-                for (std::size_t k = 0; k < nLeaves; ++k) {
-                    auto leafDom = dom;
-                    std::vector<int> cells(axes.size());
-                    std::vector<int> bits(axes.size());
-                    for (std::size_t bit = 0; bit < schedule.size(); ++bit) {
-                        auto const axis = schedule[bit];
-                        cells[axis] |= (static_cast<int>((k >> bit) & std::size_t { 1 }) << bits[axis]++);
-                    }
-                    for (std::size_t axis = 0; axis < axes.size(); ++axis) {
-                        auto const [lo, hi] = dom.at(axes[axis]);
-                        auto const step = (hi - lo) / Operon::Scalar(std::size_t { 1 } << splits[axis]);
-                        auto const cell = Operon::Scalar(cells[axis]);
-                        leafDom[axes[axis]] = {
-                            pappus::fp::ropd<pappus::fp::op_add>(lo, cell * step),
-                            pappus::fp::ropu<pappus::fp::op_add>(lo, (cell + Operon::Scalar { 1 }) * step)
-                        };
-                    }
-                    IntervalEvaluator<Operon::Scalar> ie(&tree, leafDom);
-                    auto const seg = ie.Evaluate(coeff);
-                    if (seg.is_empty() || !std::isfinite(seg.inf()) || !std::isfinite(seg.sup())) {
+                for (std::size_t leaf = 0; leaf < nLeaves; ++leaf) {
+                    IntervalEvaluator<Operon::Scalar> evaluator(&tree, plan->LeafDomains(dom, leaf));
+                    auto const bound = evaluator.TryEvaluate(coeff);
+                    if (!bound || bound->is_empty() || !std::isfinite(bound->inf()) || !std::isfinite(bound->sup())) {
                         return directBound();
                     }
-                    result = result ? Interval(std::min(result->inf(), seg.inf()), std::max(result->sup(), seg.sup())) : seg;
+                    result = result ? Interval(std::min(result->inf(), bound->inf()), std::max(result->sup(), bound->sup())) : *bound;
                 }
                 return result ? BoundResult { *result } : directBound();
             } catch (std::exception const&) {
@@ -167,8 +171,8 @@ namespace {
         }
 
         try {
-            auto const nLeaves = std::size_t { 1 } << depth;
-            auto const widest = axes.front();
+            auto const nLeaves = std::size_t { 1 } << plan->Depth;
+            auto const widest = plan->Axes.front();
             auto const widestDiam = dom.at(widest).second - dom.at(widest).first;
             auto const lo = dom.at(widest).first;
             auto const hi = dom.at(widest).second;
