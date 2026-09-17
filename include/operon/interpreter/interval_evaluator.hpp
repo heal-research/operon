@@ -109,12 +109,15 @@ public:
 
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
 
+    // Non-owning lane bounds for one variable. Lo and Hi must remain valid through
+    // TryEvaluate; evaluators copy their values and never retain pointers.
     struct LaneOverride {
         Operon::Hash Hash;
         Operon::Scalar const* Lo;
         Operon::Scalar const* Hi;
     };
 
+    // Non-throwing evaluation with caller-provided per-lane variable bounds.
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, std::span<LaneOverride const> overrides) const
         -> tl::expected<Interval, std::string>
     {
@@ -138,6 +141,7 @@ public:
         if (!result) { throw std::runtime_error(result.error()); }
         return std::move(*result);
     }
+    // Non-throwing evaluation for callers that cannot unwind an active SIMD frame.
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const -> tl::expected<Interval, std::string>
     {
         return TryEvaluateImpl(coeff, {});

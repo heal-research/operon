@@ -170,7 +170,8 @@ struct IntervalSubdivisionPlan {
                         overrides[axis] = { plan->Axes[axis], pack.lower_data(axis), pack.upper_data(axis) };
                     }
                     auto const batch = evaluator.TryEvaluate(coeff, overrides);
-                    if (!batch || !eve::all(eve::is_finite(batch->inf()) && eve::is_finite(batch->sup()))) {
+                    if (!batch || eve::any(batch->is_empty())
+                        || !eve::all(eve::is_finite(batch->inf()) && eve::is_finite(batch->sup()))) {
                         return directBound();
                     }
                     acc |= *batch;
