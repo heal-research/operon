@@ -18,6 +18,7 @@
 #include "operon/formatter/formatter.hpp"
 #include <string>
 #include <tl/expected.hpp>
+#include <vstat/vstat.hpp>
 
 // #include "tape.hpp"
 
@@ -154,6 +155,125 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
             }
         }
         return {};
+    }
+
+    // Fuses a linear (scale, offset) least-squares fit of the tree's
+    // output against `target` into the same per-batch pass TryEvaluate
+    // uses to produce those outputs -- avoids the separate full-array
+    // vstat::bivariate::accumulate pass (and, when `result` is empty, the
+    // per-call heap allocation) that FitLinearScaling(tree,...)
+    // (operators/linear_scaling.cpp) otherwise pays on every call. `result`
+    // may be empty when the caller only wants the fit, not the raw
+    // per-row values (e.g. the shape-constraints gate); when non-empty it
+    // is filled exactly like TryEvaluate's ordinary contract.
+    //
+    // Accumulates with a SIMD-wide vstat::bivariate_accumulator (matching
+    // vstat::bivariate::accumulate's own internal chunk width) sub-chunked
+    // within each interpreter batch, not a scalar per-row loop -- a first
+    // attempt at this method used a plain per-row scalar accumulator and
+    // measured *slower* than the two-pass baseline it was replacing: a
+    // scalar Welford update (with its per-element division) on every row
+    // costs more than the extra SIMD-vectorized pass it saved.
+    [[nodiscard]] auto TryEvaluateScaled(Operon::Span<T const> coeff, Operon::Range range,
+        Operon::Span<T> result, Operon::Span<T const> target, Operon::Span<T const> weights = {},
+        bool omitNonFinite = false) const
+        -> tl::expected<vstat::bivariate_statistics, InterpreterError>
+    {
+        if (context_.empty() || range_ != range) {
+            auto bound = TryBindTree(range, /*requireDerivatives=*/false);
+            if (!bound) {
+                return tl::unexpected(std::move(bound.error()));
+            }
+        }
+        if (!result.empty() && result.size() != range.Size()) {
+            return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidOutputSize, {}, range.Size(), result.size() });
+        }
+        if (target.size() != range.Size()) {
+            return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidOutputSize, {}, range.Size(), target.size() });
+        }
+        bool const hasWeights = !weights.empty();
+        if (hasWeights && weights.size() != range.Size()) {
+            return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidOutputSize, {}, range.Size(), weights.size() });
+        }
+        UpdateCoefficients(coeff);
+
+        auto const len { static_cast<int64_t>(range.Size()) };
+        constexpr int64_t S { BatchSize };
+        auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
+
+        // The non-finite-omitting fit (Problem::LinearScalingOmitsNonFinite)
+        // needs to skip individual rows scattered anywhere in the range --
+        // not worth a SIMD-masked accumulator for what is an opt-in, rare
+        // path. Plain scalar streaming accumulator here; still fused into
+        // this pass (no separate array traversal), just not wide.
+        if (omitNonFinite) {
+            vstat::bivariate_accumulator<T> acc;
+            for (auto row = 0L; row < len; row += S) {
+                ForwardPass(range, row, /*trace=*/false);
+                auto const rem = std::min(S, len - row);
+                if (!result.empty()) {
+                    std::ranges::copy(std::span(ptr, rem), result.data() + row);
+                }
+                for (int64_t k = 0; k < rem; ++k) {
+                    auto const x = ptr[k];
+                    auto const y = target[row + k];
+                    if (!(std::isfinite(x) && std::isfinite(y))) {
+                        continue; // zero-weight no-op, same as vstat's scalar-tail omit path
+                    }
+                    if (hasWeights) { acc(x, y, weights[row + k]); } else { acc(x, y); }
+                }
+            }
+            return vstat::bivariate_statistics(acc);
+        }
+
+        using Wide = eve::wide<T>;
+        constexpr int64_t W { static_cast<int64_t>(Wide::size()) };
+        vstat::bivariate_accumulator<Wide> wideAcc;
+        // Leftover narrower than one SIMD lane, bounded to < W per batch by
+        // construction -- buffered rather than accumulated inline: merging
+        // a second, independently-running scalar accumulator's state back
+        // into wideAcc needs vstat's own lane-combine machinery, which
+        // isn't built for two arbitrary partitions. Folded in once, after
+        // the loop, via bivariate_accumulator<T>::load_state -- the same
+        // wide-then-scalar-tail split vstat::bivariate::accumulate itself
+        // uses to finish its own bulk pass.
+        Operon::Vector<T> tailX;
+        Operon::Vector<T> tailY;
+        Operon::Vector<T> tailW;
+        tailX.reserve(static_cast<std::size_t>(W));
+        tailY.reserve(static_cast<std::size_t>(W));
+        if (hasWeights) { tailW.reserve(static_cast<std::size_t>(W)); }
+
+        for (auto row = 0L; row < len; row += S) {
+            ForwardPass(range, row, /*trace=*/false);
+            auto const rem = std::min(S, len - row);
+            if (!result.empty()) {
+                std::ranges::copy(std::span(ptr, rem), result.data() + row);
+            }
+            int64_t k = 0;
+            for (; k + W <= rem; k += W) {
+                Wide const xw { ptr + k };
+                Wide const yw { target.data() + row + k };
+                if (hasWeights) {
+                    Wide const ww { weights.data() + row + k };
+                    wideAcc(xw, yw, ww);
+                } else {
+                    wideAcc(xw, yw);
+                }
+            }
+            for (; k < rem; ++k) {
+                tailX.push_back(ptr[k]);
+                tailY.push_back(target[row + k]);
+                if (hasWeights) { tailW.push_back(weights[row + k]); }
+            }
+        }
+
+        auto const [sw, sx, sy, sxx, syy, sxy] = wideAcc.stats();
+        auto scalarAcc = vstat::bivariate_accumulator<T>::load_state(sx, sy, sw, sxx, syy, sxy);
+        for (std::size_t i = 0; i < tailX.size(); ++i) {
+            if (hasWeights) { scalarAcc(tailX[i], tailY[i], tailW[i]); } else { scalarAcc(tailX[i], tailY[i]); }
+        }
+        return vstat::bivariate_statistics(scalarAcc);
     }
 
     auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> Operon::Vector<T> final
