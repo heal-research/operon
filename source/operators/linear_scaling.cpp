@@ -15,9 +15,7 @@
 
 namespace Operon {
 namespace {
-    // Shared by FitLeastSquaresImpl/FitLeastSquaresFiniteImpl (bulk-array
-    // path) and FitLinearScaling(tree,...)'s fused interpreter path below --
-    // one source of truth for the closed-form OLS slope/intercept.
+    // Shared by FitLeastSquaresImpl and FitLeastSquaresFiniteImpl -- one source of truth for the closed-form OLS slope/intercept.
     inline auto ScaleOffsetFromStats(vstat::bivariate_statistics const& stats) -> std::pair<double, double>
     {
         auto a = stats.covariance / stats.variance_x; // scale
@@ -63,6 +61,7 @@ namespace {
         auto const [a, b] = ScaleOffsetFromStats(stats);
         return {a, b, skipped};
     }
+
 } // namespace
 
 [[nodiscard]] auto LinearScaling::IsIdentity() const noexcept -> bool
@@ -130,8 +129,8 @@ void LinearScaling::ApplyInPlace(Operon::Span<Operon::Scalar> values) const noex
 }
 
 [[nodiscard]] auto FitLinearScaling(Operon::Tree const& tree, Operon::Problem const& problem,
-                                    Operon::ScalarDispatch const& dtable, Operon::Range range)
-    -> std::optional<LinearScaling>
+                                    Operon::ScalarDispatch const& dtable, Operon::Range range,
+                                    Operon::Span<Operon::Scalar> scratch) -> std::optional<LinearScaling>
 {
     if (!problem.LinearScalingEnabled()) {
         return std::nullopt;
@@ -140,19 +139,24 @@ void LinearScaling::ApplyInPlace(Operon::Span<Operon::Scalar> values) const noex
     auto const* dataset = problem.GetDataset();
     Interpreter<Operon::Scalar, ScalarDispatch> const interpreter{&dtable, dataset, &tree};
     auto coeff = tree.GetCoefficients();
-    // No `result` buffer: this caller only needs (scale, offset), not the
-    // raw per-row predictions, so TryEvaluateScaled fits the least-squares
-    // stats directly off the interpreter's own per-batch output instead of
-    // materializing then separately re-scanning a temporary array (see its
-    // doc comment in interpreter.hpp).
-    auto fitted = interpreter.TryEvaluateScaled(coeff, range, {}, problem.TargetValues(range),
+    auto const n = range.Size();
+
+    Operon::Vector<Operon::Scalar> owned;
+    Operon::Span<Operon::Scalar> estimated;
+    if (scratch.size() >= n) {
+        estimated = scratch.subspan(0, n);
+    } else {
+        owned.resize(n);
+        estimated = Operon::Span<Operon::Scalar>(owned);
+    }
+
+    auto evaluated = interpreter.TryEvaluate(coeff, range, estimated);
+    if (!evaluated) {
+        throw std::runtime_error(FormatInterpreterError(evaluated.error()));
+    }
+    return FitLinearScaling(estimated, problem.TargetValues(range),
         problem.Weights(range).value_or(Operon::Span<Operon::Scalar const>{}),
         problem.LinearScalingOmitsNonFinite());
-    if (!fitted) {
-        throw std::runtime_error(FormatInterpreterError(fitted.error()));
-    }
-    auto const [a, b] = ScaleOffsetFromStats(*fitted);
-    return LinearScaling{a, b};
 }
 
 } // namespace Operon

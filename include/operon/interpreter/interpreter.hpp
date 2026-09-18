@@ -18,7 +18,6 @@
 #include "operon/formatter/formatter.hpp"
 #include <string>
 #include <tl/expected.hpp>
-#include <vstat/vstat.hpp>
 
 // #include "tape.hpp"
 
@@ -81,9 +80,7 @@ struct InterpreterBase {
     virtual auto JacFwd(Operon::Span<T const> coeff, Operon::Range range, Operon::Span<T> jacobian) const -> void = 0;
     virtual auto JacFwd(Operon::Span<T const> coeff, Operon::Range range) const -> Eigen::Array<T, -1, -1> = 0;
 
-    // evaluate model derivative w.r.t. a single input variable's raw value
-    // (identified by hash), summed over every occurrence of that variable
-    // in the tree — reverse mode
+    // evaluate model derivative w.r.t. a single input variable's raw value (identified by hash), summed over every occurrence of that variable in the tree — reverse mode
     virtual auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable, Operon::Span<T> result) const -> void = 0;
     virtual auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable) const -> Operon::Vector<T> = 0;
 
@@ -96,17 +93,7 @@ struct InterpreterBase {
     [[nodiscard]] virtual auto GetDataset() const -> Operon::Dataset const* = 0;
 };
 
-// Thread affinity: Evaluate/JacRev/JacFwd/... look const from the outside but
-// bind lazily into the `mutable` scratch state below (context_/primal_/trace_/
-// range_), then reuse that binding across calls for the same (tree, range) via
-// UpdateCoefficients — that's the bind-once/re-evaluate fast path. None of it
-// is synchronized, so a single Interpreter instance must not be called
-// concurrently from more than one thread. It's cheap to construct (just three
-// non-owning pointers), so the convention throughout this codebase is one
-// instance per worker thread, constructed locally in the hot loop (see the
-// per-call `Interpreter` locals in operators/evaluator.hpp and gp.cpp's
-// per-worker scratch slots) rather than one instance shared and reused across
-// threads.
+// Not thread-safe: binds lazily into mutable scratch state reused across calls. Use one instance per worker thread.
 template <typename T = Operon::Scalar, typename DTable = ScalarDispatch>
     requires DTable::template
 SupportsType<T> struct Interpreter : public InterpreterBase<T> {
@@ -149,131 +136,10 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
         for (auto row = 0L; row < len; row += S) {
             ForwardPass(range, row, /*trace=*/false);
-            if (std::ssize(result) == len) {
-                auto const rem = std::min(S, len - row);
-                std::ranges::copy(std::span(ptr, rem), result.data() + row);
-            }
+            auto const rem = std::min(S, len - row);
+            std::ranges::copy(std::span(ptr, rem), result.data() + row);
         }
         return {};
-    }
-
-    // Fuses a linear (scale, offset) least-squares fit of the tree's
-    // output against `target` into the same per-batch pass TryEvaluate
-    // uses to produce those outputs -- avoids the separate full-array
-    // vstat::bivariate::accumulate pass (and, when `result` is empty, the
-    // per-call heap allocation) that FitLinearScaling(tree,...)
-    // (operators/linear_scaling.cpp) otherwise pays on every call. `result`
-    // may be empty when the caller only wants the fit, not the raw
-    // per-row values (e.g. the shape-constraints gate); when non-empty it
-    // is filled exactly like TryEvaluate's ordinary contract.
-    //
-    // Accumulates with a SIMD-wide vstat::bivariate_accumulator (matching
-    // vstat::bivariate::accumulate's own internal chunk width) sub-chunked
-    // within each interpreter batch, not a scalar per-row loop -- a first
-    // attempt at this method used a plain per-row scalar accumulator and
-    // measured *slower* than the two-pass baseline it was replacing: a
-    // scalar Welford update (with its per-element division) on every row
-    // costs more than the extra SIMD-vectorized pass it saved.
-    [[nodiscard]] auto TryEvaluateScaled(Operon::Span<T const> coeff, Operon::Range range,
-        Operon::Span<T> result, Operon::Span<T const> target, Operon::Span<T const> weights = {},
-        bool omitNonFinite = false) const
-        -> tl::expected<vstat::bivariate_statistics, InterpreterError>
-    {
-        if (context_.empty() || range_ != range) {
-            auto bound = TryBindTree(range, /*requireDerivatives=*/false);
-            if (!bound) {
-                return tl::unexpected(std::move(bound.error()));
-            }
-        }
-        if (!result.empty() && result.size() != range.Size()) {
-            return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidOutputSize, {}, range.Size(), result.size() });
-        }
-        if (target.size() != range.Size()) {
-            return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidOutputSize, {}, range.Size(), target.size() });
-        }
-        bool const hasWeights = !weights.empty();
-        if (hasWeights && weights.size() != range.Size()) {
-            return tl::unexpected(InterpreterError { InterpreterError::Code::InvalidOutputSize, {}, range.Size(), weights.size() });
-        }
-        UpdateCoefficients(coeff);
-
-        auto const len { static_cast<int64_t>(range.Size()) };
-        constexpr int64_t S { BatchSize };
-        auto* ptr = primal_.data() + ((primal_.extent(1) - 1) * S);
-
-        // The non-finite-omitting fit (Problem::LinearScalingOmitsNonFinite)
-        // needs to skip individual rows scattered anywhere in the range --
-        // not worth a SIMD-masked accumulator for what is an opt-in, rare
-        // path. Plain scalar streaming accumulator here; still fused into
-        // this pass (no separate array traversal), just not wide.
-        if (omitNonFinite) {
-            vstat::bivariate_accumulator<T> acc;
-            for (auto row = 0L; row < len; row += S) {
-                ForwardPass(range, row, /*trace=*/false);
-                auto const rem = std::min(S, len - row);
-                if (!result.empty()) {
-                    std::ranges::copy(std::span(ptr, rem), result.data() + row);
-                }
-                for (int64_t k = 0; k < rem; ++k) {
-                    auto const x = ptr[k];
-                    auto const y = target[row + k];
-                    if (!(std::isfinite(x) && std::isfinite(y))) {
-                        continue; // zero-weight no-op, same as vstat's scalar-tail omit path
-                    }
-                    if (hasWeights) { acc(x, y, weights[row + k]); } else { acc(x, y); }
-                }
-            }
-            return vstat::bivariate_statistics(acc);
-        }
-
-        using Wide = eve::wide<T>;
-        constexpr int64_t W { static_cast<int64_t>(Wide::size()) };
-        vstat::bivariate_accumulator<Wide> wideAcc;
-        // Leftover narrower than one SIMD lane, bounded to < W per batch by
-        // construction -- buffered rather than accumulated inline: merging
-        // a second, independently-running scalar accumulator's state back
-        // into wideAcc needs vstat's own lane-combine machinery, which
-        // isn't built for two arbitrary partitions. Folded in once, after
-        // the loop, via bivariate_accumulator<T>::load_state -- the same
-        // wide-then-scalar-tail split vstat::bivariate::accumulate itself
-        // uses to finish its own bulk pass.
-        Operon::Vector<T> tailX;
-        Operon::Vector<T> tailY;
-        Operon::Vector<T> tailW;
-        tailX.reserve(static_cast<std::size_t>(W));
-        tailY.reserve(static_cast<std::size_t>(W));
-        if (hasWeights) { tailW.reserve(static_cast<std::size_t>(W)); }
-
-        for (auto row = 0L; row < len; row += S) {
-            ForwardPass(range, row, /*trace=*/false);
-            auto const rem = std::min(S, len - row);
-            if (!result.empty()) {
-                std::ranges::copy(std::span(ptr, rem), result.data() + row);
-            }
-            int64_t k = 0;
-            for (; k + W <= rem; k += W) {
-                Wide const xw { ptr + k };
-                Wide const yw { target.data() + row + k };
-                if (hasWeights) {
-                    Wide const ww { weights.data() + row + k };
-                    wideAcc(xw, yw, ww);
-                } else {
-                    wideAcc(xw, yw);
-                }
-            }
-            for (; k < rem; ++k) {
-                tailX.push_back(ptr[k]);
-                tailY.push_back(target[row + k]);
-                if (hasWeights) { tailW.push_back(weights[row + k]); }
-            }
-        }
-
-        auto const [sw, sx, sy, sxx, syy, sxy] = wideAcc.stats();
-        auto scalarAcc = vstat::bivariate_accumulator<T>::load_state(sx, sy, sw, sxx, syy, sxy);
-        for (std::size_t i = 0; i < tailX.size(); ++i) {
-            if (hasWeights) { scalarAcc(tailX[i], tailY[i], tailW[i]); } else { scalarAcc(tailX[i], tailY[i]); }
-        }
-        return vstat::bivariate_statistics(scalarAcc);
     }
 
     auto Evaluate(Operon::Span<T const> coeff, Operon::Range range) const -> Operon::Vector<T> final
@@ -385,12 +251,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         return jacobian;
     }
 
-    // Reverse-mode derivative of the tree output w.r.t. the raw value of
-    // one input Variable (identified by hash), summed over every
-    // occurrence of that variable in the tree via the multivariate chain
-    // rule. Complements JacRev, which differentiates w.r.t. Node::Optimize
-    // coefficients (weights) rather than variable values — same underlying
-    // adjoint sweep (ReverseTraceGeneric), different extraction point.
+    // Reverse-mode derivative w.r.t. one variable's raw value, summed over every occurrence in the tree.
     auto JacRevVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable, Operon::Span<T> result) const -> void final
     {
         InitContext(coeff, range);
@@ -420,8 +281,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         return result;
     }
 
-    // Forward-mode counterpart to JacRevVariable — same relationship as
-    // JacFwd has to JacRev.
+    // Forward-mode counterpart to JacRevVariable — same relationship as JacFwd has to JacRev.
     auto JacFwdVariable(Operon::Span<T const> coeff, Operon::Range range, Operon::Hash variable, Operon::Span<T> result) const -> void final
     {
         InitContext(coeff, range);
@@ -450,8 +310,7 @@ SupportsType<T> struct Interpreter : public InterpreterBase<T> {
         return result;
     }
 
-    // Evaluate the full tree and extract values at multiple node indices.
-    // Roots set to SIZE_MAX produce zero columns.
+    // Evaluates the full tree and extracts values at multiple node indices; roots set to SIZE_MAX produce zero columns.
     auto EvaluateRoots(Operon::Span<T const> coeff, Operon::Range range,
         Operon::Span<std::size_t const> roots) const -> Eigen::Array<T, -1, -1>
     {
@@ -518,8 +377,7 @@ private:
     gsl::not_null<Operon::Dataset const*> dataset_;
     gsl::not_null<Operon::Tree const*> tree_;
 
-    // mutable internal state (used by all the forward/reverse passes).
-    // Not synchronized — see the thread-affinity contract on the class above.
+    // Mutable scratch state for forward/reverse passes; not synchronized (see thread-affinity note above).
     mutable Operon::Vector<Data> context_;
     mutable Backend::Buffer<T, BatchSize> primal_;
     mutable Backend::Buffer<T, BatchSize> trace_;
@@ -571,20 +429,10 @@ private:
         }
     }
 
-    // Sentinel meaning "no such node/column/root index" — used both by
-    // BuildColumns/*TraceGeneric below (a node not contributing to any
-    // output column) and by EvaluateRoots (a root slot that should be
-    // zero-filled instead of extracted).
+    // Sentinel: "no such node/column/root index".
     static constexpr std::size_t NoIndex = std::numeric_limits<std::size_t>::max();
 
-    // Built once per JacRev/JacFwd/JacRevVariable/JacFwdVariable call (not
-    // per row-batch — it only depends on tree structure, not on which rows
-    // are being processed): `colOf[i]` is the output column node i
-    // contributes to, or NoIndex — used by ReverseTraceGeneric, which
-    // visits every node anyway so an O(1) lookup is free. `seeds` is the
-    // compact list of (node, column) pairs with colOf[i] != NoIndex — used
-    // by ForwardTraceGeneric, which should only iterate actual targets
-    // instead of scanning every node in the tree.
+    // Per-node output-column mapping: colOf[i] for ReverseTraceGeneric, seeds (node, column) pairs for ForwardTraceGeneric.
     struct Columns {
         Operon::Vector<std::size_t> colOf;
         Operon::Vector<std::pair<std::size_t, std::size_t>> seeds;
@@ -605,17 +453,7 @@ private:
         return cols;
     }
 
-    // Shared forward-mode sweep behind JacFwd/JacFwdVariable. `seeds`: the
-    // (node, column) pairs to seed-and-propagate (see BuildColumns).
-    // `factor(i, primal, w)`: the local d(primal_i)/d(target) multiplier
-    // converting the node's root-adjoint into the derivative w.r.t.
-    // whatever `target` is for this call (a coefficient's weight, or a
-    // variable's raw value) — e.g. primal_i/w for a coefficient target
-    // (primal_i = w * x_i), or w for a variable target. `Accumulate`:
-    // false writes `=` (the coefficient case — each column has exactly one
-    // contributing node, so no zero-init is needed by the caller); true
-    // writes `+=` (the variable case, where multiple nodes/occurrences can
-    // share one column — caller must zero-init `jac` first).
+    // Shared forward-mode sweep behind JacFwd/JacFwdVariable; one seeded pass per output column (see BuildColumns).
     template <bool Accumulate, typename LocalFactor>
     auto ForwardTraceGeneric(Operon::Range range, int row, Operon::Vector<std::pair<std::size_t, std::size_t>> const& seeds, LocalFactor factor, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void
     {
@@ -647,10 +485,8 @@ private:
                 }
                 for (auto x : Tree::Indices(nodes, i)) {
                     auto j { static_cast<int64_t>(x) };
-                    // A leaf child other than the seeded node cc has a zero
-                    // tangent and can be skipped — except a Ref, which is a
-                    // leaf by arity but an alias: its dot was already copied
-                    // from its (possibly seeded) target above and must not
+                    // A leaf child other than the seeded node cc has a zero tangent and can be skipped — except a Ref, which is a
+                    // leaf by arity but an alias: its dot was already copied from its (possibly seeded) target above and must not
                     // be dropped just because j != cc.
                     if (nodes[j].IsLeaf() && !nodes[j].IsRef() && j != cc) {
                         continue;
@@ -669,13 +505,7 @@ private:
         }
     }
 
-    // Shared reverse-mode sweep behind JacRev/JacRevVariable — see
-    // ForwardTraceGeneric above for the `factor`/`Accumulate` contract.
-    // `colOf`: per-node column lookup (see BuildColumns). One backward pass
-    // computes every node's root-adjoint regardless of how many columns are
-    // extracted, unlike the forward-mode sweep above (one seeded pass per
-    // column) — this is why reverse mode is preferred when there are many
-    // targets (JacRev vs JacFwd for coefficients).
+    // Shared reverse-mode sweep behind JacRev/JacRevVariable; one backward pass covers every output column.
     template <bool Accumulate, typename LocalFactor>
     auto ReverseTraceGeneric(Operon::Range range, int row, Operon::Vector<std::size_t> const& colOf, LocalFactor factor, Eigen::Ref<Eigen::Array<T, -1, -1>> jac) const -> void
     {
@@ -731,13 +561,15 @@ public:
         // hash, which is a recoverable unsupported-tree error at this boundary.
         for (auto const& n : nodes) {
             if (n.IsVariable() && !dataset_->GetVariable(n.HashValue)) {
-                return tl::unexpected(InterpreterError { InterpreterError::Code::MissingVariable, n.HashValue });
+                return tl::unexpected(InterpreterError { .Kind=InterpreterError::Code::MissingVariable, .Hash=n.HashValue });
             }
+
             if (!n.IsLeaf() && !dt->template TryGetFunction<T>(n.HashValue)) {
-                return tl::unexpected(InterpreterError { InterpreterError::Code::MissingPrimitive, n.HashValue });
+                return tl::unexpected(InterpreterError { .Kind=InterpreterError::Code::MissingPrimitive, .Hash=n.HashValue });
             }
+
             if (requireDerivatives && !n.IsLeaf() && !dt->template TryGetDerivative<T>(n.HashValue)) {
-                return tl::unexpected(InterpreterError { InterpreterError::Code::MissingDerivative, n.HashValue });
+                return tl::unexpected(InterpreterError { .Kind=InterpreterError::Code::MissingDerivative, .Hash=n.HashValue });
             }
         }
 
@@ -770,8 +602,7 @@ private:
         }
     }
 
-    // Cheap update: patch coefficient values in context_ and re-fill constant columns.
-    // Called on every optimizer step once BindTree has been called for this range.
+    // Cheap update: patches coefficient values and re-fills constant columns without a full rebind.
     auto UpdateCoefficients(Operon::Span<T const> coeff) const
     {
         auto const& nodes = tree_->Nodes();
@@ -798,8 +629,7 @@ private:
     }
 };
 
-// convenience methods to interpret many trees in parallel (mostly useful from
-// the Python wrapper).
+// Convenience methods to interpret many trees in parallel (mostly useful from the Python wrapper).
 auto OPERON_EXPORT TryEvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, size_t nthread = 0)
     -> tl::expected<Operon::Vector<Operon::Vector<Operon::Scalar>>, TreeEvaluationError>;
 auto OPERON_EXPORT TryEvaluateTrees(Operon::Vector<Operon::Tree> const& trees, Operon::Dataset const* dataset, Operon::Range range, std::span<Operon::Scalar> result, size_t nthread = 0)
