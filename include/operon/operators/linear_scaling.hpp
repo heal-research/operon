@@ -55,14 +55,16 @@ struct OPERON_EXPORT LinearScaling {
     Operon::Span<Operon::Scalar const> weights = {},
     bool omitNonFinite = false) -> LinearScaling;
 
-// Runs the interpreter over `range` and fits (a,b) against `problem`'s
-// target and weights, honouring problem.LinearScalingOmitsNonFinite().
-// Returns nullopt iff problem.LinearScalingEnabled() is false.
+// Runs the interpreter over `range` and fits (a,b) against `problem`'s target/weights. Returns nullopt iff
+// problem.LinearScalingEnabled() is false. `scratch`, if >= range.Size(), is reused as the output buffer
+// instead of allocating (caller-owned, e.g. ShapeConstrainedEvaluator/ShapeViolationEvaluator's per-call
+// scoring buffer); too-small/empty allocates internally.
 [[nodiscard]] OPERON_EXPORT auto FitLinearScaling(
     Operon::Tree const& tree,
     Operon::Problem const& problem,
     Operon::ScalarDispatch const& dtable,
-    Operon::Range range) -> std::optional<LinearScaling>;
+    Operon::Range range,
+    Operon::Span<Operon::Scalar> scratch = {}) -> std::optional<LinearScaling>;
 
 } // namespace Operon
 

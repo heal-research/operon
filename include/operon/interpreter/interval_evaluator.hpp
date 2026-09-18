@@ -18,6 +18,7 @@
 #include "operon/core/node.hpp"
 #include "operon/core/tree.hpp"
 #include "operon/core/types.hpp"
+#include "operon/core/postorder_evaluator.hpp"
 #include "operon/operon_export.hpp"
 
 #include <pappus/pappus.hpp>
@@ -74,6 +75,34 @@ extern template auto IntervalUnaryRules<eve::wide<Operon::Scalar>>() -> Interval
 extern template auto IntervalBinaryRules<eve::wide<Operon::Scalar>>() -> IntervalBinaryRegistry<eve::wide<Operon::Scalar>>&;
 extern template void RegisterIntervalBuiltins<eve::wide<Operon::Scalar>>();
 
+namespace detail {
+template<typename T>
+struct IntervalPostOrderPolicy {
+    using Scalar = T;
+    using Value = pappus::interval<Scalar>;
+    struct Context {};
+
+    static void RegisterBuiltins() { RegisterIntervalBuiltins<Scalar>(); }
+    static auto UnaryRules() -> IntervalUnaryRegistry<Scalar> const& { return IntervalUnaryRules<Scalar>(); }
+    static auto BinaryRules() -> IntervalBinaryRegistry<Scalar> const& { return IntervalBinaryRules<Scalar>(); }
+    static auto EmptyTree() -> std::string { return "IntervalEvaluator: empty tree"; }
+    static auto MissingNode(Node const& node) -> std::string { return fmt::format("IntervalEvaluator: node kind `{}` not yet mapped", node.Name()); }
+
+    static auto MakeConstant(Context const&, Scalar value) -> Value { return pappus::ops::constant<Scalar>(value); }
+    static auto Add(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::add<Scalar>(lhs, rhs); }
+    static auto Mul(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::mul<Scalar>(lhs, rhs); }
+    static auto Sub(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::sub<Scalar>(lhs, rhs); }
+    static auto Div(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::div<Scalar>(lhs, rhs); }
+    static auto Min(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::min<Scalar>(lhs, rhs); }
+    static auto Max(Context const&, Value const& lhs, Value const& rhs) -> Value { return pappus::ops::max<Scalar>(lhs, rhs); }
+    static auto Neg(Context const&, Value const& value) -> Value { return pappus::ops::neg<Scalar>(value); }
+    static auto Inv(Context const&, Value const& value) -> Value { return pappus::ops::inv<Scalar>(value); }
+    static auto CallUnary(Context const&, IntervalUnaryFn<Scalar> const& function, Value const& value) -> Value { return function(value); }
+    static auto CallBinary(Context const&, IntervalBinaryFn<Scalar> const& function, Value const& lhs, Value const& rhs) -> Value { return function(lhs, rhs); }
+    static auto Scale(Value value, Scalar scale) -> Value { return value * scale; }
+};
+} // namespace detail
+
 // Forward interval bounds for a tree over a single input domain. Walks the
 // tree post-order, computing a `pappus::interval<T>` per node; variables
 // are bound via `domains`, constants/weights via `coeff`.
@@ -98,27 +127,53 @@ public:
     // Compiles hash-keyed bounds into slots indexed by Tree::Nodes().
     IntervalEvaluator(gsl::not_null<Operon::Tree const*> tree, DomainMap const& domains)
         : tree_(tree)
+        , domains_(domains)
     {
-        auto const& nodes = tree_->Nodes();
-        domainSlots_.reserve(nodes.size());
-        for (auto const& node : nodes) {
-            auto const it = node.Type == NodeType::Variable ? domains.find(node.HashValue) : domains.end();
-            domainSlots_.push_back(it == domains.end() ? DomainSlot{} : DomainSlot{ it->second, true });
-        }
+        RebuildDomainSlots();
     }
 
     [[nodiscard]] auto GetTree() const noexcept -> Operon::Tree const* { return tree_.get(); }
+    [[nodiscard]] auto Domains() const noexcept -> DomainMap const& { return domains_; }
 
-    // Evaluates with a lane-specific override for one variable. `lo`/`hi`
-    // stay in caller-owned storage for the call's duration; no SIMD value
-    // is ever stored in DomainMap or evaluator state.
+    // Retargets this evaluator at a different tree, reusing `domains_` (the
+    // same map passed at construction -- every constraint in a
+    // ShapeConstraintSet shares one domain box, only the tree differs
+    // between Identity and a derivative constraint's sliced tree) and this
+    // object's already-grown domainSlots_/primal_ vector capacity. Mirrors
+    // AffineEvaluator::SetTree/Domains -- the interval-only bound path
+    // previously built a fresh IntervalEvaluator (and its domainSlots_
+    // allocation) per constraint per individual; profiling showed that
+    // allocation churn as a real, non-trivial share of shape-constrained
+    // Measure() cost.
+    void SetTree(gsl::not_null<Operon::Tree const*> tree)
+    {
+        tree_ = tree;
+        RebuildDomainSlots();
+    }
+
+    // Non-owning lane bounds for one variable. Lo and Hi must remain valid through
+    // TryEvaluate; evaluators copy their values and never retain pointers.
+    struct LaneOverride {
+        Operon::Hash Hash;
+        Operon::Scalar const* Lo;
+        Operon::Scalar const* Hi;
+    };
+
+    // Non-throwing evaluation with caller-provided per-lane variable bounds -- including exceptions from
+    // user-registered interval callbacks, caught in TryEvaluateImpl; never propagates one.
+    [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, std::span<LaneOverride const> overrides) const
+        -> tl::expected<Interval, std::string>
+    {
+        return TryEvaluateImpl(coeff, overrides);
+    }
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff, Operon::Hash hash,
                                    Scalar const& lo, Scalar const& hi) const
         -> tl::expected<Interval, std::string>
     {
-        LaneOverride const override { hash, &lo, &hi };
-        return TryEvaluateImpl(coeff, &override);
+        LaneOverride const override { hash, reinterpret_cast<Operon::Scalar const*>(&lo), reinterpret_cast<Operon::Scalar const*>(&hi) };
+        return TryEvaluate(coeff, std::span { &override, 1 });
     }
+
 
     // Evaluates the tree. `coeff` has one entry per node with
     // `Node::Optimize == true`, in node order, always Operon::Scalar-typed.
@@ -128,172 +183,72 @@ public:
         if (!result) { throw std::runtime_error(result.error()); }
         return std::move(*result);
     }
-
-    // Non-throwing variant for callers that must not unwind an active SIMD
-    // frame. User callbacks keep their normal exception contract; this path
-    // only reaches built-in wide rules.
+    // Non-throwing evaluation, including from user-registered callbacks -- see TryEvaluateImpl. Callers should
+    // never need their own try/catch around this; use it directly instead of Evaluate() + try/catch.
     [[nodiscard]] auto TryEvaluate(Operon::Span<Operon::Scalar const> coeff) const -> tl::expected<Interval, std::string>
     {
-        return TryEvaluateImpl(coeff, nullptr);
+        return TryEvaluateImpl(coeff, {});
     }
 
 private:
-    struct LaneOverride {
-        Operon::Hash Hash;
-        Scalar const* Lo;
-        Scalar const* Hi;
-    };
-
-    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff, LaneOverride const* laneOverride) const
+    [[nodiscard]] auto TryEvaluateImpl(Operon::Span<Operon::Scalar const> coeff, std::span<LaneOverride const> overrides) const
         -> tl::expected<Interval, std::string>
     {
-        RegisterIntervalBuiltins<Scalar>();
-
-        auto const& nodes = tree_->Nodes();
-        auto const n = nodes.size();
-        if (n == 0) { return tl::unexpected("IntervalEvaluator: empty tree"); }
-
-        primal_.resize(n);
-        std::size_t ci = 0;
-
-        // Folds over node i's immediate children, reading from `primal_`.
-        auto const addFold = [&](std::size_t i) {
-            auto acc = Interval{Scalar{0}};
-            for (auto j : Tree::Indices(nodes, i)) { acc = pappus::ops::add<Scalar>(acc, primal_[j]); }
-            return acc;
-        };
-        auto const mulFold = [&](std::size_t i) {
-            auto acc = Interval{Scalar{1}};
-            for (auto j : Tree::Indices(nodes, i)) { acc = pappus::ops::mul<Scalar>(acc, primal_[j]); }
-            return acc;
-        };
-        // first - (rest[0] + rest[1] + ...), matching Operon's n-ary Sub.
-        auto const subFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{0}}; // overwritten on first child
-            for (auto j : Tree::Indices(nodes, i)) {
-                if (first) { acc = primal_[j]; first = false; }
-                else       { acc = pappus::ops::sub<Scalar>(acc, primal_[j]); }
-            }
-            EXPECT(!first); // arity > 0 — malformed tree otherwise
-            return acc;
-        };
-        // first / (rest[0] * rest[1] * ...), matching Operon's n-ary Div.
-        auto const divFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{1}}; // overwritten on first child
-            for (auto j : Tree::Indices(nodes, i)) {
-                if (first) { acc = primal_[j]; first = false; }
-                else       { acc = pappus::ops::div<Scalar>(acc, primal_[j]); }
-            }
-            EXPECT(!first); // arity > 0 — malformed tree otherwise
-            return acc;
-        };
-        // min([a1,b1], [a2,b2], ...) = [min(a1,a2,...), min(b1,b2,...)]
-        auto const minFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{0}};
-            for (auto j : Tree::Indices(nodes, i)) {
-                if (first) { acc = primal_[j]; first = false; }
-                else       { acc = pappus::ops::min<Scalar>(acc, primal_[j]); }
-            }
-            EXPECT(!first);
-            return acc;
-        };
-        // max([a1,b1], [a2,b2], ...) = [max(a1,a2,...), max(b1,b2,...)]
-        auto const maxFold = [&](std::size_t i) {
-            bool first = true;
-            auto acc = Interval{Scalar{0}};
-            for (auto j : Tree::Indices(nodes, i)) {
-                if (first) { acc = primal_[j]; first = false; }
-                else       { acc = pappus::ops::max<Scalar>(acc, primal_[j]); }
-            }
-            EXPECT(!first);
-            return acc;
-        };
-
-        for (std::size_t i = 0; i < n; ++i) {
-            auto const& node = nodes[i];
-            // Leaves use v as value (Constant) or weight (Variable);
-            // non-leaves apply it as a post-multiply.
-            Scalar v;
+        std::size_t coefficientIndex = 0;
+        auto const weight = [&](Node const& node) {
             if (node.Optimize) {
-                EXPECT(ci < coeff.size());
-                v = static_cast<Scalar>(coeff[ci++]);
-            } else {
-                v = static_cast<Scalar>(node.Value);
+                EXPECT(coefficientIndex < coeff.size());
+                return static_cast<Scalar>(coeff[coefficientIndex++]);
+            }
+            return static_cast<Scalar>(node.Value);
+        };
+        auto const bindLeaf = [&](Node const& node, std::size_t index, Scalar scale) -> tl::expected<Interval, std::string> {
+            if (node.IsConstant()) {
+                return pappus::ops::constant<Scalar>(scale);
             }
 
-            if (node.Type == NodeType::Constant) {
-                primal_[i] = pappus::ops::constant<Scalar>(v);
-            } else if (node.Type == NodeType::Variable) {
-                Scalar lo{};
-                Scalar hi{};
-                if (laneOverride != nullptr && laneOverride->Hash == node.HashValue) {
-                    lo = *laneOverride->Lo;
-                    hi = *laneOverride->Hi;
-                } else {
-                    auto const& slot = domainSlots_[i];
-                    if (!slot.Present) {
-                        return tl::unexpected(fmt::format(
-                            "IntervalEvaluator: no domain bound for variable hash {}",
-                            node.HashValue));
-                    }
-                    lo = static_cast<Scalar>(slot.Bounds.first);
-                    hi = static_cast<Scalar>(slot.Bounds.second);
-                }
-                primal_[i] = pappus::ops::variable<Scalar>(lo, hi) * v;
-            } else if (node.Type == NodeType::Ref) {
-                EXPECT(static_cast<std::size_t>(node.RefTo) < i);
-                primal_[i] = primal_[node.RefTo];
-            } else {
-                // Add/Mul/Sub/Div/Fmin/Fmax are n-ary folds handled directly;
-                // every other op goes through the unary/binary registry.
-                switch (node.HashValue) {
-                case Operon::Hash(BuiltinOp::Add):
-                    primal_[i] = addFold(i) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Mul):
-                    primal_[i] = mulFold(i) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Sub):
-                    primal_[i] = (node.Arity == 1 ? pappus::ops::neg<Scalar>(primal_[i - 1])
-                                                  : subFold(i)) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Div):
-                    primal_[i] = (node.Arity == 1 ? pappus::ops::inv<Scalar>(primal_[i - 1])
-                                                  : divFold(i)) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Fmin):
-                    primal_[i] = minFold(i) * v;
-                    break;
-                case Operon::Hash(BuiltinOp::Fmax):
-                    primal_[i] = maxFold(i) * v;
-                    break;
-                default:
-                    // Gated on arity so a hash registered under the wrong
-                    // registry falls through to the throw below instead of
-                    // reading/dropping the wrong operands.
-                    if (node.Arity == 1) {
-                        if (auto const* unary = IntervalUnaryRules<Scalar>().TryGet(node.HashValue)) {
-                            primal_[i] = (*unary)(primal_[i - 1]) * v;
-                            break;
-                        }
-                    } else if (node.Arity == 2) {
-                        if (auto const* binary = IntervalBinaryRules<Scalar>().TryGet(node.HashValue)) {
-                            auto const j = static_cast<std::size_t>(i - 1);
-                            auto const k = j - (nodes[j].Length + 1);
-                            primal_[i] = (*binary)(primal_[j], primal_[k]) * v;
-                            break;
-                        }
-                    }
-                    return tl::unexpected(fmt::format(
-                        "IntervalEvaluator: node kind `{}` not yet mapped",
-                        node.Name()));
-                }
+            auto const override = std::ranges::find(overrides, node.HashValue, &LaneOverride::Hash);
+            if (override != overrides.end()) {
+                return pappus::ops::variable<Scalar>(LoadOverride(override->Lo), LoadOverride(override->Hi)) * scale;
             }
+
+            auto const& slot = domainSlots_[index];
+            if (!slot.Present) {
+                return tl::unexpected(fmt::format("IntervalEvaluator: no domain bound for variable hash {}", node.HashValue));
+            }
+            return pappus::ops::variable<Scalar>(static_cast<Scalar>(slot.Bounds.first), static_cast<Scalar>(slot.Bounds.second)) * scale;
+        };
+
+        // EvaluatePostOrder invokes user-registered interval callbacks (RegisterUnaryInterval/
+        // RegisterBinaryInterval) directly; a callback that throws must not escape here, or TryEvaluate would
+        // silently stop being non-throwing despite its name and tl::expected contract, forcing every caller to
+        // wrap it in its own try/catch to compensate. Caught once, here, instead.
+        try {
+            return detail::EvaluatePostOrder<detail::IntervalPostOrderPolicy<Scalar>>(
+                tree_->Nodes(), primal_, typename detail::IntervalPostOrderPolicy<Scalar>::Context {}, weight, bindLeaf);
+        } catch (std::exception const& error) {
+            return tl::unexpected(std::string(error.what()));
         }
-        return primal_.back();
+    }
+
+    [[nodiscard]] static auto LoadOverride(Operon::Scalar const* value) -> Scalar
+    {
+        if constexpr (std::same_as<Scalar, Operon::Scalar>) {
+            return *value;
+        } else {
+            return eve::load(value, eve::as<Scalar> {});
+        }
+    }
+
+    void RebuildDomainSlots()
+    {
+        auto const& nodes = tree_->Nodes();
+        domainSlots_.clear();
+        domainSlots_.reserve(nodes.size());
+        for (auto const& node : nodes) {
+            auto const it = node.Type == NodeType::Variable ? domains_.find(node.HashValue) : domains_.end();
+            domainSlots_.push_back(it == domains_.end() ? DomainSlot{} : DomainSlot{ it->second, true });
+        }
     }
 
     struct DomainSlot {
@@ -302,9 +257,11 @@ private:
     };
 
     gsl::not_null<Operon::Tree const*> tree_;
+    DomainMap domains_;
     std::vector<DomainSlot> domainSlots_;
     mutable std::vector<Interval> primal_; // reused across Evaluate calls
 };
+
 
 } // namespace Operon
 

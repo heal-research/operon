@@ -129,39 +129,14 @@ namespace {
         }
     }
 
-    template<> auto OPERON_EXPORT
-    Evaluator<ScalarDispatch>::Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
+    template<> auto
+    Evaluator<ScalarDispatch>::ScoreEstimated(Operon::Span<Operon::Scalar> estimatedValues) const -> typename EvaluatorBase::ReturnType
     {
-        ++CallCount;
         auto const* problem = GetProblem();
-        auto const* dataset = problem->GetDataset();
-
         auto const trainingRange = problem->TrainingRange();
-        auto const targetValues  = problem->TargetValues(trainingRange);
-        auto const weightsOpt    = problem->Weights(trainingRange);
-        auto const weights       = weightsOpt.value_or(Operon::Span<Operon::Scalar const>{});
-
-        auto const& tree = ind.Genotype;
-        auto const* dtable = GetDispatchTable();
-        TInterpreter const interpreter{dtable, dataset, &tree};
-
-        ++ResidualEvaluations;
-        ENSURE(buf.size() >= trainingRange.Size());
-        // EvaluatorBase::Evaluate's contract permits buf.size() >
-        // trainingRange.Size() (a caller-owned scratch buffer sized for
-        // reuse across calls), but Interpreter::Evaluate only writes into
-        // its result span when it's sized exactly to the range (silently
-        // leaving an oversized buffer's tail untouched), and targetValues/
-        // weights are always sized to exactly trainingRange.Size(). Slice
-        // once, up front, so scaling and the error metric both operate on
-        // the same exactly-sized view as the interpreter writes into -
-        // same pattern as MinimumDescriptionLengthEvaluator/
-        // FractionalBayesFactorEvaluator/LikelihoodEvaluator in evaluator.hpp.
-        auto estimatedValues = buf.subspan(0, trainingRange.Size());
-        auto coeff = tree.GetCoefficients();
-        if (!interpreter.TryEvaluate(coeff, trainingRange, estimatedValues)) {
-            return typename EvaluatorBase::ReturnType{EvaluatorBase::ErrMax};
-        }
+        ENSURE(estimatedValues.size() == trainingRange.Size());
+        auto const targetValues = problem->TargetValues(trainingRange);
+        auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const>{});
 
         Operon::Scalar fit{};
         if (skipNonFinite_) [[unlikely]] {
@@ -177,6 +152,43 @@ namespace {
             fit = EvaluatorBase::ErrMax;
         }
         return typename EvaluatorBase::ReturnType{ fit };
+    }
+
+    template<> auto OPERON_EXPORT
+    Evaluator<ScalarDispatch>::EvaluateFromValues(Operon::Span<Operon::Scalar> estimated) const -> typename EvaluatorBase::ReturnType
+    {
+        ++CallCount;
+        ++ResidualEvaluations;
+        return ScoreEstimated(estimated);
+    }
+
+    template<> auto OPERON_EXPORT
+    Evaluator<ScalarDispatch>::Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
+    {
+        auto const* problem = GetProblem();
+        auto const trainingRange = problem->TrainingRange();
+        auto const& tree = ind.Genotype;
+        TInterpreter const interpreter{GetDispatchTable(), problem->GetDataset(), &tree};
+
+        ENSURE(buf.size() >= trainingRange.Size());
+        // EvaluatorBase::Evaluate's contract permits buf.size() >
+        // trainingRange.Size() (a caller-owned scratch buffer sized for
+        // reuse across calls), but Interpreter::TryEvaluate rejects any
+        // result span not sized exactly to the range (InvalidOutputSize),
+        // and targetValues/weights are always sized to exactly
+        // trainingRange.Size(). Slice once, up front, so the interpreter
+        // call, scaling, and the error metric all operate on the same
+        // exactly-sized view -- same pattern as
+        // MinimumDescriptionLengthEvaluator/FractionalBayesFactorEvaluator/
+        // LikelihoodEvaluator in evaluator.hpp.
+        auto estimatedValues = buf.subspan(0, trainingRange.Size());
+        auto coeff = tree.GetCoefficients();
+        if (!interpreter.TryEvaluate(coeff, trainingRange, estimatedValues)) {
+            ++CallCount;
+            ++ResidualEvaluations;
+            return typename EvaluatorBase::ReturnType{EvaluatorBase::ErrMax};
+        }
+        return EvaluateFromValues(estimatedValues);
     }
 
     auto DiversityEvaluator::Prepare(Operon::Span<Operon::Individual const> pop) const -> void {

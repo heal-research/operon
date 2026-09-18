@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "dispatch.hpp"
+#include "postorder_evaluator.hpp"
 #include "node.hpp"
 #include "pset.hpp"
 #include "symbol_library.hpp"
@@ -701,186 +702,103 @@ namespace detail {
     struct NoAffineContext { };
 
     struct IntervalPolicy {
-        using Scalar = Operon::Scalar;
-        using Value  = pappus::interval<Scalar>;
-        using Ctx    = NoAffineContext;
+        using Scalar  = Operon::Scalar;
+        using Value   = pappus::interval<Scalar>;
+        using Context = NoAffineContext;
         static constexpr std::string_view Kind = "interval";
 
         static void RegisterBuiltins() { Operon::RegisterIntervalBuiltins<Scalar>(); }
         static auto UnaryRules() -> Operon::IntervalUnaryRegistry<Scalar> const& { return Operon::IntervalUnaryRules<Scalar>(); }
         static auto BinaryRules() -> Operon::IntervalBinaryRegistry<Scalar> const& { return Operon::IntervalBinaryRules<Scalar>(); }
+        static auto EmptyTree() -> std::string { return "composed-function interval evaluation: empty body"; }
+        static auto MissingNode(Node const& node) -> std::string {
+            return fmt::format("composed-function {} evaluation: node kind `{}` not yet mapped", Kind, node.Name());
+        }
 
-        static auto MakeConst(Ctx const& /*ctx*/, Scalar v) -> Value { return pappus::ops::constant<Scalar>(v); }
-        static auto Add(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::add<Scalar>(a, b); }
-        static auto Mul(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::mul<Scalar>(a, b); }
-        static auto Sub(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::sub<Scalar>(a, b); }
-        static auto Div(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::div<Scalar>(a, b); }
-        static auto Min(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::min<Scalar>(a, b); }
-        static auto Max(Ctx const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(a, b); }
-        static auto Neg(Ctx const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
-        static auto Inv(Ctx const& /*ctx*/, Value const& a) -> Value { return pappus::ops::inv<Scalar>(a); }
-        static auto CallUnary(Ctx const& /*ctx*/, IntervalUnaryFn<Scalar> const& fn, Value const& a) -> Value { return fn(a); }
-        static auto CallBinary(Ctx const& /*ctx*/, IntervalBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> Value { return fn(a, b); }
+        static auto MakeConstant(Context const& /*ctx*/, Scalar v) -> Value { return pappus::ops::constant<Scalar>(v); }
+        static auto Add(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::add<Scalar>(a, b); }
+        static auto Mul(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::mul<Scalar>(a, b); }
+        static auto Sub(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::sub<Scalar>(a, b); }
+        static auto Div(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::div<Scalar>(a, b); }
+        static auto Min(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::min<Scalar>(a, b); }
+        static auto Max(Context const& /*ctx*/, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(a, b); }
+        static auto Neg(Context const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
+        static auto Inv(Context const& /*ctx*/, Value const& a) -> Value { return pappus::ops::inv<Scalar>(a); }
+        static auto CallUnary(Context const& /*ctx*/, IntervalUnaryFn<Scalar> const& fn, Value const& a) -> Value { return fn(a); }
+        static auto CallBinary(Context const& /*ctx*/, IntervalBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> Value { return fn(a, b); }
+        // Skip the scale entirely when v == 1 (exact in IEEE) -- matches AffineEvaluator::emit's identical fast path.
+        static auto Scale(Value value, Scalar s) -> Value { return s == Scalar{1} ? std::move(value) : value * s; }
     };
 
     struct AffinePolicy {
-        using Scalar = Operon::Scalar;
-        using Value  = pappus::affine_form<Scalar>;
-        using Ctx    = pappus::ops::affine_context<Scalar>;
+        using Scalar  = Operon::Scalar;
+        using Value   = pappus::affine_form<Scalar>;
+        using Context = pappus::ops::affine_context<Scalar>;
         static constexpr std::string_view Kind = "affine";
 
         static void RegisterBuiltins() { Operon::RegisterAffineBuiltins<Scalar>(); }
         static auto UnaryRules() -> Operon::AffineUnaryRegistry<Scalar> const& { return Operon::AffineUnaryRules<Scalar>(); }
         static auto BinaryRules() -> Operon::AffineBinaryRegistry<Scalar> const& { return Operon::AffineBinaryRules<Scalar>(); }
+        static auto EmptyTree() -> std::string { return "composed-function affine evaluation: empty body"; }
+        static auto MissingNode(Node const& node) -> std::string {
+            return fmt::format("composed-function {} evaluation: node kind `{}` not yet mapped", Kind, node.Name());
+        }
 
         // pappus::ops::constant(context, value) needs a *non-const*
         // pappus::ops::affine_context<T>& (it allocates no new symbol for a
         // plain scalar, but is still declared non-const) — every caller here
-        // only ever has a const Ctx. affine_form's own constructor taking
+        // only ever has a const Context. affine_form's own constructor taking
         // the *inner* pappus::affine_context (ctx.state) by const reference
         // is the equivalent leaf-construction path that actually accepts a
         // const context — used directly here instead.
-        static auto MakeConst(Ctx const& ctx, Scalar v) -> Value { return Value{ctx.state, v}; }
-        static auto Add(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::add<Scalar>(ctx, a, b); }
-        static auto Mul(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::mul<Scalar>(ctx, a, b); }
-        static auto Sub(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::sub<Scalar>(ctx, a, b); }
-        static auto Div(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::div<Scalar>(ctx, a, b); }
-        static auto Min(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::min<Scalar>(ctx, a, b); }
-        static auto Max(Ctx const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(ctx, a, b); }
-        static auto Neg(Ctx const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
-        static auto Inv(Ctx const& ctx, Value const& a) -> Value { return pappus::ops::inv<Scalar>(ctx, a); }
-        static auto CallUnary(Ctx const& ctx, AffineUnaryFn<Scalar> const& fn, Value const& a) -> Value { return fn(ctx, a); }
-        static auto CallBinary(Ctx const& ctx, AffineBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> Value { return fn(ctx, a, b); }
+        static auto MakeConstant(Context const& ctx, Scalar v) -> Value { return Value{ctx.state, v}; }
+        static auto Add(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::add<Scalar>(ctx, a, b); }
+        static auto Mul(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::mul<Scalar>(ctx, a, b); }
+        static auto Sub(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::sub<Scalar>(ctx, a, b); }
+        static auto Div(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::div<Scalar>(ctx, a, b); }
+        static auto Min(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::min<Scalar>(ctx, a, b); }
+        static auto Max(Context const& ctx, Value const& a, Value const& b) -> Value { return pappus::ops::max<Scalar>(ctx, a, b); }
+        static auto Neg(Context const& /*ctx*/, Value const& a) -> Value { return pappus::ops::neg<Scalar>(a); }
+        static auto Inv(Context const& ctx, Value const& a) -> Value { return pappus::ops::inv<Scalar>(ctx, a); }
+        static auto CallUnary(Context const& ctx, AffineUnaryFn<Scalar> const& fn, Value const& a) -> Value { return fn(ctx, a); }
+        static auto CallBinary(Context const& ctx, AffineBinaryFn<Scalar> const& fn, Value const& a, Value const& b) -> Value { return fn(ctx, a, b); }
+        // Skip the scale entirely when v == 1 (exact in IEEE) -- matches AffineEvaluator::emit's identical fast path.
+        // Not just a redundant-copy avoidance: Value::operator* copies then runs operator*=, which loops every term
+        // (FMA-based exact error tracking) even though a v==1 scale changes nothing.
+        static auto Scale(Value value, Scalar s) -> Value { return s == Scalar{1} ? std::move(value) : value * s; }
     };
 
-    // The per-node dispatch core shared by all four mini-evaluators: walks
-    // `bodyNodes` once, substituting each param leaf with the caller-
-    // supplied `args[paramIdx]` (unary callers only ever populate args[0];
-    // the arity-1 body only ever contains ParamHash(0) leaves, so args[1]
-    // is never dereferenced), and dispatching internal nodes through the
-    // hardcoded Add/Mul/Sub/Div/Fmin/Fmax n-ary folds or, on a miss,
-    // Policy::UnaryRules()/BinaryRules() — mirrors IntervalEvaluator::
-    // Evaluate()'s/AffineEvaluator::Evaluate()'s own per-node dispatch
-    // exactly (see interval_evaluator.hpp/affine_evaluator.hpp), just
-    // body-scoped instead of a nested full-evaluator pass.
+    // Shared per-node dispatch core for the interval/affine mini-evaluators
+    // below, built on the generic EvaluatePostOrder engine (see
+    // postorder_evaluator.hpp). Substitutes each param leaf with the
+    // caller-supplied `args[paramIdx]` (unary callers only ever populate
+    // args[0]; the arity-1 body only ever contains ParamHash(0) leaves, so
+    // args[1] is never dereferenced) via `bindLeaf`; internal nodes go
+    // through the shared n-ary folds and registry dispatch.
     template<typename Policy>
-    auto EvaluateComposedBody(Operon::Vector<Node> const& bodyNodes, typename Policy::Ctx const& ctx,
+    auto EvaluateComposedBody(Operon::Vector<Node> const& bodyNodes, typename Policy::Context const& ctx,
         std::array<typename Policy::Value const*, kMaxComposedFunctionArity> const& args) -> typename Policy::Value
     {
         using Value = typename Policy::Value;
         using Scalar = typename Policy::Scalar;
-        Policy::RegisterBuiltins();
 
-        auto const n = bodyNodes.size();
-        std::vector<Value> primal;
-        primal.reserve(n);
-
-        auto const addFold = [&](std::size_t i) {
-            auto acc = Policy::MakeConst(ctx, Scalar{0});
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = Policy::Add(ctx, acc, primal[j]); }
-            return acc;
-        };
-        auto const mulFold = [&](std::size_t i) {
-            auto acc = Policy::MakeConst(ctx, Scalar{1});
-            for (auto j : Tree::Indices(bodyNodes, i)) { acc = Policy::Mul(ctx, acc, primal[j]); }
-            return acc;
-        };
-        auto const subFold = [&](std::size_t i) {
-            std::optional<Value> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = Policy::Sub(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        auto const divFold = [&](std::size_t i) {
-            std::optional<Value> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = Policy::Div(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        auto const minFold = [&](std::size_t i) {
-            std::optional<Value> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = Policy::Min(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        auto const maxFold = [&](std::size_t i) {
-            std::optional<Value> acc;
-            for (auto j : Tree::Indices(bodyNodes, i)) {
-                if (!acc) { acc = primal[j]; } else { acc = Policy::Max(ctx, *acc, primal[j]); }
-            }
-            return std::move(*acc);
-        };
-        // Skip the scale entirely when v == 1 (exact in IEEE) -- matches
-        // AffineEvaluator::emit's identical fast path. Not just a
-        // redundant-copy avoidance: for the affine Policy, Value::operator*
-        // copies then runs operator*=, which loops every term (now with
-        // FMA-based exact error tracking) even though a v==1 scale changes
-        // nothing -- skipping it is a real savings on every unscaled
-        // body-internal node, not merely cosmetic.
-        auto const scaleBy = [](Value val, Scalar s) -> Value {
-            return s == Scalar{1} ? std::move(val) : val * s;
-        };
-
-        for (std::size_t i = 0; i < n; ++i) {
-            auto const& node = bodyNodes[i];
-            // Body-internal constants are always Optimize=false (forced by
-            // ParseFunctionBody) — no coefficient span to consult, always
-            // node.Value directly.
-            auto const v = static_cast<Scalar>(node.Value);
-
+        auto const weight = [](Node const& node) { return static_cast<Scalar>(node.Value); };
+        auto const bindLeaf = [&](Node const& node, std::size_t /*index*/, Scalar v) -> tl::expected<Value, std::string> {
             if (node.Type == Operon::NodeType::Constant) {
-                primal.push_back(Policy::MakeConst(ctx, v));
-            } else if (node.IsVariable()) {
-                // Literal caller-supplied argument, not a fresh domain
-                // lookup — same object-reuse principle as the affine-
-                // correlation fix (Fix 1).
-                auto const pIdx = static_cast<std::size_t>(node.HashValue - Operon::BuiltinOpCount);
-                primal.push_back(scaleBy(*args[pIdx], v));
-            } else if (node.IsRef()) {
-                primal.push_back(primal[node.RefTo]);
-            } else {
-                switch (node.HashValue) {
-                case Operon::Hash(Operon::BuiltinOp::Add): primal.push_back(scaleBy(addFold(i), v)); break;
-                case Operon::Hash(Operon::BuiltinOp::Mul): primal.push_back(scaleBy(mulFold(i), v)); break;
-                case Operon::Hash(Operon::BuiltinOp::Sub):
-                    primal.push_back(scaleBy(node.Arity == 1 ? Policy::Neg(ctx, primal[i - 1]) : subFold(i), v));
-                    break;
-                case Operon::Hash(Operon::BuiltinOp::Div):
-                    primal.push_back(scaleBy(node.Arity == 1 ? Policy::Inv(ctx, primal[i - 1]) : divFold(i), v));
-                    break;
-                case Operon::Hash(Operon::BuiltinOp::Fmin): primal.push_back(scaleBy(minFold(i), v)); break;
-                case Operon::Hash(Operon::BuiltinOp::Fmax): primal.push_back(scaleBy(maxFold(i), v)); break;
-                default:
-                    // Mirrors the base evaluator's own miss behavior exactly
-                    // (still throws on a miss, unchanged from today) — today
-                    // this is unreachable whenever the caller has already
-                    // run ValidateSymbolicDiffCoverage (strictly narrower
-                    // than interval/affine coverage), but that ordering
-                    // isn't enforced by the type system, so guard it
-                    // explicitly rather than assume the caller got the
-                    // sequencing right.
-                    if (node.Arity == 1) {
-                        if (auto const* unary = Policy::UnaryRules().TryGet(node.HashValue)) {
-                            primal.push_back(scaleBy(Policy::CallUnary(ctx, *unary, primal[i - 1]), v));
-                            break;
-                        }
-                    } else if (node.Arity == 2) {
-                        auto const j = i - 1;
-                        auto const k = j - (bodyNodes[j].Length + 1);
-                        if (auto const* binary = Policy::BinaryRules().TryGet(node.HashValue)) {
-                            primal.push_back(scaleBy(Policy::CallBinary(ctx, *binary, primal[j], primal[k]), v));
-                            break;
-                        }
-                    }
-                    throw std::runtime_error(fmt::format(
-                        "composed-function {} evaluation: node kind `{}` not yet mapped", Policy::Kind, node.Name()));
-                }
+                return Policy::MakeConstant(ctx, v);
             }
+            // Literal caller-supplied argument, not a fresh domain lookup --
+            // same object-reuse principle as the affine-correlation fix (Fix 1).
+            auto const pIdx = static_cast<std::size_t>(node.HashValue - Operon::BuiltinOpCount);
+            return Policy::Scale(*args[pIdx], v);
+        };
+
+        std::vector<Value> primal;
+        auto result = detail::EvaluatePostOrder<Policy>(bodyNodes, primal, ctx, weight, bindLeaf);
+        if (!result) {
+            throw std::runtime_error(std::move(result.error()));
         }
-        return primal.back();
+        return std::move(*result);
     }
 } // namespace detail
 

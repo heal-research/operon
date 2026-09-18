@@ -59,10 +59,15 @@ struct ShapeConstraintPolicy {
     Operon::Scalar PenaltyWeight { 1 };
 };
 
-// Backend(s) TryAffineBound uses to bound a constraint. Combined (default)
-// intersects affine and interval. Interval/Affine isolate one backend.
-// Bisected recursively bisects the domain and unions per-sub-box results;
-// currently only supported combined with Interval.
+// Backend(s) TryAffineBound uses to bound a constraint. Interval (default) uses
+// plain interval arithmetic only -- ties or beats Combined on the paper's full
+// matrix (see RESULTS.md) at ~24% less work per Measure() call, with none of
+// affine's ill-conditioned/uncertified failure modes. Combined intersects
+// affine and interval; Affine isolates the affine backend alone (confirmed
+// non-competitive -- kept only so run_bound_mode_ablation*.sh can still
+// reproduce that published cell by name). Bisected recursively bisects the
+// domain and unions per-sub-box results; currently only supported combined
+// with Interval.
 enum class ShapeBoundMode : unsigned {
     Combined = 0U,
     Interval = 1U << 0U,
@@ -168,6 +173,10 @@ public:
     // Accumulates over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
     [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
 
+    // On an uncached tree, fuses the gate's ForwardPass with the wrapped evaluator's scoring pass when the
+    // wrapped evaluator is concretely Operon::Evaluator<ScalarDispatch> (see fastEvaluator_) -- one pass
+    // instead of two. Falls back to the ordinary Feasible()-then-delegate sequence otherwise (cache hit, or
+    // an evaluator type that can't accept pre-materialized values).
     auto Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
     auto ObjectiveCount() const -> std::size_t override { return evaluator_->ObjectiveCount(); }
@@ -199,12 +208,16 @@ private:
     Operon::Vector<Operon::Hash> constraintVarHash_;
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     double worstValue_ { 1.0 };
-    ShapeBoundMode boundMode_ { ShapeBoundMode::Combined };
+    ShapeBoundMode boundMode_ { ShapeBoundMode::Interval };
     ShapeBoundOptions boundOptions_ {};
     // Non-owning; set via SetExecutor(). nullptr means Prepare() runs
     // sequentially -- see Prepare()'s doc comment.
     tf::Executor* taskExecutor_ { nullptr };
     mutable std::atomic_size_t violations_ { 0 };
+    // Set once at construction (dynamic_cast, non-null iff `evaluator` is concretely this type). Evaluate()
+    // uses it to fuse the gate's feasibility ForwardPass with the inner evaluator's scoring ForwardPass on an
+    // uncached tree, skipping the inner evaluator's own duplicate pass -- see Evaluate()'s doc comment.
+    Operon::Evaluator<Operon::ScalarDispatch> const* fastEvaluator_ { nullptr };
 
     struct FeasibleData {
         ShapeConstraintMeasurementSummary Value {};
@@ -234,8 +247,8 @@ public:
         boundOptions_ = options;
         measurementCache_.Clear();
     }
-    [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar;
-    [[nodiscard]] auto Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary;
+    [[nodiscard]] auto RawViolation(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const -> Operon::Scalar;
+    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const -> ShapeConstraintMeasurementSummary;
 
     // See ShapeConstrainedEvaluator::SetExecutor — Prepare()'s population
     // Measure() pre-warm reuses the caller's executor the same way.
@@ -253,7 +266,7 @@ private:
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     Operon::Scalar weight_ { 1 };
     Operon::Scalar unknownViolation_ { 1 };
-    ShapeBoundMode boundMode_ { ShapeBoundMode::Combined };
+    ShapeBoundMode boundMode_ { ShapeBoundMode::Interval };
     ShapeBoundOptions boundOptions_ {};
     tf::Executor* taskExecutor_ { nullptr };
 

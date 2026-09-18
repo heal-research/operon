@@ -183,6 +183,57 @@ TEST_CASE("ShapeConstrainedEvaluator - correctly-signed constraints are feasible
     CHECK(sce.Violations() == 0);
 }
 
+TEST_CASE("ShapeConstrainedEvaluator - fused fast path does not misfire for a derived Evaluator<DTable> subclass", "[shape-constraints]")
+{
+    // Regression: fastEvaluator_ used to be set by dynamic_cast<Evaluator<DTable> const*> alone, which also
+    // succeeds for a *derived* final class like MinimumDescriptionLengthEvaluator (it IS-A Evaluator<DTable>).
+    // Since EvaluateFromValues()/ScoreEstimated() are non-virtual, the fused path would then silently run the
+    // base class's plain error-metric scoring instead of the derived class's actual MDL objective on an
+    // uncached tree -- while a cache-hit re-evaluation of the same tree correctly delegated to mdl's own
+    // Evaluate(). Fitness would depend on cache state. Guard requires an exact typeid match.
+    Fixture fx;
+    Operon::MinimumDescriptionLengthEvaluator<Fixture::DTable, Operon::GaussianLikelihood<Operon::Scalar>> mdl{&fx.problem, &fx.dtable};
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
+
+    Operon::ShapeConstrainedEvaluator sce(&mdl, &fx.dtable, cs);
+
+    auto ind = Fixture::MakeIndividual(fx.tree);
+    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
+
+    // First call on this tree is a guaranteed feasibleCache_ miss -- do NOT call Feasible()/Measure() first,
+    // that would pre-warm the cache and turn this into the (always-correct) cache-hit delegate path instead.
+    auto const fused = sce(fx.rng, ind, buf);
+    auto const direct = mdl(fx.rng, ind, buf);
+    REQUIRE(fused.size() == direct.size());
+    CHECK(fused[0] == Catch::Approx(direct[0]));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - fused cache-miss score matches delegate cache-hit score for the same tree", "[shape-constraints]")
+{
+    // The fused (cache-miss) path and the ordinary delegate (cache-hit) path are two different code paths
+    // computing the same thing for a plain Evaluator<DTable>; they must agree regardless of which one a given
+    // call happens to take.
+    Fixture fx;
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
+
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+
+    auto ind = Fixture::MakeIndividual(fx.tree);
+    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
+
+    auto const miss = sce(fx.rng, ind, buf);      // fastEvaluator_ set, cache miss -> fused path
+    auto const hit = sce(fx.rng, ind, buf);        // same tree, now cached -> delegate path
+    REQUIRE(miss.size() == hit.size());
+    CHECK(miss[0] == Catch::Approx(hit[0]));
+}
+
 TEST_CASE("ShapeConstrainedEvaluator - wrongly-signed constraint is rejected with WorstValue", "[shape-constraints]")
 {
     Fixture fx;
@@ -449,6 +500,50 @@ auto const kBisectionExprCases = std::vector<BisectionExprCase>{
 };
 
 } // namespace
+
+TEST_CASE("Wide interval evaluator preserves packed tree lanes", "[shape-constraints][bisection]")
+{
+    using S = Operon::Scalar;
+    using W = eve::wide<S>;
+    using WI = Operon::IntervalEvaluator<W>;
+    using Pack = pappus::packed_subdomains<S, W>;
+
+    Eigen::Array<S, -1, -1> data(2, 3);
+    data << S{-5}, S{-5}, S{0}, S{5}, S{5}, S{0};
+    Operon::Dataset ds(gsl::not_null{data.data()}, 2, 3);
+    auto tree = Operon::InfixParser::Parse("sin(X1) + cos(X1) * X1 ^ 2 + X2", ds);
+    auto const x1 = ds.GetVariable("X1").value().Hash;
+    auto const x2 = ds.GetVariable("X2").value().Hash;
+    WI::DomainMap domains { {x1, {S{-5}, S{5}}}, {x2, {S{-5}, S{5}}} };
+    pappus::box<S> domain { pappus::interval<S>(-5, 5), pappus::interval<S>(-5, 5) };
+    std::array<std::size_t, 4> schedule { 0, 1, 0, 1 };
+    pappus::subdivision_plan plan(std::move(domain), schedule);
+    Pack pack(plan, 0);
+    Operon::Vector<WI::LaneOverride> overrides {
+        {x1, pack.lower_data(0), pack.upper_data(0)},
+        {x2, pack.lower_data(1), pack.upper_data(1)},
+    };
+    WI evaluator(&tree, domains);
+    auto const packed = evaluator.TryEvaluate(tree.GetCoefficients(), overrides);
+    REQUIRE(packed);
+
+    alignas(W) std::array<S, Pack::width> lower{};
+    alignas(W) std::array<S, Pack::width> upper{};
+    eve::store(packed->inf(), lower.data());
+    eve::store(packed->sup(), upper.data());
+    for (std::size_t lane = 0; lane < pack.valid_lanes(); ++lane) {
+        auto const leaf = plan.leaf(lane);
+        Operon::IntervalEvaluator<S>::DomainMap scalarDomains {
+            {x1, {leaf[0].inf(), leaf[0].sup()}},
+            {x2, {leaf[1].inf(), leaf[1].sup()}},
+        };
+        Operon::IntervalEvaluator<S> scalar(&tree, scalarDomains);
+        auto const expected = scalar.TryEvaluate(tree.GetCoefficients());
+        REQUIRE(expected);
+        CHECK(lower[lane] == Catch::Approx(expected->inf()).margin(1e-4F));
+        CHECK(upper[lane] == Catch::Approx(expected->sup()).margin(1e-4F));
+    }
+}
 
 // The SIMD-vs-scalar soundness cross-check from the performance sweep,
 // runnable in CI: the production wide<T>-batched bisected bound must match
@@ -1087,7 +1182,7 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
         CHECK_FALSE(feasible);
     };
 
-    SECTION("throwing affine rule, combined mode (default): the catch around ae.TryEvaluate degrades it")
+    SECTION("throwing affine rule, combined mode: the catch around ae.TryEvaluate degrades it")
     {
         auto const hash = Operon::Hasher{}("shape_throw_affine_rule");
         RegisterUnaryAffine<Scalar>(hash,
@@ -1095,20 +1190,22 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
                 throw std::runtime_error("user affine rule failed");
             });
         Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+        sce.SetBoundMode(ShapeBoundMode::Combined);
         assertDegradesToUncertified(sce, makeTree(hash));
     }
 
-    SECTION("throwing interval rule, combined mode (default): the catch around the IntervalBound fallback degrades it")
+    SECTION("throwing interval rule, combined mode: TryEvaluate's own internal catch degrades it")
     {
         auto const hash = Operon::Hasher{}("shape_throw_interval_rule_combined");
         RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const&) -> IntervalEvaluator<Scalar>::Interval {
             throw std::runtime_error("user interval rule failed");
         });
         Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+        sce.SetBoundMode(ShapeBoundMode::Combined);
         assertDegradesToUncertified(sce, makeTree(hash));
     }
 
-    SECTION("throwing interval rule, interval mode: the catch around TryIntervalBound's own IntervalBound degrades it")
+    SECTION("throwing interval rule, interval mode: TryEvaluate's own internal catch degrades it")
     {
         auto const hash = Operon::Hasher{}("shape_throw_interval_rule_interval_mode");
         RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const&) -> IntervalEvaluator<Scalar>::Interval {

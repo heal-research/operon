@@ -279,10 +279,20 @@ public:
     auto
     Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
+    // Scores `estimated` directly, skipping this evaluator's own ForwardPass -- for a caller (e.g.
+    // ShapeConstrainedEvaluator) that already materialized the same tree's TrainingRange() output for an
+    // unrelated reason within the same call. `estimated` must be exactly TrainingRange().Size() long and is
+    // mutated in place if linear scaling is enabled (same contract as Evaluate()'s internal buffer).
+    auto EvaluateFromValues(Operon::Span<Operon::Scalar> estimated) const -> typename EvaluatorBase::ReturnType;
+
 protected:
     [[nodiscard]] auto UsesLinearScaling() const -> bool { return GetProblem()->LinearScalingEnabled(); }
 
 private:
+    // Shared tail of Evaluate()/EvaluateFromValues(): skip-nonfinite scoring or linear-scaling fit-and-apply,
+    // then the error metric. `estimated` must be exactly TrainingRange().Size() long.
+    auto ScoreEstimated(Operon::Span<Operon::Scalar> estimated) const -> typename EvaluatorBase::ReturnType;
+
     gsl::not_null<DTable const*> dtable_;
     ErrorMetric error_;
     // Opt-in. When true: non-finite rows excluded via ErrorMetric::FiniteSubset

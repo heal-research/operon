@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <typeinfo>
 #include <vector>
 
 #include <fmt/format.h>
@@ -60,10 +61,15 @@ namespace {
 
     // True if `b` holds a finite interval -- used to detect NaN/inf enclosures from domain errors or
     // degenerate affine forms without a try/catch at each call site.
-
     auto IsFiniteBound(BoundResult const& b) -> bool
     {
         return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
+    }
+
+    auto EvaluateIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& domains) -> BoundResult
+    {
+        IntervalEvaluator<Operon::Scalar> evaluator(&tree, domains);
+        return evaluator.TryEvaluate(tree.GetCoefficients());
     }
 
 struct IntervalSubdivisionPlan {
@@ -131,21 +137,14 @@ struct IntervalSubdivisionPlan {
     }
 };
 
-    // Interval-only domain bisection, SIMD-batched: splits the widest referenced axis at each level, evaluating
-    // all 2^depth sub-boxes as one schedule so they stay SIMD-batchable; a scalar tail handles a partial batch.
-    // Falls back to the direct whole-box enclosure (already sound) on any unbounded or failed sub-box.
     auto BisectedIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, int depth) -> BoundResult
     {
         using WScalar = eve::wide<Operon::Scalar>;
         constexpr int WSize = static_cast<int>(eve::cardinal_v<WScalar>);
 
         auto const directBound = [&]() -> BoundResult {
-            try {
-                IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
-                return ie.Evaluate(tree.GetCoefficients());
-            } catch (std::exception const& e) {
-                return tl::unexpected(std::string(e.what()));
-            }
+            IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
+            return ie.TryEvaluate(tree.GetCoefficients());
         };
 
         auto const plan = IntervalSubdivisionPlan::Make(tree, dom, depth);
@@ -153,12 +152,40 @@ struct IntervalSubdivisionPlan {
 
         if (!plan->SingleAxis()) {
             try {
+                using Pack = pappus::packed_subdomains<Operon::Scalar, WScalar>;
                 auto const coeff = tree.GetCoefficients();
                 auto const nLeaves = std::size_t { 1 } << plan->Depth;
+                pappus::box<Operon::Scalar> domain;
+                domain.reserve(plan->Axes.size());
+                for (auto const axis : plan->Axes) {
+                    auto const [lo, hi] = dom.at(axis);
+                    domain.emplace_back(lo, hi);
+                }
+                pappus::subdivision_plan subdivision(std::move(domain), plan->Schedule);
+                IntervalEvaluator<WScalar> evaluator(&tree, dom);
+                auto acc = IntervalEvaluator<WScalar>::Interval::empty();
+                std::size_t first = 0;
+                Operon::Vector<typename IntervalEvaluator<WScalar>::LaneOverride> overrides(plan->Axes.size());
+                Pack pack(subdivision, 0);
+                for (; first + Pack::width <= nLeaves; first += Pack::width) {
+                    pack.refill(subdivision, first);
+                    for (std::size_t axis = 0; axis < plan->Axes.size(); ++axis) {
+                        overrides[axis] = { plan->Axes[axis], pack.lower_data(axis), pack.upper_data(axis) };
+                    }
+                    auto const batch = evaluator.TryEvaluate(coeff, overrides);
+                    if (!batch || eve::any(batch->is_empty())
+                        || !eve::all(eve::is_finite(batch->inf()) && eve::is_finite(batch->sup()))) {
+                        return directBound();
+                    }
+                    acc |= *batch;
+                }
                 std::optional<Interval> result;
-                for (std::size_t leaf = 0; leaf < nLeaves; ++leaf) {
-                    IntervalEvaluator<Operon::Scalar> evaluator(&tree, plan->LeafDomains(dom, leaf));
-                    auto const bound = evaluator.TryEvaluate(coeff);
+                if (first != 0) {
+                    result = Interval(eve::reduce(acc.inf(), eve::min), eve::reduce(acc.sup(), eve::max));
+                }
+                for (; first < nLeaves; ++first) {
+                    IntervalEvaluator<Operon::Scalar> tail(&tree, plan->LeafDomains(dom, first));
+                    auto const bound = tail.TryEvaluate(coeff);
                     if (!bound || bound->is_empty() || !std::isfinite(bound->inf()) || !std::isfinite(bound->sup())) {
                         return directBound();
                     }
@@ -242,13 +269,8 @@ struct IntervalSubdivisionPlan {
         // Affine forms cannot represent every interval enclosure. In particular, a zero-crossing denominator is
         // unbounded and a variable exponent may reject an otherwise valid constant integer power. Fall back to
         // the interval evaluator, which can conservatively represent those cases.
-        auto const IntervalBound = [&]() -> BoundResult {
-            try {
-                IntervalEvaluator<Operon::Scalar> ie(&tree, IntervalEvaluator<Operon::Scalar>::DomainMap { ae.Domains() });
-                return ie.Evaluate(tree.GetCoefficients());
-            } catch (std::exception const& e) {
-                return tl::unexpected(std::string(e.what()));
-            }
+        auto const IntervalBound = [&]() {
+            return EvaluateIntervalBound(tree, IntervalEvaluator<Operon::Scalar>::DomainMap { ae.Domains() });
         };
 
         if (HasFlag(mode, ShapeBoundMode::Interval)) {
@@ -409,19 +431,20 @@ struct IntervalSubdivisionPlan {
     // builds its own AffineEvaluator per sub-box specifically to rescue affine-mode failures, and would
     // reintroduce the exact cost this function avoids (BisectedIntervalBound already has its own fallback via
     // directBound()). TightenRange's fallback is kept -- it only ever needed the domain map too.
-    auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& dom, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
+    // `ie` is shared across every constraint in this bound set (see the
+    // AffineEvaluator-sharing comment two functions up, and
+    // IntervalEvaluator::SetTree's doc comment) -- SetTree retargets it at
+    // `tree` (the identity tree, or a derivative constraint's sliced tree)
+    // instead of constructing a fresh evaluator per call.
+    auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
     {
         auto const IntervalBound = [&]() -> BoundResult {
-            try {
-                IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
-                return ie.Evaluate(tree.GetCoefficients());
-            } catch (std::exception const& e) {
-                return tl::unexpected(std::string(e.what()));
-            }
+            ie.SetTree(&tree);
+            return ie.TryEvaluate(tree.GetCoefficients());
         };
 
         auto direct = HasFlag(mode, ShapeBoundMode::Bisected)
-            ? BisectedIntervalBound(tree, dom, opts.BisectionDepth)
+            ? BisectedIntervalBound(tree, ie.Domains(), opts.BisectionDepth)
             : IntervalBound();
         if (IsFiniteBound(direct)) {
             return direct;
@@ -429,7 +452,7 @@ struct IntervalSubdivisionPlan {
 
         if (opts.UseTightenRangeFallback) {
             try {
-                auto tr = TightenRange(tree, dom, tree.GetCoefficients());
+                auto tr = TightenRange(tree, ie.Domains(), tree.GetCoefficients());
                 if (std::isfinite(tr.inf()) && std::isfinite(tr.sup())) {
                     return tr;
                 }
@@ -440,14 +463,14 @@ struct IntervalSubdivisionPlan {
         return direct;
     }
 
-    // Mirrors BoundFor exactly, but for TryIntervalBound's lighter domain map instead of AffineEvaluator&. See
-    // BoundFor's comment for the derivative slicing rationale (identical here).
+    // Mirrors BoundFor exactly, but for TryIntervalBound's shared IntervalEvaluator instead of AffineEvaluator&.
+    // See BoundFor's comment for the derivative slicing rationale (identical here).
     auto BoundForInterval(ShapeConstraintOp op, Tree const& tree, Operon::Hash variable,
-        IntervalEvaluator<Operon::Scalar>::DomainMap const& dom,
+        IntervalEvaluator<Operon::Scalar>& ie,
         VariableGradientDag const& dag1, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
     {
         if (op == ShapeConstraintOp::Identity) {
-            return TryIntervalBound(tree, dom, mode, opts);
+            return TryIntervalBound(tree, ie, mode, opts);
         }
 
         auto const i1 = VariableIndex(dag1, variable);
@@ -459,7 +482,7 @@ struct IntervalSubdivisionPlan {
         }
         auto d1 = SliceToTree(dag1, dag1.Roots[*i1]);
         if (op == ShapeConstraintOp::FirstDerivative) {
-            return d1 ? TryIntervalBound(*d1, dom, mode, opts) : BoundResult(Interval(Operon::Scalar { 0 }, Operon::Scalar { 0 }));
+            return d1 ? TryIntervalBound(*d1, ie, mode, opts) : BoundResult(Interval(Operon::Scalar { 0 }, Operon::Scalar { 0 }));
         }
 
         if (!d1) {
@@ -474,8 +497,9 @@ struct IntervalSubdivisionPlan {
             return tl::unexpected("variable derivative involves an op with no differentiation rule");
         }
         auto d2 = SliceToTree(dag2, dag2.Roots[*i2]);
-        return d2 ? TryIntervalBound(*d2, dom, mode, opts) : BoundResult(Interval(Operon::Scalar { 0 }, Operon::Scalar { 0 }));
+        return d2 ? TryIntervalBound(*d2, ie, mode, opts) : BoundResult(Interval(Operon::Scalar { 0 }, Operon::Scalar { 0 }));
     }
+
 
     // The bound for one constraint's Op: the tree itself for Identity, or the (possibly twice-)differentiated tree
     // for First-/SecondDerivative -- an identically-zero derivative bounds to the degenerate interval [0, 0].
@@ -640,14 +664,16 @@ struct IntervalSubdivisionPlan {
         };
 
         // Interval-only mode (with or without Bisected) never touches AffineEvaluator's affine machinery -- skip
-        // constructing it, sharing the lighter interval domain map across every constraint in this set instead.
+        // constructing it, sharing one IntervalEvaluator across every constraint in this set instead (same
+        // reasoning as the AffineEvaluator sharing just below: skips a per-constraint domainSlots_/primal_
+        // regrowth that profiling showed as real allocation churn).
         if (HasFlag(mode, ShapeBoundMode::Interval)) {
-            IntervalEvaluator<Operon::Scalar>::DomainMap const dom { domainsByHash };
+            IntervalEvaluator<Operon::Scalar> ie(&tree, domainsByHash);
             for (std::size_t i = 0; i < constraints.Constraints.size(); ++i) {
                 auto const& c = constraints.Constraints[i];
                 auto const bound = c.Op == ShapeConstraintOp::Identity
-                    ? TryIntervalBound(tree, dom, mode, opts)
-                    : BoundForInterval(c.Op, tree, constraintVarHash[i], dom, SharedDag1(), mode, opts);
+                    ? TryIntervalBound(tree, ie, mode, opts)
+                    : BoundForInterval(c.Op, tree, constraintVarHash[i], ie, SharedDag1(), mode, opts);
                 Apply(i, bound);
             }
             return summary;
@@ -701,6 +727,18 @@ ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase
     , constraints_(std::move(constraints))
 {
     ResolveShapeConstraintContext(evaluator->GetProblem(), constraints_, constraintVarHash_, domainsByHash_, "ShapeConstrainedEvaluator");
+    // Fused scoring (see Evaluate()) calls EvaluateFromValues()/ScoreEstimated() directly -- both are
+    // non-virtual, so a dynamic_cast succeeding for a derived-but-final type (MinimumDescriptionLengthEvaluator,
+    // FractionalBayesFactorEvaluator, LikelihoodEvaluator, ...) would silently run the base class's plain
+    // error-metric scoring instead of the derived override, scoring the wrong objective. typeid requires an
+    // exact match, ruling those out; the dispatch-table identity check still guards against a different
+    // ScalarDispatch instance with different registered primitives/derivatives.
+    auto const* evaluatorPtr = evaluator.get();
+    if (auto const* fast = dynamic_cast<Operon::Evaluator<Operon::ScalarDispatch> const*>(evaluatorPtr);
+        fast != nullptr && typeid(*evaluatorPtr) == typeid(Operon::Evaluator<Operon::ScalarDispatch>)
+        && fast->GetDispatchTable() == dtable.get()) {
+        fastEvaluator_ = fast;
+    }
 }
 
 auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
@@ -866,9 +904,39 @@ auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) cons
 auto ShapeConstrainedEvaluator::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
 {
     ++CallCount;
-    if (!Feasible(ind.Genotype)) {
+    auto const& tree = ind.Genotype;
+    auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
+
+    ShapeConstraintMeasurementSummary result;
+    bool fused = false;
+    // LazyEmplace holds this hash's shard lock across the miss branch, so a concurrent caller hashing to the
+    // same key blocks on the first computation rather than duplicating it.
+    feasibleCache_.LazyEmplace(hash, [&](auto const& e) { result = e.Value; }, [&](auto& e) {
+            // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
+            // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
+            // so scoring-path scaling could describe a different tree than the genotype certified here.
+            //
+            // On a miss with a fast-scoreable inner evaluator, thread `buf` through as FitLinearScaling's
+            // scratch: it then holds this tree's fresh TrainingRange() output as a side effect, letting a
+            // feasible result below skip straight to EvaluateFromValues() instead of a second ForwardPass.
+            // `scaling` comes back empty (no interpreter call at all) iff linear scaling is disabled. `fused`
+            // requires `scratch` to be at least trainingRange-sized (matching FitLinearScaling's own contract
+            // for when it actually writes into scratch) -- a merely nonempty-but-undersized `buf` (a caller
+            // contract violation; EvaluatorBase::Evaluate documents buf.size() >= TrainingRange().Size()) must
+            // not be treated as fused, or EvaluateFromValues() would score stale/uninitialized data.
+            auto const trainSize = GetProblem()->TrainingRange().Size();
+            auto const scratch = fastEvaluator_ != nullptr ? buf : Operon::Span<Operon::Scalar> {};
+            auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange(), scratch);
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, scaling, boundMode_, boundOptions_);
+            fused = scratch.size() >= trainSize && scaling.has_value();
+            e.Value = result; });
+
+    if (!result.Feasible) {
         ++violations_;
         return ReturnType(evaluator_->ObjectiveCount(), static_cast<Operon::Scalar>(worstValue_));
+    }
+    if (fused) {
+        return fastEvaluator_->EvaluateFromValues(buf.subspan(0, GetProblem()->TrainingRange().Size()));
     }
     return (*evaluator_)(rng, ind, buf);
 }
@@ -894,7 +962,7 @@ ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<Operon::Problem c
     ResolveShapeConstraintContext(problem_, constraints_, constraintVarHash_, domainsByHash_, "ShapeViolationEvaluator");
 }
 
-auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary
+auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch) const -> ShapeConstraintMeasurementSummary
 {
     auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
     ShapeConstraintMeasurementSummary result;
@@ -905,7 +973,7 @@ auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeCo
             // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
             // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
             // so scoring-path scaling could describe a different tree than the genotype certified here.
-            auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
+            auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange(), scratch);
             result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_, scaling, boundMode_, boundOptions_);
             e.Value = result; });
     return result;
@@ -919,15 +987,15 @@ auto ShapeViolationEvaluator::Prepare(Operon::Span<Individual const> pop) const 
     });
 }
 
-auto ShapeViolationEvaluator::RawViolation(Operon::Tree const& tree) const -> Operon::Scalar
+auto ShapeViolationEvaluator::RawViolation(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch) const -> Operon::Scalar
 {
-    return Measure(tree).Violation;
+    return Measure(tree, scratch).Violation;
 }
 
-auto ShapeViolationEvaluator::Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> /*buf*/) const -> typename EvaluatorBase::ReturnType
+auto ShapeViolationEvaluator::Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
 {
     ++CallCount;
-    return ReturnType { static_cast<Operon::Scalar>(weight_ * RawViolation(ind.Genotype)) };
+    return ReturnType { static_cast<Operon::Scalar>(weight_ * RawViolation(ind.Genotype, buf)) };
 }
 
 auto ShapeViolationEvaluator::SetBoundMode(ShapeBoundMode mode) -> void

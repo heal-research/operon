@@ -15,6 +15,17 @@
 
 namespace Operon {
 namespace {
+    // Shared by FitLeastSquaresImpl and FitLeastSquaresFiniteImpl -- one source of truth for the closed-form OLS slope/intercept.
+    inline auto ScaleOffsetFromStats(vstat::bivariate_statistics const& stats) -> std::pair<double, double>
+    {
+        auto a = stats.covariance / stats.variance_x; // scale
+        if (!std::isfinite(a)) {
+            a = 1;
+        }
+        auto b = stats.mean_y - (a * stats.mean_x); // offset
+        return {a, b};
+    }
+
     template<typename T>
     auto FitLeastSquaresImpl(Operon::Span<T const> estimated, Operon::Span<T const> target,
                              Operon::Span<T const> weights = {}) -> std::pair<double, double>
@@ -23,12 +34,7 @@ namespace {
         auto stats = weights.empty()
             ? vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data())
             : vstat::bivariate::accumulate<T>(estimated.data(), estimated.data() + estimated.size(), target.data(), weights.data());
-        auto a = stats.covariance / stats.variance_x; // scale
-        if (!std::isfinite(a)) {
-            a = 1;
-        }
-        auto b = stats.mean_y - (a * stats.mean_x); // offset
-        return {a, b};
+        return ScaleOffsetFromStats(stats);
     }
 
     // Finite-aware variant: computes scale/offset from the finite subset
@@ -52,13 +58,10 @@ namespace {
         auto [stats, skipped] = weights.empty()
             ? vstat::bivariate::accumulate<T, vstat::nan_policy::omit>(estimated.data(), estimated.data() + estimated.size(), target.data())
             : vstat::bivariate::accumulate<T, vstat::nan_policy::omit>(estimated.data(), estimated.data() + estimated.size(), target.data(), weights.data());
-        auto a = stats.covariance / stats.variance_x; // scale
-        if (!std::isfinite(a)) {
-            a = 1;
-        }
-        auto b = stats.mean_y - (a * stats.mean_x); // offset
+        auto const [a, b] = ScaleOffsetFromStats(stats);
         return {a, b, skipped};
     }
+
 } // namespace
 
 [[nodiscard]] auto LinearScaling::IsIdentity() const noexcept -> bool
@@ -126,8 +129,8 @@ void LinearScaling::ApplyInPlace(Operon::Span<Operon::Scalar> values) const noex
 }
 
 [[nodiscard]] auto FitLinearScaling(Operon::Tree const& tree, Operon::Problem const& problem,
-                                    Operon::ScalarDispatch const& dtable, Operon::Range range)
-    -> std::optional<LinearScaling>
+                                    Operon::ScalarDispatch const& dtable, Operon::Range range,
+                                    Operon::Span<Operon::Scalar> scratch) -> std::optional<LinearScaling>
 {
     if (!problem.LinearScalingEnabled()) {
         return std::nullopt;
@@ -135,11 +138,23 @@ void LinearScaling::ApplyInPlace(Operon::Span<Operon::Scalar> values) const noex
 
     auto const* dataset = problem.GetDataset();
     Interpreter<Operon::Scalar, ScalarDispatch> const interpreter{&dtable, dataset, &tree};
-    Operon::Vector<Operon::Scalar> estimatedValues(range.Size());
     auto coeff = tree.GetCoefficients();
-    interpreter.Evaluate(coeff, range, estimatedValues);
+    auto const n = range.Size();
 
-    return FitLinearScaling(estimatedValues, problem.TargetValues(range),
+    Operon::Vector<Operon::Scalar> owned;
+    Operon::Span<Operon::Scalar> estimated;
+    if (scratch.size() >= n) {
+        estimated = scratch.subspan(0, n);
+    } else {
+        owned.resize(n);
+        estimated = Operon::Span<Operon::Scalar>(owned);
+    }
+
+    auto evaluated = interpreter.TryEvaluate(coeff, range, estimated);
+    if (!evaluated) {
+        throw std::runtime_error(FormatInterpreterError(evaluated.error()));
+    }
+    return FitLinearScaling(estimated, problem.TargetValues(range),
         problem.Weights(range).value_or(Operon::Span<Operon::Scalar const>{}),
         problem.LinearScalingOmitsNonFinite());
 }
