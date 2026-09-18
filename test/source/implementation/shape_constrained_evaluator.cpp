@@ -1194,7 +1194,7 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
         assertDegradesToUncertified(sce, makeTree(hash));
     }
 
-    SECTION("throwing interval rule, combined mode: the catch around the IntervalBound fallback degrades it")
+    SECTION("throwing interval rule, combined mode: TryEvaluate's own internal catch degrades it")
     {
         auto const hash = Operon::Hasher{}("shape_throw_interval_rule_combined");
         RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const&) -> IntervalEvaluator<Scalar>::Interval {
@@ -1205,7 +1205,7 @@ TEST_CASE("ShapeConstrainedEvaluator - a throwing user-registered rule is treate
         assertDegradesToUncertified(sce, makeTree(hash));
     }
 
-    SECTION("throwing interval rule, interval mode: the catch around TryIntervalBound's own IntervalBound degrades it")
+    SECTION("throwing interval rule, interval mode: TryEvaluate's own internal catch degrades it")
     {
         auto const hash = Operon::Hasher{}("shape_throw_interval_rule_interval_mode");
         RegisterUnaryInterval<Scalar>(hash, [](IntervalEvaluator<Scalar>::Interval const&) -> IntervalEvaluator<Scalar>::Interval {

@@ -61,7 +61,6 @@ namespace {
 
     // True if `b` holds a finite interval -- used to detect NaN/inf enclosures from domain errors or
     // degenerate affine forms without a try/catch at each call site.
-
     auto IsFiniteBound(BoundResult const& b) -> bool
     {
         return b.has_value() && std::isfinite(b->inf()) && std::isfinite(b->sup());
@@ -69,12 +68,8 @@ namespace {
 
     auto EvaluateIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>::DomainMap const& domains) -> BoundResult
     {
-        try {
-            IntervalEvaluator<Operon::Scalar> evaluator(&tree, domains);
-            return evaluator.Evaluate(tree.GetCoefficients());
-        } catch (std::exception const& error) {
-            return tl::unexpected(std::string(error.what()));
-        }
+        IntervalEvaluator<Operon::Scalar> evaluator(&tree, domains);
+        return evaluator.TryEvaluate(tree.GetCoefficients());
     }
 
 struct IntervalSubdivisionPlan {
@@ -148,12 +143,8 @@ struct IntervalSubdivisionPlan {
         constexpr int WSize = static_cast<int>(eve::cardinal_v<WScalar>);
 
         auto const directBound = [&]() -> BoundResult {
-            try {
-                IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
-                return ie.Evaluate(tree.GetCoefficients());
-            } catch (std::exception const& e) {
-                return tl::unexpected(std::string(e.what()));
-            }
+            IntervalEvaluator<Operon::Scalar> ie(&tree, dom);
+            return ie.TryEvaluate(tree.GetCoefficients());
         };
 
         auto const plan = IntervalSubdivisionPlan::Make(tree, dom, depth);
@@ -448,16 +439,8 @@ struct IntervalSubdivisionPlan {
     auto TryIntervalBound(Tree const& tree, IntervalEvaluator<Operon::Scalar>& ie, ShapeBoundMode mode, ShapeBoundOptions const& opts) -> BoundResult
     {
         auto const IntervalBound = [&]() -> BoundResult {
-            try {
-                ie.SetTree(&tree);
-                auto result = ie.TryEvaluate(tree.GetCoefficients());
-                if (!result) {
-                    return tl::unexpected(std::move(result.error()));
-                }
-                return *result;
-            } catch (std::exception const& error) {
-                return tl::unexpected(std::string(error.what()));
-            }
+            ie.SetTree(&tree);
+            return ie.TryEvaluate(tree.GetCoefficients());
         };
 
         auto direct = HasFlag(mode, ShapeBoundMode::Bisected)
