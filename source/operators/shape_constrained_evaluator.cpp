@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <typeinfo>
 #include <vector>
 
 #include <fmt/format.h>
@@ -743,11 +744,16 @@ ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase
     , constraints_(std::move(constraints))
 {
     ResolveShapeConstraintContext(evaluator->GetProblem(), constraints_, constraintVarHash_, domainsByHash_, "ShapeConstrainedEvaluator");
-    // Fused scoring (see Evaluate()) is only valid when the wrapped evaluator shares this exact dispatch table
-    // instance -- a different instance could have different registered primitives/derivatives, breaking the
-    // "same raw values" assumption even if it's also a ScalarDispatch.
-    if (auto const* fast = dynamic_cast<Operon::Evaluator<Operon::ScalarDispatch> const*>(evaluator.get());
-        fast != nullptr && fast->GetDispatchTable() == dtable.get()) {
+    // Fused scoring (see Evaluate()) calls EvaluateFromValues()/ScoreEstimated() directly -- both are
+    // non-virtual, so a dynamic_cast succeeding for a derived-but-final type (MinimumDescriptionLengthEvaluator,
+    // FractionalBayesFactorEvaluator, LikelihoodEvaluator, ...) would silently run the base class's plain
+    // error-metric scoring instead of the derived override, scoring the wrong objective. typeid requires an
+    // exact match, ruling those out; the dispatch-table identity check still guards against a different
+    // ScalarDispatch instance with different registered primitives/derivatives.
+    auto const* evaluatorPtr = evaluator.get();
+    if (auto const* fast = dynamic_cast<Operon::Evaluator<Operon::ScalarDispatch> const*>(evaluatorPtr);
+        fast != nullptr && typeid(*evaluatorPtr) == typeid(Operon::Evaluator<Operon::ScalarDispatch>)
+        && fast->GetDispatchTable() == dtable.get()) {
         fastEvaluator_ = fast;
     }
 }

@@ -183,6 +183,35 @@ TEST_CASE("ShapeConstrainedEvaluator - correctly-signed constraints are feasible
     CHECK(sce.Violations() == 0);
 }
 
+TEST_CASE("ShapeConstrainedEvaluator - fused fast path does not misfire for a derived Evaluator<DTable> subclass", "[shape-constraints]")
+{
+    // Regression: fastEvaluator_ used to be set by dynamic_cast<Evaluator<DTable> const*> alone, which also
+    // succeeds for a *derived* final class like MinimumDescriptionLengthEvaluator (it IS-A Evaluator<DTable>).
+    // Since EvaluateFromValues()/ScoreEstimated() are non-virtual, the fused path would then silently run the
+    // base class's plain error-metric scoring instead of the derived class's actual MDL objective on an
+    // uncached tree -- while a cache-hit re-evaluation of the same tree correctly delegated to mdl's own
+    // Evaluate(). Fitness would depend on cache state. Guard requires an exact typeid match.
+    Fixture fx;
+    Operon::MinimumDescriptionLengthEvaluator<Fixture::DTable, Operon::GaussianLikelihood<Operon::Scalar>> mdl{&fx.problem, &fx.dtable};
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
+
+    Operon::ShapeConstrainedEvaluator sce(&mdl, &fx.dtable, cs);
+
+    auto ind = Fixture::MakeIndividual(fx.tree);
+    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
+
+    // First call on this tree is a guaranteed feasibleCache_ miss -- do NOT call Feasible()/Measure() first,
+    // that would pre-warm the cache and turn this into the (always-correct) cache-hit delegate path instead.
+    auto const fused = sce(fx.rng, ind, buf);
+    auto const direct = mdl(fx.rng, ind, buf);
+    REQUIRE(fused.size() == direct.size());
+    CHECK(fused[0] == Catch::Approx(direct[0]));
+}
+
 TEST_CASE("ShapeConstrainedEvaluator - wrongly-signed constraint is rejected with WorstValue", "[shape-constraints]")
 {
     Fixture fx;
