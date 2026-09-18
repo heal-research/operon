@@ -173,14 +173,14 @@ namespace {
         ENSURE(buf.size() >= trainingRange.Size());
         // EvaluatorBase::Evaluate's contract permits buf.size() >
         // trainingRange.Size() (a caller-owned scratch buffer sized for
-        // reuse across calls), but Interpreter::Evaluate only writes into
-        // its result span when it's sized exactly to the range (silently
-        // leaving an oversized buffer's tail untouched), and targetValues/
-        // weights are always sized to exactly trainingRange.Size(). Slice
-        // once, up front, so scaling and the error metric both operate on
-        // the same exactly-sized view as the interpreter writes into -
-        // same pattern as MinimumDescriptionLengthEvaluator/
-        // FractionalBayesFactorEvaluator/LikelihoodEvaluator in evaluator.hpp.
+        // reuse across calls), but Interpreter::TryEvaluate rejects any
+        // result span not sized exactly to the range (InvalidOutputSize),
+        // and targetValues/weights are always sized to exactly
+        // trainingRange.Size(). Slice once, up front, so the interpreter
+        // call, scaling, and the error metric all operate on the same
+        // exactly-sized view -- same pattern as
+        // MinimumDescriptionLengthEvaluator/FractionalBayesFactorEvaluator/
+        // LikelihoodEvaluator in evaluator.hpp.
         auto estimatedValues = buf.subspan(0, trainingRange.Size());
         auto coeff = tree.GetCoefficients();
         if (!interpreter.TryEvaluate(coeff, trainingRange, estimatedValues)) {

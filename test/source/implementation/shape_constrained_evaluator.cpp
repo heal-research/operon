@@ -212,6 +212,28 @@ TEST_CASE("ShapeConstrainedEvaluator - fused fast path does not misfire for a de
     CHECK(fused[0] == Catch::Approx(direct[0]));
 }
 
+TEST_CASE("ShapeConstrainedEvaluator - fused cache-miss score matches delegate cache-hit score for the same tree", "[shape-constraints]")
+{
+    // The fused (cache-miss) path and the ordinary delegate (cache-hit) path are two different code paths
+    // computing the same thing for a plain Evaluator<DTable>; they must agree regardless of which one a given
+    // call happens to take.
+    Fixture fx;
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Domains.insert_or_assign("X2", std::pair{Operon::Scalar{1}, Operon::Scalar{5}});
+    cs.Constraints.push_back({.Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = 1, .Bound = std::nullopt});
+
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+
+    auto ind = Fixture::MakeIndividual(fx.tree);
+    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
+
+    auto const miss = sce(fx.rng, ind, buf);      // fastEvaluator_ set, cache miss -> fused path
+    auto const hit = sce(fx.rng, ind, buf);        // same tree, now cached -> delegate path
+    REQUIRE(miss.size() == hit.size());
+    CHECK(miss[0] == Catch::Approx(hit[0]));
+}
+
 TEST_CASE("ShapeConstrainedEvaluator - wrongly-signed constraint is rejected with WorstValue", "[shape-constraints]")
 {
     Fixture fx;

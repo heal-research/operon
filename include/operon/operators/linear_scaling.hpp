@@ -57,7 +57,8 @@ struct OPERON_EXPORT LinearScaling {
 
 // Runs the interpreter over `range` and fits (a,b) against `problem`'s target/weights. Returns nullopt iff
 // problem.LinearScalingEnabled() is false. `scratch`, if >= range.Size(), is reused as the output buffer
-// instead of allocating (caller-owned, e.g. gp.cpp's per-worker `slots`); too-small/empty allocates internally.
+// instead of allocating (caller-owned, e.g. ShapeConstrainedEvaluator/ShapeViolationEvaluator's per-call
+// scoring buffer); too-small/empty allocates internally.
 [[nodiscard]] OPERON_EXPORT auto FitLinearScaling(
     Operon::Tree const& tree,
     Operon::Problem const& problem,

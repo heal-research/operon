@@ -936,12 +936,16 @@ auto ShapeConstrainedEvaluator::Evaluate(Operon::RandomGenerator& rng, Individua
             // On a miss with a fast-scoreable inner evaluator, thread `buf` through as FitLinearScaling's
             // scratch: it then holds this tree's fresh TrainingRange() output as a side effect, letting a
             // feasible result below skip straight to EvaluateFromValues() instead of a second ForwardPass.
-            // `scaling` comes back empty (no interpreter call at all) iff linear scaling is disabled, so
-            // `fused` must check both -- an empty `scratch` or a disabled scaling both mean `buf` was untouched.
+            // `scaling` comes back empty (no interpreter call at all) iff linear scaling is disabled. `fused`
+            // requires `scratch` to be at least trainingRange-sized (matching FitLinearScaling's own contract
+            // for when it actually writes into scratch) -- a merely nonempty-but-undersized `buf` (a caller
+            // contract violation; EvaluatorBase::Evaluate documents buf.size() >= TrainingRange().Size()) must
+            // not be treated as fused, or EvaluateFromValues() would score stale/uninitialized data.
+            auto const trainSize = GetProblem()->TrainingRange().Size();
             auto const scratch = fastEvaluator_ != nullptr ? buf : Operon::Span<Operon::Scalar> {};
             auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange(), scratch);
             result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, scaling, boundMode_, boundOptions_);
-            fused = !scratch.empty() && scaling.has_value();
+            fused = scratch.size() >= trainSize && scaling.has_value();
             e.Value = result; });
 
     if (!result.Feasible) {
