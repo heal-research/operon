@@ -173,6 +173,10 @@ public:
     // Accumulates over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
     [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
 
+    // On an uncached tree, fuses the gate's ForwardPass with the wrapped evaluator's scoring pass when the
+    // wrapped evaluator is concretely Operon::Evaluator<ScalarDispatch> (see fastEvaluator_) -- one pass
+    // instead of two. Falls back to the ordinary Feasible()-then-delegate sequence otherwise (cache hit, or
+    // an evaluator type that can't accept pre-materialized values).
     auto Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
 
     auto ObjectiveCount() const -> std::size_t override { return evaluator_->ObjectiveCount(); }
@@ -210,6 +214,10 @@ private:
     // sequentially -- see Prepare()'s doc comment.
     tf::Executor* taskExecutor_ { nullptr };
     mutable std::atomic_size_t violations_ { 0 };
+    // Set once at construction (dynamic_cast, non-null iff `evaluator` is concretely this type). Evaluate()
+    // uses it to fuse the gate's feasibility ForwardPass with the inner evaluator's scoring ForwardPass on an
+    // uncached tree, skipping the inner evaluator's own duplicate pass -- see Evaluate()'s doc comment.
+    Operon::Evaluator<Operon::ScalarDispatch> const* fastEvaluator_ { nullptr };
 
     struct FeasibleData {
         ShapeConstraintMeasurementSummary Value {};
@@ -239,8 +247,8 @@ public:
         boundOptions_ = options;
         measurementCache_.Clear();
     }
-    [[nodiscard]] auto RawViolation(Operon::Tree const& tree) const -> Operon::Scalar;
-    [[nodiscard]] auto Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary;
+    [[nodiscard]] auto RawViolation(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const -> Operon::Scalar;
+    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const -> ShapeConstraintMeasurementSummary;
 
     // See ShapeConstrainedEvaluator::SetExecutor — Prepare()'s population
     // Measure() pre-warm reuses the caller's executor the same way.

@@ -743,6 +743,13 @@ ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase
     , constraints_(std::move(constraints))
 {
     ResolveShapeConstraintContext(evaluator->GetProblem(), constraints_, constraintVarHash_, domainsByHash_, "ShapeConstrainedEvaluator");
+    // Fused scoring (see Evaluate()) is only valid when the wrapped evaluator shares this exact dispatch table
+    // instance -- a different instance could have different registered primitives/derivatives, breaking the
+    // "same raw values" assumption even if it's also a ScalarDispatch.
+    if (auto const* fast = dynamic_cast<Operon::Evaluator<Operon::ScalarDispatch> const*>(evaluator.get());
+        fast != nullptr && fast->GetDispatchTable() == dtable.get()) {
+        fastEvaluator_ = fast;
+    }
 }
 
 auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement
@@ -908,9 +915,35 @@ auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) cons
 auto ShapeConstrainedEvaluator::Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
 {
     ++CallCount;
-    if (!Feasible(ind.Genotype)) {
+    auto const& tree = ind.Genotype;
+    auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
+
+    ShapeConstraintMeasurementSummary result;
+    bool fused = false;
+    // LazyEmplace holds this hash's shard lock across the miss branch, so a concurrent caller hashing to the
+    // same key blocks on the first computation rather than duplicating it.
+    feasibleCache_.LazyEmplace(hash, [&](auto const& e) { result = e.Value; }, [&](auto& e) {
+            // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
+            // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
+            // so scoring-path scaling could describe a different tree than the genotype certified here.
+            //
+            // On a miss with a fast-scoreable inner evaluator, thread `buf` through as FitLinearScaling's
+            // scratch: it then holds this tree's fresh TrainingRange() output as a side effect, letting a
+            // feasible result below skip straight to EvaluateFromValues() instead of a second ForwardPass.
+            // `scaling` comes back empty (no interpreter call at all) iff linear scaling is disabled, so
+            // `fused` must check both -- an empty `scratch` or a disabled scaling both mean `buf` was untouched.
+            auto const scratch = fastEvaluator_ != nullptr ? buf : Operon::Span<Operon::Scalar> {};
+            auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange(), scratch);
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar{1}, scaling, boundMode_, boundOptions_);
+            fused = !scratch.empty() && scaling.has_value();
+            e.Value = result; });
+
+    if (!result.Feasible) {
         ++violations_;
         return ReturnType(evaluator_->ObjectiveCount(), static_cast<Operon::Scalar>(worstValue_));
+    }
+    if (fused) {
+        return fastEvaluator_->EvaluateFromValues(buf.subspan(0, GetProblem()->TrainingRange().Size()));
     }
     return (*evaluator_)(rng, ind, buf);
 }
@@ -936,7 +969,7 @@ ShapeViolationEvaluator::ShapeViolationEvaluator(gsl::not_null<Operon::Problem c
     ResolveShapeConstraintContext(problem_, constraints_, constraintVarHash_, domainsByHash_, "ShapeViolationEvaluator");
 }
 
-auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeConstraintMeasurementSummary
+auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch) const -> ShapeConstraintMeasurementSummary
 {
     auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
     ShapeConstraintMeasurementSummary result;
@@ -947,7 +980,7 @@ auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree) const -> ShapeCo
             // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
             // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
             // so scoring-path scaling could describe a different tree than the genotype certified here.
-            auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
+            auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange(), scratch);
             result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_, scaling, boundMode_, boundOptions_);
             e.Value = result; });
     return result;
@@ -961,15 +994,15 @@ auto ShapeViolationEvaluator::Prepare(Operon::Span<Individual const> pop) const 
     });
 }
 
-auto ShapeViolationEvaluator::RawViolation(Operon::Tree const& tree) const -> Operon::Scalar
+auto ShapeViolationEvaluator::RawViolation(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch) const -> Operon::Scalar
 {
-    return Measure(tree).Violation;
+    return Measure(tree, scratch).Violation;
 }
 
-auto ShapeViolationEvaluator::Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> /*buf*/) const -> typename EvaluatorBase::ReturnType
+auto ShapeViolationEvaluator::Evaluate(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType
 {
     ++CallCount;
-    return ReturnType { static_cast<Operon::Scalar>(weight_ * RawViolation(ind.Genotype)) };
+    return ReturnType { static_cast<Operon::Scalar>(weight_ * RawViolation(ind.Genotype, buf)) };
 }
 
 auto ShapeViolationEvaluator::SetBoundMode(ShapeBoundMode mode) -> void
