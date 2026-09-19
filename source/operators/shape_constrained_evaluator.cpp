@@ -930,8 +930,11 @@ auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) cons
 auto ShapeConstrainedEvaluator::Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
     -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError>
 {
-    auto const& tree = ind.Genotype;
-    auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
+    // Fast path: check feasibility first. This populates the cache if missing (via tree overload),
+    // and reads it if present. If infeasible, we return nullopt to short-circuit value computation.
+    if (!Feasible(ind.Genotype)) {
+        return std::nullopt;
+    }
 
     // Phase 1 of the wrapped evaluator fills `buf` with the genotype's raw TrainingRange()
     // output (one ForwardPass, shared by certification and scoring below). A non-value-based
@@ -942,39 +945,8 @@ auto ShapeConstrainedEvaluator::Evaluate(Operon::Individual const& ind, Operon::
     if (!evaluated) {
         return tl::unexpected(std::move(evaluated.error()));
     }
-
-    // Populate the feasibility cache for Score() to read. Recompute instead of reusing a
-    // carried value: (a,b) is pure in tree/training data, and non-Lamarckian local search may
-    // restore inherited coefficients after scoring optimized ones, so scoring-path scaling
-    // could describe a different tree than the genotype certified here. LazyEmplace holds
-    // this hash's shard lock across the miss branch, so a concurrent caller hashing to the
-    // same key blocks on the first computation rather than duplicating it.
-    feasibleCache_.LazyEmplace(
-        hash, [&](auto const& e) {},
-        [&](auto& e) {
-            // The certification's (a,b): refit from the values phase 1 just produced (array
-            // overload, one SIMD reduction, no second ForwardPass) when they're available;
-            // otherwise the wrapped evaluator is not value-based and the gate pays its own
-            // tree-overload pass, as it always did for the standalone Feasible()/Measure() paths.
-            std::optional<Operon::LinearScaling> scaling;
-            if (*evaluated) {
-                auto const estimated = (*evaluated)->Values();
-                auto const& problem = *GetProblem();
-                if (problem.LinearScalingEnabled()) {
-                    scaling = Operon::FitLinearScaling(estimated, problem.TargetValues(problem.TrainingRange()),
-                        problem.Weights(problem.TrainingRange()).value_or(Operon::Span<Operon::Scalar const> {}),
-                        problem.LinearScalingOmitsNonFinite());
-                }
-            } else {
-                scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
-            }
-            e.Value = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar { 1 },
-                scaling, boundMode_, boundOptions_);
-        });
-
     return std::move(*evaluated);
 }
-
 auto ShapeConstrainedEvaluator::Score(Operon::RandomGenerator& rng, Operon::Individual const& ind,
     Operon::Span<Operon::Scalar> buf, std::optional<EvaluatedBuffer> evaluated) const ->
     typename EvaluatorBase::ReturnType

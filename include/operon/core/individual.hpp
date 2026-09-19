@@ -104,7 +104,7 @@ using ComparisonCallback = std::function<bool(Individual const&, Individual cons
 // be combined (see operon_gp.cpp, which does).
 //
 // `IsFeasible` is intentionally a predicate over the genotype, not a
-// Fitness-vector read: EvaluatorBase::Evaluate() takes `Individual
+// Fitness-vector read: EvaluatorBase::operator() takes `Individual
 // const&` and returns only a fitness vector, so a wrapping evaluator
 // like ShapeConstrainedEvaluator has no channel to tag an Individual as
 // infeasible other than the fitness values themselves -- and a

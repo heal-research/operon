@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include <tl/expected.hpp>
 
 #include "operon/collections/projection.hpp"
 #include "operon/core/concepts.hpp"
@@ -124,22 +125,30 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon:
 
 // Move-only, single-use proof that a caller-owned scratch span (an Evaluate/Score
 // `buf` parameter) holds a specific Individual's valid per-row model output. The
-// only way to obtain one is a successful EvaluatorBase::Evaluate call -- there is
-// no public constructor, so "Score called without a preceding Evaluate" and
-// "Score called with an arbitrary Span" are both compile errors, not something a
-// caller can get wrong by omission. Score's own `buf` parameter is unaffected and
+// only way to obtain one is a successful EvaluatorBase::Evaluate call.
+// Score's own `buf` parameter is unaffected and
 // stays an ordinary, unprotected scratch span (see MultiEvaluator/ShapeViolationEvaluator,
 // which use it purely as reusable memory and never read `evaluated`).
 class EvaluatedBuffer {
 public:
     EvaluatedBuffer(EvaluatedBuffer const&) = delete;
-    EvaluatedBuffer(EvaluatedBuffer&&) noexcept = default;
+    EvaluatedBuffer(EvaluatedBuffer&& other) noexcept
+        : span_(other.span_)
+    {
+        other.span_ = {};
+    }
     auto operator=(EvaluatedBuffer const&) -> EvaluatedBuffer& = delete;
-    auto operator=(EvaluatedBuffer&&) noexcept -> EvaluatedBuffer& = default;
+    auto operator=(EvaluatedBuffer&& other) noexcept -> EvaluatedBuffer&
+    {
+        if (this != &other) {
+            span_ = other.span_;
+            other.span_ = {};
+        }
+        return *this;
+    }
     ~EvaluatedBuffer() = default;
 
     [[nodiscard]] auto Values() const noexcept -> Operon::Span<Operon::Scalar> { return span_; }
-
 private:
     friend auto MarkEvaluated(Operon::Span<Operon::Scalar>) -> EvaluatedBuffer;
     explicit EvaluatedBuffer(Operon::Span<Operon::Scalar> span)
@@ -217,6 +226,7 @@ struct EvaluatorBase
     {
         auto evaluated = Evaluate(ind, buf);
         if (!evaluated) {
+            ++CallCount;
             return ReturnType { EvaluatorBase::ErrMax };
         }
         return Score(rng, ind, buf, std::move(*evaluated));
@@ -246,7 +256,7 @@ struct EvaluatorBase
     // that skipped or misordered Evaluate gets an immediate, loud failure instead of a
     // silently wrong fitness) and read `evaluated->Values()`, not `buf`, for the values.
     // Each implementation increments CallCount exactly once - via its own line
-    // or via a base-class Score it delegates to, never both.
+    // or via a base-class Score it delegates to. (operator() increments it on Evaluate failure).
     virtual auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
         std::optional<EvaluatedBuffer> evaluated) const -> ReturnType
         = 0;
