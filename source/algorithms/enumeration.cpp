@@ -278,7 +278,7 @@ void GrammarEnumerationAlgorithm::Run(Operon::RandomGenerator& rng, Operon::Repo
     Operon::CoefficientOptimizer coeffOptimizer{optimizer_};
     // Reused across every novel Expression rather than letting the 2-arg
     // evaluator_ overload allocate its own scratch buffer per call (see
-    // EvaluatorBase::Evaluate) - enumeration can produce thousands of
+    // EvaluatorBase::operator()) - enumeration can produce thousands of
     // candidates per run, so a per-candidate heap allocation here adds up.
     std::vector<Operon::Scalar> evalBuf(evaluator_->GetProblem()->TrainingRange().Size());
     engine_.SetOnNovelExpression([&](Operon::Tree& tree) {
