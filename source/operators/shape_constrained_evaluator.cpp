@@ -936,31 +936,25 @@ auto ShapeConstrainedEvaluator::Evaluate(Operon::Individual const& ind, Operon::
         return std::nullopt;
     }
 
-    // Phase 1 of the wrapped evaluator fills `buf` with the genotype's raw TrainingRange()
-    // output (one ForwardPass, shared by certification and scoring below). A non-value-based
-    // evaluator returns nullopt and leaves `buf` untouched; an evaluation error propagates to
-    // the composed operator(), which turns it into ErrMax -- today a broken tree instead throws
-    // out of the tree-overload FitLinearScaling inside Feasible(), so this is strictly safer.
+    // Shared ForwardPass: the wrapped evaluator's Evaluate fills `buf` once, reused by both
+    // certification above and scoring below. nullopt/unexpected propagate through unchanged.
     auto evaluated = evaluator_->Evaluate(ind, buf);
     if (!evaluated) {
         return tl::unexpected(std::move(evaluated.error()));
     }
     return std::move(*evaluated);
 }
-auto ShapeConstrainedEvaluator::Score(Operon::RandomGenerator& rng, Operon::Individual const& ind,
-    Operon::Span<Operon::Scalar> buf, std::optional<EvaluatedBuffer> evaluated) const ->
+auto ShapeConstrainedEvaluator::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
     typename EvaluatorBase::ReturnType
 {
     ++CallCount;
-    // Evaluate(ind, buf) (this->Evaluate, called by the composed operator() immediately before
-    // this) just populated the cache for this tree, so this is a hit in practice; the miss
-    // branch is Feasible()'s own standalone logic (own (a,b) pass), kept for direct Score calls
-    // that didn't go through this->Evaluate first.
-    if (!Feasible(ind.Genotype)) {
+    // Feasible()'s cache is already warm from this->Evaluate (called just before by
+    // operator()); this also covers a direct Score call that skipped Evaluate.
+    if (!Feasible(ctx.Ind.Genotype)) {
         ++violations_;
         return ReturnType(evaluator_->ObjectiveCount(), static_cast<Operon::Scalar>(worstValue_));
     }
-    return evaluator_->Score(rng, ind, buf, std::move(evaluated));
+    return evaluator_->Score(ctx, std::move(evaluated));
 }
 
 auto ShapeConstrainedEvaluator::SetBoundMode(ShapeBoundMode mode) -> void
@@ -1022,12 +1016,11 @@ auto ShapeViolationEvaluator::RawViolation(Operon::Tree const& tree, Operon::Spa
     return Measure(tree, scratch).Violation;
 }
 
-auto ShapeViolationEvaluator::Score(Operon::RandomGenerator& /*rng*/, Individual const& ind,
-    Operon::Span<Operon::Scalar> buf, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+auto ShapeViolationEvaluator::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
     typename EvaluatorBase::ReturnType
 {
     ++CallCount;
-    return ReturnType { static_cast<Operon::Scalar>(weight_ * RawViolation(ind.Genotype, buf)) };
+    return ReturnType { static_cast<Operon::Scalar>(weight_ * RawViolation(ctx.Ind.Genotype, ctx.Scratch)) };
 }
 
 auto ShapeViolationEvaluator::SetBoundMode(ShapeBoundMode mode) -> void

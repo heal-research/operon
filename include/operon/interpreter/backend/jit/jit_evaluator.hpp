@@ -70,14 +70,12 @@ public:
     JitEvaluator(JitEvaluator&&) = delete;
     JitEvaluator& operator=(JitEvaluator&&) = delete;
 
-    // Phase 1: JIT-compiled (or interpreter-fallback) forward pass filling `buf` with the
-    // genotype's raw TrainingRange() output.
+    // JIT-compiled (or interpreter-fallback) forward pass filling `buf` with the genotype's raw output.
     auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
         -> tl::expected<std::optional<Operon::EvaluatedBuffer>, Operon::InterpreterError> override;
 
-    // Phase 2: linear-scaling fit-and-apply plus the error metric over phase 1's values.
-    auto Score(RandomGenerator& rng, Individual const& ind, Span<Scalar> buf,
-        std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType override;
+    // Linear-scaling fit-and-apply plus the error metric over Evaluate's values.
+    auto Score(ScoreContext ctx, std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType override;
 
     [[nodiscard]] auto CacheSize() const -> std::size_t;
     // Counts only lookups that find an already-compiled forward function.

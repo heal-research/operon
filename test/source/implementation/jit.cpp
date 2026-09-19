@@ -329,7 +329,7 @@ TEST_CASE("JitEvaluator correctness", "[jit][evaluator]")
         auto evaluated = jitEval.Evaluate(ind, phaseBuf);
         REQUIRE(evaluated);
         REQUIRE(*evaluated);
-        auto const split = jitEval.Score(rng, ind, phaseBuf, std::move(*evaluated));
+        auto const split = jitEval.Score({ .Rng = rng, .Ind = ind, .Scratch = phaseBuf }, std::move(*evaluated));
 
         std::vector<Scalar> composedBuf(range.Size());
         auto const composed = jitEval(rng, ind, composedBuf);

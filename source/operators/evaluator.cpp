@@ -42,13 +42,9 @@ namespace {
         }
     }
 
-    // Outlined skip-mode body. Keeping this out of `Evaluate`'s inline path
-    // keeps the default (skipNonFinite_ == false) hot path small enough that
-    // the compiler still inlines `Evaluate` into its caller -- the inlining
-    // heuristic that regressed when the skip branching was first added was
-    // the dominant source of the ~7-9% end-to-end overhead measured in the
-    // performance handoff. `noinline` is harmless to the opt-in user since
-    // they have already accepted a modest per-call cost.
+    // Outlined so the hot default path (skipNonFinite_ == false) keeps `Evaluate` inlinable into
+    // its caller. `[[gnu::noinline]]` is GCC/Clang-specific and silently ignored on compilers that
+    // don't recognize it (e.g. MSVC); it only costs the opt-in caller here regardless.
     template <typename T>
     [[gnu::noinline]] auto SkipNonFiniteScore(ErrorMetric const& error, Operon::Span<T> estimated,
         Operon::Span<T const> target, Operon::Span<T const> weights, bool scaling, double penaltyWeight)
@@ -64,16 +60,10 @@ namespace {
         }
         auto const fraction
             = nonFiniteCount != 0 ? static_cast<double>(nonFiniteCount) / static_cast<double>(estimated.size()) : 0.0;
-        // NMSE already normalizes by target variance, so its penalty needs no
-        // extra scale. The other metrics are unit-dependent on the target and
-        // each other, so the scale has to match each metric's own units, not
-        // just SSE/MSE's (squared-error) units, or the same penaltyWeight
-        // would over/under-shoot depending on which metric is active:
-        //   MSE  is in squared-error units  -> variance
-        //   RMSE/MAE are in linear-error units -> stddev (sqrt(variance))
-        //   SSE is a *sum*, not an average, of squared errors, so a
-        //   per-point variance-scale term alone would be ~N times too small
-        //   -> variance * (finite point count)
+        // Per-metric scale so a single penaltyWeight means the same thing regardless of the active metric's
+        // units: NMSE already normalizes by target variance (scale = 1); MSE/SSE are squared-error units
+        // (variance, and variance * finite-count since SSE is a sum, not an average); RMSE/MAE are linear-error
+        // units (stddev = sqrt(variance)).
         double sumWeights = 0.0;
         double mean = 0.0;
         double m2 = 0.0;
@@ -161,14 +151,9 @@ auto OPERON_EXPORT Evaluator<ScalarDispatch>::Evaluate(Operon::Individual const&
     TInterpreter const interpreter { GetDispatchTable(), problem->GetDataset(), &tree };
 
     ENSURE(buf.size() >= trainingRange.Size());
-    // EvaluatorBase::Evaluate's contract permits buf.size() >
-    // trainingRange.Size() (a caller-owned scratch buffer sized for
-    // reuse across calls), but Interpreter::TryEvaluate rejects any
-    // result span not sized exactly to the range (InvalidOutputSize),
-    // and targetValues/weights are always sized to exactly
-    // trainingRange.Size(). Slice once, up front, so the interpreter
-    // call and every downstream scoring use operate on the same
-    // exactly-sized view.
+    // buf.size() may exceed trainingRange.Size() (caller-owned scratch reused across calls), but
+    // Interpreter::TryEvaluate and the target/weight spans require an exact-sized view -- slice once, up
+    // front, for every downstream use.
     auto estimatedValues = buf.subspan(0, trainingRange.Size());
     auto coeff = tree.GetCoefficients();
     ++ResidualEvaluations;
@@ -179,9 +164,8 @@ auto OPERON_EXPORT Evaluator<ScalarDispatch>::Evaluate(Operon::Individual const&
 }
 
 template <>
-auto OPERON_EXPORT Evaluator<ScalarDispatch>::Score(Operon::RandomGenerator& /*rng*/, Operon::Individual const& /*ind*/,
-    Operon::Span<Operon::Scalar> /*buf*/, std::optional<EvaluatedBuffer> evaluated) const ->
-    typename EvaluatorBase::ReturnType
+auto OPERON_EXPORT Evaluator<ScalarDispatch>::Score(
+    ScoreContext /*ctx*/, std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType
 {
     ++CallCount;
 
@@ -226,14 +210,13 @@ auto DiversityEvaluator::Prepare(Operon::Span<Operon::Individual const> pop) con
     }
 }
 
-auto DiversityEvaluator::Score(Operon::RandomGenerator& random, Individual const& ind,
-    Operon::Span<Operon::Scalar> /*buf*/, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+auto DiversityEvaluator::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
     typename EvaluatorBase::ReturnType
 {
     ++CallCount;
-    (void)ind.Genotype.Hash(hashmode_);
-    Operon::Vector<Operon::Hash> lhs(ind.Genotype.Length());
-    auto const& nodes = ind.Genotype.Nodes();
+    (void)ctx.Ind.Genotype.Hash(hashmode_);
+    Operon::Vector<Operon::Hash> lhs(ctx.Ind.Genotype.Length());
+    auto const& nodes = ctx.Ind.Genotype.Nodes();
     std::ranges::transform(nodes, lhs.begin(), [](auto const& n) -> auto { return n.CalculatedHashValue; });
     std::ranges::stable_sort(lhs);
     auto const& values = divmap_.values();
@@ -241,32 +224,27 @@ auto DiversityEvaluator::Score(Operon::RandomGenerator& random, Individual const
     Operon::Scalar distance { 0 };
     Operon::Vector<double> const distances(sampleSize_);
     for (auto i = 0UL; i < sampleSize_; ++i) {
-        auto const& rhs = Operon::Random::Sample(random, values.begin(), values.end())->second;
+        auto const& rhs = Operon::Random::Sample(ctx.Rng, values.begin(), values.end())->second;
         distance += static_cast<Operon::Scalar>(Operon::Distance::Jaccard(lhs, rhs));
     }
     return EvaluatorBase::ReturnType { -distance / static_cast<Operon::Scalar>(sampleSize_) };
 }
 
-auto MultiEvaluator::Score(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf,
-    std::optional<EvaluatedBuffer> /*evaluated*/) const -> typename EvaluatorBase::ReturnType
+auto MultiEvaluator::Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+    typename EvaluatorBase::ReturnType
 {
     using vstat::univariate::accumulate;
 
-    // CallCount tracks "this evaluator instance scored one individual" at
-    // every composition depth, not just the leaf Evaluator<DTable> - a
-    // caller (e.g. OffspringSelectionGenerator::SelectionPressure) reading
-    // CallCount to count real evaluation attempts must see the same
-    // increment-per-call semantics regardless of how many inner
-    // evaluators this composite wraps. Stats() below separately sums the
-    // inner evaluators' own counters too - that is a distinct "total
-    // sub-evaluator work done" profiling figure, not a substitute for this.
+    // Counts one increment per call at every composition depth, not just the leaf Evaluator<DTable>, so a
+    // caller (e.g. OffspringSelectionGenerator::SelectionPressure) sees the same per-call semantics regardless
+    // of nesting. Stats() below separately sums the inner evaluators' own counters for total sub-evaluator work.
     ++CallCount;
 
     EvaluatorBase::ReturnType fit;
     fit.reserve(SubEvaluatorObjectiveCount());
 
     for (auto const& ev : evaluators_) {
-        auto f = (*ev)(rng, ind, buf);
+        auto f = (*ev)(ctx.Rng, ctx.Ind, ctx.Scratch);
         std::copy(f.begin(), f.end(), std::back_inserter(fit));
     }
 
@@ -309,14 +287,13 @@ auto MultiEvaluator::Score(Operon::RandomGenerator& rng, Individual const& ind, 
 }
 
 template <>
-auto OPERON_EXPORT BayesianInformationCriterionEvaluator<ScalarDispatch>::Score(Operon::RandomGenerator& rng,
-    Individual const& ind, Operon::Span<Operon::Scalar> buf, std::optional<EvaluatedBuffer> evaluated) const ->
-    typename EvaluatorBase::ReturnType
+auto OPERON_EXPORT BayesianInformationCriterionEvaluator<ScalarDispatch>::Score(
+    ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType
 {
-    auto const& tree = ind.Genotype;
+    auto const& tree = ctx.Ind.Genotype;
     auto p = static_cast<Operon::Scalar>(std::ranges::count_if(tree.Nodes(), &Operon::Node::Optimize));
     auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
-    auto mse = Evaluator<ScalarDispatch>::Score(rng, ind, buf, std::move(evaluated)).front();
+    auto mse = Evaluator<ScalarDispatch>::Score(ctx, std::move(evaluated)).front();
     auto bic = (n * std::log(mse)) + (p * std::log(n));
     if (!std::isfinite(bic)) {
         bic = EvaluatorBase::ErrMax;
@@ -325,11 +302,10 @@ auto OPERON_EXPORT BayesianInformationCriterionEvaluator<ScalarDispatch>::Score(
 }
 
 template <>
-auto OPERON_EXPORT AkaikeInformationCriterionEvaluator<ScalarDispatch>::Score(Operon::RandomGenerator& rng,
-    Individual const& ind, Operon::Span<Operon::Scalar> buf, std::optional<EvaluatedBuffer> evaluated) const ->
-    typename EvaluatorBase::ReturnType
+auto OPERON_EXPORT AkaikeInformationCriterionEvaluator<ScalarDispatch>::Score(
+    ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType
 {
-    auto mse = Evaluator<ScalarDispatch>::Score(rng, ind, buf, std::move(evaluated)).front();
+    auto mse = Evaluator<ScalarDispatch>::Score(ctx, std::move(evaluated)).front();
     auto n = static_cast<Operon::Scalar>(Evaluator::GetProblem()->TrainingRange().Size());
     auto aik = n / 2 * (std::log(Operon::Math::Tau) + std::log(mse) + 1);
     if (!std::isfinite(aik)) {

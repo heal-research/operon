@@ -197,8 +197,7 @@ auto JitEvaluator::Evaluate(Individual const& ind, Span<Scalar> buf) const
     return std::optional<Operon::EvaluatedBuffer> { Operon::MarkEvaluated(estimatedValues) };
 }
 
-auto JitEvaluator::Score(RandomGenerator& /*rng*/, Individual const& /*ind*/, Span<Scalar> /*buf*/,
-    std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType
+auto JitEvaluator::Score(ScoreContext /*ctx*/, std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType
 {
     ++CallCount;
 

@@ -123,12 +123,8 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<float const> estimated, Operon::
 auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon::Span<double const> target,
     Operon::Span<double const> weights) noexcept -> std::pair<double, double>;
 
-// Move-only, single-use proof that a caller-owned scratch span (an Evaluate/Score
-// `buf` parameter) holds a specific Individual's valid per-row model output. The
-// only way to obtain one is a successful EvaluatorBase::Evaluate call.
-// Score's own `buf` parameter is unaffected and
-// stays an ordinary, unprotected scratch span (see MultiEvaluator/ShapeViolationEvaluator,
-// which use it purely as reusable memory and never read `evaluated`).
+// Move-only, single-use proof that a caller-owned `buf` span holds a specific Individual's
+// valid per-row output. Only obtainable via a successful EvaluatorBase::Evaluate call.
 class EvaluatedBuffer {
 public:
     EvaluatedBuffer(EvaluatedBuffer const&) = delete;
@@ -149,6 +145,7 @@ public:
     ~EvaluatedBuffer() = default;
 
     [[nodiscard]] auto Values() const noexcept -> Operon::Span<Operon::Scalar> { return span_; }
+
 private:
     friend auto MarkEvaluated(Operon::Span<Operon::Scalar>) -> EvaluatedBuffer;
     explicit EvaluatedBuffer(Operon::Span<Operon::Scalar> span)
@@ -158,42 +155,27 @@ private:
     Operon::Span<Operon::Scalar> span_;
 };
 
-// The only way to construct an EvaluatedBuffer: an explicit, visible, auditable call
-// an Evaluate() override makes once it has actually filled `values` with this
-// Individual's per-row model output. Re-tags the SAME memory -- no copy, no
-// reallocation.
+// The only way to construct an EvaluatedBuffer, from within a successful Evaluate() override.
+// Re-tags the same memory -- no copy, no reallocation.
 [[nodiscard]] inline auto MarkEvaluated(Operon::Span<Operon::Scalar> values) -> EvaluatedBuffer
 {
     return EvaluatedBuffer { values };
 }
 
-// EvaluatorBase inherits OperatorBase once, like every other operator family
-// (CreatorBase, MutatorBase, CrossoverBase, ...) - the buffered 3-arg shape is
-// the canonical one. The previous design instead inherited OperatorBase TWICE
-// (E1 for the unbuffered call, E2 for the buffered call) to get two
-// `operator()` overloads directly from the base; any subclass overriding just
-// one of them (the common case) hid the other via C++ name hiding, forcing
-// `using Base::operator();` in three subclasses plus a redundant 2-arg
-// `operator() override { return Evaluate(rng, ind); }` boilerplate in every
-// class. The fix keeps the single-inheritance shape uniform with every other
-// family and splits the two roles `operator()` was playing:
-//   - `Evaluate(ind, buf)` and `Score(rng, ind, buf)` below are the TWO hooks
-//     subclasses override. They are NOT named `operator()`, so a subclass
-//     overriding them never declares an `operator()` of its own and therefore
-//     can never trigger name hiding.
-//   - EvaluatorBase itself closes out OperatorBase's pure-virtual
-//     `operator()(rng, ind, buf)` with a `final` override composing the two
-//     phases (no subclass can re-override it, so hiding never has a chance to
-//     recur below EvaluatorBase), and adds a non-virtual deducing-this
-//     `operator()(rng, ind)` facade that allocates a scratch buffer and
-//     forwards too. Both call forms the codebase and pyoperon use
-//     (`eval(rng, ind, buf)` and `eval(rng, ind)`) keep working unchanged.
-//
-// Verb usage follows the nomenclature taxonomy: `evaluate` = compute the
-// genotype's per-row model outputs; `score` = assign fitness. A wrapper that
-// needs the outputs for its own purposes (e.g. ShapeConstrainedEvaluator's
-// linear-scaling fit) calls the phases separately instead of `operator()`,
-// so the outputs are computed once and shared.
+// Bundles Score's pass-through parameters (needed only by composite/forwarding
+// evaluators to delegate to another Score/operator() call) so a leaf evaluator
+// that only reads `evaluated` names one unused parameter instead of three.
+// Transient: built on the stack immediately before each Score() call and never
+// stored, so the reference members below never outlive their referents.
+struct ScoreContext {
+    Operon::RandomGenerator& Rng; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
+    Operon::Individual const& Ind; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
+    Operon::Span<Operon::Scalar> Scratch;
+};
+
+// `Evaluate(ind, buf)` and `Score(ctx)` are the two hooks subclasses override.
+// `operator()` is `final`: it composes them (Evaluate, then Score) and is the
+// only place CallCount/ErrMax fallback on Evaluate failure is applied.
 struct EvaluatorBase
     : public OperatorBase<Operon::Vector<Operon::Scalar>, Operon::Individual const&, Operon::Span<Operon::Scalar>> {
     using Base = OperatorBase<Operon::Vector<Operon::Scalar>, Operon::Individual const&, Operon::Span<Operon::Scalar>>;
@@ -229,48 +211,25 @@ struct EvaluatorBase
             ++CallCount;
             return ReturnType { EvaluatorBase::ErrMax };
         }
-        return Score(rng, ind, buf, std::move(*evaluated));
+        return Score({ .Rng = rng, .Ind = ind, .Scratch = buf }, std::move(*evaluated));
     }
 
-    // Phase 1: evaluate the genotype's raw (pre-scaling) TrainingRange() output into `buf`
-    // (a caller-owned scratch buffer of size >= TrainingRange().Size(); only the first
-    // TrainingRange().Size() entries are written). Returns:
-    //   EvaluatedBuffer wrapping `buf`'s valid prefix -> value-based, `buf` holds the values
-    //   nullopt        -> this objective is not value-based (`buf` untouched) - default
-    //   unexpected     -> evaluation attempted and failed (missing variable/primitive)
-    // Value-based scorers MUST leave `buf` exactly as their own scoring pass would
-    // produce it, so a caller that evaluates once and scores separately gets the
-    // same numbers as a caller that goes through operator().
-    [[nodiscard]] virtual auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
+    // Fills `buf` (size >= TrainingRange().Size()) with the genotype's raw output and
+    // returns it wrapped, or nullopt if this objective isn't value-based (default), or
+    // unexpected on evaluation failure.
+    [[nodiscard]] virtual auto Evaluate(Operon::Individual const& /*ind*/, Operon::Span<Operon::Scalar> /*buf*/) const
         -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError>
     {
         return std::nullopt;
     }
 
-    // Phase 2: score. `buf` is the same ordinary caller-owned scratch span Evaluate
-    // received -- no claims, safe to reuse for any purpose (MultiEvaluator forwards it
-    // to each sub-evaluator's own operator(); ShapeViolationEvaluator uses it as
-    // disposable FitLinearScaling scratch). `evaluated`, when present, additionally
-    // PROVES `buf`'s content is this Individual's valid per-row output -- a value-based
-    // override MUST assert `evaluated.has_value()` before reading it (ENSURE; a caller
-    // that skipped or misordered Evaluate gets an immediate, loud failure instead of a
-    // silently wrong fitness) and read `evaluated->Values()`, not `buf`, for the values.
-    // Each implementation increments CallCount exactly once - via its own line
-    // or via a base-class Score it delegates to. (operator() increments it on Evaluate failure).
-    virtual auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
-        std::optional<EvaluatedBuffer> evaluated) const -> ReturnType
-        = 0;
+    // `evaluated`, when present, proves `ctx.Scratch` holds this Individual's valid output; a
+    // value-based override must ENSURE(evaluated.has_value()) and read evaluated->Values(),
+    // not `ctx.Scratch`. Each override increments CallCount exactly once.
+    virtual auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> ReturnType = 0;
 
-    // 2-arg convenience: non-virtual deducing-this facade (can't be virtual -
-    // explicit-object members can't be) that allocates a scratch buffer of
-    // TrainingRange().Size() and forwards to the 3-arg operator() above.
-    // Self deduces to the static type at the call site (including when the
-    // call comes through an `EvaluatorBase&`), so this works polymorphically
-    // without itself needing to be virtual. Buffer-size contract is on each
-    // concrete phase override that actually reads/writes the buffer (they
-    // each carry their own ENSURE), not here: UserDefinedEvaluator and
-    // DiversityEvaluator legitimately ignore `buf` and accept any size,
-    // including the empty span pyoperon passes for UserDefinedEvaluator.
+    // Non-virtual deducing-this 2-arg facade: allocates a TrainingRange()-sized scratch
+    // buffer and forwards to the 3-arg operator() above.
     template <typename Self>
     auto operator()(this Self const& self, Operon::RandomGenerator& rng, Operon::Individual const& ind) -> ReturnType
     {
@@ -315,27 +274,14 @@ private:
     size_t budget_ = DefaultEvaluationBudget;
 };
 
-// Optionally applies local search (coefficient optimization) to `ind`'s
-// genotype with probability `pLocal`. If local search ran and the update is
-// non-Lamarckian, returns the original coefficients so the caller can evaluate
-// the optimized genotype first, then restore inherited coefficients. Does not
-// evaluate `ind`'s fitness - split out from ScoreIndividual so a caller that
-// needs to run local search over a whole population before any of it is
-// scored (e.g. so Prepare() on an evaluator that snapshots the population,
-// such as DiversityEvaluator, sees post-optimization genotypes) can do so
-// without duplicating this logic.
+// Optionally runs local search (coefficient optimization) on `ind`'s genotype with
+// probability `pLocal`; does not score it. Non-Lamarckian updates return the original
+// coefficients so the caller can evaluate the optimized genotype, then restore them.
 OPERON_EXPORT auto LocalSearch(Operon::RandomGenerator& random, Operon::Individual& ind,
     Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal,
     double pLamarck) -> std::optional<std::vector<Operon::Scalar>>;
 
-// Optionally applies local search (coefficient optimization) to `ind`'s
-// genotype with probability `pLocal`, then scores it via `evaluator`. Non-
-// finite fitness values are clamped to EvaluatorBase::ErrMax either way.
-//
-// Shared by offspring generation (OffspringGeneratorBase::Generate) and
-// initial-population scoring (GeneticProgrammingAlgorithm::Run,
-// NSGA2::Run) so both receive identical local-search treatment - passing
-// pLocal=0 (or a null coeffOptimizer) degenerates to a plain evaluate.
+// Runs LocalSearch then scores via `evaluator`; non-finite fitness clamps to ErrMax.
 OPERON_EXPORT auto ScoreIndividual(Operon::RandomGenerator& random, Operon::Individual& ind,
     Operon::EvaluatorBase const& evaluator, Operon::CoefficientOptimizer const* coeffOptimizer, double pLocal,
     double pLamarck, Operon::Span<Operon::Scalar> buf) -> void;
@@ -358,11 +304,11 @@ public:
     {
     }
 
-    auto Score(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> /*buf*/,
-        std::optional<EvaluatedBuffer> /*evaluated*/) const -> typename EvaluatorBase::ReturnType override
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+        typename EvaluatorBase::ReturnType override
     {
         ++this->CallCount;
-        return fptr_ ? fptr_(&rng, ind) : fref_(rng, ind);
+        return fptr_ ? fptr_(&ctx.Rng, ctx.Ind) : fref_(ctx.Rng, ctx.Ind);
     }
 
 private:
@@ -394,16 +340,14 @@ public:
 
     auto GetDispatchTable() const -> DTable const* { return dtable_.get(); }
 
-    // Phase 1: interpreter pass filling `buf` with the genotype's raw TrainingRange() output.
+    // Interpreter pass filling `buf` with the genotype's raw TrainingRange() output.
     auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
         -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError> override;
 
-    // Phase 2: skip-nonfinite scoring or linear-scaling fit-and-apply, then the error
-    // metric, over phase 1's values (`evaluated->Values()`). `evaluated` must be present
-    // (a preceding successful Evaluate); its values are read, not `buf` (`buf` is only
-    // this class's own scratch parameter and is unused here).
-    auto Score(Operon::RandomGenerator& rng, Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf,
-        std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override;
+    // Skip-nonfinite scoring or linear-scaling fit-and-apply, then the error metric, over
+    // `evaluated`'s values (ctx is otherwise unused here).
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
+        typename EvaluatorBase::ReturnType override;
 
 protected:
     [[nodiscard]] auto UsesLinearScaling() const -> bool { return GetProblem()->LinearScalingEnabled(); }
@@ -411,27 +355,17 @@ protected:
 private:
     gsl::not_null<DTable const*> dtable_;
     ErrorMetric error_;
-    // Opt-in. When true: non-finite rows excluded via ErrorMetric::FiniteSubset
-    // (SSE/MSE/NMSE/RMSE/MAE). fit += nonFinitePenaltyWeight_ * nonfinite
-    // fraction, scaled by target variance for the non-normalized metrics
-    // (SSE/MSE/RMSE/MAE are unit-dependent; NMSE already divides by target
-    // variance, so it isn't scaled again) -- see SkipNonFiniteScore. This
-    // keeps a single default meaningful regardless of the metric or the
-    // dataset's units: at nonFinitePenaltyWeight_ == 1.0, an individual that
-    // is 100% non-finite is penalized by roughly one target-variance's worth
-    // of error, the same order of magnitude as a naive constant-mean
-    // predictor's MSE.
-    // Default (false): non-finite metric result clamps fit to ErrMax.
+    // Opt-in: when true, non-finite rows are excluded (ErrorMetric::FiniteSubset) and a
+    // variance-scaled penalty is added instead (see SkipNonFiniteScore). Default clamps
+    // a non-finite metric result to ErrMax.
     bool skipNonFinite_ { false };
     double nonFinitePenaltyWeight_ { 1.0 };
 };
 
 class OPERON_EXPORT MultiEvaluator : public EvaluatorBase {
 public:
-    // When AggregateType is set (see SetAggregateType), the per-evaluator
-    // results are combined into a single scalar (e.g. so several objectives
-    // can be optimized as one aggregate) instead of being concatenated into
-    // a multi-objective vector.
+    // When AggregateType is set, per-evaluator results combine into one scalar instead
+    // of concatenating into a multi-objective vector.
     enum class AggregateType : int { Min, Max, Median, Mean, HarmonicMean, Sum };
 
     explicit MultiEvaluator(Problem const* problem)
@@ -454,8 +388,8 @@ public:
 
     auto ObjectiveCount() const -> std::size_t override { return aggregateType_ ? 1UL : SubEvaluatorObjectiveCount(); }
 
-    auto Score(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf,
-        std::optional<EvaluatedBuffer> /*evaluated*/) const -> typename EvaluatorBase::ReturnType override;
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+        typename EvaluatorBase::ReturnType override;
 
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> final
     {
@@ -511,8 +445,8 @@ public:
     {
     }
 
-    auto Score(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf,
-        std::optional<EvaluatedBuffer> /*evaluated*/) const -> typename EvaluatorBase::ReturnType override;
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+        typename EvaluatorBase::ReturnType override;
 
     auto Prepare(Operon::Span<Operon::Individual const> pop) const -> void override;
 
@@ -531,20 +465,12 @@ static_assert(Concepts::EvaluatorCallable<MultiEvaluator>);
 static_assert(Concepts::EvaluatorCallable<DiversityEvaluator>);
 
 namespace detail {
-    // Profile MLE sigma-hat = sqrt(SSR/n) from residuals (estimated - target),
-    // clamped away from zero so a downstream log(sigma^2) or division by
-    // sigma can't hit zero. Shared by evaluators that fall back to this
-    // estimate when the caller hasn't supplied a sigma of their own (see the
-    // `sigma_.empty() && Lik::UsesSigma` gating at each call site).
+    // Profile MLE sigma-hat = sqrt(SSR/n), clamped away from zero. Used when the caller
+    // hasn't supplied its own sigma.
     inline auto ProfileSigma(Operon::Span<Operon::Scalar const> estimated, Operon::Span<Operon::Scalar const> target)
         -> Operon::Scalar
     {
-        // Bounded by the shorter of the two spans, not just estimated's -
-        // callers only guarantee estimated.size() >= target.size() (e.g. a
-        // reused scratch buffer sized to a training range but possibly
-        // larger; see EvaluatorBase::Evaluate's ENSURE), not equality, so
-        // indexing target[i] up to estimated.size() alone would read past
-        // target's end whenever the buffer is oversized.
+        // Bounded by the shorter span: callers only guarantee estimated.size() >= target.size().
         auto const count = std::min(estimated.size(), target.size());
         auto const n = static_cast<double>(count);
         auto ssr = 0.0;
@@ -554,6 +480,34 @@ namespace detail {
         }
         return std::max(
             static_cast<Operon::Scalar>(std::sqrt(ssr / n)), std::numeric_limits<Operon::Scalar>::epsilon());
+    }
+
+    // Predicted/target/weight spans over `evaluated`'s values, with linear scaling fit-and-applied
+    // in place when the problem enables it. Shared prologue for MDL/FBF/LikelihoodEvaluator::Score,
+    // which otherwise duplicate this setup identically before diverging into their own statistic.
+    struct ScaledValues {
+        Operon::Range TrainingRange;
+        Operon::Span<Operon::Scalar> YPred; // evaluated->Values(), scaled in place if Scaling is set
+        Operon::Span<Operon::Scalar const> YTrue;
+        Operon::Span<Operon::Scalar const> Weights;
+        std::optional<LinearScaling> Scaling;
+    };
+
+    inline auto PrepareScaledValues(Operon::Problem const& problem, std::optional<EvaluatedBuffer>& evaluated)
+        -> ScaledValues
+    {
+        auto const trainingRange = problem.TrainingRange();
+        ENSURE(evaluated.has_value());
+        auto yPred = evaluated->Values();
+        auto yTrue = problem.TargetValues(trainingRange);
+        auto const weights = problem.Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
+        std::optional<LinearScaling> scaling {};
+        if (problem.LinearScalingEnabled()) {
+            scaling = Operon::FitLinearScaling(yPred, yTrue, weights, problem.LinearScalingOmitsNonFinite());
+            scaling->ApplyInPlace(yPred);
+        }
+        return { .TrainingRange = trainingRange, .YPred = yPred, .YTrue = yTrue, .Weights = weights,
+            .Scaling = scaling };
     }
 } // namespace detail
 
@@ -573,52 +527,42 @@ public:
     auto Sigma() const { return std::span<Operon::Scalar const> { sigma_ }; }
     auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
 
-    auto Score(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> /*buf*/,
-        std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
+        typename EvaluatorBase::ReturnType override
     {
         ++Base::CallCount;
 
         auto const* dtable = Base::GetDispatchTable();
         auto const* problem = Base::GetProblem();
         auto const* dataset = problem->GetDataset();
-        auto const& tree = ind.Genotype;
+        auto const& tree = ctx.Ind.Genotype;
         auto parameters = tree.GetCoefficients();
 
         auto const p { static_cast<double>(parameters.size()) };
 
-        auto const trainingRange = problem->TrainingRange();
-        ENSURE(evaluated.has_value());
-        auto estimatedValues = evaluated->Values();
-        auto targetValues = problem->TargetValues(trainingRange);
-        auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
-        auto const scaling = problem->LinearScalingEnabled()
-            ? std::optional { Operon::FitLinearScaling(
-                  estimatedValues, targetValues, weights, problem->LinearScalingOmitsNonFinite()) }
-            : std::nullopt;
-        if (scaling) {
-            scaling->ApplyInPlace(estimatedValues);
-        }
+        auto [trainingRange, yPred, yTrue, weights, scaling] = detail::PrepareScaledValues(*problem, evaluated);
 
         Operon::Scalar profiledSigma {};
         if (sigma_.empty() && Lik::UsesSigma) {
-            profiledSigma = detail::ProfileSigma(estimatedValues, targetValues);
+            profiledSigma = detail::ProfileSigma(yPred, yTrue);
         }
+
         auto const effectiveSigma = (sigma_.empty() && Lik::UsesSigma)
             ? std::span<Operon::Scalar const> { &profiledSigma, 1 } // profiled
             : std::span<Operon::Scalar const> { sigma_ }; // fixed scalar, per-sample, or empty (Poisson unweighted)
 
         ++Base::JacobianEvaluations;
-        Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable, dataset, &ind.Genotype };
+        Operon::Interpreter<Operon::Scalar, DTable> const interpreter { dtable, dataset, &tree };
         Eigen::Matrix<Operon::Scalar, -1, -1> jac = interpreter.JacRev(parameters, trainingRange); // jacobian
         if (scaling) {
             jac *= static_cast<Operon::Scalar>(scaling->Scale); // d(a*tree)/d(coeffs) = a * d(tree)/d(coeffs)
         }
-        auto fisherMatrix = Lik::ComputeFisherMatrix(
-            estimatedValues, { jac.data(), static_cast<std::size_t>(jac.size()) }, effectiveSigma);
+        auto fisherMatrix
+            = Lik::ComputeFisherMatrix(yPred, { jac.data(), static_cast<std::size_t>(jac.size()) }, effectiveSigma);
         auto fisherDiag = fisherMatrix.diagonal().array();
         ENSURE(fisherDiag.size() == p);
 
-        auto cLikelihood = Lik::ComputeLikelihood(estimatedValues, targetValues, effectiveSigma);
+        auto cLikelihood = Lik::ComputeLikelihood(yPred, yTrue, effectiveSigma);
         auto mdl = Operon::MinimumDescriptionLength(tree, parameters, fisherDiag, static_cast<double>(cLikelihood));
         if (!std::isfinite(mdl)) {
             mdl = EvaluatorBase::ErrMax;
@@ -646,29 +590,17 @@ public:
     auto Sigma() const { return std::span<Operon::Scalar const> { sigma_ }; }
     auto SetSigma(std::vector<Operon::Scalar> sigma) const -> void { sigma_ = std::move(sigma); }
 
-    auto Score(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> /*buf*/,
-        std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
+        typename EvaluatorBase::ReturnType override
     {
         ++Base::CallCount;
 
         auto const* problem = Base::GetProblem();
-        auto const& tree = ind.Genotype;
+        auto const& tree = ctx.Ind.Genotype;
 
-        auto const trainingRange = problem->TrainingRange();
+        auto [trainingRange, estimatedValues, targetValues, weights, scaling]
+            = detail::PrepareScaledValues(*problem, evaluated);
         auto const n { static_cast<double>(trainingRange.Size()) };
-        ENSURE(evaluated.has_value());
-        auto estimatedValues = evaluated->Values();
-
-        // Scaling refit from phase 1's values - see MinimumDescriptionLengthEvaluator::Score.
-        auto targetValues = problem->TargetValues(trainingRange);
-        auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
-        auto const scaling = problem->LinearScalingEnabled()
-            ? std::optional { Operon::FitLinearScaling(
-                  estimatedValues, targetValues, weights, problem->LinearScalingOmitsNonFinite()) }
-            : std::nullopt;
-        if (scaling) {
-            scaling->ApplyInPlace(estimatedValues);
-        }
 
         double mlNLL {};
         Operon::Scalar profiledSigma {};
@@ -705,8 +637,8 @@ public:
     {
     }
 
-    auto Score(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf,
-        std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override;
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
+        typename EvaluatorBase::ReturnType override;
 };
 
 template <typename DTable> class OPERON_EXPORT AkaikeInformationCriterionEvaluator final : public Evaluator<DTable> {
@@ -718,8 +650,8 @@ public:
     {
     }
 
-    auto Score(Operon::RandomGenerator& /*random*/, Individual const& ind, Operon::Span<Operon::Scalar> buf,
-        std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override;
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
+        typename EvaluatorBase::ReturnType override;
 };
 
 template <typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
@@ -734,25 +666,15 @@ public:
     {
     }
 
-    auto Score(Operon::RandomGenerator& /*rng*/, Individual const& ind, Operon::Span<Operon::Scalar> /*buf*/,
-        std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override
+    auto Score(ScoreContext /*ctx*/, std::optional<EvaluatedBuffer> evaluated) const ->
+        typename EvaluatorBase::ReturnType override
     {
         ++Base::CallCount;
 
         auto const* problem = Base::Evaluator::GetProblem();
-        auto const trainingRange = problem->TrainingRange();
-        ENSURE(evaluated.has_value());
-        auto estimatedValues = evaluated->Values();
-
-        auto targetValues = problem->TargetValues(trainingRange);
-        auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
-        auto const scaling = problem->LinearScalingEnabled()
-            ? std::optional { Operon::FitLinearScaling(
-                  estimatedValues, targetValues, weights, problem->LinearScalingOmitsNonFinite()) }
-            : std::nullopt;
-        if (scaling) {
-            scaling->ApplyInPlace(estimatedValues);
-        }
+        auto scaled = detail::PrepareScaledValues(*problem, evaluated);
+        auto estimatedValues = scaled.YPred;
+        auto targetValues = scaled.YTrue;
 
         auto lik = Likelihood::ComputeLikelihood(estimatedValues, targetValues, sigma_);
         return typename EvaluatorBase::ReturnType { static_cast<Operon::Scalar>(lik) };

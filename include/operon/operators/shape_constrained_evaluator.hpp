@@ -176,17 +176,16 @@ public:
     // Accumulates over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
     [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
 
-    // Phase 1: delegates to the wrapped evaluator's Evaluate(ind, buf), then computes the
-    // certification's (a,b) linear scaling from those values (array fit, no extra ForwardPass)
-    // and populates feasibleCache_ for this tree. When the wrapped evaluator is not
-    // value-based (phase 1 false), computes (a,b) via its own tree-overload pass instead.
+    // Delegates to the wrapped evaluator's Evaluate, then fits (a,b) from those values
+    // (or its own tree-overload pass, if the wrapped evaluator isn't value-based) and
+    // populates feasibleCache_ for this tree.
     auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
         -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError> override;
 
-    // Phase 2: feasible (per the cache this->Evaluate just populated) -> the wrapped
-    // evaluator's Score reusing the same values; infeasible -> WorstValue.
-    auto Score(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf,
-        std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType override;
+    // Feasible (per the cache Evaluate just populated) -> wrapped evaluator's Score;
+    // infeasible -> WorstValue.
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
+        typename EvaluatorBase::ReturnType override;
 
     auto ObjectiveCount() const -> std::size_t override { return evaluator_->ObjectiveCount(); }
 
@@ -263,8 +262,8 @@ public:
     // Measure() pre-warm reuses the caller's executor the same way.
     void SetExecutor(tf::Executor& executor) noexcept { taskExecutor_ = &executor; }
 
-    auto Score(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf,
-        std::optional<EvaluatedBuffer> /*evaluated*/) const -> typename EvaluatorBase::ReturnType override;
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+        typename EvaluatorBase::ReturnType override;
     auto ObjectiveCount() const -> std::size_t override { return 1; }
     auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 
