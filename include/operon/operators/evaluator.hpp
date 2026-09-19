@@ -725,8 +725,6 @@ public:
 template <typename DTable, Concepts::Likelihood Likelihood = GaussianLikelihood<Operon::Scalar>>
     requires(DTable::template SupportsType<typename Likelihood::Scalar>)
 class OPERON_EXPORT LikelihoodEvaluator final : public Evaluator<DTable> {
-    // Scores the same fitted linear-scaled model as pareto_front.cpp export and shape certification,
-    // closing the previous in-search/exported likelihood divergence for the same individual.
     using Base = Evaluator<DTable>;
 
 public:
@@ -742,15 +740,10 @@ public:
         ++Base::CallCount;
 
         auto const* problem = Base::Evaluator::GetProblem();
-        auto const* tree = &ind.Genotype;
-
         auto const trainingRange = problem->TrainingRange();
         ENSURE(evaluated.has_value());
-        // Phase 1 (inherited Evaluator<DTable>::Evaluate) already filled the memory
-        // `evaluated` proves is valid, exactly trainingRange.Size() rows.
         auto estimatedValues = evaluated->Values();
 
-        // Scaling refit from phase 1's values - see MinimumDescriptionLengthEvaluator::Score.
         auto targetValues = problem->TargetValues(trainingRange);
         auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
         auto const scaling = problem->LinearScalingEnabled()
