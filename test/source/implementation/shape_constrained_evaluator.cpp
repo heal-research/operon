@@ -1063,6 +1063,82 @@ TEST_CASE("ShapeConstrainedEvaluator - negative linear scale swaps derivative bo
     CHECK(raw.Feasible(negated));
 }
 
+TEST_CASE("ShapeConstrainedEvaluator - CertifyUnscaled decouples the gate from Problem::LinearScalingEnabled",
+    "[shape-constraints]")
+{
+    // Same tree/constraint as "negative linear scale flips derivative constraints": with the Problem's
+    // scaling left ON (fx's default), the fitted scale is negative and the gate normally rejects it.
+    // CertifyUnscaled must certify against the raw tree instead, matching what SetLinearScalingEnabled(false)
+    // would produce, without touching the Problem flag (so e.g. the wrapped evaluator's own scoring is
+    // unaffected).
+    Fixture fx;
+    REQUIRE(fx.problem.LinearScalingEnabled());
+    auto negated = InfixParser::Parse("X2 - X1", fx.ds);
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Constraints.push_back(
+        { .Op = ShapeConstraintOp::FirstDerivative, .Variable = "X1", .Sign = -1, .Bound = std::nullopt });
+
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+    CHECK_FALSE(sce.CertifyUnscaled());
+    CHECK_FALSE(sce.Feasible(negated));
+
+    sce.SetCertifyUnscaled(true);
+    CHECK(sce.CertifyUnscaled());
+    CHECK(sce.Feasible(negated));
+    CHECK(fx.problem.LinearScalingEnabled()); // untouched by the toggle
+
+    sce.SetCertifyUnscaled(false);
+    CHECK_FALSE(sce.Feasible(negated)); // reverts, cache cleared on toggle
+
+    Operon::ShapeViolationEvaluator sve(&fx.problem, &fx.dtable, cs);
+    CHECK_FALSE(sve.CertifyUnscaled());
+    CHECK_FALSE(sve.Measure(negated).Feasible);
+    sve.SetCertifyUnscaled(true);
+    CHECK(sve.Measure(negated).Feasible);
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - CertifyUnscaled matches an explicitly-disabled-scaling gate exactly",
+    "[shape-constraints]")
+{
+    // The raw bound CertifyUnscaled(true) produces (with Problem scaling left ON) must be identical to
+    // what a *separate* evaluator gets from SetLinearScalingEnabled(false) -- same MeasureConstraints
+    // call, nullopt scaling either way, not just "both happen to be feasible".
+    Fixture fx;
+    auto tree = InfixParser::Parse("2 * (X1 - X2) + 3", fx.ds);
+
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Constraints.push_back({ .Op = ShapeConstraintOp::Identity,
+        .Variable = "",
+        .Sign = std::nullopt,
+        .Bound = std::pair { Operon::Scalar { -100 }, Operon::Scalar { 100 } } });
+
+    Operon::ShapeConstrainedEvaluator unscaled(&fx.nmse, &fx.dtable, cs);
+    unscaled.SetCertifyUnscaled(true);
+    auto const gated = unscaled.Measure(tree);
+
+    Operon::Problem rawProblem(&fx.ds);
+    rawProblem.SetTrainingRange(fx.problem.TrainingRange());
+    rawProblem.SetTestRange(fx.problem.TestRange());
+    rawProblem.SetTarget("X3");
+    rawProblem.SetLinearScalingEnabled(false);
+    Operon::Evaluator<Fixture::DTable> rawNmse(&rawProblem, &fx.dtable, Operon::NMSE {});
+    Operon::ShapeConstrainedEvaluator viaProblemFlag(&rawNmse, &fx.dtable, cs);
+    auto const viaFlag = viaProblemFlag.Measure(tree);
+
+    REQUIRE(gated.Measurements.size() == 1);
+    REQUIRE(viaFlag.Measurements.size() == 1);
+    REQUIRE(gated.Measurements[0].Bound);
+    REQUIRE(viaFlag.Measurements[0].Bound);
+    CHECK(gated.Measurements[0].Bound->first == Catch::Approx(viaFlag.Measurements[0].Bound->first));
+    CHECK(gated.Measurements[0].Bound->second == Catch::Approx(viaFlag.Measurements[0].Bound->second));
+    CHECK(gated.Feasible == viaFlag.Feasible);
+}
+
 TEST_CASE("ShapeConstrainedEvaluator - offset shifts identity bound constraints", "[shape-constraints]")
 {
     constexpr auto nrow = std::size_t { 5 };
@@ -1806,14 +1882,14 @@ TEST_CASE("FeasibilityFirstComparison - feasible precedes infeasible regardless 
     CHECK(comp(feasibleBetterFit, feasibleWorseFit));
 }
 
-TEST_CASE("ShapeConstrainedEvaluator - Prepare() populates the feasibility cache correctly", "[shape-constraints]")
+TEST_CASE("ShapeConstrainedEvaluator - Feasible() is correct regardless of Prepare() call history",
+    "[shape-constraints]")
 {
-    // The memoization itself lives in ShapeConstrainedEvaluator::Feasible()
-    // now (populated by Prepare() and by Evaluate()), not in
-    // FeasibilityFirstComparison -- this checks Prepare()'s cache-fill and
-    // cache-clear-and-rebuild behavior stays functionally correct, i.e.
-    // doesn't silently return a stale/wrong answer for either the
-    // just-prepared population or an unrelated tree asked about later.
+    // feasibleCache_ persists across Prepare() calls now (Prepare() only delegates to the wrapped
+    // evaluator's own Prepare(); it no longer clears or bulk-populates). This checks Feasible() still
+    // gives the right answer for a just-prepared population, an unrelated tree Prepare() never saw, and
+    // a tree from an earlier Prepare() call after a later one ran -- i.e. the persisted cache never
+    // serves a stale/wrong answer across generations.
     Fixture fx;
     Operon::ShapeConstraintSet cs;
     cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
@@ -1833,16 +1909,46 @@ TEST_CASE("ShapeConstrainedEvaluator - Prepare() populates the feasibility cache
     CHECK(sce.Feasible(fx.tree));
     CHECK_FALSE(sce.Feasible(infeasibleTree));
 
-    // A second Prepare() with a different population clears and rebuilds
-    // the cache; trees from the first population must still resolve
-    // correctly afterward (Feasible() computes fresh on a miss, doesn't
-    // require having been in the most recent Prepare() call).
+    // A second Prepare() with a different population: trees from the first population must still
+    // resolve correctly afterward (the cache persists, and Feasible() computes fresh on a genuine miss).
     auto other = InfixParser::Parse("X1", fx.ds);
     std::vector<Operon::Individual> pop2 { Fixture::MakeIndividual(other) };
     sce.Prepare(pop2);
     CHECK(sce.Feasible(other));
     CHECK(sce.Feasible(fx.tree));
     CHECK_FALSE(sce.Feasible(infeasibleTree));
+}
+
+TEST_CASE("ShapeConstrainedEvaluator - Evaluate()'s cache entry survives an intervening Prepare()",
+    "[shape-constraints]")
+{
+    // The GP follow-up: feasibleCache_ entries populated lazily by Evaluate() (no interpreter pass beyond
+    // the wrapped evaluator's own) must survive a later Prepare() call for an unrelated population, so a
+    // FeasibilityFirstComparison-style Feasible() call on the same individual (now a "parent") is served
+    // from what Evaluate() already computed instead of recomputing.
+    Fixture fx;
+    Operon::ShapeConstraintSet cs;
+    cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+    cs.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
+        .Variable = "X1",
+        .Sign = 1,
+        .Bound = std::nullopt }); // true for X1 - X2
+
+    fx.problem.SetLinearScalingEnabled(false);
+    Operon::ShapeConstrainedEvaluator sce(&fx.nmse, &fx.dtable, cs);
+
+    auto ind = Fixture::MakeIndividual(fx.tree);
+    std::vector<Operon::Scalar> buf(fx.problem.TrainingRange().Size());
+    std::ignore = sce(fx.rng, ind, buf); // Evaluate()+Score(): populates feasibleCache_ lazily, no Prepare() involved
+    CHECK(sce.Feasible(fx.tree));
+
+    // Prepare() for a different, unrelated population -- must not clear the entry above.
+    auto other = InfixParser::Parse("X1", fx.ds);
+    std::vector<Operon::Individual> pop { Fixture::MakeIndividual(other) };
+    sce.Prepare(pop);
+
+    CHECK(sce.Feasible(fx.tree)); // still resolves the same, without Prepare() ever having seen fx.tree
 }
 
 TEST_CASE("SCRATCH pappus-fix false-feasibility repro", "[.][shape-constraints-scratch]")

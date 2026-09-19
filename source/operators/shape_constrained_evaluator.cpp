@@ -9,11 +9,9 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include <fmt/format.h>
-#include <taskflow/algorithm/for_each.hpp>
 #include <tl/expected.hpp>
 
 #include "operon/core/dataset.hpp"
@@ -724,31 +722,6 @@ namespace {
         }
         return summary;
     }
-
-    // Runs `f(i)` for i in [0,pop.size()) on `executor` when one was set (the caller's own, already-sized
-    // executor -- see SetExecutor), else sequentially. Uses `executor->corun(...)`, not `run(...).get()`: the
-    // only caller, Prepare(), is itself already running as a task on that same executor, so `run().get()` would
-    // risk a worker blocking on a taskflow that needs a free worker to progress; `corun()` joins the calling
-    // thread in as a worker instead, avoiding that deadlock. A private per-instance Executor was tried and
-    // measured to not help (~3x higher CPU, no wall-clock change) while doubling the thread count.
-    template <typename F>
-    auto ParallelForPopulation(tf::Executor* executor, Operon::Span<Operon::Individual const> pop, F&& f) -> void
-    {
-        auto const n = pop.size();
-        if (n == 0) {
-            return;
-        }
-        if (executor == nullptr || n == 1) {
-            for (std::size_t i = 0; i != n; ++i) {
-                f(i);
-            }
-            return;
-        }
-        tf::Taskflow taskflow;
-        taskflow.for_each_index(std::size_t { 0 }, n, std::size_t { 1 }, [&](std::size_t i) { f(i); });
-        executor->corun(taskflow);
-    }
-
 } // namespace
 
 ShapeConstrainedEvaluator::ShapeConstrainedEvaluator(gsl::not_null<EvaluatorBase const*> evaluator,
@@ -891,7 +864,9 @@ auto ShapeConstrainedEvaluator::Measure(Operon::Tree const& tree, Operon::Scalar
     // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
     // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
     // so scoring-path scaling could describe a different tree than the genotype certified here.
-    auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
+    auto const scaling = certifyUnscaled_
+        ? std::nullopt
+        : Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
     return MeasureConstraints(
         constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation, scaling, boundMode_, boundOptions_);
 }
@@ -909,7 +884,31 @@ auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
             // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
             // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
             // so scoring-path scaling could describe a different tree than the genotype certified here.
-            auto const scaling = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
+            auto const scaling = certifyUnscaled_
+                ? std::nullopt
+                : Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange());
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar { 1 },
+                scaling, boundMode_, boundOptions_);
+            e.Value = result;
+        });
+    return result.Feasible;
+}
+
+auto ShapeConstrainedEvaluator::FeasibleFromValues(Operon::Tree const& tree, Operon::Span<Operon::Scalar> values) const
+    -> bool
+{
+    auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
+    ShapeConstraintMeasurementSummary result;
+    feasibleCache_.LazyEmplace(
+        hash, [&](auto const& e) { result = e.Value; },
+        [&](auto& e) {
+            auto const* problem = GetProblem();
+            auto const range = problem->TrainingRange();
+            auto const scaling = (certifyUnscaled_ || !problem->LinearScalingEnabled())
+                ? std::nullopt
+                : std::optional { Operon::FitLinearScaling(values, problem->TargetValues(range),
+                      problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {}),
+                      problem->LinearScalingOmitsNonFinite()) };
             result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar { 1 },
                 scaling, boundMode_, boundOptions_);
             e.Value = result;
@@ -920,27 +919,22 @@ auto ShapeConstrainedEvaluator::Feasible(Operon::Tree const& tree) const -> bool
 auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) const -> void
 {
     evaluator_->Prepare(pop);
-    feasibleCache_.Clear();
-
-    ParallelForPopulation(taskExecutor_, pop, [&](std::size_t i) {
-        std::ignore = Feasible(pop[i].Genotype); // populates the cache as a side effect
-    });
 }
 
 auto ShapeConstrainedEvaluator::Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
     -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError>
 {
-    // Fast path: check feasibility first. This populates the cache if missing (via tree overload),
-    // and reads it if present. If infeasible, we return nullopt to short-circuit value computation.
-    if (!Feasible(ind.Genotype)) {
-        return std::nullopt;
-    }
-
-    // Shared ForwardPass: the wrapped evaluator's Evaluate fills `buf` once, reused by both
-    // certification above and scoring below. nullopt/unexpected propagate through unchanged.
+    // Wrapped evaluator's forward pass runs unconditionally now -- shared by both certification and scoring,
+    // instead of Feasible() paying its own separate tree-based FitLinearScaling pass first. An infeasible tree
+    // costs the same one interpreter pass either way; a feasible tree now costs one instead of two.
     auto evaluated = evaluator_->Evaluate(ind, buf);
     if (!evaluated) {
         return tl::unexpected(std::move(evaluated.error()));
+    }
+    bool const feasible
+        = evaluated->has_value() ? FeasibleFromValues(ind.Genotype, (*evaluated)->Values()) : Feasible(ind.Genotype);
+    if (!feasible) {
+        return std::nullopt;
     }
     return std::move(*evaluated);
 }
@@ -993,21 +987,14 @@ auto ShapeViolationEvaluator::Measure(Operon::Tree const& tree, Operon::Span<Ope
             // Recompute instead of reusing a carried value: (a,b) is pure in tree/training data, and
             // non-Lamarckian local search may restore inherited coefficients after scoring optimized ones,
             // so scoring-path scaling could describe a different tree than the genotype certified here.
-            auto const scaling
-                = Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange(), scratch);
+            auto const scaling = certifyUnscaled_
+                ? std::nullopt
+                : Operon::FitLinearScaling(tree, *GetProblem(), *dtable_, GetProblem()->TrainingRange(), scratch);
             result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, unknownViolation_,
                 scaling, boundMode_, boundOptions_);
             e.Value = result;
         });
     return result;
-}
-
-auto ShapeViolationEvaluator::Prepare(Operon::Span<Individual const> pop) const -> void
-{
-    measurementCache_.Clear();
-    ParallelForPopulation(taskExecutor_, pop, [&](std::size_t i) {
-        std::ignore = Measure(pop[i].Genotype); // populates the cache as a side effect
-    });
 }
 
 auto ShapeViolationEvaluator::RawViolation(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch) const

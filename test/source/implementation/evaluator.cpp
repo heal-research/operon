@@ -1161,10 +1161,8 @@ TEST_CASE("Evaluator two-phase contract edge cases", "[evaluator]")
         auto ind = EvaluatorFixture::MakeIndividual(
             Operon::InfixParser::Parse("X1 * X1", fix.ds));
 
-        // Populate the feasibility cache via Prepare.
-        sce.Prepare(std::span<Operon::Individual const>{&ind, 1});
-
-        // The tree must be certified infeasible before we score it.
+        // The tree must be certified infeasible before we score it (Feasible() computes fresh on a miss;
+        // no Prepare() pre-warm needed).
         REQUIRE_FALSE(sce.Feasible(ind.Genotype));
 
         auto const initialInnerCount = inner.CallCount.load();

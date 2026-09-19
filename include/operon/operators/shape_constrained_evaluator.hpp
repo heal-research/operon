@@ -12,10 +12,6 @@
 #include <stdexcept>
 #include <string>
 
-namespace tf {
-class Executor;
-} // NOLINT(readability-identifier-naming) -- Taskflow's own namespace
-
 namespace Operon {
 
 struct ShapeConstraintMeasurement {
@@ -167,18 +163,27 @@ public:
         feasibleCache_.Clear();
     }
 
-    // The tf::Executor Prepare() uses to parallelize its Feasible() pre-warm across `pop` -- normally the
-    // caller's own GP/NSGA2 executor (see Reporter for the same reuse pattern), not a private one. Unset
-    // (nullptr, default) means Prepare() runs sequentially.
-    void SetExecutor(tf::Executor& executor) noexcept { taskExecutor_ = &executor; }
+    [[nodiscard]] auto CertifyUnscaled() const noexcept -> bool { return certifyUnscaled_; }
+    // When true, the certification gate checks constraints against the tree's raw output, skipping the
+    // FitLinearScaling forward pass entirely (regardless of Problem::LinearScalingEnabled()) -- cheap, but the
+    // certified property is the raw tree's shape, not the reported/scored model's (which may still be scaled).
+    // Clears the feasibility cache: cached entries under the old setting would otherwise answer as if it were
+    // still in effect.
+    void SetCertifyUnscaled(bool value)
+    {
+        certifyUnscaled_ = value;
+        feasibleCache_.Clear();
+    }
 
     // Individuals rejected by the constraint check so far (paper's Sec. 5.1 "constraint violations" figure).
     // Accumulates over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
     [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
 
-    // Delegates to the wrapped evaluator's Evaluate, then fits (a,b) from those values
-    // (or its own tree-overload pass, if the wrapped evaluator isn't value-based) and
-    // populates feasibleCache_ for this tree.
+    // Delegates to the wrapped evaluator's Evaluate first, then certifies from those already-computed
+    // values (array fit, no extra interpreter pass) when it's value-based, falling back to Feasible()'s
+    // own tree-overload pass otherwise. Populates feasibleCache_ for this tree either way. Infeasible ->
+    // nullopt (the wrapped evaluator's pass still ran; unlike the old fail-fast order, an infeasible tree
+    // costs the same one interpreter pass as a feasible one, no longer two for feasible trees).
     auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
         -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError> override;
 
@@ -189,9 +194,10 @@ public:
 
     auto ObjectiveCount() const -> std::size_t override { return evaluator_->ObjectiveCount(); }
 
-    // Delegates to the inner evaluator's Prepare(), then bulk-computes and caches Feasible() for every individual
-    // in `pop`, parallelized over `taskExecutor_` (see ParallelForPopulation in the .cpp for the corun()
-    // rationale). Cleared and rebuilt each call, so it always reflects the most recent `pop`.
+    // Delegates to the wrapped evaluator's Prepare(). feasibleCache_ is no longer cleared or bulk-populated
+    // here: entries persist across generations (safe -- the memo key folds in coefficient values, so a
+    // local-search mutation is a fresh cache key, never a stale hit) and get filled lazily, for free, by
+    // whichever individual's own Evaluate() or Feasible() call touches that tree first.
     auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 
     auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> override
@@ -204,12 +210,17 @@ public:
     // satisfies the constraints without scoring it (and without counting toward Violations()/CallCount). Not
     // the paper's separate Sec. 5.1 point-sampling violation-rate methodology.
     //
-    // Checks the Prepare()-populated cache first; a miss computes and stores the result, safe concurrently.
+    // Checks feasibleCache_ first (populated lazily by Evaluate()/Feasible(), persists across generations
+    // and Prepare() calls); a miss computes and stores the result, safe concurrently.
     [[nodiscard]] auto Feasible(Operon::Tree const& tree) const -> bool;
     [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation = Operon::Scalar { 1 }) const
         -> ShapeConstraintMeasurementSummary;
 
 private:
+    // Certifies from `values` (already computed by evaluator_->Evaluate(), no interpreter pass here) instead
+    // of Feasible()'s own tree-based FitLinearScaling recompute. Populates the same feasibleCache_ entry.
+    [[nodiscard]] auto FeasibleFromValues(Operon::Tree const& tree, Operon::Span<Operon::Scalar> values) const -> bool;
+
     gsl::not_null<EvaluatorBase const*> evaluator_;
     gsl::not_null<Operon::ScalarDispatch const*> dtable_;
     ShapeConstraintSet constraints_;
@@ -220,9 +231,9 @@ private:
     Operon::Vector<Operon::Hash> constraintVarHash_;
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     double worstValue_ { 1.0 };
+    bool certifyUnscaled_ { false };
     ShapeBoundMode boundMode_ { ShapeBoundMode::Interval };
     ShapeBoundOptions boundOptions_ {};
-    tf::Executor* taskExecutor_ { nullptr };
     mutable std::atomic_size_t violations_ { 0 };
 
     struct FeasibleData {
@@ -253,19 +264,24 @@ public:
         boundOptions_ = options;
         measurementCache_.Clear();
     }
+    [[nodiscard]] auto CertifyUnscaled() const noexcept -> bool { return certifyUnscaled_; }
+    // See ShapeConstrainedEvaluator::SetCertifyUnscaled -- same tradeoff, and Measure()'s memo key doesn't
+    // cover this setting, so the measurement cache is cleared here too.
+    void SetCertifyUnscaled(bool value)
+    {
+        certifyUnscaled_ = value;
+        measurementCache_.Clear();
+    }
+    // measurementCache_ persists across generations (no Prepare() override -- inherits EvaluatorBase's
+    // no-op): safe, same coefficient-sensitive memo key as ShapeConstrainedEvaluator's feasibleCache_.
     [[nodiscard]] auto RawViolation(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const
         -> Operon::Scalar;
     [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const
         -> ShapeConstraintMeasurementSummary;
 
-    // See ShapeConstrainedEvaluator::SetExecutor — Prepare()'s population
-    // Measure() pre-warm reuses the caller's executor the same way.
-    void SetExecutor(tf::Executor& executor) noexcept { taskExecutor_ = &executor; }
-
     auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
         typename EvaluatorBase::ReturnType override;
     auto ObjectiveCount() const -> std::size_t override { return 1; }
-    auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 
 private:
     gsl::not_null<Operon::Problem const*> problem_;
@@ -275,9 +291,9 @@ private:
     Operon::Map<Operon::Hash, std::pair<Operon::Scalar, Operon::Scalar>> domainsByHash_;
     Operon::Scalar weight_ { 1 };
     Operon::Scalar unknownViolation_ { 1 };
+    bool certifyUnscaled_ { false };
     ShapeBoundMode boundMode_ { ShapeBoundMode::Interval };
     ShapeBoundOptions boundOptions_ {};
-    tf::Executor* taskExecutor_ { nullptr };
 
     struct MeasurementData {
         ShapeConstraintMeasurementSummary Value {};

@@ -288,15 +288,18 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
             if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/false)) { throw std::invalid_argument(*error); }
 
             auto const boundMode = Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>());
+            auto const certifyUnscaled = result["shape-unscaled"].as<bool>();
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::HardReject)) {
                 shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(evaluator.get(), &dtable, *shapeConstraints);
                 shapeConstrainedStorage->SetWorstValue(worstValue);
                 shapeConstrainedStorage->SetBoundMode(boundMode);
+                shapeConstrainedStorage->SetCertifyUnscaled(certifyUnscaled);
                 activeEvaluator = shapeConstrainedStorage.get();
             } else if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
                 shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                     &problem, &dtable, *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
                 shapeViolationStorage->SetBoundMode(boundMode);
+                shapeViolationStorage->SetCertifyUnscaled(certifyUnscaled);
                 shapePenaltyAggregateStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
                 shapePenaltyAggregateStorage->SetBudget(config.Evaluations);
                 shapePenaltyAggregateStorage->Add(evaluator.get());
@@ -334,6 +337,7 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
                     shapeViolationStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                         &problem, &dtable, *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
                     shapeViolationStorage->SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
+                    shapeViolationStorage->SetCertifyUnscaled(result["shape-unscaled"].as<bool>());
                 }
                 comp = Operon::FeasibilityFirstComparison(
                     [ptr = shapeViolationStorage.get()](Operon::Tree const& t) { return ptr->Measure(t).Feasible; });
@@ -355,11 +359,6 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         if (result["standardize"].as<bool>()) { problem.StandardizeData(problem.TrainingRange()); }
 
         tf::Executor executor(threads);
-        // Reuse the same executor for shape-constraint Prepare() rather than
-        // each evaluator owning a private one -- see
-        // ShapeConstrainedEvaluator::SetExecutor's doc comment.
-        if (shapeConstrainedStorage) { shapeConstrainedStorage->SetExecutor(executor); }
-        if (shapeViolationStorage) { shapeViolationStorage->SetExecutor(executor); }
         Operon::GeneticProgrammingAlgorithm gp { config, &problem, &treeInitializer, coeffInitializer.get(), generator.get(), reinserter.get() };
 
         auto const warmStart = Operon::ResumeFromCheckpoint(gp, random, result);

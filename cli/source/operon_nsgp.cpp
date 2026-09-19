@@ -335,11 +335,13 @@ auto main(int argc, char** argv) -> int
             };
             if (auto error = Operon::ValidatePolicy(policy, /*isNsga2=*/true)) { throw std::invalid_argument(*error); }
             auto const boundMode = Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>());
+            auto const certifyUnscaled = result["shape-unscaled"].as<bool>();
 
             if (Operon::HasFlag(shapeEnforcement, Operon::ShapeConstraintEnforcement::Penalty)) {
                 shapePenaltyStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                     &problem, &dtable, *shapeConstraints, static_cast<Operon::Scalar>(penaltyWeight), static_cast<Operon::Scalar>(unknownViolation));
                 shapePenaltyStorage->SetBoundMode(boundMode);
+                shapePenaltyStorage->SetCertifyUnscaled(certifyUnscaled);
                 penalizedErrorStorage = std::make_unique<Operon::MultiEvaluator>(&problem);
                 penalizedErrorStorage->Add(errorEvaluator.get());
                 penalizedErrorStorage->Add(shapePenaltyStorage.get());
@@ -350,6 +352,7 @@ auto main(int argc, char** argv) -> int
                 shapeExtraObjectiveStorage = std::make_unique<Operon::ShapeViolationEvaluator>(
                     &problem, &dtable, *shapeConstraints, Operon::Scalar{1}, static_cast<Operon::Scalar>(unknownViolation));
                 shapeExtraObjectiveStorage->SetBoundMode(boundMode);
+                shapeExtraObjectiveStorage->SetCertifyUnscaled(certifyUnscaled);
             }
         }
 
@@ -368,6 +371,7 @@ auto main(int argc, char** argv) -> int
             shapeConstrainedStorage = std::make_unique<Operon::ShapeConstrainedEvaluator>(&evaluator, &dtable, *shapeConstraints);
             shapeConstrainedStorage->SetWorstValue(result["shape-worst-value"].as<double>());
             shapeConstrainedStorage->SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
+            shapeConstrainedStorage->SetCertifyUnscaled(result["shape-unscaled"].as<bool>());
         }
         Operon::EvaluatorBase* activeEvaluator = shapeConstrainedStorage ? static_cast<Operon::EvaluatorBase*>(shapeConstrainedStorage.get()) : static_cast<Operon::EvaluatorBase*>(&evaluator);
 
@@ -399,12 +403,6 @@ auto main(int argc, char** argv) -> int
             problem.StandardizeData(problem.TrainingRange());
         }
         tf::Executor executor(threads);
-        // Reuse the same executor for shape-constraint Prepare() rather than
-        // each evaluator owning a private one -- see
-        // ShapeConstrainedEvaluator::SetExecutor's doc comment.
-        if (shapeConstrainedStorage) { shapeConstrainedStorage->SetExecutor(executor); }
-        if (shapePenaltyStorage) { shapePenaltyStorage->SetExecutor(executor); }
-        if (shapeExtraObjectiveStorage) { shapeExtraObjectiveStorage->SetExecutor(executor); }
         auto const sorterName = result["sorter"].as<std::string>();
         Operon::RankIntersectSorter rsSorter;
         Operon::MergeSorter msSorter;

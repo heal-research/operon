@@ -56,6 +56,7 @@ namespace {
             ("iterations", "Optimizer iterations (0 disables refitting; reported stats are the model's own coefficients as given)", cxxopts::value<int>()->default_value("0"))
             ("shape-constraints-config", "Path to a JSON shape-constraints config; when set with --target, also prints affine-certified feasibility for the parsed model", cxxopts::value<std::string>())
             ("shape-bound-mode", "Comma-separated bound backend flags: interval (default), combined, affine, bisected (only with interval)", cxxopts::value<std::string>()->default_value("interval"))
+            ("shape-unscaled", "Certify shape constraints against the model's raw (unscaled) output instead of fitting linear scaling first", cxxopts::value<bool>()->default_value("false"))
             ("tighten-range", "With --shape-constraints-config, also print TightenRange's mean-value-form bound alongside the naive one, per constraint", cxxopts::value<bool>()->default_value("false"))
             ("sample-check", "With --shape-constraints-config, also Monte-Carlo sample N points from the domain box per constraint and print the observed [min:max], as an independent soundness cross-check on the printed bound", cxxopts::value<std::size_t>())
             ("dump-tree-json", "Write the parsed model tree (exact structure, via Operon::Serialization::ToJson) to this path before any other processing", cxxopts::value<std::string>())
@@ -284,6 +285,7 @@ namespace {
             Operon::Evaluator<Operon::ScalarDispatch> eval{&problem, &dtable, Operon::NMSE{}};
             Operon::ShapeConstrainedEvaluator shapeEval{&eval, &dtable, *constraints};
             shapeEval.SetBoundMode(Operon::ParseShapeBoundMode(result["shape-bound-mode"].as<std::string>()));
+            shapeEval.SetCertifyUnscaled(result["shape-unscaled"].as<bool>());
             auto const summary = shapeEval.Measure(model);
             fmt::print("shape_feasible {} shape_violation {}\n", summary.Feasible, summary.Violation);
 

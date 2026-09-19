@@ -205,6 +205,7 @@ auto InitOptions(std::string const& name, std::string const& desc, int width) ->
         ("shape-unknown-violation", "Violation magnitude assigned to each uncertified shape constraint in penalty/extra-objective modes (finite, non-negative)", cxxopts::value<double>()->default_value("1.0"))
         ("shape-worst-value", "Fitness value assigned by hard-reject shape enforcement to infeasible individuals (finite)", cxxopts::value<double>()->default_value("1.0"))
         ("shape-bound-mode", "Comma-separated shape-constraint bound backend flags: interval (default), combined, affine, bisected (only with interval)", cxxopts::value<std::string>()->default_value("interval"))
+        ("shape-unscaled", "Certify shape constraints against the tree's raw (unscaled) output instead of fitting linear scaling first -- cheap (skips a full interpreter forward pass per certification), but the certified property is the raw tree's shape, not the scored/reported model's when linear scaling is otherwise enabled", cxxopts::value<bool>()->default_value("false"))
         ("debug", "Debug mode (more information displayed)")
         ("help", "Print help")
         ("version", "Print version and program information");
