@@ -244,6 +244,7 @@ TEST_CASE("ShapeConstrainedEvaluator cache miss and hit preserve the wrapped sco
     auto const hit = sce(fx.rng, ind, buf);
     REQUIRE(miss.size() == hit.size());
     CHECK(miss[0] == Catch::Approx(hit[0]));
+    CHECK(fx.nmse.ResidualEvaluations == 2);
 }
 
 TEST_CASE("ShapeConstrainedEvaluator - wrongly-signed constraint is rejected with WorstValue", "[shape-constraints]")

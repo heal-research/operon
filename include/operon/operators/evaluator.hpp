@@ -124,43 +124,55 @@ auto OPERON_EXPORT FitLeastSquares(Operon::Span<double const> estimated, Operon:
     Operon::Span<double const> weights) noexcept -> std::pair<double, double>;
 
 // Move-only, single-use proof that a caller-owned `buf` span holds a specific Individual's
-// valid per-row output. Only obtainable via a successful EvaluatorBase::Evaluate call.
+// valid per-row output. EvaluatorBase alone can mint one after a successful Evaluate call.
 class EvaluatedBuffer {
 public:
     EvaluatedBuffer(EvaluatedBuffer const&) = delete;
     EvaluatedBuffer(EvaluatedBuffer&& other) noexcept
-        : span_(other.span_)
+        : individual_(other.individual_)
+        , span_(other.span_)
     {
+        other.individual_ = nullptr;
         other.span_ = {};
     }
     auto operator=(EvaluatedBuffer const&) -> EvaluatedBuffer& = delete;
     auto operator=(EvaluatedBuffer&& other) noexcept -> EvaluatedBuffer&
     {
         if (this != &other) {
+            individual_ = other.individual_;
             span_ = other.span_;
+            other.individual_ = nullptr;
             other.span_ = {};
         }
         return *this;
     }
     ~EvaluatedBuffer() = default;
 
-    [[nodiscard]] auto Values() const noexcept -> Operon::Span<Operon::Scalar> { return span_; }
+    [[nodiscard]] auto Values(Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const
+        noexcept -> Operon::Span<Operon::Scalar>
+    {
+        ENSURE(Matches(individual, scratch));
+        return span_;
+    }
 
 private:
-    friend auto MarkEvaluated(Operon::Span<Operon::Scalar>) -> EvaluatedBuffer;
-    explicit EvaluatedBuffer(Operon::Span<Operon::Scalar> span)
-        : span_(span)
+    friend struct EvaluatorBase;
+
+    explicit EvaluatedBuffer(Operon::Individual const& individual, Operon::Span<Operon::Scalar> span)
+        : individual_(&individual)
+        , span_(span)
     {
     }
+
+    [[nodiscard]] auto Matches(Operon::Individual const& individual, Operon::Span<Operon::Scalar> scratch) const
+        noexcept -> bool
+    {
+        return individual_ == &individual && span_.data() == scratch.data() && span_.size() <= scratch.size();
+    }
+
+    Operon::Individual const* individual_ {};
     Operon::Span<Operon::Scalar> span_;
 };
-
-// The only way to construct an EvaluatedBuffer, from within a successful Evaluate() override.
-// Re-tags the same memory -- no copy, no reallocation.
-[[nodiscard]] inline auto MarkEvaluated(Operon::Span<Operon::Scalar> values) -> EvaluatedBuffer
-{
-    return EvaluatedBuffer { values };
-}
 
 // Bundles Score's pass-through parameters (needed only by composite/forwarding
 // evaluators to delegate to another Score/operator() call) so a leaf evaluator
@@ -223,10 +235,18 @@ struct EvaluatorBase
         return std::nullopt;
     }
 
-    // `evaluated`, when present, proves `ctx.Scratch` holds this Individual's valid output; a
-    // value-based override must ENSURE(evaluated.has_value()) and read evaluated->Values(),
-    // not `ctx.Scratch`. Each override increments CallCount exactly once.
+    // `evaluated`, when present, proves `ctx.Scratch` holds `ctx.Ind`'s valid output; a
+    // value-based override must ENSURE(evaluated.has_value()) and read
+    // evaluated->Values(ctx.Ind, ctx.Scratch), not `ctx.Scratch`. Each override increments CallCount exactly once.
     virtual auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> ReturnType = 0;
+protected:
+    [[nodiscard]] static auto MarkEvaluated(Operon::Individual const& individual, Operon::Span<Operon::Scalar> values)
+        -> EvaluatedBuffer
+    {
+        return EvaluatedBuffer { individual, values };
+    }
+
+public:
 
     // Non-virtual deducing-this 2-arg facade: allocates a TrainingRange()-sized scratch
     // buffer and forwards to the 3-arg operator() above.
@@ -493,12 +513,12 @@ namespace detail {
         std::optional<LinearScaling> Scaling;
     };
 
-    inline auto PrepareScaledValues(Operon::Problem const& problem, std::optional<EvaluatedBuffer>& evaluated)
-        -> ScaledValues
+    inline auto PrepareScaledValues(
+        Operon::Problem const& problem, ScoreContext ctx, std::optional<EvaluatedBuffer>& evaluated) -> ScaledValues
     {
         auto const trainingRange = problem.TrainingRange();
         ENSURE(evaluated.has_value());
-        auto yPred = evaluated->Values();
+        auto yPred = evaluated->Values(ctx.Ind, ctx.Scratch);
         auto yTrue = problem.TargetValues(trainingRange);
         auto const weights = problem.Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});
         std::optional<LinearScaling> scaling {};
@@ -540,7 +560,7 @@ public:
 
         auto const p { static_cast<double>(parameters.size()) };
 
-        auto [trainingRange, yPred, yTrue, weights, scaling] = detail::PrepareScaledValues(*problem, evaluated);
+        auto [trainingRange, yPred, yTrue, weights, scaling] = detail::PrepareScaledValues(*problem, ctx, evaluated);
 
         Operon::Scalar profiledSigma {};
         if (sigma_.empty() && Lik::UsesSigma) {
@@ -599,7 +619,7 @@ public:
         auto const& tree = ctx.Ind.Genotype;
 
         auto [trainingRange, estimatedValues, targetValues, weights, scaling]
-            = detail::PrepareScaledValues(*problem, evaluated);
+            = detail::PrepareScaledValues(*problem, ctx, evaluated);
         auto const n { static_cast<double>(trainingRange.Size()) };
 
         double mlNLL {};
@@ -666,13 +686,13 @@ public:
     {
     }
 
-    auto Score(ScoreContext /*ctx*/, std::optional<EvaluatedBuffer> evaluated) const ->
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
         typename EvaluatorBase::ReturnType override
     {
         ++Base::CallCount;
 
         auto const* problem = Base::Evaluator::GetProblem();
-        auto scaled = detail::PrepareScaledValues(*problem, evaluated);
+        auto scaled = detail::PrepareScaledValues(*problem, ctx, evaluated);
         auto estimatedValues = scaled.YPred;
         auto targetValues = scaled.YTrue;
 

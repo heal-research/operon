@@ -206,6 +206,9 @@ public:
     //
     // Checks the Prepare()-populated cache first; a miss computes and stores the result, safe concurrently.
     [[nodiscard]] auto Feasible(Operon::Tree const& tree) const -> bool;
+    // Certifies from `values`, already produced by the wrapped evaluator, instead of rerunning the interpreter
+    // through Feasible's tree-based scaling fit. Populates the same cache entry.
+    [[nodiscard]] auto FeasibleFromValues(Operon::Tree const& tree, Operon::Span<Operon::Scalar> values) const -> bool;
     [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation = Operon::Scalar { 1 }) const
         -> ShapeConstraintMeasurementSummary;
 

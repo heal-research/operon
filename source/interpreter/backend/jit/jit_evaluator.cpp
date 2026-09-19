@@ -194,17 +194,17 @@ auto JitEvaluator::Evaluate(Individual const& ind, Span<Scalar> buf) const
         }
     }
 
-    return std::optional<Operon::EvaluatedBuffer> { Operon::MarkEvaluated(estimatedValues) };
+    return std::optional<Operon::EvaluatedBuffer> { MarkEvaluated(ind, estimatedValues) };
 }
 
-auto JitEvaluator::Score(ScoreContext /*ctx*/, std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType
+auto JitEvaluator::Score(ScoreContext ctx, std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType
 {
     ++CallCount;
 
     auto const* problem = GetProblem();
     auto const range = problem->TrainingRange();
     ENSURE(evaluated.has_value());
-    auto estimatedValues = evaluated->Values();
+    auto estimatedValues = evaluated->Values(ctx.Ind, ctx.Scratch);
     ENSURE(estimatedValues.size() == range.Size());
     auto const targetValues = problem->TargetValues(range);
     auto const weights = problem->Weights(range).value_or(Span<Scalar const> {});

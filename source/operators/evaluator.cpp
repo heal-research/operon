@@ -160,19 +160,19 @@ auto OPERON_EXPORT Evaluator<ScalarDispatch>::Evaluate(Operon::Individual const&
     if (auto const evaluated = interpreter.TryEvaluate(coeff, trainingRange, estimatedValues); !evaluated) {
         return tl::unexpected(std::move(evaluated.error()));
     }
-    return std::optional<EvaluatedBuffer> { MarkEvaluated(estimatedValues) };
+    return std::optional<EvaluatedBuffer> { MarkEvaluated(ind, estimatedValues) };
 }
 
 template <>
 auto OPERON_EXPORT Evaluator<ScalarDispatch>::Score(
-    ScoreContext /*ctx*/, std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType
+    ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const -> typename EvaluatorBase::ReturnType
 {
     ++CallCount;
 
     auto const* problem = GetProblem();
     auto const trainingRange = problem->TrainingRange();
     ENSURE(evaluated.has_value());
-    auto estimatedValues = evaluated->Values();
+    auto estimatedValues = evaluated->Values(ctx.Ind, ctx.Scratch);
     ENSURE(estimatedValues.size() == trainingRange.Size());
     auto const targetValues = problem->TargetValues(trainingRange);
     auto const weights = problem->Weights(trainingRange).value_or(Operon::Span<Operon::Scalar const> {});

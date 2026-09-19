@@ -921,26 +921,43 @@ auto ShapeConstrainedEvaluator::Prepare(Operon::Span<Individual const> pop) cons
 {
     evaluator_->Prepare(pop);
     feasibleCache_.Clear();
+}
 
-    ParallelForPopulation(taskExecutor_, pop, [&](std::size_t i) {
-        std::ignore = Feasible(pop[i].Genotype); // populates the cache as a side effect
-    });
+auto ShapeConstrainedEvaluator::FeasibleFromValues(
+    Operon::Tree const& tree, Operon::Span<Operon::Scalar> values) const -> bool
+{
+    auto const hash = Operon::detail::HashTreeForMemo(tree, static_cast<Operon::Hash>(boundMode_));
+    ShapeConstraintMeasurementSummary result;
+    feasibleCache_.LazyEmplace(
+        hash, [&](auto const& e) { result = e.Value; },
+        [&](auto& e) {
+            auto const* problem = GetProblem();
+            auto const range = problem->TrainingRange();
+            auto const scaling = !problem->LinearScalingEnabled()
+                ? std::nullopt
+                : std::optional { Operon::FitLinearScaling(values, problem->TargetValues(range),
+                      problem->Weights(range).value_or(Operon::Span<Operon::Scalar const> {}),
+                      problem->LinearScalingOmitsNonFinite()) };
+            result = MeasureConstraints(constraints_, constraintVarHash_, domainsByHash_, tree, Operon::Scalar { 1 },
+                scaling, boundMode_, boundOptions_);
+            e.Value = result;
+        });
+    return result.Feasible;
 }
 
 auto ShapeConstrainedEvaluator::Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
     -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError>
 {
-    // Fast path: check feasibility first. This populates the cache if missing (via tree overload),
-    // and reads it if present. If infeasible, we return nullopt to short-circuit value computation.
-    if (!Feasible(ind.Genotype)) {
-        return std::nullopt;
-    }
-
-    // Shared ForwardPass: the wrapped evaluator's Evaluate fills `buf` once, reused by both
-    // certification above and scoring below. nullopt/unexpected propagate through unchanged.
     auto evaluated = evaluator_->Evaluate(ind, buf);
     if (!evaluated) {
+        ++evaluator_->CallCount;
         return tl::unexpected(std::move(evaluated.error()));
+    }
+    auto const feasible = evaluated->has_value()
+        ? FeasibleFromValues(ind.Genotype, (*evaluated)->Values(ind, buf))
+        : Feasible(ind.Genotype);
+    if (!feasible) {
+        return std::nullopt;
     }
     return std::move(*evaluated);
 }
