@@ -9,9 +9,9 @@
 #include <atomic>
 #include <memory>
 
+#include "operon/hash/zobrist.hpp"
 #include "operon/interpreter/backend/jit/jit_compiler.hpp"
 #include "operon/operators/evaluator.hpp"
-#include "operon/hash/zobrist.hpp"
 #include "operon/operon_export.hpp"
 
 namespace Operon::JIT {
@@ -19,10 +19,14 @@ namespace Operon::JIT {
 // ---- JIT-specific cache entry components -----------------------------------
 
 // Per-hash visit counter used by the frequency gate (compile only after N visits).
-struct VisitData { std::size_t Visits{0}; };
+struct VisitData {
+    std::size_t Visits { 0 };
+};
 
 // Holds the compiled fn + jacFn for one structural hash.
-struct MetaData { std::unique_ptr<CompileMeta> meta; };
+struct MetaData {
+    std::unique_ptr<CompileMeta> meta;
+};
 
 using JitEntry = Operon::CacheEntry<VisitData, MetaData>;
 
@@ -34,15 +38,15 @@ using JitEntry = Operon::CacheEntry<VisitData, MetaData>;
 // This guarantees CompileMeta::~CompileMeta() can safely call rt->release()
 // during cache teardown.
 class OPERON_EXPORT JitZobrist final : public Operon::Zobrist {
-    JIT::JitRuntimePool pool_;                          // destroyed last
-    mutable Operon::ZobristCache<JitEntry> cache_;     // destroyed first
+    JIT::JitRuntimePool pool_; // destroyed last
+    mutable Operon::ZobristCache<JitEntry> cache_; // destroyed first
 public:
-    JitZobrist(Operon::RandomGenerator& rng, int maxLength,
-               Operon::Span<Operon::Hash const> variableHashes, std::size_t maxAge = 0);
+    JitZobrist(Operon::RandomGenerator& rng, int maxLength, Operon::Span<Operon::Hash const> variableHashes,
+        std::size_t maxAge = 0);
     ~JitZobrist() override = default;
 
     [[nodiscard]] auto JitCache() const -> Operon::ZobristCache<JitEntry>& { return cache_; }
-    [[nodiscard]] auto Pool()     const noexcept -> JIT::JitRuntimePool const& { return pool_; }
+    [[nodiscard]] auto Pool() const noexcept -> JIT::JitRuntimePool const& { return pool_; }
 };
 
 // Evaluator that replaces the interpreter forward pass with a JIT-compiled
@@ -56,18 +60,24 @@ public:
 // AVX2 is attempted first; falls back to the scalar path on older CPUs.
 class OPERON_EXPORT JitEvaluator final : public EvaluatorBase {
 public:
-    JitEvaluator(gsl::not_null<Problem const*>    problem,
-                 gsl::not_null<JitZobrist const*> zobrist,
-                 ErrorMetric                      error         = MSE{});
+    JitEvaluator(
+        gsl::not_null<Problem const*> problem, gsl::not_null<JitZobrist const*> zobrist, ErrorMetric error = MSE {});
 
     ~JitEvaluator() override;
 
-    JitEvaluator(JitEvaluator const&)            = delete;
+    JitEvaluator(JitEvaluator const&) = delete;
     JitEvaluator& operator=(JitEvaluator const&) = delete;
-    JitEvaluator(JitEvaluator&&)                 = delete;
-    JitEvaluator& operator=(JitEvaluator&&)      = delete;
+    JitEvaluator(JitEvaluator&&) = delete;
+    JitEvaluator& operator=(JitEvaluator&&) = delete;
 
-    auto Evaluate(RandomGenerator& rng, Individual const& ind, Span<Scalar> buf) const -> ReturnType override;
+    // Phase 1: JIT-compiled (or interpreter-fallback) forward pass filling `buf` with the
+    // genotype's raw TrainingRange() output.
+    auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
+        -> tl::expected<std::optional<Operon::EvaluatedBuffer>, Operon::InterpreterError> override;
+
+    // Phase 2: linear-scaling fit-and-apply plus the error metric over phase 1's values.
+    auto Score(RandomGenerator& rng, Individual const& ind, Span<Scalar> buf,
+        std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType override;
 
     [[nodiscard]] auto CacheSize() const -> std::size_t;
     // Counts only lookups that find an already-compiled forward function.
@@ -98,25 +108,25 @@ public:
     // is also needed.  Returns nullptr only if CompileJacobian fails (e.g. non-AVX2 CPU).
     [[nodiscard]] auto GetOrCompileJacobian(Tree const& tree) const -> CompileMeta const*;
 
-    [[nodiscard]] auto Avx2Fails()    const -> std::size_t { return avx2Fails_.load(); }
+    [[nodiscard]] auto Avx2Fails() const -> std::size_t { return avx2Fails_.load(); }
     [[nodiscard]] auto CompileFails() const -> std::size_t { return compileFails_.load(); }
 
 private:
     [[nodiscard]] auto GetOrCompile(Tree const& tree, Hash hash) const -> CompileMeta const*;
 
     gsl::not_null<JitZobrist const*> zobrist_;
-    ErrorMetric                      error_;
+    ErrorMetric error_;
 
     mutable TreeCompiler compiler_;
 
-    int         maxLength_{0};
-    std::size_t minVisits_{1};
+    int maxLength_ { 0 };
+    std::size_t minVisits_ { 1 };
 
-    mutable std::atomic<std::size_t> cacheHits_{0};
-    mutable std::atomic<std::size_t> cacheMisses_{0};
-    mutable std::atomic<std::size_t> compileSuccesses_{0};
-    mutable std::atomic<std::size_t> avx2Fails_{0};
-    mutable std::atomic<std::size_t> compileFails_{0};
+    mutable std::atomic<std::size_t> cacheHits_ { 0 };
+    mutable std::atomic<std::size_t> cacheMisses_ { 0 };
+    mutable std::atomic<std::size_t> compileSuccesses_ { 0 };
+    mutable std::atomic<std::size_t> avx2Fails_ { 0 };
+    mutable std::atomic<std::size_t> compileFails_ { 0 };
 };
 
 } // namespace Operon::JIT
