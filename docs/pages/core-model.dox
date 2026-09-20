@@ -11,30 +11,6 @@
  * This representation view shows ownership and data dependencies. It does not
  * describe an evaluation workflow; see @ref architecture for the system map.
  *
- * @dot
- * digraph core_model {
- *   rankdir=LR;
- *   graph [bgcolor="transparent", pad=0.25, nodesep=0.55, ranksep=0.75];
- *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
- *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
- *   dataset [label="Dataset"];
- *   pset [label="PrimitiveSet"];
- *   problem [label="Problem"];
- *   creator [label="Creators / variation"];
- *   individual [label="Individual\nTree genotype + fitness"];
- *   evaluator [label="Evaluator"];
- *   interpreter [label="Interpreter"];
- *   problem -> dataset [label="owns or borrows; selects ranges"];
- *   problem -> pset [label="owns generation vocabulary"];
- *   creator -> pset [label="uses"];
- *   creator -> individual [label="constructs"];
- *   evaluator -> problem [label="uses"];
- *   evaluator -> individual [label="scores"];
- *   evaluator -> interpreter [label="uses"];
- *   interpreter -> dataset [label="reads"];
- *   interpreter -> individual [label="executes"];
- * }
- * @enddot
  *
  * @section core-model-tree Tree and Node
  *

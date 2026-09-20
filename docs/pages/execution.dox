@@ -11,26 +11,6 @@
  * Sampled execution and static bounding share postfix semantics but use
  * different registries, error models, and cost profiles.
  *
- * @dot
- * digraph execution {
- *   rankdir=LR;
- *   graph [bgcolor="transparent", pad=0.25, nodesep=0.55, ranksep=0.75];
- *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
- *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
- *   individual [label="Tree"];
- *   dataset [label="Dataset rows"];
- *   dispatch [label="Dispatch table"];
- *   interpreter [label="Interpreter"];
- *   derivatives [label="Jacobians"];
- *   bounds [label="Interval / affine bounds"];
- *   interpreter -> individual [label="executes"];
- *   interpreter -> dataset [label="reads"];
- *   interpreter -> dispatch [label="resolves"];
- *   derivatives -> interpreter [label="traces"];
- *   bounds -> individual [label="analyses"];
- *   bounds -> dispatch [label="interval callbacks"];
- * }
- * @enddot
  *
  * @section execution-interpreter Interpreter
  *

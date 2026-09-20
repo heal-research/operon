@@ -11,29 +11,6 @@
  * This UML activity view distinguishes actions (rounded rectangles), the
  * optional-fit decision (diamond), and the start/end nodes.
  *
- * @dot
- * digraph search {
- *   rankdir=LR;
- *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
- *   node [fontname="Helvetica", fontsize=10];
- *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
- *   start [shape=circle, label="", width=0.18];
- *   prepare [shape=box, style="rounded", label="Prepare selectors\nand evaluator"];
- *   variation [shape=box, style="rounded", label="Select / crossover / mutate"];
- *   fit [shape=diamond, label="Fit coefficients?"];
- *   optimize [shape=box, style="rounded", label="Coefficient fit"];
- *   score [shape=box, style="rounded", label="Score individual"];
- *   pool [shape=box, style="rounded", label="Offspring pool"];
- *   reinsert [shape=box, style="rounded", label="Reinsert\n(elites protected)"];
- *   next [shape=box, style="rounded", label="Next parents"];
- *   finish [shape=doublecircle, label="", width=0.18];
- *   start -> prepare -> variation -> fit;
- *   fit -> optimize [label="yes"];
- *   fit -> score [label="no"];
- *   optimize -> score;
- *   score -> pool -> reinsert -> next -> finish;
- * }
- * @enddot
  *
  * @section search-state Algorithm state and lifecycle
  *

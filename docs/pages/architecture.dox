@@ -16,26 +16,6 @@
  * it is an optional search-side collaborator that needs execution residuals and
  * Jacobians rather than objective scoring.
  *
- * @dot
- * digraph operon_overview {
- *   rankdir=TB;
- *   graph [bgcolor="transparent", pad=0.3, nodesep=0.6, ranksep=0.8];
- *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=11, margin="0.14,0.1"];
- *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
- *   entry [label="Entry points\noperon_gp | operon_nsgp | operon_enum", style="rounded,dashed"];
- *   search [label="Search\npopulation | variation | selection | reinsertion\nfitness cache | Taskflow orchestration"];
- *   evaluation [label="Evaluation\nEvaluate -> Score -> fitness\nmetrics | scaling | ErrMax | shape policy"];
- *   execution [label="Execution\ninterpreter / JIT: sampled execution\ninterval / affine: static bounds"];
- *   model [label="Model\nProblem | Dataset | PrimitiveSet\nIndividual | Tree"];
- *   fitting [label="Coefficient fitting\nLM | L-BFGS | SGD", style="rounded,dashed"];
- *   entry -> search [label="configures"];
- *   search -> evaluation [label="fitness of a candidate"];
- *   evaluation -> execution [label="values / bounds"];
- *   execution -> model;
- *   search -> fitting [label="optional local search", style=dashed];
- *   fitting -> execution [label="residuals / Jacobians"];
- * }
- * @enddot
  *
  * @section architecture-pages System pages
  *

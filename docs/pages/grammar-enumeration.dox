@@ -10,29 +10,6 @@
  *
  * @section enumeration-flow Construction and ranking
  *
- * @dot
- * digraph enumeration_flow {
- *   rankdir=LR;
- *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
- *   node [fontname="Helvetica", fontsize=10];
- *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
- *   start [shape=circle, label="", width=0.18];
- *   grammar [shape=box, style="rounded", label="Grammar and input\nvariables"];
- *   build [shape=box, style="rounded", label="Build DP buckets\nby complexity"];
- *   novel [shape=diamond, label="Novel complete\nexpression?"];
- *   fit [shape=box, style="rounded", label="Fit coefficients"];
- *   score [shape=box, style="rounded", label="Score with evaluator"];
- *   topk [shape=box, style="rounded", label="Keep best TopK"];
- *   next [shape=box, style="rounded", label="Next budget"];
- *   finish [shape=doublecircle, label="", width=0.18];
- *   start -> grammar -> build -> novel;
- *   novel -> fit [label="yes"];
- *   novel -> next [label="duplicate"];
- *   fit -> score -> topk -> next;
- *   next -> build [label="within limit"];
- *   next -> finish [label="done"];
- * }
- * @enddot
  *
  * The engine processes budgets from 1 through @c MaxComplexity. Complexity is
  * the count of every non-Constant node: variables and operators count, while
