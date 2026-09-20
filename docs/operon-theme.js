@@ -57,8 +57,9 @@
     if (width <= 0 || height <= 0) return;
     svg.setAttribute("width", "100%");
     svg.setAttribute("height", "100%");
-    frame.style.width = "100%";
-    frame.style.height = `${Math.ceil(frame.parentElement.clientWidth * height / width)}px`;
+    const diagramWidth = Math.min(frame.parentElement.clientWidth, 1200);
+    frame.style.width = `${diagramWidth}px`;
+    frame.style.height = `${Math.ceil(diagramWidth * height / width)}px`;
   };
 
   const scaleDiagrams = () => {
