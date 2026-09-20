@@ -24,8 +24,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     // operon_parse_model) - most of those are GP-specific and don't apply to
     // this non-population-based algorithm. operon_enum only reads dataset/
     // train/test/target/inputs/enable-symbols/disable-symbols/show-primitives/
-    // objective/linear-scaling/iterations/seed from it, plus its own
-    // max-complexity/top-k below; everything else shown in --help is inert
+    // objective/linear-scaling/skip-nonfinite/nonfinite-penalty-weight/iterations/seed
+    // from it, plus its own
     // here. Trimming InitOptions itself would mean restructuring a utility
     // shared by every existing CLI - out of scope for this addition.
     auto opts = Operon::InitOptions("operon_enum", "Exhaustive grammar enumeration symbolic regression");
@@ -97,7 +97,8 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
         // optimizer only drives CoefficientOptimizer's internal fit - ranking
         // is via evaluator (same --objective option GP/NSGP expose), so
         // --objective actually changes which models are reported here.
-        auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable);
+        auto evaluator = Operon::ParseEvaluator(result["objective"].as<std::string>(), problem, dtable,
+            result["skip-nonfinite"].as<bool>(), result["nonfinite-penalty-weight"].as<double>());
 
         auto seed = result["seed"].as<Operon::RandomGenerator::result_type>();
         if (seed == 0) { seed = std::random_device{}(); }
