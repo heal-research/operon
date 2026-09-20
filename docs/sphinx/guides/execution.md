@@ -1,6 +1,6 @@
 # Execution guide
 
-```{mermaid}
+:::{md-mermaid}
 flowchart TB
     interpreter[Interpreter] -->|executes| tree[Tree]
     interpreter -->|reads| dataset[Dataset rows]
@@ -8,7 +8,7 @@ flowchart TB
     derivatives[Jacobians] -->|traces| interpreter
     bounds[Interval / affine bounds] -->|analyses| tree
     bounds -->|interval callbacks| dispatch
-```
+:::
 
 ```{doxygenpage} execution
 :project: operon

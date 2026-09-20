@@ -1,5 +1,4 @@
 breathe>=4.35
 myst-parser>=2.0
-pydata-sphinx-theme>=0.15
+sphinx-immaterial>=0.13.9
 sphinx>=7.2
-sphinxcontrib-mermaid>=0.9

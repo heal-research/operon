@@ -1,6 +1,6 @@
 # Core model
 
-```{mermaid}
+:::{md-mermaid}
 flowchart TB
     problem[Problem] -->|owns or borrows; selects ranges| dataset[Dataset]
     problem -->|owns generation vocabulary| pset[PrimitiveSet]
@@ -11,7 +11,7 @@ flowchart TB
     evaluator -->|uses| interpreter[Interpreter]
     interpreter -->|reads| dataset
     interpreter -->|executes| individual
-```
+:::
 
 ```{doxygenpage} core_model
 :project: operon

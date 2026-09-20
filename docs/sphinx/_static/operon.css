@@ -1,14 +1,14 @@
-.bd-page-width,
-.bd-main .bd-content .bd-article-container {
-  max-inline-size: none;
+/* Keep guide diagrams legible without letting tall flows dominate a page. */
+.mermaid-diagram {
+  margin: 1.5rem auto;
+  max-inline-size: 600px;
 }
 
-.mermaid {
-  max-inline-size: 100%;
+.mermaid-diagram > pre.mermaid {
   overflow-x: auto;
-  text-align: center;
 }
 
-.mermaid > svg {
+.mermaid-diagram svg {
+  block-size: auto;
   max-inline-size: 100%;
 }

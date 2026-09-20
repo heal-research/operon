@@ -5,14 +5,14 @@ dataset, then uses the resulting objective values to select, vary, and retain
 candidate models. The public {doc}`Operon::Node <../reference/node>` reference
 is the compact value type used to represent each element of those trees.
 
-```{mermaid}
+:::{md-mermaid}
 flowchart TB
     D[Dataset] --> E[Evaluator]
     P[Population of trees] --> E
     E --> F[Objective values]
     F --> S[Selection and variation]
     S --> P
-```
+:::
 
 The diagram is inline Mermaid markup. It remains responsive within the page and
 uses the active site palette rather than an embedded Doxygen HTML frame.
