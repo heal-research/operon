@@ -1,7 +1,7 @@
 # Search and optimization
 
 ```{mermaid}
-flowchart LR
+flowchart TB
     start([ ]) --> prepare[Prepare selectors and evaluator] --> variation[Select / crossover / mutate] --> fit{Fit coefficients?}
     fit -->|yes| optimize[Coefficient fit] --> score[Score individual]
     fit -->|no| score

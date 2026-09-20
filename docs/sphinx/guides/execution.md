@@ -1,7 +1,7 @@
 # Execution guide
 
 ```{mermaid}
-flowchart LR
+flowchart TB
     interpreter[Interpreter] -->|executes| tree[Tree]
     interpreter -->|reads| dataset[Dataset rows]
     interpreter -->|resolves| dispatch[Dispatch table]

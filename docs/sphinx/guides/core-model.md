@@ -1,7 +1,7 @@
 # Core model
 
 ```{mermaid}
-flowchart LR
+flowchart TB
     problem[Problem] -->|owns or borrows; selects ranges| dataset[Dataset]
     problem -->|owns generation vocabulary| pset[PrimitiveSet]
     creator[Creators / variation] -->|uses| pset

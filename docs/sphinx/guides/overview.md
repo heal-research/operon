@@ -6,7 +6,7 @@ candidate models. The public {doc}`Operon::Node <../reference/node>` reference
 is the compact value type used to represent each element of those trees.
 
 ```{mermaid}
-flowchart LR
+flowchart TB
     D[Dataset] --> E[Evaluator]
     P[Population of trees] --> E
     E --> F[Objective values]
