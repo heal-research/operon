@@ -6,17 +6,34 @@
  * column-major values. `Problem` binds a dataset, train/test/validation ranges,
  * target/input variables, a primitive set, and linear-scaling policy.
  *
- * @section core-model-flow Representation flow
+ * @section core-model-flow Representation relationships
+ *
+ * This is a C4-style component view. Arrows point from the client to the domain
+ * model or component it uses; the labels make ownership and data dependencies
+ * explicit.
  *
  * @dot
  * digraph core_model {
  *   rankdir=LR;
- *   node [shape=box, style="rounded"];
- *   "Dataset\n(columns keyed by hash)" -> "Problem\n(target, inputs, ranges)";
- *   "PrimitiveSet\n(enabled symbols, arities)" -> "Tree creators / variation";
- *   "Tree\npostfix Node vector" -> "Interpreter / bounds";
- *   "Problem" -> "Evaluator";
- *   "Tree creators / variation" -> "Tree\npostfix Node vector";
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.55, ranksep=0.75];
+ *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
+ *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
+ *   dataset [label="Dataset\n<<data store>>"];
+ *   pset [label="PrimitiveSet\n<<configuration>>"];
+ *   problem [label="Problem\n<<domain model>>"];
+ *   creator [label="Creators / variation\n<<component>>"];
+ *   individual [label="Individual\n<<domain model>>\nTree genotype + fitness"];
+ *   evaluator [label="Evaluator\n<<component>>"];
+ *   interpreter [label="Interpreter\n<<component>>"];
+ *   problem -> dataset [label="owns or borrows; selects ranges"];
+ *   problem -> pset [label="owns generation vocabulary"];
+ *   creator -> pset [label="uses"];
+ *   creator -> individual [label="constructs genotype"];
+ *   evaluator -> problem [label="uses target and ranges"];
+ *   evaluator -> individual [label="scores candidate"];
+ *   evaluator -> interpreter [label="uses"];
+ *   interpreter -> dataset [label="reads input columns"];
+ *   interpreter -> individual [label="evaluates tree"];
  * }
  * @enddot
  *

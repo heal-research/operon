@@ -13,21 +13,28 @@
  * @c Score. The two-argument facade owns a training-range-sized scratch buffer
  * and forwards to that entrypoint.
  *
+ * This UML activity view distinguishes actions, the evaluation-result decision,
+ * and terminal outcomes.
+ *
  * @dot
  * digraph evaluator_phases {
- *   rankdir=LR;
- *   node [shape=box, style="rounded"];
- *   caller [label="caller"];
- *   evaluate [label="EvaluatorBase::Evaluate(ind, scratch)"];
- *   proof [label="optional<EvaluatedBuffer>"];
- *   score [label="EvaluatorBase::Score(context, proof)"];
- *   error [label="ErrMax"];
- *   fitness [label="fitness vector"];
- *   caller -> evaluate;
- *   evaluate -> error [label="unexpected InterpreterError"];
- *   evaluate -> proof [label="success"];
- *   proof -> score;
- *   score -> fitness;
+ *   rankdir=TB;
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
+ *   node [fontname="Helvetica", fontsize=10];
+ *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
+ *   start [shape=circle, label="", width=0.18];
+ *   evaluate [shape=box, style="rounded", label="EvaluatorBase::Evaluate(ind, scratch)"];
+ *   outcome [shape=diamond, label="Interpreter error?"];
+ *   proof [shape=box, style="rounded", label="Optional EvaluatedBuffer"];
+ *   score [shape=box, style="rounded", label="EvaluatorBase::Score(context, proof)"];
+ *   error [shape=box, style="rounded", label="ErrMax"];
+ *   fitness [shape=box, style="rounded", label="Fitness vector"];
+ *   finish [shape=doublecircle, label="", width=0.18];
+ *   start -> evaluate -> outcome;
+ *   outcome -> error [label="yes"];
+ *   outcome -> proof [label="no"];
+ *   proof -> score -> fitness -> finish;
+ *   error -> finish;
  * }
  * @enddot
  *
@@ -67,26 +74,37 @@
  *
  * @section shape_hard_reject Hard-reject flow
  *
+ * This UML activity view makes the feasibility branch explicit: rejection still
+ * enters the wrapper score phase, but never calls the wrapped scorer.
+ *
  * @dot
  * digraph shape_hard_reject {
- *   rankdir=LR;
- *   node [shape=box, style="rounded"];
- *   call [label="EvaluatorBase::operator()"];
- *   gate_eval [label="ShapeConstrainedEvaluator::Evaluate"];
- *   inner_eval [label="wrapped Evaluate\n(one forward pass)"];
- *   certify [label="FeasibleFromValues\n(cache miss: fit scaling from values)"];
- *   gate_score [label="ShapeConstrainedEvaluator::Score"];
- *   inner_score [label="wrapped Score"];
- *   reject [label="WorstValue\nviolations_++"];
- *   error [label="ErrMax"];
- *   call -> gate_eval;
- *   gate_eval -> inner_eval;
- *   inner_eval -> error [label="InterpreterError"];
- *   inner_eval -> certify [label="EvaluatedBuffer"];
- *   certify -> gate_score [label="feasible"];
- *   certify -> gate_score [label="infeasible: empty optional"];
- *   gate_score -> inner_score [label="cache says feasible"];
- *   gate_score -> reject [label="cache says infeasible"];
+ *   rankdir=TB;
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
+ *   node [fontname="Helvetica", fontsize=10];
+ *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
+ *   start [shape=circle, label="", width=0.18];
+ *   gate_eval [shape=box, style="rounded", label="ShapeConstrainedEvaluator::Evaluate"];
+ *   inner_eval [shape=box, style="rounded", label="Wrapped Evaluate\n(one forward pass)"];
+ *   result [shape=diamond, label="Interpreter error?"];
+ *   certify [shape=box, style="rounded", label="Certify feasibility\n(fit scaling from values on cache miss)"];
+ *   feasible [shape=diamond, label="Feasible?"];
+ *   gate_score [shape=box, style="rounded", label="ShapeConstrainedEvaluator::Score"];
+ *   inner_score [shape=box, style="rounded", label="Wrapped Score"];
+ *   reject [shape=box, style="rounded", label="WorstValue\nviolations_++"];
+ *   error [shape=box, style="rounded", label="ErrMax"];
+ *   finish [shape=doublecircle, label="", width=0.18];
+ *   start -> gate_eval -> inner_eval -> result;
+ *   result -> error [label="yes"];
+ *   result -> certify [label="no"];
+ *   certify -> feasible;
+ *   feasible -> gate_score [label="yes"];
+ *   feasible -> gate_score [label="no: empty proof"];
+ *   gate_score -> inner_score [label="feasible"];
+ *   gate_score -> reject [label="infeasible"];
+ *   inner_score -> finish;
+ *   reject -> finish;
+ *   error -> finish;
  * }
  * @enddot
  *

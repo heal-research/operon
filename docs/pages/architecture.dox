@@ -9,24 +9,37 @@
  *
  * @section architecture-map System map
  *
+ * This is a C4-style component view: an arrow points from a component to a
+ * component or domain model it uses; labels describe that relationship.
+ *
  * @dot
  * digraph operon_architecture {
- *   rankdir=LR;
- *   graph [pad=0.2, nodesep=0.5, ranksep=0.8];
- *   node [shape=box, style="rounded"];
- *   "Dataset / Problem" -> "Tree / Node / PrimitiveSet";
- *   "Parser / Formatter" -> "Tree / Node / PrimitiveSet";
- *   "Tree / Node / PrimitiveSet" -> "Interpreter / JIT";
- *   "Tree / Node / PrimitiveSet" -> "Interval / Affine bounds";
- *   "Interpreter / JIT" -> "Evaluators";
- *   "Interval / Affine bounds" -> "Shape constraints";
- *   "Evaluators" -> "Shape constraints";
- *   "Evaluators" -> "GP / NSGA-II";
- *   "Shape constraints" -> "GP / NSGA-II";
- *   "GP / NSGA-II" -> "Creators / generators / mutation / crossover";
- *   "GP / NSGA-II" -> "Selection / reinsertion / archive";
- *   "Optimizers" -> "Evaluators";
- *   "Algorithms / evaluators" -> "CLI / probes / serialization";
+ *   rankdir=TB;
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
+ *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
+ *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
+ *   integration [label="CLI / probes / serialization\n<<integration>>"];
+ *   optimizer [label="Optimizers\n<<component>>"];
+ *   search [label="GP / NSGA-II\n<<search component>>"];
+ *   variation [label="Creators / variation\n<<component>>"];
+ *   evaluator [label="Evaluators\n<<component>>"];
+ *   selection [label="Selection / archive\n<<component>>"];
+ *   model [label="Problem and individuals\n<<domain model>>"];
+ *   execution [label="Interpreter / JIT / bounds\n<<execution>>"];
+ *   shape [label="Shape constraints\n<<component>>"];
+ *   {rank=same; integration; optimizer}
+ *   {rank=same; variation; evaluator; selection}
+ *   {rank=same; model; execution; shape}
+ *   integration -> search [label="configures run"];
+ *   search -> variation [label="creates candidates"];
+ *   search -> evaluator [label="scores population"];
+ *   search -> selection [label="updates population"];
+ *   variation -> model [label="constructs"];
+ *   evaluator -> model [label="scores"];
+ *   evaluator -> execution [label="uses"];
+ *   evaluator -> shape [label="delegates certification"];
+ *   shape -> execution [label="uses bounds"];
+ *   optimizer -> evaluator [label="fits against"];
  * }
  * @enddot
  *

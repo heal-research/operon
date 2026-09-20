@@ -48,6 +48,7 @@ set(doxygen_awesome_header_script [=[
 <script type="text/javascript">
   DoxygenAwesomeDarkModeToggle.init()
 </script>
+<script type="text/javascript" src="$relpath^operon-theme.js"></script>
 ]=])
 string(REPLACE "</head>" "${doxygen_awesome_header_script}</head>" doxygen_header "${doxygen_header}")
 file(WRITE "${doxygen_awesome_header}" "${doxygen_header}")

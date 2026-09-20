@@ -6,21 +6,30 @@
  * and conservative bounds. They share postfix semantics but have different
  * registries, error models, and cost profiles.
  *
- * @section execution-flow Evaluation and binding flow
+ * @section execution-flow Execution relationships
+ *
+ * This is a C4-style component view. Arrows point from the client to the model
+ * or service it uses; sampled evaluation and conservative bounds remain
+ * separate execution products.
  *
  * @dot
  * digraph execution {
  *   rankdir=LR;
- *   node [shape=box, style="rounded"];
- *   "Tree + Dataset + Range" -> "Interpreter bind\ncontext, primal scratch";
- *   "Coefficients" -> "UpdateCoefficients";
- *   "Interpreter bind\ncontext, primal scratch" -> "batched forward pass";
- *   "UpdateCoefficients" -> "batched forward pass";
- *   "batched forward pass" -> "values";
- *   "batched forward pass" -> "forward/reverse trace";
- *   "forward/reverse trace" -> "Jacobian";
- *   "Tree + domains + coefficients" -> "Interval / Affine postorder";
- *   "Interval / Affine postorder" -> "conservative bounds";
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.55, ranksep=0.75];
+ *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
+ *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
+ *   individual [label="Individual / Tree\n<<domain model>>"];
+ *   dataset [label="Dataset + range\n<<data store>>"];
+ *   dispatch [label="Dispatch table\n<<registry>>"];
+ *   interpreter [label="Interpreter\n<<component>>"];
+ *   derivatives [label="Jacobian APIs\n<<component>>"];
+ *   bounds [label="Interval / affine evaluator\n<<component>>"];
+ *   interpreter -> individual [label="evaluates postfix tree"];
+ *   interpreter -> dataset [label="reads variables"];
+ *   interpreter -> dispatch [label="resolves primitives"];
+ *   derivatives -> interpreter [label="uses traces"];
+ *   bounds -> individual [label="analyses tree"];
+ *   bounds -> dispatch [label="uses interval callbacks"];
  * }
  * @enddot
  *

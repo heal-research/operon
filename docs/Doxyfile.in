@@ -26,11 +26,15 @@ DISABLE_INDEX = NO
 FULL_SIDEBAR = NO
 HTML_COLORSTYLE = LIGHT
 HTML_HEADER = "@doxygen_awesome_header@"
-HTML_EXTRA_FILES = "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-darkmode-toggle.js"
+HTML_EXTRA_FILES = "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-darkmode-toggle.js" \
+                   "@PROJECT_SOURCE_DIR@/docs/operon-theme.js"
 HTML_EXTRA_STYLESHEET = "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome.css" \
                         "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-sidebar-only.css" \
                         "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-sidebar-only-darkmode-toggle.css"
 
-# Architecture pages use embedded \dot diagrams. Graphviz is part of the
-# repository development shell.
+# Architecture diagrams use transparent, sans-serif SVGs so the Doxygen Awesome
+# light/dark theme can style the same diagram without a second asset set.
 HAVE_DOT = YES
+DOT_IMAGE_FORMAT = svg
+DOT_COMMON_ATTR = "fontname=Helvetica,fontsize=10"
+DOT_EDGE_ATTR = "labelfontname=Helvetica,labelfontsize=9"
