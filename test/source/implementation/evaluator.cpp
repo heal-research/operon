@@ -18,6 +18,7 @@
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
 #include "operon/optimizer/optimizer.hpp"
+#include "operon/operators/shape_constrained_evaluator.hpp"
 #include "operon/parser/infix.hpp"
 #include "operon/random/random.hpp"
 
@@ -296,7 +297,7 @@ TEST_CASE("MDL evaluator", "[evaluator][information-criteria]")
     }
 
     // End-to-end regression test (through the real evaluator path, not just
-    // detail::ProfileSigma in isolation): EvaluatorBase::Evaluate's contract
+    // detail::ProfileSigma in isolation): EvaluatorBase::operator()'s contract
     // permits buf.size() > TrainingRange().Size(), and the operator() body
     // now slices down to exactly TrainingRange().Size() before using it
     // anywhere (interpreter output, ComputeFisherMatrix's row-count
@@ -447,7 +448,7 @@ TEST_CASE("LikelihoodEvaluator", "[evaluator]")
         // LikelihoodEvaluator only overrides the 3-arg operator() (unlike
         // MDL/FBF, which also provide their own 2-arg override), so this
         // always calls the buffered form directly rather than through
-        // EvaluatorBase::Evaluate.
+        // EvaluatorBase::operator().
         GaussianLikelihoodEvaluator<DTable> const ev{&fix.problem, &fix.dtable};
         auto ind = EvaluatorFixture::MakeIndividual(fix.tree);
         std::vector<Operon::Scalar> buf(EvaluatorFixture::Nrow);
@@ -481,7 +482,7 @@ TEST_CASE("LikelihoodEvaluator", "[evaluator]")
 TEST_CASE("ProfileSigma", "[evaluator]")
 {
     SECTION("estimated longer than target: bounded by the shorter span, no out-of-bounds read") {
-        // Regression guard: EvaluatorBase::Evaluate's contract only requires
+        // Regression guard: EvaluatorBase::operator()'s contract only requires
         // buf.size() >= TrainingRange().Size(), not equality, so a caller
         // may legitimately hand ProfileSigma an oversized `estimated` span.
         // It must not index `target` past its own (shorter) length.
@@ -1031,7 +1032,7 @@ TEST_CASE("FitLinearScaling span overload agrees with FitLeastSquares and omits 
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// EvaluatorBase::Evaluate (deducing-this) dispatch
+// EvaluatorBase::operator() (deducing-this) dispatch
 //
 // Regression coverage for the CRTP-to-deducing-this rewrite: the unbuffered
 // 2-arg operator() overload must reach the *concrete derived* 3-arg
@@ -1041,7 +1042,7 @@ TEST_CASE("FitLinearScaling span overload agrees with FitLeastSquares and omits 
 // (either a direct 3-arg call, or - for the one evaluator whose 3-arg body
 // consumes RNG state - a separately-seeded but identical RNG sequence).
 // ──────────────────────────────────────────────────────────────────────────────
-TEST_CASE("EvaluatorBase::Evaluate dispatch reaches the concrete derived override", "[evaluator]")
+TEST_CASE("EvaluatorBase::operator() dispatch reaches the concrete derived override", "[evaluator]")
 {
     EvaluatorFixture fix;
     using DTable = EvaluatorFixture::DTable;
@@ -1118,6 +1119,71 @@ TEST_CASE("EvaluatorBase::Evaluate dispatch reaches the concrete derived overrid
         REQUIRE(via3Arg.size() == 1);
         CHECK(std::isfinite(via2Arg[0]));
         CHECK(via2Arg[0] == via3Arg[0]);
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase-split contract regression coverage
+// ──────────────────────────────────────────────────────────────────────────────
+TEST_CASE("Evaluator two-phase contract edge cases", "[evaluator]")
+{
+    EvaluatorFixture fix;
+    using DTable = EvaluatorFixture::DTable;
+
+    SECTION("CallCount increments even when Evaluate fails") {
+        // X99 is not in fix.ds; Evaluate will fail with a missing-variable error.
+        Evaluator<DTable> const ev{&fix.problem, &fix.dtable};
+        auto ind = EvaluatorFixture::MakeIndividual(Operon::InfixParser::Parse("X1", fix.ds));
+        // Corrupt the variable hash so the dispatch table lookup fails at runtime.
+        ind.Genotype.Nodes().front().HashValue = static_cast<Operon::Hash>(0xDEADBEEFDEADBEEFULL);
+
+        auto const initialCount = ev.CallCount.load();
+        auto const fit = ev(fix.rng, ind);
+
+        REQUIRE(fit[0] == EvaluatorBase::ErrMax);
+        REQUIRE(ev.CallCount.load() == initialCount + 1);
+    }
+
+    SECTION("ShapeConstrainedEvaluator hard-reject skips the wrapped evaluator's Score phase") {
+        // X1*X1 over [1,5]: d/dX1 = 2*X1 in [2,10] -- certifiably positive.
+        // Sign=-1 (non-increasing) is structurally violated regardless of linear scaling.
+        Operon::ShapeConstraintSet cs;
+        cs.Domains.insert_or_assign("X1", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+        cs.Domains.insert_or_assign("X2", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+        cs.Domains.insert_or_assign("X3", std::pair { Operon::Scalar { 1 }, Operon::Scalar { 5 } });
+        cs.Constraints.push_back({ .Op = ShapeConstraintOp::FirstDerivative,
+            .Variable = "X1", .Sign = -1, .Bound = std::nullopt });
+
+        Evaluator<DTable> const inner{&fix.problem, &fix.dtable};
+        Operon::ShapeConstrainedEvaluator sce{&inner, &fix.dtable, cs};
+
+        // X1 * X1 -- always non-decreasing in X1 on [1,5], violates Sign=-1.
+        auto ind = EvaluatorFixture::MakeIndividual(
+            Operon::InfixParser::Parse("X1 * X1", fix.ds));
+
+        // Populate the feasibility cache via Prepare.
+        sce.Prepare(std::span<Operon::Individual const>{&ind, 1});
+
+        // The tree must be certified infeasible before we score it.
+        REQUIRE_FALSE(sce.Feasible(ind.Genotype));
+
+        auto const initialInnerCount = inner.CallCount.load();
+        auto const initialGateCount  = sce.CallCount.load();
+        auto const initialInnerResiduals = inner.ResidualEvaluations.load();
+
+        auto const fit = sce(fix.rng, ind);
+
+        // Hard rejection still runs the wrapped evaluator's Evaluate (forward
+        // pass), so its ResidualEvaluations grows by one, but it skips the
+        // wrapped evaluator's Score phase, so the wrapped CallCount does not
+        // move. The gate counts the call itself.
+        REQUIRE(sce.CallCount.load()   == initialGateCount  + 1);
+        REQUIRE(inner.CallCount.load() == initialInnerCount);
+        REQUIRE(inner.ResidualEvaluations.load() == initialInnerResiduals + 1);
+
+        // Fitness must be the gate's worst-value sentinel, not a real evaluated score.
+        REQUIRE(fit[0] > static_cast<Operon::Scalar>(0));  // worstValue_ is a positive large value
+        REQUIRE(fit[0] != EvaluatorBase::ErrMax / 2);       // not the normal evaluator output
     }
 }
 

@@ -38,12 +38,14 @@ enum class ShapeConstraintEnforcement : unsigned {
     FeasibilityFirst = 1U << 3U,
 };
 
-[[nodiscard]] constexpr auto operator|(ShapeConstraintEnforcement lhs, ShapeConstraintEnforcement rhs) noexcept -> ShapeConstraintEnforcement
+[[nodiscard]] constexpr auto operator|(ShapeConstraintEnforcement lhs, ShapeConstraintEnforcement rhs) noexcept
+    -> ShapeConstraintEnforcement
 {
     return static_cast<ShapeConstraintEnforcement>(static_cast<unsigned>(lhs) | static_cast<unsigned>(rhs));
 }
 
-[[nodiscard]] constexpr auto operator&(ShapeConstraintEnforcement lhs, ShapeConstraintEnforcement rhs) noexcept -> ShapeConstraintEnforcement
+[[nodiscard]] constexpr auto operator&(ShapeConstraintEnforcement lhs, ShapeConstraintEnforcement rhs) noexcept
+    -> ShapeConstraintEnforcement
 {
     return static_cast<ShapeConstraintEnforcement>(static_cast<unsigned>(lhs) & static_cast<unsigned>(rhs));
 }
@@ -109,13 +111,14 @@ struct ShapeBoundOptions {
 };
 inline void ValidateShapeBoundOptions(ShapeBoundOptions const& options)
 {
-    if (options.BisectionDepth < 0 || options.BisectionDepth > 20
-        || options.AffineBisectionMaxDepth < 0 || options.AffineBisectionMaxDepth > 20) {
+    if (options.BisectionDepth < 0 || options.BisectionDepth > 20 || options.AffineBisectionMaxDepth < 0
+        || options.AffineBisectionMaxDepth > 20) {
         throw std::invalid_argument("bisection depths must be in [0, 20]");
     }
 }
 
-[[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2) -> std::optional<std::string>;
+[[nodiscard]] OPERON_EXPORT auto ValidatePolicy(ShapeConstraintPolicy const& policy, bool isNsga2)
+    -> std::optional<std::string>;
 [[nodiscard]] OPERON_EXPORT auto ParseShapeEnforcement(std::string const& str) -> ShapeConstraintEnforcement;
 // Rejects Interval+Affine together, or Bisected without Interval. Shared by
 // ParseShapeBoundMode and both SetBoundMode setters below so a
@@ -173,11 +176,16 @@ public:
     // Accumulates over this evaluator's lifetime; EvaluatorBase::Reset() does not clear it.
     [[nodiscard]] auto Violations() const noexcept -> std::size_t { return violations_.load(); }
 
-    // On an uncached tree, fuses the gate's ForwardPass with the wrapped evaluator's scoring pass when the
-    // wrapped evaluator is concretely Operon::Evaluator<ScalarDispatch> (see fastEvaluator_) -- one pass
-    // instead of two. Falls back to the ordinary Feasible()-then-delegate sequence otherwise (cache hit, or
-    // an evaluator type that can't accept pre-materialized values).
-    auto Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    // Delegates to the wrapped evaluator's Evaluate, then fits (a,b) from those values
+    // (or its own tree-overload pass, if the wrapped evaluator isn't value-based) and
+    // populates feasibleCache_ for this tree.
+    auto Evaluate(Operon::Individual const& ind, Operon::Span<Operon::Scalar> buf) const
+        -> tl::expected<std::optional<EvaluatedBuffer>, InterpreterError> override;
+
+    // Feasible (per the cache Evaluate just populated) -> wrapped evaluator's Score;
+    // infeasible -> WorstValue.
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> evaluated) const ->
+        typename EvaluatorBase::ReturnType override;
 
     auto ObjectiveCount() const -> std::size_t override { return evaluator_->ObjectiveCount(); }
 
@@ -186,7 +194,10 @@ public:
     // rationale). Cleared and rebuilt each call, so it always reflects the most recent `pop`.
     auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 
-    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> override { return evaluator_->Stats(); }
+    auto Stats() const -> std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> override
+    {
+        return evaluator_->Stats();
+    }
     auto BudgetExhausted() const -> bool override { return evaluator_->BudgetExhausted(); }
 
     // The same box-bounding check Evaluate() uses, exposed standalone so a caller can ask whether a tree
@@ -195,7 +206,11 @@ public:
     //
     // Checks the Prepare()-populated cache first; a miss computes and stores the result, safe concurrently.
     [[nodiscard]] auto Feasible(Operon::Tree const& tree) const -> bool;
-    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation = Operon::Scalar { 1 }) const -> ShapeConstraintMeasurementSummary;
+    // Certifies from `values`, already produced by the wrapped evaluator, instead of rerunning the interpreter
+    // through Feasible's tree-based scaling fit. Populates the same cache entry.
+    [[nodiscard]] auto FeasibleFromValues(Operon::Tree const& tree, Operon::Span<Operon::Scalar> values) const -> bool;
+    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Scalar unknownViolation = Operon::Scalar { 1 }) const
+        -> ShapeConstraintMeasurementSummary;
 
 private:
     gsl::not_null<EvaluatorBase const*> evaluator_;
@@ -210,14 +225,8 @@ private:
     double worstValue_ { 1.0 };
     ShapeBoundMode boundMode_ { ShapeBoundMode::Interval };
     ShapeBoundOptions boundOptions_ {};
-    // Non-owning; set via SetExecutor(). nullptr means Prepare() runs
-    // sequentially -- see Prepare()'s doc comment.
     tf::Executor* taskExecutor_ { nullptr };
     mutable std::atomic_size_t violations_ { 0 };
-    // Set once at construction (dynamic_cast, non-null iff `evaluator` is concretely this type). Evaluate()
-    // uses it to fuse the gate's feasibility ForwardPass with the inner evaluator's scoring ForwardPass on an
-    // uncached tree, skipping the inner evaluator's own duplicate pass -- see Evaluate()'s doc comment.
-    Operon::Evaluator<Operon::ScalarDispatch> const* fastEvaluator_ { nullptr };
 
     struct FeasibleData {
         ShapeConstraintMeasurementSummary Value {};
@@ -247,14 +256,17 @@ public:
         boundOptions_ = options;
         measurementCache_.Clear();
     }
-    [[nodiscard]] auto RawViolation(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const -> Operon::Scalar;
-    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const -> ShapeConstraintMeasurementSummary;
+    [[nodiscard]] auto RawViolation(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const
+        -> Operon::Scalar;
+    [[nodiscard]] auto Measure(Operon::Tree const& tree, Operon::Span<Operon::Scalar> scratch = {}) const
+        -> ShapeConstraintMeasurementSummary;
 
     // See ShapeConstrainedEvaluator::SetExecutor — Prepare()'s population
     // Measure() pre-warm reuses the caller's executor the same way.
     void SetExecutor(tf::Executor& executor) noexcept { taskExecutor_ = &executor; }
 
-    auto Evaluate(Operon::RandomGenerator& rng, Individual const& ind, Operon::Span<Operon::Scalar> buf) const -> typename EvaluatorBase::ReturnType override;
+    auto Score(ScoreContext ctx, std::optional<EvaluatedBuffer> /*evaluated*/) const ->
+        typename EvaluatorBase::ReturnType override;
     auto ObjectiveCount() const -> std::size_t override { return 1; }
     auto Prepare(Operon::Span<Individual const> pop) const -> void override;
 

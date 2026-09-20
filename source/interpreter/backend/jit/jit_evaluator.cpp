@@ -6,9 +6,9 @@
 
 #include "operon/interpreter/backend/jit/jit_evaluator.hpp"
 #include "operon/core/tree_diff.hpp"
+#include "operon/interpreter/interpreter.hpp"
 #include "operon/operators/evaluator.hpp"
 #include "operon/operators/linear_scaling.hpp"
-#include "operon/interpreter/interpreter.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -18,20 +18,20 @@
 
 namespace Operon::JIT {
 
-JitZobrist::JitZobrist(Operon::RandomGenerator& rng, int maxLength,
-                       Operon::Span<Operon::Hash const> variableHashes, std::size_t maxAge)
+JitZobrist::JitZobrist(
+    Operon::RandomGenerator& rng, int maxLength, Operon::Span<Operon::Hash const> variableHashes, std::size_t maxAge)
     : Zobrist(rng, maxLength, variableHashes, maxAge)
-{}
+{
+}
 
-
-JitEvaluator::JitEvaluator(gsl::not_null<Problem const*>    problem,
-                             gsl::not_null<JitZobrist const*> zobrist,
-                             ErrorMetric                      error)
+JitEvaluator::JitEvaluator(
+    gsl::not_null<Problem const*> problem, gsl::not_null<JitZobrist const*> zobrist, ErrorMetric error)
     : EvaluatorBase(problem)
     , zobrist_(zobrist)
     , error_(error)
     , compiler_(&zobrist->Pool())
-{}
+{
+}
 
 JitEvaluator::~JitEvaluator() = default;
 
@@ -42,13 +42,19 @@ auto JitEvaluator::GetOrCompile(Tree const& tree) const -> CompileMeta const*
 
 auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMeta const*
 {
-    if (maxLength_ > 0 && std::cmp_greater(tree.Length(), maxLength_)) { return nullptr; }
+    if (maxLength_ > 0 && std::cmp_greater(tree.Length(), maxLength_)) {
+        return nullptr;
+    }
 
     // Fast path: already compiled.
-    CompileMeta const* result{};
-    if (zobrist_->JitCache().IfContains(hash, [&](JitEntry const& e) -> void {
-            if (e.meta && e.meta->fn) { result = e.meta.get(); }
-        }) && result != nullptr) {
+    CompileMeta const* result {};
+    if (zobrist_->JitCache().IfContains(hash,
+            [&](JitEntry const& e) -> void {
+                if (e.meta && e.meta->fn) {
+                    result = e.meta.get();
+                }
+            })
+        && result != nullptr) {
         ++cacheHits_;
         return result;
     }
@@ -56,12 +62,12 @@ auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMet
     ++cacheMisses_;
 
     // Increment visit counter; return nullptr until frequency threshold is met.
-    std::size_t visits{};
-    zobrist_->JitCache().LazyEmplace(hash,
-        [&](JitEntry& e) -> void { visits = ++e.Visits; },
-        [&](JitEntry& e) -> void { visits = ++e.Visits; }
-    );
-    if (visits < minVisits_) { return nullptr; }
+    std::size_t visits {};
+    zobrist_->JitCache().LazyEmplace(
+        hash, [&](JitEntry& e) -> void { visits = ++e.Visits; }, [&](JitEntry& e) -> void { visits = ++e.Visits; });
+    if (visits < minVisits_) {
+        return nullptr;
+    }
 
     // Compile outside the map lock so cc.finalize() runs in parallel.
     // AVX2-only: no scalar/SSE fallback attempt (see jit_compiler.hpp) — a
@@ -80,12 +86,16 @@ auto JitEvaluator::GetOrCompile(Tree const& tree, Hash hash) const -> CompileMet
         if (!e.meta) {
             e.meta = std::move(compiled);
         } else if (e.meta->fn == nullptr && compiled) {
-            e.meta->fn      = compiled->fn;      compiled->fn      = nullptr;
-            e.meta->rtTree  = compiled->rtTree;  compiled->rtTree  = nullptr;
-            e.meta->nVars   = compiled->nVars;
+            e.meta->fn = compiled->fn;
+            compiled->fn = nullptr;
+            e.meta->rtTree = compiled->rtTree;
+            compiled->rtTree = nullptr;
+            e.meta->nVars = compiled->nVars;
             e.meta->nConsts = compiled->nConsts;
         }
-        if (e.meta && e.meta->fn) { result = e.meta.get(); }
+        if (e.meta && e.meta->fn) {
+            result = e.meta.get();
+        }
     });
     return result;
 }
@@ -95,76 +105,72 @@ auto JitEvaluator::GetOrCompileJacobian(Tree const& tree) const -> CompileMeta c
     auto const hash = zobrist_->ComputeHash(tree);
 
     // Fast path: Jacobian already compiled.
-    CompileMeta const* meta{};
-    if (zobrist_->JitCache().IfContains(hash, [&](JitEntry const& e) -> void {
-            if (e.meta && e.meta->jacFn) { meta = e.meta.get(); }
-        }) && meta != nullptr) {
+    CompileMeta const* meta {};
+    if (zobrist_->JitCache().IfContains(hash,
+            [&](JitEntry const& e) -> void {
+                if (e.meta && e.meta->jacFn) {
+                    meta = e.meta.get();
+                }
+            })
+        && meta != nullptr) {
         return meta;
     }
 
     // Ensure an entry exists and count this as a visit (consistent with GetOrCompile).
     // Jacobian compilation is not frequency-gated — it is only requested by the optimizer
     // for trees that have already passed selection, so compiling unconditionally is correct.
-    zobrist_->JitCache().LazyEmplace(hash,
-        [](JitEntry& e) -> void { ++e.Visits; },
-        [](JitEntry& e) -> void { e.Visits = 1; });
+    zobrist_->JitCache().LazyEmplace(
+        hash, [](JitEntry& e) -> void { ++e.Visits; }, [](JitEntry& e) -> void { e.Visits = 1; });
 
-    auto dag    = Operon::BuildJacobianDag(tree);
+    auto dag = Operon::BuildJacobianDag(tree);
     auto newJac = compiler_.CompileJacobian(dag);
 
     zobrist_->JitCache().ModifyIf(hash, [&](JitEntry& e) -> void {
         if (!e.meta) {
             e.meta = std::move(newJac);
         } else if (e.meta->jacFn == nullptr && newJac && newJac->jacFn != nullptr) {
-            e.meta->jacFn  = newJac->jacFn;  newJac->jacFn  = nullptr;
-            e.meta->rtJac  = newJac->rtJac;  newJac->rtJac  = nullptr;
+            e.meta->jacFn = newJac->jacFn;
+            newJac->jacFn = nullptr;
+            e.meta->rtJac = newJac->rtJac;
+            newJac->rtJac = nullptr;
         }
-        if (e.meta) { meta = e.meta.get(); }
+        if (e.meta) {
+            meta = e.meta.get();
+        }
     });
     return meta;
 }
 
-auto JitEvaluator::Evaluate(RandomGenerator& /*rng*/, Individual const& ind,
-                             Span<Scalar> buf) const -> ReturnType
+auto JitEvaluator::Evaluate(Individual const& ind, Span<Scalar> buf) const
+    -> tl::expected<std::optional<Operon::EvaluatedBuffer>, Operon::InterpreterError>
 {
-    ++CallCount;
-
-    auto const* problem       = GetProblem();
-    auto const* dataset       = problem->GetDataset();
-    auto const  range         = problem->TrainingRange();
-    auto const  targetValues  = problem->TargetValues(range);
-    auto const  weightsOpt    = problem->Weights(range);
-    auto const  weights       = weightsOpt.value_or(Span<Scalar const>{});
-
+    auto const* problem = GetProblem();
+    auto const* dataset = problem->GetDataset();
+    auto const range = problem->TrainingRange();
     auto const& tree = ind.Genotype;
-    auto const  hash = zobrist_->ComputeHash(tree);
-    CompileMeta const* compiled = GetOrCompile(tree, hash);
+    auto const hash = zobrist_->ComputeHash(tree);
+    auto const* compiled = GetOrCompile(tree, hash);
 
     ENSURE(buf.size() >= range.Size());
     ++ResidualEvaluations;
 
-    // Same oversized-scratch-buffer contract as Evaluator<DTable>::Evaluate
-    // (source/operators/evaluator.cpp): buf may legitimately be larger than
-    // range.Size() for a reused caller-owned buffer, but the compiled path
-    // below only ever writes nRows entries and the fallback path's
-    // Interpreter::Evaluate only writes when given a span sized exactly to
-    // the range - so scaling and the error metric must operate on a view
-    // sliced down to range.Size(), not the full (possibly oversized) buf.
+    // The composed evaluator contract permits a larger reused scratch buffer,
+    // whereas both execution backends write exactly TrainingRange().Size()
+    // rows. Keep all writes on the same exact-sized prefix.
     auto estimatedValues = buf.subspan(0, range.Size());
 
     if (compiled != nullptr) {
-        auto const  nRows    = static_cast<int32_t>(range.Size());
-        auto const  nRowsPad = (nRows + 7) & ~7; // NOLINT(hicpp-signed-bitwise)
+        auto const nRows = static_cast<int32_t>(range.Size());
+        auto const nRowsPad = (nRows + 7) & ~7; // NOLINT(hicpp-signed-bitwise)
 
         // Rebuild column pointers from the tree (VarOrder is re-derivable since
-        // the Zobrist hash now structurally identifies each unique tree).
-        thread_local std::vector<Hash>         varOrderBuf;
+        // the Zobrist hash structurally identifies each unique tree).
+        thread_local std::vector<Hash> varOrderBuf;
         thread_local std::vector<float const*> colPtrs;
         varOrderBuf = VarOrder(tree);
         colPtrs.resize(varOrderBuf.size());
         for (std::size_t i = 0; i < varOrderBuf.size(); ++i) {
-            colPtrs[i] = dataset->GetPaddedValues(varOrderBuf[i])
-                         + static_cast<std::ptrdiff_t>(range.Start());
+            colPtrs[i] = dataset->GetPaddedValues(varOrderBuf[i]) + static_cast<std::ptrdiff_t>(range.Start());
         }
 
         thread_local std::vector<Scalar> scratch;
@@ -174,38 +180,52 @@ auto JitEvaluator::Evaluate(RandomGenerator& /*rng*/, Individual const& ind,
         tree.GetCoefficients(coeff);
         ENSURE(static_cast<int>(varOrderBuf.size()) == compiled->nVars);
         ENSURE(static_cast<int>(coeff.size()) == compiled->nConsts);
-        compiled->fn(scratch.data(), colPtrs.data(), nRowsPad,
-                     coeff.empty() ? nullptr : coeff.data());
+        compiled->fn(scratch.data(), colPtrs.data(), nRowsPad, coeff.empty() ? nullptr : coeff.data());
         std::copy_n(scratch.data(), nRows, estimatedValues.data());
     } else {
         thread_local ScalarDispatch fallbackDtable;
         thread_local std::vector<Scalar> coeffBuf;
         tree.GetCoefficients(coeffBuf);
-        Interpreter<Scalar, ScalarDispatch> const interp{&fallbackDtable, dataset, &tree};
-        interp.Evaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, estimatedValues);
+        Interpreter<Scalar, ScalarDispatch> const interp { &fallbackDtable, dataset, &tree };
+        if (auto const evaluated
+            = interp.TryEvaluate(Span<Scalar const>(coeffBuf.data(), coeffBuf.size()), range, estimatedValues);
+            !evaluated) {
+            return tl::unexpected(std::move(evaluated.error()));
+        }
     }
 
-    if (GetProblem()->LinearScalingEnabled()) {
-        FitLinearScaling(Span<Scalar const>(estimatedValues.data(), estimatedValues.size()), targetValues, weights, /*omitNonFinite=*/false).ApplyInPlace(estimatedValues);
+    return std::optional<Operon::EvaluatedBuffer> { MarkEvaluated(ind, estimatedValues) };
+}
+
+auto JitEvaluator::Score(ScoreContext ctx, std::optional<Operon::EvaluatedBuffer> evaluated) const -> ReturnType
+{
+    ++CallCount;
+
+    auto const* problem = GetProblem();
+    auto const range = problem->TrainingRange();
+    ENSURE(evaluated.has_value());
+    auto estimatedValues = evaluated->Values(ctx.Ind, ctx.Scratch);
+    ENSURE(estimatedValues.size() == range.Size());
+    auto const targetValues = problem->TargetValues(range);
+    auto const weights = problem->Weights(range).value_or(Span<Scalar const> {});
+
+    if (problem->LinearScalingEnabled()) {
+        FitLinearScaling(Span<Scalar const>(estimatedValues.data(), estimatedValues.size()), targetValues, weights,
+            /*omitNonFinite=*/false)
+            .ApplyInPlace(estimatedValues);
     }
 
-    auto fit = static_cast<Scalar>(weights.empty()
-        ? error_(estimatedValues, targetValues)
-        : error_(estimatedValues, targetValues, weights));
-
-    if (!std::isfinite(fit)) { fit = EvaluatorBase::ErrMax; }
-    return ReturnType{ fit };
+    auto fit = static_cast<Scalar>(
+        weights.empty() ? error_(estimatedValues, targetValues) : error_(estimatedValues, targetValues, weights));
+    if (!std::isfinite(fit)) {
+        fit = EvaluatorBase::ErrMax;
+    }
+    return ReturnType { fit };
 }
 
-auto JitEvaluator::CacheSize() const -> std::size_t
-{
-    return zobrist_->JitCache().Size();
-}
+auto JitEvaluator::CacheSize() const -> std::size_t { return zobrist_->JitCache().Size(); }
 
-void JitEvaluator::ClearCache()
-{
-    zobrist_->JitCache().Clear();
-}
+void JitEvaluator::ClearCache() { zobrist_->JitCache().Clear(); }
 
 void JitEvaluator::ResetCounters()
 {
