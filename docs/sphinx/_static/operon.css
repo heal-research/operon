@@ -10,6 +10,7 @@
 }
 
 .mermaid > svg {
-  block-size: auto;
+  block-size: auto !important;
+  inline-size: min(900px, 100%) !important;
   max-inline-size: 100%;
 }
