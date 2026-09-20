@@ -39,7 +39,7 @@
  *   evaluator -> execution [label="uses"];
  *   evaluator -> shape [label="delegates certification"];
  *   shape -> execution [label="uses bounds"];
- *   optimizer -> evaluator [label="fits against"];
+ *   optimizer -> model [label="fits coefficients against"];
  * }
  * @enddot
  *

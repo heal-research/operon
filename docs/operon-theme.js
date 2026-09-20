@@ -15,8 +15,9 @@
 
   const applyTheme = theme => {
     if (theme !== "dark" && theme !== "light") return;
-    document.documentElement.classList.toggle("dark-mode", theme === "dark");
-    document.documentElement.classList.toggle("light-mode", theme === "light");
+    const enabled = theme === "dark";
+    DoxygenAwesomeDarkModeToggle.userPreference = enabled;
+    document.querySelector("doxygen-awesome-dark-mode-toggle")?.updateIcon();
   };
 
   const persistTheme = theme => {

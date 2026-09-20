@@ -3,10 +3,6 @@ if(BUILD_TESTING)
   add_subdirectory(test)
 endif()
 
-option(BUILD_DOXYGEN_DOCS "Build documentation using Doxygen Awesome" OFF)
-if(BUILD_DOXYGEN_DOCS)
-  include(cmake/docs.cmake)
-endif()
 
 option(ENABLE_COVERAGE "Enable coverage support separate from CTest's" OFF)
 if(ENABLE_COVERAGE)

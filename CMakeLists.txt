@@ -17,6 +17,11 @@ project(
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+option(BUILD_DOXYGEN_DOCS "Build documentation using Doxygen Awesome" OFF)
+if(BUILD_DOXYGEN_DOCS)
+    include(cmake/docs.cmake)
+endif()
+
 docs_early_return()
 
 include(cmake/project-is-top-level.cmake)
