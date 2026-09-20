@@ -16,7 +16,13 @@
   const applyTheme = theme => {
     if (theme !== "dark" && theme !== "light") return;
     const enabled = theme === "dark";
-    DoxygenAwesomeDarkModeToggle.userPreference = enabled;
+    try {
+      DoxygenAwesomeDarkModeToggle.userPreference = enabled;
+    } catch {
+      // Browsers can deny storage to file:// previews. The native setter
+      // persists its preference there, so fall back to its storage-free API.
+      DoxygenAwesomeDarkModeToggle.enableDarkMode(enabled);
+    }
     document.querySelector("doxygen-awesome-dark-mode-toggle")?.updateIcon();
   };
 

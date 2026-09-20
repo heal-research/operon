@@ -43,6 +43,12 @@ execute_process(
     COMMAND_ERROR_IS_FATAL ANY
 )
 file(READ "${doxygen_awesome_header}" doxygen_header)
+string(REPLACE
+    "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"https://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">"
+    "<!DOCTYPE html>"
+    doxygen_header
+    "${doxygen_header}"
+)
 set(doxygen_awesome_header_script [=[
 <script type="text/javascript" src="$relpath^doxygen-awesome-darkmode-toggle.js"></script>
 <script type="text/javascript">
