@@ -1,0 +1,87 @@
+/**
+ * @page search_optimization Search and coefficient optimization
+ *
+ * Search owns population state; operators borrow the problem, evaluator, and
+ * policy objects needed to transform it. Coefficient fitting is an optional
+ * transformation of a candidate tree, not evaluator bookkeeping.
+ *
+ * @section search-flow Generation lifecycle
+ *
+ * @dot
+ * digraph search {
+ *   rankdir=LR;
+ *   node [shape=box, style="rounded"];
+ *   "parents" -> "Prepare selectors\nand evaluator";
+ *   "Prepare selectors\nand evaluator" -> "select / crossover / mutate";
+ *   "select / crossover / mutate" -> "optional coefficient fit";
+ *   "optional coefficient fit" -> "Evaluate then Score";
+ *   "Evaluate then Score" -> "offspring pool";
+ *   "offspring pool" -> "reinsertion\n(elites protected)";
+ *   "reinsertion\n(elites protected)" -> "next parents";
+ * }
+ * @enddot
+ *
+ * @section search-state Algorithm state and lifecycle
+ *
+ * `GeneticAlgorithmBase` owns one contiguous `individuals_` allocation. Its
+ * `parents_` and `offspring_` spans are views into that allocation and must be
+ * rebound after copy or restore; callers must not retain them beyond algorithm
+ * mutation. It borrows `Problem`, initializers, generator, and reinserter.
+ *
+ * A generation prepares selectors and evaluator against the current parents,
+ * produces candidates, evaluates and scores accepted candidates, then reinserts
+ * from the pool. Evaluation budget termination belongs to the generator's
+ * evaluator. `Reset()` is valid only between runs: it clears generation state,
+ * timing, stop request, and evaluator counters.
+ *
+ * `OffspringGeneratorBase` owns no model state. It chooses two parents, applies
+ * crossover and mutation probabilistically, optionally runs a
+ * `CoefficientOptimizer`, then calls `ScoreIndividual`. Its optional Zobrist
+ * cache stores objective vectors by the configured tree hash; cache use is only
+ * sound when that hash captures every result-affecting part of the candidate.
+ *
+ * `ReinserterBase` enforces elitism before each concrete combine strategy. The
+ * protected prefix is ordered by the supplied comparison, so GP and NSGA-II
+ * share the mechanism but supply different orderings. Keep-best merges parent
+ * and pool candidates; replace-worst replaces the non-elite tail from a sorted
+ * pool.
+ *
+ * @section search-algorithms GP and NSGA-II
+ *
+ * `GeneticProgrammingAlgorithm` is the single-objective runner. `NSGA2` adds a
+ * nondominated sorter, Pareto fronts, and crowding distance; it exposes the
+ * current best Pareto front through `Best()`. Objective count is fixed into
+ * every individual fitness vector at NSGA-II construction. A comparator or
+ * fitness layout mismatch is an algorithm configuration error, not something
+ * reinsertion can repair.
+ *
+ * @section optimization Coefficient optimization
+ *
+ * `CoefficientOptimizer` wraps an `OptimizerBase` and returns a new tree plus
+ * `FitOutcome`. It does not mutate the original candidate in place. The caller
+ * decides whether successful fitted coefficients are inherited (Lamarckian) or
+ * used only for the immediate score.
+ *
+ * `OptimizerBase::Optimize()` returns either `FitResult` or one of three
+ * meaningful failures: a non-improving fit, an interpreter evaluation error,
+ * or a configuration error such as invalid LM weights. Every outcome carries
+ * `FitDiagnostics`, so reporting must use `Diagnostics()` rather than discard
+ * counts on failure. Success means final cost improves on initial cost; a solver
+ * finishing normally is not sufficient.
+ *
+ * Linear scaling is distinct from coefficient optimization. `FitLinearScaling`
+ * fits `y = scale * f(x) + offset` against the training target, and may use a
+ * caller-owned scratch output buffer. Its value and derivative interval
+ * transforms differ because an offset vanishes under differentiation. Scaling
+ * must remain consistent with the `Problem` policy and evaluator non-finite
+ * handling.
+ *
+ * @section search-entrypoints API entry points
+ *
+ * - `operon/algorithms/ga_base.hpp`, `gp.hpp`, `nsga2.hpp`: algorithm state and runners.
+ * - `operon/operators/generator.hpp`: candidate generation and cache boundary.
+ * - `operon/operators/reinserter.hpp`: elitism and replacement policy.
+ * - `operon/operators/local_search.hpp`: coefficient-optimization operator.
+ * - `operon/optimizer/optimizer.hpp`: fit outcomes, diagnostics, LM/SGD implementations.
+ * - `operon/operators/linear_scaling.hpp`: fitted model-output scaling.
+ */

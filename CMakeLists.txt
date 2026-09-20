@@ -10,7 +10,7 @@ project(
     operon
     VERSION 0.3.1
     DESCRIPTION "Fast and scalable genetic programming library for symbolic regression."
-    HOMEPAGE_URL "https://operongp.readthedocs.io/en/latest/"
+    HOMEPAGE_URL "https://heal-research.github.io/operon/"
     LANGUAGES CXX
 )
 

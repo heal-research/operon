@@ -32,15 +32,16 @@
  *
  * @section architecture-systems System documentation sequence
  *
- * - @ref architecture_core — tree representation, dataset, problem, primitive
- *   registry, hashing, and ownership invariants.
- * - @ref architecture_execution — parser, dispatch, interpreter, JIT, automatic
+ * - @ref core_model — dataset and problem formulation, postfix trees, nodes,
+ *   primitive generation vocabulary, and enumeration grammar.
+ * - @ref execution — parser, dispatch, interpreter, JIT, automatic
  *   differentiation, interval/affine evaluation, and range tightening.
  * - @ref evaluation_shape_constraints — evaluator phases, scoring, shape
  *   certification, enforcement, cache lifetime, and the hard-reject path.
- * - @ref architecture_search — GP/NSGA-II generation flow, variation, selection,
- *   reinsertion, non-dominated sorting, archive, and evaluation budgets.
- * - @ref architecture_optimization — linear scaling, local search, likelihood
+ * - @ref search_optimization — GP/NSGA-II generation flow, variation,
+ *   selection, reinsertion, non-dominated sorting, archive, and evaluation
+ *   budgets.
+ * - @ref search_optimization — linear scaling, local search, likelihood
  *   objectives, and solver boundaries.
  * - @ref architecture_integration — CLI configuration, probes, formatting,
  *   serialization, custom primitives/evaluators, and Python bindings.
@@ -53,16 +54,12 @@
  * @section architecture-core Core model
  *
  * @anchor architecture_core
- * To document next: @c Dataset, @c Problem, @c Tree, @c Node, @c PrimitiveSet,
- * subtree rules, coefficient ownership, structural versus coefficient-aware
- * hashes, and the invariants operators preserve.
+ * @ref core_model documents the representation and formulation boundary.
  *
  * @section architecture-execution Execution and symbolic semantics
  *
  * @anchor architecture_execution
- * To document next: infix parsing, dispatch tables, scalar/SIMD interpreter
- * evaluation, JIT fallback, derivative DAG construction, interval/affine
- * semantics, and range tightening.
+ * @ref execution documents sampled interpretation, derivatives, and bounds.
  *
  * @section architecture-search Evolutionary search
  *

@@ -31,8 +31,8 @@ CREATE_SUBDIRS = NO
 # repository development shell.
 HAVE_DOT = YES
 
-# The pinned m.css release predates Doxygen's concept XML. These concepts stay
-# in source-level API documentation until the renderer is upgraded.
+# The pinned upstream m.css revision does not yet parse Doxygen concept XML.
+# These concepts stay in source-level API documentation until the renderer adds support.
 EXCLUDE_SYMBOLS = Operon::Concepts::* Operon::Fmt::NameSource Operon::detail::ExtentsLike
 
 # Include all directories, files and namespaces in the documentation
