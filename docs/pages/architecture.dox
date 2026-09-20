@@ -1,13 +1,118 @@
 /**
  * @page architecture Operon architecture
  *
- * Operon has a narrow execution spine: a dataset and problem define a symbolic
- * regression task; algorithms evolve trees; evaluators score those trees; and
- * selection/reinsertion feed the resulting individuals back into the search.
- * This page is the map for the system-level documentation. It describes
- * responsibilities and boundaries, not every public symbol.
+ * Operon is an in-process symbolic-regression library: a dataset and problem
+ * define a task; algorithms evolve or enumerate trees; evaluators score those
+ * trees; and selection/reinsertion feed resulting individuals back into
+ * evolutionary search. This page is the map for the system-level documentation.
+ * It describes responsibilities and boundaries, not every public symbol.
  *
- * @section architecture-map System map
+ * @section architecture-overview Whole-system overview
+ *
+ * This C4-style component overview covers the primary in-process
+ * symbolic-regression architecture. Clusters are responsibility areas, not
+ * processes or enforced source-code layers; arrows point from a client to a
+ * component or model it invokes, reads, or constructs.
+ *
+ * @par Legend
+ * Solid arrows are normal dependencies. Dashed arrows are configured or optional
+ * dependencies, never asynchronous work. Return values and evolutionary
+ * loop-backs are omitted; the detailed UML activity diagrams describe ordering.
+ *
+ * @dot
+ * digraph operon_overview {
+ *   rankdir=TB;
+ *   newrank=true;
+ *   compound=true;
+ *   graph [bgcolor="transparent", pad=0.3, nodesep=0.5, ranksep=0.75, size="8.8,12"];
+ *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
+ *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
+ *   caller [label="C++ application / CLI user\n<<external>>", style="rounded,dashed"];
+ *
+ *   subgraph cluster_operon {
+ *     label="Operon — in-process symbolic-regression library";
+ *     color="#64748b";
+ *     fontname="Helvetica";
+ *     fontsize=11;
+ *     penwidth=1.2;
+ *     style="rounded";
+ *
+ *     subgraph cluster_integration {
+ *       label="Integration and presentation";
+ *       color="#94a3b8";
+ *       fontname="Helvetica";
+ *       fontsize=10;
+ *       style="rounded";
+ *       entry [label="C++ API / CLI\noperon_gp | operon_nsgp | operon_enum\n<<entry points>>"];
+ *       exchange [label="Model I/O and reporting\nparser | formatting | serialization | probes\n<<integration>>"];
+ *     }
+ *
+ *     subgraph cluster_search {
+ *       label="Search and optimization";
+ *       color="#94a3b8";
+ *       fontname="Helvetica";
+ *       fontsize=10;
+ *       style="rounded";
+ *       evolution [label="Evolutionary search\nGP | NSGA-II\n<<search engine>>"];
+ *       enumeration [label="Grammar enumeration\n<<search engine>>"];
+ *       operators [label="Population operators\ninitialize | select | vary | reinsert / sort\n<<components>>"];
+ *       fit [label="Coefficient fitting\nLM | SGD\n<<component>>"];
+ *     }
+ *
+ *     subgraph cluster_evaluation {
+ *       label="Evaluation and constraints";
+ *       color="#94a3b8";
+ *       fontname="Helvetica";
+ *       fontsize=10;
+ *       style="rounded";
+ *       evaluation [label="Evaluator objectives\noptional shape gate / penalty / objective\n<<component>>"];
+ *     }
+ *
+ *     subgraph cluster_execution {
+ *       label="Execution semantics";
+ *       color="#94a3b8";
+ *       fontname="Helvetica";
+ *       fontsize=10;
+ *       style="rounded";
+ *       sampled [label="Sampled values and Jacobians\ninterpreter | optional JIT | dispatch\n<<execution>>"];
+ *       bounds [label="Conservative bounds\ninterval | affine | range tightening\n<<execution>>"];
+ *     }
+ *
+ *     subgraph cluster_core {
+ *       label="Core model and state";
+ *       color="#94a3b8";
+ *       fontname="Helvetica";
+ *       fontsize=10;
+ *       style="rounded";
+ *       core [label="Problem | Dataset | PrimitiveSet\nIndividual | postfix Tree | fitness\n<<domain model>>"];
+ *     }
+ *
+ *     {rank=same; entry; exchange}
+ *     {rank=same; evolution; enumeration}
+ *     {rank=same; operators; fit}
+ *     {rank=same; sampled; bounds}
+ *   }
+ *
+ *   caller -> entry [label="configures / runs", lhead=cluster_operon];
+ *   entry -> evolution [label="runs"];
+ *   entry -> enumeration [label="runs"];
+ *   entry -> exchange [label="uses"];
+ *   evolution -> operators [label="coordinates"];
+ *   evolution -> exchange [label="optional report callback", style=dashed];
+ *   enumeration -> fit [label="fits candidates"];
+ *   enumeration -> evaluation [label="ranks candidates"];
+ *   operators -> fit [label="optional local search", style=dashed];
+ *   operators -> evaluation [label="scores candidates"];
+ *   fit -> sampled [label="residuals / Jacobians"];
+ *   evaluation -> sampled [label="sampled objectives"];
+ *   evaluation -> bounds [label="optional shape certification", style=dashed];
+ *   sampled -> core [label="reads data / executes trees"];
+ *   bounds -> core [label="bounds trees over domains"];
+ *   exchange -> core [label="reads / writes models"];
+ * }
+ * @enddot
+ *
+ * @section architecture-map Component relationship map
  *
  * This is a C4-style component view: an arrow points from a component to a
  * component or domain model it uses; labels describe that relationship.
