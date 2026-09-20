@@ -18,7 +18,7 @@
  * subset of the shared option set. In particular, an option being visible in
  * @c --help does not make it meaningful for every executable.
  *
- * @c --skip-nonfinite applies only to SSE/MSE/NMSE/RMSE/MAE evaluator paths.
+ * @c --skip-nonfinite applies only to MSE/NMSE/RMSE/MAE evaluator paths.
  * It must be paired with the same @c Problem::SetLinearScalingOmitsNonFinite
  * policy when linear scaling is enabled. R2/C2 reject the option because they
  * have no finite-subset semantics. @c --nonfinite-penalty-weight is meaningful
@@ -50,7 +50,7 @@
  * {
  *   "probes": [
  *     {"type": "cache_hit_rate", "every": 10},
- *     {"type": "population_trace", "params": {"limit": 20}}
+ *     {"type": "population_trace", "params": {"path": "population.beve"}}
  *   ],
  *   "sink": {"type": "jsonl", "path": "metrics.jsonl"}
  * }
@@ -59,16 +59,21 @@
  * A @c ProbeRegistry is a caller-owned name-to-factory registry. Register
  * built-ins explicitly with @c RegisterBuiltinProbes before creating entries;
  * add custom factories before parsing or constructing a @c ProbeChain. Unknown
- * types, invalid schedules, unsupported parameter values, and sink failures
- * are configuration/input errors, not ignored instrumentation.
+ * types, malformed schedules, and a missing or wrongly typed required parameter
+ * are configuration errors. Built-in @c population_trace requires string
+ * @c path; @c structural_diversity accepts optional string @c hash_mode
+ * (@c strict or @c relaxed). The other built-in factories currently ignore
+ * parameter keys, so configuration authors must not treat unused keys as
+ * validation failures.
  *
  * @section integration_exchange Serialization and presentation
  *
  * @c Serialization::ToJson and @c TreeFromJson exchange trees; matching
- * overloads exchange @c Individual values and fronts. @c ToBeve and
- * @c TreeFromBeve provide the binary equivalent. Parse functions return an
- * empty @c std::optional on invalid data, so callers must preserve that failure
- * boundary rather than treating an absent tree as an empty expression.
+ * overloads exchange @c Individual values. Fronts have write-only JSON and
+ * BEVE serialization overloads. @c TreeFromJson, @c IndividualFromJson, and
+ * their BEVE counterparts return an empty @c std::optional when decoding fails.
+ * A successful decode does not call @c Tree::Validate(), so callers accepting
+ * untrusted data must validate the reconstructed tree before use.
  *
  * @c Fmt::WithNames binds a @c Tree to a @c Dataset or explicit variable-name
  * map for display. Use @c {:infix:roundtrip} when output must re-enter the

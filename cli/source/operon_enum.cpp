@@ -24,10 +24,11 @@ auto main(int argc, char** argv) -> int // NOLINT(bugprone-exception-escape)
     // operon_parse_model) - most of those are GP-specific and don't apply to
     // this non-population-based algorithm. operon_enum only reads dataset/
     // train/test/target/inputs/enable-symbols/disable-symbols/show-primitives/
-    // objective/linear-scaling/skip-nonfinite/nonfinite-penalty-weight/iterations/seed
-    // from it, plus its own
-    // here. Trimming InitOptions itself would mean restructuring a utility
-    // shared by every existing CLI - out of scope for this addition.
+    // objective/linear-scaling/skip-nonfinite/nonfinite-penalty-weight/
+    // iterations/seed from it, plus its own max-complexity/top-k below;
+    // everything else shown in --help is inert here. Trimming InitOptions itself
+    // would mean restructuring a utility shared by every existing CLI - out of
+    // scope for this addition.
     auto opts = Operon::InitOptions("operon_enum", "Exhaustive grammar enumeration symbolic regression");
     opts.add_options()
         ("max-complexity", "Maximum expression complexity (count of all non-Constant nodes)", cxxopts::value<std::size_t>()->default_value("20"))
