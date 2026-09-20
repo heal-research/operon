@@ -30,6 +30,7 @@ breathe_default_project = "operon"
 html_theme = "pydata_sphinx_theme"
 html_context = {"default_mode": "auto"}
 html_theme_options = {
+    "navbar_center": [],
     "navbar_end": ["theme-switcher"],
     "show_nav_level": 2,
 }
