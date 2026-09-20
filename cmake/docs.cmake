@@ -11,7 +11,7 @@ endmacro()
 # ---- Dependencies ----
 
 find_package(Doxygen REQUIRED)
-find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
+find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 
 # ---- Documentation inputs and outputs ----
 
