@@ -23,7 +23,7 @@ jobs:
     - uses: cachix/install-nix-action@v27
 
     - name: Configure documentation build
-      run: nix develop -c cmake --preset build-linux -B build-docs -Doperon_DEVELOPER_MODE=ON -DBUILD_MCSS_DOCS=ON
+      run: nix develop -c cmake --preset build-linux -B build-docs -Doperon_DEVELOPER_MODE=ON -DBUILD_DOXYGEN_DOCS=ON
 
     - name: Build documentation
       run: nix develop -c cmake --build build-docs --target docs -j2

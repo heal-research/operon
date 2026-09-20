@@ -1,6 +1,0 @@
-DOXYFILE = 'Doxyfile'
-
-LINKS_NAVBAR1 = [
-    (None, 'pages', [(None, 'about'), (None, 'architecture'), (None, 'core_model'), (None, 'execution'), (None, 'evaluation_shape_constraints'), (None, 'search_optimization'), (None, 'architecture_integration')]),
-    (None, 'namespaces', []),
-]

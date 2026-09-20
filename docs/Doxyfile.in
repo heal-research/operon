@@ -1,40 +1,36 @@
 # Configuration for Doxygen for use with CMake
-# Only options that deviate from the default are included
-# To create a new Doxyfile containing all available options, call `doxygen -g`
+# Only options that deviate from the default are included.
 
-# Get Project name and version from CMake
+# Get project name and version from CMake.
 PROJECT_NAME = "@PROJECT_NAME@"
 PROJECT_NUMBER = "@PROJECT_VERSION@"
 
-# Add sources
 INPUT = "@PROJECT_SOURCE_DIR@/README.md" "@PROJECT_SOURCE_DIR@/include" "@PROJECT_SOURCE_DIR@/docs/pages"
 EXTRACT_ALL = YES
 RECURSIVE = YES
 OUTPUT_DIRECTORY = "@DOXYGEN_OUTPUT_DIRECTORY@"
-
-# Use the README as a main page
 USE_MDFILE_AS_MAINPAGE = "@PROJECT_SOURCE_DIR@/README.md"
 
-# set relative include paths
 FULL_PATH_NAMES = YES
 STRIP_FROM_PATH = "@PROJECT_SOURCE_DIR@/include" "@PROJECT_SOURCE_DIR@"
 STRIP_FROM_INC_PATH =
 
-# We use m.css to generate the html documentation, so we only need XML output
-GENERATE_XML = YES
-GENERATE_HTML = NO
+GENERATE_HTML = YES
+GENERATE_XML = NO
 GENERATE_LATEX = NO
-XML_PROGRAMLISTING = NO
 CREATE_SUBDIRS = NO
+
+# Match the sidebar-oriented Doxygen Awesome presentation used by VStat and EVE.
+GENERATE_TREEVIEW = YES
+DISABLE_INDEX = NO
+FULL_SIDEBAR = NO
+HTML_COLORSTYLE = LIGHT
+HTML_HEADER = "@doxygen_awesome_header@"
+HTML_EXTRA_FILES = "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-darkmode-toggle.js"
+HTML_EXTRA_STYLESHEET = "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome.css" \
+                        "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-sidebar-only.css" \
+                        "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-sidebar-only-darkmode-toggle.css"
 
 # Architecture pages use embedded \dot diagrams. Graphviz is part of the
 # repository development shell.
 HAVE_DOT = YES
-
-# The pinned upstream m.css revision does not yet parse Doxygen concept XML.
-# These concepts stay in source-level API documentation until the renderer adds support.
-EXCLUDE_SYMBOLS = Operon::Concepts::* Operon::Fmt::NameSource Operon::detail::ExtentsLike
-
-# Include all directories, files and namespaces in the documentation
-# Disable to include only explicitly documented objects
-M_SHOW_UNDOCUMENTED = YES
