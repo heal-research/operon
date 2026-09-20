@@ -27,6 +27,14 @@ GENERATE_LATEX = NO
 XML_PROGRAMLISTING = NO
 CREATE_SUBDIRS = NO
 
+# Architecture pages use embedded \dot diagrams. Graphviz is part of the
+# repository development shell.
+HAVE_DOT = YES
+
+# The pinned m.css release predates Doxygen's concept XML. These concepts stay
+# in source-level API documentation until the renderer is upgraded.
+EXCLUDE_SYMBOLS = Operon::Concepts::* Operon::Fmt::NameSource Operon::detail::ExtentsLike
+
 # Include all directories, files and namespaces in the documentation
 # Disable to include only explicitly documented objects
 M_SHOW_UNDOCUMENTED = YES
