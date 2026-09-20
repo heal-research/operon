@@ -13,8 +13,8 @@
  *
  * @dot
  * digraph search {
- *   rankdir=TB;
- *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
+ *   rankdir=LR;
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7, size="10.5,2"];
  *   node [fontname="Helvetica", fontsize=10];
  *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
  *   start [shape=circle, label="", width=0.18];

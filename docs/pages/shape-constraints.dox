@@ -23,13 +23,13 @@
  *
  * @dot
  * digraph shape_hard_reject {
- *   rankdir=TB;
- *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
+ *   rankdir=LR;
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7, size="10.5,2.5"];
  *   node [fontname="Helvetica", fontsize=10];
  *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
  *   start [shape=circle, label="", width=0.18];
  *   evaluate [shape=box, style="rounded", label="Wrapped Evaluate\n(one sampled pass)"];
- *   result [shape=diamond, label="Interpreter error?"];
+ *   result [shape=diamond, label="Execution setup error?"];
  *   certify [shape=box, style="rounded", label="Certify bounds\n(fit scaling from values if needed)"];
  *   feasible [shape=diamond, label="Feasible?"];
  *   score [shape=box, style="rounded", label="Wrapped Score"];

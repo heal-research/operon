@@ -10,19 +10,19 @@
  * @section evaluation-contract Evaluate then Score
  *
  * @c EvaluatorBase::operator()(rng, individual, scratch) is @c final. It calls
- * @c Evaluate first, then calls @c Score only when evaluation does not report an
- * interpreter error. The two-argument facade owns a training-range-sized scratch
- * buffer and forwards to this composed entrypoint.
+ * @c Evaluate first, then calls @c Score unless execution setup fails. The
+ * two-argument facade owns a training-range-sized scratch buffer and forwards
+ * to this composed entrypoint.
  *
  * @dot
  * digraph evaluator_phases {
- *   rankdir=TB;
- *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
+ *   rankdir=LR;
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7, size="10.5,2"];
  *   node [fontname="Helvetica", fontsize=10];
  *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
  *   start [shape=circle, label="", width=0.18];
  *   evaluate [shape=box, style="rounded", label="Evaluate\n(sampled execution result)"];
- *   outcome [shape=diamond, label="Interpreter error?"];
+ *   outcome [shape=diamond, label="Execution setup error?"];
  *   proof [shape=box, style="rounded", label="Optional EvaluatedBuffer"];
  *   score [shape=box, style="rounded", label="Score\n(objectives -> fitness)"];
  *   error [shape=box, style="rounded", label="ErrMax"];
@@ -35,19 +35,21 @@
  * }
  * @enddot
  *
- * @c Evaluate returns an interpreter error, an empty optional, or an
- * @c EvaluatedBuffer. The buffer is a move-only proof that the supplied scratch
- * prefix holds values for this exact individual. Value-based scorers must use
- * @c Values(individual, scratch), which checks both identities before exposing
- * the values. @c ScoreContext is call-local and must not be retained.
+ * @c Evaluate returns an execution-setup error, an empty optional, or an
+ * @c EvaluatedBuffer. The error reports a missing dataset variable, primitive,
+ * derivative, or an invalid output span—not a non-finite numerical result or an
+ * invalid generated tree. The buffer is a move-only proof that the supplied
+ * scratch prefix holds values for this exact individual. Value-based scorers
+ * must use @c Values(individual, scratch), which checks both identities before
+ * exposing the values. @c ScoreContext is call-local and must not be retained.
  *
  * @section evaluation-scoring Objective and failure policy
  *
  * @c Score converts the evaluation result into a fitness vector. Concrete
  * evaluators apply linear scaling and an error metric here; information criteria
- * and custom objective policies belong here as well. An interpreter error
+ * and custom objective policies belong here as well. An execution-setup error
  * produces @c ErrMax. A shape-policy rejection produces its configured worst
- * fitness through the decorator score path, not an @c InterpreterError.
+ * fitness through the decorator score path, not an execution-setup error.
  *
  * @c Problem::LinearScalingOmitsNonFinite and evaluator non-finite handling
  * must agree. Otherwise fitting and scoring can use different effective samples.
