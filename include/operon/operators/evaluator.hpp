@@ -29,7 +29,6 @@
 #include "operon/optimizer/likelihood/gaussian_likelihood.hpp"
 #include "operon/optimizer/likelihood/likelihood_base.hpp"
 #include "operon/optimizer/likelihood/poisson_likelihood.hpp"
-#include <tl/expected.hpp>
 
 namespace Operon {
 

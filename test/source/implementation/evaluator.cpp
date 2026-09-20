@@ -1144,7 +1144,7 @@ TEST_CASE("Evaluator two-phase contract edge cases", "[evaluator]")
         REQUIRE(ev.CallCount.load() == initialCount + 1);
     }
 
-    SECTION("ShapeConstrainedEvaluator hard-reject skips inner evaluator") {
+    SECTION("ShapeConstrainedEvaluator hard-reject skips the wrapped evaluator's Score phase") {
         // X1*X1 over [1,5]: d/dX1 = 2*X1 in [2,10] -- certifiably positive.
         // Sign=-1 (non-increasing) is structurally violated regardless of linear scaling.
         Operon::ShapeConstraintSet cs;
@@ -1169,12 +1169,18 @@ TEST_CASE("Evaluator two-phase contract edge cases", "[evaluator]")
 
         auto const initialInnerCount = inner.CallCount.load();
         auto const initialGateCount  = sce.CallCount.load();
+        auto const initialInnerResiduals = inner.ResidualEvaluations.load();
 
         auto const fit = sce(fix.rng, ind);
 
-        // Gate increments its own counter; inner evaluator is never entered.
+        // Hard rejection still runs the wrapped evaluator's Evaluate (forward
+        // pass), so its ResidualEvaluations grows by one, but it skips the
+        // wrapped evaluator's Score phase, so the wrapped CallCount does not
+        // move. The gate counts the call itself.
         REQUIRE(sce.CallCount.load()   == initialGateCount  + 1);
         REQUIRE(inner.CallCount.load() == initialInnerCount);
+        REQUIRE(inner.ResidualEvaluations.load() == initialInnerResiduals + 1);
+
         // Fitness must be the gate's worst-value sentinel, not a real evaluated score.
         REQUIRE(fit[0] > static_cast<Operon::Scalar>(0));  // worstValue_ is a positive large value
         REQUIRE(fit[0] != EvaluatorBase::ErrMax / 2);       // not the normal evaluator output
