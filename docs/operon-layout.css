@@ -1,0 +1,4 @@
+/* Let prose and diagrams use the available space beside the sidebar. */
+html {
+    --content-maxwidth: auto;
+}

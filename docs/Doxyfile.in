@@ -30,7 +30,8 @@ HTML_EXTRA_FILES = "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-darkmode-toggle
                    "@PROJECT_SOURCE_DIR@/docs/operon-theme.js"
 HTML_EXTRA_STYLESHEET = "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome.css" \
                         "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-sidebar-only.css" \
-                        "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-sidebar-only-darkmode-toggle.css"
+                        "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-sidebar-only-darkmode-toggle.css" \
+                        "@PROJECT_SOURCE_DIR@/docs/operon-layout.css"
 
 # Architecture diagrams use transparent, sans-serif SVGs so the Doxygen Awesome
 # light/dark theme can style the same diagram without a second asset set.
