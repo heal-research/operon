@@ -17,7 +17,7 @@ project(
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-option(BUILD_DOXYGEN_DOCS "Build documentation using Doxygen Awesome" OFF)
+option(BUILD_DOXYGEN_DOCS "Build documentation using Sphinx" OFF)
 if(BUILD_DOXYGEN_DOCS)
     include(cmake/docs.cmake)
 endif()

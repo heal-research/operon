@@ -1,0 +1,10 @@
+.mermaid {
+  max-inline-size: 100%;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mermaid > svg {
+  block-size: auto;
+  max-inline-size: 100%;
+}

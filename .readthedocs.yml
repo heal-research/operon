@@ -1,28 +1,22 @@
-# .readthedocs.yml
-# Read the Docs configuration file
-# See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
-
-# Required
 version: 2
 
-# Set the version of Python and other tools you might need
 build:
   os: ubuntu-22.04
   tools:
     python: "3.11"
+  apt_packages:
+    - cmake
+    - doxygen
+  jobs:
+    pre_build:
+      - cmake -S . -B docs/sphinx/_build -D CMAKE_PROJECT_INCLUDE=$PWD/cmake/docs.cmake
+      - cmake --build docs/sphinx/_build --target doxygen-xml
 
-# Build documentation in the docs/ directory with Sphinx
 sphinx:
-  configuration: rtd/conf.py
+  configuration: docs/sphinx
 
-# Build documentation with MkDocs
-#mkdocs:
-#  configuration: mkdocs.yml
-
-# Optionally build your docs in additional formats such as PDF and ePub
 formats: all
 
-# Optionally set the version of Python and requirements required to build your docs
 python:
   install:
-    - requirements: rtd/requirements.txt
+    - requirements: docs/requirements.txt

@@ -1,41 +1,20 @@
-# Configuration for Doxygen for use with CMake
-# Only options that deviate from the default are included.
+# Configuration for Doxygen XML consumed by the Sphinx Breathe extension.
 
-# Get project name and version from CMake.
 PROJECT_NAME = "@PROJECT_NAME@"
 PROJECT_NUMBER = "@PROJECT_VERSION@"
 
-INPUT = "@PROJECT_SOURCE_DIR@/README.md" "@PROJECT_SOURCE_DIR@/include" "@PROJECT_SOURCE_DIR@/docs/pages"
-EXTRACT_ALL = YES
+INPUT = "@PROJECT_SOURCE_DIR@/include"
 RECURSIVE = YES
+EXTRACT_ALL = YES
+EXTRACT_PRIVATE = NO
+
 OUTPUT_DIRECTORY = "@DOXYGEN_OUTPUT_DIRECTORY@"
-USE_MDFILE_AS_MAINPAGE = "@PROJECT_SOURCE_DIR@/README.md"
+GENERATE_XML = YES
+GENERATE_HTML = NO
+GENERATE_LATEX = NO
+XML_PROGRAMLISTING = NO
+CREATE_SUBDIRS = NO
 
 FULL_PATH_NAMES = YES
 STRIP_FROM_PATH = "@PROJECT_SOURCE_DIR@/include" "@PROJECT_SOURCE_DIR@"
-STRIP_FROM_INC_PATH =
-
-GENERATE_HTML = YES
-GENERATE_XML = NO
-GENERATE_LATEX = NO
-CREATE_SUBDIRS = NO
-
-# Match the sidebar-oriented Doxygen Awesome presentation used by VStat and EVE.
-GENERATE_TREEVIEW = YES
-DISABLE_INDEX = NO
-FULL_SIDEBAR = NO
-HTML_COLORSTYLE = LIGHT
-HTML_HEADER = "@doxygen_awesome_header@"
-HTML_EXTRA_FILES = "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-darkmode-toggle.js" \
-                   "@PROJECT_SOURCE_DIR@/docs/operon-theme.js"
-HTML_EXTRA_STYLESHEET = "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome.css" \
-                        "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-sidebar-only.css" \
-                        "@doxygen_awesome_SOURCE_DIR@/doxygen-awesome-sidebar-only-darkmode-toggle.css" \
-                        "@PROJECT_SOURCE_DIR@/docs/operon-layout.css"
-
-# Architecture diagrams use transparent, sans-serif SVGs so the Doxygen Awesome
-# light/dark theme can style the same diagram without a second asset set.
-HAVE_DOT = YES
-DOT_IMAGE_FORMAT = svg
-DOT_COMMON_ATTR = "fontname=Helvetica,fontsize=10"
-DOT_EDGE_ATTR = "labelfontname=Helvetica,labelfontsize=9"
+QUIET = YES
