@@ -9,11 +9,11 @@ build:
     - doxygen
   jobs:
     pre_build:
-      - cmake -S . -B docs/sphinx/_build -D CMAKE_PROJECT_INCLUDE=$PWD/cmake/docs.cmake
+      - cmake -S . -B docs/sphinx/_build -DOPERON_DOCS_ONLY=ON
       - cmake --build docs/sphinx/_build --target doxygen-xml
 
 sphinx:
-  configuration: docs/sphinx
+  configuration: docs/sphinx/conf.py
 
 formats: all
 

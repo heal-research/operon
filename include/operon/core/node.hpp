@@ -164,19 +164,20 @@ constexpr auto operator|(PrimitiveSetConfig lhs, NodeType rhs) -> PrimitiveSetCo
 constexpr auto operator|=(PrimitiveSetConfig& lhs, BuiltinOp rhs) -> PrimitiveSetConfig& { lhs = lhs | rhs; return lhs; }
 constexpr auto operator|=(PrimitiveSetConfig& lhs, NodeType rhs) -> PrimitiveSetConfig& { lhs = lhs | rhs; return lhs; }
 
+/// A node in an expression tree.
 struct Node {
-    Operon::Hash HashValue; // needs to be unique for each node type
-    Operon::Hash mutable CalculatedHashValue; // for arithmetic terminal nodes whose hash value depends on their children
-    Operon::Scalar Value; // value for constants or weighting factor for variables
-    uint16_t Arity; // 0-65535
-    uint16_t Length; // 0-65535
-    uint16_t Depth; // 0-65535
-    uint16_t Level; // length of the path to the root node
-    uint16_t Parent; // index of parent node
-    NodeType Type;
-    bool IsEnabled;
-    bool Optimize;
-    uint16_t RefTo; // only meaningful when Type == NodeType::Ref; must point backward (RefTo < index of this node)
+    Operon::Hash HashValue;                  ///< Unique identifier for the node type.
+    Operon::Hash mutable CalculatedHashValue; ///< Hash for arithmetic terminals derived from their children.
+    Operon::Scalar Value;                    ///< Constant value or variable weighting factor.
+    uint16_t Arity;                          ///< Number of children.
+    uint16_t Length;                         ///< Number of nodes in the subtree.
+    uint16_t Depth;                          ///< Maximum subtree depth.
+    uint16_t Level;                          ///< Path length to the root node.
+    uint16_t Parent;                         ///< Parent node index.
+    NodeType Type;                           ///< Node category.
+    bool IsEnabled;                          ///< Whether the node participates in evaluation.
+    bool Optimize;                           ///< Whether its value may be optimized.
+    uint16_t RefTo;                          ///< Backward reference index for `NodeType::Ref`.
 
     Node() = default;
 

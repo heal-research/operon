@@ -53,7 +53,7 @@ From the Nix development shell, configure the documentation-only build and
 build its stable `docs` target:
 
 ```sh
-cmake -S . -B build/docs -D CMAKE_PROJECT_INCLUDE="$PWD/cmake/docs.cmake"
+cmake -S . -B build/docs -DOPERON_DOCS_ONLY=ON
 cmake --build build/docs --target docs
 ```
 

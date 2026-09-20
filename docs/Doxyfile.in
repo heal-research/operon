@@ -7,6 +7,8 @@ INPUT = "@PROJECT_SOURCE_DIR@/include"
 RECURSIVE = YES
 EXTRACT_ALL = YES
 EXTRACT_PRIVATE = NO
+EXCLUDE_PATTERNS = */ceres/* */detail/* */backend/eigen/* */backend/eve/* \
+                   */backend/mad_eve/* */backend/plain/*
 
 OUTPUT_DIRECTORY = "@DOXYGEN_OUTPUT_DIRECTORY@"
 GENERATE_XML = YES

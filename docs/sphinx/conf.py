@@ -33,5 +33,6 @@ html_theme_options = {
     "navbar_end": ["theme-switcher"],
     "show_nav_level": 2,
 }
+html_static_path = ["_static"]
 html_css_files = ["operon.css"]
 mermaid_output_format = "raw"
