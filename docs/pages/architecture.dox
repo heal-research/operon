@@ -11,13 +11,16 @@
  *
  * This C4-style component overview covers the primary in-process
  * symbolic-regression architecture. Clusters are responsibility areas, not
- * processes or enforced source-code layers; arrows point from a client to a
- * component or model it invokes, reads, or constructs.
+ * processes or enforced source-code layers. The component map below drills into
+ * selected search, evaluation, and model relationships; it is not a second
+ * system inventory.
  *
  * @par Legend
- * Solid arrows are normal dependencies. Dashed arrows are configured or optional
- * dependencies, never asynchronous work. Return values and evolutionary
- * loop-backs are omitted; the detailed UML activity diagrams describe ordering.
+ * Blue solid arrows invoke or coordinate work. Slate solid arrows construct,
+ * read, or write models and values. Blue dashed arrows are configured or
+ * optional control paths, never asynchronous work. Return values and
+ * evolutionary loop-backs are omitted; the detailed UML activity diagrams
+ * describe ordering.
  *
  * @dot
  * digraph operon_overview {
@@ -43,7 +46,7 @@
  *       fontname="Helvetica";
  *       fontsize=10;
  *       style="rounded";
- *       entry [label="C++ API / CLI\noperon_gp | operon_nsgp | operon_enum\n<<entry points>>"];
+ *       entry [label="C++ API / CLI\noperon_gp | operon_nsgp | operon_enum\n<<entry point>>"];
  *       exchange [label="Model I/O and reporting\nparser | formatting | serialization | probes\n<<integration>>"];
  *     }
  *
@@ -55,7 +58,7 @@
  *       style="rounded";
  *       evolution [label="Evolutionary search\nGP | NSGA-II\n<<search engine>>"];
  *       enumeration [label="Grammar enumeration\n<<search engine>>"];
- *       operators [label="Population operators\ninitialize | select | vary | reinsert / sort\n<<components>>"];
+ *       operators [label="Population operators\ninitialize | select | vary | reinsert / sort\n<<component>>"];
  *       fit [label="Coefficient fitting\nLM | SGD\n<<component>>"];
  *     }
  *
@@ -93,105 +96,66 @@
  *     {rank=same; sampled; bounds}
  *   }
  *
- *   caller -> entry [label="configures / runs", lhead=cluster_operon];
- *   entry -> evolution [label="runs"];
- *   entry -> enumeration [label="runs"];
- *   entry -> exchange [label="uses"];
- *   evolution -> operators [label="coordinates"];
- *   evolution -> exchange [label="optional report callback", style=dashed];
- *   enumeration -> fit [label="fits candidates"];
- *   enumeration -> evaluation [label="ranks candidates"];
- *   operators -> fit [label="optional local search", style=dashed];
- *   operators -> evaluation [label="scores candidates"];
- *   fit -> sampled [label="residuals / Jacobians"];
- *   evaluation -> sampled [label="sampled objectives"];
- *   evaluation -> bounds [label="optional shape certification", style=dashed];
- *   sampled -> core [label="reads data / executes trees"];
- *   bounds -> core [label="bounds trees over domains"];
- *   exchange -> core [label="reads / writes models"];
+ *   caller -> entry [color="#2563eb"];
+ *   entry -> evolution [color="#2563eb"];
+ *   entry -> enumeration [color="#2563eb"];
+ *   entry -> exchange [color="#2563eb"];
+ *   evolution -> operators [color="#2563eb"];
+ *   evolution -> exchange [label="report callback", style=dashed, color="#2563eb", fontcolor="#2563eb"];
+ *   enumeration -> fit [color="#2563eb"];
+ *   enumeration -> evaluation [color="#2563eb"];
+ *   operators -> fit [label="local search", style=dashed, color="#2563eb", fontcolor="#2563eb"];
+ *   operators -> evaluation [color="#2563eb"];
+ *   fit -> sampled [label="residuals / Jacobians", color="#2563eb", fontcolor="#2563eb"];
+ *   evaluation -> sampled [color="#2563eb"];
+ *   evaluation -> bounds [label="shape certification", style=dashed, color="#2563eb", fontcolor="#2563eb"];
+ *   sampled -> core [color="#475569"];
+ *   bounds -> core [color="#475569"];
+ *   exchange -> core [color="#475569"];
  * }
  * @enddot
  *
  * @section architecture-map Component relationship map
  *
- * This is a C4-style component view: an arrow points from a component to a
- * component or domain model it uses; labels describe that relationship.
+ * This drill-down expands the overview's search, evaluation, and core-model
+ * areas. It shows the decisive invocations and model/value access rather than
+ * every implementation dependency; its arrows use the legend above.
  *
  * @dot
  * digraph operon_architecture {
  *   rankdir=TB;
  *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
  *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
- *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
+ *   edge [fontname="Helvetica", fontsize=9, arrowsize=0.7];
  *   integration [label="CLI / probes / serialization\n<<integration>>"];
- *   optimizer [label="Optimizers\n<<component>>"];
- *   search [label="GP / NSGA-II\n<<search component>>"];
+ *   search [label="GP / NSGA-II\n<<search engine>>"];
+ *   enumeration [label="Grammar enumeration\n<<search engine>>"];
  *   variation [label="Creators / variation\n<<component>>"];
+ *   optimizer [label="Coefficient fitting\nLM | SGD\n<<component>>"];
  *   evaluator [label="Evaluators\n<<component>>"];
  *   selection [label="Selection / archive\n<<component>>"];
  *   model [label="Problem and individuals\n<<domain model>>"];
  *   execution [label="Interpreter / JIT / bounds\n<<execution>>"];
  *   shape [label="Shape constraints\n<<component>>"];
- *   {rank=same; integration; optimizer}
- *   {rank=same; variation; evaluator; selection}
+ *   {rank=same; search; enumeration}
+ *   {rank=same; variation; optimizer; evaluator; selection}
  *   {rank=same; model; execution; shape}
- *   integration -> search [label="configures run"];
- *   search -> variation [label="creates candidates"];
- *   search -> evaluator [label="scores population"];
- *   search -> selection [label="updates population"];
- *   variation -> model [label="constructs"];
- *   evaluator -> model [label="scores"];
- *   evaluator -> execution [label="uses"];
- *   evaluator -> shape [label="delegates certification"];
- *   shape -> execution [label="uses bounds"];
- *   optimizer -> model [label="fits coefficients against"];
+ *   integration -> search [label="configures", color="#2563eb", fontcolor="#2563eb"];
+ *   integration -> enumeration [label="configures", color="#2563eb", fontcolor="#2563eb"];
+ *   search -> variation [color="#2563eb"];
+ *   search -> evaluator [color="#2563eb"];
+ *   search -> selection [color="#2563eb"];
+ *   enumeration -> optimizer [color="#2563eb"];
+ *   enumeration -> evaluator [color="#2563eb"];
+ *   variation -> optimizer [label="optional local search", style=dashed, color="#2563eb", fontcolor="#2563eb"];
+ *   variation -> model [color="#475569"];
+ *   optimizer -> execution [label="residuals / Jacobians", color="#2563eb", fontcolor="#2563eb"];
+ *   optimizer -> model [color="#475569"];
+ *   evaluator -> model [color="#475569"];
+ *   evaluator -> execution [color="#2563eb"];
+ *   evaluator -> shape [color="#2563eb"];
+ *   shape -> execution [color="#2563eb"];
  * }
  * @enddot
  *
- * @section architecture-systems System documentation sequence
- *
- * - @ref core_model — dataset and problem formulation, postfix trees, nodes,
- *   primitive generation vocabulary, and enumeration grammar.
- * - @ref execution — parser, dispatch, interpreter, JIT, automatic
- *   differentiation, interval/affine evaluation, and range tightening.
- * - @ref evaluation_shape_constraints — evaluator phases, scoring, shape
- *   certification, enforcement, cache lifetime, and the hard-reject path.
- * - @ref search_optimization — GP/NSGA-II generation flow, variation, local
- *   search, selection, reinsertion, non-dominated sorting, archive, evaluation
- *   budgets, linear scaling, likelihood objectives, and solver boundaries.
- * - @ref architecture_integration — CLI configuration, probes, formatting,
- *   serialization, custom functions, and callback evaluators.
- *
- * Each system page must state its public entry points, owned and borrowed state,
- * invariants, failure model, hot-path cost, and the diagrams that explain control
- * or data flow. API reference belongs in Doxygen comments beside the symbols;
- * these pages explain how the APIs compose.
- *
- * @section architecture-core Core model
- *
- * @anchor architecture_core
- * @ref core_model documents the representation and formulation boundary.
- *
- * @section architecture-execution Execution and symbolic semantics
- *
- * @anchor architecture_execution
- * @ref execution documents sampled interpretation, derivatives, and bounds.
- *
- * @section architecture-search Evolutionary search
- *
- * @anchor architecture_search
- * @ref search_optimization documents lifecycle, variation, search budgets,
- * selection, archive updates, and coefficient fitting.
- *
- * @section architecture-optimization Coefficient optimization
- *
- * @anchor architecture_optimization
- * @ref search_optimization documents linear scaling, optimizer callbacks,
- * likelihood evaluators, solver error boundaries, and coefficient inheritance.
- *
- * @section architecture-integration Integration surface
- *
- * @ref architecture_integration documents CLI configuration, shape-constraint
- * JSON, serialization/formatting, probes, custom registries, and callback
- * evaluators.
  */
