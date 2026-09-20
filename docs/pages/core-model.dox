@@ -1,16 +1,15 @@
 /**
  * @page core_model Core model: datasets, trees, and primitives
  *
- * The core model separates a symbolic program from the data and search policy
- * that give it meaning. `Tree` owns postfix nodes. `Dataset` owns or views
- * column-major values. `Problem` binds a dataset, train/test/validation ranges,
- * target/input variables, a primitive set, and linear-scaling policy.
+ * The core model is the vocabulary shared by search, evaluation, and execution.
+ * `Tree` owns postfix nodes. `Dataset` owns or views column-major values.
+ * `Problem` binds a dataset, train/test/validation ranges, target/input
+ * variables, a primitive set, and linear-scaling policy.
  *
  * @section core-model-flow Representation relationships
  *
- * This is a C4-style component view. Arrows point from the client to the domain
- * model or component it uses; the labels make ownership and data dependencies
- * explicit.
+ * This representation view shows ownership and data dependencies. It does not
+ * describe an evaluation workflow; see @ref architecture for the system map.
  *
  * @dot
  * digraph core_model {
@@ -18,22 +17,22 @@
  *   graph [bgcolor="transparent", pad=0.25, nodesep=0.55, ranksep=0.75];
  *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
  *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
- *   dataset [label="Dataset\n<<data store>>"];
- *   pset [label="PrimitiveSet\n<<configuration>>"];
- *   problem [label="Problem\n<<domain model>>"];
- *   creator [label="Creators / variation\n<<component>>"];
- *   individual [label="Individual\n<<domain model>>\nTree genotype + fitness"];
- *   evaluator [label="Evaluator\n<<component>>"];
- *   interpreter [label="Interpreter\n<<component>>"];
+ *   dataset [label="Dataset"];
+ *   pset [label="PrimitiveSet"];
+ *   problem [label="Problem"];
+ *   creator [label="Creators / variation"];
+ *   individual [label="Individual\nTree genotype + fitness"];
+ *   evaluator [label="Evaluator"];
+ *   interpreter [label="Interpreter"];
  *   problem -> dataset [label="owns or borrows; selects ranges"];
  *   problem -> pset [label="owns generation vocabulary"];
  *   creator -> pset [label="uses"];
- *   creator -> individual [label="constructs genotype"];
- *   evaluator -> problem [label="uses target and ranges"];
- *   evaluator -> individual [label="scores candidate"];
+ *   creator -> individual [label="constructs"];
+ *   evaluator -> problem [label="uses"];
+ *   evaluator -> individual [label="scores"];
  *   evaluator -> interpreter [label="uses"];
- *   interpreter -> dataset [label="reads input columns"];
- *   interpreter -> individual [label="evaluates tree"];
+ *   interpreter -> dataset [label="reads"];
+ *   interpreter -> individual [label="executes"];
  * }
  * @enddot
  *
@@ -62,6 +61,10 @@
  * `UpdateNodes()`, `Reduce()`, `Simplify()`, and tree surgery must re-establish
  * metadata before passing a tree into evaluators or algorithms. `SetEnabled()`
  * applies to an entire subtree, not only the root node.
+ *
+ * In this documentation, a candidate is an @c Individual. Its genotype is a
+ * @c Tree; its fitness is assigned by evaluation. “Model” refers to the tree
+ * together with the problem context that gives its values meaning.
  *
  * @section core-model-data Dataset and Problem
  *

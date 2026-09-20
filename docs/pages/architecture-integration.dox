@@ -35,9 +35,9 @@
  * configuration describes the domain box and requested value/derivative
  * constraints; @c --shape-enforcement selects hard rejection, penalty,
  * extra-objective, or feasibility-first behavior. The JSON identifies a
- * policy; the evaluator and bound mode determine its proof semantics. See
- * @ref evaluation_shape_constraints for those semantics, cache lifetime, and
- * the cost of each bound backend.
+ * policy; the evaluator and bound mode determine its certification semantics.
+ * See @ref shape_constraints for composition, cache lifetime, and the cost of
+ * each bound backend.
  *
  * @section integration_probes Generation probes
  *

@@ -1,0 +1,68 @@
+/**
+ * @page evaluation Evaluation: scoring one candidate
+ *
+ * Evaluation answers how good one @c Individual is. It defines objectives,
+ * scaling, metric policy, and failure handling; it does not choose candidates,
+ * own Taskflow scheduling, or perform coefficient fitting. Sampled execution
+ * and static bounds are supplied by @ref execution. Optional shape enforcement
+ * is documented in @ref shape_constraints.
+ *
+ * @section evaluation-contract Evaluate then Score
+ *
+ * @c EvaluatorBase::operator()(rng, individual, scratch) is @c final. It calls
+ * @c Evaluate first, then calls @c Score only when evaluation does not report an
+ * interpreter error. The two-argument facade owns a training-range-sized scratch
+ * buffer and forwards to this composed entrypoint.
+ *
+ * @dot
+ * digraph evaluator_phases {
+ *   rankdir=TB;
+ *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
+ *   node [fontname="Helvetica", fontsize=10];
+ *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
+ *   start [shape=circle, label="", width=0.18];
+ *   evaluate [shape=box, style="rounded", label="Evaluate\n(sampled execution result)"];
+ *   outcome [shape=diamond, label="Interpreter error?"];
+ *   proof [shape=box, style="rounded", label="Optional EvaluatedBuffer"];
+ *   score [shape=box, style="rounded", label="Score\n(objectives -> fitness)"];
+ *   error [shape=box, style="rounded", label="ErrMax"];
+ *   finish [shape=doublecircle, label="", width=0.18];
+ *   start -> evaluate -> outcome;
+ *   outcome -> error [label="yes"];
+ *   outcome -> proof [label="no"];
+ *   proof -> score -> finish;
+ *   error -> finish;
+ * }
+ * @enddot
+ *
+ * @c Evaluate returns an interpreter error, an empty optional, or an
+ * @c EvaluatedBuffer. The buffer is a move-only proof that the supplied scratch
+ * prefix holds values for this exact individual. Value-based scorers must use
+ * @c Values(individual, scratch), which checks both identities before exposing
+ * the values. @c ScoreContext is call-local and must not be retained.
+ *
+ * @section evaluation-scoring Objective and failure policy
+ *
+ * @c Score converts the evaluation result into a fitness vector. Concrete
+ * evaluators apply linear scaling and an error metric here; information criteria
+ * and custom objective policies belong here as well. An interpreter error
+ * produces @c ErrMax. A shape-policy rejection produces its configured worst
+ * fitness through the decorator score path, not an @c InterpreterError.
+ *
+ * @c Problem::LinearScalingOmitsNonFinite and evaluator non-finite handling
+ * must agree. Otherwise fitting and scoring can use different effective samples.
+ * Linear scaling is distinct from coefficient fitting: the latter is a
+ * search-side operation described in @ref search_optimization.
+ *
+ * Counter meaning is phase-specific. Concrete evaluators count forward work in
+ * @c ResidualEvaluations; each @c Score override increments @c CallCount once.
+ * The base entrypoint increments @c CallCount for an @c Evaluate error before
+ * returning @c ErrMax.
+ *
+ * @section evaluation-entrypoints API entry points
+ *
+ * - @c EvaluatorBase, @c EvaluatedBuffer, and @c ScoreContext in
+ *   @c include/operon/operators/evaluator.hpp.
+ * - Concrete metric evaluators in @c source/operators/evaluator.cpp.
+ * - @ref shape_constraints for hard rejection, penalties, and feasibility.
+ */

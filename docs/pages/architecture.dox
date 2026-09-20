@@ -1,161 +1,63 @@
 /**
  * @page architecture Operon architecture
  *
- * Operon is an in-process symbolic-regression library: a dataset and problem
- * define a task; algorithms evolve or enumerate trees; evaluators score those
- * trees; and selection/reinsertion feed resulting individuals back into
- * evolutionary search. This page is the map for the system-level documentation.
- * It describes responsibilities and boundaries, not every public symbol.
+ * Operon is an in-process symbolic-regression library. Its architecture is
+ * easiest to understand as three questions over a shared model: which
+ * candidates come next, how good is one candidate, and what does its tree
+ * compute. This page establishes those boundaries; the linked pages explain
+ * their contracts and control flow.
  *
- * @section architecture-overview Whole-system overview
+ * @section architecture-overview System overview
  *
- * This C4-style component overview covers the primary in-process
- * symbolic-regression architecture. Clusters are responsibility areas, not
- * processes or enforced source-code layers. The component map below drills into
- * selected search, evaluation, and model relationships; it is not a second
- * system inventory.
- *
- * @par Legend
- * Blue solid arrows invoke or coordinate work. Slate solid arrows construct,
- * read, or write models and values. Blue dashed arrows are configured or
- * optional control paths, never asynchronous work. Return values and
- * evolutionary loop-backs are omitted; the detailed UML activity diagrams
- * describe ordering.
+ * Search owns candidate orchestration and consumes fitness. Evaluation turns
+ * one candidate into fitness through its @c Evaluate then @c Score contract.
+ * Execution computes sampled values, Jacobians, and static bounds without
+ * knowing objectives or search. Coefficient fitting is deliberately separate:
+ * it is an optional search-side collaborator that needs execution residuals and
+ * Jacobians rather than objective scoring.
  *
  * @dot
  * digraph operon_overview {
  *   rankdir=TB;
- *   newrank=true;
- *   compound=true;
- *   graph [bgcolor="transparent", pad=0.3, nodesep=0.5, ranksep=0.75, size="8.8,12"];
- *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
+ *   graph [bgcolor="transparent", pad=0.3, nodesep=0.6, ranksep=0.8];
+ *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=11, margin="0.14,0.1"];
  *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
- *   caller [label="C++ application / CLI user\n<<external>>", style="rounded,dashed"];
- *
- *   subgraph cluster_operon {
- *     label="Operon — in-process symbolic-regression library";
- *     color="#64748b";
- *     fontname="Helvetica";
- *     fontsize=11;
- *     penwidth=1.2;
- *     style="rounded";
- *
- *     subgraph cluster_integration {
- *       label="Integration and presentation";
- *       color="#94a3b8";
- *       fontname="Helvetica";
- *       fontsize=10;
- *       style="rounded";
- *       entry [label="C++ API / CLI\noperon_gp | operon_nsgp | operon_enum\n<<entry point>>"];
- *       exchange [label="Model I/O and reporting\nparser | formatting | serialization | probes\n<<integration>>"];
- *     }
- *
- *     subgraph cluster_search {
- *       label="Search and optimization";
- *       color="#94a3b8";
- *       fontname="Helvetica";
- *       fontsize=10;
- *       style="rounded";
- *       evolution [label="Evolutionary search\nGP | NSGA-II\n<<search engine>>"];
- *       enumeration [label="Grammar enumeration\n<<search engine>>"];
- *       operators [label="Population operators\ninitialize | select | vary | reinsert / sort\n<<component>>"];
- *       fit [label="Coefficient fitting\nLM | SGD\n<<component>>"];
- *     }
- *
- *     subgraph cluster_evaluation {
- *       label="Evaluation and constraints";
- *       color="#94a3b8";
- *       fontname="Helvetica";
- *       fontsize=10;
- *       style="rounded";
- *       evaluation [label="Evaluator objectives\noptional shape gate / penalty / objective\n<<component>>"];
- *     }
- *
- *     subgraph cluster_execution {
- *       label="Execution semantics";
- *       color="#94a3b8";
- *       fontname="Helvetica";
- *       fontsize=10;
- *       style="rounded";
- *       sampled [label="Sampled values and Jacobians\ninterpreter | optional JIT | dispatch\n<<execution>>"];
- *       bounds [label="Conservative bounds\ninterval | affine | range tightening\n<<execution>>"];
- *     }
- *
- *     subgraph cluster_core {
- *       label="Core model and state";
- *       color="#94a3b8";
- *       fontname="Helvetica";
- *       fontsize=10;
- *       style="rounded";
- *       core [label="Problem | Dataset | PrimitiveSet\nIndividual | postfix Tree | fitness\n<<domain model>>"];
- *     }
- *
- *     {rank=same; entry; exchange}
- *     {rank=same; evolution; enumeration}
- *     {rank=same; operators; fit}
- *     {rank=same; sampled; bounds}
- *   }
- *
- *   caller -> entry [color="#2563eb"];
- *   entry -> evolution [color="#2563eb"];
- *   entry -> enumeration [color="#2563eb"];
- *   entry -> exchange [color="#2563eb"];
- *   evolution -> operators [color="#2563eb"];
- *   evolution -> exchange [label="report callback", style=dashed, color="#2563eb", fontcolor="#2563eb"];
- *   enumeration -> fit [color="#2563eb"];
- *   enumeration -> evaluation [color="#2563eb"];
- *   operators -> fit [label="local search", style=dashed, color="#2563eb", fontcolor="#2563eb"];
- *   operators -> evaluation [color="#2563eb"];
- *   fit -> sampled [label="residuals / Jacobians", color="#2563eb", fontcolor="#2563eb"];
- *   evaluation -> sampled [color="#2563eb"];
- *   evaluation -> bounds [label="shape certification", style=dashed, color="#2563eb", fontcolor="#2563eb"];
- *   sampled -> core [color="#475569"];
- *   bounds -> core [color="#475569"];
- *   exchange -> core [color="#475569"];
+ *   entry [label="Entry points\noperon_gp | operon_nsgp | operon_enum", style="rounded,dashed"];
+ *   search [label="Search\npopulation | variation | selection | reinsertion\nfitness cache | Taskflow orchestration"];
+ *   evaluation [label="Evaluation\nEvaluate -> Score -> fitness\nmetrics | scaling | ErrMax | shape policy"];
+ *   execution [label="Execution\ninterpreter / JIT: sampled execution\ninterval / affine: static bounds"];
+ *   model [label="Model\nProblem | Dataset | PrimitiveSet\nIndividual | Tree"];
+ *   fitting [label="Coefficient fitting\nLM | L-BFGS | SGD", style="rounded,dashed"];
+ *   entry -> search [label="configures"];
+ *   search -> evaluation [label="fitness of a candidate"];
+ *   evaluation -> execution [label="values / bounds"];
+ *   execution -> model;
+ *   search -> fitting [label="optional local search", style=dashed];
+ *   fitting -> execution [label="residuals / Jacobians"];
  * }
  * @enddot
  *
- * @section architecture-map Component relationship map
+ * @section architecture-pages System pages
  *
- * This drill-down expands the overview's search, evaluation, and core-model
- * areas. It shows the decisive invocations and model/value access rather than
- * every implementation dependency; its arrows use the legend above.
+ * - @subpage core_model — shared formulation and representation vocabulary.
+ * - @subpage execution — sampled execution, derivatives, JIT, and static
+ *   bounds.
+ * - @subpage evaluation — the @c Evaluate then @c Score objective contract.
+ * - @subpage shape_constraints — optional static certification and enforcement.
+ * - @subpage search_optimization — search orchestration, local fitting,
+ *   parallelism, and caches.
+ * - @subpage architecture_integration — CLI construction, serialization,
+ *   reporting, and extension points.
  *
- * @dot
- * digraph operon_architecture {
- *   rankdir=TB;
- *   graph [bgcolor="transparent", pad=0.25, nodesep=0.45, ranksep=0.7];
- *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
- *   edge [fontname="Helvetica", fontsize=9, arrowsize=0.7];
- *   integration [label="CLI / probes / serialization\n<<integration>>"];
- *   search [label="GP / NSGA-II\n<<search engine>>"];
- *   enumeration [label="Grammar enumeration\n<<search engine>>"];
- *   variation [label="Creators / variation\n<<component>>"];
- *   optimizer [label="Coefficient fitting\nLM | SGD\n<<component>>"];
- *   evaluator [label="Evaluators\n<<component>>"];
- *   selection [label="Selection / archive\n<<component>>"];
- *   model [label="Problem and individuals\n<<domain model>>"];
- *   execution [label="Interpreter / JIT / bounds\n<<execution>>"];
- *   shape [label="Shape constraints\n<<component>>"];
- *   {rank=same; search; enumeration}
- *   {rank=same; variation; optimizer; evaluator; selection}
- *   {rank=same; model; execution; shape}
- *   integration -> search [label="configures", color="#2563eb", fontcolor="#2563eb"];
- *   integration -> enumeration [label="configures", color="#2563eb", fontcolor="#2563eb"];
- *   search -> variation [color="#2563eb"];
- *   search -> evaluator [color="#2563eb"];
- *   search -> selection [color="#2563eb"];
- *   enumeration -> optimizer [color="#2563eb"];
- *   enumeration -> evaluator [color="#2563eb"];
- *   variation -> optimizer [label="optional local search", style=dashed, color="#2563eb", fontcolor="#2563eb"];
- *   variation -> model [color="#475569"];
- *   optimizer -> execution [label="residuals / Jacobians", color="#2563eb", fontcolor="#2563eb"];
- *   optimizer -> model [color="#475569"];
- *   evaluator -> model [color="#475569"];
- *   evaluator -> execution [color="#2563eb"];
- *   evaluator -> shape [color="#2563eb"];
- *   shape -> execution [color="#2563eb"];
- * }
- * @enddot
+ * @section architecture-terms Vocabulary
  *
+ * | Term | Meaning |
+ * | --- | --- |
+ * | Candidate / individual | An @c Individual: a tree genotype plus fitness. |
+ * | Sampled execution | Running a tree over dataset rows. |
+ * | Bound | Static interval or affine analysis over a domain box. |
+ * | Evaluate | The evaluator phase that may produce an @c EvaluatedBuffer. |
+ * | Score | The evaluator phase that converts an evaluation result into fitness. |
+ * | Fit | Coefficient optimization; distinct from linear scaling and scoring. |
+ * | Feasible | Certified to meet shape constraints over its configured domain. |
  */

@@ -1,9 +1,10 @@
 /**
  * @page search_optimization Search and coefficient optimization
  *
- * Search owns population state; operators borrow the problem, evaluator, and
- * policy objects needed to transform it. Coefficient fitting is an optional
- * transformation of a candidate tree, not evaluator bookkeeping.
+ * Search answers which candidates come next. It owns population state,
+ * variation, selection, reinsertion, fitness caching, and Taskflow scheduling.
+ * It orchestrates optional coefficient fitting before scoring an individual; it
+ * does not define objective semantics or execution kernels.
  *
  * @section search-flow Generation lifecycle
  *
@@ -21,7 +22,7 @@
  *   variation [shape=box, style="rounded", label="Select / crossover / mutate"];
  *   fit [shape=diamond, label="Fit coefficients?"];
  *   optimize [shape=box, style="rounded", label="Coefficient fit"];
- *   score [shape=box, style="rounded", label="Evaluate and score"];
+ *   score [shape=box, style="rounded", label="Score individual"];
  *   pool [shape=box, style="rounded", label="Offspring pool"];
  *   reinsert [shape=box, style="rounded", label="Reinsert\n(elites protected)"];
  *   next [shape=box, style="rounded", label="Next parents"];
@@ -60,6 +61,29 @@
  * is removed only when its hash is revisited. `0` disables expiry. Long-lived
  * embedding callers must call `Zobrist::Clear()` at their chosen run boundary
  * if they need to reclaim the table.
+ *
+ * @section search-orchestration Per-individual orchestration
+ *
+ * `OffspringGeneratorBase::Generate` constructs a child, then calls
+ * `ScoreIndividual`. That function runs optional `LocalSearch`, scores the
+ * resulting individual through the evaluator, and restores the original
+ * coefficients when the Lamarckian trial did not inherit them. Coefficient
+ * fitting therefore precedes scoring but remains outside the evaluator: its
+ * optimizer uses execution residuals and Jacobians rather than objectives.
+ *
+ * @section search-parallelism Parallelism and caches
+ *
+ * GP and NSGA-II build Taskflow work in their algorithm runners. Evaluators,
+ * interpreters, and optimizers instead receive per-worker scratch state; there
+ * is no shared execution pipeline. The offspring generator owns the structural
+ * fitness cache. Shape feasibility and JIT compilation keep separate caches in
+ * their own subsystems, so a cache hit in one does not imply a hit in another.
+ *
+ * @section search-enumeration Grammar enumeration
+ *
+ * @c operon_enum enumerates expressions from @c Grammar, optionally fits their
+ * coefficients, then ranks them through the evaluator. It shares the evaluation
+ * and execution contracts but does not own a population lifecycle.
  *
  * `ReinserterBase` enforces elitism before each concrete combine strategy. The
  * protected prefix is ordered by the supplied comparison, so GP and NSGA-II

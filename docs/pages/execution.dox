@@ -1,16 +1,15 @@
 /**
- * @page execution Execution: interpretation, derivatives, and bounds
+ * @page execution Execution: sampled values, derivatives, and bounds
  *
- * Execution consumes an immutable tree plus dataset and coefficient inputs. It
- * has three related products: sampled model values, parameter/input derivatives,
- * and conservative bounds. They share postfix semantics but have different
- * registries, error models, and cost profiles.
+ * Execution answers what a tree computes. It consumes a tree, coefficients,
+ * dispatch rules, and either dataset rows or a static domain box. It produces
+ * sampled values/Jacobians or conservative bounds; it does not define fitness,
+ * enforce shape policy, choose candidates, or schedule search work.
  *
- * @section execution-flow Execution relationships
+ * @section execution-flow Execution products
  *
- * This is a C4-style component view. Arrows point from the client to the model
- * or service it uses; sampled evaluation and conservative bounds remain
- * separate execution products.
+ * Sampled execution and static bounding share postfix semantics but use
+ * different registries, error models, and cost profiles.
  *
  * @dot
  * digraph execution {
@@ -18,18 +17,18 @@
  *   graph [bgcolor="transparent", pad=0.25, nodesep=0.55, ranksep=0.75];
  *   node [shape=box, style="rounded", fontname="Helvetica", fontsize=10, margin="0.12,0.08"];
  *   edge [fontname="Helvetica", fontsize=9, color="#4a5568", fontcolor="#4a5568", arrowsize=0.7];
- *   individual [label="Individual / Tree\n<<domain model>>"];
- *   dataset [label="Dataset + range\n<<data store>>"];
- *   dispatch [label="Dispatch table\n<<registry>>"];
- *   interpreter [label="Interpreter\n<<component>>"];
- *   derivatives [label="Jacobian APIs\n<<component>>"];
- *   bounds [label="Interval / affine evaluator\n<<component>>"];
- *   interpreter -> individual [label="evaluates postfix tree"];
- *   interpreter -> dataset [label="reads variables"];
- *   interpreter -> dispatch [label="resolves primitives"];
- *   derivatives -> interpreter [label="uses traces"];
- *   bounds -> individual [label="analyses tree"];
- *   bounds -> dispatch [label="uses interval callbacks"];
+ *   individual [label="Tree"];
+ *   dataset [label="Dataset rows"];
+ *   dispatch [label="Dispatch table"];
+ *   interpreter [label="Interpreter"];
+ *   derivatives [label="Jacobians"];
+ *   bounds [label="Interval / affine bounds"];
+ *   interpreter -> individual [label="executes"];
+ *   interpreter -> dataset [label="reads"];
+ *   interpreter -> dispatch [label="resolves"];
+ *   derivatives -> interpreter [label="traces"];
+ *   bounds -> individual [label="analyses"];
+ *   bounds -> dispatch [label="interval callbacks"];
  * }
  * @enddot
  *
@@ -55,6 +54,19 @@
  * performs one forward pass and extracts multiple node outputs, useful for
  * shared derivative-tree work.
  *
+ * @section execution-jit JIT and backend selection
+ *
+ * @c JitEvaluator preserves the evaluator contract while compiling a sampled
+ * forward pass or Jacobian when possible. @c GetOrCompile and
+ * @c GetOrCompileJacobian cache compiled functions by tree hash; an unavailable
+ * AVX2 path or failed compilation falls back to interpretation. JIT is therefore
+ * an execution strategy, not a different objective policy.
+ *
+ * The ordinary interpreter backends select primitive and derivative kernels.
+ * Custom symbols need matching rules for every execution mode they are expected
+ * to support; a sampled interpreter binding alone does not imply JIT, derivative,
+ * interval, or affine availability.
+ *
  * @section execution-dispatch Dispatch and custom functions
  *
  * A `Function` node's hash resolves through the dispatch table. User-defined
@@ -63,16 +75,16 @@
  * primitive set is insufficient by itself. Missing bindings are recoverable at
  * the interpreter boundary rather than unchecked dataset access failures.
  *
- * @section execution-bounds Interval and affine evaluation
+ * @section execution-bounds Static bounds
  *
- * `IntervalEvaluator` evaluates a tree postorder over hash-keyed variable
- * domains. It allocates/reuses one interval primal vector and compiles domain
- * entries into node-indexed slots. `SetTree()` intentionally retains domain and
- * scratch capacity so shape constraints can evaluate identity and derivative
- * trees without repeated allocation.
+ * `IntervalEvaluator` bounds a tree postorder over hash-keyed variable domains.
+ * It allocates/reuses one interval primal vector and compiles domain entries
+ * into node-indexed slots. `SetTree()` intentionally retains domain and scratch
+ * capacity so @ref shape_constraints can analyse identity and derivative trees
+ * without repeated allocation.
  *
- * `TryEvaluate()` is the bounds API for callers that need error handling: absent
- * variable bounds and exceptions from custom interval callbacks become
+ * `TryEvaluate()` is the bounds query API for callers that need error handling:
+ * absent variable bounds and exceptions from custom interval callbacks become
  * `tl::expected` errors. Mathematical domain failures, such as logarithm over a
  * negative interval, produce an empty interval; callers must check it. Scalar
  * custom rules are registered by hash with `RegisterUnaryInterval()` or
@@ -80,9 +92,7 @@
  * built-ins only.
  *
  * Interval and affine bounds certify properties over a box; they are not sampled
- * predictions and should not silently inherit scoring transformations. Shape
- * constraints select the appropriate bound mode and interpret unknown/empty or
- * non-finite results conservatively.
+ * predictions and should not silently inherit scoring transformations.
  *
  * @section execution-entrypoints API entry points
  *
