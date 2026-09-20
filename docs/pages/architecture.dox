@@ -38,13 +38,11 @@
  *   differentiation, interval/affine evaluation, and range tightening.
  * - @ref evaluation_shape_constraints — evaluator phases, scoring, shape
  *   certification, enforcement, cache lifetime, and the hard-reject path.
- * - @ref search_optimization — GP/NSGA-II generation flow, variation,
- *   selection, reinsertion, non-dominated sorting, archive, and evaluation
- *   budgets.
- * - @ref search_optimization — linear scaling, local search, likelihood
- *   objectives, and solver boundaries.
+ * - @ref search_optimization — GP/NSGA-II generation flow, variation, local
+ *   search, selection, reinsertion, non-dominated sorting, archive, evaluation
+ *   budgets, linear scaling, likelihood objectives, and solver boundaries.
  * - @ref architecture_integration — CLI configuration, probes, formatting,
- *   serialization, custom primitives/evaluators, and Python bindings.
+ *   serialization, custom functions, and callback evaluators.
  *
  * Each system page must state its public entry points, owned and borrowed state,
  * invariants, failure model, hot-path cost, and the diagrams that explain control
@@ -64,19 +62,18 @@
  * @section architecture-search Evolutionary search
  *
  * @anchor architecture_search
- * To document next: population lifecycle, offspring generation, local search,
- * evaluation budgets, GP, NSGA-II, archive updates, selectors, and reinserters.
+ * @ref search_optimization documents lifecycle, variation, search budgets,
+ * selection, archive updates, and coefficient fitting.
  *
  * @section architecture-optimization Coefficient optimization
  *
  * @anchor architecture_optimization
- * To document next: linear scaling, optimizer callbacks, likelihood evaluators,
- * solver error boundaries, and the relation between optimized coefficients and
- * an @c Individual genotype.
+ * @ref search_optimization documents linear scaling, optimizer callbacks,
+ * likelihood evaluators, solver error boundaries, and coefficient inheritance.
  *
  * @section architecture-integration Integration surface
  *
- * @anchor architecture_integration
- * To document next: command-line configuration, shape-constraint JSON,
- * serialization/formatting, probes, custom registries, and pyoperon-facing API.
+ * @ref architecture_integration documents CLI configuration, shape-constraint
+ * JSON, serialization/formatting, probes, custom registries, and callback
+ * evaluators.
  */

@@ -1,0 +1,110 @@
+/**
+ * @page architecture_integration Integration surface
+ *
+ * Operon exposes the same model through the command-line tools and the C++
+ * library. Configuration builds a @c Dataset, @c Problem, primitive set,
+ * evaluator, and algorithm; serialization and formatting move the resulting
+ * trees and individuals across process boundaries. This page defines those
+ * integration boundaries rather than prescribing one application framework.
+ *
+ * @section integration_cli Command-line configuration
+ *
+ * The CLI parses options before constructing a @c Problem. Dataset names,
+ * target, inputs, train/test ranges, primitive enablement, linear scaling, and
+ * non-finite policy are therefore problem/evaluator construction inputs, not
+ * changes that can be safely applied midway through a run. @c operon_gp and
+ * @c operon_nsgp run population-based search; @c operon_enum enumerates a
+ * grammar and ranks fitted expressions. Each tool consumes only its documented
+ * subset of the shared option set. In particular, an option being visible in
+ * @c --help does not make it meaningful for every executable.
+ *
+ * @c --skip-nonfinite applies only to SSE/MSE/NMSE/RMSE/MAE evaluator paths.
+ * It must be paired with the same @c Problem::SetLinearScalingOmitsNonFinite
+ * policy when linear scaling is enabled. R2/C2 reject the option because they
+ * have no finite-subset semantics. @c --nonfinite-penalty-weight is meaningful
+ * only with this opt-in policy and must be finite and non-negative.
+ *
+ * Checkpoint save/resume serializes population state and RNG state in BEVE.
+ * Resume requires a compatible population size and treats configuration errors
+ * as input errors; it is not a migration format for altered objectives,
+ * primitive sets, or datasets.
+ *
+ * @section integration_shape_json Shape-constraint JSON
+ *
+ * @c --shape-constraints-config is parsed before evaluator construction. The
+ * configuration describes the domain box and requested value/derivative
+ * constraints; @c --shape-enforcement selects hard rejection, penalty,
+ * extra-objective, or feasibility-first behavior. The JSON identifies a
+ * policy; the evaluator and bound mode determine its proof semantics. See
+ * @ref evaluation_shape_constraints for those semantics, cache lifetime, and
+ * the cost of each bound backend.
+ *
+ * @section integration_probes Generation probes
+ *
+ * @c --probes-config loads a JSON object with an optional @c probes array and
+ * @c sink. A probe entry has a registered @c type, optional @c every and
+ * @c offset non-negative integer schedule fields, and scalar @c params
+ * (integer, double, boolean, or string). The only built-in sink is JSONL:
+ *
+ * @code{.json}
+ * {
+ *   "probes": [
+ *     {"type": "cache_hit_rate", "every": 10},
+ *     {"type": "population_trace", "params": {"limit": 20}}
+ *   ],
+ *   "sink": {"type": "jsonl", "path": "metrics.jsonl"}
+ * }
+ * @endcode
+ *
+ * A @c ProbeRegistry is a caller-owned name-to-factory registry. Register
+ * built-ins explicitly with @c RegisterBuiltinProbes before creating entries;
+ * add custom factories before parsing or constructing a @c ProbeChain. Unknown
+ * types, invalid schedules, unsupported parameter values, and sink failures
+ * are configuration/input errors, not ignored instrumentation.
+ *
+ * @section integration_exchange Serialization and presentation
+ *
+ * @c Serialization::ToJson and @c TreeFromJson exchange trees; matching
+ * overloads exchange @c Individual values and fronts. @c ToBeve and
+ * @c TreeFromBeve provide the binary equivalent. Parse functions return an
+ * empty @c std::optional on invalid data, so callers must preserve that failure
+ * boundary rather than treating an absent tree as an empty expression.
+ *
+ * @c Fmt::WithNames binds a @c Tree to a @c Dataset or explicit variable-name
+ * map for display. Use @c {:infix:roundtrip} when output must re-enter the
+ * infix parser without coefficient precision loss; the default infix format is
+ * intended for display. Tree, postfix, and DOT renderers are presentation
+ * formats, not serialization contracts.
+ *
+ * @section integration_extensions Custom symbols and objectives
+ *
+ * Register a user function through @c RegisterUnaryFunction,
+ * @c RegisterBinaryFunction, or @c RegisterNaryFunction. Each helper updates
+ * the dispatch table, primitive set, and name registry together. The
+ * @c FunctionInfo name determines the hash; it must be non-empty and must not
+ * collide with the reserved built-in range. A function that participates in
+ * interval/affine bounds, symbolic derivatives, or JIT must also have the
+ * matching backend rule registered. Otherwise the model may evaluate in the
+ * ordinary interpreter yet be unavailable for certification, differentiation,
+ * or JIT compilation.
+ *
+ * @c UserDefinedEvaluator accepts a callback that returns the objective vector
+ * for an @c Individual. Its callback runs in the score phase and must obey the
+ * evaluator objective-count and lifetime contracts. It is appropriate for a
+ * custom objective; it does not grant a sampled-value proof to wrappers that
+ * need @c EvaluatedBuffer.
+ *
+ * @section integration_api API reference starting points
+ *
+ * - @c cli/source/util.hpp and the executable @c main files: CLI construction,
+ *   ranges, checkpoints, and option ownership.
+ * - @c cli/source/probes_config.cpp and @c ProbeRegistry: probe JSON and
+ *   extension factories.
+ * - @c Serialization in @c include/operon/core/serialization.hpp: JSON, BEVE,
+ *   and checkpoint exchange.
+ * - @c Fmt in @c include/operon/formatter/formatter.hpp: infix, postfix, tree,
+ *   and DOT display.
+ * - @c include/operon/core/symbol_library.hpp: user-symbol registration.
+ * - @c UserDefinedEvaluator in @c include/operon/operators/evaluator.hpp:
+ *   callback objectives.
+ */
